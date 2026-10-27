@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { makeCleanupDiscoveredApps } from "../../src/cli/command-specs/meta/uninstall.ts";
+import { makeCleanupDiscoveredApps } from "@lando/engine/install/uninstall-discovery";
+
+const absentRuntime = () => Object.assign(new Error("runtime unavailable"), { code: "ENOENT" });
 
 type Scenario =
   | "stopped-helper"
@@ -27,8 +29,15 @@ const withRuntime = async (scenario: Scenario) => {
     const call = [...args];
     calls.push(call);
     probes.push({ file, ...(options.env === undefined ? {} : { env: options.env }) });
-    if (!file.startsWith(data)) throw new Error("runtime unavailable");
+    if (!file.startsWith(data)) throw absentRuntime();
     if (args.includes("--version")) return { stdout: "podman" };
+    if (args.includes("df"))
+      return {
+        stdout: JSON.stringify([
+          { Type: "Containers", Total: 0 },
+          { Type: "Local Volumes", Total: 0 },
+        ]),
+      };
     if (args.includes("ps") && args.includes("label=dev.lando.sync.kind=helper"))
       return {
         stdout: scenario === "stopped-helper" || scenario === "running-helper" ? "sync-helper-id\\n" : "",
@@ -89,7 +98,8 @@ describe("uninstall purge sync guard", () => {
     const fixture = await withRuntime("ordinary");
     try {
       await fixture.run([]);
-      expect(fixture.calls.some((call) => call.includes("prune"))).toBe(true);
+      expect(fixture.calls.some((call) => call.includes("prune"))).toBe(false);
+      expect(fixture.calls.some((call) => call.includes("network") && call.includes("ls"))).toBe(true);
       expect(fixture.calls.some((call) => call.includes("--connection") && call.includes("lando-root"))).toBe(
         true,
       );
@@ -102,8 +112,8 @@ describe("uninstall purge sync guard", () => {
       expect(fixture.probes.find((probe) => probe.file.endsWith("podman.exe"))?.env?.XDG_CONFIG_HOME).toBe(
         join(fixture.data, "runtime", "config"),
       );
-      const firstPrune = fixture.calls.findIndex(destructive);
-      expect(firstPrune).toBeGreaterThan(
+      const firstSweep = fixture.calls.findIndex((call) => call.includes("label=dev.lando.app"));
+      expect(firstSweep).toBeGreaterThan(
         fixture.calls.findIndex(
           (call) => call.includes("ls") && call.includes("label=dev.lando.sync.kind=volume"),
         ),
@@ -113,24 +123,80 @@ describe("uninstall purge sync guard", () => {
     }
   });
 
-  test("keeps the ordinary Linux cleanup path independent of Windows sync queries", async () => {
-    const fixture = await withRuntime("ordinary");
-    try {
-      const calls: string[][] = [];
-      const exec = async (file: string, args: ReadonlyArray<string>) => {
-        calls.push([...args]);
-        if (!file.startsWith(fixture.data)) throw new Error("runtime unavailable");
-        if (args.includes("--version")) return { stdout: "podman" };
-        if (args.includes("dev.lando.sync.kind=volume")) throw new Error("Windows-only query");
-        return { stdout: "" };
-      };
-      await makeCleanupDiscoveredApps(fixture.data, exec, "linux")([]);
-      expect(calls.some((call) => call.includes("prune"))).toBe(true);
-      expect(calls.some((call) => call.includes("dev.lando.sync.kind=volume"))).toBe(false);
-    } finally {
-      rmSync(fixture.root, { recursive: true, force: true });
-    }
-  });
+  test.each(["docker", "podman", "managed"])(
+    "removes anonymous volumes with scoped Linux cleanup on %s",
+    async (runtime) => {
+      // Given: only the selected runtime is available, with containers under both Lando labels.
+      const fixture = await withRuntime("ordinary");
+      try {
+        const command = runtime === "managed" ? join(fixture.data, "runtime", "bin", "podman") : runtime;
+        const prefix =
+          runtime === "managed"
+            ? [
+                "--root",
+                join(fixture.data, "runtime", "storage"),
+                "--runroot",
+                join(fixture.data, "runtime", "run"),
+                "--config",
+                join(fixture.data, "runtime", "config"),
+                "--storage-opt",
+                `overlay.mount_program=${join(fixture.data, "runtime", "bin", "fuse-overlayfs")}`,
+              ]
+            : [];
+        const calls: string[][] = [];
+        const exec = async (file: string, args: ReadonlyArray<string>) => {
+          if (file !== command) throw absentRuntime();
+          if (args.includes("--version")) return { stdout: "podman" };
+          calls.push([...args]);
+          if (args.includes("ps"))
+            return {
+              stdout: args.includes("label=dev.lando.app") ? "current-id\nsecond-id\n" : "legacy-id\n",
+            };
+          if (args.includes("inspect")) {
+            const id = args.at(-1) ?? "";
+            return {
+              stdout: JSON.stringify([
+                { Id: `exact-${id}`, Config: { Labels: { "com.lando.app": "legacy" } } },
+              ]),
+            };
+          }
+          if (args.includes("df"))
+            return {
+              stdout: JSON.stringify([
+                { Type: "Containers", Total: 0 },
+                { Type: "Local Volumes", Total: 0 },
+              ]),
+            };
+          return { stdout: "" };
+        };
+        // When: purge sweeps the runtime through injected execution only.
+        await makeCleanupDiscoveredApps(fixture.data, exec, "linux")([]);
+        // Then: candidate labels discover only; inspected exact IDs authorize removal.
+        expect(calls).toEqual([
+          [...prefix, "ps", "-a", "--filter", "label=dev.lando.app", "--format", "{{.ID}}"],
+          [...prefix, "ps", "-a", "--filter", "label=com.lando.app", "--format", "{{.ID}}"],
+          [...prefix, "container", "inspect", "current-id"],
+          [...prefix, "rm", "-f", "--volumes", "exact-current-id"],
+          [...prefix, "container", "inspect", "second-id"],
+          [...prefix, "rm", "-f", "--volumes", "exact-second-id"],
+          [...prefix, "container", "inspect", "legacy-id"],
+          [...prefix, "rm", "-f", "--volumes", "exact-legacy-id"],
+          [...prefix, "network", "ls", "--filter", "label=dev.lando.app", "--format", "{{.ID}}"],
+          [...prefix, "network", "ls", "--filter", "label=com.lando.app", "--format", "{{.ID}}"],
+          [...prefix, "network", "ls", "--filter", "label=dev.lando.network", "--format", "{{.ID}}"],
+          [...prefix, "network", "ls", "--filter", "label=dev.lando.owner", "--format", "{{.ID}}"],
+          [...prefix, "volume", "ls", "--filter", "label=dev.lando.app", "--format", "{{.Name}}"],
+          [...prefix, "volume", "ls", "--filter", "label=com.lando.app", "--format", "{{.Name}}"],
+          [...prefix, "volume", "ls", "--filter", "label=dev.lando.volume-owner", "--format", "{{.Name}}"],
+          [...prefix, "volume", "ls", "--filter", "label=dev.lando.volume-selector", "--format", "{{.Name}}"],
+          [...prefix, "volume", "ls", "--filter", "label=dev.lando.volume", "--format", "{{.Name}}"],
+          ...(runtime === "managed" ? [[...prefix, "system", "df", "--format", "json"]] : []),
+        ]);
+      } finally {
+        rmSync(fixture.root, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("preserves runtime for saved accelerated or unreadable plans", async () => {
     for (const body of [
@@ -191,8 +257,8 @@ describe("uninstall purge sync guard", () => {
         const calls: string[][] = [];
         const exec = async (file: string, args: ReadonlyArray<string>) => {
           calls.push([...args]);
-          if (file.endsWith("podman.exe")) throw new Error("missing bundled binary");
-          throw new Error("runtime unavailable");
+          if (file.endsWith("podman.exe")) throw absentRuntime();
+          throw absentRuntime();
         };
         let failure: unknown;
         try {
@@ -214,7 +280,7 @@ describe("uninstall purge sync guard", () => {
       const calls: string[][] = [];
       const exec = async (file: string, args: ReadonlyArray<string>) => {
         calls.push([...args]);
-        if (file === "podman") throw new Error("runtime unavailable");
+        if (file === "podman") throw absentRuntime();
         if (args.includes("--version")) return { stdout: "podman" };
         if (file.startsWith(fixture.data) && args.includes("label=dev.lando.sync.kind=helper"))
           return { stdout: "late-helper-id" };

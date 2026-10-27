@@ -16,6 +16,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { resolveSshAgentUpstream, withStartedSshAgent } from "../../src/operations/start-ssh-agent.ts";
+import { startSshSidecar } from "../../src/operations/start-ssh-sidecar.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 
 const metadata = { resolvedAt: "2026-01-01T00:00:00Z", source: "test", runtime: 4 };
@@ -33,7 +34,6 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -43,7 +43,6 @@ const plan = Schema.decodeUnknownSync(AppPlan)({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -187,7 +186,7 @@ test.each(["win32", "linux", "darwin"] as const)(
     // Then
     expect(session.services[ServiceName.make("web")]?.environment.SSH_AUTH_SOCK).toBeDefined();
     expect(session.services[ServiceName.make("web")]?.mounts).toContainEqual(
-      expect.objectContaining({ type: "volume", source: "plugin-owned-agent", readOnly: true }),
+      expect.objectContaining({ type: "volume", store: "plugin-owned-agent", readOnly: true }),
     );
     expect(setups).toBe(0);
     expect(selected).toEqual(["lando"]);
@@ -257,7 +256,15 @@ test.each(["docker", "podman", "missing-volume"])("%s keeps the host socket prob
     ).pipe(
       Effect.provideService(SshService, {
         ...service,
-        setup: () => Effect.fail(new SshError({ sshId: "sidecar", message: "offline" })),
+        setup: () =>
+          Effect.fail(
+            new SshError({
+              sshId: "sidecar",
+              message: "offline",
+              remediation:
+                "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+            }),
+          ),
       }),
       Effect.provideService(RuntimeProviderRegistry, registry("running", selected)),
       Effect.provideService(GlobalAppService, globalApp),
@@ -299,7 +306,9 @@ test("host-socket path stops waiting when the started sidecar exits", async () =
     _tag: "Failure",
     failure: {
       reason: "sidecar-not-running",
-      message: "The SSH agent sidecar stopped before its agent answered.",
+      detail: "SSH agent sidecar container status: exited.",
+      message:
+        "The SSH agent sidecar stopped before its agent answered. Last probe failure: SSH agent sidecar container status: exited.",
     },
   });
 });
@@ -381,6 +390,8 @@ test.each([
             new SshError({
               sshId: "sidecar",
               message,
+              remediation:
+                "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
             }),
           ),
       }),
@@ -404,3 +415,69 @@ test.each([
   expect(warnings[0]).not.toContain("lando setup");
   expect(warnings[0]).not.toContain("super-secret");
 });
+
+test.each([false, true])(
+  "sidecar failure includes a redacted cause without RedactionService, setup failure=%s",
+  async (setupFails) => {
+    // Given a secret-bearing setup or readiness failure without a redaction service.
+    const secret = "sidecar-fallback-secret-value";
+    const previous = process.env.LANDO_TEST_SIDECAR_TOKEN;
+    process.env.LANDO_TEST_SIDECAR_TOKEN = secret;
+    const providerRegistry = registry("running", []);
+    try {
+      // When the actual sidecar start operation fails.
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(
+            startSshSidecar(
+              { appId: plan.id },
+              {
+                ...ssh,
+                setup: () =>
+                  setupFails
+                    ? Effect.fail(
+                        new SshError({
+                          sshId: "sidecar",
+                          message: `setup denied ${secret}`,
+                          remediation:
+                            "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+                        }),
+                      )
+                    : Effect.void,
+              },
+              { _tag: "volume", volume: "agent" },
+            ).pipe(Effect.result),
+          );
+          yield* TestClock.adjust("30 seconds");
+          return yield* Fiber.join(fiber);
+        }).pipe(
+          Effect.provideService(RuntimeProviderRegistry, {
+            ...providerRegistry,
+            select: (input) =>
+              providerRegistry.select(input).pipe(
+                Effect.map((provider) => ({
+                  ...provider,
+                  exec: () => Effect.succeed({ exitCode: 2, stdout: "", stderr: `exec denied ${secret}` }),
+                })),
+              ),
+          }),
+          Effect.provideService(GlobalAppService, globalApp),
+          Effect.provide(LandoEventService.layer),
+          Effect.provide(TestClock.layer()),
+        ),
+      );
+      // Then callers receive the redacted diagnostic and readiness also carries structured detail.
+      if (result._tag !== "Failure") throw new TypeError("expected sidecar failure");
+      expect(result.failure.message).not.toContain(secret);
+      expect(result.failure.message).toContain("denied [redacted]");
+      if (!setupFails) {
+        expect(result.failure).toMatchObject({
+          detail: "SSH readiness shell probe exited with code 2. exec denied [redacted]",
+        });
+        expect(result.failure.message).toContain("30 seconds. Last probe failure:");
+      }
+    } finally {
+      process.env.LANDO_TEST_SIDECAR_TOKEN = previous;
+    }
+  },
+);

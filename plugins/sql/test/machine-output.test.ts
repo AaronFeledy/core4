@@ -63,13 +63,13 @@ describe("db command machine output", () => {
     expect(encoded).not.toContain("target-secret");
   });
 
-  test("preserves export file paths containing the public default password", async () => {
-    const harness = makeSqlTestDeps({ password: "lando" });
+  test("preserves lando in export file paths when it is not a connection password", async () => {
+    const harness = makeSqlTestDeps({ password: "export-credential" });
     const exit = await Effect.runPromiseExit(
       Effect.scoped(
         executeDbCommand(harness.deps, {
           action: "export",
-          file: "backups/Drupal backup with spaces.sql",
+          file: "backups/lando Drupal backup with spaces.sql",
           yes: true,
         }),
       ),
@@ -79,6 +79,7 @@ describe("db command machine output", () => {
 
     const tokens = dbCommandRedactionTokens(exit.value);
     expect(tokens).not.toContain("lando");
+    expect(tokens).toContain("export-credential");
     const encoded = await Effect.runPromise(
       encodeCommandResult({
         command: "db:export",

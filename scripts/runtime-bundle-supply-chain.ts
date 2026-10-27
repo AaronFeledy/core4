@@ -3,7 +3,7 @@ export const RUNTIME_BUNDLE_ACTION_PINS = {
   downloadArtifact: "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131",
   rustToolchain: "dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4",
   setupBun: "oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76",
-  setupGo: "actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
+  setupGo: "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
   setupNode: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
   uploadArtifact: "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
   cache: "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830",

@@ -1,0 +1,9 @@
+name: host-reach-demo
+services:
+  web:
+    type: compose
+    image: alpine:3
+    command: ["sleep", "infinity"]
+    primary: true
+    extra_hosts:
+      - "api.test:host-gateway"

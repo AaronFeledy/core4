@@ -18,7 +18,6 @@ const serviceWithCompose = (compose?: Record<string, unknown>): ServicePlan => (
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -83,6 +82,7 @@ describe("podman Compose runtime knob realization", () => {
         gpus: "all",
         deploy: { resources: { limits: { cpus: "0.5" } } },
         labels: { "dev.lando.app": "myapp" },
+        tmpfs: ["/run"],
       }),
     ).toEqual(EMPTY_REALIZATION);
   });
@@ -97,17 +97,6 @@ describe("podman Compose runtime knob realization", () => {
 });
 
 describe("podman Compose runtime knob value coercion", () => {
-  test("preserves colon targets in normalized tmpfs objects", () => {
-    // Given / When
-    const result = realize({
-      tmpfs: [{ target: "/run:app", read_only: true, size: 67108864, mode: 1770 }, "/ordinary:size=32m"],
-    });
-    // Then
-    expect(result.hostConfig).toEqual({
-      Tmpfs: { "/run:app": "ro,size=67108864,mode=1770", "/ordinary": "size=32m" },
-    });
-  });
-
   test("Given a device without target or permissions, when realized, then both default", () => {
     expect(realize({ devices: [{ source: "/dev/fuse" }] }).hostConfig).toEqual({
       Devices: [{ PathOnHost: "/dev/fuse", PathInContainer: "/dev/fuse", CgroupPermissions: "rwm" }],
@@ -142,27 +131,6 @@ describe("podman Compose runtime knob value coercion", () => {
     ).toEqual({
       Sysctls: { "net.ipv4.ip_forward": "1", "kernel.shm": "", "net.debug": "true" },
     });
-  });
-
-  test("Given tmpfs mounts with and without options, when realized, then options split on the first colon", () => {
-    expect(realize({ tmpfs: ["/run", "/tmp:size=64m,mode=1777"] }).hostConfig).toEqual({
-      Tmpfs: { "/run": "", "/tmp": "size=64m,mode=1777" },
-    });
-  });
-
-  test("Given a normalized long-form tmpfs volume, when realized, then its options reach Podman", () => {
-    expect(
-      realize({ tmpfs: [{ target: "/run/app", read_only: true, size: 67_108_864, mode: 1770 }] }).hostConfig,
-    ).toEqual({
-      Tmpfs: { "/run/app": "ro,size=67108864,mode=1770" },
-    });
-  });
-
-  test("Given duplicate tmpfs destinations, when realized, then onInvalid rejects the lossy mapping", () => {
-    const calls = captureInvalid({ tmpfs: ["/tmp:size=64m", "/tmp:mode=1777"] });
-
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.details).toMatchObject({ knob: "tmpfs", target: "/tmp" });
   });
 
   for (const stopGracePeriod of [0.5, -1, Number.MAX_SAFE_INTEGER + 1]) {

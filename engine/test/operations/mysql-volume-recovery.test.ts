@@ -18,7 +18,7 @@ const mysqlService = {
   name: service,
   type: "mysql:9.7",
   artifact: { kind: "ref", ref: "mysql:9.7" },
-  storage: [{ store: scoped, target: PortablePath.make("/var/lib/mysql"), readOnly: false }],
+  mounts: [{ type: "volume", store: scoped, target: PortablePath.make("/var/lib/mysql"), readOnly: false }],
 } satisfies ServicePlan;
 const mysqlPlan: AppPlan = {
   ...plan,
@@ -40,6 +40,7 @@ const unavailableVolumes: RuntimeProviderShape["listVolumes"] = () =>
       message: "Provider remains unavailable.",
       providerId: "lando",
       operation: "listVolumes",
+      remediation: "Install or start the `lando` provider and confirm it can perform `listVolumes`.",
     }),
   );
 

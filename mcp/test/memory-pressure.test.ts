@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Fiber, Layer, Schema, Stdio } from "effect";
 
-import { createRedactor } from "@lando/sdk/secrets";
-
 import {
   type MemoryPressureLevel,
   attachMemoryPressureListener,
@@ -11,7 +9,7 @@ import {
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { makeStdioClient } from "@lando/mcp/testing";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { TestMcpCommandExecutor } from "./executor";
 
 const spec = (id: string, run: McpCommandSpec["run"] = () => Effect.void): McpCommandSpec => ({
@@ -21,11 +19,14 @@ const spec = (id: string, run: McpCommandSpec["run"] = () => Effect.void): McpCo
   run,
 });
 
-const redactionLayer = Layer.succeed(RedactionService, {
-  registerValues: registerRedactionValues,
-  payloadValues: () => Effect.succeed(() => ["topsecret"]),
-  forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
-});
+const redactionLayer = Layer.effect(
+  RedactionService,
+  Effect.gen(function* () {
+    const service = makeRedactionService();
+    yield* service.registerValues(["topsecret"]);
+    return service;
+  }),
+);
 
 const serviceLayer = (config: McpRuntimeConfigShape) =>
   McpService.layer.pipe(

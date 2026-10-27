@@ -12,7 +12,7 @@ export class HostProxyOpenPathError extends Schema.TaggedError<HostProxyOpenPath
   "HostProxyOpenPathError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

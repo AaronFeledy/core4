@@ -1,9 +1,11 @@
 import { AgentSocketDelivery } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
 
 import { redactString } from "../redact";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor";
 import { DoctorSeveritySchema, passCheckNamed, warnCheck } from "./doctor-check-builders";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 /**
  * Whether a degraded subsystem can be recovered automatically by re-running its
@@ -27,6 +29,9 @@ export const SshAgentPostureDetails = Schema.Struct({
     ]),
     reachable: Schema.Boolean,
     identities: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+    reason: Schema.optionalKey(Schema.String),
+    socketPath: Schema.optionalKey(Schema.String),
+    danglingEnvSocket: Schema.optionalKey(Schema.String),
   }),
   delivery: Schema.Union([AgentSocketDelivery, Schema.Literals(["none", "runtime-volume"])]),
   runtimeVolume: Schema.optionalKey(Schema.String),
@@ -70,6 +75,7 @@ export class DoctorSubsystemFailure extends Schema.TaggedError<DoctorSubsystemFa
       description: Schema.String,
       command: Schema.optionalKey(Schema.String),
     }),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -189,10 +195,12 @@ export const classifySubsystemFailure = (
 ): DoctorSubsystemFailure | undefined => {
   const spec = SPEC_BY_NAME.get(subsystem);
   if (spec === undefined) return undefined;
+  const solution = degradedSolution(spec);
   return new DoctorSubsystemFailure({
     subsystem,
     severity: "warn",
-    solution: degradedSolution(spec),
+    solution,
+    remediation: solution.description,
     ...(cause === undefined ? {} : { cause }),
   });
 };
@@ -204,22 +212,24 @@ export const subsystemFailureDiagnostic = (
 ): DoctorSubsystemFailure => {
   const diagnostic = classifySubsystemFailure(subsystem, serviceId, cause);
   if (diagnostic !== undefined) return diagnostic;
+  const solution = manualSetupSolution(
+    `The ${subsystem} subsystem is not available. Run \`lando setup\` to provision it.`,
+  );
   return new DoctorSubsystemFailure({
     subsystem,
     severity: "warn",
-    solution: manualSetupSolution(
-      `The ${subsystem} subsystem is not available. Run \`lando setup\` to provision it.`,
-    ),
+    solution,
+    remediation: solution.description,
     ...(cause === undefined ? {} : { cause }),
   });
 };
 
-const errorMessage = (cause: unknown): string => {
+const errorMessage = (cause: unknown, redactor: Redactor): string => {
   if (typeof cause === "object" && cause !== null && "message" in cause) {
     const message = cause.message;
-    if (typeof message === "string" && message.length > 0) return redactString(message);
+    if (typeof message === "string" && message.length > 0) return redactString(message, redactor);
   }
-  return redactString(String(cause));
+  return redactString(String(cause), redactor);
 };
 
 export const passCheck = (spec: SubsystemSpec, context: Record<string, string>): DoctorSubsystemCheck =>
@@ -236,6 +246,7 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
   cause?: unknown,
   refreshContext?: () => Effect.Effect<Record<string, string>, never>,
 ): Effect.fn.Return<DoctorSubsystemCheck, never> {
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   const serviceId = baseContext.subsystemId ?? "unknown";
 
   if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
@@ -260,7 +271,7 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
         fixOutcome: "failed",
         fixCommand,
         fixExitCode: "1",
-        fixError: errorMessage(result.failure),
+        fixError: errorMessage(result.failure, redactor),
       },
       solutions: [manualSetupSolution(spec.manualRemediation, spec.manualCommand)],
     });
@@ -284,23 +295,3 @@ export const buildDegradedCheck = Effect.fnUntraced(function* (
     solutions: [diagnostic?.solution ?? degradedSolution(spec)],
   });
 });
-
-/**
- * Probe an identity-based subsystem (ready iff its service id is not a
- * fallback/disabled stub).
- */
-export const buildIdCheck = (
-  spec: SubsystemSpec,
-  serviceId: string,
-  fix: boolean,
-  runSetup?: () => Effect.Effect<void, unknown>,
-): Effect.Effect<DoctorSubsystemCheck, never> => {
-  const ready = isReadySubsystemId(serviceId);
-  const baseContext: Record<string, string> = {
-    subsystem: spec.name,
-    subsystemId: serviceId,
-    ready: String(ready),
-  };
-  if (ready) return Effect.succeed(passCheck(spec, baseContext));
-  return buildDegradedCheck(spec, baseContext, fix, runSetup);
-};

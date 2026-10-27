@@ -3,7 +3,6 @@ import { Effect, Fiber, Layer, Queue, Schema, Stdio, Stream } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 import type { McpServeOptions } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
@@ -12,7 +11,7 @@ import type { McpCommandEntry } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { makeStdioClient } from "@lando/mcp/testing";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
@@ -33,12 +32,12 @@ const spec = (
 });
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
-  Layer.succeed(
+  Layer.effect(
     RedactionService,
-    RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: () => Effect.succeed(() => values),
-      forProfile: () => Effect.succeed(createRedactor("secrets", { values })),
+    Effect.gen(function* () {
+      const service = makeRedactionService();
+      yield* service.registerValues(values);
+      return service;
     }),
   );
 
@@ -303,7 +302,7 @@ describe("McpService.serve", () => {
     const streaming = spec("app:logs", () =>
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: `line-one ${secret}`, service: "web" });
+        yield* sink.emit({ kind: "record", _tag: "stdout", chunk: `line-one ${secret}`, service: "web" });
         return {};
       }),
     );
@@ -333,12 +332,16 @@ describe("McpService.serve", () => {
     expect(JSON.stringify(notifications[0])).not.toContain(secret);
   });
 
-  test("propagates an oversized live frame as a tagged command failure", async () => {
+  test("segments an oversized record and retains a bounded truncated final tail", async () => {
     // Given
     const streaming = spec("app:logs", () =>
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: "x".repeat(MAX_OUTBOUND_QUEUED_BYTES + 1) });
+        yield* sink.emit({
+          kind: "record",
+          _tag: "stdout",
+          chunk: "x".repeat(MAX_OUTBOUND_QUEUED_BYTES + 1),
+        });
         return {};
       }),
     );
@@ -357,8 +360,9 @@ describe("McpService.serve", () => {
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({
       ok: true,
-      result: { ok: false, envelope: { error: { _tag: "McpTransportError" } } },
+      result: { ok: true, envelope: { output: { truncated: true } } },
     });
+    expect(Buffer.byteLength(JSON.stringify(replies))).toBeLessThan(128 * 1024);
   });
 
   test("rejects a hostile live frame without invoking its getter", async () => {
@@ -368,6 +372,7 @@ describe("McpService.serve", () => {
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
         yield* sink.emit({
+          kind: "record",
           _tag: "stdout",
           get chunk(): string {
             getterCalls += 1;

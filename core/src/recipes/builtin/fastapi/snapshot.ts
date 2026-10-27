@@ -6,7 +6,7 @@ import { FASTAPI_ENTRYPOINT, FASTAPI_ENVIRONMENT } from "./startup.ts";
 
 export const FASTAPI_RECIPE_VERSION = "0.1.0";
 export const FASTAPI_CONTENT_DIGEST =
-  "sha256:1b9767ca9eb4183c1a0ff0d3b2ef440cfd62b284a47635a7b90dd469aa30f1b9";
+  "sha256:1a2d4ad9ff3d77f153d176ba01dfc7c350317042b94983f7370bd1cad270af71";
 export const fastapiProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-fastapi",

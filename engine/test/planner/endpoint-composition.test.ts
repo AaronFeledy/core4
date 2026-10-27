@@ -1,21 +1,40 @@
 import { expect, test } from "bun:test";
 import { definePlugin } from "@lando/sdk/plugins";
-import { type EndpointPlan, LandofileShape, PluginManifest, ServiceName } from "@lando/sdk/schema";
+import { AppPlan, type EndpointPlan, PluginManifest, ServiceName } from "@lando/sdk/schema";
 import { type AppFeatureDefinition, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { bundledPluginModules } from "../../src/composition.ts";
 import { planApp } from "../../src/planner/assemble.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
 
 const lateHttp: AppFeatureDefinition = {
   id: "test.late-http",
   priority: 100,
   selectors: { names: ["web"] },
+  declareEndpoints: (ctx) =>
+    Effect.succeed(
+      Object.fromEntries(
+        ctx.selected.map((service) => [
+          service.serviceName,
+          [
+            {
+              _tag: "internal" as const,
+              protocol: "http" as const,
+              port: 7000,
+              name: "late",
+              ...(service.connection === undefined ? { primary: true } : {}),
+            },
+          ],
+        ]),
+      ),
+    ),
   apply: (ctx) =>
     Effect.sync(() =>
       ctx.forEachSelected((service) => {
-        service.addEndpoint({ _tag: "internal", protocol: "http", port: 7000, name: "late", primary: true });
+        if (service.service.connection !== undefined)
+          service.addEnv("CLIENT_PASSWORD", service.service.connection.creds.password);
       }),
     ),
 };
@@ -26,9 +45,22 @@ const plugin = definePlugin({
     version: "1.0.0",
     api: 4,
     entry: "index.js",
-    contributes: { appFeatures: [lateHttp.id] },
+    contributes: { appFeatures: [lateHttp.id], serviceTypes: ["endpoint-postgres"] },
   }),
   appFeatures: new Map([[lateHttp.id, lateHttp]]),
+  serviceTypes: new Map([
+    [
+      "endpoint-postgres",
+      {
+        id: "endpoint-postgres",
+        name: "Endpoint PostgreSQL",
+        base: "lando",
+        extends: "postgres",
+        schema: Schema.Unknown,
+        resolve: () => Effect.succeed({ base: "lando", normalizedConfig: {}, features: [] }),
+      },
+    ],
+  ]),
 });
 const plan = (service: Readonly<Record<string, unknown>>) =>
   Effect.gen(function* () {
@@ -40,10 +72,13 @@ const plan = (service: Readonly<Record<string, unknown>>) =>
       undefined,
       undefined,
       undefined,
-      Schema.decodeUnknownSync(LandofileShape)({
-        name: "endpoint-replay",
-        services: { web: { home: false, ...service } },
-      }),
+      yield* compileTestLandofile(
+        {
+          name: "endpoint-replay",
+          services: { web: { home: false, ...service } },
+        },
+        "/srv/endpoint-replay",
+      ),
       TestRuntimeProvider.capabilities,
       "/srv/endpoint-replay",
     );
@@ -74,6 +109,53 @@ test("classifies an earlier publication from a late app-feature HTTP declaration
     service: ServiceName.make("web"),
     protocol: "http",
     port: 7000,
+  });
+});
+
+test("retains typed credentials and exact declaration identity while replaying late endpoint contributions", async () => {
+  // Given
+  const service = {
+    type: "endpoint-postgres",
+    creds: { user: "app", database: "app", password: "${secret:ENDPOINT_DB}" },
+    ports: ["17000:7000", "15432:5432"],
+  };
+  // When
+  const result = await Effect.runPromise(plan(service));
+  const persisted = Schema.decodeUnknownSync(AppPlan)(
+    JSON.parse(JSON.stringify(Schema.encodeSync(AppPlan)(result))),
+    { onExcessProperty: "error" },
+  );
+  // Then
+  const database = persisted.services[ServiceName.make("web")];
+  expect(database?.type).toBe("postgres");
+  expect(database?.serviceTypeId).toBe("endpoint-postgres");
+  expect(database?.connection).toMatchObject({
+    family: "postgres",
+    port: 5432,
+    creds: { password: { _tag: "SecretRef", reference: "ENDPOINT_DB" } },
+  });
+  expect(database?.environment.CLIENT_PASSWORD).toEqual({ _tag: "SecretRef", reference: "ENDPOINT_DB" });
+  expect(database?.endpoints).toContainEqual({
+    _tag: "published",
+    protocol: "http",
+    port: 7000,
+    name: "late",
+    publication: { hostPort: 17000 },
+  });
+  expect(database?.endpoints).toContainEqual({
+    _tag: "internal",
+    protocol: "tcp",
+    port: 5432,
+    name: "web",
+    primary: true,
+  });
+  expect(database?.endpoints).toContainEqual({
+    _tag: "published",
+    protocol: "tcp",
+    port: 5432,
+    name: "web",
+    primary: true,
+    publication: { hostPort: 15432 },
   });
 });
 

@@ -169,7 +169,13 @@ describe("runPostStartScan", () => {
       ...scannerReturning([]),
       scan: (appId, options) =>
         options?.urls?.[0]?.url === url
-          ? Effect.fail(new ScannerError({ message: "scan blew up", scannerId: "stub" }))
+          ? Effect.fail(
+              new ScannerError({
+                message: "scan blew up",
+                scannerId: "stub",
+                remediation: "Start the app services, then re-run URL checks (scanner `stub`).",
+              }),
+            )
           : Effect.succeed({ appId, endpoints: [endpoint({ url: `${url}ready` })] }),
     };
     await Effect.runPromise(

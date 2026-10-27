@@ -37,6 +37,11 @@ describe("@lando/sql plugin descriptor", () => {
       expect(spec.namespace).toBe("db");
       expect(spec.bootstrap).toBe("app");
       expect(spec.resultSchema).toBeDefined();
+      if (id === "db:export") {
+        expect(spec.flags?.["compression-level"]).toMatchObject({ type: "number", valueType: "integer" });
+      } else {
+        expect(spec.flags).not.toHaveProperty("compression-level");
+      }
     }
   });
 

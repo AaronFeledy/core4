@@ -16,7 +16,7 @@ export const djangoDecomposer = makeOptionBearingDecomposer({
           environment: {
             DJANGO_SETTINGS_MODULE: "config.settings",
             DATABASE_URL:
-              "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+              "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
             REDIS_URL: "redis://cache:6379",
           },
           dependsOn: ["database", "cache"],
@@ -34,7 +34,7 @@ export const djangoDecomposer = makeOptionBearingDecomposer({
                 environment: {
                   DJANGO_SETTINGS_MODULE: "config.settings",
                   DATABASE_URL:
-                    "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+                    "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
                   REDIS_URL: "redis://cache:6379",
                 },
                 dependsOn: ["database", "cache"],

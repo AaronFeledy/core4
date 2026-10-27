@@ -148,7 +148,10 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
       yield* writeResultLine(line);
     }
   });
-  const emitStreamingSuccess = Effect.fnUntraced(function* (value: A) {
+  const emitStreamingSuccess = Effect.fnUntraced(function* (
+    value: A,
+    outcome: CommandResultOutcome = { _tag: "success", value },
+  ) {
     const tokens = deps.redactionTokens?.(value) ?? [];
     const redactor = yield* jsonRedactor(tokens);
     for (const frame of deps.streamFrames?.(value) ?? []) {
@@ -165,7 +168,7 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
       yield* writeResultLine(line);
     }
     yield* replayBufferedEvents(tokens);
-    yield* emitStreamResult({ _tag: "success", value }, tokens);
+    yield* emitStreamResult(outcome, tokens);
   });
   return { jsonRedactor, emitJsonResult, emitStreamResult, replayBufferedEvents, emitStreamingSuccess };
 };

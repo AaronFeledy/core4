@@ -11,17 +11,19 @@ const describe = (error: unknown): string => {
 export const safeOuterFailure = async (
   error: unknown,
   loadRedaction = () => import("@lando/redaction/service"),
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<string> => {
+  const environment = { ...sourceEnv };
   let redaction: Awaited<ReturnType<typeof loadRedaction>>;
   try {
     redaction = await loadRedaction();
   } catch {
-    // Registered values live in the redaction module, so a process that cannot load it has
-    // registered none. Keep the failure diagnosable: this is how broken installs surface.
-    return describe(error);
+    return UNREDACTABLE;
   }
   try {
-    return redaction.createStandaloneRedactor("secrets").redactString(String(error));
+    return redaction
+      .createStandaloneRedactor("secrets", { sourceEnv: environment })
+      .redactString(describe(error));
   } catch {
     return UNREDACTABLE;
   }

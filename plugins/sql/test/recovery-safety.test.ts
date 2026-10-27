@@ -1,12 +1,42 @@
 import { afterEach, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 
+import { SqlCommandFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 
 import { executeDbCommand } from "../src/execute.ts";
 import { FakeRestoreError, cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 afterEach(cleanupSqlTestDeps);
+
+test.each([true, false])("preserves version failure diagnostics (running=%s)", async (initiallyRunning) => {
+  // Given: the version command fails with payload stdout and a password in stderr.
+  const harness = makeSqlTestDeps({ password: "private-password", initiallyRunning });
+  const deps = {
+    ...harness.deps,
+    exec: (...args: Parameters<typeof harness.deps.exec>) =>
+      args[1].includes("SELECT VERSION()")
+        ? Effect.succeed({
+            exitCode: 7,
+            stdout: "PRIVATE PAYLOAD",
+            stderr: "version denied for private-password\n",
+          })
+        : harness.deps.exec(...args),
+  };
+
+  // When: snapshot capture needs the observed database version.
+  const exit = await Effect.runPromiseExit(executeDbCommand(deps, { action: "snapshot", yes: false }));
+
+  // Then: actionable command diagnostics survive, and a resumed runtime is stopped again.
+  if (!Exit.isFailure(exit)) throw new Error("expected version failure");
+  const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+  expect(error).toBeInstanceOf(SqlCommandFailedError);
+  expect(error).toMatchObject({ exitCode: 7, stderrTail: "version denied for [redacted]\n" });
+  expect(JSON.stringify(error)).not.toContain("PRIVATE PAYLOAD");
+  expect(JSON.stringify(error)).not.toContain("private-password");
+  expect(harness.lifecycle()).toEqual(initiallyRunning ? ["lock"] : ["lock", "resume", "suspend"]);
+  expect(harness.snapshots()).toEqual([]);
+});
 
 test("rejects restore when a stopped target has no observed image identity", async () => {
   // Given: snapshot metadata exists but the target runtime cannot prove its image.

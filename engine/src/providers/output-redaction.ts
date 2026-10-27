@@ -21,6 +21,10 @@ export const appOutputEnvironmentNames = (
     for (const service of Object.values(plan.services)) {
       const keys = names.get(service.name) ?? new Set<string>();
       for (const [key, value] of Object.entries(service.environment)) {
+        if (typeof value !== "string") {
+          keys.add(key);
+          continue;
+        }
         const reference = exactSecretReference(value);
         if (reference !== undefined && !(reference instanceof SecretReferenceInvalidError)) keys.add(key);
       }

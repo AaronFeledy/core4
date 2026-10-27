@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -6,16 +6,19 @@ import { makeLandoPaths } from "@lando/paths";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Redacted, Schema, Stream } from "effect";
 
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type CurrentExecutableAppPlan,
+  GlobalConfig,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import {
   AppPlanner,
   ConfigService,
@@ -45,7 +48,8 @@ const metadata = {
   source: "stream-plan-secret-redaction.test",
   runtime: 4 as const,
 };
-const plan: AppPlan = {
+const plan: CurrentExecutableAppPlan = {
+  valueModel: 1,
   id: AppId.make("stream-plan-secret-redaction"),
   name: "stream-plan-secret-redaction",
   slug: "stream-plan-secret-redaction",
@@ -61,7 +65,6 @@ const plan: AppPlan = {
         primary: true,
         environment: { DISPLAY_VALUE: "${secret:X}", DISPLAY_URL: "${secret:Y}" },
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -72,7 +75,6 @@ const plan: AppPlan = {
     ],
   ]),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -94,15 +96,6 @@ const provider: RuntimeProviderShape = {
       { service: target.service, stream: "stderr" as const, line: urlLine },
     ),
 };
-const redactionLayer = Layer.succeed(
-  RedactionService,
-  makeRedactionService({
-    id: "empty",
-    list: Effect.succeed([]),
-    get: () => Effect.die("Output registration must not resolve a secret reference."),
-    has: () => Effect.succeed(false),
-  }),
-);
 const registryLayer = Layer.succeed(
   RuntimeProviderRegistry,
   RuntimeProviderRegistry.of({
@@ -115,15 +108,14 @@ const registryLayer = Layer.succeed(
   }),
 );
 const makeSink = () => {
+  const redaction = makeRedactionService();
+  const redactionLayer = Layer.succeed(RedactionService, redaction);
   const io = createBufferedRendererIO();
   const layer = RendererOutput.layerStreamFrameSink("text").pipe(
     Layer.provide(Layer.merge(RendererRuntime.layerPlainService(io), redactionLayer)),
   );
-  return { io, layer: Layer.merge(layer, redactionLayer) };
+  return { io, layer: Layer.merge(layer, testEnvironmentResolverLayerFor(redaction)) };
 };
-
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 describe("live plan-secret redaction", () => {
   test.each([
@@ -182,7 +174,7 @@ describe("live plan-secret redaction", () => {
         }),
         Layer.succeed(
           LandofileService,
-          LandofileService.of({ discover: Effect.succeed({ name: plan.name }) }),
+          LandofileService.of({ discover: Effect.succeed(literalTestLandofile({ name: plan.name })) }),
         ),
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
         Layer.succeed(
@@ -208,6 +200,8 @@ describe("live plan-secret redaction", () => {
       providerId: provider.id,
       operation: "readAppEnvironment",
       message: "Read denied.",
+      remediation:
+        "Install or start the selected runtime provider and confirm it can perform `readAppEnvironment`.",
     });
     const failedProvider = { ...provider, readAppEnvironment: () => Effect.fail(failure) };
     const result = await Effect.runPromise(
@@ -241,7 +235,10 @@ describe("live plan-secret redaction", () => {
     const config = Schema.decodeUnknownSync(GlobalConfig)({});
     const runtime = Layer.mergeAll(
       registryLayer,
-      Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed({ name: plan.name }) })),
+      Layer.succeed(
+        LandofileService,
+        LandofileService.of({ discover: Effect.succeed(literalTestLandofile({ name: plan.name })) }),
+      ),
       Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
       Layer.succeed(
         ConfigService,
@@ -273,7 +270,9 @@ describe("live plan-secret redaction", () => {
 
     // Then: both log lines redact plan passwords, including the slash-bearing URL password.
     expect(io.stdout()).toContain("database stdout: [redacted]");
-    expect(io.stdout()).toContain("database stderr: postgresql://[redacted]@database:5432/app");
+    expect(io.stdout()).not.toContain("database stderr:");
+    expect(io.stderr()).toContain("database stderr: postgresql://[redacted]@database:5432/app");
+    expect(io.stderr()).not.toContain("database stdout:");
     expect(io.stdout() + io.stderr()).not.toContain(password);
     expect(io.stdout() + io.stderr()).not.toContain(slashPassword);
   });
@@ -300,3 +299,5 @@ describe("live plan-secret redaction", () => {
     expect(io.stdout() + io.stderr()).not.toContain(slashPassword);
   });
 });
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { testEnvironmentResolverLayerFor } from "../environment-values.ts";

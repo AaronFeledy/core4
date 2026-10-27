@@ -1,19 +1,14 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { makeLineFramer } from "@lando/sdk/log-follow";
-import {
-  createStandaloneRedactor,
-  registerRedactionValues,
-  resetRegisteredRedactionValuesForTesting,
-} from "../src/service.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
+import { createStandaloneRedactor, makeRedactionService } from "../src/service.ts";
 
 describe("truncated log line redaction", () => {
   test("masks a registered secret when it straddles a real framer cut", async () => {
-    const redactor = createStandaloneRedactor("secrets");
-    await Effect.runPromise(registerRedactionValues(["private-credential"]));
+    const service = makeRedactionService();
+    const redactor = await Effect.runPromise(service.forProfile("secrets"));
+    await Effect.runPromise(service.registerValues(["private-credential"]));
     const lines = makeLineFramer(12).feed(new TextEncoder().encode("prefix private-credential\n"));
 
     const redacted = lines.map((line) => redactor.redactString(line.text));

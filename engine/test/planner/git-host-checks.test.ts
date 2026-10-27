@@ -19,7 +19,15 @@ test.each(["stat", "gitfile", "commondir"] as const)("ignores filesystem failure
     ...fs,
     stat:
       failure === "stat"
-        ? (path: string) => Effect.fail(new FileIoError({ path, message: "unavailable" }))
+        ? (path: string) =>
+            Effect.fail(
+              new FileIoError({
+                path,
+                message: "unavailable",
+                remediation:
+                  "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+              }),
+            )
         : () => Effect.succeed({ size: 20, mtimeMs: 0, isFile: true, isDirectory: false }),
     readText: (path: string) =>
       failure === "commondir" && path === "/app/.git"
@@ -53,16 +61,18 @@ const service = Schema.decodeUnknownSync(ServicePlan)({
   provider: "lando",
   primary: true,
   environment: {},
-  appMount: {
-    source: "/app",
-    target: "/app",
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: "/app",
+      target: "/app",
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -85,9 +95,15 @@ test.each(["identical bind", "read-only volume", "storage"] as const)(
     const authored = Schema.decodeUnknownSync(ServicePlan)({
       ...Schema.encodeSync(ServicePlan)(service),
       ...(kind === "storage"
-        ? { storage: [{ store: "repo", target: "/repo.git", readOnly: false }] }
+        ? {
+            mounts: [
+              ...service.mounts,
+              { type: "volume", store: "repo", target: "/repo.git", readOnly: false },
+            ],
+          }
         : {
             mounts: [
+              ...service.mounts,
               kind === "identical bind"
                 ? {
                     type: "bind",
@@ -97,7 +113,7 @@ test.each(["identical bind", "read-only volume", "storage"] as const)(
                     createHostPath: false,
                     realization: "passthrough",
                   }
-                : { type: "volume", target: "/repo.git", readOnly: true, realization: "passthrough" },
+                : { type: "volume", store: "repo", target: "/repo.git", readOnly: true },
             ],
           }),
     });
@@ -131,7 +147,10 @@ test("does not add Git metadata binds behind an effective .git overlay", () => {
   // Given a service that explicitly shadows .git.
   const target = Schema.decodeUnknownSync(ServicePlan)({
     ...Schema.encodeSync(ServicePlan)(service),
-    storage: [{ store: "git-shadow", target: "/app/.git", readOnly: false }],
+    mounts: [
+      ...service.mounts,
+      { type: "volume", store: "git-shadow", target: "/app/.git", readOnly: false },
+    ],
   });
   // When metadata mounts are derived.
   const additions = worktreeGitMounts(target, directories);
@@ -159,6 +178,7 @@ test("invalidates cached Git metadata paths when commondir changes", async () =>
       containerCommonDir: "/app/common-a",
     });
     const plan = Schema.decodeUnknownSync(AppPlan)({
+      valueModel: 1,
       id: "git-cache",
       name: "git-cache",
       slug: "git-cache",
@@ -166,7 +186,6 @@ test("invalidates cached Git metadata paths when commondir changes", async () =>
       provider: "lando",
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       extensions: {},

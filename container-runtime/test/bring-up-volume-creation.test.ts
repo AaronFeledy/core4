@@ -2,10 +2,18 @@ import { expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Option, Result, Schema } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("creation"),
   name: "creation",
   slug: "creation",
@@ -14,10 +22,24 @@ const plan: AppPlan = {
   identity: { appRoot: AbsolutePath.make("/owner"), ownerKey: "owner" },
   services: {},
   routes: [],
-  networks: [],
   stores: [{ name: "data", scope: "app", kind: "data" }],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"), source: "test", runtime: 4 },
+  extensions: {},
+};
+const service: ServicePlan = {
+  name: ServiceName.make("web"),
+  type: "nginx",
+  provider: plan.provider,
+  primary: true,
+  artifact: { kind: "ref", ref: "nginx:alpine" },
+  environment: {},
+  mounts: [],
+  endpoints: [],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata: plan.metadata,
   extensions: {},
 };
 const Request = Schema.Struct({
@@ -31,7 +53,7 @@ test.each([false, true])(
     const receipts: string[] = [];
     const result = await Effect.runPromise(
       bringUp(plan, {
-        ctx: { providerId: "podman", remediation: "test" },
+        ctx: { providerId: "podman", remediation: "test", env: {} },
         onVolumeCreated: (fact) =>
           Effect.sync(() => {
             receipts.push(fact.nativeName);
@@ -64,28 +86,10 @@ test.each([false, true])(
 test.each([false, true])(
   "creation receipts finish before services start (receipt fails=%s)",
   async (fails) => {
-    const name = ServiceName.make("web");
     const servicePlan: AppPlan = {
       ...plan,
       stores: [...plan.stores, { name: "cache", scope: "app", kind: "cache" }],
-      services: {
-        [name]: {
-          name,
-          type: "nginx",
-          provider: plan.provider,
-          primary: true,
-          artifact: { kind: "ref", ref: "nginx:alpine" },
-          environment: {},
-          mounts: [],
-          storage: [],
-          endpoints: [],
-          routes: [],
-          dependsOn: [],
-          hostAliases: [],
-          metadata: plan.metadata,
-          extensions: {},
-        },
-      },
+      services: { [service.name]: service },
     };
     const events: string[] = [];
     let running = false;
@@ -93,11 +97,13 @@ test.each([false, true])(
       providerId: "podman",
       operation: "receipt",
       message: "Persistence failed.",
+      remediation:
+        "Re-run the command after checking `podman` logs for the `receipt` failure; if it persists, report the error with that operation name.",
     });
     const result = await Effect.runPromise(
       Effect.result(
         bringUp(servicePlan, {
-          ctx: { providerId: "podman", remediation: "test" },
+          ctx: { providerId: "podman", remediation: "test", env: {} },
           api: {
             request: (request) =>
               Effect.sync(() => {
@@ -145,6 +151,7 @@ test.each(["fails", "interrupts"] as const)(
   "a receipt that %s retains the networks and volume this apply created",
   async (outcome) => {
     // Given: an apply that creates its app network, then a volume whose receipt does not complete.
+    const servicePlan: AppPlan = { ...plan, services: { [service.name]: service } };
     const deleted: string[] = [];
     const networks = new Map<string, object>();
     const volumes = new Map<string, typeof Request.Type>();
@@ -152,10 +159,12 @@ test.each(["fails", "interrupts"] as const)(
       providerId: "podman",
       operation: "receipt",
       message: "No receipt.",
+      remediation:
+        "Re-run the command after checking `podman` logs for the `receipt` failure; if it persists, report the error with that operation name.",
     });
     const exit = await Effect.runPromiseExit(
-      bringUp(plan, {
-        ctx: { providerId: "podman", remediation: "test" },
+      bringUp(servicePlan, {
+        ctx: { providerId: "podman", remediation: "test", env: {} },
         onVolumeCreated: () => (outcome === "fails" ? Effect.fail(failure) : Effect.interrupt),
         api: {
           request: (request) =>
@@ -164,6 +173,19 @@ test.each(["fails", "interrupts"] as const)(
                 const volume = Schema.decodeUnknownSync(Request)(request.body);
                 volumes.set(volume.Name, volume);
                 return { status: 201, body: JSON.stringify(volume) };
+              }
+              if (request.path === "/libpod/networks/create") {
+                const body = Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body);
+                networks.set(body.name, { Id: body.name, Name: body.name, Labels: body.labels });
+                return { status: 201, body: "{}" };
               }
               if (request.path === "/networks/create") {
                 const body = Schema.decodeUnknownSync(

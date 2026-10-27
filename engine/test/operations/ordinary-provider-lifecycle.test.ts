@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { Effect } from "effect";
 
-import { type AppPlan, PortablePath } from "@lando/sdk/schema";
+import { type AppPlan, PortablePath, serviceAppMount } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
@@ -17,14 +17,19 @@ const planned: AppPlan = {
   services: {
     [web.name]: {
       ...web,
-      appMount: {
-        source: plan.root,
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "accelerated",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: plan.root,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          excludes: [],
+          includes: [],
+          mountKey: "app-mount",
+        },
+      ],
     },
   },
   fileSync: [
@@ -37,7 +42,7 @@ const planned: AppPlan = {
         source: plan.root,
         target: { _tag: "volume", name: "test-start-web-app-mount", path: PortablePath.make("/app") },
         mode: "two-way-safe",
-        excludes: [],
+        excludes: [".git"],
       },
     },
   ],
@@ -94,7 +99,9 @@ for (const operation of operations) {
         expect(applied).toHaveLength(operation.applies);
         for (const next of applied) {
           expect(next.fileSync).toEqual([]);
-          expect(next.services[web.name]?.appMount?.realization).toBe("passthrough");
+          const service = next.services[web.name];
+          if (service === undefined) throw new TypeError("Missing applied web service");
+          expect(serviceAppMount(service)?.realization).toBe("passthrough");
         }
       } finally {
         rmSync(harness.userDataRoot, { recursive: true, force: true });

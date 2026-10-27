@@ -33,10 +33,13 @@ import {
 import { configOutputLandofile } from "./x-extension-config-output.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
+import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
+import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -51,13 +54,20 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalEndpointMetadata(
-    evolveHistoricalServicePort(
-      evolveHistoricalTimestamps(
-        evolveHistoricalContainerUser(evolveHistoricalShorthand(repairedLandofile())),
-        "bare",
+  evolveHistoricalToolingShorthand(
+    evolveHistoricalEnvironment(
+      evolveHistoricalEndpointMetadata(
+        evolveHistoricalServicePort(
+          evolveHistoricalTimestamps(
+            evolveHistoricalContainerUser(
+              evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+            ),
+            "bare",
+          ),
+        ),
       ),
     ),
+    "bare",
   );
 
 describe("closed x-* extension artifact repair", () => {
@@ -96,8 +106,9 @@ describe("closed x-* extension artifact repair", () => {
   });
 
   test("repairs the captured network map onto every current service schema", async () => {
-    const repaired = normalizeJsonSchema(
-      requireObject(repairClosedExtension(captured.networks), "repaired networks"),
+    const repaired = evolveHistoricalNetworks(
+      normalizeJsonSchema(requireObject(repairClosedExtension(captured.networks), "repaired networks")),
+      "bare",
     );
     for (const schemaId of NETWORK_SERVICE_CONFIGS) {
       const current = schemaAt(await loadNormalizedArtifact(`schema:${schemaId}`), "$.networks");
@@ -179,10 +190,25 @@ describe("closed x-* extension artifact repair", () => {
       "output",
     );
     expect(findings.map((finding) => `${finding.changeKind} ${finding.path}`).sort()).toEqual([
+      "unsupported-construct $.landofile.events.post-destroy.items.anyOf",
+      "unsupported-construct $.landofile.events.post-init.items.anyOf",
+      "unsupported-construct $.landofile.events.post-rebuild.items.anyOf",
+      "unsupported-construct $.landofile.events.post-restart.items.anyOf",
+      "unsupported-construct $.landofile.events.post-start.items.anyOf",
+      "unsupported-construct $.landofile.events.post-stop.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-destroy.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-init.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-rebuild.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-restart.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-start.items.anyOf",
+      "unsupported-construct $.landofile.events.pre-stop.items.anyOf",
+      "unsupported-construct $.landofile.toolingDefaults.env.anyOf",
       "unsupported-keyword $.landofile.additionalProperties",
+      "unsupported-keyword $.landofile.events.additionalProperties",
       "unsupported-keyword $.landofile.patternProperties",
       "unsupported-keyword $.landofile.propertyNames",
       "unsupported-keyword $.landofile.services.additionalProperties",
+      "unsupported-keyword $.landofile.tooling.additionalProperties",
     ]);
     expect(findings.every((finding) => finding.accepted === false)).toBe(true);
     const exact: CompatibilityException = {

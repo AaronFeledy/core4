@@ -58,11 +58,16 @@ const Witness = Schema.Struct({
   ownerRoot: AbsolutePath,
 });
 
-export const volumeObservationFailure = (providerId: string, operation = "observeVolume") =>
+export const volumeObservationFailure = (
+  providerId: string,
+  operation = "observeVolume",
+  context?: { readonly cause?: unknown; readonly status?: number },
+) =>
   new VolumeOperationError({
     providerId,
     operation,
-    message: "The provider could not prove the named volume mounted at the requested destination.",
+    message: `The provider could not prove the named volume mounted at the requested destination.${context?.status === undefined ? "" : ` HTTP status ${context.status}.`}`,
+    ...(context?.cause === undefined ? {} : { cause: context.cause }),
     remediation:
       "Inspect the existing container and its mounts; do not mutate a volume inferred from the app name.",
   });
@@ -73,16 +78,21 @@ export const volumeCoordinationKey = Effect.fnUntraced(
     const request = provider.api.request;
     if (request) {
       const info = yield* request({ method: "GET", path: "/info" });
-      if (info.status === 200) {
-        const daemon = yield* Schema.decodeUnknownEffect(
-          Schema.fromJsonString(Schema.Struct({ ID: Schema.optionalKey(Schema.NonEmptyString) })),
-        )(info.body);
-        if (daemon.ID) return JSON.stringify([daemon.ID, name]);
-      }
+      if (info.status !== 200)
+        return yield* Effect.fail(
+          volumeObservationFailure(provider.providerId, "observeVolume", { status: info.status }),
+        );
+      const daemon = yield* Schema.decodeUnknownEffect(
+        Schema.fromJsonString(Schema.Struct({ ID: Schema.optionalKey(Schema.NonEmptyString) })),
+      )(info.body);
+      if (daemon.ID) return JSON.stringify([daemon.ID, name]);
     }
     return undefined;
   },
-  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+  (effect, provider) =>
+    Effect.catchTag(effect, "SchemaError", (cause) =>
+      Effect.fail(volumeObservationFailure(provider.providerId, "observeVolume", { cause })),
+    ),
 );
 
 const runWitness = Effect.fnUntraced(
@@ -109,7 +119,10 @@ const runWitness = Effect.fnUntraced(
     }
     return yield* Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.NullOr(Witness)))(result.stdout);
   },
-  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+  (effect, provider) =>
+    Effect.catchTag(effect, "SchemaError", (cause) =>
+      Effect.fail(volumeObservationFailure(provider.providerId, "observeVolume", { cause })),
+    ),
 );
 
 const supportsWitness = (volume: NativeVolume) =>
@@ -163,7 +176,10 @@ export const resolveNativeVolumeIdentity = Effect.fn("RuntimeProvider.resolveNat
           }),
     };
   },
-  (effect, provider) => Effect.mapError(effect, () => volumeObservationFailure(provider.providerId)),
+  (effect, provider) =>
+    Effect.catchTag(effect, "SchemaError", (cause) =>
+      Effect.fail(volumeObservationFailure(provider.providerId, "observeVolume", { cause })),
+    ),
 );
 
 export const adoptNativeVolumeWitness = (

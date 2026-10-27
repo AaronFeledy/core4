@@ -71,9 +71,10 @@ describe("redis ServiceType", () => {
     expect(plan.type).toBe("redis");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "redis:7" });
     expect(plan.command).toEqual(["redis-server", "--appendonly", "yes"]);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-redis-data");
-    expect(String(plan.storage[0]?.target)).toBe("/data");
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-redis-data");
+    expect(String(volumes[0]?.target)).toBe("/data");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },
     ]);

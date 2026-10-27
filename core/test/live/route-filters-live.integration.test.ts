@@ -7,13 +7,14 @@ import { TRAEFIK_DYNAMIC_CONFIG_DIR, TRAEFIK_IMAGE, renderTraefikDynamicConfig }
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   PortNumber,
   ProviderId,
   type RoutePlan,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { currentTestPlan } from "../_support/value-contracts.ts";
 
 const providerId = ProviderId.make("lando");
 const TRAEFIK_WEB_PORT = 38082;
@@ -29,20 +30,24 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const appPlan = (slug: string, service: ServicePlan, planRoutes: ReadonlyArray<RoutePlan>): AppPlan => ({
-  id: AppId.make(slug),
-  name: slug,
-  slug,
-  root: AbsolutePath.make(`/tmp/lando-${slug}`),
-  provider: providerId,
-  services: { [service.name]: service },
-  routes: planRoutes,
-  networks: [],
-  stores: [],
-  fileSync: [],
-  metadata,
-  extensions: {},
-});
+const appPlan = (
+  slug: string,
+  service: ServicePlan,
+  planRoutes: ReadonlyArray<RoutePlan>,
+): CurrentExecutableAppPlan =>
+  currentTestPlan({
+    id: AppId.make(slug),
+    name: slug,
+    slug,
+    root: AbsolutePath.make(`/tmp/lando-${slug}`),
+    provider: providerId,
+    services: { [service.name]: service },
+    routes: planRoutes,
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  });
 
 const backend = {
   service: ServiceName.make("web"),
@@ -98,7 +103,6 @@ const nginxService: ServicePlan = {
   command: ["sh", "-c", nginxStartScript],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -141,7 +145,6 @@ const traefikService: ServicePlan = {
   command: ["sh", "-c", traefikStartScript],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",

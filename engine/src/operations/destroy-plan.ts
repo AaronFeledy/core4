@@ -149,6 +149,7 @@ export const planUserTeardown = Effect.fn("AppOperation.planUserTeardown")(funct
   const authored =
     applied !== undefined && retained === undefined ? yield* resolveLandofileEventPlan(applied) : undefined;
   const registry = yield* RuntimeProviderRegistry;
+  if (desired !== undefined) yield* registry.assertAppliedStateReadable?.(desired.plan) ?? Effect.void;
   const disposal = retained ?? applied;
   const target = disposal === undefined ? undefined : yield* resolveMysqlVolumeTarget(disposal, registry);
   const refs = uniqueDestroyRefs([...recorded, ...(retained === undefined ? [] : [retained.app])]);

@@ -195,10 +195,14 @@ describe("nginx ServiceType", () => {
       LANDO_WEBROOT: "/app",
     });
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.mounts).toEqual([]);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
@@ -287,10 +291,10 @@ describe("nginx PHP FPM app-feature wire", () => {
     setAppMount: () => undefined,
     addBuildStep: () => undefined,
     addStorage: () => undefined,
-    addEndpoint: () => undefined,
     addDependency: () => undefined,
     addHostAlias: () => undefined,
     setHealthcheck: () => undefined,
+    setReadiness: () => undefined,
     setCerts: () => undefined,
     setEntrypoint: () => undefined,
     setArtifact: () => undefined,
@@ -444,3 +448,4 @@ describe("nginx PHP FPM app-feature wire", () => {
     expect(commands.get("edge")).toBeUndefined();
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

@@ -42,7 +42,7 @@ const planBoth = () => {
     },
   };
   return Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(landofile, TestRuntimeProvider.capabilities),
+    planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
   ).pipe(
     Effect.provide(AppPlannerLayer.layer),
     Effect.provide(PluginRegistryLayer.layer),
@@ -84,3 +84,4 @@ test("keeps Node project-file fingerprints and catalog config sources in one cac
       keys.mockRestore();
     }
   }));
+import { planTestLandofile } from "../compiled-landofile.ts";

@@ -20,11 +20,7 @@ import { PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { installEngineComposition } from "../../src/composition.ts";
 import {
   startHostProxyRunLandoSession,
@@ -70,16 +66,18 @@ const servicePlan = (eligible: boolean): ServicePlan => ({
   provider: ProviderId.make("lando"),
   primary: true,
   environment: {},
-  appMount: {
-    source: AbsolutePath.make("/srv/apps/demo"),
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: AbsolutePath.make("/srv/apps/demo"),
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -98,7 +96,6 @@ const planFor = (eligible: boolean): AppPlan => {
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -121,9 +118,7 @@ const runtimeLayer = Layer.mergeAll(
   Layer.succeed(
     RedactionService,
     RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+      ...makeRedactionService(),
     }),
   ),
   Layer.succeed(

@@ -5,7 +5,9 @@ import type {
   AppResolveError,
   ArtifactBuildError,
   ArtifactTransferError,
+  EnvironmentValueResolutionError,
   NoProviderInstalledError,
+  PlanReplanRequiredError,
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
@@ -14,6 +16,7 @@ import type {
   ProviderSetupProvisioningError,
   ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
+  SecretStoreError,
   ServiceCopyError,
   ServiceExecError,
   ServiceNotFoundError,
@@ -28,7 +31,6 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
-  DataStoreMountPlan,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
   HostPlatform,
@@ -36,7 +38,6 @@ import type {
   HostProxyBridgeResult,
   LogSource,
   LogSourceId,
-  MountPlan,
   NetworkConfig,
   PortNumber,
   PortablePath,
@@ -48,19 +49,25 @@ import type {
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
+  ServicePlan,
   VolumeFilter,
   VolumeIdentity,
   VolumeInfo,
   VolumeLocator,
+  VolumeMountPlan,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotArtifact,
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
+import type { MountObservation } from "../schema/service-mount.ts";
 import type { PrivilegeService } from "./process.ts";
 
 export type ProviderError =
+  | PlanReplanRequiredError
+  | EnvironmentValueResolutionError
+  | SecretStoreError
   | ArtifactBuildError
   | ProviderCapabilityError
   | ProviderConfigError
@@ -137,7 +144,9 @@ export interface ApplyOptions {
   /** Full dependency graph for completion-intent classification during partial apply; not recorded state. */
   readonly completionPlan?: AppPlan;
   readonly signal?: AbortSignal;
-  readonly serviceEnvironment?: ServiceEnvironmentOverrides;
+  readonly resolveServiceEnvironment?: (
+    service: ServicePlan,
+  ) => Effect.Effect<Readonly<Record<string, string>>, ProviderError>;
   /** Await each verified creation before starting services; failure aborts apply. Never called for adoption. */
   readonly onVolumeCreated?: (
     fact: import("../schema/volume-initialization.ts").VolumeCreationFact,
@@ -150,15 +159,6 @@ export interface ApplyOptions {
    */
   readonly forbidRecreate?: boolean;
 }
-
-/**
- * Resolved secret values keyed by service and environment variable.
- * Providers merge them over the applied plan's service environment, never use
- * them as a replacement environment.
- */
-export type ServiceEnvironmentOverrides = Readonly<
-  Partial<Record<ServiceName, Readonly<Record<string, string>>>>
->;
 
 export interface ApplyResult {
   readonly changed: boolean;
@@ -198,6 +198,8 @@ export interface CommandSpec {
   readonly signal?: AbortSignal;
   readonly terminalSize?: { readonly columns: number; readonly rows: number };
   readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
+  /** Skip exec umask compensation. Internal probes and doctor set this; argv matching must not. */
+  readonly raw?: boolean;
 }
 
 export interface ExecResult {
@@ -214,7 +216,7 @@ export interface EphemeralRunSpec {
   readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
-  readonly mounts?: ReadonlyArray<MountPlan | DataStoreMountPlan>;
+  readonly mounts?: ReadonlyArray<VolumeMountPlan>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;
@@ -259,6 +261,8 @@ export interface ServiceRuntimeInfo {
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly publications: PublicationObservation;
+  /** Mount table from the same container inspection, absent when unsupported. */
+  readonly mounts?: MountObservation;
   readonly lastStartedAt?: Date;
   /** Inspect fingerprint of published host ports. Absent when the container is missing. */
   readonly publishFingerprint?: string;
@@ -326,6 +330,9 @@ export class RuntimeProviderRegistry extends Context.Service<
     readonly appliedPlansFor: (
       root: AbsolutePath,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
+    readonly assertAppliedStateReadable?: (
+      plan: Pick<AppPlan, "id" | "provider">,
+    ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;

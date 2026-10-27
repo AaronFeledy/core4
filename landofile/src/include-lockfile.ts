@@ -162,7 +162,10 @@ export const parseLockEntries = (
               filePath: path,
               line: undefined,
               column: undefined,
-              ...(cause.reason === "decode" ? { remediation: CORRUPT_LOCK_REMEDIATION } : {}),
+              remediation:
+                cause.reason === "decode"
+                  ? CORRUPT_LOCK_REMEDIATION
+                  : `Ensure the include lockfile at ${path} is readable, then retry.`,
               cause: cause.reason === "decode" ? cause.cause : cause,
             }),
         ),

@@ -12,7 +12,11 @@ import { planApp } from "../../src/planner/assemble.ts";
 import * as ConfigLayer from "../../src/services/config.ts";
 
 const missingPlugin = (id: string) =>
-  new PluginLoadError({ message: `Plugin ${id} is not registered.`, pluginName: id });
+  new PluginLoadError({
+    message: `Plugin ${id} is not registered.`,
+    pluginName: id,
+    remediation: "Install or register the plugin, then retry.",
+  });
 
 const pluginRegistry = PluginRegistry.of({
   list: Effect.succeed([]),
@@ -43,7 +47,7 @@ describe("event-set global config load failures", () => {
           undefined,
           undefined,
           undefined,
-          landofile,
+          yield* compileTestLandofile(landofile),
           capabilities,
         );
       }).pipe(Effect.provide(configLayer)),
@@ -59,3 +63,4 @@ describe("event-set global config load failures", () => {
     expect(failure.message).toContain("hostEvents.pre-start[0]");
   });
 });
+import { compileTestLandofile } from "../compiled-landofile.ts";

@@ -27,6 +27,7 @@ export const statusError = (status: number, origin: string): DownloadFetchError 
         message: `The download request failed with HTTP status ${status}.`,
         urlOrigin: origin,
         status,
+        remediation: `Inspect HTTP status ${status} from ${origin}; fix the origin response, auth, or routing, then retry the download.`,
       });
 
 /** Convert Effect `HttpClientError` → `DownloadFetchError`, keeping cause/remediation. */
@@ -54,7 +55,11 @@ export const mapHttpClientError = (
     message,
     urlOrigin: origin,
     ...(status === undefined ? {} : { status }),
-    ...(remediation === undefined ? {} : { remediation }),
+    remediation:
+      remediation ??
+      (status !== undefined
+        ? `Inspect HTTP status ${status} from ${origin}, fix the origin response or request, then retry the download.`
+        : `Inspect the transport failure for ${origin} (DNS, TLS, proxy, or connectivity), then retry the download.`),
     ...(cause === undefined ? {} : { cause }),
   });
 };
@@ -68,6 +73,7 @@ export const mapVerifiedError = (error: VerifiedStreamError, origin: string): Do
         expectedSha256: error.expectedSha256 ?? "",
         actualSha256: error.actualSha256 ?? "",
         ...(error.actualSizeBytes === undefined ? {} : { sizeBytes: error.actualSizeBytes }),
+        remediation: "Retry the download from a trusted source; the artifact checksum did not match.",
       });
     case "size":
       return new DownloadSizeMismatchError({
@@ -75,12 +81,15 @@ export const mapVerifiedError = (error: VerifiedStreamError, origin: string): Do
         urlOrigin: origin,
         expectedSizeBytes: error.expectedSizeBytes ?? 0,
         actualSizeBytes: error.actualSizeBytes ?? 0,
+        remediation: "Retry the download from a trusted source; the artifact size did not match.",
       });
     case "persist":
       return new DownloadPersistError({
         message: error.message,
         operation: "write",
         ...(error.cause === undefined ? {} : { cause: error.cause }),
+        remediation:
+          "Free disk space or repair the destination path and parent directory, then retry the download write.",
       });
   }
 };

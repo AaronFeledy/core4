@@ -5,13 +5,12 @@ import type { AppPlan } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
-import { carryPlanAttachments } from "./plan-attachments.ts";
 
 /** Select an unambiguous existing identity; never mutate provider storage. */
-export const resolveMysqlVolume = (
-  plan: AppPlan,
+export const resolveMysqlVolume = <Plan extends AppPlan>(
+  plan: Plan,
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry>,
-): Effect.Effect<AppPlan, LandofileValidationError | ProviderUnavailableError> => {
+): Effect.Effect<Plan, LandofileValidationError | ProviderUnavailableError> => {
   const mysqlServices = Object.values(plan.services).filter(
     (service) => service.type === "mysql" || service.type.startsWith("mysql:"),
   );
@@ -21,7 +20,11 @@ export const resolveMysqlVolume = (
   }
   const scoped = `${plan.name}-${service.name}-mysql-data`;
   const legacy = `${plan.name}-mysql-data`;
-  if (!service.storage.some((mount) => mount.store === scoped && mount.target === "/var/lib/mysql")) {
+  if (
+    !service.mounts.some(
+      (mount) => mount.type === "volume" && mount.store === scoped && mount.target === "/var/lib/mysql",
+    )
+  ) {
     return Effect.succeed(plan);
   }
 
@@ -32,20 +35,20 @@ export const resolveMysqlVolume = (
       if (scopedVolumes.length > 0) return plan;
       const legacyVolumes = yield* provider.listVolumes({ app: plan.id, store: legacy });
       if (legacyVolumes.length === 0) return plan;
-      const legacyPlan: AppPlan = {
+      const legacyPlan = {
         ...plan,
         services: {
           ...plan.services,
           [service.name]: {
             ...service,
-            storage: service.storage.map((mount) =>
-              mount.store === scoped ? { ...mount, store: legacy } : mount,
+            mounts: service.mounts.map((mount) =>
+              mount.type === "volume" && mount.store === scoped ? { ...mount, store: legacy } : mount,
             ),
           },
         },
         stores: plan.stores.map((store) => (store.name === scoped ? { ...store, name: legacy } : store)),
       };
-      return carryPlanAttachments(plan, legacyPlan);
+      return legacyPlan;
     },
     Effect.mapError((cause): LandofileValidationError | ProviderUnavailableError =>
       cause._tag === "ProviderUnavailableError"
@@ -66,10 +69,10 @@ export const resolveMysqlVolume = (
 };
 
 /** Keep configuration planning available while the selected runtime is offline. */
-export const adoptMysqlVolume = (
-  plan: AppPlan,
+export const adoptMysqlVolume = <Plan extends AppPlan>(
+  plan: Plan,
   registry: Context.Service.Shape<typeof RuntimeProviderRegistry> | undefined,
-): Effect.Effect<AppPlan, LandofileValidationError> =>
+): Effect.Effect<Plan, LandofileValidationError> =>
   registry === undefined
     ? Effect.succeed(plan)
     : resolveMysqlVolume(plan, registry).pipe(

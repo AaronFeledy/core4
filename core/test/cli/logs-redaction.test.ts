@@ -19,7 +19,6 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
-import { resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
@@ -77,7 +76,6 @@ const database: ServicePlan = {
   command: ["postgres"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn: [],
@@ -102,7 +100,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -123,11 +120,21 @@ const makeLayer = (rawLine: string) => {
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "buildArtifact",
+          message: "x",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+        }),
       ),
     pullArtifact: () =>
       Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "pullArtifact",
+          message: "x",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+        }),
       ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
@@ -172,10 +179,10 @@ const makeLayer = (rawLine: string) => {
     Layer.succeed(
       LandofileService,
       LandofileService.of({
-        discover: Effect.succeed({ name: "test-logs-redaction", services: {} }),
+        discover: Effect.succeed(literalLandofile({ name: "test-logs-redaction", services: {} }, plan.root)),
       }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -231,8 +238,9 @@ describe("lando logs redaction boundary", () => {
       );
 
       const textOut = textIo.stdout();
-      expect(textOut).not.toContain(SECRET_VALUE);
-      expect(textOut).toContain("[redacted]");
+      expect(textOut).toBe("");
+      expect(textIo.stderr()).toBe("database stderr [slow-query]: query failed with password=[redacted]\n");
+      expect(textOut + textIo.stderr()).not.toContain(SECRET_VALUE);
 
       const jsonIo = createBufferedRendererIO({ isTTY: false });
       await runWithRendererHandling(
@@ -251,8 +259,19 @@ describe("lando logs redaction boundary", () => {
       );
 
       const jsonOut = jsonIo.stdout();
-      expect(jsonOut).not.toContain(SECRET_VALUE);
-      expect(jsonOut).toContain("[redacted]");
+      expect(jsonOut + jsonIo.stderr()).not.toContain(SECRET_VALUE);
+      expect(jsonIo.stderr()).toBe("");
+      expect(
+        jsonOut
+          .trim()
+          .split("\n")
+          .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line))),
+      ).toContainEqual({
+        _tag: "stderr",
+        chunk: "query failed with password=[redacted]\n",
+        service: "database",
+        source: "slow-query",
+      });
 
       const onDisk = await readFile(logFile, "utf8");
       expect(onDisk).toContain(SECRET_VALUE);
@@ -262,28 +281,25 @@ describe("lando logs redaction boundary", () => {
   });
 
   test("fresh-process logs mask a provider value with no secret-store environment", async () => {
-    resetRegisteredRedactionValuesForTesting();
     Reflect.deleteProperty(process.env, "LANDO_SECRET_LOG_PASSWORD");
     const io = createBufferedRendererIO({ isTTY: false });
-    try {
-      await runWithRendererHandling(
-        followLogsApp({ follow: true, service: "database", source: "slow-query" }),
-        {
-          runtime: makeLayer(`value ${SECRET_VALUE}`),
-          io,
-          rendererMode: "plain",
-          resultFormat: "text",
-          command: "app:logs",
-          resultSchema: EmptyResultSchema,
-          streaming: StreamFrame,
-          streamingMode: "live",
-          formatError: ({ error }) => String(error),
-        },
-      );
-      expect(io.stdout()).toContain("value [redacted]");
-      expect(io.stdout() + io.stderr()).not.toContain(SECRET_VALUE);
-    } finally {
-      resetRegisteredRedactionValuesForTesting();
-    }
+    await runWithRendererHandling(
+      followLogsApp({ follow: true, service: "database", source: "slow-query" }),
+      {
+        runtime: makeLayer(`value ${SECRET_VALUE}`),
+        io,
+        rendererMode: "plain",
+        resultFormat: "text",
+        command: "app:logs",
+        resultSchema: EmptyResultSchema,
+        streaming: StreamFrame,
+        streamingMode: "live",
+        formatError: ({ error }) => String(error),
+      },
+    );
+    expect(io.stdout()).toBe("");
+    expect(io.stderr()).toBe("database stderr [slow-query]: value [redacted]\n");
+    expect(io.stdout() + io.stderr()).not.toContain(SECRET_VALUE);
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

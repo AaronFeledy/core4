@@ -1,56 +1,20 @@
 import { Effect } from "effect";
 
 import { FileSyncStartError } from "@lando/sdk/errors";
-import { type AppPlan, appMountSyncIgnores, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
+import { type AppPlan, type FileSyncSessionSpec, plannedFileSyncSessions } from "@lando/sdk/schema";
 import { type AppliedFileSyncInspection, FileSyncEngine } from "@lando/sdk/services";
 
-const hasAcceleratedMounts = (plan: AppPlan): boolean =>
-  Object.values(plan.services).some(
-    (service) =>
-      service.appMount?.realization === "accelerated" ||
-      service.mounts.some((mount) => mount.type === "bind" && mount.realization === "accelerated"),
-  );
+const hasAcceleratedMounts = (plan: AppPlan): boolean => plannedFileSyncSessions(plan)?.length !== 0;
 
-const hasCompleteFileSyncCoverage = (plan: AppPlan): boolean => {
-  const expected: Array<{
-    readonly service: string;
-    readonly mountKey: string;
-    readonly source: string;
-    readonly targetPath: string;
-    readonly volumeName: string;
-    readonly excludes: ReadonlyArray<string>;
-  }> = [];
-  for (const [serviceName, service] of Object.entries(plan.services)) {
-    const appMount = service.appMount;
-    if (appMount?.realization === "accelerated") {
-      expected.push({
-        service: serviceName,
-        mountKey: "app-mount",
-        source: appMount.source,
-        targetPath: appMount.target,
-        volumeName: fileSyncVolumeName(plan.name, serviceName, "app-mount"),
-        excludes: appMountSyncIgnores(service),
-      });
-    }
-    for (const [index, mount] of service.mounts.entries()) {
-      if (mount.type !== "bind" || mount.realization !== "accelerated") continue;
-      if (sameAppMountTarget(appMount, mount)) continue;
-      if (mount.source === undefined) return false;
-      const mountKey = `mount-${index}`;
-      expected.push({
-        service: serviceName,
-        mountKey,
-        source: mount.source,
-        targetPath: mount.target,
-        volumeName: fileSyncVolumeName(plan.name, serviceName, mountKey),
-        excludes: [],
-      });
-    }
-  }
-  if (expected.length === 0 || plan.fileSync.length !== expected.length) return false;
+export const hasCompleteFileSyncCoverage = (
+  plan: AppPlan,
+  specs: readonly FileSyncSessionSpec[] = plan.fileSync.map(({ session }) => session),
+): boolean => {
+  const expected = plannedFileSyncSessions(plan);
+  if (expected === undefined || expected.length === 0 || specs.length !== expected.length) return false;
 
   const seen = new Set<(typeof expected)[number]>();
-  return plan.fileSync.every(({ session }) => {
+  return specs.every((session) => {
     const mount = expected.find(
       (candidate) => candidate.service === session.service && candidate.mountKey === session.mountKey,
     );
@@ -102,14 +66,11 @@ export const withOrdinaryMounts = (plan: AppPlan): AppPlan => ({
       name,
       {
         ...service,
-        ...(service.appMount === undefined
-          ? {}
-          : { appMount: { ...service.appMount, realization: "passthrough" as const } }),
-        mounts: service.mounts.map((mount) =>
-          mount.type === "bind" && mount.realization === "accelerated"
-            ? { ...mount, realization: "passthrough" as const }
-            : mount,
-        ),
+        mounts: service.mounts.map((mount) => {
+          if (mount.type !== "bind" || mount.realization !== "accelerated") return mount;
+          const { mountKey: _mountKey, ...bind } = mount;
+          return { ...bind, realization: "passthrough" as const };
+        }),
       },
     ]),
   ),

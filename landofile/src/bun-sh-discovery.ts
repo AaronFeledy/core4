@@ -8,6 +8,7 @@ import {
   BunShellScriptFrontMatterError,
   NotImplementedError,
   causeMessage,
+  isErrnoCode,
 } from "@lando/sdk/errors";
 import { BunShellScriptFrontMatter, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
 
@@ -315,7 +316,10 @@ const walkScriptsDir = async (root: string): Promise<ReadonlyArray<WalkEntry>> =
 };
 
 const scriptsDirExists = async (scriptsDir: string): Promise<boolean> => {
-  const s = await stat(scriptsDir).catch(() => undefined);
+  const s = await stat(scriptsDir).catch((cause: unknown) => {
+    if (isErrnoCode(cause, "ENOENT")) return undefined;
+    throw cause;
+  });
   return s?.isDirectory() === true;
 };
 
@@ -329,11 +333,8 @@ export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScri
   options: DiscoverBunShellScriptsOptions,
 ): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, BunShellScriptDiscoveryError> {
   const scriptsDir = join(options.appRoot, SCRIPTS_DIRNAME);
-  const exists = yield* Effect.promise(() => scriptsDirExists(scriptsDir));
-  if (!exists) return [] as ReadonlyArray<DiscoveredBunShellScript>;
-
   const entries = yield* Effect.tryPromise({
-    try: () => walkScriptsDir(scriptsDir),
+    try: async () => ((await scriptsDirExists(scriptsDir)) ? walkScriptsDir(scriptsDir) : []),
     catch: (cause) =>
       new BunShellScriptFrontMatterError({
         message: `Failed to read .lando/scripts directory at ${scriptsDir}: ${causeMessage(cause)}`,

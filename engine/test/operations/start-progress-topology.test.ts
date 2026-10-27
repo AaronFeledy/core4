@@ -26,14 +26,19 @@ const planWithFileSync: AppPlan = {
   services: {
     [web.name]: {
       ...web,
-      appMount: {
-        source: plan.root,
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "accelerated",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: plan.root,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          excludes: [],
+          includes: [],
+          mountKey: "app-mount",
+        },
+      ],
     },
   },
   fileSync: [
@@ -58,7 +63,10 @@ describe("start progress topology", () => {
     const secretPlan: AppPlan = {
       ...plan,
       services: {
-        [web.name]: { ...web, environment: { PLAIN: "visible", TOKEN: "${secret:API_TOKEN}" } },
+        [web.name]: {
+          ...web,
+          environment: { PLAIN: "visible", TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" } },
+        },
       },
     };
     let applied: { readonly plan: AppPlan; readonly environment: unknown } | undefined;
@@ -70,19 +78,25 @@ describe("start progress topology", () => {
         has: () => Effect.succeed(true),
         list: Effect.succeed(["API_TOKEN"]),
       },
-      onApply: (appliedPlan, options) => {
-        applied = { plan: appliedPlan, environment: options?.serviceEnvironment };
-      },
+      onApply: (appliedPlan, options) =>
+        Effect.gen(function* () {
+          const resolve = options?.resolveServiceEnvironment;
+          if (resolve === undefined) throw new Error("creation resolver missing");
+          const entries = yield* Effect.forEach(Object.values(appliedPlan.services), (service) =>
+            resolve(service).pipe(Effect.map((env) => [service.name, env] as const)),
+          );
+          applied = { plan: appliedPlan, environment: Object.fromEntries(entries) };
+        }),
     });
 
     // When
     await runStart(harness, secretPlan);
 
     // Then
-    expect(applied?.environment).toEqual({ web: { TOKEN: "resolved-canary" } });
+    expect(applied?.environment).toMatchObject({ web: { PLAIN: "visible", TOKEN: "resolved-canary" } });
     expect(applied?.plan.services[web.name]?.environment).toEqual({
       PLAIN: "visible",
-      TOKEN: "${secret:API_TOKEN}",
+      TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" },
     });
     expect(JSON.stringify(applied?.plan)).not.toContain("resolved-canary");
   });

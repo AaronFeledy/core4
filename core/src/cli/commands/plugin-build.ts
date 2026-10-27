@@ -88,7 +88,8 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
         ? cause
         : new PluginManifestError({
             message: `Plugin manifest validation failed in ${pluginRoot}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: `Check package.json in ${pluginRoot} and correct the reported manifest issues.`,
           }),
   });
   const pkg = yield* Effect.tryPromise({
@@ -98,7 +99,8 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
         ? cause
         : new PluginManifestError({
             message: `Unable to read package.json in ${pluginRoot}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: `Make package.json in ${pluginRoot} readable and valid JSON.`,
           }),
   });
   const entries = yield* Effect.tryPromise({

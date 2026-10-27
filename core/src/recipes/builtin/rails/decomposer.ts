@@ -15,7 +15,7 @@ export const railsDecomposer = makeZeroOptionDecomposer({
           RAILS_ENV: "development",
           RAILS_LOG_TO_STDOUT: "true",
           DATABASE_URL:
-            "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}",
+            "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}",
           REDIS_URL: "redis://cache:6379",
         },
         build: {

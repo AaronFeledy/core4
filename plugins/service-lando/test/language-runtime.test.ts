@@ -218,7 +218,7 @@ for (const fixture of fixtures) {
       });
       // Then: only webroot-enabled consumers project it into env and extension metadata.
       const expected = fixture.includeWebroot ? { webroot: "/app/frontend/public" } : {};
-      expect<string | undefined>(plan.environment.LANDO_WEBROOT).toBe(expected.webroot);
+      expect(plan.environment.LANDO_WEBROOT).toBe(expected.webroot);
       expect(plan.extensions[`lando-service-${fixture.language}`]).toEqual({
         ...fixture.resolution.features[0].config,
         ...expected,

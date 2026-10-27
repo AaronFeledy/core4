@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema, Stream } from "effect";
 
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
   type DockerApiClient,
@@ -47,7 +48,6 @@ const web: ServicePlan = {
   command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 31082, protocol: "http", name: "http" }],
   routes: [],
   dependsOn: [],
@@ -57,6 +57,7 @@ const web: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Cross Process App",
   slug: "crossprocessapp",
@@ -64,7 +65,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -200,6 +200,7 @@ const makeFakeApi = () => {
       return Stream.empty;
     },
   };
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -238,7 +239,7 @@ const isUnavailableExec = (error: unknown): boolean => {
 };
 
 describe("provider-docker cross-process state", () => {
-  test("apply with appliedPlanState writes a version-1 envelope", async () => {
+  test("apply with appliedPlanState writes a version-2 envelope", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakeApi();
       await applyPlan(stateDir, fake.api);
@@ -246,7 +247,7 @@ describe("provider-docker cross-process state", () => {
       const path = appliedPlanPath(stateDir, plan.id);
       expect(await fileExists(path)).toBe(true);
       const raw = JSON.parse(await readFile(path, "utf8"));
-      expect(raw.version).toBe(1);
+      expect(raw.version).toBe(2);
       expect(raw.data).toBeDefined();
     });
   });

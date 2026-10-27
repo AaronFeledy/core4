@@ -7,6 +7,7 @@ import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import { bundledFirstGlobalServiceLoader } from "@lando/engine/services/bundled-global-service-loader";
 import { materializeGlobalServices } from "@lando/engine/services/global-services";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { dockerCapabilitiesForPlatform } from "@lando/provider-docker";
 import { providerLandoCapabilitiesForPlatform } from "@lando/provider-lando";
 import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
@@ -54,7 +55,12 @@ describe("bundled global services on bundled providers", () => {
           (manifest) => manifest.contributes?.globalServices?.map((service) => service.id) ?? [],
         );
         // When
-        const plan = yield* (yield* AppPlanner).plan(landofile, capabilities);
+        const root = process.cwd();
+        const compiled = yield* loadAuthoredDocuments(
+          [{ file: `${root}/.lando.yml`, value: Schema.encodeSync(LandofileShape)(landofile) }],
+          { appRoot: root, file: `${root}/.lando.yml` },
+        );
+        const plan = yield* (yield* AppPlanner).plan(compiled, capabilities);
         return { contributed, planned: Object.keys(plan.services), plan };
       }).pipe(
         // The global app is always planned on the host provider.
@@ -71,7 +77,6 @@ describe("bundled global services on bundled providers", () => {
       );
       expect([...planned].sort()).toEqual([...contributed].sort());
       expect(plan.networking?.perAppBridge).toBeNull();
-      expect(plan.networks).toEqual([]);
       expect(plan.networking?.sharedNetworkMembership?.name).toBe("lando_bridge_network");
       for (const name of planned) {
         expect(plan.networking?.sharedNetworkMembership?.aliases[ServiceName.make(name)]).toContain(

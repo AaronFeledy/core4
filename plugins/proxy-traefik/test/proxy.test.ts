@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { AppPlacementError, FileNotFoundError, type GlobalAppError } from "@lando/sdk/errors";
@@ -10,8 +10,7 @@ import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService, renderTraefikDynamicConfig } from "../src/proxy.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
+import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
 
 const app = AppId.make("demo");
 const routes = [
@@ -103,6 +102,7 @@ const makeHarness = (
   const restarted: string[] = [];
   let running = false;
   const files = new Map<string, string>();
+  const runtime = makeApplyRuntime(files);
   const stateStore = durableReloadState ? makeMemoryPluginStateStore() : undefined;
   const socketProxy = {
     user: "test",
@@ -114,6 +114,7 @@ const makeHarness = (
     classifyOverride: highPortOverride,
   };
   const service = makeTraefikRouterService({
+    httpClient: runtime.httpClient,
     ...watcherDependencies,
     probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
@@ -145,6 +146,7 @@ const makeHarness = (
     },
     paths: { platform, globalAppRoot: "/lando/global" },
     globalApp: {
+      ownedPublishPorts: runtime.ownedPublishPorts,
       ensureProviderReady: watcherDependencies.ensureProviderReady ?? Effect.void,
       restartRunningService: Effect.fnUntraced(function* (service) {
         if (!running) return false;
@@ -165,6 +167,7 @@ const makeHarness = (
   });
   const makePersistedService = (watcherDependencies: WatcherDependencies = {}) =>
     makeTraefikRouterService({
+      httpClient: runtime.httpClient,
       ...watcherDependencies,
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
@@ -185,6 +188,7 @@ const makeHarness = (
       },
       paths: { platform, globalAppRoot: "/lando/global" },
       globalApp: {
+        ownedPublishPorts: runtime.ownedPublishPorts,
         ensureRunning: () => Effect.succeed([]),
         restartRunningService: (service) =>
           Effect.sync(() => {
@@ -527,11 +531,13 @@ describe("Traefik RouterService", () => {
     expect(harness.restarted).toEqual(["traefik"]);
   });
 
-  test("does not restart a Windows router before the global service starts", async () => {
+  test("rejects application before Windows ingress has been acquired", async () => {
     const harness = makeHarness(undefined, {}, "win32");
 
-    await Effect.runPromise(harness.service.applyRoutes(routes, app));
+    const result = await Effect.runPromise(harness.service.applyRoutes(routes, app).pipe(Effect.result));
 
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ProxyApplyError" } });
+    expect(harness.files.size).toBe(0);
     expect(harness.restarted).toEqual([]);
   });
 
@@ -794,10 +800,13 @@ describe("watcher diagnostics", () => {
   test("masks registered values in watcher failures and persisted diagnostics", async () => {
     // Given
     const secret = "watcher-registered-canary";
+    const redaction = makeRedactionService();
+    const redact = await Effect.runPromise(redaction.forProfile("secrets"));
     const harness = makeHarness(undefined, {
       readTraefikLogs: () => Effect.succeed({ providerId: "lando", text: `${failureText} ${secret}` }),
+      redactDiagnostic: redact.redactString,
     });
-    await Effect.runPromise(registerRedactionValues([secret]));
+    await Effect.runPromise(redaction.registerValues([secret]));
     // When
     const exit = await Effect.runPromiseExit(
       Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })),

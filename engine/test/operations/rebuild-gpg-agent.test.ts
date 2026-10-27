@@ -93,12 +93,12 @@ for (const prepareExit of [0, 1]) {
                   plan: selected,
                   root: selected.root,
                   app: { kind: "user", id: selected.id, root: selected.root },
-                  landofile: {
+                  landofile: literalTestLandofile({
                     name: selected.name,
                     services: {},
                     sshAgent: { sidecar: true },
                     gpgAgent: { forward: true },
-                  },
+                  }),
                 },
                 { scope },
               );
@@ -130,12 +130,12 @@ for (const prepareExit of [0, 1]) {
       // Then
       expect(applied).toHaveLength(1);
       expect(applied[0]?.services[web.name]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
-      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.GNUPGHOME).toBeUndefined();
+      expect(applyOptions[0]).not.toHaveProperty(["serviceEnvironment", web.name, "GNUPGHOME"]);
       expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.GNUPGHOME).toBeUndefined();
       expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
         "/run/lando/ssh-agent/agent.sock",
       );
-      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBeUndefined();
+      expect(applyOptions[0]).not.toHaveProperty(["serviceEnvironment", web.name, "SSH_AUTH_SOCK"]);
       expect(applied[0]?.services[web.name]?.mounts).toContainEqual({
         type: "bind",
         source: "/relay/gpg-socket",
@@ -143,6 +143,7 @@ for (const prepareExit of [0, 1]) {
         readOnly: true,
         createHostPath: false,
         realization: "passthrough",
+        origin: "integration",
       });
       expect(closed).toBe(1);
       if (prepareExit === 0) {
@@ -163,3 +164,4 @@ for (const prepareExit of [0, 1]) {
     }
   });
 }
+import { literalTestLandofile } from "../compiled-landofile.ts";

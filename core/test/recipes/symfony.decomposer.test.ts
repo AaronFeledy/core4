@@ -31,7 +31,7 @@ const expected = {
       port: 80,
       environment: {
         DATABASE_URL:
-          "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+          "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8",
         REDIS_URL: "redis://cache:6379",
       },
       dependsOn: ["database", "cache"],
@@ -102,7 +102,7 @@ describe("symfony decomposition", () => {
             ...expected.services.appserver,
             environment: {
               DATABASE_URL:
-                "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
+                "mysql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
               REDIS_URL: "redis://cache:6379",
             },
           },
@@ -116,11 +116,11 @@ describe("symfony decomposition", () => {
   test.each([
     {
       database: "postgres:16",
-      url: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+      url: "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8",
     },
     {
       database: "mariadb:11.4",
-      url: "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
+      url: "mysql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
     },
   ])("injects datastore connection environment when the database is $database", ({ database, url }) => {
     // Given the selected database, when the recipe is decomposed.

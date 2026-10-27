@@ -6,16 +6,20 @@ import { CertificateAuthority } from "@lando/sdk/services";
 import { CertificateAuthorityResolver } from "../../plugins/certificate-authority-resolver.ts";
 
 const resolutionError = (cause: unknown): CaError => {
-  const remediation =
+  const fromCause =
     typeof cause === "object" &&
     cause !== null &&
     "remediation" in cause &&
-    typeof cause.remediation === "string"
-      ? ` ${cause.remediation}`
-      : "";
+    typeof cause.remediation === "string" &&
+    cause.remediation.trim().length > 0
+      ? cause.remediation
+      : undefined;
   return new CaError({
-    message: `Unable to resolve the active certificate authority.${remediation}`,
+    message: "Unable to resolve the active certificate authority.",
     caId: "unresolved",
+    remediation:
+      fromCause ??
+      "Install a certificate-authority plugin with `lando setup` and select it as the active CA, then re-run.",
     cause,
   });
 };

@@ -14,6 +14,7 @@
  */
 
 import type { NetworkConfig } from "../schema/config.ts";
+import { matchesIpPattern } from "./ip-match.ts";
 
 /** Already-resolved, already-loaded outbound network trust applied to a fetch. */
 export interface ResolvedNetworkTrust {
@@ -64,16 +65,24 @@ export class NetworkTrustResolutionError extends Error {
   }
 }
 
-/** Whether the URL host matches a `NO_PROXY` pattern and should bypass the proxy. */
+/** Lexical loopback always bypasses; other hosts require an explicit NO_PROXY match, never DNS. */
 export const shouldBypassProxy = (url: string, noProxy: ReadonlyArray<string>): boolean => {
   const parsedUrl = new URL(url);
   const host = parsedUrl.hostname.toLowerCase();
+  if (host === "localhost" || matchesIpPattern(host, "127.0.0.0/8") || matchesIpPattern(host, "::1"))
+    return true;
   const port = parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
   const hostWithPort = `${host}:${port}`;
   return noProxy.some((raw) => {
-    const pattern = raw.toLowerCase();
+    const pattern = raw.trim().toLowerCase();
+    if (pattern === "") return false;
     if (pattern === "*") return true;
-    if (pattern === host || pattern === hostWithPort) return true;
+    if (pattern === hostWithPort) return true;
+    if (pattern.includes(":") || pattern.includes("/") || /^[\d.]+$/u.test(pattern)) {
+      return matchesIpPattern(host, pattern);
+    }
+    if (pattern === host) return true;
+    if (pattern.startsWith("*.")) return host.endsWith(pattern.slice(1));
     if (pattern.startsWith(".")) return host.endsWith(pattern);
     return host.endsWith(`.${pattern}`);
   });
@@ -81,7 +90,8 @@ export const shouldBypassProxy = (url: string, noProxy: ReadonlyArray<string>): 
 
 /**
  * Build the Bun `fetch` init (proxy + `tls.ca`) for a URL under resolved trust,
- * or `undefined` when no proxy/CA applies (so the fetch stays bare).
+ * always with an explicit proxy decision. Bun 1.4.3's `proxy: false` suppresses
+ * ambient HTTP_PROXY/HTTPS_PROXY/ALL_PROXY; selected proxies disable Bun's own NO_PROXY parsing.
  *
  * Bun's `tls.ca` replaces the default trust store, so `systemCaPems` (the host's
  * default root PEMs, read by the consumer) are merged in when `trust.trustHost`
@@ -93,21 +103,20 @@ export const fetchInitForNetwork = (
   url: string,
   trust: ResolvedNetworkTrust,
   systemCaPems: ReadonlyArray<string>,
-): BunFetchRequestInit | undefined => {
+): BunFetchRequestInit => {
   const parsedUrl = new URL(url);
   const bypassProxy = shouldBypassProxy(url, trust.proxy.noProxy);
-  const proxyCandidate = bypassProxy
-    ? undefined
-    : parsedUrl.protocol === "https:"
-      ? (trust.proxy.https ?? trust.proxy.http)
-      : (trust.proxy.http ?? trust.proxy.https);
+  let proxyCandidate: string | undefined;
+  if (!bypassProxy) {
+    if (parsedUrl.protocol === "https:") proxyCandidate = trust.proxy.https;
+    else if (parsedUrl.protocol === "http:") proxyCandidate = trust.proxy.http;
+  }
   const proxy = typeof proxyCandidate === "string" && proxyCandidate.length > 0 ? proxyCandidate : undefined;
   const customCa = [...trust.caPems];
   const omitCa = trust.trustHost && customCa.length === 0;
   const ca = trust.trustHost ? [...systemCaPems, ...customCa] : customCa;
-  if (proxy === undefined && omitCa) return undefined;
   return {
-    ...(proxy === undefined ? {} : { proxy }),
+    proxy: proxy === undefined ? false : { url: proxy, respectNoProxy: false },
     ...(omitCa ? {} : { tls: { ca } }),
   };
 };
@@ -132,6 +141,8 @@ const configProxyHasExplicitValue = (network: NetworkConfig | undefined): boolea
   const candidate = network?.proxy;
   if (candidate === undefined) return false;
   return (
+    candidate.http === null ||
+    candidate.https === null ||
     (typeof candidate.http === "string" && candidate.http.length > 0) ||
     (typeof candidate.https === "string" && candidate.https.length > 0) ||
     (candidate.noProxy?.length ?? 0) > 0
@@ -162,6 +173,7 @@ const parseEnvCaCertPaths = (raw: string | undefined): ReadonlyArray<string> => 
  *
  * Proxy precedence: an explicit `network.proxy` in config wins over the
  * `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` (and lowercase) environment variables.
+ * In env mode each scheme falls back to `ALL_PROXY`/`all_proxy`.
  * A `null` config proxy value disables that proxy without falling back to env.
  * CA certificate paths are collected config-first then env (`LANDO_NETWORK_CA_CERTS`).
  *
@@ -178,12 +190,12 @@ export const resolveNetworkTrustPlan = (
     ? network?.proxy?.http === null
       ? undefined
       : network?.proxy?.http
-    : firstEnv(env, ["HTTP_PROXY", "http_proxy"]);
+    : firstEnv(env, ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"]);
   const https = useConfigProxy
     ? network?.proxy?.https === null
       ? undefined
       : network?.proxy?.https
-    : firstEnv(env, ["HTTPS_PROXY", "https_proxy"]);
+    : firstEnv(env, ["HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"]);
   const noProxy = useConfigProxy
     ? (network?.proxy?.noProxy ?? [])
     : splitNoProxy(firstEnv(env, ["NO_PROXY", "no_proxy"]));

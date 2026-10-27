@@ -322,7 +322,7 @@ jobs:
 
       - name: Run live integration suites
         run: |
-          bun test core/test/live
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
         env:
           LANDO_CONFIG__default_provider_id: lando
 
@@ -520,7 +520,7 @@ jobs:
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
       - name: Setup Go for Linux Podman source build
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: 1.25.6
 

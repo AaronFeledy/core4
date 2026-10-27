@@ -1,6 +1,6 @@
 # Lando v4: Plugin Specification
 
-> **Part 10 of 19** · [Index](./README.md)
+> **Part 10 of 20** · [Index](./README.md)
 > **Read next:** [11 Subsystems](./11-subsystems.md)
 
 A plugin is a Bun-loadable package whose manifest declares its public contribution surface. The pluggable abstractions themselves are cataloged in §4.
@@ -116,6 +116,8 @@ Command ids MUST be canonical and namespaced. `namespace` MUST equal the id pref
 
 There are no legacy autoload directories; every contribution enters through the manifest.
 
+Trusted command/tooling Effects may consume `ExecutionSessionService` through declared SDK requirements (§22), not core or private engine imports. Manifest and trust rules remain unchanged.
+
 Contribution invariants:
 
 - Config translators MUST declare unique identity and input kinds and run only on explicit request or the declared refresh phase (§7.4.2). They MUST decode snapshots or recipe requests into authoring fragments, never emit plans, perform IO, mutate files, contact providers, or install plugins. Duplicate ids fail without a precedence winner. Optional encoders MUST preserve expressions and secret references under §7.4.1 and §7.8.1.
@@ -146,7 +148,7 @@ The store contract is `id`, `schemes`, `capabilities`, `get`, `has`, `list`, `de
 - An incoming value is registered with the canonical redactor (§3.7) before persistence, before any child process receives it, and before any failure can mention it.
 - `describe(id)` MUST return only nonsecret metadata `{ kind?, expiresAt?, issuer?, scopes? }`, or empty metadata for an existing value without it, using the read error union. `list` MUST return ids only. Metadata MUST NOT be treated as permission evidence (§10.12.3).
 - `LandoPluginContext.secrets` MUST bind each plugin to one namespace. Its reference is `${secret:lando://<namespace>/<id>}`: namespace is `p-` followed by lowercase hexadecimal UTF-8 bytes of the complete canonical plugin id, and id is a nonempty grammar-safe single key segment (§7.3.1). Encoding MUST be injective, including npm `@` and `/`; literal npm ids MUST NOT be inserted into URI segments. No truncation or lossy normalization is permitted.
-- Resolved values are registered with the canonical redactor (§3.7) before the resolving operation emits any event, result, transcript, or failure; consumers that resolve secrets (`resolveServiceEnvironmentSecrets`, `ShellInteractiveSpec.resolveSecret`, start, rebuild, scratch, and global flows) propagate `SecretStoreError` untouched through their tagged result channels.
+- Resolved values, their URI-encoded components, and secret-bearing composites are registered with the canonical redactor (§3.7) before the resolving operation emits any event, result, transcript, or failure; consumers that resolve secrets (`EnvironmentValueResolver` sessions behind start, rebuild, tooling, SQL, scratch, and global flows, and `ShellInteractiveSpec.resolveSecret`) propagate `SecretStoreError` untouched through their tagged result channels.
 
 Bundled stores:
 
@@ -178,6 +180,7 @@ App-declared plugins install only into their app-scoped store, use the same trus
 
 - Manifest validation, source resolution, compatibility, module resolution, and realpath containment precede import.
 - Bundled modules are statically included; external modules use absolute file URLs. Cwd-relative imports and paths escaping the plugin root are forbidden.
+- External entries and contribution modules MUST use the host-owned SDK and Effect instances in §7.1.1, including when a contribution loads before its entry. Plugin-local peer copies MUST NOT override them; other bare packages resolve beside the importing file. Host ownership does not waive manifest compatibility checks.
 - App-scoped plugins load only from their lockfile-selected local copy.
 - The validated plugin-command cache is the sole command-metadata owner. It follows discovery precedence, invalidates on plugin-set or manifest change, and MUST NOT be treated as an executable registry.
 - Duplicate command ids retain the first occurrence in resolved manifest order. Executable plugin command loaders remain lazy and keyed by canonical id.

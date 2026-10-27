@@ -41,7 +41,7 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   {
     rule: effectIdiomsRule,
     seamJustification:
-      "Package edges govern dependency direction; they cannot reject retired Effect idioms (Data errors, wall-clock Date in Effect modules, generator-only wrappers, hand-rolled record guards, *Live layer names, @effect/* imports) or raw Cause assembly that bypasses failure-role helpers, all written inside an allowed package.",
+      "Package edges cannot express these intra-package behaviors. The [error-swallow audit](./error-swallow-audit.md) found no legitimate null-swallow uses after narrowing filesystem probes. Other swallow shapes retain intentional validation, cleanup, or rejection-sink uses and are not banned.",
   },
   {
     rule: envHelperRule,

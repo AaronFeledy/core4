@@ -116,7 +116,7 @@ with the JSON Schema gaps above listed by name.
 const valid = yield* Effect.promise(async () =>
   LandofileStandardSchema["~standard"].validate({
     name: "standard-demo",
-    services: { web: { type: "compose", image: "nginx:1.27-alpine", home: false } },
+    services: { web: { type: "compose", image: "nginx:1.27-alpine" } },
   }),
 );
 expect("issues" in valid && valid.issues).toBeFalsy();
@@ -124,7 +124,7 @@ expect("value" in valid && valid.value.name).toBe("standard-demo");
 const invalid = yield* Effect.promise(async () =>
   LandofileStandardSchema["~standard"].validate({
     name: "standard-demo",
-    services: { web: { type: "compose", imgae: "nginx:1.27-alpine", home: false } },
+    services: { web: { type: "compose", imgae: "nginx:1.27-alpine" } },
   }),
 );
 expect("issues" in invalid && invalid.issues).toBeTruthy();
@@ -151,13 +151,13 @@ expect(plannerIssue?.message).toMatch(/Planner scopes require a string site/);`}
 
 const valid = await LandofileStandardSchema["~standard"].validate({
   name: "standard-demo",
-  services: { web: { type: "compose", image: "nginx:1.27-alpine", home: false } },
+  services: { web: { type: "compose", image: "nginx:1.27-alpine" } },
 });
 // valid.value is the decoded Landofile
 
 const invalid = await LandofileStandardSchema["~standard"].validate({
   name: "standard-demo",
-  services: { web: { type: "compose", imgae: "nginx:1.27-alpine", home: false } },
+  services: { web: { type: "compose", imgae: "nginx:1.27-alpine" } },
 });
 // invalid.issues[0].path is ["services", "web", "imgae"]
 

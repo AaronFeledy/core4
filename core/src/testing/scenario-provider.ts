@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import { isAbsolute, relative } from "node:path";
 import { resolveDesiredAppTarget } from "@lando/engine/landofile/app-resolution";
 import { AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
@@ -6,33 +7,64 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { makeLandoRuntime, withRuntimeProviderRegistryOverride } from "../runtime/layer.ts";
 
+const canonicalPath = (path: string): Effect.Effect<string> =>
+  Effect.tryPromise(() => realpath(path)).pipe(
+    Effect.catch(() =>
+      Effect.logDebug("scenario-provider canonicalPath falling back to lexical path").pipe(
+        Effect.annotateLogs({ path }),
+        Effect.as(path),
+      ),
+    ),
+  );
+
+const planAppRoot = (plan: AppPlan): string => plan.identity?.appRoot ?? plan.root;
+
+const planMatchesRoot = (appRoot: string, root: string): boolean => {
+  const child = relative(appRoot, root);
+  return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+};
+
 /** Each scenario owns its applied plans, independently of later Landofile edits. */
 export const makeScenarioProvider = () => {
   const plans = new Map<AbsolutePath, AppPlan>();
+  const exactPlan = (root: string) => plans.get(AbsolutePath.make(root));
+  const resolvePlan = (root: string) =>
+    canonicalPath(root).pipe(
+      Effect.map(
+        (canonical) =>
+          [...plans.entries()]
+            .filter(([appRoot]) => planMatchesRoot(appRoot, canonical))
+            .sort(([left], [right]) => right.length - left.length)[0]?.[1],
+      ),
+    );
+  const resolveExactPlan = (root: string) => canonicalPath(root).pipe(Effect.map(exactPlan));
+  const indexPlan = (plan: AppPlan) => plans.set(AbsolutePath.make(planAppRoot(plan)), plan);
+  const unindexPlan = (plan: AppPlan) => plans.delete(AbsolutePath.make(planAppRoot(plan)));
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
+    capabilities: { ...TestRuntimeProvider.capabilities, artifactBuild: true },
     appliedPlans: Effect.sync(() => [...plans.values()]),
     apply: (plan, options) =>
-      TestRuntimeProvider.apply(plan, options).pipe(
-        Effect.tap(() => Effect.sync(() => plans.set(plan.root, plan))),
-      ),
+      TestRuntimeProvider.apply(plan, options).pipe(Effect.tap(() => Effect.sync(() => indexPlan(plan)))),
     destroy: (target, options) =>
       TestRuntimeProvider.destroy(target, options).pipe(
         Effect.tap(() =>
           Effect.sync(() => {
-            if (options.removeState !== false && target.plan !== undefined) plans.delete(target.plan.root);
+            if (options.removeState !== false && target.plan !== undefined) unindexPlan(target.plan);
           }),
         ),
       ),
   };
   const registry = RuntimeProviderRegistry.of({
-    appliedPlansFor: (root) => Effect.sync(() => [...plans.values()].filter((plan) => plan.root === root)),
-    resolveAppliedPlan: (root) => Effect.sync(() => plans.get(root)),
+    appliedPlansFor: (root) =>
+      resolveExactPlan(root).pipe(Effect.map((plan) => (plan === undefined ? [] : [plan]))),
+    resolveAppliedPlan: resolvePlan,
     resolveTeardownEvidence: (root) =>
-      Effect.sync(() => {
-        const plan = plans.get(root);
-        return plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan };
-      }),
+      resolveExactPlan(root).pipe(
+        Effect.map((plan) =>
+          plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+        ),
+      ),
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: (target) =>
@@ -45,7 +77,12 @@ export const makeScenarioProvider = () => {
   return {
     layer,
     provider,
-    forget: async (root: string) => plans.delete(AbsolutePath.make(await realpath(root))),
+    forget: async (root: string) => {
+      const plan = await Effect.runPromise(resolveExactPlan(root));
+      if (plan === undefined) return false;
+      unindexPlan(plan);
+      return true;
+    },
     remember: async (cwd: string) => {
       await import("../runtime/bundled-plugins.ts");
       const previousCwd = process.cwd();
@@ -60,7 +97,7 @@ export const makeScenarioProvider = () => {
             ),
           ),
         );
-        plans.set(target.root, target.plan);
+        indexPlan(target.plan);
       } finally {
         process.chdir(previousCwd);
       }

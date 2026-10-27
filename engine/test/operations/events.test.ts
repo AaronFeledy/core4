@@ -29,11 +29,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { LANDO_HOST_EVENT_ENV } from "@lando/sdk/schema";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import {
@@ -53,6 +49,7 @@ import {
 } from "../../src/services/event-command-executor.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
+import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const eventPlan = (): AppPlan => ({
@@ -63,7 +60,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
@@ -134,15 +130,16 @@ const runWithFakes = (
   enterEvent: AppLifecycleEventName,
   shellRuns: { count: number },
 ) => {
+  const redaction = makeRedactionService();
+  const resolver = testEnvironmentResolverLayerFor(redaction);
   const services = Layer.mergeAll(
-    LandoEventService.layer,
+    resolver,
+    LandoEventService.layer.pipe(Layer.provide(resolver)),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...redaction,
       }),
     ),
     Layer.succeed(
@@ -235,16 +232,17 @@ const eventRuntime = (
   canonical: EventCommandExecutorInput[] = [],
   failures: ReadonlySet<string> = new Set(),
   canonicalFailure?: ToolingCompileError | ToolingCommandLookupError,
-) =>
-  Layer.mergeAll(
-    LandoEventService.layer,
+) => {
+  const redaction = makeRedactionService();
+  const resolver = testEnvironmentResolverLayerFor(redaction);
+  return Layer.mergeAll(
+    resolver,
+    LandoEventService.layer.pipe(Layer.provide(resolver)),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...redaction,
       }),
     ),
     Layer.succeed(
@@ -290,6 +288,7 @@ const eventRuntime = (
       }),
     ),
   );
+};
 
 const hostShellRunnerLayer = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO was not expected in this test.");
@@ -443,7 +442,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("preserves working directories on looped and deferred cmd variants", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = withProjectEvents(eventPlan(), {
+    const plan = await compileAuthoredEventPlan(eventPlan(), {
       "pre-start": [
         { cmd: "inspect-{{ item }}", for: ["web", "db"], dir: PortablePath.make("/workspace/loop") },
         { defer: "cleanup", dir: PortablePath.make("/workspace/deferred") },
@@ -464,11 +463,9 @@ describe("runAppEvent tooling-step kernel", () => {
   test("publishes resolved task output only after redacting task variables", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = attachEffectiveTooling(
-      withProjectEvents(eventPlan(), {
-        "pre-start": [{ task: "named", vars: { API_TOKEN: "resolved-secret-value" } }],
-      }),
-      { named: { cmd: "{{ vars.API_TOKEN }}" } },
+    const plan = await compileAuthoredEventPlan(
+      attachEffectiveTooling(eventPlan(), { named: { cmd: "{{ vars.API_TOKEN }}" } }),
+      { "pre-start": [{ task: "named", vars: { API_TOKEN: "resolved-secret-value" } }] },
     );
     const runtime = eventRuntime(invocations);
 
@@ -493,16 +490,14 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const secret = "resolved-host-secret";
-    const plan = attachEffectiveTooling(
-      withProjectEvents(eventPlan(), {
-        "pre-start": [{ task: "named", vars: { EVENT_TASK_TOKEN: secret } }],
-      }),
-      {
+    const plan = await compileAuthoredEventPlan(
+      attachEffectiveTooling(eventPlan(), {
         named: {
-          cmd: `printf '{{ vars.EVENT_TASK_TOKEN }}'; printf '{{ vars.EVENT_TASK_TOKEN }}' 1>&2; printf ':%s' "\${EVENT_TASK_TOKEN-unset}"`,
+          cmd: `printf '{{ vars.EVENT_TASK_TOKEN }}'; printf '{{ vars.EVENT_TASK_TOKEN }}' 1>&2; printf ':%s' "{{ default(env.EVENT_TASK_TOKEN, 'unset') }}"`,
           service: ":host",
         },
-      },
+      }),
+      { "pre-start": [{ task: "named", vars: { EVENT_TASK_TOKEN: secret } }] },
     );
 
     // When
@@ -604,8 +599,9 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const canonical: EventCommandExecutorInput[] = [];
-    const plan = attachEffectiveTooling(
-      withProjectEvents(eventPlan(), {
+    const plan = withProjectEvents(
+      attachEffectiveTooling(eventPlan(), { named: { cmds: ["named-one", "named-two"] } }),
+      {
         "pre-start": [
           { defer: "cleanup-first" },
           "body",
@@ -613,8 +609,7 @@ describe("runAppEvent tooling-step kernel", () => {
           { defer: "cleanup-second" },
           { task: "named" },
         ],
-      }),
-      { named: { cmds: ["named-one", "named-two"] } },
+      },
     );
 
     // When
@@ -671,20 +666,20 @@ describe("runAppEvent tooling-step kernel", () => {
     // Given
     const invocations: ToolingInvocation[] = [];
     const payload = { _tag: "pre-start", nested: { value: "exact" }, sequence: 17 };
-    const plan = attachEffectiveTooling(
-      withProjectEvents(eventPlan(), {
-        "pre-start": [
-          { for: ["a", "b"], cmd: "{{ event.nested.value }}-{{ item }}" },
-          { task: "named", vars: { selected: "{{ event.sequence }}" } },
-        ],
-      }),
-      {
+    const plan = await compileAuthoredEventPlan(
+      attachEffectiveTooling(eventPlan(), {
         named: {
           cmds: ["first-{{ vars.selected }}", "second-{{ vars.selected }}"],
           service: "svc-{{ vars.selected }}",
           dir: PortablePath.make("/tmp/{{ vars.selected }}"),
           env: { VALUE: "{{ vars.selected }}" },
         },
+      }),
+      {
+        "pre-start": [
+          { for: ["a", "b"], cmd: "{{ event.nested.value }}-{{ item }}" },
+          { task: "named", vars: { selected: "{{ event.sequence }}" } },
+        ],
       },
     );
 
@@ -725,7 +720,7 @@ describe("runAppEvent tooling-step kernel", () => {
   test("does not borrow an event-step payload from mutable event history", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
-    const plan = withProjectEvents(eventPlan(), {
+    const plan = await compileAuthoredEventPlan(eventPlan(), {
       "pre-start": ["echo {{ event.sequence }}"],
     });
 
@@ -1100,6 +1095,8 @@ describe("hostEvents runtime", () => {
             operation: "inspect",
             message: "no container",
             service: "web",
+            remediation:
+              "Add service `web` to the Landofile or correct the service name, then re-run the command.",
           }),
         ),
     };
@@ -1146,6 +1143,8 @@ describe("hostEvents runtime", () => {
             providerId: "test",
             operation: "inspect",
             message: `inspect exploded: ${secret}`,
+            remediation:
+              "Re-run the command after checking `test` logs for the `inspect` failure; if it persists, report the error with that operation name.",
           }),
         ),
     };
@@ -1153,7 +1152,10 @@ describe("hostEvents runtime", () => {
     // When
     const error = await Effect.runPromise(
       Effect.flip(
-        Effect.andThen(registerRedactionValues([secret]), runAppEvent(plan, "post-start")).pipe(
+        Effect.andThen(
+          Effect.flatMap(RedactionService, (service) => service.registerValues([secret])),
+          runAppEvent(plan, "post-start"),
+        ).pipe(
           Effect.provide(
             Layer.mergeAll(
               eventRuntime(invocations),
@@ -1248,3 +1250,4 @@ describe("hostEvents runtime", () => {
     expect(invocations).toHaveLength(0);
   });
 });
+import { testEnvironmentResolverLayerFor } from "../environment-values.ts";

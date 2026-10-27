@@ -95,7 +95,7 @@ ${renderAssertPodman6Step()}
 
       - name: Run live integration suites
         run: |
-          bun test core/test/live
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
         env:
           LANDO_CONFIG__default_provider_id: lando
 
@@ -338,7 +338,7 @@ ${containerHelperDownloadStep}
 ${landoRootlessPrereqSteps}
 
       - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo}
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 

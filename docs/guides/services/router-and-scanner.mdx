@@ -52,7 +52,7 @@ The rest of the `router:` block works the same whether or not you touch `enabled
 | Key | What it does |
 | --- | --- |
 | `enabled` | Start the shared router and publish this app's routes. Default `true`. |
-| `bindAddress` | Host address the router listens on. |
+| `bindAddress` | Host address the router listens on. Global-only (`config.yml` or `LANDO_ROUTER_BIND_ADDRESS`); a Landofile value is ignored and lint warns. |
 | `httpPort` | Host port for plain HTTP. |
 | `httpsPort` | Host port for HTTPS. |
 | `httpFallbacks` | Extra HTTP ports to try when `httpPort` is taken. |
@@ -205,9 +205,9 @@ Per-service `scanner:` settings override the global one. A global `false` turns 
       <UseFixture name="router-and-scanner-invalid" />
     </Step>
     <Step name="lint-invalid-retries">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"scanner\",\\s*\"retries\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"scanner\",\\s*\"retries\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />

@@ -1,7 +1,13 @@
 import { Effect } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import { type HealthcheckPlan, type ValidationIssuePath, formatValidationIssuePath } from "@lando/sdk/schema";
+import {
+  type Environment,
+  type EnvironmentValue,
+  type HealthcheckPlan,
+  type ValidationIssuePath,
+  formatValidationIssuePath,
+} from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
@@ -38,6 +44,10 @@ export const serviceFeatureApply =
                 : fallbackMessage,
           feature: featureId,
           cause,
+          remediation:
+            cause instanceof ServiceConfigIssue && cause.suggestion
+              ? cause.suggestion
+              : `Correct the ${featureId} feature configuration in the Landofile, then re-run.`,
         }),
     });
 
@@ -64,11 +74,26 @@ export const serviceTypeResolve = <A>(
               ],
             }
           : {}),
+        remediation:
+          cause instanceof ServiceConfigIssue && cause.suggestion
+            ? cause.suggestion
+            : `Correct the ${serviceType} service configuration in the Landofile (see the reported field path), then re-run.`,
       }),
   });
 
-export const addEnvRecord = (ctx: ServiceFeatureContext, env: Readonly<Record<string, string>>): void => {
+export const addEnvRecord = (ctx: ServiceFeatureContext, env: Environment): void => {
   for (const [key, value] of Object.entries(env)) ctx.addEnv(key, value);
+};
+
+export const literalEnvironmentValue = (value: EnvironmentValue, path: ValidationIssuePath): string => {
+  if (typeof value !== "string") {
+    throw new ServiceConfigIssue(
+      path,
+      "This setting requires literal text at plan time.",
+      "Use a literal value rather than a secret binding.",
+    );
+  }
+  return value;
 };
 
 export const commandHealthcheck = (

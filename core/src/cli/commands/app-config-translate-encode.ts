@@ -1,8 +1,10 @@
+import { assessTranslateExpectations } from "@lando/engine/planner/home-expectations";
 import { landofileLayerPaths } from "@lando/landofile/layers";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 import { ConfigTranslateError } from "@lando/sdk/errors";
 import { decodeLandofileAuthoringLayer, mergeLandofiles } from "@lando/sdk/landofile";
 import {
+  type ConfigTranslateExpectation,
   type ConfigTranslateLayerFragment,
   type ConfigTranslateOutput,
   LandofileAuthoringFragment,
@@ -18,6 +20,7 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
   fragments: {
     readonly outputs: readonly ConfigTranslateOutput[];
     readonly currentLowerV4Fragments: readonly ConfigTranslateLayerFragment[];
+    readonly expectations?: readonly ConfigTranslateExpectation[];
   },
   encode: NonNullable<ConfigTranslatorShape["encode"]>,
 ) {
@@ -29,7 +32,11 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
   let merged: Record<string, unknown> = {};
   for (const entry of ordered) {
     const invalidPrefix = (cause: unknown) =>
-      new ConfigTranslateError({ message: `Invalid merge prefix at layer ${entry.layer}.`, cause });
+      new ConfigTranslateError({
+        message: `Invalid merge prefix at layer ${entry.layer}.`,
+        cause,
+        remediation: `Correct the merge prefix on layer ${entry.layer} so it is a plain object, then retry translation.`,
+      });
     const native = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(entry.fragment, {
       onExcessProperty: "error",
     }).pipe(
@@ -49,17 +56,27 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
   }
   yield* Schema.decodeUnknownEffect(LandofileAuthoringShape)(merged, { onExcessProperty: "error" }).pipe(
     Effect.mapError(
-      (cause) => new ConfigTranslateError({ message: "Translation is not a complete Landofile.", cause }),
+      (cause) =>
+        new ConfigTranslateError({
+          message: "Translation is not a complete Landofile.",
+          cause,
+          remediation:
+            "Ensure translation outputs cover required Landofile fields (name/services), then retry.",
+        }),
     ),
   );
   yield* rejectUnsupportedToolingFeatures(location.inputPath, merged);
+  const assessmentDiagnostics = yield* assessTranslateExpectations(fragments.expectations, merged);
   const layers = landofileLayerPaths(location.appRoot);
   return yield* Effect.forEach(outputs, (output) =>
     Effect.gen(function* () {
       const layer = layers.find((item) => item.layer === output.targetLayer);
       if (layer === undefined)
         return yield* Effect.fail(
-          new ConfigTranslateError({ message: `No declared target for ${output.targetLayer}.` }),
+          new ConfigTranslateError({
+            message: `No declared target for ${output.targetLayer}.`,
+            remediation: `Choose a known Landofile layer for this app; ${output.targetLayer} is not declared.`,
+          }),
         );
       if (yield* Effect.promise(() => Bun.file(layer.typescriptPath).exists()))
         return yield* Effect.fail(
@@ -71,7 +88,8 @@ export const encodeTranslateOutputs = Effect.fnUntraced(function* (
       const result = yield* encode({ context: merged, fragment: output.fragment });
       return {
         target: { layer: output.targetLayer, path: layer.yamlPath, content: result.text },
-        diagnostics: result.diagnostics,
+        diagnostics:
+          output === outputs[0] ? [...result.diagnostics, ...assessmentDiagnostics] : result.diagnostics,
       };
     }),
   );

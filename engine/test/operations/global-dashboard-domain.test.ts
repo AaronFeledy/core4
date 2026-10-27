@@ -13,6 +13,7 @@ import { publishGlobalRoutes } from "../../src/operations/global-routes.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as PlannerLayer from "../../src/services/planner.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 test("global Mailpit preserves its expression in dist and replans it after a domain change", async () => {
   // Given: the actual Mailpit contribution materialized by the global-app service.
@@ -25,6 +26,7 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
   const infrastructure = Layer.mergeAll(configLayer, BunFileSystem.layer);
   const registry = PluginRegistryLayer.layerWith({ user: false, app: false }, [serviceLando]);
   const layer = Layer.mergeAll(
+    makeTestStateStore().layer,
     GlobalAppLayer.layer.pipe(Layer.provide(infrastructure)),
     PlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, infrastructure))),
     BunFileSystem.layer,
@@ -50,7 +52,7 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
     );
     const initial = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(layer)));
     if (!initial.materialized) throw new Error("Global app was not materialized");
-    expect(initial.landofile.services?.[mail]?.routes).toEqual([
+    expect(initial.landofile.document.services?.[mail]?.routes).toEqual([
       { hostname: "mailpit.{{ proxy.defaultDomain }}", endpoint: 8025 },
     ]);
     expect(initial.plan.routes.map((route) => route.hostname)).toEqual(["mailpit.lndo.site"]);

@@ -1,5 +1,9 @@
+// Windows stdin exec uses the Podman CLI and never enters the shared exec path
+// in container-runtime/src/podman/exec.ts, so it does not receive umask
+// compensation. Read-only internal probes that POST /exec directly (agent-socket
+// readiness and log-file helpers) likewise bypass that path.
 import { serviceContainerName } from "@lando/container-runtime/plan";
-import { redactDetails } from "@lando/container-runtime/redact";
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { Effect, Stream } from "effect";
 
 import { ServiceExecError } from "@lando/sdk/errors";
@@ -7,6 +11,8 @@ import type { AppPlan } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecResult, ExecTarget } from "@lando/sdk/services";
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
+
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 type Runner = Context.Service.Shape<typeof ProcessRunner>;
 
@@ -52,7 +58,8 @@ export const windowsStdinExec = (
             operation: "exec",
             service: target.service,
             message: "Managed Windows Podman CLI could not execute the command.",
-            details: redactDetails({ cause }),
+            details: redactDetails({ cause }, hostSecretsRedactor()),
+            remediation: `Confirm service ${target.service} is running and the managed Windows Podman CLI can exec into it, then retry.`,
           }),
       ),
     );
@@ -80,7 +87,8 @@ export const windowsStdinExecStream = (
             operation: "exec",
             service: target.service,
             message: "Managed Windows Podman CLI could not stream the command.",
-            details: redactDetails({ cause }),
+            details: redactDetails({ cause }, hostSecretsRedactor()),
+            remediation: `Confirm service ${target.service} is running and the managed Windows Podman CLI can stream exec into it, then retry.`,
           }),
       ),
     );

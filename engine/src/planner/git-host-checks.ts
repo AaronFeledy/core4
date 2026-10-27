@@ -1,7 +1,12 @@
 import { posix, win32 } from "node:path";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
-import { type MountPlan, type ServicePlan, parseContainerDestination } from "@lando/sdk/schema";
+import {
+  type MountPlan,
+  type ServicePlan,
+  parseContainerDestination,
+  serviceAppMount,
+} from "@lando/sdk/schema";
 import type { FileSystem, FileSystemError } from "@lando/sdk/services";
 import { type Context, Effect, Schema } from "effect";
 
@@ -75,10 +80,10 @@ export const worktreeGitMounts = (
   service: ServicePlan,
   directories: GitHostCheck["directories"],
 ): readonly MountPlan[] => {
-  const appMount = service.appMount;
+  const appMount = serviceAppMount(service);
   if (directories === null || appMount === undefined) return [];
   const gitTarget = parseContainerDestination(`${appMount.target}/.git`);
-  if (gitTarget.ok && service.storage.some((mount) => mount.target === gitTarget.value)) return [];
+  if (gitTarget.ok && service.mounts.some((mount) => mount.target === gitTarget.value)) return [];
   const { gitDir, commonDir, containerGitDir, containerCommonDir } = directories;
   const pairs: ReadonlyArray<readonly [source: string, target: string]> =
     containerGitDir === containerCommonDir || containerGitDir.startsWith(`${containerCommonDir}/`)
@@ -91,14 +96,11 @@ export const worktreeGitMounts = (
     const target = parseContainerDestination(destination);
     if (!target.ok) return [];
     // Authored mounts and storage at the destination always win over derived Git support.
-    if (
-      service.mounts.some((mount) => mount.target === target.value) ||
-      service.storage.some((mount) => mount.target === target.value)
-    )
-      return [];
+    if (service.mounts.some((mount) => mount.target === target.value)) return [];
     return [
       {
         type: "bind",
+        origin: "derived",
         source,
         target: target.value,
         readOnly: appMount.readOnly,

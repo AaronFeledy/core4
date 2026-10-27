@@ -18,8 +18,9 @@ import type {
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
 import { fingerprintInspectPublishPorts } from "../plan.ts";
-import { redactDetails, withApiReason } from "../redact.ts";
+import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { inspectBindSources, inspectContainerLabels, inspectNetworkNames } from "./bring-up-recreate.ts";
+import { mountObservationFromInspect } from "./inspect-mounts.ts";
 
 interface ContainerInspect {
   readonly Id?: string;
@@ -161,6 +162,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       status: "stopped",
       state: "stopped",
       publications: { status: "missing" },
+      mounts: { status: "missing" },
     };
   }
   if (response.status < 200 || response.status >= 300) {
@@ -168,10 +170,14 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       new ProviderUnavailableError({
         providerId: ctx.providerId,
         operation: "inspect",
-        message: withApiReason(`provider-${ctx.providerId} inspect failed with HTTP ${response.status}.`, {
-          body: response.body,
-        }),
-        details: redactDetails({ service: service.name, body: response.body }),
+        message: withApiReason(
+          `provider-${ctx.providerId} inspect failed with HTTP ${response.status}.`,
+          {
+            body: response.body,
+          },
+          redactorFor(ctx),
+        ),
+        details: redactDetails({ service: service.name, body: response.body }, redactorFor(ctx)),
         remediation: ctx.remediation,
       }),
     );
@@ -203,6 +209,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
       ? { imageIdentity: decoded.Image }
       : {}),
     publications: publicationObservationFromInspect(decoded),
+    mounts: mountObservationFromInspect(decoded),
     ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
     publishFingerprint: fingerprintInspectPublishPorts(decoded),
     labels: inspectContainerLabels(decoded),

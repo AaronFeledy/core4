@@ -5,7 +5,7 @@ import { TOOLBOX_IMAGE } from "./image.ts";
 
 export const TOOLBOX_RECIPE_VERSION = "0.1.0";
 export const TOOLBOX_CONTENT_DIGEST =
-  "sha256:6540da2fb72dcb90282aafb0308b43bdb601758a1a722b6549c138bc2dbfed92";
+  "sha256:4b5e0f9d25dcd214e0bbe5ade44833400aee0e7afade5d633fa4a6a333afa4dd";
 export const toolboxProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-toolbox",
@@ -31,7 +31,6 @@ export const toolboxSnapshot: RecipeSnapshot = {
               ["primary", lit(true)],
               ["image", lit(TOOLBOX_IMAGE)],
               ["command", lit("sleep infinity")],
-              ["home", lit(false)],
             ]),
           ],
         ]),

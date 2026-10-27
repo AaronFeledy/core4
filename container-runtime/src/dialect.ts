@@ -104,6 +104,48 @@ const objectString = (value: unknown, key: "error" | "message"): string | undefi
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
 };
 
+const registryDigest = (value: unknown): string | undefined =>
+  typeof value === "string" && /^[a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+$/.test(value) ? value : undefined;
+
+const normalizeImageRepo = (repo: string): string => {
+  const slash = repo.indexOf("/");
+  if (slash === -1) return `docker.io/library/${repo}`;
+  const first = repo.slice(0, slash);
+  if (first === "docker.io" || first === "index.docker.io") {
+    const name = repo.slice(slash + 1);
+    return `docker.io/${name.includes("/") ? name : `library/${name}`}`;
+  }
+  if (first.includes(".") || first.includes(":") || first === "localhost") return repo;
+  return `docker.io/${repo}`;
+};
+
+const reposMatch = (requested: string, candidate: string): boolean =>
+  normalizeImageRepo(requested) === normalizeImageRepo(candidate);
+
+const digestForRequestedRepo = (entries: readonly unknown[], reference: string): string | undefined => {
+  const requested = parseImageReference(reference).fromImage;
+  const digests = entries.flatMap((entry) => {
+    if (typeof entry !== "string") return [];
+    const match = /^([^@\s]+)@([a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+)$/.exec(entry);
+    if (match?.[1] === undefined || match[2] === undefined) return [];
+    const candidate = parseImageReference(match[1]).fromImage;
+    return reposMatch(requested, candidate) ? [match[2]] : [];
+  });
+  const pinned = reference.includes("@") ? reference.slice(reference.lastIndexOf("@") + 1) : undefined;
+  return pinned !== undefined && digests.includes(pinned) ? pinned : digests[0];
+};
+
+/** Registry digest for the requested repo. Local image ids are not registry digests. */
+export const decodeImageInspectDigest = (json: unknown, reference: string): string | undefined => {
+  if (typeof json !== "object" || json === null) return undefined;
+  if ("RepoDigests" in json && Array.isArray(json.RepoDigests)) {
+    const fromRepo = digestForRequestedRepo(json.RepoDigests, reference);
+    if (fromRepo !== undefined) return fromRepo;
+    if (json.RepoDigests.length > 0 && "Digest" in json) return registryDigest(json.Digest);
+  }
+  return undefined;
+};
+
 export const dockerWaitDialect: WaitDialect = {
   request: (containerName, signal) => ({
     method: "POST",
@@ -138,18 +180,6 @@ export const dockerLifecycleDialect: LifecycleDialect = {
   sharedNetworkAttachment: "connect-after-create",
 };
 
-const decodeDigest = (json: unknown, reference: string): string | undefined => {
-  if (typeof json !== "object" || json === null || !("RepoDigests" in json)) return undefined;
-  if (!Array.isArray(json.RepoDigests)) return undefined;
-  const digests = json.RepoDigests.flatMap((entry: unknown) => {
-    if (typeof entry !== "string") return [];
-    const match = /^[^@\s]+@([a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+)$/.exec(entry);
-    return match?.[1] === undefined ? [] : [match[1]];
-  });
-  const requested = reference.includes("@") ? reference.slice(reference.lastIndexOf("@") + 1) : undefined;
-  return requested !== undefined && digests.includes(requested) ? requested : digests[0];
-};
-
 export const dockerPullDialect: PullDialect = {
   request: (reference, options) => {
     const parsed = parseImageReference(reference);
@@ -172,7 +202,7 @@ export const dockerPullDialect: PullDialect = {
       method: "GET",
       path: `/images/${encodeURIComponent(reference)}/json`,
     }),
-    decodeDigest,
+    decodeDigest: decodeImageInspectDigest,
   },
 };
 
@@ -190,6 +220,6 @@ export const libpodPullDialect: PullDialect = {
       method: "GET",
       path: `/libpod/images/${encodeURIComponent(reference)}/json`,
     }),
-    decodeDigest,
+    decodeDigest: decodeImageInspectDigest,
   },
 };

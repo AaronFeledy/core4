@@ -34,12 +34,16 @@ import { sourcePlan } from "./support/source-plan.ts";
 const SECRET = "s3cret-pass";
 
 const writeCompressed = async (path: string, payload: string, compression: "gzip" | "zstd") => {
-  const bytes = Buffer.from(
-    await new Response(
-      new Blob([payload]).stream().pipeThrough(new CompressionStream(compression)),
-    ).arrayBuffer(),
-  );
-  writeFileSync(path, bytes);
+  switch (compression) {
+    case "gzip":
+      writeFileSync(path, Bun.gzipSync(payload));
+      return;
+    case "zstd":
+      writeFileSync(path, Bun.zstdCompressSync(payload));
+      return;
+    default:
+      return compression satisfies never;
+  }
 };
 
 afterEach(cleanupSqlTestDeps);
@@ -605,7 +609,7 @@ describe("executeDbCommand", () => {
       const command = transfer.from.command;
       expect(Array.isArray(command)).toBe(true);
       if (!Array.isArray(command)) throw new Error("expected argv command");
-      expect(command[0]).toBe("sh");
+      expect(command[0]).toBe("bash");
       expect(command.join(" ")).toContain("mongodump --archive");
       expect(command.join(" ")).not.toContain("| gzip");
       expect(command.join(" ")).not.toContain("zstd");
@@ -630,7 +634,7 @@ describe("executeDbCommand", () => {
         .map(({ command }) => command)
         .slice(-2),
     ).toEqual([
-      ["mkdir", "-p", "/var/opt/mssql/backup"],
+      expect.arrayContaining(["/var/opt/mssql/backup", "/var/opt/mssql/backup/sql-app.bak"]),
       expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
     ]);
     const transfer = harness.transfers()[0];
@@ -659,7 +663,7 @@ describe("executeDbCommand", () => {
         .map(({ command }) => command)
         .slice(-2),
     ).toEqual([
-      ["mkdir", "-p", "/var/opt/mssql/backup"],
+      expect.arrayContaining(["/var/opt/mssql/backup", "/var/opt/mssql/backup/sql-app.bak"]),
       expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
     ]);
     expect(exit.value.sizeBytes).toBe(12);
@@ -903,14 +907,14 @@ describe("executeDbCommand", () => {
     expect(transfer?.expectedDigest).toMatch(/^[a-f0-9]{64}$/u);
   });
 
-  test("treats a failed count probe as non-empty and requires confirmation", async () => {
+  test("reports a failed count before requesting import confirmation", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countFails: true });
 
     const exit = await run(harness.deps, { action: "import", file: "dump.sql", yes: false });
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlConfirmRequiredError);
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlCommandFailedError);
     expect(harness.transfers()).toEqual([]);
   });
 
@@ -952,9 +956,9 @@ describe("executeDbCommand", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
     const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
-    expect(error).toBeInstanceOf(SqlRecoveryOperationError);
-    if (error instanceof SqlRecoveryOperationError) {
-      expect(error.cause).toBeInstanceOf(SqlCommandFailedError);
+    expect(error).toBeInstanceOf(SqlCommandFailedError);
+    if (error instanceof SqlCommandFailedError) {
+      expect(error.exitCode).toBe(1);
       expect(error.recoverySnapshotId).toMatch(/^snap-/u);
     }
   });

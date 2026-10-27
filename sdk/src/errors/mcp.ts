@@ -10,7 +10,7 @@ export class McpToolNotAllowedError extends Schema.TaggedError<McpToolNotAllowed
     effectiveAllowlist: Schema.Array(Schema.String),
     /** Where the effective set came from (defaults + config + flags). */
     source: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -20,13 +20,13 @@ export class McpToolInputError extends Schema.TaggedError<McpToolInputError>()("
   toolId: Schema.String,
   /** Dot-joined path to the offending flag/arg (e.g. "flags.format"). */
   path: Schema.optional(Schema.String),
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 /** A stdio framing/protocol failure on the MCP transport. */
 export class McpTransportError extends Schema.TaggedError<McpTransportError>()("McpTransportError", {
   message: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -36,6 +36,6 @@ export class McpAllowlistConflictError extends Schema.TaggedError<McpAllowlistCo
     message: Schema.String,
     /** Canonical command id that illegally self-allowed. */
     commandId: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

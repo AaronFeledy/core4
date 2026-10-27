@@ -72,9 +72,10 @@ describe("mysql ServiceType", () => {
       MYSQL_DATABASE: "myapp",
     });
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-db-mysql-data");
-    expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-db-mysql-data");
+    expect(String(volumes[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
     ]);
@@ -168,7 +169,9 @@ describe("mysql ServiceType", () => {
       command: [
         "sh",
         "-c",
-        'mysqladmin ping -h 127.0.0.1 -P 3306 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent',
+        'MYSQL_PWD="$MYSQL_PASSWORD" exec mysqladmin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        "mysql-healthcheck",
+        "3306",
       ],
       intervalSeconds: 10,
       timeoutSeconds: 5,
@@ -184,10 +187,12 @@ describe("mysql ServiceType", () => {
       config: { server: "config/my.cnf" },
     });
 
-    expect(plan.mounts).toEqual([
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
+        relativeTo: "app",
         target: MYSQL_CONFIG_TARGET,
         readOnly: true,
         realization: "passthrough",
@@ -201,7 +206,7 @@ describe("mysql ServiceType", () => {
   test("omits the server config mount when config.server is absent", async () => {
     const plan = await planMysqlService({ type: "mysql" });
 
-    expect(plan.mounts).toEqual([]);
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([]);
     expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
   });

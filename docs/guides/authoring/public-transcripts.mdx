@@ -9,11 +9,12 @@ tags: [beta, docs, authoring, transcripts]
 # Public transcripts
 
 Public transcripts contain the reader-visible parts of a rendered scenario,
-without hidden setup or internal execution details. Scenario generation writes
-one per scenario and variant at
+without hidden setup or internal execution details. Codegen generates one per
+scenario and variant from the compiled guide, before anything runs, at
 `dist/transcripts/public/guides/<guideId>/<scenarioId>[.<variant>].json`.
-The generator and schema tests check these artifacts; their presence alone does
-not prove that a scenario has run against a real provider.
+The generator and schema tests check these artifacts. A public transcript is
+a static inventory of what a reader should see; its presence proves the guide
+compiled, not that a scenario ran.
 
 ## What a public transcript excludes
 
@@ -24,4 +25,34 @@ stays out of public output, along with raw scenario temporary directories and
 internal event traces.
 
 The internal transcript, at `dist/transcripts/guides/<guideId>/<scenarioId>.json`,
-keeps full execution data for tests and is separate from the public artifact.
+is different in kind: a scenario writes it when it executes, and it keeps the
+captured stdout, stderr, exit status, and events for tests. Execution
+evidence comes from that internal transcript or a passing test, including
+e2e runs on a real provider, never from the public inventory.
+
+## What readers see in a frame
+
+A public frame shows the command as a reader should type it. When a
+`<Run>`, `<Verify>`, or `<Inspect>` prop interpolates a `{{name}}` binding
+(`{{ name }}` with spaces around the identifier is the same reference), the
+frame substitutes the variable's `display` value, falling back to
+`value` when no display is set; execution always uses `value`. Keep both
+as short literals such as an app name or a path. Only `Run.command`,
+`Verify.command` and `Verify.file`, and `Inspect.file` and `Inspect.json`
+interpolate; library `code`, `displayCode`, `<Inline>` code, and matcher
+values are copied as written.
+
+A visible component cannot reference a binding declared only in a
+`<Hidden>` block, because the frame would show a value the reader never saw
+defined. Declare the variable in a visible step, or move the reference into
+the hidden step.
+
+The same resolved scenario drives execution, the public transcript, and the
+recipe scaffold README. The public transcript and the scaffold README share
+one public projection, so a `display` value reads the same in both; execution
+takes the `value` side of the same binding.
+Skipped and test-only scenarios produce no public transcript. A scaffold
+README exists for every declared variant cell even when execution is
+skipped, so a command printed there is not evidence that it ran. For the
+authoring workflow and diagnostics, see
+[author an executable guide scenario](../../contributing/guide-authoring.md).

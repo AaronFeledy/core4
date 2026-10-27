@@ -2,7 +2,7 @@ import type { Effect } from "effect";
 
 import type { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
-import type { RuntimeProvider } from "@lando/sdk/services";
+import type { EnvironmentValueResolver, RuntimeProvider } from "@lando/sdk/services";
 
 import type { SqlExec, SqlMover } from "./actions.ts";
 import type { SqlPublisher } from "./progress.ts";
@@ -27,6 +27,7 @@ export type DbCommandInput = {
   readonly snapshotId?: string;
   readonly label?: string;
   readonly compression?: "gzip" | "zstd" | "none";
+  readonly compressionLevel?: number;
   readonly fromApp?: string;
   readonly fromPath?: string;
   readonly fromService?: string;
@@ -36,10 +37,15 @@ export type DbCommandInput = {
 };
 
 export type SqlCommandDeps = SqlMover &
-  SqlRecoveryDeps & {
+  Omit<SqlRecoveryDeps, "exec"> & {
     readonly landofile: SqlLandofile;
     readonly plan: SqlPlan;
-    readonly exec: SqlExec;
+    readonly exec: (
+      service: string,
+      command: ReadonlyArray<string>,
+      env?: Readonly<Record<string, string>>,
+    ) => ReturnType<SqlExec>;
+    readonly environmentResolver: EnvironmentValueResolver["Service"];
     readonly providerId: string;
     readonly appliedPlans?: RuntimeProvider["Service"]["appliedPlans"];
     readonly inspectSource: RuntimeProvider["Service"]["inspect"];

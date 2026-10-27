@@ -10,6 +10,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  RedactionService,
+  type RedactionServiceShape,
+  createStandaloneRedactor,
+} from "@lando/redaction/service";
 import { Effect, Layer, Option, Schema } from "effect";
 
 import { Downloader, FileSyncEngine, type FileSyncError, PathsService } from "@lando/sdk/services";
@@ -62,13 +67,14 @@ export class ShellProfileIntegrationError extends Schema.TaggedError<ShellProfil
   {
     message: Schema.String,
     stderr: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
 export class SetupStepFailedError extends Schema.TaggedError<SetupStepFailedError>()("SetupStepFailedError", {
   message: Schema.String,
   stepId: Schema.String,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export const setupDeferredFileSyncPath = (userDataRoot: string): string =>
@@ -99,31 +105,63 @@ export interface AccumulatingSetupReadinessRecorder extends SetupReadinessRecord
 export const makeSetupReadinessRecorder = (
   userDataRoot: string | undefined,
   selectedProviderId: string,
+  redaction?: RedactionServiceShape,
 ): AccumulatingSetupReadinessRecorder => {
+  const sourceEnv = { ...process.env };
   const readinessSteps: SetupReadinessStep[] = [];
   let runtimeServiceReadiness: SetupReadinessRuntimeService | null | undefined;
-  const record = (step: SetupReadinessStep): Effect.Effect<void, never> => {
+  const record = Effect.fnUntraced(function* (step: SetupReadinessStep): Effect.fn.Return<void> {
+    const inherited = yield* Effect.serviceOption(RedactionService);
+    const service = redaction ?? Option.getOrUndefined(inherited);
+    const redactor =
+      service === undefined
+        ? createStandaloneRedactor("secrets", { sourceEnv })
+        : yield* service.forProfile("secrets", { sourceEnv });
+    const safeStep = {
+      ...step,
+      evidence: redactor.redactString(step.evidence),
+      ...(step.remediation === undefined ? {} : { remediation: redactor.redactString(step.remediation) }),
+    };
     const existingIndex = readinessSteps.findIndex((candidate) => candidate.id === step.id);
-    if (existingIndex === -1) readinessSteps.push(step);
-    else readinessSteps[existingIndex] = step;
-    return writeSetupReadiness(userDataRoot, selectedProviderId, readinessSteps, runtimeServiceReadiness);
-  };
-  const recordFailure = (id: string, cause: unknown): Effect.Effect<void, never> =>
-    record({
+    if (existingIndex === -1) readinessSteps.push(safeStep);
+    else readinessSteps[existingIndex] = safeStep;
+    const write = writeSetupReadiness(
+      userDataRoot,
+      selectedProviderId,
+      readinessSteps,
+      runtimeServiceReadiness,
+    );
+    yield* service === undefined ? write : write.pipe(Effect.provideService(RedactionService, service));
+  });
+  const recordFailure = Effect.fnUntraced(function* (id: string, cause: unknown) {
+    const inherited = yield* Effect.serviceOption(RedactionService);
+    const service = redaction ?? Option.getOrUndefined(inherited);
+    const redactor =
+      service === undefined
+        ? createStandaloneRedactor("secrets", { sourceEnv })
+        : yield* service.forProfile("secrets", { sourceEnv });
+    yield* record({
       id,
       status: "failed",
-      evidence: setupFailureEvidence(id, cause),
-      remediation: setupFailureRemediation(id, cause),
+      evidence: setupFailureEvidence(id, cause, redactor),
+      remediation: setupFailureRemediation(id, cause, redactor),
     });
-  const recordUnavailable = (id: string, serviceName: string): Effect.Effect<void, never> => {
+  });
+  const recordUnavailable = Effect.fnUntraced(function* (id: string, serviceName: string) {
+    const inherited = yield* Effect.serviceOption(RedactionService);
+    const service = redaction ?? Option.getOrUndefined(inherited);
+    const redactor =
+      service === undefined
+        ? createStandaloneRedactor("secrets", { sourceEnv })
+        : yield* service.forProfile("secrets", { sourceEnv });
     const message = `${serviceName} setup service is not available.`;
-    return record({
+    yield* record({
       id,
       status: "unavailable",
       evidence: message,
-      remediation: setupFailureRemediation(id, message),
+      remediation: setupFailureRemediation(id, message, redactor),
     });
-  };
+  });
   return {
     record,
     recordFailure,

@@ -186,7 +186,7 @@ describe("LandofileService.discover renders templates before parse", () => {
         process.chdir(dir);
         const exit = await discoverExit();
         expect(Exit.isSuccess(exit)).toBe(true);
-        if (Exit.isSuccess(exit)) expect(exit.value.name).toBe("rendered-app");
+        if (Exit.isSuccess(exit)) expect(exit.value.document.name).toBe("rendered-app");
       });
     } finally {
       Reflect.deleteProperty(process.env, "LANDO_TEMPLATE_TEST_NAME");

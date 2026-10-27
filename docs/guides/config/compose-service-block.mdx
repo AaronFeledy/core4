@@ -17,11 +17,9 @@ services:
   cache:
     type: compose
     image: valkey/valkey:8-alpine
-    home: false
   web:
     type: compose
     image: traefik/whoami:v1.10
-    home: false
     ports:
       - target: 80
         published: "8080"
@@ -35,22 +33,23 @@ services:
 
 From that directory, run `lando start`, then `lando info` to inspect the services and their connection details.
 
-`configs:` grants are realized as read-only binds. Declare the file at the top level, grant it onto a service with `source` / `target` / `mode`, and the bundled providers mount it. Use this for a file such as a custom `php.ini`.
+`configs:` grants are realized as read-only binds. Declare the file at the top level, grant it onto a service with `source` / `target` / `mode`, and the bundled providers mount it. Use this for a file such as a custom `php.ini`. With `mode`, Lando mounts a private copy of the file with those permissions, and editing the file gives the container a new copy on the next `lando start`. A grant takes a path like any other mount: two grants, or a grant and a `volumes:` entry, at the same container path fail `lando app:config:lint`, and a `mounts:` entry at that path wins. `uid` and `gid` are not supported, because Lando cannot change the owner of a host file it mounts; use `mode` so the service user can read it.
 
 A string `command:` or `entrypoint:` on a `type: compose` service splits into argv the way Compose does: whitespace separates, quotes group, no shell runs. Neither a string nor a list starts a shell on its own; put `sh -c '<script>'` in the argv yourself when you need pipes, `&&`, or variable expansion. See [Add a Compose service](../../services/compose-passthrough/) for the details.
+
+A service-level `networks:` key works too, with one difference from Compose: it adds networks and never takes the service off the app network. Declare each network under top-level `networks:` first. If you'd rather not paste at all, top-level `include:` pulls a whole compose file in as services. See [Reach another project's services](./networks.mdx) for both, plus external networks, app-owned networks, and the names you get on them.
 
 ## Keep Lando features on a custom image
 
 Use `type: lando` instead when you want Lando's environment and app mount. Its
 directory scaffold works on shell-less images, including images built from
-`scratch`. Set `home: false` unless you declare the custom image's home path.
+`scratch`. Lando plans no home store for a custom image unless you declare its home path with `home.path`.
 
 ```yaml
 services:
   web:
     type: lando
     image: traefik/whoami:v1.10
-    home: false
     ports:
       - "8080:80"
 ```

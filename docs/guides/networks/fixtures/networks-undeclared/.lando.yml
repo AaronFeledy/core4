@@ -1,0 +1,6 @@
+name: networks-undeclared
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    networks: [backend]

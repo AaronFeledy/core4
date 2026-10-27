@@ -1,0 +1,15 @@
+services:
+  mailpit:
+    image: axllent/mailpit:v1.21
+    env_file:
+      - .env.mail
+    volumes:
+      - ./data:/data
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata: {}

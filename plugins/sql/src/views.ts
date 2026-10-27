@@ -1,4 +1,5 @@
-import { AbsolutePath, planAppIdentity } from "@lando/sdk/schema";
+import { AbsolutePath, DatabaseConnection, Environment, planAppIdentity } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { Predicate } from "effect";
 import type { SqlCreds } from "./creds.ts";
 
@@ -16,7 +17,8 @@ export type SqlLandofile = {
 export type SqlPlanService = {
   readonly name: string;
   readonly type: string;
-  readonly environment: Readonly<Record<string, string>>;
+  readonly environment: Environment;
+  readonly connection?: DatabaseConnection;
   readonly storage: ReadonlyArray<{ readonly store: string; readonly target?: string }>;
 };
 
@@ -107,23 +109,23 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
   const mapped: Record<string, SqlPlanService> = {};
   for (const [name, service] of Object.entries(services)) {
     if (!objectOrArray(service)) continue;
-    const environment: Record<string, string> = {};
-    if (objectOrArray(service.environment)) {
-      for (const [key, item] of Object.entries(service.environment)) {
-        if (typeof item === "string") environment[key] = item;
-      }
-    }
-    const storage = Array.isArray(service.storage)
-      ? service.storage.flatMap((entry) => {
-          if (!objectOrArray(entry) || typeof entry.store !== "string") return [];
-          const target = asString(entry.target);
-          return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
-        })
-      : [];
+    const environment = Schema.decodeUnknownSync(Environment)(
+      Object.fromEntries(Object.entries(objectOrArray(service.environment) ? service.environment : {})),
+    );
+    // Volume entries live on ServicePlan.mounts; keep a narrow storage projection for SQL.
+    const mounts = Array.isArray(service.mounts) ? service.mounts : [];
+    const storage = mounts.flatMap((entry) => {
+      if (!objectOrArray(entry) || entry.type !== "volume" || typeof entry.store !== "string") return [];
+      const target = asString(entry.target);
+      return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
+    });
     mapped[name] = {
       name: asString(service.name) ?? name,
       type: asString(service.type) ?? name,
       environment,
+      ...(service.connection === undefined
+        ? {}
+        : { connection: Schema.decodeUnknownSync(DatabaseConnection)(service.connection) }),
       storage,
     };
   }

@@ -257,6 +257,12 @@ lando exec appserver -- php -v
   </Scenario>
 </Guide>
 
+## Run tests
+
+Install `drupal/core-dev` to run Unit tests inside `appserver`. Add the database and web-server
+settings for Kernel and Functional tests, then a browser service for FunctionalJavascript tests.
+See [Run Drupal tests with PHPUnit and headless Chrome](./drupal-testing.mdx).
+
 ## Compile theme assets
 
 A contrib or custom theme with a Node-based build can use a Node sidecar;
@@ -278,6 +284,7 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 - [Run the Drupal CMS recipe](../drupal-cms-workflow/)
 - [Change a Drupal stack after init](../drupal-stack-overrides/)
 - [Drupal multisite](../drupal-multisite/)
+- [Run Drupal tests with PHPUnit and headless Chrome](../drupal-testing/)
 - [Import and export app databases](../../tooling/db-import-export/)
 - [Debug PHP with Xdebug in PhpStorm](../../tooling/xdebug-phpstorm/)
 - [Add Mailpit](../../services/mailpit/)

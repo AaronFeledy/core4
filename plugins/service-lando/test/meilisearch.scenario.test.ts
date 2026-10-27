@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
+import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -8,7 +9,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -83,9 +84,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -111,15 +128,22 @@ const makeProvider = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
   };
   return { provider, calls };
 };
 
-const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
+const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
       Effect.provide(PluginRegistryLayer.layer),
     ),
@@ -127,13 +151,13 @@ const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
 
 const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => compileTestLandofile(options.landofile)),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -155,11 +179,12 @@ const makeToolingLayer = (options: {
   );
   return Layer.mergeAll(
     PrivateFileAccessService.layer,
+    toolingValueResolverLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
     LandoEventService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
     emptyConfigServiceLayer,
   );
 };
@@ -183,8 +208,9 @@ describe("meilisearch service type — scenario: index create + document post + 
     expect(search.endpoints).toEqual([
       { _tag: "internal", port: 7700, protocol: "http", name: "search", primary: true },
     ]);
-    expect(search.storage).toHaveLength(1);
-    expect(search.storage[0]?.store).toBe("myapp-meilisearch-data");
+    const volumes = search.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-meilisearch-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual(["sh", "-c", "curl -sf http://localhost:7700/health"]);
     expect(search.environment.LANDO_SERVICE_TYPE).toBe("meilisearch");
@@ -205,7 +231,7 @@ describe("meilisearch service type — scenario: index create + document post + 
           cmd: [
             "sh",
             "-c",
-            'op="$1"; shift; name="$1"; shift; curl -sf -X POST -H "Authorization: Bearer ${MEILI_MASTER_KEY}" -H "Content-Type: application/json" --data "{\\"uid\\":\\"${name}\\"}" "http://localhost:7700/indexes"',
+            'op="$1"; shift; name="$1"; shift; curl -sf -X POST -H "Authorization: Bearer $${MEILI_MASTER_KEY}" -H "Content-Type: application/json" --data "{\\"uid\\":\\"$${name}\\"}" "http://localhost:7700/indexes"',
             "meili",
           ],
         },
@@ -245,7 +271,7 @@ describe("meilisearch service type — scenario: index create + document post + 
           cmd: [
             "sh",
             "-c",
-            'op="$1"; shift; name="$1"; shift; body="$1"; shift; curl -sf -X POST -H "Authorization: Bearer ${MEILI_MASTER_KEY}" -H "Content-Type: application/json" --data "${body}" "http://localhost:7700/indexes/${name}/documents"',
+            'op="$1"; shift; name="$1"; shift; body="$1"; shift; curl -sf -X POST -H "Authorization: Bearer $${MEILI_MASTER_KEY}" -H "Content-Type: application/json" --data "$${body}" "http://localhost:7700/indexes/$${name}/documents"',
             "meili",
           ],
         },
@@ -282,7 +308,7 @@ describe("meilisearch service type — scenario: index create + document post + 
           cmd: [
             "sh",
             "-c",
-            'op="$1"; shift; name="$1"; shift; q="$1"; shift; curl -sf -X POST -H "Authorization: Bearer ${MEILI_MASTER_KEY}" -H "Content-Type: application/json" --data "{\\"q\\":\\"${q}\\"}" "http://localhost:7700/indexes/${name}/search"',
+            'op="$1"; shift; name="$1"; shift; q="$1"; shift; curl -sf -X POST -H "Authorization: Bearer $${MEILI_MASTER_KEY}" -H "Content-Type: application/json" --data "{\\"q\\":\\"$${q}\\"}" "http://localhost:7700/indexes/$${name}/search"',
             "meili",
           ],
         },

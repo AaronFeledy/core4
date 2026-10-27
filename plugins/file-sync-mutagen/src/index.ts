@@ -208,7 +208,8 @@ const provisionError = (cause: ToolError): FileSyncStartError =>
   new FileSyncStartError({
     engineId: ENGINE_ID,
     message: `Failed to provision Mutagen ${MUTAGEN_TOOL_VERSION}.`,
-    remediation: "Retry `lando setup`; if the problem persists, inspect the Mutagen tool manifest.",
+    remediation:
+      "Re-run `lando setup` after confirming the Mutagen tool manifest entry for this host is present and the download cache is writable.",
     cause,
   });
 
@@ -264,7 +265,8 @@ export const layerForContext = (ctx: LandoPluginContext) =>
             new FileSyncStartError({
               engineId: ENGINE_ID,
               message: "Could not verify Lando-managed Docker CLI for Mutagen.",
-              remediation: "Run lando setup and retry file sync.",
+              remediation:
+                "Run `lando setup` so the Lando-managed Docker CLI binary is installed under the bin directory, then retry file sync.",
             }),
         }).pipe(
           Effect.flatMap((status) =>
@@ -274,7 +276,8 @@ export const layerForContext = (ctx: LandoPluginContext) =>
                   new FileSyncStartError({
                     engineId: ENGINE_ID,
                     message: "Lando-managed Docker CLI for Mutagen is missing or has changed.",
-                    remediation: "Run lando setup and retry file sync.",
+                    remediation:
+                      "Run `lando setup` so the Lando-managed Docker CLI binary is installed under the bin directory, then retry file sync.",
                   }),
                 ),
           ),

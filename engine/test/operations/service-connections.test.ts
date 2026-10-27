@@ -11,7 +11,6 @@ const service: ServicePlan = {
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -27,6 +26,7 @@ const service: ServicePlan = {
 test("retains stopped fixed and pending configured connections without active URLs", () => {
   // Given / When
   const connections = projectServiceConnections({
+    plan: { slug: "test" },
     service,
     state: "stopped",
     publications: { status: "missing" },
@@ -62,7 +62,13 @@ test("preserves aliases while matching multiple actual bindings by IP and pinned
       },
     },
   });
-  const rows = projectServiceConnections({ service: planned, state: "running", routes: [], publications });
+  const rows = projectServiceConnections({
+    plan: { slug: "test" },
+    service: planned,
+    state: "running",
+    routes: [],
+    publications,
+  });
   expect(rows.filter((row) => row.scope === "app")).toHaveLength(1);
   expect(rows.slice(0, 3).map((row) => row.endpoint)).toEqual(
     Array.from({ length: 3 }, () => ({ port: 3000, transport: "tcp", names: ["a", "z"], primary: true })),
@@ -76,6 +82,7 @@ test("preserves aliases while matching multiple actual bindings by IP and pinned
 
 test("retains unmatched fixed intent when an observed binding has another IP or host port", () => {
   const rows = projectServiceConnections({
+    plan: { slug: "test" },
     service: { ...service, endpoints: [service.endpoints[1]].filter((endpoint) => endpoint !== undefined) },
     state: "running",
     routes: [],
@@ -97,6 +104,7 @@ test.each([
   [{ NetworkSettings: { Ports: { "3000/tcp": [{ HostIp: "127.0.0.1", HostPort: "broken" }] } } }, "unknown"],
 ] as const)("keeps missing and malformed inspect evidence distinct from known empty", (inspect, state) => {
   const rows = projectServiceConnections({
+    plan: { slug: "test" },
     service,
     state: "running",
     routes: [],
@@ -121,6 +129,7 @@ test("does not promote opaque app_protocol or conflicting protocol groups into H
     ],
   };
   const rows = projectServiceConnections({
+    plan: { slug: "test" },
     service: planned,
     state: "running",
     routes: [],
@@ -138,6 +147,36 @@ const route = {
   pathPrefix: "/api",
   backend: { service: service.name, protocol: "http", port: 3000, host: "web.internal" },
 } as const;
+
+test("uses canonical qualified listeners on aliasless shared-only topology", () => {
+  const connections = projectServiceConnections({
+    plan: {
+      slug: "demo",
+      networking: { perAppBridge: null, sharedNetworkMembership: { name: "shared", aliases: {} } },
+    },
+    service,
+    state: "ready",
+    publications: { status: "unknown" },
+    routes: [],
+  });
+  expect(connections.find((connection) => connection.scope === "app")).toMatchObject({
+    host: "web.demo.internal",
+    port: 3000,
+    url: "http://web.demo.internal:3000",
+  });
+});
+
+test("does not advertise an app listener when no managed network realizes it", () => {
+  const connections = projectServiceConnections({
+    plan: { slug: "demo", networking: { perAppBridge: null } },
+    service,
+    state: "ready",
+    publications: { status: "unknown" },
+    routes: [],
+  });
+  expect(connections.filter((connection) => connection.scope === "app")).toEqual([]);
+  expect(connections.filter((connection) => connection.scope === "host")).toHaveLength(2);
+});
 const authorities = [
   { hostname: route.hostname, scheme: "http", port: 80 },
   { hostname: route.hostname, scheme: "https", port: 443 },
@@ -145,6 +184,7 @@ const authorities = [
 
 test("retains both external schemes, default ports and path prefixes with live route evidence", () => {
   const rows = projectServiceConnections({
+    plan: { slug: "test" },
     service,
     state: "ready",
     publications: { status: "unknown" },
@@ -170,6 +210,7 @@ test.each(["host", "path", "scheme"] as const)(
       ...(part === "scheme" ? { scheme: "https" as const } : {}),
     };
     const rows = projectServiceConnections({
+      plan: { slug: "test" },
       service,
       state: "running",
       publications: { status: "unknown" },
@@ -193,6 +234,7 @@ test.each(["starting", "restarting", "unknown"] as const)(
   "keeps %s host activity unknown despite an assigned binding",
   (state) => {
     const rows = projectServiceConnections({
+      plan: { slug: "test" },
       service,
       state,
       routes: [],
@@ -209,6 +251,7 @@ test.each(["starting", "restarting", "unknown"] as const)(
 test("matches observed assignments and leaves unknown extra bindings generic", () => {
   // Given / When
   const connections = projectServiceConnections({
+    plan: { slug: "test" },
     service,
     state: "ready",
     routes: [],
@@ -233,6 +276,7 @@ test("matches observed assignments and leaves unknown extra bindings generic", (
 test.each(["unknown", "present"] as const)("keeps absent publications honest for %s evidence", (status) => {
   // Given / When
   const connections = projectServiceConnections({
+    plan: { slug: "test" },
     service,
     state: "running",
     routes: [],

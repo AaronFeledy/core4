@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
+import { PortNumber } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { executeDbCommand } from "../src/execute.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
@@ -10,17 +11,21 @@ for (const family of ["mysql", "mariadb", "postgres", "mongodb"] as const) {
   test(`${family} seed uses distinct source and target ports, including readiness probes`, async () => {
     const source = sourcePlan("/shop", `${family}:8.0`);
     const sourceServices = Object.fromEntries(
-      Object.entries(source.services).map(([name, service]) => [
-        name,
-        { ...service, environment: { ...service.environment, LANDO_DB_PORT: "43210" } },
-      ]),
+      Object.entries(source.services).map(([name, service]) => {
+        if (service.connection === undefined) return [name, service];
+        return [name, { ...service, connection: { ...service.connection, port: PortNumber.make(43210) } }];
+      }),
     );
     const harness = makeSqlTestDeps({
       type: `${family}:8.0`,
       password: "test-secret",
       countStdout: "0",
       ...(family === "mariadb" ? { observedVersion: "8.0-MariaDB" } : {}),
-      environment: { LANDO_DB_PORT: "43211" },
+      connection: {
+        family,
+        port: PortNumber.make(43211),
+        creds: { user: "lando", password: "test-secret", database: "sql-app" },
+      },
       appliedPlans: Effect.succeed([{ ...source, services: sourceServices }]),
     });
     const result = await Effect.runPromise(

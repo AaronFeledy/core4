@@ -8,35 +8,40 @@ import {
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
   LandofileParseError,
-  NotImplementedError,
+  LandofileValidationError,
 } from "@lando/sdk/errors";
 import {
-  type ExpressionNode,
-  type ExpressionTemplate,
+  containsReservedBinding,
   evaluateTemplateEither,
   expressionInterpolationsTouchOnlyScopes,
+  expressionScopeMembers,
   parseExpressionEither,
 } from "@lando/sdk/expressions";
+import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";
 
+import type { ParsedPendingSite } from "@lando/sdk/schema";
+import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
-import {
-  LandofileFileSession,
-  type LandofileLoadPolicy,
-  type LandofileLoadSource,
-} from "./load-expression-file.ts";
-import { escapeLoadProducedText } from "./load-expression-literals.ts";
+import { LandofileFileSession } from "./load-expression-file.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
-import { LOAD_DEFERRED_EXPRESSION_SCOPES, sourceHasUnescapedBracedForm } from "./recipe-expressions.ts";
-import { isServiceEnvironmentSecretReference } from "./secret-reference.ts";
+import {
+  type ResolveLandofileLoadExpressionsOptions,
+  callDepth,
+  containsContextPath,
+  containsLoad,
+  invalidImportRefPath,
+  keyValueEntryHasExpression,
+  keyValueEntryPath,
+  templateExpression,
+} from "./load-expression-shape.ts";
+import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
+import { eligibleBindingPath } from "./secret-reference.ts";
 
-export interface ResolveLandofileLoadExpressionsOptions {
-  readonly value: unknown;
-  readonly source: LandofileLoadSource;
-  readonly policy: LandofileLoadPolicy;
-}
+export type { ResolveLandofileLoadExpressionsOptions } from "./load-expression-shape.ts";
 
 export interface ResolvedLandofileLoadExpressions {
   readonly value: unknown;
+  readonly pendingSites: readonly ParsedPendingSite[];
   readonly dependencies: ReadonlyArray<LandofileReferencedFile>;
   readonly relaxedReads: ReadonlyArray<{ readonly authoredPath: string; readonly absolutePath: string }>;
 }
@@ -46,96 +51,7 @@ export type ResolveLandofileLoadExpressionError =
   | LandofileLoadLimitError
   | LandofileLoadOutsideRootError
   | LandofileParseError
-  | NotImplementedError;
-
-const callDepth = (node: ExpressionNode): number => {
-  switch (node.kind) {
-    case "Literal":
-    case "Path":
-      return 0;
-    case "ArrayLiteral":
-      return Math.max(0, ...node.elements.map(callDepth));
-    case "ObjectLiteral":
-      return Math.max(0, ...node.entries.map((entry) => callDepth(entry.value)));
-    case "Access":
-      return callDepth(node.target);
-    case "Conditional":
-      return Math.max(callDepth(node.test), callDepth(node.consequent), callDepth(node.alternate));
-    case "Call": {
-      const nested = Math.max(0, ...node.args.map(callDepth));
-      return node.callee === "load" || node.callee === "import" ? nested + 1 : nested;
-    }
-  }
-};
-
-const containsLoad = (node: ExpressionNode): boolean => {
-  switch (node.kind) {
-    case "Literal":
-    case "Path":
-      return false;
-    case "ArrayLiteral":
-      return node.elements.some(containsLoad);
-    case "ObjectLiteral":
-      return node.entries.some((entry) => containsLoad(entry.value));
-    case "Access":
-      return containsLoad(node.target);
-    case "Conditional":
-      return containsLoad(node.test) || containsLoad(node.consequent) || containsLoad(node.alternate);
-    case "Call":
-      return node.callee === "load" || node.callee === "import" || node.args.some(containsLoad);
-  }
-};
-
-const containsContextPath = (node: ExpressionNode): boolean => {
-  switch (node.kind) {
-    case "Literal":
-      return false;
-    case "Path":
-      return true;
-    case "ArrayLiteral":
-      return node.elements.some(containsContextPath);
-    case "ObjectLiteral":
-      return node.entries.some((entry) => containsContextPath(entry.value));
-    case "Access":
-      return (
-        containsContextPath(node.target) ||
-        node.segments.some((segment) => segment.type === "dynamic" && containsContextPath(segment.expr))
-      );
-    case "Conditional":
-      return (
-        containsContextPath(node.test) ||
-        containsContextPath(node.consequent) ||
-        containsContextPath(node.alternate)
-      );
-    case "Call":
-      return node.args.some(containsContextPath);
-  }
-};
-
-const templateExpression = (template: ExpressionTemplate): ExpressionNode | undefined => {
-  if (!template.whole) return undefined;
-  const segment = template.segments[0];
-  return segment?.kind === "InterpolationSegment" ? segment.expression : undefined;
-};
-
-const acceptsImportRef = (path: ReadonlyArray<string | number>): boolean =>
-  (path.length === 4 || (path.length === 5 && typeof path[4] === "number")) &&
-  path[0] === "services" &&
-  path[2] === "security" &&
-  ["ca", "cas", "certificate-authority", "certificate-authorities"].includes(String(path[3]));
-
-const invalidImportRefPath = (
-  value: unknown,
-  path: ReadonlyArray<string | number>,
-): ReadonlyArray<string | number> | undefined => {
-  if (!Predicate.isObjectOrArray(value)) return undefined;
-  if ("_tag" in value && value._tag === "ImportRef") return acceptsImportRef(path) ? undefined : path;
-  for (const [key, entry] of Object.entries(value)) {
-    const nestedPath = invalidImportRefPath(entry, [...path, Array.isArray(value) ? Number(key) : key]);
-    if (nestedPath !== undefined) return nestedPath;
-  }
-  return undefined;
-};
+  | LandofileValidationError;
 
 export const resolveLandofileLoadExpressions = (
   options: ResolveLandofileLoadExpressionsOptions,
@@ -143,29 +59,95 @@ export const resolveLandofileLoadExpressions = (
   Effect.try({
     try: () => {
       const session = new LandofileFileSession(options.source, options.policy);
+      const pendingSites: ParsedPendingSite[] = [];
+      const unsupported = (path: ReadonlyArray<string | number>, description: string): never => {
+        const message = `${description} are not supported at ${path.join(".")}.`;
+        const suggestion =
+          "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope.";
+        throw new LandofileValidationError({
+          file: options.source.sourcePath,
+          message,
+          remediation: suggestion,
+          issues: [
+            {
+              path,
+              message,
+              rule: "unsupported-expression",
+              suggestion,
+              source: { file: options.source.sourcePath, layer: options.source.layer, path },
+            },
+          ],
+        });
+      };
       const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
-        if (typeof value === "string" && (value.includes("{{") || value.includes("${"))) {
-          if (isServiceEnvironmentSecretReference(value, path)) return value;
+        if (
+          Predicate.isObject(value) &&
+          "_tag" in value &&
+          (value._tag === "SecretRef" || value._tag === "BoundText")
+        )
+          return unsupported(path, "Reserved binding objects");
+        if (
+          typeof value === "string" &&
+          path[0] !== "recipe" &&
+          (value.includes("{{") || value.includes("${"))
+        ) {
           session.beginExpression();
-          const parsed = parseExpressionEither(value, { filePath: options.source.sourcePath });
-          if (Result.isFailure(parsed)) throw parsed.failure;
-          // Unescaped `${...}` parameter and `${secret:...}` references are
-          // not supported on this path, and a parsed segment cannot tell them
-          // from a bare `$name` or the `$${` escape, so the raw source decides
-          // before the segment-level question.
+          if (keyValueEntryHasExpression(value, path, options.source.sourcePath))
+            return unsupported(path, "Key expressions");
+          const text =
+            typeof path.at(-1) === "number" && keyValueEntryPath(path) && value.includes("=")
+              ? value.slice(value.indexOf("=") + 1)
+              : value;
+          const parsed = parseExpressionEither(text, {
+            filePath: options.source.sourcePath,
+            bareShellParameters: "preserve",
+          });
+          if (Result.isFailure(parsed))
+            throw new LandofileValidationError({
+              file: options.source.sourcePath,
+              message: parsed.failure.message,
+              remediation: parsed.failure.remediation,
+              issues: [
+                {
+                  path,
+                  message: parsed.failure.message,
+                  source: { file: options.source.sourcePath, layer: options.source.layer, path },
+                },
+              ],
+            });
           if (
-            !sourceHasUnescapedBracedForm(value) &&
-            expressionInterpolationsTouchOnlyScopes(parsed.success, LOAD_DEFERRED_EXPRESSION_SCOPES)
-          ) {
+            parsed.success.segments.some(
+              (segment) =>
+                segment.kind === "ShellParamSegment" ||
+                (segment.kind === "SecretRefSegment" && !eligibleBindingPath(path)),
+            )
+          )
+            return unsupported(path, "Configuration expressions");
+          const secretMembers = expressionScopeMembers(parsed.success, "secrets");
+          const scopes =
+            eligibleBindingPath(path) && secretMembers.analyzable
+              ? [...LOAD_DEFERRED_EXPRESSION_SCOPES, "secrets"]
+              : LOAD_DEFERRED_EXPRESSION_SCOPES;
+          const admittedScopes = executableExpressionPath(path) ? [...scopes, ...INVOCATION_SCOPES] : scopes;
+          if (expressionInterpolationsTouchOnlyScopes(parsed.success, admittedScopes)) {
+            if (
+              parsed.success.segments.every(
+                (segment) => segment.kind === "LiteralSegment" || segment.kind === "CommentSegment",
+              )
+            ) {
+              const literal = evaluateTemplateEither(parsed.success, {});
+              if (Result.isFailure(literal)) throw literal.failure;
+              return text === value
+                ? literal.success
+                : `${value.slice(0, value.indexOf("=") + 1)}${String(literal.success)}`;
+            }
+            const source = { file: options.source.sourcePath, layer: options.source.layer, path };
+            pendingSites.push({ id: authoredSiteId(source), path, source, template: parsed.success });
             return value;
           }
           const expression = templateExpression(parsed.success);
           if (expression === undefined || !containsLoad(expression) || containsContextPath(expression)) {
-            throw new NotImplementedError({
-              message: `Configuration expressions are not supported at ${options.source.sourcePath}.`,
-              commandId: "landofile.parse",
-              remediation: "This configuration surface is not supported yet.",
-            });
+            return unsupported(path, "Template expressions");
           }
           const depth = callDepth(expression);
           if (depth > options.policy.maxRecursionDepth) {
@@ -188,6 +170,15 @@ export const resolveLandofileLoadExpressions = (
           );
           if (Result.isFailure(evaluated)) throw evaluated.failure;
           const result = decodeImplicitFileRef(session, evaluated.success);
+          if (containsReservedBinding(result))
+            return unsupported(path, "Reserved binding objects from load/import");
+          if (
+            text !== value &&
+            typeof result !== "string" &&
+            typeof result !== "number" &&
+            typeof result !== "boolean"
+          )
+            return unsupported(path, "Non-scalar environment list results");
           const producedImportRefPath = invalidImportRefPath(result, path);
           if (producedImportRefPath !== undefined) {
             throw new LandofileImportRefMisuseError({
@@ -198,18 +189,34 @@ export const resolveLandofileLoadExpressions = (
               remediation: "Use load() for plain values or move import() under service security.ca.",
             });
           }
-          return escapeLoadProducedText(result);
+          return text === value ? result : `${value.slice(0, value.indexOf("=") + 1)}${String(result)}`;
         }
         if (isLandofileReset(value)) return value;
         if (isLandofileOverride(value)) return override(visit(value.value, path));
         if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
         if (!Predicate.isObject(value)) return value;
         return Object.fromEntries(
-          Object.entries(value).map(([key, entry]) => [key, visit(entry, [...path, key])]),
+          Object.entries(value).map(([key, entry]) => {
+            if (key.includes("{{") || key.includes("${")) {
+              const parsed = parseExpressionEither(key, {
+                filePath: options.source.sourcePath,
+                bareShellParameters: "preserve",
+              });
+              if (
+                Result.isFailure(parsed) ||
+                parsed.success.segments.some((segment) => segment.kind !== "LiteralSegment")
+              )
+                return unsupported([...path, key], "Key expressions");
+            }
+            return [key, visit(entry, [...path, key])];
+          }),
         );
       };
+      const value = visit(options.value, []);
+      options.pendingSites?.push(...pendingSites);
       return {
-        value: visit(options.value, []),
+        value,
+        pendingSites,
         dependencies: session.dependencies,
         relaxedReads: session.relaxedReads,
       };
@@ -219,7 +226,7 @@ export const resolveLandofileLoadExpressions = (
         cause instanceof LandofileImportRefMisuseError ||
         cause instanceof LandofileLoadLimitError ||
         cause instanceof LandofileLoadOutsideRootError ||
-        cause instanceof NotImplementedError
+        cause instanceof LandofileValidationError
       )
         return cause;
       if (
@@ -246,4 +253,3 @@ export const resolveLandofileLoadExpressions = (
       });
     },
   });
-import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";

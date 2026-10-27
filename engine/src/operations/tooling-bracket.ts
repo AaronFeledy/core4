@@ -1,7 +1,12 @@
 import { Effect } from "effect";
 
 import type { LandofileEventName } from "@lando/sdk/schema";
-import type { RuntimeProviderRegistry, ToolingEngine, ToolingEngineResult } from "@lando/sdk/services";
+import type {
+  EnvironmentValueResolver,
+  RuntimeProviderRegistry,
+  ToolingEngine,
+  ToolingEngineResult,
+} from "@lando/sdk/services";
 
 import type { EventRuntimeError } from "../tooling/event-errors.ts";
 import { runAppEvent } from "./events.ts";
@@ -32,7 +37,7 @@ export const runBracketedInvocations = Effect.fnUntraced(function* (
 ): Effect.fn.Return<
   ToolingEngineResult,
   ToolingExecutionError | EventRuntimeError,
-  ToolingEngine | RuntimeProviderRegistry
+  ToolingEngine | RuntimeProviderRegistry | EnvironmentValueResolver
 > {
   yield* runAppEvent(input.plan, bracket(input.lookupKey, "pre"));
   const result = yield* executeToolingInvocations(input);

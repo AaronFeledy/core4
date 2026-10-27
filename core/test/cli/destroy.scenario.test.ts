@@ -33,11 +33,7 @@ import { makeTestStateStore } from "@lando/core/testing";
 import * as BunDataMover from "@lando/data-mover/service";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { type RendererIO, createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope, SnapshotInfo, appIdentityKey } from "@lando/sdk/schema";
 import { DataMover, RuntimeProvider, StateStore } from "@lando/sdk/services";
@@ -116,11 +112,11 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
-  mounts: [],
-  storage:
+  mounts:
     name === "database"
       ? [
           {
+            type: "volume",
             store: "test_destroy_database_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
@@ -155,7 +151,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [
     { name: "test_destroy_database_data", scope: "app", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
@@ -285,6 +280,7 @@ const makeDestroyLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -293,6 +289,7 @@ const makeDestroyLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,
@@ -364,7 +361,9 @@ const makeDestroyLayer = (
     stateStore.layer,
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(literalLandofile({ name: "test-destroy", services: {} }, testAppRoot)),
+      }),
     ),
     Layer.succeed(
       PathsService,
@@ -377,7 +376,7 @@ const makeDestroyLayer = (
         platform: "linux",
       }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
@@ -493,14 +492,7 @@ const makeDestroyLayer = (
       Layer.mergeAll(
         baseCommandLayer,
         eventLayer,
-        Layer.succeed(
-          RedactionService,
-          RedactionService.of({
-            registerValues: registerRedactionValues,
-            payloadValues: () => Effect.succeed(() => []),
-            forProfile: (profile) => Effect.succeed(createStandaloneRedactor(profile)),
-          }),
-        ),
+        Layer.succeed(RedactionService, makeRedactionService()),
         Layer.succeed(RuntimeProvider, provider),
         DiskStateStore.layer,
       ),
@@ -556,7 +548,13 @@ const seedSnapshot = async (
     digest: "sha256:snapshot",
     sizeBytes: 42,
     createdAt: "2026-05-15T00:00:00Z",
-    native: { provider: "docker", id: input.id, digest: "sha256:snapshot", sizeBytes: 42, format: "native" },
+    native: {
+      provider: providerId,
+      id: input.id,
+      digest: "sha256:snapshot",
+      sizeBytes: 42,
+      format: "native",
+    },
     ...(input.sourceRoot === undefined
       ? {}
       : {
@@ -714,7 +712,12 @@ describe("lando destroy", () => {
           absent: evidence === "snapshots",
           orphanEvidence: evidence === "orphans",
           ownedEvidence: evidence === "inventory",
-          preDestroyFailure: new EventError({ message: "veto", event: "pre-destroy" }),
+          preDestroyFailure: new EventError({
+            message: "veto",
+            event: "pre-destroy",
+            remediation:
+              "Fix the handler or emitter for event `pre-destroy`, then re-run the operation that publishes it.",
+          }),
         });
         const owned = await seedSnapshot(harness, dataRoot, { id: "vetoed", sourceRoot: testAppRoot });
         const result = await withCwd(testAppRoot, () =>
@@ -880,8 +883,14 @@ describe("lando destroy", () => {
       providerId: "lando",
       operation: "destroy",
       message: "provider destroy failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
     });
-    const proxyFailure = new ProxyError({ message: "route removal failed", proxyId: "recording" });
+    const proxyFailure = new ProxyError({
+      message: "route removal failed",
+      proxyId: "recording",
+      remediation:
+        "Install or repair the `recording` router plugin and ensure `defaultRouterService` points at an installed id.",
+    });
     const harness = makeDestroyLayer({
       providerDestroyEffect: Effect.fail(providerFailure),
       proxyRemoveEffect: Effect.fail(proxyFailure),
@@ -901,7 +910,12 @@ describe("lando destroy", () => {
 
   test("destroys the provider when route removal fails", async () => {
     // Given
-    const proxyFailure = new ProxyError({ message: "route removal failed", proxyId: "recording" });
+    const proxyFailure = new ProxyError({
+      message: "route removal failed",
+      proxyId: "recording",
+      remediation:
+        "Install or repair the `recording` router plugin and ensure `defaultRouterService` points at an installed id.",
+    });
     const harness = makeDestroyLayer({ proxyRemoveEffect: Effect.fail(proxyFailure) });
 
     // When
@@ -1044,6 +1058,8 @@ describe("lando destroy", () => {
         providerId: "docker",
         operation: "removeVolumeSnapshot",
         message: "offline",
+        remediation:
+          "Install or start the `docker` provider and confirm it can perform `removeVolumeSnapshot`.",
       });
       const harness = makeDestroyLayer({
         userDataRoot: dataRoot,
@@ -1255,7 +1271,7 @@ describe("lando destroy", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stdout).toBe("");
       expect(result.stderr).toContain("LandofileNotFoundError");
-      expect(result.stderr).toContain("Run `lando init --full --name=<name>` to scaffold an app.");
+      expect(result.stderr).toContain(`Run \`lando init\` in ${dir} to create an app.`);
     });
   });
 
@@ -1341,6 +1357,8 @@ describe("lando destroy", () => {
                 engineId: "mutagen",
                 sessionRef: FileSyncSessionRef.make("session-web-app-mount"),
                 message: "daemon unavailable",
+                remediation:
+                  "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
               }),
             ),
           ),
@@ -1412,6 +1430,8 @@ describe("lando destroy", () => {
                     engineId: "mutagen",
                     sessionRef: String(ref),
                     message: "daemon unavailable",
+                    remediation:
+                      "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
                   }),
                 )
               : Effect.void,
@@ -1488,6 +1508,8 @@ describe("lando destroy", () => {
                 engineId: "mutagen",
                 sessionRef: String(ref),
                 message: "flush unavailable",
+                remediation:
+                  "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
               }),
             ),
           ),
@@ -1596,3 +1618,4 @@ describe("lando destroy", () => {
     expect(harness.destroyCalls).toHaveLength(1);
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";
