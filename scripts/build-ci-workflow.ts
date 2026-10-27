@@ -137,6 +137,32 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
 ${ciResultSteps}
 `;
 
+const renderDarwinSignalTests = (): string => {
+  const include = CI_PLATFORMS.filter(({ id }) => id.startsWith("darwin-")).map((platform) => ({
+    platform: platform.id,
+    "runs-on": platform.runsOn,
+  }));
+  return `  process-signal-tests-darwin:
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${JSON.stringify(include)}
+    runs-on: \${{ matrix.runs-on }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+${isolateLandoRootsStep}
+
+${setupBunSteps}
+
+${codegenStep}
+
+      - name: Test native process signal handling
+        run: bun test core/test/cli/process-signals.test.ts
+`;
+};
+
 const unitShardList = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1).join(", ");
 
 const renderUnitTests = (): string => `  unit-tests-linux-x64-shard:
@@ -859,6 +885,7 @@ jobs:
 ${renderStaticChecks()}
 ${renderIsolatedInstallExperiment()}
 ${renderUnitTests()}
+${renderDarwinSignalTests()}
 ${renderDocsBuild()}
 ${renderTestIsolation()}
 ${renderContainerHelperJob()}

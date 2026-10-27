@@ -15,6 +15,7 @@ import { resolveLandoRoots } from "@lando/paths";
 
 import { ensureHostProxyNoProxy } from "@lando/engine/subsystems/host-proxy/proxy-bypass";
 
+import { runWithProcessSignalReraise } from "../src/cli/process-signals";
 import { cliUserArgv } from "../src/cli/user-argv";
 import { derivedCodegenMessage, isModuleResolveError, missingDerivedCodegen } from "./derived-codegen.ts";
 
@@ -124,30 +125,14 @@ const main = async (): Promise<void> => {
   // Bun's compiled Windows entry can exit while CLI work waits on a promise
   // with no refed native handle. Keep dispatch alive until it fully settles.
   const keepAlive = setInterval(() => undefined, 60_000);
-  let interruptedCode: 130 | 143 | undefined;
-  const interrupt = (code: 130 | 143) => {
-    if (interruptedCode !== undefined) return;
-    interruptedCode = code;
-    process.exitCode = code;
-    clearInterval(keepAlive);
-  };
-  const onSigint = () => interrupt(130);
-  const onSigterm = () => interrupt(143);
-  (process as NodeJS.EventEmitter).once("SIGINT", onSigint);
-  (process as NodeJS.EventEmitter).once("SIGTERM", onSigterm);
   try {
-    const { runCli } = await import("@lando/core/cli");
-    if (interruptedCode !== undefined) return;
-    await runCli({
-      argv,
-      rootUrl: import.meta.url,
-      discovery,
+    await runWithProcessSignalReraise(async (state) => {
+      const { runCli } = await import("@lando/core/cli");
+      if (state.received() !== undefined) return;
+      await runCli({ argv, rootUrl: import.meta.url, discovery, signal: state.signal });
     });
   } finally {
     clearInterval(keepAlive);
-    (process as NodeJS.EventEmitter).off("SIGINT", onSigint);
-    (process as NodeJS.EventEmitter).off("SIGTERM", onSigterm);
-    if (interruptedCode !== undefined) process.exitCode = interruptedCode;
   }
 };
 
