@@ -162,6 +162,9 @@
         "@lando/sdk": "workspace:*",
         "effect": "catalog:",
       },
+      "devDependencies": {
+        "@lando/renderer": "workspace:*",
+      },
     },
     "paths": {
       "name": "@lando/paths",
