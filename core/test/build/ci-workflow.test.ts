@@ -721,7 +721,9 @@ describe("ci workflow", () => {
     expect(helper).toContain("    needs: [selection, container-helper]");
     expect(helper).toContain("    runs-on: ubuntu-24.04-arm");
     expect(helper).toContain("        run: bun install --frozen-lockfile");
-    expect(helper).toContain("        uses: actions/download-artifact@v7");
+    expect(helper).toContain(
+      "        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2",
+    );
     expect(helper).toContain("          name: container-helper");
     expect(helper).toContain("          path: core/container-helper/dist");
     expect(helper).toContain(

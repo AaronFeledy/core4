@@ -1,6 +1,6 @@
 export const RUNTIME_BUNDLE_ACTION_PINS = {
   checkout: "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8",
-  downloadArtifact: "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131",
+  downloadArtifact: "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
   rustToolchain: "dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4",
   setupBun: "oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76",
   setupGo: "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
