@@ -25,6 +25,7 @@ export const CI_JOB_TIERS: Readonly<Record<string, CiTier>> = {
   "unit-tests-linux-x64-shard": "runtime",
   "unit-tests-linux-x64": "runtime",
   "test-isolation-linux-x64": "runtime",
+  "process-signal-tests-darwin": "runtime",
   "perf-budget-linux-x64": "runtime",
   "runtime-bundle-win32-x64": "broad",
   "bun-install-isolated-experiment": "broad",

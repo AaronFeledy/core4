@@ -43,7 +43,7 @@ export const resolveAppPlacement = Effect.fn("AppPlacement.resolve")(function* (
   return { desired, realized: plans[0]?.provider, plan: plans[0] };
 });
 
-export const ensureAppPlacement = Effect.fn("AppPlacement.ensure")(function* (
+export const ensureAppPlacementState = Effect.fn("AppPlacement.ensureState")(function* (
   app: AppRef,
   desired: ProviderId,
 ) {
@@ -59,7 +59,14 @@ export const ensureAppPlacement = Effect.fn("AppPlacement.ensure")(function* (
         remediation: `From ${app.root}, run \`${destroyCommand(app, realized)}\` before starting on ${desired}. To keep the existing realization, select ${realized} instead.`,
       }),
     );
-  return desired;
+  return placement;
+});
+
+export const ensureAppPlacement = Effect.fn("AppPlacement.ensure")(function* (
+  app: AppRef,
+  desired: ProviderId,
+) {
+  return (yield* ensureAppPlacementState(app, desired)).desired;
 });
 
 export const observedAppPlan = Effect.fn("AppPlacement.observedPlan")(function* (plan: AppPlan) {

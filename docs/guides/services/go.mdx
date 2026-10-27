@@ -67,8 +67,6 @@ Go publishes its port endpoint but has no default healthcheck, even with an auth
 
 ## Pin a version
 
-For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
-
 Pin a different supported Go minor version, or set `image:` to use a custom
 Go base image:
 

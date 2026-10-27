@@ -17,11 +17,9 @@ services:
   cache:
     type: compose
     image: valkey/valkey:8-alpine
-    home: false
   web:
     type: compose
     image: traefik/whoami:v1.10
-    home: false
     ports:
       - target: 80
         published: "8080"
@@ -45,14 +43,13 @@ A service-level `networks:` key works too, with one difference from Compose: it 
 
 Use `type: lando` instead when you want Lando's environment and app mount. Its
 directory scaffold works on shell-less images, including images built from
-`scratch`. Set `home: false` unless you declare the custom image's home path.
+`scratch`. Lando plans no home store for a custom image unless you declare its home path with `home.path`.
 
 ```yaml
 services:
   web:
     type: lando
     image: traefik/whoami:v1.10
-    home: false
     ports:
       - "8080:80"
 ```

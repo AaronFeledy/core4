@@ -63,6 +63,7 @@ export const elasticsearchServiceFeature: ServiceFeatureDefinition = {
 const IDENTITY: ServiceImageIdentity = {
   defaultUser: "elasticsearch",
   homes: { elasticsearch: "/usr/share/elasticsearch", root: "/root" },
+  preparedHomes: ["elasticsearch"],
 };
 
 const resolveElasticsearchServiceType: ServiceType["resolve"] = (input) =>

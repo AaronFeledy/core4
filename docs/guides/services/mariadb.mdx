@@ -120,8 +120,6 @@ lando mariadb -N -e 'SELECT @@port'
 
 ## Pin a version
 
-For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
-
 Set `image:` when `mariadb:11.4` isn't the version you want. For example, the 10.11 LTS line:
 
 ```yaml

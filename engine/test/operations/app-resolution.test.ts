@@ -116,7 +116,7 @@ describe("loadUserLandofile includes", () => {
 
       expect(actual).toEqual({
         name: "custom",
-        services: { web: { type: "node", home: false, appMount: false } },
+        services: { web: { type: "node", appMount: false } },
       });
     } finally {
       await rm(dir, { recursive: true, force: true });

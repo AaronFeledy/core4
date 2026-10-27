@@ -68,10 +68,20 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(26);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(27);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
+    const signalJob = findIndentedBlock(
+      findIndentedBlock(workflow, "jobs"),
+      "process-signal-tests-darwin",
+      2,
+    );
+    const signalCodegen = signalJob.indexOf("run: bun run codegen");
+    const signalTests = signalJob.indexOf("run: bun test core/test/cli/process-signals.test.ts");
+    expect(signalJob).toContain("needs.selection.outputs.profile == 'providers'");
+    expect(signalCodegen).toBeGreaterThanOrEqual(0);
+    expect(signalTests).toBeGreaterThan(signalCodegen);
     const bundledCodegen = findIndentedBlock(findIndentedBlock(workflow, "jobs"), "bundled-codegen", 2);
     const catalog = bundledCodegen.indexOf("run: bun run codegen:tomcat-catalog");
     const providerImages = bundledCodegen.indexOf("run: bun run codegen:provider-images");
@@ -272,7 +282,9 @@ describe("ci workflow", () => {
     expect(providerLandoE2e).toContain('echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"');
     expect(providerLandoE2e).toContain("          LANDO_CONFIG__default_provider_id: lando");
     expect(providerLandoE2e).toContain("      - name: Run live integration suites");
-    expect(providerLandoE2e).toContain("          bun test core/test/live");
+    expect(providerLandoE2e).toContain(
+      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts',
+    );
     expect(providerLandoE2e).not.toContain("LANDO_MVP_BINARY_PATH");
     expect(providerLandoE2e).not.toContain("core/test/scenario");
     expect(providerLandoE2e).toContain("      - name: Teardown Podman");

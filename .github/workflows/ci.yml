@@ -216,6 +216,40 @@ jobs:
         run: bun run scripts/validate-ci.ts
 
 
+  process-signal-tests-darwin:
+    needs: [selection]
+    if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: [{"platform":"darwin-arm64","runs-on":"macos-15"},{"platform":"darwin-x64","runs-on":"macos-15-intel"}]
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Test native process signal handling
+        run: bun test core/test/cli/process-signals.test.ts
+
   docs-build:
     needs: [selection]
     if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime' || needs.selection.outputs.profile == 'providers') }}
@@ -2406,7 +2440,7 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-windows-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   ci:
-    needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
+    needs: [selection, static-checks-platform, static-checks, docs-build, schema-snapshot, bundled-codegen, library-api-tests-runner, library-api-tests, recipe-tests-runner, recipe-tests, container-helper, container-helper-arm64, build-linux-x64, runtime-bundle-linux-x64, guide-scenarios-linux-x64-runner, guide-scenarios-linux-x64, unit-tests-linux-x64-shard, unit-tests-linux-x64, test-isolation-linux-x64, process-signal-tests-darwin, perf-budget-linux-x64, runtime-bundle-win32-x64, build-darwin-arm64, guide-scenarios-darwin-arm64, provider-integration-darwin-arm64, build-darwin-x64, guide-scenarios-darwin-x64, provider-integration-darwin-x64, build-linux-arm64, guide-scenarios-linux-arm64, provider-integration-linux-arm64, provider-integration-linux-x64, provider-integration-linux-x64-runner, build-windows-x64, guide-scenarios-windows-x64, provider-integration-windows-x64, build-windows-arm64, guide-scenarios-windows-arm64, provider-integration-windows-arm64]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5

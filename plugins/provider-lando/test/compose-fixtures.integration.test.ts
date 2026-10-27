@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, Effect, Exit, Layer, Stream } from "effect";
 
+import { homeStoreName } from "@lando/engine/planner/home";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   bringDown,
@@ -174,7 +175,7 @@ const rejectedFixtures = [
 const makeRunnableLandofile = (name: string, fixture: string): string =>
   `name: ${name}\nprovider: lando\n${fixture.replace(
     /^(\s*)image:.*$/gmu,
-    '$1type: compose\n$1image: node:22-alpine\n$1home:\n$1  path: /root\n$1command: ["node", "-e", "setInterval(() => {}, 1000)"]',
+    '$1type: compose\n$1image: node:22-alpine\n$1user: root\n$1home:\n$1  path: /root\n$1command: ["node", "-e", "setInterval(() => {}, 1000)"]',
   )}`;
 
 const runFixture = async (fixture: FixtureCase): Promise<void> => {
@@ -286,7 +287,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     assertServiceContainerRunning(inspect, containerName);
     const home = arrayField(inspect, "Mounts").find((mount) => field(mount, "Destination") === "/root");
     expect(field(home, "Type")).toBe("volume");
-    expect(field(home, "Name")).toBe(`lando-${plan.slug}-${fixture.service}-home`);
+    expect(field(home, "Name")).toBe(homeStoreName(plan.slug, fixture.service, "root"));
     expect(field(home, "RW")).toBe(true);
     fixture.assertInspect?.(inspect, appRoot);
     for (const [service, keys] of Object.entries(fixture.authoredNetworks ?? {})) {
