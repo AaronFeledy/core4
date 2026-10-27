@@ -1,4 +1,4 @@
-import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
+import type { AppPlan, EnvironmentValue, LandofileShape } from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
 import {
@@ -13,7 +13,7 @@ type EnvMap = Readonly<Record<string, unknown>> | undefined;
 type ServiceEnvSource = {
   readonly environment?: EnvMap;
   readonly extensions?: Readonly<Record<string, unknown>>;
-  readonly password?: string;
+  readonly password?: EnvironmentValue;
   readonly labels?: EnvMap;
   readonly creds?: Readonly<Record<string, unknown>>;
 };
@@ -28,7 +28,7 @@ const stringEnv = (env: EnvMap): Record<string, string | undefined> | undefined 
   if (env === undefined) return undefined;
   const collected: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(env)) {
-    collected[key] = value === undefined || value === null ? undefined : String(value);
+    collected[key] = typeof value === "string" ? value : undefined;
   }
   return collected;
 };
@@ -69,7 +69,7 @@ export const collectLandofileRedactionTokens = (
       ...collectSecretEnvValues(stringEnv(service?.environment), publicValues),
       ...collectSecretStructuralValues(stringEnv(service?.creds), publicValues),
       ...collectSecretStructuralValues(
-        service?.password === undefined ? undefined : { password: service.password },
+        typeof service?.password === "string" ? { password: service.password } : undefined,
         publicValues,
       ),
       ...collectSecretEnvValues(stringEnv(service?.labels), publicValues),

@@ -30,16 +30,17 @@ test("hydrates persisted ports and default domain when a fresh router applies ro
   );
 });
 
-test("uses default ports and domain when a fresh router has no persisted state", async () => {
+test("rejects nonempty routes when a fresh router has no acquired ingress", async () => {
   // Given: no setup has persisted router state.
   const harness = makeHarness();
 
   // When: routes are applied directly.
-  const applied = await Effect.runPromise(harness.service.applyRoutes(httpsRoutes, app));
+  const applied = await Effect.runPromise(harness.service.applyRoutes(httpsRoutes, app).pipe(Effect.result));
 
-  // Then: the default authorities and wildcard certificate are used.
-  expect(applied.authorities.map(({ port }) => port)).toEqual([38443, 38080, 38443]);
-  expect(harness.calls.find((spec) => spec.cn.startsWith("*."))?.cn).toBe("*.lndo.site");
+  // Then: application fails before issuing certificates or mutating router state.
+  expect(applied).toMatchObject({ _tag: "Failure", failure: { _tag: "ProxyApplyError" } });
+  expect(harness.calls).toEqual([]);
+  expect(harness.operations).toEqual([]);
 });
 
 test("refreshes retained authorities and default TLS when another router completes setup", async () => {
@@ -128,18 +129,21 @@ test("removes the persisted default domain when the router stops", async () => {
   expect(harness.files.has("/lando/global/proxy-traefik/dynamic/.lando-default-domain")).toBe(false);
 });
 
-test("falls back to defaults when persisted acquisition state is corrupt and the domain is empty", async () => {
+test("rejects nonempty application when persisted acquisition is corrupt", async () => {
   // Given: neither persisted value can establish usable router state.
   const harness = makeHarness();
   harness.files.set("/lando/global/proxy-traefik/dynamic/.lando-port-acquisition.json", "invalid json");
   harness.files.set("/lando/global/proxy-traefik/dynamic/.lando-default-domain", " \n...\n");
 
   // When: a fresh router applies routes without setup.
-  const applied = await Effect.runPromise(harness.makeService().applyRoutes(httpsRoutes, app));
+  const applied = await Effect.runPromise(
+    harness.makeService().applyRoutes(httpsRoutes, app).pipe(Effect.result),
+  );
 
-  // Then: hydration does not fail and uses the default authorities and domain.
-  expect(applied.authorities.map(({ port }) => port)).toEqual([38443, 38080, 38443]);
-  expect(harness.calls.find((spec) => spec.cn.startsWith("*."))?.cn).toBe("*.lndo.site");
+  // Then: unknown ingress cannot authorize certificate issuance or router mutation.
+  expect(applied).toMatchObject({ _tag: "Failure", failure: { _tag: "ProxyApplyError" } });
+  expect(harness.calls).toEqual([]);
+  expect(harness.operations).toEqual([]);
 });
 
 test("reissues default TLS material when the normalized default domain changes", async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { HomePathCapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
 import { PortablePath, type ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceImageIdentity } from "@lando/sdk/services";
 
@@ -11,7 +11,7 @@ import {
   resolveHomePath,
   serviceHomeIntent,
 } from "../../src/planner/home.ts";
-import { applyAuthoredStorage } from "../../src/planner/storage.ts";
+import { prepareServiceMounts } from "../../src/planner/mounts.ts";
 
 const identity: ServiceImageIdentity = {
   defaultUser: "node",
@@ -29,7 +29,6 @@ const planWith = (overrides: Partial<ServicePlan> = {}): ServicePlan =>
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -117,29 +116,33 @@ describe("resolveHomePath", () => {
     expect(resolved).toBe("/root");
   });
 
-  it("Given a planned user the identity does not declare, When resolved, Then it refuses by tag", () => {
+  it("Given a planned user the identity does not declare, When resolved, Then no home is persisted", () => {
     const resolved = resolveHomePath({
       serviceName: "web",
       intent: intentFor({} as ServiceConfig),
       plannedUser: "nobody",
     });
-    expect(resolved).toBeInstanceOf(HomePathCapabilityError);
-    const failure = resolved as HomePathCapabilityError;
-    expect(failure._tag).toBe("HomePathCapabilityError");
-    expect(failure.service).toBe("web");
-    expect(failure.user).toBe("nobody");
-    expect(failure.remediation).toContain("services.web.home: false");
-    expect(failure.remediation).toContain("services.web.home.path");
+    expect(resolved).toBeUndefined();
   });
 
-  it("Given a custom image and no explicit path, When resolved, Then it refuses before any provider action", () => {
+  it("Given a planned user named like an inherited object property, When resolved, Then no home is persisted", () => {
+    for (const plannedUser of ["constructor", "toString", "__proto__", "hasOwnProperty:www-data"]) {
+      const resolved = resolveHomePath({
+        serviceName: "web",
+        intent: intentFor({} as ServiceConfig),
+        plannedUser,
+      });
+      expect(resolved).toBeUndefined();
+    }
+  });
+
+  it("Given a custom image and no explicit path, When resolved, Then no home is persisted", () => {
     const resolved = resolveHomePath({
       serviceName: "web",
       intent: intentFor({ image: "my/app:1" } as ServiceConfig),
       plannedUser: undefined,
     });
-    expect(resolved).toBeInstanceOf(HomePathCapabilityError);
-    expect((resolved as HomePathCapabilityError).serviceType).toBe("node:22");
+    expect(resolved).toBeUndefined();
   });
 
   it("Given a custom image and home: false, When resolved, Then nothing is persisted and nothing fails", () => {
@@ -170,8 +173,14 @@ describe("applyServiceHome", () => {
       appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
-    expect(result.storage).toEqual([
-      { store: "lando-myapp-web-home", target: PortablePath.make("/home/node"), readOnly: false },
+    expect(result.mounts).toEqual([
+      {
+        type: "volume",
+        origin: "derived",
+        store: homeStoreName("myapp", "web", "node"),
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+      },
     ]);
   });
 
@@ -181,27 +190,28 @@ describe("applyServiceHome", () => {
 
   it("Given authored storage already at the home path, When applied, Then the authored mount is kept verbatim", () => {
     const authored = {
+      type: "volume" as const,
       store: "myapp-web-cache",
       target: PortablePath.make("/home/node"),
       readOnly: true,
     };
     const result = applyServiceHome({
-      servicePlan: planWith({ storage: [authored] }),
+      servicePlan: planWith({ mounts: [authored] }),
       serviceName: "web",
       appSlug: "myapp",
       appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
-    expect(result.storage).toEqual([authored]);
+    expect(result.mounts).toEqual([authored]);
   });
 
   const applyAuthoredThenHome = (target: string): ServicePlan => {
-    const withStorage = applyAuthoredStorage(
-      planWith(),
-      { storage: [{ store: "myapp-web-cache", target, readOnly: false }] } as ServiceConfig,
-      "/tmp/app",
-      "web",
-    );
+    const withStorage = prepareServiceMounts({
+      servicePlan: planWith(),
+      normalizedConfig: {},
+      storage: [{ store: "myapp-web-cache", target, readOnly: false }],
+      context: { appRoot: "/tmp/app", appSlug: "myapp", serviceName: "web" },
+    });
     expect(withStorage).not.toBeInstanceOf(LandofileValidationError);
     return applyServiceHome({
       servicePlan: withStorage as ServicePlan,
@@ -213,20 +223,38 @@ describe("applyServiceHome", () => {
   };
 
   it("Given authored storage with a trailing slash, When applied, Then it is still the same destination", () => {
-    expect(applyAuthoredThenHome("/home/node/").storage).toEqual([
-      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    expect(applyAuthoredThenHome("/home/node/").mounts).toEqual([
+      {
+        type: "volume",
+        store: "myapp-web-cache",
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+        origin: "authored",
+      },
     ]);
   });
 
   it("Given authored storage spelled with dot segments, When applied, Then it is the same destination as the home", () => {
-    expect(applyAuthoredThenHome("/home/./other/../node").storage).toEqual([
-      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    expect(applyAuthoredThenHome("/home/./other/../node").mounts).toEqual([
+      {
+        type: "volume",
+        store: "myapp-web-cache",
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+        origin: "authored",
+      },
     ]);
   });
 
   it("Given authored storage with repeated separators, When applied, Then it is the same destination as the home", () => {
-    expect(applyAuthoredThenHome("/home//node").storage).toEqual([
-      { store: "myapp-web-cache", target: PortablePath.make("/home/node"), readOnly: false },
+    expect(applyAuthoredThenHome("/home//node").mounts).toEqual([
+      {
+        type: "volume",
+        store: "myapp-web-cache",
+        target: PortablePath.make("/home/node"),
+        readOnly: false,
+        origin: "authored",
+      },
     ]);
   });
 
@@ -238,7 +266,7 @@ describe("applyServiceHome", () => {
       appRoot: "/tmp/app",
       intent: intentFor({ home: { path: "/home/node/" } } as ServiceConfig),
     }) as ServicePlan;
-    expect(result.storage[0]?.target).toBe(PortablePath.make("/home/node"));
+    expect(result.mounts[0]?.target).toBe(PortablePath.make("/home/node"));
   });
 
   it("Given the planned user on the plan, When applied, Then that user's home is selected", () => {
@@ -249,7 +277,7 @@ describe("applyServiceHome", () => {
       appRoot: "/tmp/app",
       intent: intentFor({} as ServiceConfig),
     }) as ServicePlan;
-    expect(result.storage[0]?.target).toBe(PortablePath.make("/root"));
+    expect(result.mounts[0]?.target).toBe(PortablePath.make("/root"));
   });
 
   it("Given home: false, When applied, Then storage is untouched", () => {
@@ -260,7 +288,7 @@ describe("applyServiceHome", () => {
       appRoot: "/tmp/app",
       intent: intentFor({ home: false } as ServiceConfig),
     }) as ServicePlan;
-    expect(result.storage).toEqual([]);
+    expect(result.mounts).toEqual([]);
   });
 
   it("Given an explicit home path that is the filesystem root, When applied, Then it is refused", () => {

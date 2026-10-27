@@ -49,6 +49,8 @@ test("prefers an authored Lando mount over a Compose volume at the same target",
     {
       type: "bind",
       source: resolve(appRoot, "a"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/x",
       readOnly: false,
       realization: "passthrough",
@@ -70,12 +72,14 @@ test("suppresses Compose storage at an authored Lando storage target", async () 
   const plan = await planService(service);
 
   // Then
-  expect(plan.storage).toEqual([]);
-  expect(plan.storage.some((entry) => entry.store === "us469-v")).toBe(false);
+  expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
+    { type: "volume", store: "s", target: "/y", readOnly: false, origin: "authored" },
+  ]);
+  expect(plan.mounts.some((entry) => entry.type === "volume" && entry.store === "us469-v")).toBe(false);
   expect(plan.extensions?.compose).toBeUndefined();
 });
 
-test("suppresses a Compose volume at the active app mount target", async () => {
+test("replaces the app mount with an authored Compose volume", async () => {
   // Given
   const service = { type: "compose", image: "alpine:3", volumes: ["./x:/app"] };
 
@@ -83,13 +87,17 @@ test("suppresses a Compose volume at the active app mount target", async () => {
   const plan = await planService(service);
 
   // Then
-  expect(plan.appMount).toMatchObject({
-    source: appRoot,
-    target: "/app",
-    readOnly: false,
-    realization: "passthrough",
-  });
-  expect(plan.mounts).toEqual([]);
+  expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
+    {
+      type: "bind",
+      source: resolve(appRoot, "x"),
+      origin: "authored",
+      relativeTo: "app",
+      target: "/app",
+      readOnly: false,
+      realization: "passthrough",
+    },
+  ]);
 });
 
 test("applies a Compose volume when the app mount is disabled", async () => {
@@ -104,6 +112,8 @@ test("applies a Compose volume when the app mount is disabled", async () => {
     {
       type: "bind",
       source: resolve(appRoot, "x"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/app",
       readOnly: false,
       realization: "passthrough",
@@ -128,15 +138,19 @@ test("keeps exact-target precedence from suppressing descendant targets", async 
   expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
     {
       type: "bind",
-      source: resolve(appRoot, "w"),
-      target: "/app/web",
+      source: resolve(appRoot, "a"),
+      origin: "authored",
+      relativeTo: "app",
+      target: "/app",
       readOnly: false,
       realization: "passthrough",
     },
     {
       type: "bind",
-      source: resolve(appRoot, "a"),
-      target: "/app",
+      source: resolve(appRoot, "w"),
+      origin: "authored",
+      relativeTo: "app",
+      target: "/app/web",
       readOnly: false,
       realization: "passthrough",
     },

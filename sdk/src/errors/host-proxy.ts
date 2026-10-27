@@ -12,7 +12,7 @@ export class HostProxyCommandNotAllowedError extends Schema.TaggedError<HostProx
     message: Schema.String,
     commandId: Schema.String,
     effectiveAllowlist: Schema.Array(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -27,7 +27,7 @@ export class HostProxyAllowlistConflictError extends Schema.TaggedError<HostProx
   {
     message: Schema.String,
     commandId: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -36,7 +36,7 @@ export class HostProxyAuthenticationError extends Schema.TaggedError<HostProxyAu
   {
     message: Schema.String,
     reason: Schema.Literals(["missing", "stale", "cross-app"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -45,7 +45,7 @@ export class HostProxyRecursionError extends Schema.TaggedError<HostProxyRecursi
   {
     message: Schema.String,
     depth: Schema.Number,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -54,7 +54,7 @@ export class HostProxyBackpressureError extends Schema.TaggedError<HostProxyBack
   {
     message: Schema.String,
     concurrency: Schema.Number,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -63,7 +63,7 @@ export class HostProxyTransportUnavailableError extends Schema.TaggedError<HostP
   {
     message: Schema.String,
     socketPath: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -72,6 +72,6 @@ export class HostProxySocketStaleError extends Schema.TaggedError<HostProxySocke
   {
     message: Schema.String,
     socketPath: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

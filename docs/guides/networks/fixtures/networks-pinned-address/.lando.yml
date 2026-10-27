@@ -1,0 +1,11 @@
+# lando-lint: expect-invalid ipv4_address is rejected so the guide can show the pinning remediation
+name: networks-pinned-address
+networks:
+  backend: {}
+services:
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    networks:
+      backend:
+        ipv4_address: 10.5.0.10

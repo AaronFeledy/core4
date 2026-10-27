@@ -21,7 +21,6 @@ const plan: Pick<AppPlan, "services"> = {
         primary: false,
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [{ _tag: "internal", protocol: "http", port: 80 }],
         routes: [],
         dependsOn: [],

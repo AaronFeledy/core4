@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit } from "effect";
@@ -56,7 +56,6 @@ const appPlan: AppPlan = {
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -85,6 +84,11 @@ describe("ensureGlobalServicesRunning", () => {
 
   test("cold ensure publishes pre/post-global-start and applies the selected global service", async () => {
     await withHarness(async (harness) => {
+      await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.local.yml"),
+        'services:\n  traefik:\n    environment:\n      TOKEN: "${secret:GLOBAL_TOKEN}"\n',
+      );
       const result = await Effect.runPromise(
         ensureGlobalServicesRunning({ services: ["traefik"] }).pipe(Effect.provide(harness.layer)),
       );
@@ -95,12 +99,12 @@ describe("ensureGlobalServicesRunning", () => {
       expect(String(harness.applyCalls[0]?.plan.id)).toBe("global");
       expect(Object.keys(harness.applyCalls[0]?.plan.services ?? {})).toEqual(["traefik"]);
       expect(harness.applyCalls[0]?.options.reconcile).toBe(false);
-      expect(harness.applyCalls[0]?.options.serviceEnvironment?.[ServiceName.make("traefik")]).toEqual({
+      expect(harness.applyCalls[0]?.environments[ServiceName.make("traefik")]).toMatchObject({
         TOKEN: "resolved-global-token",
       });
       expect(harness.applyCalls[0]?.plan.services[ServiceName.make("traefik")]?.environment).toEqual({
         LANDO_HOST_IP: "host.lando.internal",
-        TOKEN: "${secret:GLOBAL_TOKEN}",
+        TOKEN: { _tag: "SecretRef", reference: "GLOBAL_TOKEN" },
       });
       expect(harness.operations).toEqual(["build", "apply"]);
       expect([...new Set(harness.inspectCalls.map((call) => String(call.target.service)))]).toEqual([

@@ -197,6 +197,7 @@ const makeLayer = (
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    environmentResolverLayer(),
     BunFileSystem.layer,
     landofileServiceLayer,
     plannerLive,
@@ -305,7 +306,13 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(cacheRoot, id)));
       const pruned: string[] = [];
       const layer = makeLayer([], pruned, () =>
-        Effect.fail(new ScratchAppError({ operation: "gc", message: "provider prune failed" })),
+        Effect.fail(
+          new ScratchAppError({
+            operation: "gc",
+            message: "provider prune failed",
+            remediation: "Injected provider prune failure for scratch gc fixture.",
+          }),
+        ),
       );
       const result = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
@@ -386,3 +393,4 @@ describe("ScratchAppServiceLayer.layer gc", () => {
     });
   });
 });
+import { environmentResolverLayer } from "../_support/value-contracts.ts";

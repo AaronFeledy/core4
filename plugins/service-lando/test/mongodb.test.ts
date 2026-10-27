@@ -82,10 +82,11 @@ describe("mongodb ServiceType", () => {
       MONGO_INITDB_ROOT_PASSWORD: "lando",
       MONGO_INITDB_DATABASE: "myapp",
     });
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-mongodb-data");
-    expect(String(plan.storage[0]?.target)).toBe("/data/db");
-    expect(plan.storage[0]?.readOnly).toBe(false);
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-mongodb-data");
+    expect(String(volumes[0]?.target)).toBe("/data/db");
+    expect(volumes[0]?.readOnly).toBe(false);
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 27017, protocol: "tcp", name: "db", primary: true },
     ]);
@@ -111,7 +112,7 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.environment.MONGO_INITDB_DATABASE).toBe("otherapp");
-    expect(plan.storage[0]?.store).toBe("otherapp-mongodb-data");
+    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe("otherapp-mongodb-data");
   });
 
   test("respects user, database, image, port, and runtime overrides", async () => {
@@ -145,12 +146,12 @@ describe("mongodb ServiceType", () => {
     expect(plan.dependsOn).toEqual([]);
   });
 
-  test("includes a TCP healthcheck on port 27017", async () => {
+  test("keeps the readiness budget when planning the default probe", async () => {
     const plan = await planMongodb({ type: "mongodb" });
 
-    expect(plan.healthcheck).toEqual({
+    expect(plan.healthcheck).toMatchObject({
       kind: "command",
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/27017"],
+      command: expect.any(Array),
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -158,13 +159,14 @@ describe("mongodb ServiceType", () => {
     });
   });
 
-  test("TCP healthcheck tracks the overridden port", async () => {
+  test("tracks the overridden port in the daemon and readiness probe", async () => {
     const plan = await planMongodb({ type: "mongodb", port: 47017 });
 
     expect(firstEndpointPort(plan)).toBe(47017);
     expect(plan.command).toEqual(["mongod", "--port", "47017"]);
     expect(plan.environment.LANDO_DB_PORT).toBe("47017");
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/47017"]);
+    expect(plan.healthcheck?.target?.port).toBe(47017);
+    expect(plan.readiness?.target?.port).toBe(47017);
   });
 
   test("preserves authored environment variables alongside mongo defaults", async () => {
@@ -217,13 +219,14 @@ describe("mongodb ServiceType", () => {
     expect(resolution.tooling).toEqual({
       mongosh: {
         service: "db",
-        cmd: ["sh", "-c", 'exec mongosh "$MONGO_URI" "$@"', "mongosh"],
+        cmd: expect.any(Array),
         env: {
           MONGO_URI: `mongodb://${encodeURIComponent(creds.user)}:${encodeURIComponent(creds.password)}@127.0.0.1:27017/${encodeURIComponent(creds.database)}?authSource=admin`,
         },
       },
     });
     expect(resolution.normalizedConfig.creds).toEqual(creds);
+    expect(resolution.tooling?.mongosh?.cmd).not.toContain(creds.password);
   });
 
   test("mongosh MONGO_URI uses the overridden service port", async () => {
@@ -261,8 +264,10 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/config/mongod.conf",
+      relativeTo: "app",
       target: MONGODB_CONFIG_TARGET,
       readOnly: true,
       realization: "passthrough",
@@ -279,8 +284,10 @@ describe("mongodb ServiceType", () => {
     });
 
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/srv/apps/myapp/config/mongod.conf",
+      relativeTo: "app",
       target: MONGODB_CONFIG_TARGET,
       readOnly: true,
       realization: "passthrough",

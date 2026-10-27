@@ -229,6 +229,7 @@ describe("PHP xdebug option", () => {
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
+      "service-lando.php:baseline",
       "service-lando.php:prerequisites",
       "service-lando.php:xdebug",
       "service-lando.php:apache-default-site",

@@ -21,11 +21,26 @@ Open the URL `lando info` prints. Hostnames look like `web.myapp.lndo.site`. App
 and path. Use distinct route identities for different backends; sharing a listener
 does not prevent hostname conflicts.
 
+Before `start` or `restart` reports success, Lando confirms that Traefik loaded
+the app's complete route configuration. Unchanged routes are checked immediately,
+without rewriting their files or reissuing current certificates. This confirms
+routing configuration, not the HTTP status your app returns.
+
+If Traefik cannot confirm the routes within 30 seconds, the command fails with
+`ProxyApplyError` instead of claiming readiness. The app stays available for
+diagnosis. Inspect the router before retrying:
+
+```sh
+lando global:logs --service=traefik --tail=100
+lando global:info
+lando doctor
+```
+
 The Traefik dashboard is at `traefik.lndo.site/dashboard/` over HTTP and HTTPS, and global Mailpit is at `https://mailpit.lndo.site`. Both follow global `proxy.defaultDomain`. Add the selected port when it is not 80 or 443.
 
 When 80 and 443 are free, those URLs omit the port. When something else owns them, start prints `Port 80 is in use` or `Port 443 is in use`, names the holder if it can, and says `using 8080.` or `using 8443.` Then `lando info` prints the bound URLs, like `http://app.myapp.lndo.site:8080` and `https://app.myapp.lndo.site:8443`.
 
-On Linux, when binding ports 80 and 443 needs elevated permissions, Lando can ask to install a systemd socket proxy. That helper forwards HTTP and HTTPS traffic to Traefik; it is not tied to `lndo.site` and does not configure DNS. Declining keeps the unprivileged fallback-port path.
+On Linux and WSL, when `router.bindAddress` is `127.0.0.1` and binding ports 80 and 443 needs elevated permissions, Lando can ask to install a systemd socket proxy. Its public listeners and Traefik's backend ports stay on `127.0.0.1`. It forwards HTTP and HTTPS traffic without changing DNS. Declining keeps the unprivileged fallback-port path.
 
 ## Read lando info and lando doctor
 
@@ -91,7 +106,7 @@ router:
   httpsFallbacks: [4443, 4433, 4444, 444, 38443]
 ```
 
-This Landofile prefers 8080 and 8443, then walks the rest of each list. The same `router` block works in the installation `config.yml`. Env aliases are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_BIND_ADDRESS`, `LANDO_ROUTER_HTTP_FALLBACKS`, and `LANDO_ROUTER_HTTPS_FALLBACKS`. Fallback env values must be JSON arrays such as `[8000,8888]`. The default bind address is `127.0.0.1`.
+This Landofile prefers 8080 and 8443, then walks the rest of each list. The same port and fallback settings work in the installation `config.yml`. Env aliases are `LANDO_ROUTER_HTTP_PORT`, `LANDO_ROUTER_HTTPS_PORT`, `LANDO_ROUTER_HTTP_FALLBACKS`, and `LANDO_ROUTER_HTTPS_FALLBACKS`. Fallback env values must be JSON arrays such as `[8000,8888]`.
 
 Router ports are shared by every app. After changing the `router` block in `config.yml`, run `lando setup`. Setup rescans the candidate ports and moves Traefik to the pair it picks, even while Traefik is running. Starting an app that uses the router also picks up changed router ports; with unchanged config, app and scratch starts keep the owned pair so URLs stay stable. `lando global:restart` keeps the ports Traefik already has.
 
@@ -106,6 +121,26 @@ After Traefik starts or restarts, Lando gives it up to 10 seconds to answer on b
 lando global:logs --service=traefik --tail=100
 lando global:info
 ```
+
+## Set the shared router bind
+
+The default `router.bindAddress` is `127.0.0.1`. To share the proxy on your LAN, set it to the host's LAN interface IP in the installation `config.yml`, or use `LANDO_ROUTER_BIND_ADDRESS`. A Landofile value is ignored and `lando app:config:lint` warns because one app cannot change the shared listener.
+
+`0.0.0.0` and `::` bind on every interface, subject to the host firewall. `lando doctor` warns about those wildcard binds. A specific non-loopback IP is reported as intentional LAN sharing.
+
+On Linux and WSL, any bind other than `127.0.0.1` bypasses the loopback socket helper. Lando publishes Traefik directly on the selected address and tries the configured fallback ports if it cannot bind the preferred ports. An installed helper does not provide LAN-facing ports 80 and 443.
+
+After changing the global bind, run these commands from an app directory that uses the router:
+
+```sh
+lando start
+lando global:info
+lando doctor --format=json
+```
+
+The `router-bind-address` check reports `bind-application-unconfirmed` when the selected bind has not been confirmed against the running HTTP and HTTPS port bindings. If a previous bind was confirmed, `lastAppliedBindAddress` records it. Do not assume a change from a wildcard address to loopback has taken effect while this warning remains. Inspect the global service and retry `lando start`.
+
+Changing the bind does not change route hostnames or DNS. Other devices still need to resolve those names to the app host's LAN IP. See [Reach an app from another device](./external-access.mdx).
 
 ## Read an unmatched host
 

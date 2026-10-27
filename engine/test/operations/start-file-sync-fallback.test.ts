@@ -25,6 +25,7 @@ import {
   ServiceName,
   type ServicePlan,
   fileSyncVolumeName,
+  serviceAppMount,
 } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
@@ -38,21 +39,25 @@ import { makeHarness, plan, runStart, web } from "./start-progress-topology-supp
 
 const acceleratedService: ServicePlan = {
   ...web,
-  appMount: {
-    source: plan.root,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    realization: "accelerated",
-    excludes: ["node_modules", "vendor"],
-    includes: ["vendor"],
-  },
   mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: plan.root,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      excludes: ["node_modules", "vendor"],
+      includes: ["vendor"],
+      mountKey: "app-mount",
+    },
     {
       type: "bind",
       source: "/host/extra",
       target: PortablePath.make("/extra"),
       readOnly: false,
       realization: "accelerated",
+      mountKey: "mount-0",
     },
   ],
 };
@@ -82,7 +87,7 @@ const acceleratedPlan: AppPlan = {
         source: AbsolutePath.make("/host/extra"),
         target: { _tag: "volume", name: "test-start-web-mount-0", path: PortablePath.make("/extra") },
         mode: "two-way-safe",
-        excludes: [],
+        excludes: [".git"],
       },
     },
   ],
@@ -137,16 +142,26 @@ describe("file-sync mount realization before provider apply", () => {
     // Given a storage-only node_modules overlay covered by the existing session.
     const service: ServicePlan = {
       ...acceleratedService,
-      appMount: {
-        ...acceleratedService.appMount,
-        source: plan.root,
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "accelerated",
-        excludes: [],
-        includes: [],
-      },
-      storage: [{ store: "dependencies", target: PortablePath.make("/app/node_modules"), readOnly: false }],
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: plan.root,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          excludes: [],
+          includes: [],
+          mountKey: "app-mount",
+        },
+        {
+          type: "volume",
+          store: "dependencies",
+          target: PortablePath.make("/app/node_modules"),
+          readOnly: false,
+        },
+        ...acceleratedService.mounts.filter((mount) => !(mount.type === "bind" && mount.role === "app")),
+      ],
     };
     const planned: AppPlan = { ...acceleratedPlan, services: { [web.name]: service } };
     // When checking coverage with an available engine.
@@ -181,8 +196,10 @@ describe("file-sync mount realization before provider apply", () => {
     expect(providerPlan.fileSync).toEqual([]);
     const service = providerPlan.services[web.name];
     if (service === undefined) throw new Error("App service was not planned");
-    expect(service.appMount?.realization).toBe("passthrough");
-    expect(service.mounts[0]?.realization).toBe("passthrough");
+    expect(serviceAppMount(service)?.realization).toBe("passthrough");
+    expect(
+      service.mounts.filter((m) => m.type === "bind").every((m) => m.realization === "passthrough"),
+    ).toBe(true);
     const binds = containerHostConfigFragment(providerPlan, service).Binds ?? [];
     expect(binds).toContain(`${plan.root}:/app`);
     expect(binds).toContain("/host/extra:/extra");
@@ -212,14 +229,15 @@ describe("file-sync mount realization before provider apply", () => {
     expect(providerPlan.fileSync).toEqual([]);
     const service = providerPlan.services[web.name];
     if (service === undefined) throw new Error("App service was not planned");
-    expect(service.appMount?.realization).toBe("passthrough");
-    expect(service.mounts[0]?.realization).toBe("passthrough");
+    expect(serviceAppMount(service)?.realization).toBe("passthrough");
+    expect(
+      service.mounts.filter((m) => m.type === "bind").every((m) => m.realization === "passthrough"),
+    ).toBe(true);
     expect(containerHostConfigFragment(providerPlan, service).Binds).toContain(`${plan.root}:/app`);
   });
 
   test("global Traefik dynamic config remains a host bind when sync is available", async () => {
     const traefik = ServiceName.make("traefik");
-    const { appMount: _appMount, ...withoutAppMount } = web;
     const globalPlan: AppPlan = {
       ...plan,
       id: AppId.make("global"),
@@ -227,7 +245,7 @@ describe("file-sync mount realization before provider apply", () => {
       slug: "global",
       services: {
         [traefik]: {
-          ...withoutAppMount,
+          ...web,
           name: traefik,
           mounts: [
             {
@@ -249,7 +267,9 @@ describe("file-sync mount realization before provider apply", () => {
     expect(realized.fileSync).toEqual([]);
     const service = realized.services[traefik];
     if (service === undefined) throw new Error("Global Traefik was not planned");
-    expect(service.mounts[0]?.realization).toBe("passthrough");
+    const bind = service.mounts[0];
+    expect(bind?.type).toBe("bind");
+    if (bind?.type === "bind") expect(bind.realization).toBe("passthrough");
     expect(containerHostConfigFragment(realized, service).Binds).toContain(
       "/host/lando/global/proxy-traefik/dynamic:/etc/traefik/dynamic",
     );
@@ -348,8 +368,15 @@ describe("file-sync mount realization before provider apply", () => {
         ),
       );
       expect(resolved.fileSync, name).toEqual([]);
-      expect(resolved.services[web.name]?.appMount?.realization, name).toBe("passthrough");
-      expect(resolved.services[web.name]?.mounts[0]?.realization, name).toBe("passthrough");
+      const service = resolved.services[web.name];
+      if (service === undefined) throw new TypeError("Missing resolved web service");
+      expect(serviceAppMount(service)?.realization, name).toBe("passthrough");
+      expect(
+        resolved.services[web.name]?.mounts
+          .filter((m) => m.type === "bind")
+          .every((m) => m.realization === "passthrough"),
+        name,
+      ).toBe(true);
     }
   });
 
@@ -361,29 +388,32 @@ describe("file-sync mount realization before provider apply", () => {
     expect(resolved.services).toBe(plan.services);
   });
 
-  test("a duplicate bind mount at the app target needs only the app-mount session", async () => {
+  test("an app bind alone needs only the app-mount session for complete coverage", async () => {
     const appEntry = acceleratedPlan.fileSync[0];
     if (appEntry === undefined) throw new Error("Accelerated fixture has no app-mount session");
-    const duplicatePlan: AppPlan = {
-      ...acceleratedPlan,
-      services: {
-        [web.name]: {
-          ...acceleratedService,
-          mounts: [
-            {
-              type: "bind",
-              source: plan.root,
-              target: PortablePath.make("/app"),
-              readOnly: false,
-              realization: "accelerated",
-            },
-          ],
+    const appOnly: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: plan.root,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          excludes: ["node_modules", "vendor"],
+          includes: ["vendor"],
+          mountKey: "app-mount",
         },
-      },
+      ],
+    };
+    const appOnlyPlan: AppPlan = {
+      ...acceleratedPlan,
+      services: { [web.name]: appOnly },
       fileSync: [appEntry],
     };
     const resolved = await Effect.runPromise(
-      resolveFileSyncMountPlan(duplicatePlan).pipe(
+      resolveFileSyncMountPlan(appOnlyPlan).pipe(
         Effect.provideService(FileSyncEngine, {
           ...TestFileSyncEngine,
           id: "mutagen",
@@ -391,7 +421,7 @@ describe("file-sync mount realization before provider apply", () => {
         }),
       ),
     );
-    expect(resolved).toBe(duplicatePlan);
+    expect(resolved).toBe(appOnlyPlan);
   });
 
   test("available injected adapter retains accelerated publication and sync sessions", async () => {
@@ -406,8 +436,14 @@ describe("file-sync mount realization before provider apply", () => {
     );
     expect(resolved).toBe(acceleratedPlan);
     expect(resolved.fileSync).toHaveLength(2);
-    expect(resolved.services[web.name]?.appMount?.realization).toBe("accelerated");
-    expect(resolved.services[web.name]?.mounts[0]?.realization).toBe("accelerated");
+    const service = resolved.services[web.name];
+    if (service === undefined) throw new TypeError("Missing resolved web service");
+    expect(serviceAppMount(service)?.realization).toBe("accelerated");
+    expect(
+      resolved.services[web.name]?.mounts
+        .filter((m) => m.type === "bind")
+        .every((m) => m.realization === "accelerated"),
+    ).toBe(true);
   });
 });
 
@@ -580,7 +616,12 @@ describe("file-sync session reconciliation", () => {
 
   test("retains a resumed session when blocking flush fails", async () => {
     const calls: string[] = [];
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const engine = {
       ...TestFileSyncEngine,
       id: "mutagen",
@@ -647,7 +688,12 @@ describe("file-sync session reconciliation", () => {
   });
   test("retains a newly created session when blocking flush fails", async () => {
     const calls: string[] = [];
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "initial flush failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "initial flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const engine = {
       ...TestFileSyncEngine,
       id: "mutagen",
@@ -670,11 +716,18 @@ describe("file-sync session reconciliation", () => {
     expect(calls).toEqual(["create", "flush"]);
   });
   test("reports only the unmanaged flush failure without attempting termination", async () => {
-    const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const startupFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const cleanupFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: ref,
       message: "terminate failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const engine = {
       ...TestFileSyncEngine,
@@ -699,11 +752,18 @@ describe("file-sync session reconciliation", () => {
   });
 
   test("reports only the resumed-session flush failure without attempting pause", async () => {
-    const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const startupFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const cleanupFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: ref,
       message: "pause failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const engine = {
       ...TestFileSyncEngine,
@@ -774,7 +834,12 @@ describe("file-sync session reconciliation", () => {
   test("keeps a reused persistent running session when a later flush fails", async () => {
     const calls: string[] = [];
     const scope = await Effect.runPromise(Scope.make());
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "later flush failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "later flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const [first, second] = acceleratedPlan.fileSync;
     if (first === undefined || second === undefined) throw new Error("Missing planned sessions");
     const engine = {
@@ -803,11 +868,18 @@ describe("file-sync session reconciliation", () => {
 
   test("preserves the tagged startup failure without persistent cleanup errors", async () => {
     const scope = await Effect.runPromise(Scope.make());
-    const startupFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const startupFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const cleanupFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: ref,
       message: "terminate failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const engine = {
       ...TestFileSyncEngine,
@@ -945,11 +1017,15 @@ describe("file-sync session reconciliation", () => {
       engineId: "mutagen",
       sessionRef: ref,
       message: "pause failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const terminateFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: otherRef,
       message: "terminate failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const engine = {
       ...TestFileSyncEngine,
@@ -1033,7 +1109,11 @@ describe("file-sync session reconciliation", () => {
   test("retains a reused persistent session when a later startup step fails", async () => {
     const calls: string[] = [];
     const scope = await Effect.runPromise(Scope.make());
-    const failure = new FileSyncStartError({ engineId: "mutagen", message: "create failed" });
+    const failure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "create failed",
+      remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+    });
     const [first, second] = acceleratedPlan.fileSync;
     if (first === undefined || second === undefined) throw new Error("Missing planned sessions");
     const engine = {
@@ -1202,8 +1282,14 @@ describe("pre-apply accelerated mount preparation", () => {
     await runStart(harness, acceleratedPlan);
     expect(applied).toHaveLength(1);
     expect(applied[0]?.fileSync).toEqual([]);
-    expect(applied[0]?.services[web.name]?.appMount?.realization).toBe("passthrough");
-    expect(applied[0]?.services[web.name]?.mounts[0]?.realization).toBe("passthrough");
+    const service = applied[0]?.services[web.name];
+    if (service === undefined) throw new TypeError("Missing applied web service");
+    expect(serviceAppMount(service)?.realization).toBe("passthrough");
+    expect(
+      applied[0]?.services[web.name]?.mounts
+        .filter((m) => m.type === "bind")
+        .every((m) => m.realization === "passthrough"),
+    ).toBe(true);
     await Effect.runPromise(
       readPendingAcceleratedStart({ kind: "user", id: plan.id, root: plan.root }).pipe(
         Effect.provide(harness.stateStore.layer),
@@ -1582,7 +1668,7 @@ describe("pre-apply accelerated mount preparation", () => {
     const otherRootPath = mkdtempSync(join(tmpdir(), "lando-other-start-"));
     const otherRoot = AbsolutePath.make(otherRootPath);
     const otherId = AppId.make("other-app");
-    const otherAppMount = acceleratedService.appMount;
+    const otherAppMount = serviceAppMount(acceleratedService);
     if (otherAppMount === undefined) throw new Error("Accelerated test service needs an app mount.");
     const otherPlan: AppPlan = {
       ...acceleratedPlan,
@@ -1593,7 +1679,9 @@ describe("pre-apply accelerated mount preparation", () => {
       services: {
         [web.name]: {
           ...acceleratedService,
-          appMount: { ...otherAppMount, source: otherRoot },
+          mounts: acceleratedService.mounts.map((mount) =>
+            mount.type === "bind" && mount.role === "app" ? { ...mount, source: otherRoot } : mount,
+          ),
         },
       },
       fileSync: acceleratedPlan.fileSync.map((entry) => ({
@@ -1881,7 +1969,16 @@ describe("pre-apply accelerated mount preparation", () => {
           ? Effect.sync(() => {
               order.push("init");
             }).pipe(
-              Effect.andThen(Effect.fail(new EventError({ message: "stop after init", event: "pre-init" }))),
+              Effect.andThen(
+                Effect.fail(
+                  new EventError({
+                    message: "stop after init",
+                    event: "pre-init",
+                    remediation:
+                      "Fix the handler or emitter for event `pre-init`, then re-run the operation that publishes it.",
+                  }),
+                ),
+              ),
             )
           : Effect.void,
       onPrepareFileSync: () => order.push("prepare"),
@@ -1954,6 +2051,7 @@ describe("pre-apply accelerated mount preparation", () => {
           providerId: "lando",
           operation: "apply",
           message: "app container failed to start",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
         }),
       ),
       fileSync: {
@@ -1979,7 +2077,12 @@ describe("pre-apply accelerated mount preparation", () => {
       onApply: () => order.push("apply"),
       onDestroy: () => order.push("destroy"),
       applyEffect: Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "failed" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "apply",
+          message: "failed",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
+        }),
       ),
       fileSync: {
         ...TestFileSyncEngine,
@@ -2013,6 +2116,7 @@ describe("pre-apply accelerated mount preparation", () => {
       providerId: "lando",
       operation: "apply",
       message: "app container failed to start",
+      remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -2054,11 +2158,14 @@ describe("pre-apply accelerated mount preparation", () => {
       providerId: "lando",
       operation: "apply",
       message: "app container failed to start",
+      remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
     });
     const terminateFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: "sync-mount-0",
       message: "session termination failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
@@ -2094,7 +2201,14 @@ describe("pre-apply accelerated mount preparation", () => {
       onDestroy: () => order.push("destroy"),
       onPublish: (event) =>
         event._tag === "post-app-start"
-          ? Effect.fail(new EventError({ message: "post-app-start failed", event: "post-app-start" }))
+          ? Effect.fail(
+              new EventError({
+                message: "post-app-start failed",
+                event: "post-app-start",
+                remediation:
+                  "Fix the handler or emitter for event `post-app-start`, then re-run the operation that publishes it.",
+              }),
+            )
           : Effect.void,
       fileSync: {
         ...TestFileSyncEngine,
@@ -2118,7 +2232,14 @@ describe("pre-apply accelerated mount preparation", () => {
       onDestroy: () => order.push("destroy"),
       onPublish: (event) =>
         event._tag === "post-start"
-          ? Effect.fail(new EventError({ message: "post-start failed", event: "post-start" }))
+          ? Effect.fail(
+              new EventError({
+                message: "post-start failed",
+                event: "post-start",
+                remediation:
+                  "Fix the handler or emitter for event `post-start`, then re-run the operation that publishes it.",
+              }),
+            )
           : Effect.void,
       fileSync: {
         ...TestFileSyncEngine,
@@ -2205,10 +2326,16 @@ describe("pre-apply accelerated mount preparation", () => {
           providerId: "lando",
           operation: "destroy",
           message: "writers remain",
+          remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
         }),
       ),
       applyEffect: Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "failed" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "apply",
+          message: "failed",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
+        }),
       ),
       fileSync: {
         ...TestFileSyncEngine,
@@ -2240,7 +2367,12 @@ describe("pre-apply accelerated mount preparation", () => {
       appliedFileSyncState: "accelerated",
       onDestroy: () => order.push("destroy"),
       applyEffect: Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "apply", message: "failed" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "apply",
+          message: "failed",
+          remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
+        }),
       ),
       fileSync: {
         ...TestFileSyncEngine,
@@ -2276,7 +2408,13 @@ describe("pre-apply accelerated mount preparation", () => {
         flushSession: () =>
           Effect.sync(() => order.push("flush")).pipe(
             Effect.andThen(
-              Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "initial sync failed" })),
+              Effect.fail(
+                new FileSyncStartError({
+                  engineId: "mutagen",
+                  message: "initial sync failed",
+                  remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+                }),
+              ),
             ),
           ),
         terminateSession: () => Effect.sync(() => order.push("terminate")),
@@ -2288,7 +2426,11 @@ describe("pre-apply accelerated mount preparation", () => {
 
   test("failed initial flush retains prepared targets and journal without provider rollback", async () => {
     const order: string[] = [];
-    const flushFailure = new FileSyncStartError({ engineId: "mutagen", message: "initial sync failed" });
+    const flushFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "initial sync failed",
+      remediation: "Fix the reported file-sync session failure, then retry `lando start`.",
+    });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,
       onPrepareFileSync: () => order.push("prepare"),
@@ -2438,7 +2580,14 @@ describe("pre-apply accelerated mount preparation", () => {
         listSessions: ({ mountKey }) => Effect.succeed(mountKey === "app-mount" ? [] : [existing]),
         createSession: (spec) => Effect.succeed(FileSyncSessionRef.make(`sync-${spec.mountKey}`)),
         flushSession: () =>
-          Effect.fail(new FileSyncStartError({ engineId: "mutagen", message: "flush failed" })),
+          Effect.fail(
+            new FileSyncStartError({
+              engineId: "mutagen",
+              message: "flush failed",
+              remediation:
+                "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+            }),
+          ),
         terminateSession: () => Effect.sync(() => order.push("terminate")),
       },
     });
@@ -2448,11 +2597,18 @@ describe("pre-apply accelerated mount preparation", () => {
 
   test("flush failure preserves targets without attempting fallible termination", async () => {
     const order: string[] = [];
-    const flushFailure = new FileSyncStartError({ engineId: "mutagen", message: "flush failed" });
+    const flushFailure = new FileSyncStartError({
+      engineId: "mutagen",
+      message: "flush failed",
+      remediation:
+        "Retry the flush; if it keeps failing, leave the session running and inspect Mutagen session status before stop.",
+    });
     const terminateFailure = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: "sync-app-mount",
       message: "terminate failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const harness = makeHarness({
       plannedApp: acceleratedPlan,

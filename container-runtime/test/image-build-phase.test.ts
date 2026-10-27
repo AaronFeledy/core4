@@ -37,7 +37,6 @@ test("derived Dockerfiles contain only build-phase steps", async () => {
     artifact: { kind: "ref", ref: "php:8.2-apache-bookworm" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -60,7 +59,6 @@ test("derived Dockerfiles contain only build-phase steps", async () => {
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -79,7 +77,7 @@ test("derived Dockerfiles contain only build-phase steps", async () => {
   await Effect.runPromise(
     buildContainerArtifact(
       { app: appId, service: serviceName, plan, buildKey: "phase-key" },
-      { providerId, api },
+      { providerId, api, sourceEnv: {} },
     ),
   );
 

@@ -64,11 +64,11 @@ test.each([
   "applies defaults and field transforms only after authored composition (%#)",
   async (lower, higher, expected) => {
     const result = await Effect.runPromise(load(lower, higher));
-    expect(result.services?.[ServiceName.make("web")]).toMatchObject(expected);
-    const encoded = Schema.encodeSync(LandofileShape)(result);
+    expect(result.document.services?.[ServiceName.make("web")]).toMatchObject(expected);
+    const encoded = Schema.encodeSync(LandofileShape)(result.document);
     expect(
       Schema.decodeUnknownSync(LandofileShape)(encoded, { onExcessProperty: "error", errors: "all" }),
-    ).toEqual(result);
+    ).toEqual(result.document);
   },
 );
 
@@ -87,7 +87,7 @@ test.each([
   ],
 ])("canonicalizes only service aliases before merging (%#)", async (lower, higher, expected) => {
   const result = await Effect.runPromise(load(lower, higher));
-  expect(result.services?.[ServiceName.make("web")]).toMatchObject(expected);
+  expect(result.document.services?.[ServiceName.make("web")]).toMatchObject(expected);
 });
 
 test.each([

@@ -19,51 +19,57 @@ import { activeResultFormat, runCompiledCommand, runWithProcessAbortSignal } fro
 export const runNativeOnlyBuiltIn = async (
   entry: BuiltInCommandEntry,
   argv: ReadonlyArray<string>,
+  parentSignal?: AbortSignal,
 ): Promise<void> => {
+  if (parentSignal?.aborted) return;
+  const signalOptions = parentSignal === undefined ? {} : { signal: parentSignal };
   switch (entry.spec.id) {
     case "apps:init": {
       const input = compiledCommandInputFromArgv(entry.spec.id, argv);
-      await runWithProcessAbortSignal((signal) =>
-        runCompiledCommand(
-          Effect.gen(function* () {
-            const events = yield* EventService;
-            const privateFileAccess = yield* PrivateFileAccessService;
-            const postInitIO = yield* makeInitOutput(activeResultFormat);
-            const options = initOptionsFromInput(input);
-            const sources = yield* retainedRecipeSources(options.registryUrl);
-            return yield* Effect.tryPromise({
-              try: () =>
-                initApp({
-                  ...sources,
-                  ...options,
-                  signal,
-                  onWarn: postInitIO.err,
-                  postInitIO,
-                  events,
-                  privateFileAccess,
-                }),
-              catch: (error) => error,
-            });
-          }),
-          makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
-          (result) => {
-            const created = `Created ${result.appName} at ${result.directory}`;
-            return result.agentSkills === undefined
-              ? created
-              : `${created}\n${renderAgentSkillsResult(result.agentSkills)}`;
-          },
-        ),
+      await runWithProcessAbortSignal(
+        (signal) =>
+          runCompiledCommand(
+            Effect.gen(function* () {
+              const events = yield* EventService;
+              const privateFileAccess = yield* PrivateFileAccessService;
+              const postInitIO = yield* makeInitOutput(activeResultFormat);
+              const options = initOptionsFromInput(input);
+              const sources = yield* retainedRecipeSources(options.registryUrl);
+              return yield* Effect.tryPromise({
+                try: () =>
+                  initApp({
+                    ...sources,
+                    ...options,
+                    signal,
+                    onWarn: postInitIO.err,
+                    postInitIO,
+                    events,
+                    privateFileAccess,
+                  }),
+                catch: (error) => error,
+              });
+            }),
+            makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+            (result) => {
+              const created = `Created ${result.appName} at ${result.directory}`;
+              return result.agentSkills === undefined
+                ? created
+                : `${created}\n${renderAgentSkillsResult(result.agentSkills)}`;
+            },
+            { signal },
+          ),
+        signalOptions,
       );
       return;
     }
     case "meta:setup":
-      await runSetup(argv);
+      await runWithProcessAbortSignal((signal) => runSetup(argv, signal), signalOptions);
       return;
     case "meta:shellenv":
-      await runMetaShellenv(argv);
+      await runWithProcessAbortSignal((signal) => runMetaShellenv(argv, signal), signalOptions);
       return;
     case "meta:uninstall":
-      await runMetaUninstall(argv);
+      await runWithProcessAbortSignal((signal) => runMetaUninstall(argv, signal), signalOptions);
       return;
     default:
       throw new TypeError(`Built-in command ${entry.spec.id} is not embedding-exempt.`);

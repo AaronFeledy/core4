@@ -9,7 +9,7 @@ import {
   AgentRelayWorkerInput,
   identifyAgentRelayWorker,
 } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
-import { createStandaloneRedactor } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import { AbsolutePath, type AgentSocketBridgeInput, type AppPlan, type ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
@@ -60,6 +60,7 @@ describe("agent relay worker runtime", () => {
                 }),
             ),
         };
+        const redaction = makeRedactionService();
         const registry = Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
@@ -82,7 +83,7 @@ describe("agent relay worker runtime", () => {
                 const ready = yield* scopedAgentRelayWorker(input, {
                   platform,
                   createRelay: async (options) => {
-                    const redactor = createStandaloneRedactor("secrets");
+                    const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
                     if (options.upstream._tag === "loopback-tcp")
                       expect(redactor.redactString(upstreamToken)).toBe("[redacted]");
                     if (options.listen._tag === "loopback-tcp" && options.listen.token !== undefined)
@@ -113,7 +114,7 @@ describe("agent relay worker runtime", () => {
                 expect(closed).toEqual([]);
                 return ready;
               }),
-            ).pipe(Effect.provide(registry)),
+            ).pipe(Effect.provide(registry), Effect.provideService(RedactionService, redaction)),
           );
           // Then delivery determines the listener, bridge, and published mount.
           const paths = sshAgentSessionPaths(input.app, { userDataRoot: root }, "ssh");
@@ -160,7 +161,7 @@ describe("agent relay worker runtime", () => {
                 : {}),
             });
           expect(closed).toEqual(delivery === "bind-directory" ? ["relay"] : ["bridge", "relay"]);
-          const redactor = createStandaloneRedactor("secrets");
+          const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
           expect(redactor.redactString(ready.controlToken)).toBe("[redacted]");
           const listen = listeners[0]?.listen;
           if (listen?._tag === "loopback-tcp" && listen.token !== undefined)
@@ -195,7 +196,13 @@ describe("agent relay worker runtime", () => {
           }),
         );
         return yield* Effect.fail(
-          new ProviderInternalError({ providerId: "docker", operation: "bridge", message: "failed" }),
+          new ProviderInternalError({
+            providerId: "docker",
+            operation: "bridge",
+            message: "failed",
+            remediation:
+              "Re-run the command after checking `docker` logs for the `bridge` failure; if it persists, report the error with that operation name.",
+          }),
         );
       }),
     };
@@ -213,6 +220,7 @@ describe("agent relay worker runtime", () => {
             }),
           }),
         ).pipe(
+          Effect.provide(RedactionService.layer),
           Effect.provideService(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({

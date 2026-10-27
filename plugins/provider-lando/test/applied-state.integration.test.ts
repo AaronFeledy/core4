@@ -3,7 +3,8 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
+import { makeRuntimeProvider } from "../src/index.ts";
 
 import { makePluginStateStore as makePluginStateStoreWithAccess } from "@lando/engine/plugins/context-state";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -22,7 +23,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  AppPlan,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -49,11 +50,11 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
-  mounts: [],
-  storage:
+  mounts:
     name === "database"
       ? [
           {
+            type: "volume",
             store: "applied_state_db",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
@@ -92,7 +93,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [{ name: "applied_state_db", scope: "app", kind: "data" }],
   fileSync: [],
   metadata,
@@ -121,6 +121,80 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
 };
 
 describe("provider-lando applied state persistence", () => {
+  for (const damage of ["corrupt", "migration", "decode"] as const) {
+    for (const operation of ["apply", "reconcile", "stop", "restart", "destroy-supplied"] as const) {
+      test(`${operation} refuses ${damage} state before touching the runtime`, async () => {
+        await withStateDir(async (stateDir) => {
+          const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+          const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+          const encoded = Schema.encodeSync(AppPlan)(plan);
+          const bytes =
+            damage === "corrupt"
+              ? "not json"
+              : JSON.stringify({
+                  version: damage === "migration" ? 1 : 2,
+                  data:
+                    damage === "decode"
+                      ? {}
+                      : {
+                          ...encoded,
+                          services: {
+                            web: {
+                              ...encoded.services[web.name],
+                              mounts: [
+                                {
+                                  type: "bind",
+                                  source: "/x",
+                                  target: "/x",
+                                  readOnly: false,
+                                  realization: "accelerated",
+                                },
+                              ],
+                            },
+                          },
+                        },
+                });
+          await writeFile(path, bytes);
+          const requests: string[] = [];
+          const provider = await Effect.runPromise(
+            makeRuntimeProvider({
+              platform: "linux",
+              sanitizeAppliedPlan: (value) => value,
+              appliedPlanState: state,
+              appliedPlanStateDir: stateDir,
+              podmanApi: {
+                info: Effect.succeed({}),
+                ping: Effect.void,
+                request: (input) =>
+                  Effect.sync(() => {
+                    requests.push(input.path);
+                    return { status: 204, body: "" };
+                  }),
+              },
+            }),
+          );
+          const target = { app: plan.id, service: web.name, plan };
+          const action =
+            operation === "apply" || operation === "reconcile"
+              ? provider.apply(plan, { reconcile: operation === "reconcile" })
+              : operation === "stop"
+                ? provider.stop(target)
+                : operation === "restart"
+                  ? provider.restart(target)
+                  : provider.destroy(target, { volumes: true });
+          const failure = await Effect.runPromise(action.pipe(Effect.flip, Effect.scoped));
+          expect(failure).toMatchObject({
+            _tag: "ProviderUnavailableError",
+            providerId: "lando",
+            operation: "applied-state.read",
+          });
+          expect(failure.remediation).toContain(path);
+          expect(requests).toEqual([]);
+          expect(await readFile(path, "utf8")).toBe(bytes);
+        });
+      });
+    }
+  }
   test("appliedPlanPath places each app in the applied-plans namespace", () => {
     expect(appliedPlanPath("/tmp/plugin-state/", plan.id)).toBe(
       "/tmp/plugin-state/applied-plans/applied-state.json",
@@ -139,7 +213,7 @@ describe("provider-lando applied state persistence", () => {
       expect(written).toBe(appliedPlanPath(stateDir, proxyPlan.id));
 
       const raw = JSON.parse(await readFile(written, "utf8"));
-      expect(raw.version).toBe(1);
+      expect(raw.version).toBe(2);
       expect(raw.data).toBeDefined();
 
       const loaded = await Effect.runPromise(loadAppliedPlan(stateB, proxyPlan.id));
@@ -173,10 +247,19 @@ describe("provider-lando applied state persistence", () => {
       });
       const path = appliedPlanPath(stateDir, plan.id);
       await writeFile(path, "not valid json");
-      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({ status: "unreadable" });
+      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
+        status: "unreadable",
+        path: appliedPlanPath(stateDir, plan.id),
+      });
       await writeFile(path, JSON.stringify({ version: 99, data: {} }));
-      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({ status: "unreadable" });
-      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({ status: "unreadable" });
+      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
+        status: "unreadable",
+        path: appliedPlanPath(stateDir, plan.id),
+      });
+      expect(await Effect.runPromise(inspectAppliedPlan(state, plan.id))).toEqual({
+        status: "unreadable",
+        path: appliedPlanPath(stateDir, plan.id),
+      });
     });
   });
   test("file-sync fallback inspection checks applied state and owned Podman volumes", async () => {
@@ -235,14 +318,19 @@ describe("provider-lando applied state persistence", () => {
           ...plan.services,
           [web.name]: {
             ...web,
-            appMount: {
-              source: plan.root,
-              target: PortablePath.make("/app"),
-              readOnly: false,
-              realization: "accelerated",
-              excludes: [],
-              includes: [],
-            },
+            mounts: [
+              {
+                type: "bind",
+                role: "app",
+                source: plan.root,
+                target: PortablePath.make("/app"),
+                readOnly: false,
+                realization: "accelerated",
+                excludes: [],
+                includes: [],
+                mountKey: "app-mount",
+              },
+            ],
           },
         },
         fileSync: [
@@ -278,6 +366,7 @@ describe("provider-lando applied state persistence", () => {
               providerId: "lando",
               operation: "listVolumes",
               message: "offline",
+              remediation: "Install or start the `lando` provider and confirm it can perform `listVolumes`.",
             }),
           ),
       };
@@ -350,7 +439,10 @@ describe("provider-lando applied state persistence", () => {
   test("listAppliedPlans returns empty when the namespace directory is missing", async () => {
     await withStateDir(async (stateDir) => {
       const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
-      expect(await Effect.runPromise(listAppliedPlans(state, stateDir))).toEqual([]);
+      expect(await Effect.runPromise(listAppliedPlans(state, stateDir))).toEqual({
+        plans: [],
+        unreadable: [],
+      });
     });
   });
 
@@ -374,7 +466,7 @@ describe("provider-lando applied state persistence", () => {
       await Effect.runPromise(persistAppliedPlan(state, globalPlan));
 
       const listed = await Effect.runPromise(listAppliedPlans(state, stateDir));
-      const ids = listed.map((item) => String(item.id)).sort();
+      const ids = listed.plans.map((item) => String(item.id)).sort();
       expect(ids).toEqual(["applied-state", "global"]);
     });
   });

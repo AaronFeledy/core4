@@ -2,6 +2,8 @@ import { type AppConfigResult, AppConfigResultSchema } from "@lando/engine/opera
 import { type AppConfigViewOptions, appConfigView } from "@lando/engine/operations/app-config-view";
 import * as Writes from "@lando/engine/operations/app-config-write";
 import { collectLandofileRedactionTokens } from "@lando/engine/services/app-plan-redaction";
+import { findAppRoot } from "@lando/landofile/discovery";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { emitLandofileYaml, isPlainRecord } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
@@ -141,7 +143,7 @@ export const appConfig = Effect.fn("AppConfig.run")(function* (options: AppConfi
       if (!("source" in result) || result.source !== "resolved" || !("landofile" in result)) return result;
       const hostEvents = yield* hostEventStatusesForPlan({
         name: result.landofile.name ?? "",
-        root: options.cwd ?? process.cwd(),
+        root: (yield* findAppRoot(options.cwd)) ?? (yield* discoveryCwd()),
         services: result.landofile.services ?? {},
         ...(result.landofile.events === undefined ? {} : { events: result.landofile.events }),
       });

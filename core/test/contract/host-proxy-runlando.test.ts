@@ -103,7 +103,14 @@ describe("in-container lando open host-proxy round-trip", () => {
       operation: "inspect",
       message: "runtime inspection failed",
       remediation: "Repair runtime.",
-      additionalErrors: [{ _tag: "Error", role: "peer", message: "inspection cleanup failed" }],
+      additionalErrors: [
+        {
+          _tag: "LandoInternalError",
+          role: "peer",
+          message: "inspection cleanup failed",
+          remediation: expect.stringContaining("--debug"),
+        },
+      ],
     });
   });
   test("an unobserved hostname fails closed instead of guessing an ingress port", async () => {

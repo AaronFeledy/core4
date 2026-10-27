@@ -8,6 +8,7 @@ import { Schema } from "effect";
 import { PublicTranscript } from "@lando/sdk/docs/components";
 
 import { buildGuideScenarioAst, emitPublicTranscripts } from "../../../scripts/build-guide-scenarios.ts";
+import { GuideSemanticError } from "../../../scripts/guides/diagnostic.ts";
 
 const readTranscript = async (root: string, relativePath: string) =>
   Schema.decodeUnknownSync(PublicTranscript)(JSON.parse(await Bun.file(join(root, relativePath)).text()));
@@ -39,7 +40,7 @@ describe("build-guide-scenarios public transcript emission", () => {
           "    </Step>",
           '    <Hidden reason="internal setup not shown to readers">',
           '      <Step name="secret-setup">',
-          '        <Run command="lando version" />',
+          '        <Run command="lando version {{svc}}" />',
           "      </Step>",
           "    </Hidden>",
           '    <Step name="teardown">',
@@ -51,6 +52,7 @@ describe("build-guide-scenarios public transcript emission", () => {
           '  <Scenario id="notes" render={false} reason="documentation-only scenario covered elsewhere">',
           '    <Step name="note">',
           '      <Variable name="x" value="y" display="z" />',
+          '      <Run command="lando version {{x}}" />',
           "    </Step>",
           "  </Scenario>",
           "</Guide>",
@@ -246,7 +248,7 @@ describe("build-guide-scenarios public transcript emission", () => {
     }
   });
 
-  test("does not interpolate hidden-step variables into visible public frames", async () => {
+  test("rejects hidden-step references before public transcript emission", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-public-tx-hidden-"));
     try {
       await mkdir(join(root, "docs/guides"), { recursive: true });
@@ -274,16 +276,13 @@ describe("build-guide-scenarios public transcript emission", () => {
         ].join("\n"),
       );
 
-      const asts = await buildGuideScenarioAst(root);
-      await emitPublicTranscripts(asts, root);
-      const transcript = await readTranscript(
-        root,
-        "dist/transcripts/public/guides/leak-guide/leak-check.json",
-      );
-
-      expect(JSON.stringify(transcript)).not.toContain("s3cr3t-value");
-      const runFrame = transcript.frames.find((frame) => frame.kind === "run");
-      expect(runFrame?.commandDisplay).not.toContain("s3cr3t-value");
+      await expect(buildGuideScenarioAst(root)).rejects.toMatchObject({
+        _tag: "GuideSemanticError",
+        code: "guide.variable.hidden-reference",
+        name: "secret",
+        line: 14,
+        relatedDeclarationLine: 10,
+      });
     } finally {
       await rm(root, { force: true, recursive: true });
     }
@@ -495,14 +494,12 @@ describe("build-guide-scenarios public transcript emission", () => {
         ].join("\n"),
       );
 
-      const asts = await buildGuideScenarioAst(root);
-      let message = "";
-      try {
-        await emitPublicTranscripts(asts, root);
-      } catch (error) {
-        message = String(error);
-      }
-      expect(message).toMatch(/mixed|library|cli|public-mixed-guide|reader-path/i);
+      const result = buildGuideScenarioAst(root);
+      await expect(result).rejects.toBeInstanceOf(GuideSemanticError);
+      await expect(result).rejects.toMatchObject({
+        code: "guide.runtime.mixed",
+        scenario: "reader-path",
+      });
     } finally {
       await rm(root, { force: true, recursive: true });
     }

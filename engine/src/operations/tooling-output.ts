@@ -9,7 +9,7 @@ export const withToolingOutput = Effect.fnUntraced(function* <
   const provided = yield* Effect.serviceOption(StreamFrameSink);
   const output = Option.match(provided, {
     onNone: createCollectingStreamFrameSink,
-    onSome: (sink) => ({ sink, result: () => ({ stdout: "", stderr: "" }) }),
+    onSome: (sink) => ({ sink, finish: () => Effect.void, result: () => ({ stdout: "", stderr: "" }) }),
   });
   const sink = output.sink;
   const emitted = { stdout: false, stderr: false };
@@ -25,11 +25,12 @@ export const withToolingOutput = Effect.fnUntraced(function* <
     Effect.tap((returned) =>
       Effect.forEach(["stdout", "stderr"] as const, (channel) =>
         !emitted[channel] && returned[channel].length > 0
-          ? sink.emit({ _tag: channel, chunk: returned[channel], raw: true })
+          ? sink.emit({ _tag: channel, chunk: returned[channel], kind: "bytes" })
           : Effect.void,
       ),
     ),
-    Effect.ensuring(sink.flush === undefined ? Effect.void : sink.flush()),
+    Effect.scoped,
+    Effect.ensuring(output.finish()),
   );
   return { ...result, ...output.result() };
 });

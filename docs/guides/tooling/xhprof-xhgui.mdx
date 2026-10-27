@@ -35,7 +35,6 @@ services:
     type: compose
     image: xhgui/xhgui:0.23
     appMount: false
-    home: false
     environment:
       XHGUI_SAVE_HANDLER: pdo
       XHGUI_PDO_DSN: "pgsql:host=profiles;dbname=xhgui"
@@ -63,7 +62,7 @@ tooling:
 ```
 
 - `app` runs PHP 8.3 under Apache. The two `build.artifact` steps compile and enable XHProf when Lando builds the image, and the mount drops a PHP ini file into the image's `conf.d` directory.
-- `xhgui` runs the upstream XHGui image, which serves its UI on port 80. `appMount: false` keeps your source out of it. Set `home: false` to skip home persistence because Lando doesn't know this image's home path; otherwise, you must set `home.path`. Keep the explicit HTTP `ui` endpoint so Lando can proxy port 80 and give the UI its own `*.lndo.site` URL.
+- `xhgui` runs the upstream XHGui image, which serves its UI on port 80. `appMount: false` keeps your source out of it, and Lando plans no home store for a Landofile-supplied image. Keep the explicit HTTP `ui` endpoint so Lando can proxy port 80 and give the UI its own `*.lndo.site` URL.
 - `profiles` is the Postgres store. XHGui creates its `results` and `watches` tables on first use. `dependsOn` holds XHGui until the Postgres healthcheck passes.
 - `composer` runs Composer inside `app`. The PHP service ships Composer, so there is nothing else to install.
 
@@ -166,13 +165,13 @@ These checks exercise the declared services and tooling. They don't build XHProf
 
 ## Keep or remove the profiles
 
-`lando destroy -y` removes the app's containers and networks but keeps its volumes, so saved runs and the installed `vendor` directory are still there after the next start:
+`lando destroy -y` removes the app's containers and networks but keeps its named volumes: the `profiles` data store and the `vendor` shadow, so saved runs and the installed profiler are still there after the next start:
 
 ```sh
 lando destroy -y
 ```
 
-Add `--volumes` only when you want to delete the app's persistent volumes, including every saved profile. Your source files stay on the host.
+Add `--volumes` only when you want to delete the app's named volumes, including every saved profile. Your source files stay on the host.
 
 ## Next
 

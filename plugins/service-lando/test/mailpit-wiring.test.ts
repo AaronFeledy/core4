@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -12,25 +13,27 @@ import { mailpitServiceType } from "../src/services/mailpit.ts";
 const planEffect = (mailFrom: unknown, php = true, firstOverrides: Record<string, unknown> = {}) =>
   Effect.flatMap(AppPlanner, (planner) =>
     planner.plan(
-      Schema.decodeUnknownSync(LandofileShape)({
-        name: "mail-demo",
-        services: {
-          mail: { type: "mailpit", ...(mailFrom === undefined ? {} : { mailFrom }) },
-          ...(php
-            ? {
-                first: {
-                  type: "php:8.3",
-                  via: "cli",
-                  composer: false,
-                  db_client: false,
-                  ...firstOverrides,
-                },
-                second: { type: "php:8.3", via: "cli", composer: false, db_client: false },
-              }
-            : {}),
-          cache: { type: "redis" },
-        },
-      }),
+      compileTestLandofile(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "mail-demo",
+          services: {
+            mail: { type: "mailpit", ...(mailFrom === undefined ? {} : { mailFrom }) },
+            ...(php
+              ? {
+                  first: {
+                    type: "php:8.3",
+                    via: "cli",
+                    composer: false,
+                    db_client: false,
+                    ...firstOverrides,
+                  },
+                  second: { type: "php:8.3", via: "cli", composer: false, db_client: false },
+                }
+              : {}),
+            cache: { type: "redis" },
+          },
+        }),
+      ),
       TestRuntimeProvider.capabilities,
     ),
   ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));

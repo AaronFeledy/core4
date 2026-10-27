@@ -7,18 +7,23 @@ import { join } from "node:path";
 
 import { Effect, Redacted, Schema, type Scope, Stream } from "effect";
 
-import { CapabilityError, DataEndpointUnsupportedError, ProviderCapabilityError } from "../errors/index.ts";
+import {
+  CapabilityError,
+  DataEndpointUnsupportedError,
+  EnvironmentValueResolutionError,
+  ProviderCapabilityError,
+} from "../errors/index.ts";
 import { followLogSources, logFollowLineChunks, makeMemoryLogFileAccess } from "../log-follow/index.ts";
 import {
   AbsolutePath,
   AppId,
   type DataEndpoint,
-  type DataStoreMountPlan,
   PortablePath,
   ProviderId,
   type ServiceName,
   type StorageScope,
   type VolumeInfo,
+  type VolumeMountPlan,
   type VolumeRef,
   type VolumeSnapshotRef,
 } from "../schema/index.ts";
@@ -92,7 +97,8 @@ const nextContractRunId = (): string => {
   return `contract-data-${randomUUID()}`;
 };
 
-const dataStoreMount = (store: string): DataStoreMountPlan => ({
+const dataStoreMount = (store: string): VolumeMountPlan => ({
+  type: "volume",
   store,
   target: Schema.decodeUnknownSync(PortablePath)("/data"),
   readOnly: false,
@@ -350,11 +356,6 @@ const servicePathKey = (
   path: PortablePath,
 ): string => `${target.app}:${target.service}:${path}`;
 
-const firstDataStoreMount = (
-  mounts: Parameters<RuntimeProviderShape["run"]>[0]["mounts"],
-): DataStoreMountPlan | undefined =>
-  Array.isArray(mounts) ? mounts.find((mount): mount is DataStoreMountPlan => "store" in mount) : undefined;
-
 const storageScopeFromKey = (scope: string | undefined): StorageScope | undefined =>
   scope === "service" || scope === "app" || scope === "global" ? scope : undefined;
 
@@ -387,7 +388,7 @@ const collectAsyncBytes = (input: AsyncIterable<Uint8Array> | undefined): Effect
   });
 
 const mountedVolumeKeyForSpec = (spec: Parameters<RuntimeProviderShape["run"]>[0]): string | undefined => {
-  const mount = firstDataStoreMount(spec.mounts);
+  const mount = spec.mounts?.[0];
   return mount === undefined ? undefined : volumeKey({ app: TEST_APP_ID, store: mount.store });
 };
 
@@ -448,56 +449,45 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   removeArtifact: (_ref) => Effect.void,
 
   apply: (plan, options) =>
-    Effect.sync(() => {
-      if (plan == null || plan.extensions == null || plan.services == null) {
-        return { changed: false };
-      }
-      testAppliedEnvironments.set(
-        plan.id,
-        new Map(
-          Object.values(plan.services).map((service) => [
-            service.name,
-            { ...service.environment, ...options.serviceEnvironment?.[service.name] },
-          ]),
-        ),
-      );
-      let changed = false;
-      const projectConfigs = Reflect.get(plan.extensions.compose ?? {}, "configs");
-      const definitions =
-        typeof projectConfigs === "object" && projectConfigs !== null && !Array.isArray(projectConfigs)
-          ? projectConfigs
-          : {};
-      for (const service of Object.values(plan.services)) {
-        const serviceConfigs = Reflect.get(service.extensions.compose ?? {}, "configs");
-        const grants = Array.isArray(serviceConfigs) ? serviceConfigs : [];
-        for (const grant of grants) {
-          if (typeof grant !== "object" || grant === null || !("source" in grant)) continue;
-          const sourceName = grant.source;
-          if (typeof sourceName !== "string") continue;
-          const definition = Reflect.get(definitions, sourceName);
-          const file =
-            typeof definition === "object" && definition !== null
-              ? Reflect.get(definition, "file")
-              : undefined;
-          if (typeof file !== "string") continue;
-          const sourcePath = join(plan.root, file);
-          const target =
-            "target" in grant && typeof grant.target === "string" && grant.target.length > 0
-              ? grant.target
-              : `/${sourceName}`;
-          const payload = readFileSync(sourcePath);
-          testServicePathBytes.set(
-            servicePathKey(
-              { app: plan.id, service: service.name },
-              Schema.decodeUnknownSync(PortablePath)(target),
-            ),
-            cloneBytes(payload),
-          );
-          changed = true;
-        }
-      }
-      return { changed };
-    }),
+    Effect.forEach(Object.values(plan.services), (service) =>
+      (options.resolveServiceEnvironment === undefined
+        ? Effect.forEach(Object.entries(service.environment), ([key, value]) =>
+            typeof value === "string"
+              ? Effect.succeed([key, value] as const)
+              : Effect.fail(
+                  new EnvironmentValueResolutionError({
+                    message: "Environment requires resolution.",
+                    variable: key,
+                    reason: "unresolved-binding",
+                    remediation: "Supply an operation-scoped environment resolver.",
+                  }),
+                ),
+          ).pipe(Effect.map(Object.fromEntries))
+        : options.resolveServiceEnvironment(service)
+      ).pipe(Effect.map((environment) => [service.name, environment] as const)),
+    ).pipe(
+      Effect.flatMap((environments) =>
+        Effect.sync(() => {
+          if (plan == null || plan.extensions == null || plan.services == null) {
+            return { changed: false };
+          }
+          testAppliedEnvironments.set(plan.id, new Map(environments));
+          let changed = false;
+          // Planned file binds (Compose config grants compile to read-only binds) expose their bytes.
+          for (const service of Object.values(plan.services)) {
+            for (const mount of service.mounts) {
+              if (mount.type !== "bind" || mount.fileMode === undefined) continue;
+              testServicePathBytes.set(
+                servicePathKey({ app: plan.id, service: service.name }, mount.target),
+                cloneBytes(readFileSync(mount.source)),
+              );
+              changed = true;
+            }
+          }
+          return { changed };
+        }),
+      ),
+    ),
   start: (_target) => Effect.void,
   stop: (_target) => Effect.void,
   restart: (_target) => Effect.void,

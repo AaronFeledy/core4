@@ -11,22 +11,13 @@ import {
   dispatchRunLando,
 } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
-import {
-  RedactionService,
-  type RedactionServiceShape,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, type RedactionServiceShape, makeRedactionService } from "@lando/redaction/service";
 import { openOptionsFromRunLandoArgv } from "../../../src/cli/host-proxy/open-argv.ts";
 
 const appRef = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/home/u/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/home/u/demo" };
 
-const standaloneRedactionService: RedactionServiceShape = {
-  registerValues: registerRedactionValues,
-  payloadValues: () => Effect.succeed(() => []),
-  forProfile: (_profile, options) => Effect.succeed(createStandaloneRedactor(_profile, options)),
-};
+const standaloneRedactionService: RedactionServiceShape = makeRedactionService();
 
 const standaloneRedactionLayer = Layer.succeed(
   RedactionService,

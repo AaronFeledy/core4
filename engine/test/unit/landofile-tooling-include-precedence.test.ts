@@ -62,7 +62,7 @@ describe("tooling include precedence", () => {
     const resolved = await resolve({ toolingIncludes: { docs: { file: "./parent.yml" } } }, appRoot);
 
     // Then the local task wins and does not retain the nested task's internal provenance
-    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("local");
+    expect(resolved.document.tooling?.["docs:build"]?.cmd).toBe("local");
     expect(getInternalToolingTasks(resolved)).not.toContain("docs:build");
   });
 
@@ -91,7 +91,7 @@ describe("tooling include precedence", () => {
     );
 
     // Then outer provenance applies to the local winner
-    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("local");
+    expect(resolved.document.tooling?.["docs:build"]?.cmd).toBe("local");
     expect(getInternalToolingTasks(resolved)).toContain("docs:build");
   });
 
@@ -107,10 +107,10 @@ describe("tooling include precedence", () => {
       },
       appRoot,
     );
-    const commands = compileToolingCommands(resolved);
+    const commands = compileToolingCommands(resolved.document);
 
     // Then the root winner is not hidden by stale include provenance
-    expect(resolved.tooling?.build?.cmd).toBe("root");
+    expect(resolved.document.tooling?.build?.cmd).toBe("root");
     expect(commands.find((command) => command.id === "app:build")?.hidden).toBe(false);
   });
 });

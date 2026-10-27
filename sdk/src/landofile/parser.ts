@@ -22,6 +22,7 @@ import { Effect } from "effect";
 
 import type { LandofileParseError } from "../errors/index.ts";
 import { LandofileParseError as LandofileParseErrorClass } from "../errors/index.ts";
+import { stripYamlLineComment } from "../yaml/line-comment.ts";
 import { flowMappingRemediation } from "./flow-mapping-remediation.ts";
 import { isLandofileOverride, isMergeDirective, override, reset } from "./merge-directives.ts";
 import {
@@ -63,8 +64,25 @@ interface ParsedLine {
   readonly sourceLines: ReadonlyArray<string>;
 }
 
-const parseError = (filePath: string, message: string, line?: number, column?: number): LandofileParseError =>
-  new LandofileParseErrorClass({ message, filePath, line, column });
+const syntaxRemediation = (filePath: string, line?: number): string =>
+  line === undefined
+    ? `Correct the YAML syntax in ${filePath}.`
+    : `Correct the YAML syntax in ${filePath} at line ${line}.`;
+
+const parseError = (
+  filePath: string,
+  message: string,
+  line?: number,
+  column?: number,
+  remediation?: string,
+): LandofileParseError =>
+  new LandofileParseErrorClass({
+    message,
+    filePath,
+    line,
+    column,
+    remediation: remediation ?? syntaxRemediation(filePath, line),
+  });
 
 const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
 const DEFAULT_MAX_DEPTH = 64;
@@ -139,6 +157,9 @@ const assertContentSize = (content: string, filePath: string, maxContentBytes: n
     throw parseError(
       filePath,
       `Landofile exceeds the maximum input size: ${actualContentBytes} bytes > ${maxContentBytes} bytes`,
+      undefined,
+      undefined,
+      "Split the document or raise the configured maximum input size.",
     );
   }
 };
@@ -149,71 +170,23 @@ const assertDepth = (filePath: string, line: number, depth: number, maxDepth: nu
       filePath,
       `Landofile nesting depth exceeds the maximum depth of ${maxDepth} at line ${line}`,
       line,
+      undefined,
+      "Reduce block and flow nesting or raise the configured maximum depth.",
     );
   }
 };
 
 const stripComment = (line: string): string => {
   const indent = line.match(/^ */)?.[0] ?? "";
-  const entry = splitMappingEntry(line.slice(indent.length), { compactValue: true });
-  if (entry === undefined) {
-    return line.replace(/\s+#.*$/, "");
-  }
-
-  const { rawKey, rawValue: afterColon } = entry;
-  const beforeColon = `${indent}${rawKey}:`;
-  const valueIdx = afterColon.search(/\S/);
-  if (valueIdx === -1) {
-    return line;
-  }
-
-  const rawValue = afterColon.slice(valueIdx);
-  const anchorPrefix = rawValue.match(ANCHOR_PREFIX_PATTERN)?.[0] ?? "";
-  const tagPrefix = rawValue.slice(anchorPrefix.length).match(/^!(?:override|reset)\s+/)?.[0] ?? "";
-  const valuePrefix = afterColon.slice(0, valueIdx) + anchorPrefix + tagPrefix;
-  const valuePart = rawValue.slice(anchorPrefix.length + tagPrefix.length);
-
-  // A comment can start immediately after the colon, e.g. `services: # services`.
-  // Once `valuePrefix` is split off the leading whitespace is gone, so the
-  // `/\s+#.*$/` fallback below cannot match. Detect this explicitly and drop the
-  // comment so `parseMap` sees an empty value and can look for a nested block.
-  if (valuePart.startsWith("#")) {
-    return beforeColon + valuePrefix.trimEnd();
-  }
-
-  if (valuePart.startsWith('"')) {
-    let i = 1;
-    while (i < valuePart.length) {
-      if (valuePart[i] === "\\" && i + 1 < valuePart.length) {
-        i += 2;
-      } else if (valuePart[i] === '"') {
-        i += 1;
-        break;
-      } else {
-        i += 1;
-      }
-    }
-    const tail = valuePart.slice(i).replace(/\s+#.*$/, "");
-    return beforeColon + valuePrefix + valuePart.slice(0, i) + tail;
-  }
-
-  if (valuePart.startsWith("'")) {
-    let i = 1;
-    while (i < valuePart.length) {
-      if (valuePart[i] === "'" && valuePart[i + 1] === "'") {
-        i += 2;
-      } else if (valuePart[i] === "'") {
-        i += 1;
-        break;
-      } else {
-        i += 1;
-      }
-    }
-    const tail = valuePart.slice(i).replace(/\s+#.*$/, "");
-    return beforeColon + valuePrefix + valuePart.slice(0, i) + tail;
-  }
-
-  return beforeColon + valuePrefix + valuePart.replace(/\s+#.*$/, "");
+  const itemStart = indent.length + (line.slice(indent.length).startsWith("- ") ? 2 : 0);
+  const entry = splitMappingEntry(line.slice(itemStart), { compactValue: itemStart === indent.length });
+  const valueStart = entry === undefined ? itemStart : itemStart + entry.rawKey.length + 1;
+  const whitespace = line.slice(valueStart).match(/^\s*/)?.[0] ?? "";
+  const rawValue = line.slice(valueStart + whitespace.length);
+  const anchor = rawValue.match(ANCHOR_PREFIX_PATTERN)?.[0] ?? "";
+  const tag = rawValue.slice(anchor.length).match(/^!(?:override|reset)\s+/)?.[0] ?? "";
+  const offset = valueStart + whitespace.length + anchor.length + tag.length;
+  return line.slice(0, offset) + stripYamlLineComment(line.slice(offset));
 };
 
 const splitInlineArray = (value: string): ReadonlyArray<string> => {
@@ -298,10 +271,6 @@ const parseScalar = (
 ): unknown => {
   const trimmed = value.trim();
 
-  // A quoted scalar is a literal: its content is never re-interpreted as an
-  // expression, so a translator fragment carrying `${secret:…}` round-trips
-  // unchanged. The `${…}` expression rejection below applies only to UNQUOTED
-  // scalars.
   if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
     return unescapeDoubleQuotedScalar(trimmed.slice(1, -1));
   }
@@ -335,10 +304,6 @@ const parseScalar = (
     );
     bindYamlAnchor(references, reference.name, anchored);
     return anchored;
-  }
-
-  if (trimmed.includes("${")) {
-    throw parseError(filePath, `Expressions are not supported in Landofiles at line ${line}`, line);
   }
 
   if (trimmed === "") return "";
@@ -913,6 +878,7 @@ export const parseLandofile = (options: ParseOptions): Effect.Effect<unknown, La
             filePath: options.file,
             line: undefined,
             column: undefined,
+            remediation: `Inspect ${options.file} and correct the Landofile so it parses as valid YAML.`,
             cause,
           }),
   });

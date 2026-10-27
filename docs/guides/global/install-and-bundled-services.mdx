@@ -46,7 +46,7 @@ lando global:config --format=json
 lando global:start
 ```
 
-`lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before install it reports `materialized: false` with an empty Landofile. Check your new value there before you run `lando global:start` to apply it. Don't edit `.lando.dist.yml`, because Lando regenerates it. See [Read and write global config](../config/global-config.mdx) for the full layer order.
+`lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before install it reports `materialized: false` with an empty Landofile. Check your new value there before you run `lando global:start` to apply it. Don't edit `.lando.dist.yml`, because Lando regenerates it. The global root takes the same layers an app root does, in YAML or TypeScript form, with `includes:` resolved per layer; a canonical `.lando.ts` is read by `global:config` but not written by `set`, `unset`, or `edit`. See [Read and write global config](../config/global-config.mdx#read-the-effective-global-config) for the full layer order.
 
 ## When one global service fails
 

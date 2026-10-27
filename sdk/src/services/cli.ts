@@ -1,7 +1,7 @@
 import { Context, type Effect, type Stream } from "effect";
 
 import type { EventError, ToolingCompileError, ToolingExecError } from "../errors/index.ts";
-import type { AppPlan, HostTerminal, RendererCapabilities } from "../schema/index.ts";
+import type { AppPlan, Environment, HostTerminal, RendererCapabilities } from "../schema/index.ts";
 import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
 
 /**
@@ -82,7 +82,7 @@ export interface ToolingInvocation {
   /** Optional working directory inside the service. */
   readonly cwd?: string;
   /** Optional environment overlay applied to every command. */
-  readonly env?: Readonly<Record<string, string>>;
+  readonly env?: Environment;
   /**
    * Resolved host agent-context env allowlist to forward beneath the service
    * and task env. Omitted falls back to the built-in allowlist; an empty array

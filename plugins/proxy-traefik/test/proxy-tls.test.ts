@@ -189,7 +189,12 @@ describe("Traefik RouterService TLS", () => {
 
   test("preserves a tagged CA failure inside ProxyApplyError", async () => {
     // Given: the active CA fails issuance with a tagged error.
-    const caFailure = new CaError({ message: "issuance failed", caId: "test-ca" });
+    const caFailure = new CaError({
+      message: "issuance failed",
+      caId: "test-ca",
+      remediation:
+        "Install or repair the `test-ca` certificate-authority plugin (`lando setup`), then re-run.",
+    });
     const harness = makeHarness(caFailure);
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
 

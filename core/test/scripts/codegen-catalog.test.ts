@@ -147,7 +147,7 @@ const expectedCatalogRows = [
     ["php-msmtp-pins", "tomcat-catalog"],
   ],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
-  ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
+  ["php-base-images", "derived", "build-php-base-images.ts", "repo", ["core-service-env-catalog"]],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
   ["nightly-workflow", "committed-workflow", "build-nightly-workflow.ts", "repo"],
   ["dependency-audit-workflow", "committed-workflow", "build-dependency-audit-workflow.ts", "repo"],
@@ -155,7 +155,6 @@ const expectedCatalogRows = [
   ["release-workflow", "committed-workflow", "build-release-workflow.ts", "repo"],
   ["provider-matrix-workflow", "committed-workflow", "build-provider-matrix-workflow.ts", "repo"],
   ["runtime-bundle-workflow", "committed-workflow", "build-runtime-bundle-workflow.ts", "repo"],
-  ["php-base-workflow", "committed-workflow", "build-php-base-workflow.ts", "repo"],
   ["compose-vendor-bump-workflow", "committed-workflow", "build-compose-vendor-bump-workflow.ts", "repo"],
   ["tomcat-bump-workflow", "committed-workflow", "build-tomcat-bump-workflow.ts", "repo"],
   ["platform-readiness-workflow", "committed-workflow", "build-platform-readiness-workflow.ts", "repo"],
@@ -260,12 +259,15 @@ describe("codegen catalog", () => {
     // Given: `@lando/sdk/schema` re-exports generated/core-service-env.ts, so any
     // generator that imports that barrel can observe a truncated write if it
     // shares a wave with the catalog writer.
+    const phpMetadataImporters = ["php-base-images"];
     const schemaImporters = (
       await Promise.all(
         catalog.map(async (entry) => {
           if (entry.id === "core-service-env-catalog") return undefined;
           const source = await Bun.file(resolve(repositoryRoot, "scripts", entry.script)).text();
-          return source.includes("@lando/sdk/schema") ? entry : undefined;
+          return source.includes("@lando/sdk/schema") || phpMetadataImporters.includes(entry.id)
+            ? entry
+            : undefined;
         }),
       )
     ).filter((entry) => entry !== undefined);
@@ -317,7 +319,6 @@ describe("codegen catalog", () => {
       "release-workflow",
       "provider-matrix-workflow",
       "runtime-bundle-workflow",
-      "php-base-workflow",
       "compose-vendor-bump-workflow",
       "tomcat-bump-workflow",
       "platform-readiness-workflow",
@@ -335,12 +336,12 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(38);
+    expect(catalog).toHaveLength(37);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(3);
-    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(14);
+    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(13);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(21);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),

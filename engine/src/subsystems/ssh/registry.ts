@@ -68,6 +68,8 @@ const selectionError = (message: string, sshId: string): SshError =>
   new SshError({
     message,
     sshId,
+    remediation:
+      "Install or repair the SSH service plugin and confirm the agent socket is available, then re-run.",
   });
 
 const registrationsFromModules = Effect.fnUntraced(function* (
@@ -84,6 +86,7 @@ const registrationsFromModules = Effect.fnUntraced(function* (
           new SshError({
             message: `SSH service descriptor does not export ${contribution.id}.`,
             sshId: contribution.id,
+            remediation: `Repair the plugin that contributes SSH service \`${contribution.id}\` so it exports that id, then re-run.`,
           }),
         )
       : Effect.succeed({

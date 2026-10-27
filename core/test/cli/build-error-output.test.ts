@@ -28,7 +28,6 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
         metadata,
         extensions: {},
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         services: {
@@ -40,7 +39,6 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
             artifact: { kind: "ref", ref: "alpine:3.22" },
             environment: {},
             mounts: [],
-            storage: [],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -57,6 +55,7 @@ test.each(["text", "json"] as const)("surfaces the failing build step in %s outp
     },
     {
       providerId,
+      sourceEnv: {},
       api: {
         request: () =>
           Effect.succeed({

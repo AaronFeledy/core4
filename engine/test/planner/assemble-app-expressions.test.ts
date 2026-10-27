@@ -3,20 +3,21 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { DEFAULT_LANDOFILE_LOAD_POLICY } from "@lando/landofile/load-expression-file";
 import { loadLandofileFile } from "@lando/landofile/service";
 import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
 } from "@lando/landofile/tooling-include-provenance";
 import { ConfigExpressionError } from "@lando/sdk/errors";
-import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type LoadScopedLandofile, ServiceName } from "@lando/sdk/schema";
 import { PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { planApp } from "../../src/planner/assemble.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import { compileTestLandofile } from "../compiled-landofile.ts";
 
 const serviceType: ServiceType = {
   id: "expression-database",
@@ -34,7 +35,7 @@ const serviceType: ServiceType = {
     }),
 };
 
-const plan = Effect.fnUntraced(function* (landofile: LandofileShape) {
+const plan = Effect.fnUntraced(function* (landofile: LoadScopedLandofile) {
   const registry = yield* PluginRegistry;
   return yield* planApp(
     { ...registry, loadServiceType: () => Effect.succeed(serviceType) },
@@ -60,8 +61,15 @@ test.each([
       file,
       `name: Literal Demo\nservices:\n  database:\n    type: ${serviceType.id}\n    home: false\n    ${field}\n`,
     );
-    const scope = await Effect.runPromise(buildLandofileLoadScope([], { QA: " {{ app.name }}" }));
-    const loaded = await Effect.runPromise(loadLandofileFile(file, undefined, undefined, scope));
+    const loaded = await Effect.runPromise(
+      loadLandofileFile(file, {
+        appRoot: root,
+        layer: "canonical",
+        policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+        pendingSites: [],
+        compilationContext: { appRoot: AbsolutePath.make(root), env: { QA: " {{ app.name }}" } },
+      }),
+    );
     // When
     const app = await Effect.runPromise(plan(loaded));
     // Then
@@ -111,10 +119,12 @@ test("rejects a non-string result at a plan-time text site", async () => {
     },
   };
   // When
-  const error = await Effect.runPromise(plan(landofile).pipe(Effect.flip));
+  const error = await Effect.runPromise(
+    compileTestLandofile(landofile).pipe(Effect.flatMap(plan), Effect.flip),
+  );
   // Then
   expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: "services.database.database" });
-  expect(error.message).toContain("takes text");
+  expect(error.message).toContain("Expected string");
 });
 
 test("materializes app and proxy expressions before service resolution and tooling compilation", async () => {
@@ -140,7 +150,9 @@ test("materializes app and proxy expressions before service resolution and tooli
       ),
       ["install"],
     );
-    const app = await Effect.runPromise(plan(landofile));
+    const compiled = await Effect.runPromise(compileTestLandofile(landofile, root));
+    rememberInternalToolingTasks(compiled.document, getInternalToolingTasks(landofile));
+    const app = await Effect.runPromise(plan(compiled));
     expect(app.slug).toBe("dcms-demo");
     expect(app.services[ServiceName.make("database")]?.environment.DATABASE).toBe("dcms-demo");
     const tooling = effectiveToolingForPlan(app);
@@ -186,7 +198,7 @@ test("expands app.name inside Backdrop settings JSON without changing the author
       },
       root,
     );
-    const app = await Effect.runPromise(plan(landofile));
+    const app = await Effect.runPromise(compileTestLandofile(landofile, root).pipe(Effect.flatMap(plan)));
     expect(app.services[ServiceName.make("appserver")]?.environment.BACKDROP_SETTINGS).toBe(
       settings("issue1077-before"),
     );
@@ -212,7 +224,9 @@ test("fails the plan with a ConfigExpressionError at the deferred value path", a
       },
       root,
     );
-    const result = await Effect.runPromise(plan(landofile).pipe(Effect.result));
+    const result = await Effect.runPromise(
+      compileTestLandofile(landofile, root).pipe(Effect.flatMap(plan), Effect.result),
+    );
     expect(Result.isFailure(result)).toBe(true);
     if (!Result.isFailure(result)) throw new Error("Expected expression failure");
     expect(result.failure).toBeInstanceOf(ConfigExpressionError);

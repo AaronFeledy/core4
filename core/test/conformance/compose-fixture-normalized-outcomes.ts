@@ -106,7 +106,6 @@ const assertArtifact = (
 
 const assertVolumes = (context: ServiceOutcomeContext): void => {
   const { appName, appRoot, planService, service } = context;
-  const tmpfs = valueAt(planService, "extensions.compose.tmpfs");
   for (const volume of matchedVolumes(context.match, service)) {
     switch (volume.type) {
       case "bind": {
@@ -122,9 +121,11 @@ const assertVolumes = (context: ServiceOutcomeContext): void => {
         break;
       }
       case "volume": {
-        const projected = planService.storage.find((storage) => String(storage.target) === volume.target);
-        requireProducedValue(projected, context.match, "ServicePlan.storage");
+        const projected = planService.mounts.find((mount) => String(mount.target) === volume.target);
+        requireProducedValue(projected, context.match, "ServicePlan.mounts");
         expect<unknown>(projected).toEqual({
+          type: "volume",
+          origin: "authored",
           store:
             volume.source === undefined
               ? `${appName}-${String(planService.name)}-${volume.target.split("/").filter(Boolean).join("-")}`
@@ -136,15 +137,18 @@ const assertVolumes = (context: ServiceOutcomeContext): void => {
         break;
       }
       case "tmpfs": {
-        const projected = Array.isArray(tmpfs)
-          ? tmpfs.find((entry) => valueAt(entry, "target") === volume.target)
-          : undefined;
-        requireProducedValue(projected, context.match, "ServicePlan.extensions.compose.tmpfs");
-        expect(projected).toEqual({
+        const projected = planService.mounts.find((mount) => String(mount.target) === volume.target);
+        requireProducedValue(projected, context.match, "ServicePlan.mounts");
+        const options = [
+          ...(volume.tmpfs?.size === undefined ? [] : [`size=${volume.tmpfs.size}`]),
+          ...(volume.tmpfs?.mode === undefined ? [] : [`mode=${volume.tmpfs.mode.toString(8)}`]),
+        ].join(",");
+        expect<unknown>(projected).toEqual({
+          type: "tmpfs",
+          origin: "authored",
           target: volume.target,
-          ...(volume.readOnly ? { read_only: true } : {}),
-          ...(volume.tmpfs?.size === undefined ? {} : { size: volume.tmpfs.size }),
-          ...(volume.tmpfs?.mode === undefined ? {} : { mode: volume.tmpfs.mode }),
+          readOnly: volume.readOnly,
+          ...(options.length === 0 ? {} : { options }),
         });
         break;
       }
@@ -186,6 +190,46 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
     service,
   };
   switch (planAssertion) {
+    case "configs":
+      for (const grant of service.configs ?? []) {
+        const definition = grant.source === undefined ? undefined : context.landofile.configs?.[grant.source];
+        if (definition?.file === undefined)
+          throw new ComposeFixtureOutcomeError("Missing file-backed config");
+        const target = grant.target ?? `/${grant.source}`;
+        const mount = planService.mounts.find((mount) => mount.target === target);
+        requireProducedValue(mount, match, "ServicePlan.mounts");
+        expect<unknown>(mount).toEqual({
+          type: "bind",
+          source: resolve(context.appRoot, definition.file),
+          target,
+          readOnly: true,
+          realization: "passthrough",
+          createHostPath: false,
+          origin: "authored",
+          relativeTo: "app",
+          ...(grant.mode === undefined
+            ? {}
+            : { fileMode: typeof grant.mode === "string" ? Number.parseInt(grant.mode, 8) : grant.mode }),
+        });
+      }
+      return true;
+    case "networks":
+      for (const [key, attachment] of Object.entries(service.networks ?? {})) {
+        if (key === "default") {
+          expect(context.plan.networking?.perAppBridge).toBeDefined();
+          if (attachment.aliases !== undefined)
+            expect(context.plan.networking?.perAppBridge?.aliases?.[planService.name]).toEqual(
+              attachment.aliases,
+            );
+        } else {
+          const network = context.plan.networking?.authoredNetworks?.find((entry) => entry.key === key);
+          expect(network?.members[planService.name]?.aliases).toEqual([
+            `${planService.name}.${context.plan.slug}.internal`,
+            ...(attachment.aliases ?? []),
+          ]);
+        }
+      }
+      return true;
     case "artifact-build":
     case "artifact-ref":
       assertArtifact(planAssertion, serviceContext);
@@ -216,6 +260,23 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
       return true;
     case "volumes":
       assertVolumes(serviceContext);
+      return true;
+    case "tmpfs":
+      for (const entry of service.tmpfs ?? []) {
+        const separator = entry.indexOf(":");
+        const target = separator === -1 ? entry : entry.slice(0, separator);
+        const tokens = separator === -1 ? [] : entry.slice(separator + 1).split(",");
+        const options = tokens.filter((token) => token !== "ro" && token !== "rw").join(",");
+        const projected = planService.mounts.find((mount) => String(mount.target) === target);
+        requireProducedValue(projected, match, "ServicePlan.mounts");
+        expect<unknown>(projected).toEqual({
+          type: "tmpfs",
+          origin: "authored",
+          target,
+          readOnly: tokens.includes("ro"),
+          ...(options.length === 0 ? {} : { options }),
+        });
+      }
       return true;
     case "direct": {
       const target = entry.planTarget[0];

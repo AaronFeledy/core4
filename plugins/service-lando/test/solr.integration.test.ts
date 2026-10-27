@@ -8,7 +8,7 @@ import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  CurrentExecutableAppPlan,
   LandofileShape,
   ProviderId,
   ServiceName,
@@ -68,7 +68,8 @@ describe("solr service type — live integration: system info endpoint", () => {
           serviceName: "search",
           metadata,
         });
-        const plan: AppPlan = {
+        const plan = CurrentExecutableAppPlan.make({
+          valueModel: 1,
           id: appId,
           name: "Solr Integration App",
           slug: "solrinttest",
@@ -76,12 +77,11 @@ describe("solr service type — live integration: system info endpoint", () => {
           provider: providerId,
           services: { [search.name]: search },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: search.metadata,
           extensions: {},
-        };
+        });
 
         const api = makePodmanApiClient(socketPath);
         try {

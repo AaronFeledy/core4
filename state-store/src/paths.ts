@@ -3,7 +3,7 @@ import { dirname, relative, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import { StateStoreError } from "@lando/sdk/errors";
+import { StateStoreError, isErrnoCode } from "@lando/sdk/errors";
 import type { LandoRoots, StateRoot } from "@lando/sdk/services";
 
 import { isPathWithin, resolveLandoRoots } from "@lando/paths";
@@ -53,7 +53,12 @@ const pathError = (operation: string, path: string, cause?: unknown): StateStore
  * failures when either path has not been created yet.
  */
 const realpathOrDeepestExisting = async (path: string): Promise<string> => {
-  const found = await findRealpathAncestor(path, (candidate) => realpath(candidate).catch(() => null));
+  const found = await findRealpathAncestor(path, (candidate) =>
+    realpath(candidate).catch((cause: unknown) => {
+      if (isErrnoCode(cause, "ENOENT")) return null;
+      throw cause;
+    }),
+  );
   return found === null ? path : resolve(found.realAncestor, relative(found.ancestor, path));
 };
 

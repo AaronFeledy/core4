@@ -12,6 +12,8 @@ export const internal = (providerId: string, message: string, details?: unknown,
     message,
     ...(details === undefined ? {} : { details }),
     ...(cause === undefined ? {} : { cause }),
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 export const unavailable = (providerId: string, message: string, details?: unknown, cause?: unknown) =>
@@ -21,6 +23,7 @@ export const unavailable = (providerId: string, message: string, details?: unkno
     message,
     ...(details === undefined ? {} : { details }),
     ...(cause === undefined ? {} : { cause }),
+    remediation: "Install or start the selected runtime provider and confirm it can perform `logFileAccess`.",
   });
 
 export const ensure2xx = (response: DataPlaneHttpResponse, providerId: string, details: unknown) =>

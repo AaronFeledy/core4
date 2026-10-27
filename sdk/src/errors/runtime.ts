@@ -1,9 +1,12 @@
 import { Schema } from "effect";
 
+const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
+
 export class EventError extends Schema.TaggedError<EventError>()("EventError", {
   message: Schema.String,
   event: Schema.optional(Schema.String),
   reason: Schema.optional(Schema.Literal("timeout")),
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -12,20 +15,21 @@ export class CacheError extends Schema.TaggedError<CacheError>()("CacheError", {
   key: Schema.optional(Schema.String),
   decodeError: Schema.optional(Schema.Unknown),
   path: Schema.optional(Schema.String),
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
 export class ProxyError extends Schema.TaggedError<ProxyError>()("ProxyError", {
   message: Schema.String,
   proxyId: Schema.String,
-  remediation: Schema.optional(Schema.String),
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
 export class ProxySetupError extends Schema.TaggedError<ProxySetupError>()("ProxySetupError", {
   message: Schema.String,
   proxyId: Schema.String,
-  remediation: Schema.String,
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -36,7 +40,7 @@ export class RouterPortsExhausted extends Schema.TaggedError<RouterPortsExhauste
   httpTried: Schema.Array(Schema.Number),
   httpsTried: Schema.Array(Schema.Number),
   exhausted: Schema.Literals(["http", "https", "both"]),
-  remediation: Schema.String,
+  remediation: Remediation,
 }) {}
 
 export class RouterPortPinMismatch extends Schema.TaggedError<RouterPortPinMismatch>()(
@@ -48,7 +52,7 @@ export class RouterPortPinMismatch extends Schema.TaggedError<RouterPortPinMisma
     runningHttps: Schema.Number,
     requestedHttp: Schema.optional(Schema.Number),
     requestedHttps: Schema.optional(Schema.Number),
-    remediation: Schema.String,
+    remediation: Remediation,
   },
 ) {}
 
@@ -62,26 +66,28 @@ export class RouterWatcherError extends Schema.TaggedError<RouterWatcherError>()
   failureClass: Schema.Literals(["inotify-limit", "disk", "permission", "other"]),
   watcherHost: Schema.String,
   detail: Schema.String,
-  remediation: Schema.String,
+  remediation: Remediation,
 }) {}
 
 export class ProxyApplyError extends Schema.TaggedError<ProxyApplyError>()("ProxyApplyError", {
   message: Schema.String,
   proxyId: Schema.String,
   app: Schema.String,
-  remediation: Schema.String,
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
 export class CaError extends Schema.TaggedError<CaError>()("CaError", {
   message: Schema.String,
   caId: Schema.String,
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
 export class HostProxyError extends Schema.TaggedError<HostProxyError>()("HostProxyError", {
   message: Schema.String,
   hostProxyId: Schema.String,
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -90,6 +96,7 @@ export class LandoRuntimeBootstrapError extends Schema.TaggedError<LandoRuntimeB
   {
     message: Schema.String,
     stage: Schema.Literals(["minimal", "plugins", "commands", "provider", "app", "tooling"]),
+    remediation: Remediation,
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}
@@ -98,13 +105,14 @@ export class LandoCommandError extends Schema.TaggedError<LandoCommandError>()("
   message: Schema.String,
   commandId: Schema.optional(Schema.String),
   exitCode: Schema.optional(Schema.Number),
+  remediation: Remediation,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
 export class NotImplementedError extends Schema.TaggedError<NotImplementedError>()("NotImplementedError", {
   message: Schema.String,
   commandId: Schema.String,
-  remediation: Schema.String,
+  remediation: Remediation,
 }) {}
 
 export class RendererSelectionError extends Schema.TaggedError<RendererSelectionError>()(
@@ -113,7 +121,7 @@ export class RendererSelectionError extends Schema.TaggedError<RendererSelection
     message: Schema.String,
     value: Schema.String,
     source: Schema.Literals(["flag", "env", "config"]),
-    remediation: Schema.String,
+    remediation: Remediation,
   },
 ) {}
 
@@ -123,6 +131,6 @@ export class LogLevelSelectionError extends Schema.TaggedError<LogLevelSelection
     message: Schema.String,
     value: Schema.String,
     source: Schema.Literals(["flag", "env", "config"]),
-    remediation: Schema.String,
+    remediation: Remediation,
   },
 ) {}

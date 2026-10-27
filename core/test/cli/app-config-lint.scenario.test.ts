@@ -72,6 +72,32 @@ describe("renderConfigLintResult", () => {
     });
   });
 
+  test("a valid result with warnings renders the warning tier without flipping the exit code", () => {
+    const result: ConfigLintResult = {
+      app: "ok",
+      file: "/x/.lando.yml",
+      valid: true,
+      violations: [
+        {
+          rule: "env-file.literal",
+          severity: "warning",
+          path: ["env_file", 0],
+          message: "Double-quoted value for PATH decodes differently from its raw text.",
+          suggestion: "Quote the value with single quotes to keep the raw text.",
+          line: 1,
+        },
+      ],
+    };
+    restoreExitCode(() => {
+      const before = process.exitCode;
+      const text = renderConfigLintResult(result, "text");
+      expect(text).toContain("1 config lint finding");
+      expect(text).toContain("warning [env-file.literal]");
+      expect(text).toContain("decodes differently from its raw text");
+      expect(process.exitCode).toBe(before);
+    });
+  });
+
   test("an invalid result renders violations without changing process.exitCode", () => {
     const result: ConfigLintResult = {
       app: "bad",
@@ -113,6 +139,28 @@ describe("renderConfigLintResult", () => {
 });
 
 describe("lando app:config:lint (source dispatch)", () => {
+  test("an unchanged wrong type is one readable machine finding with both scopes", async () => {
+    // Given
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: wrong-type\nservices:\n  api:\n    primary: maybe\n");
+      // When
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      // Then
+      expect(result.exitCode).toBe(1);
+      const envelope = Schema.decodeUnknownSync(
+        Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
+      )(JSON.parse(result.stdout));
+      expect(envelope.result.violations).toEqual([
+        expect.objectContaining({
+          rule: "landofile.validation",
+          path: ["services", "api", "primary"],
+          message: "Expected boolean",
+          scopes: ["fragment", "effective"],
+        }),
+      ]);
+    });
+  });
+
   test("an overlay typo is one machine record listing both scopes", async () => {
     // Given
     await withTempCwd(async (dir) => {
@@ -121,10 +169,11 @@ describe("lando app:config:lint (source dispatch)", () => {
       // When
       const result = await runCli(["app:config:lint", "--format=json"], dir);
       // Then
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       const envelope = Schema.decodeUnknownSync(
         Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
       )(JSON.parse(result.stdout));
+      expect(envelope.result.valid).toBe(false);
       expect(envelope.result.violations).toEqual([
         expect.objectContaining({
           rule: "landofile.validation",
@@ -147,7 +196,7 @@ describe("lando app:config:lint (source dispatch)", () => {
       // When
       const result = await runCli(["app:config:lint", "--format=json"], dir);
       // Then
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       const envelope = Schema.decodeUnknownSync(
         Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
       )(JSON.parse(result.stdout));
@@ -164,7 +213,7 @@ describe("lando app:config:lint (source dispatch)", () => {
         'name: resolved-errors\nservices:\n  db:\n    type: postgres:16\n    environment:\n      PGPORT: "5433"\n  web:\n    type: nginx\n    hostnames: [bad_host!]\n    routes:\n      - hostname: "{{ app.name }}_bad.lndo.site"\n      - hostname: ok.lndo.site\n        pathPrefix: no-slash\n',
       );
       const result = await runCli(["app:config:lint", "--format=json"], dir);
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
       expect(parsed.valid).toBe(false);
       expect(parsed.violations.map((issue) => issue.path)).toEqual([
@@ -193,6 +242,36 @@ describe("lando app:config:lint (source dispatch)", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("healthcheck.bare-compose-marker");
       expect(result.stdout).toContain("warning");
+    });
+  });
+
+  test.each(["text", "json"])("env-file warnings exit successfully in %s output", async (format) => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: env-warning\nenv_file: runtime.env\n");
+      await writeFile(join(dir, "runtime.env"), 'PATH="C:\\new"\n');
+      const result = await runCli(["app:config:lint", ...(format === "text" ? [] : ["--format=json"])], dir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("env-file.literal");
+      if (format === "json") {
+        const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
+        expect(parsed.valid).toBe(true);
+        expect(parsed.violations).toMatchObject([{ rule: "env-file.literal", severity: "warning" }]);
+        expect("warnings" in parsed).toBe(false);
+      }
+    });
+  });
+
+  test.each(["NAME\n", undefined])("env-file errors fail the JSON lint verdict (%s)", async (content) => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: env-error\nenv_file: runtime.env\n");
+      if (content !== undefined) await writeFile(join(dir, "runtime.env"), content);
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      expect(result.exitCode).toBe(1);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
+      expect(parsed.valid).toBe(false);
+      expect(parsed.violations).toMatchObject([
+        { rule: content === undefined ? "env-file.read" : "env-file.syntax", severity: "error" },
+      ]);
     });
   });
   test("help --all names the typeable lint command and its canonical id", async () => {
@@ -257,7 +336,7 @@ describe("lando app:config:lint (source dispatch)", () => {
       await withTempCwd(async (dir) => {
         await writeFile(join(dir, ".lando.yml"), "name: bad-app\nbogusKey: nope\n");
         const result = await runCli(["app:config:lint", `--format=${format}`], dir);
-        expect(result.exitCode).toBe(0);
+        expect(result.exitCode).toBe(1);
         const envelope = Schema.decodeUnknownSync(
           Schema.Struct({ ok: Schema.Literal(true), result: ConfigLintResult }),
         )(format === "yaml" ? Bun.YAML.parse(result.stdout) : JSON.parse(result.stdout));
@@ -277,8 +356,9 @@ describe("lando app:config:lint (source dispatch)", () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "name: bad-app\nprofiles: [dev]\n");
       const result = await runCli(["app:config:lint", "--format=json"], dir);
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
+      expect(parsed.valid).toBe(false);
       const violation = parsed.violations.find(
         (entry) => formatValidationIssuePath(entry.path) === "profiles",
       );
@@ -302,7 +382,7 @@ describe("lando app:config:lint (source dispatch)", () => {
         (entry) => formatValidationIssuePath(entry.path) === "services.web.deploy.replicas",
       );
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       expect(parsed.valid).toBe(false);
       expect(violation?.suggestion).toBe(deployReplicasRemediation);
     });
@@ -312,8 +392,9 @@ describe("lando app:config:lint (source dispatch)", () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "template: definitely-missing\nname: bad-app\n");
       const result = await runCli(["app:config:lint", "--format=json"], dir);
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
+      expect(parsed.valid).toBe(false);
       const violation = parsed.violations[0];
       expect(formatValidationIssuePath(violation?.path ?? [])).toBe("");
       expect(violation?.line).toBe(1);

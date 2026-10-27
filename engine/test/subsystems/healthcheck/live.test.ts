@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Fiber, Layer } from "effect";
+import { Effect, Exit, Fiber } from "effect";
 import { TestClock } from "effect/testing";
 
 import { HealthcheckError, HealthcheckTimeoutError } from "@lando/sdk/errors";
 import type { HealthcheckPlan } from "@lando/sdk/schema";
-import { HealthcheckRunner, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider, runHealthcheckContract } from "@lando/sdk/test";
+import { runHealthcheckContract } from "@lando/sdk/test";
 
-import * as ProviderHealthcheckRunner from "../../../src/subsystems/healthcheck/live.ts";
 import { makeHealthcheckRunner } from "../../../src/subsystems/healthcheck/runner-factory.ts";
 import {
   appId,
@@ -65,7 +63,12 @@ describe("makeHealthcheckRunner", () => {
     );
     const result = successOf(timed.exit);
 
-    expect(result).toEqual({ healthy: false, service, attempts: 3, lastStatus: "exit 1" });
+    expect(result).toEqual({
+      healthy: false,
+      service,
+      attempts: 3,
+      lastStatus: "exit 1; red; attempts 3; elapsed 20000ms; custom probe; ",
+    });
     expect(fake.calls).toHaveLength(3);
   });
 
@@ -126,7 +129,8 @@ describe("makeHealthcheckRunner", () => {
     expect(failure).toBeInstanceOf(HealthcheckTimeoutError);
     expect(timed.elapsedMs).toBe(20_000);
     expect(fake.calls).toHaveLength(2);
-    if (failure instanceof HealthcheckTimeoutError) expect(failure.lastStatus).toBe("timeout after 5s");
+    if (failure instanceof HealthcheckTimeoutError)
+      expect(failure.lastStatus).toBe("timeout after 5s; red; attempts 2; elapsed 20000ms; sh -c slow");
   });
 
   test("a passing start-period probe completes immediately", async () => {
@@ -237,7 +241,12 @@ describe("makeHealthcheckRunner", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isFailure(exit)) expect(failureOf(exit)).not.toBeInstanceOf(HealthcheckTimeoutError);
     if (Exit.isSuccess(exit)) {
-      expect(exit.value).toEqual({ healthy: false, service, attempts: 2, lastStatus: "provider offline" });
+      expect(exit.value).toEqual({
+        healthy: false,
+        service,
+        attempts: 2,
+        lastStatus: "provider failure; red; attempts 2; elapsed 1000ms; custom probe; provider offline",
+      });
       expect(fake.calls).toHaveLength(2);
     }
   });
@@ -273,18 +282,13 @@ describe("makeHealthcheckRunner", () => {
   });
 });
 
-describe("ProviderHealthcheckRunner.layer", () => {
-  test("provides the provider-exec runner from RuntimeProvider", async () => {
+describe("selected provider healthcheck runner", () => {
+  test("executes through the explicitly selected provider", async () => {
     const fakeExecOk = execSequence([0]);
-    const provider = { ...TestRuntimeProvider, exec: fakeExecOk.exec } satisfies RuntimeProviderShape;
-    const runner = await drive(
-      Effect.gen(function* () {
-        return yield* HealthcheckRunner;
-      }).pipe(
-        Effect.provide(ProviderHealthcheckRunner.layer),
-        Effect.provide(Layer.succeed(RuntimeProvider, provider)),
-      ),
-    );
+    const runner = makeHealthcheckRunner({ exec: fakeExecOk.exec });
+    const result = await drive(runner.run(commandPlan(["true"]), appId, service));
+    expect(result.healthy).toBe(true);
+    expect(fakeExecOk.calls).toHaveLength(1);
 
     expect(runner.id).toBe("provider-exec");
     expect(["unavailable", "disabled"]).not.toContain(runner.id);

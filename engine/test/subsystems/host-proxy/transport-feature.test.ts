@@ -16,11 +16,7 @@ import {
 } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SOCKET,
@@ -69,9 +65,7 @@ const fakeExecutable = async (): Promise<string> => {
 const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+    ...makeRedactionService(),
   }),
 );
 const eventLayer = Layer.succeed(
@@ -111,6 +105,7 @@ describe("hostProxyRunLandoFeature", () => {
     const environment: Record<string, string> = {};
     const mounts: Array<{
       readonly type: "bind";
+      readonly origin: "integration";
       readonly source: string;
       readonly target: string;
       readonly readOnly: boolean;
@@ -122,6 +117,7 @@ describe("hostProxyRunLandoFeature", () => {
       },
       addMount: (mountValue: {
         readonly type: "bind";
+        readonly origin: "integration";
         readonly source: string;
         readonly target: string;
         readonly readOnly: boolean;
@@ -139,6 +135,7 @@ describe("hostProxyRunLandoFeature", () => {
       {
         type: "bind",
         source: session.socketPath,
+        origin: "integration",
         target: "/run/lando/host-proxy.sock",
         readOnly: true,
         realization: "passthrough",
@@ -146,6 +143,7 @@ describe("hostProxyRunLandoFeature", () => {
       {
         type: "bind",
         source: session.shimPath,
+        origin: "integration",
         target: "/usr/local/bin/lando",
         readOnly: true,
         realization: "passthrough",
@@ -153,6 +151,7 @@ describe("hostProxyRunLandoFeature", () => {
       ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
         type: "bind" as const,
         source: session.shimPath,
+        origin: "integration" as const,
         target,
         readOnly: true,
         realization: "passthrough" as const,
@@ -257,13 +256,11 @@ describe("hostProxyRunLandoFeature", () => {
         },
         {
           type: "volume" as const,
-          source: "app-data",
+          store: "app-data",
           target: PortablePath.make("/data"),
           readOnly: false,
-          realization: "passthrough" as const,
         },
       ],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -280,7 +277,6 @@ describe("hostProxyRunLandoFeature", () => {
       provider: ProviderId.make("lando"),
       services: { [ServiceName.make("web")]: service },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata,
@@ -292,10 +288,9 @@ describe("hostProxyRunLandoFeature", () => {
     expect(strippedWeb?.mounts).toEqual([
       {
         type: "volume",
-        source: "app-data",
+        store: "app-data",
         target: PortablePath.make("/data"),
         readOnly: false,
-        realization: "passthrough",
       },
     ]);
     expect(strippedWeb?.extensions).toEqual({ keep: true });

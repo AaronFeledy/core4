@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Effect } from "effect";
 
 import { type MetaBunResult, MetaBunResultSchema, metaBun, renderMetaBunResult } from "../../commands/bun";
@@ -23,6 +24,6 @@ export const metaBunSpec: LandoCommandSpec<MetaBunResult> = {
     const argv = extractArgv(input);
     return yield* metaBun({ argv });
   }),
-  successExitCode: (result) => result.exitCode,
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
   render: (result) => renderMetaBunResult(result as MetaBunResult),
 };

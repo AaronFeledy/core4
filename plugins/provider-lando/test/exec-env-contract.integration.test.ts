@@ -6,6 +6,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { bringUp, exec } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -55,6 +56,7 @@ const planNodeService = (): Promise<ServicePlan> => {
 };
 
 const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
+  valueModel: 1,
   id: AppId.make("envapp"),
   name: "envapp",
   slug: "envapp",
@@ -62,7 +64,6 @@ const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
   provider: ProviderId.make("lando"),
   services: { [servicePlan.name]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -88,8 +89,11 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
-        if (request.path === "/networks/create") {
-          networks.add((request.body as { Name?: string }).Name ?? "");
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const body = Schema.decodeUnknownSync(
+            Schema.Union([Schema.Struct({ Name: Schema.String }), Schema.Struct({ name: Schema.String })]),
+          )(request.body);
+          networks.add("name" in body ? body.name : body.Name);
           return { status: 201, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
@@ -139,6 +143,7 @@ const makeFakeApi = () => {
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -186,7 +191,7 @@ describe("provider-lando exec env contract", () => {
 
     const commandEnv: Record<string, string> = {
       LANDO_PLUGIN_TOOLING_VAR: "ok",
-      LANDO_APP_NAME: servicePlan.environment.LANDO_APP_NAME ?? "envapp",
+      LANDO_APP_NAME: "envapp",
     };
 
     await Effect.runPromise(

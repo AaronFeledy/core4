@@ -58,6 +58,64 @@ test("preserves connection addresses when info crosses the SDK boundary", () => 
   expect(encoded).toEqual(service);
 });
 
+test("round trips storage lifetime and the full resolved application mount", () => {
+  const input = {
+    ...service,
+    mounts: [
+      {
+        type: "volume",
+        target: "/data",
+        source: "database",
+        readOnly: false,
+        origin: "planned",
+        observation: "present",
+        lifetime: "retained",
+      },
+      { type: "unknown", target: "/unknown", origin: "runtime", observation: "present", lifetime: "unknown" },
+    ],
+    appMount: {
+      type: "bind",
+      source: "/host/app",
+      target: "/app",
+      readOnly: false,
+      realization: "accelerated",
+      role: "app",
+      mountKey: "app-mount",
+      includes: [".git"],
+      excludes: ["node_modules"],
+    },
+  } as const;
+  const result = Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(input));
+  expect(result).toEqual(input);
+});
+
+test("preserves display credentials alongside scoped connections", () => {
+  // Given
+  const input = {
+    ...service,
+    creds: { user: "app", database: "app", password: "[REDACTED]", rootPassword: "[REDACTED]" },
+  };
+  // When
+  const encoded = Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(input));
+  // Then
+  expect(encoded).toEqual(input);
+});
+
+test.each(["password", "rootPassword"])("rejects deferred %s in the info display boundary", (field) => {
+  // Given
+  const input = {
+    ...service,
+    creds: {
+      user: "app",
+      database: "app",
+      password: "[REDACTED]",
+      [field]: { _tag: "SecretRef", reference: "DATABASE_PASSWORD" },
+    },
+  };
+  // When / Then
+  expect(() => Schema.decodeUnknownSync(ServiceInfo)(input)).toThrow();
+});
+
 test("rejects legacy structured host endpoints when decoding service info", () => {
   // Given
   const { connections: _, ...metadata } = service;

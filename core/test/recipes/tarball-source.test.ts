@@ -597,7 +597,10 @@ describe("resolveTarballRecipeSource", () => {
         message: `recipe.yml not found at ${manifestPath}.`,
         source: manifestPath,
       });
-      expect(expectFailure(exit)).not.toHaveProperty("remediation");
+      expect(expectFailure(exit)).toHaveProperty(
+        "remediation",
+        "Point the recipe source at a directory containing recipe.yml or recipe.ts.",
+      );
     });
   });
 

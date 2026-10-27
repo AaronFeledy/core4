@@ -40,7 +40,8 @@ export const globalCreateProviderId = Effect.fn("GlobalApp.createProviderId")(
       : new GlobalAppError({
           message: "Unable to resolve global app placement.",
           operation: "placement",
-          remediation: taggedErrorRemediation(cause),
+          remediation:
+            taggedErrorRemediation(cause) ?? "Run `lando setup` to install a runtime provider, then retry.",
           cause,
         }),
   ),

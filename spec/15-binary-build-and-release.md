@@ -1,6 +1,6 @@
 # Lando v4: Binary Build and Release Engineering
 
-> **Part 15 of 19** · [Index](./README.md)
+> **Part 15 of 20** · [Index](./README.md)
 > **Read next:** [16 Deprecation and Surface Evolution](./16-deprecation-and-surface-evolution.md)
 
 This part specifies how the §13 distribution artifacts are built, signed, published, installed, and updated.
@@ -70,7 +70,6 @@ The deprecation gate runs immediately after codegen. It MUST fail if a `removeIn
 | `release-workflow` | Release stages and targets | Release workflow | Committed-workflow regeneration and diff |
 | `provider-matrix-workflow` | Provider matrix configuration | Provider-matrix workflow | Committed-workflow regeneration and diff |
 | `runtime-bundle-workflow` | Runtime-bundle release configuration | Runtime-bundle workflow | Committed-workflow regeneration and diff |
-| `php-base-workflow` | PHP image release configuration | PHP image workflow | Committed-workflow regeneration and diff |
 | `compose-vendor-bump-workflow` | Compose vendor helpers | Compose vendor-bump workflow | Committed-workflow regeneration and diff |
 | `tomcat-bump-workflow` | Paired Tomcat maintenance policy and action pins | Tomcat maintenance workflow | Committed-workflow regeneration, proposal behavior, and CI dispatch checks |
 

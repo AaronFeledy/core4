@@ -79,7 +79,15 @@ describe("LandoEventService.layer", () => {
         Effect.gen(function* () {
           const failingSubscriber = yield* eventService.subscribe("pre-app-start").pipe(
             Stream.take(1),
-            Stream.runForEach(() => Effect.fail(new EventError({ message: "subscriber failed" }))),
+            Stream.runForEach(() =>
+              Effect.fail(
+                new EventError({
+                  message: "subscriber failed",
+                  remediation:
+                    "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+                }),
+              ),
+            ),
             Effect.exit,
             Effect.forkChild,
           );

@@ -32,12 +32,13 @@ const withTempCwd = async <A>(run: () => Promise<A>): Promise<A> => {
   }
 };
 
+import { literalLandofile } from "../_support/value-contracts.ts";
+
 const planExit = (landofile: typeof LandofileShape.Type, capabilities: ProviderCapabilities) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(PluginRegistryLayer.layer),
-    ),
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(literalLandofile(landofile, process.cwd()), capabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
@@ -67,6 +68,26 @@ const landofileWithBothPaths = () =>
   });
 
 describe("Compose preserved path capabilities", () => {
+  for (const [field, value] of Object.entries({
+    ipv4_address: "172.20.0.10",
+    ipv6_address: "fd00::10",
+    link_local_ips: ["169.254.1.1"],
+    mac_address: "02:42:ac:14:00:0a",
+    driver_opts: { mtu: "1400" },
+    priority: 1,
+    gw_priority: 1,
+    interface_name: "eth1",
+  }))
+    test(`rejects network attachment ${field} during schema validation`, () => {
+      expect(() =>
+        Schema.decodeUnknownSync(LandofileShape, { onExcessProperty: "error" })({
+          name: "network-path",
+          runtime: 4,
+          networks: { frontend: {} },
+          services: { web: { image: "node:lts", home: false, networks: { frontend: { [field]: value } } } },
+        }),
+      ).toThrow();
+    });
   test("preserves both exact paths when the provider declares support", async () => {
     await withTempCwd(async () => {
       const exit = await planExit(landofileWithBothPaths(), supportedCapabilities);

@@ -35,7 +35,6 @@ const web: ServicePlan = {
   command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -51,6 +50,7 @@ const web: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Compose Knobs App",
   slug: "composeknobsapp",
@@ -58,7 +58,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

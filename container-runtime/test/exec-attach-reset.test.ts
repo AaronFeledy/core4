@@ -6,10 +6,11 @@ import type { EngineHttpApi } from "../src/engine-api.ts";
 import { engineApiFailure } from "../src/engine-errors.ts";
 import { exec } from "../src/podman/exec.ts";
 import { makeSocketHttpClient, socketHttpConnection } from "../src/transport.ts";
+import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
 
 test("preserves stdout and exit zero when the attach socket resets in the response tick", async () => {
   // Given
-  const ctx = { providerId: "lando", remediation: "Run lando doctor." } as const;
+  const ctx = { providerId: "lando", remediation: "Run lando doctor.", env: {} } as const;
   const app = AppId.make("attach-reset");
   const service = ServiceName.make("app");
   const provider = ProviderId.make("lando");
@@ -26,7 +27,6 @@ test("preserves stdout and exit zero when the attach socket resets in the respon
     provider,
     metadata,
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     extensions: {},
@@ -39,7 +39,6 @@ test("preserves stdout and exit zero when the attach socket resets in the respon
         artifact: { kind: "ref", ref: "alpine:3.20" },
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -85,6 +84,7 @@ test("preserves stdout and exit zero when the attach socket resets in the respon
         engineApiFailure(ctx, "podman-api", input, cause),
       ),
   };
+  installNonCompensatingExecUmask(api);
   const stdinStream = {
     async *[Symbol.asyncIterator]() {
       yield new Uint8Array([1]);

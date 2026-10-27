@@ -88,7 +88,7 @@ describe("buildBugReport: envelope extraction", () => {
     const json: unknown = JSON.parse(renderJsonBugReport(envelope));
 
     expect(json).toMatchObject({
-      code: "Error",
+      code: "LandoInternalError",
       body: "failure",
       logsDir: `${CACHE_ROOT}/logs`,
       cacheDir: CACHE_ROOT,
@@ -99,7 +99,9 @@ describe("buildBugReport: envelope extraction", () => {
       ["syscall", "open"],
       ["path", "/x"],
     ]);
-    expect(plain.split("\n").filter((line) => line.startsWith("code:"))).toEqual(["code: Error"]);
+    expect(plain.split("\n").filter((line) => line.startsWith("code:"))).toEqual([
+      "code: LandoInternalError",
+    ]);
     expect(plain).toContain("syscall: open");
     expect(plain).toContain("path: /x");
   });
@@ -135,8 +137,9 @@ describe("buildBugReport: envelope extraction", () => {
       cause: {
         _tag: "LandofileEventStepFailedError",
         message: "failed",
-        index: 0,
         event: "pre-start",
+        index: 0,
+        step: 1,
         path: "inner",
         expression: "API_TOKEN=secret",
         count: 2,
@@ -173,9 +176,9 @@ describe("buildBugReport: envelope extraction", () => {
     expect(env.commandId).toBe("meta:plugin:trust");
   });
 
-  test("falls back to 'Error' when error has no _tag", () => {
+  test("normalizes an untagged failure to LandoInternalError", () => {
     const env = buildBugReport({ error: new Error("boom"), context: ctx() });
-    expect(env.code).toBe("Error");
+    expect(env.code).toBe("LandoInternalError");
     expect(env.body).toBe("boom");
   });
 
@@ -185,6 +188,7 @@ describe("buildBugReport: envelope extraction", () => {
         providerId: "lando",
         operation: "podman.info",
         message: "Podman not running",
+        remediation: "Install or start the `lando` provider and confirm it can perform `podman.info`.",
       }),
       context: ctx({ commandId: "app:start" }),
     });
@@ -198,6 +202,8 @@ describe("buildBugReport: envelope extraction", () => {
         operation: "bringUp.create",
         service: "web",
         message: "failed to create container",
+        remediation:
+          "Inspect `lando logs -s web`, fix the service configuration or image, and start the app again.",
       }),
       context: ctx({ commandId: "app:start" }),
     });
@@ -219,6 +225,8 @@ describe("buildBugReport: envelope extraction", () => {
           truncated: true,
           exitCode: 1,
         },
+        remediation:
+          "Inspect `lando logs -s web`, fix the service configuration or image, and start the app again.",
       }),
       context: ctx({ commandId: "app:start" }),
     });
@@ -243,6 +251,8 @@ describe("buildBugReport: envelope extraction", () => {
         service: "web",
         message: "failed to create container",
         logTail: { service: "web", lines: [], truncated: false },
+        remediation:
+          "Inspect `lando logs -s web`, fix the service configuration or image, and start the app again.",
       }),
       context: ctx({ commandId: "app:start" }),
     });
@@ -391,6 +401,7 @@ describe("buildBugReport: envelope extraction", () => {
             message: "Podman container create failed with HTTP 500. API_TOKEN=secret-value",
             remediation: "Inspect the managed runtime, then retry setup.",
           }),
+          remediation: "Run `lando doctor`, fix the reported issue, then retry the global operation.",
         }),
       }),
       context: ctx({ commandId: "meta:setup" }),
@@ -407,7 +418,7 @@ describe("buildBugReport: envelope extraction", () => {
     expect(json).not.toContain("secret-value");
   });
 
-  test("retains middle tagged remediation when the provider cause has none", () => {
+  test("retains middle tagged remediation when a foreign provider diagnostic has none", () => {
     const env = buildBugReport({
       error: new ProxySetupError({
         proxyId: "traefik",
@@ -416,11 +427,12 @@ describe("buildBugReport: envelope extraction", () => {
         cause: new GlobalAppError({
           message: "Unable to ensure global services are running.",
           remediation: "Run `lando doctor` to inspect the managed runtime.",
-          cause: new ProviderUnavailableError({
+          cause: {
+            _tag: "ProviderUnavailableError",
             providerId: "lando",
             operation: "bringUp.create",
             message: "Container creation failed.",
-          }),
+          },
         }),
       }),
       context: ctx({ commandId: "meta:setup" }),
@@ -493,6 +505,7 @@ describe("renderPlainBugReport: stable multi-line output", () => {
           providerId: "lando",
           operation: "podman.info",
           message: "Podman not running",
+          remediation: "Install or start the `lando` provider and confirm it can perform `podman.info`.",
         }),
         context: { commandId: "app:start", appId: "mvp", cacheRoot: CACHE_ROOT },
       }),
@@ -593,7 +606,7 @@ describe("dimBugReportDetails: TTY lando styling", () => {
     expect(lines[0]?.includes(String.fromCharCode(27))).toBe(false);
     expect(
       lines
-        .slice(1)
+        .slice(2)
         .every(
           (line) =>
             line.startsWith(`${String.fromCharCode(27)}[2m`) &&
@@ -630,6 +643,7 @@ describe("renderJsonBugReport: single NDJSON line", () => {
           providerId: "lando",
           operation: "podman.info",
           message: "Podman not running",
+          remediation: "Install or start the `lando` provider and confirm it can perform `podman.info`.",
         }),
         context: { commandId: "app:start", appId: "mvp", cacheRoot: CACHE_ROOT },
       }),
@@ -639,12 +653,12 @@ describe("renderJsonBugReport: single NDJSON line", () => {
     expect(parsed.providerId).toBe("lando");
   });
 
-  test("omits appId/providerId/remediation fields when absent (round-trip JSON shape)", () => {
+  test("omits unknown identity fields and supplies internal-error remediation", () => {
     const line = renderJsonBugReport(buildBugReport({ error: new Error("solo"), context: ctx() }));
     const parsed = JSON.parse(line) as Record<string, unknown>;
     expect(Object.hasOwn(parsed, "appId")).toBe(false);
     expect(Object.hasOwn(parsed, "providerId")).toBe(false);
-    expect(Object.hasOwn(parsed, "remediation")).toBe(false);
+    expect(parsed.remediation).toEqual(expect.stringContaining("--debug"));
   });
 
   test("redacts env-style secrets in body before serialization", () => {

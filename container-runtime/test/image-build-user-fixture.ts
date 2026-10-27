@@ -29,7 +29,6 @@ export const runBuild = (input: {
     artifact: input.artifact,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -51,14 +50,13 @@ export const runBuild = (input: {
         provider: providerId,
         services: { [serviceName]: service },
         routes: [],
-        networks: [],
         stores: [],
         fileSync: [],
         metadata,
         extensions: {},
       },
     },
-    { providerId, api: { request: input.request } },
+    { providerId, api: { request: input.request }, sourceEnv: {} },
   );
 };
 

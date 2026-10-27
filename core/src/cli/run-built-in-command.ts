@@ -12,18 +12,22 @@ import { runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtim
 import type { LandoCommandSpec } from "./spec/command-base";
 
 export const compiledCommandOptionsFromSpec = (spec: LandoCommandSpec, input: unknown) => {
+  const completion = spec.completion;
   const streamingMode =
     typeof spec.streamingMode === "function" ? spec.streamingMode(input) : spec.streamingMode;
   return {
     ...(streamingMode === undefined ? {} : { streamingMode }),
     suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,
-    ...(spec.successExitCode === undefined
-      ? {}
-      : { successExitCode: (result: unknown) => spec.successExitCode?.(result, input) }),
+    ...(completion === undefined ? {} : { completion: (result: unknown) => completion(result, input) }),
   };
 };
 
-export const runBuiltInCommand = (entry: BuiltInCommandEntry, argv: ReadonlyArray<string>): Promise<void> => {
+export const runBuiltInCommand = (
+  entry: BuiltInCommandEntry,
+  argv: ReadonlyArray<string>,
+  parentSignal?: AbortSignal,
+): Promise<void> => {
+  if (parentSignal?.aborted) return Promise.resolve();
   const diagnostic = entry.spec.strict === false ? undefined : invocationParityError(entry.spec.id, argv);
   if (diagnostic !== undefined) {
     return runCompiledCommand(
@@ -40,18 +44,21 @@ export const runBuiltInCommand = (entry: BuiltInCommandEntry, argv: ReadonlyArra
     );
   }
 
-  return runWithProcessAbortSignal((signal) => {
-    const input = compiledCommandInputFromArgv(entry.spec.id, argv, { signal });
-    if (entry.spec.id === "meta:mcp") return runMetaMcp(argv);
+  return runWithProcessAbortSignal(
+    (signal) => {
+      const input = compiledCommandInputFromArgv(entry.spec.id, argv, { signal });
+      if (entry.spec.id === "meta:mcp") return runMetaMcp(argv, signal);
 
-    const runtime = makeLandoRuntime(
-      cliRuntimeOptions({ bootstrap: entry.spec.bootstrap, plugins: { policy: "discovery" } }),
-    ) as Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
-    return runCompiledCommand(
-      entry.spec.run(input),
-      runtime,
-      (result, context) => entry.spec.render?.(result, input, context),
-      compiledCommandOptionsFromSpec(entry.spec, input),
-    );
-  });
+      const runtime = makeLandoRuntime(
+        cliRuntimeOptions({ bootstrap: entry.spec.bootstrap, plugins: { policy: "discovery" } }),
+      ) as Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
+      return runCompiledCommand(
+        entry.spec.run(input),
+        runtime,
+        (result, context) => entry.spec.render?.(result, input, context),
+        { ...compiledCommandOptionsFromSpec(entry.spec, input), signal },
+      );
+    },
+    parentSignal === undefined ? {} : { signal: parentSignal },
+  );
 };

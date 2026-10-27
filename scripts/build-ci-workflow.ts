@@ -92,6 +92,8 @@ ${setupBunSteps}
       - name: Regenerate and verify codegen catalog
         run: bun run codegen:check
 
+      - name: Type check (bun check, no emit)
+        run: bun run check:types
       - name: Typecheck
         if: matrix.platform == 'linux-x64'
         run: bun run typecheck
@@ -136,6 +138,35 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
     timeout-minutes: 5
 ${ciResultSteps}
 `;
+
+const renderDarwinSignalTests = (): string => {
+  const include = CI_PLATFORMS.filter(({ id }) => id.startsWith("darwin-")).map((platform) => ({
+    platform: platform.id,
+    "runs-on": platform.runsOn,
+  }));
+  return `  process-signal-tests-darwin:
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${JSON.stringify(include)}
+    runs-on: \${{ matrix.runs-on }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+${isolateLandoRootsStep}
+
+${setupBunSteps}
+
+${codegenStep}
+
+      - name: Test native process signal handling
+        run: bun test core/test/cli/process-signals.test.ts
+
+      - name: Test exec umask behavior
+        run: bun test container-runtime/test/exec-umask.test.ts
+`;
+};
 
 const unitShardList = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1).join(", ");
 
@@ -445,7 +476,7 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
             done
           }
           pull_image docker.io/library/alpine:3.21
-          pull_image docker.io/library/node:lts
+          pull_image docker.io/library/node:24
           pull_image docker.io/library/node:22-alpine
           pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
@@ -467,13 +498,22 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
           docker_pull_image docker.io/library/node:22`;
 
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
+        env:
+          LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
-          bun test core/test/live | tee /tmp/lando-provider-test-logs/core-live.log
-          bun test plugins/provider-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-          bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
-          bun test plugins/service-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+          case "$LANDO_PROVIDER_TEST_SUITE" in
+            providers)
+              bun test core/test/live 2>&1 | tee /tmp/lando-provider-test-logs/core-live.log
+              bun test plugins/provider-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
+              bun test plugins/provider-docker/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+              ;;
+            services)
+              bun test plugins/service-lando/test/*.integration.test.ts 2>&1 | tee /tmp/lando-provider-test-logs/service-lando-integration.log
+              ;;
+            *) echo "Unknown provider test suite: $LANDO_PROVIDER_TEST_SUITE" >&2; exit 1 ;;
+          esac
 
       - name: Teardown Lando runtime
         if: always()
@@ -482,7 +522,7 @@ const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
 ${landoManagedPodmanTeardownCommands}
 
       - name: Collect provider diagnostics
-        if: failure()
+        if: failure() || cancelled()
         run: |
           mkdir -p provider-diagnostics/test-logs
           dist/lando doctor --format json > provider-diagnostics/doctor.json 2>&1 || true
@@ -520,7 +560,7 @@ ${timingStartStep}
 
       - name: Restore assembled Linux x64 runtime bundle
         id: runtime-bundle-cache
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache}
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
           key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
@@ -629,14 +669,15 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
       fail-fast: false
       matrix:
         runs-on: [${linuxX64RunnerList}]
+        suite: [providers, services]
 `
     : "";
   const runsOn = isLinuxX64 ? "${{ matrix.runs-on }}" : platform.runsOn;
   const diagnosticsName = isLinuxX64
-    ? `provider-integration-diagnostics-${platform.id}-\${{ matrix.runs-on }}`
+    ? `provider-integration-diagnostics-${platform.id}-\${{ matrix.runs-on }}-\${{ matrix.suite }}`
     : `provider-integration-diagnostics-${platform.id}`;
   const timingLabel = isLinuxX64
-    ? `provider-integration-${platform.id}/\${{ matrix.runs-on }}`
+    ? `provider-integration-${platform.id}/\${{ matrix.runs-on }}/\${{ matrix.suite }}`
     : `provider-integration-${platform.id}`;
 
   const runnerJob = `  ${jobId}:
@@ -859,6 +900,7 @@ jobs:
 ${renderStaticChecks()}
 ${renderIsolatedInstallExperiment()}
 ${renderUnitTests()}
+${renderDarwinSignalTests()}
 ${renderDocsBuild()}
 ${renderTestIsolation()}
 ${renderContainerHelperJob()}

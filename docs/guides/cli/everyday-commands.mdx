@@ -14,20 +14,20 @@ lando start
 lando info
 ```
 
-Use the URLs and connection details from `lando info` to reach your services. When you finish working, use `lando stop` to stop the app while keeping its volumes. Use `lando destroy` only when you want to remove its containers and networks.
+Use the URLs and connection details from `lando info` to reach your services. When you finish working, use `lando stop` to stop the app while keeping its named volumes. Use `lando destroy` only when you want to remove its containers and networks.
 
 ## Everyday commands
 
 | Command | What it does |
 | --- | --- |
-| `lando start` | Start this app and apply changed container create configuration. Unchanged containers and volumes stay. Alias of `app:start`. |
+| `lando start` | Start this app and apply changed container create configuration. Unchanged containers and named volumes stay. Alias of `app:start`. |
 | `lando info` | Print services, URLs, and connection details. Alias of `app:info`. |
 | `lando exec -- <cmd>` | Run a one-off command in the primary service. Alias of `app:exec`. |
 | `lando logs` | Stream service logs. Alias of `app:logs`. |
-| `lando stop` | Stop this app. Keeps volumes. Alias of `app:stop`. |
+| `lando stop` | Stop this app. Keeps named volumes. Alias of `app:stop`. |
 | `lando restart` | Stop then start. Alias of `app:restart`. Pass `-s` / `--service` to bounce one service. |
 | `lando rebuild` | Force an image pull, cache refresh, and app-build rerun, then recreate containers. Asks first. Alias of `app:rebuild`. |
-| `lando destroy -y` | Remove this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`. Alias of `app:destroy`. |
+| `lando destroy -y` | Remove this app's containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`. Alias of `app:destroy`. |
 | `lando doctor` | Report setup, provider, proxy, and cert health. Alias of `meta:doctor`. |
 | `lando poweroff -y` | Stop every Lando app on this host. Alias of `apps:poweroff`. |
 | `lando list` | List apps on this host. Alias of `apps:list`. |
@@ -41,7 +41,7 @@ lando exec db -- psql --version
 lando logs --service app --follow
 ```
 
-`lando ssh` opens an interactive `sh -l` in the primary service. See [Open a shell in a service](./ssh.mdx).
+`lando ssh` opens a login shell in the primary running service. It starts bash when available, or sh otherwise. See [Open a shell in a service](./ssh.mdx).
 
 ## Stop, restart, rebuild
 
@@ -52,7 +52,9 @@ lando restart
 lando rebuild
 ```
 
-Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`.
+Bare `restart` stops then starts the app, removing and recreating its containers and reusing local images. It is not an in-place process restart. `lando start` applies a changed image, command, environment, user, working directory, mount, label, healthcheck, or other container create setting, and keeps unchanged containers and named volumes. `rebuild` re-pulls the images your services reference so updated tags take effect, then reruns the build even when the build key did not change. If the registry can't be reached, Lando warns and rebuilds from the local copies. Only an image that was never pulled needs network access; build steps that download packages still need it too. `start` does not take `-y`.
+
+All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
 ## Recover from a failed start
 
@@ -74,7 +76,7 @@ If you'd rather shut the half-started app down, `lando stop` does that and `land
 
 If another process takes a selected service's host port after it stops, restart fails and leaves that service down. Check `lando info`, free the port or run `lando rebuild -s <name>`, then check `lando info` again.
 
-Start, restart, and rebuild wait for every affected service's enabled healthcheck before reporting success or running post-start steps. Longer waits show readiness progress for each service. The summary reports `ready` for a passing healthcheck, `running` without one, and `completed` for a successful `service_completed_successfully` dependency target. Healthchecks probe immediately; the start period is a grace period for failures, not a mandatory sleep.
+Start, restart, and rebuild wait for every affected service's startup check before reporting success or running post-start steps. For most services that is its enabled healthcheck. A service type can declare a stronger startup check than the healthcheck it runs afterwards; MongoDB does, so start waits for a protocol ping while the ongoing check is a cheap port dial. An authored `healthcheck:` replaces both, and `healthcheck: false` turns both off. Longer waits show readiness progress for each service. The summary reports `ready` for a passing healthcheck, `running` without one, and `completed` for a successful `service_completed_successfully` dependency target. Healthchecks probe immediately; the start period is a grace period for failures, not a mandatory sleep.
 
 An unsupervised service that exits fails the command non-zero with `ServiceNotReadyError`. An exhausted healthcheck fails every service, even one with a restart policy. Nothing is removed: diagnose with `lando logs -s <service>` and `lando info`, fix the service or its `healthcheck:` configuration, then run `lando start` again. With `restart: always` or `unless-stopped`, an exit or observed restart produces a warning and a `restarting` row. `on-failure` does that only for a non-zero exit; exit 0 still fails readiness. Completion jobs must exit 0 regardless of restart policy.
 
@@ -105,14 +107,16 @@ Already-pulled images can still work without registry access; see
 
 Read-only commands (`info`, `logs`, `app:config:lint`) do not take the lock.
 
+Lando reclaims a lock left by a killed command without printing a wait message. You don't need to delete the lock file.
+
 The lock key is the stable app id plus the canonical (realpath) app root at acquire time. If you move the app directory while a mutate is running, a command against the new path sees a different key and does not wait on the first lock.
 
 A mutating command that shells out to another `lando` mutate on the same app reuses the lock it already holds. It does not deadlock.
 
 ## Tear down
 
-`destroy` deletes this app's containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
-Run it again with `--volumes` when you want those volumes gone; Lando removes them from what the provider
+`destroy` deletes this app's containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`.
+Run it again with `--volumes` when you want those named volumes gone; Lando removes them from what the provider
 still holds, and reports `unchanged` when there is nothing left to remove.
 
 Snapshots stay with plain `destroy` and `--volumes`. **`--purge` also deletes this folder's catalogued snapshots and their provider-stored data**, even when an earlier destroy left only ownership inventory. Selection uses the volume owner's canonical app root, not the app name, so another worktree's snapshots stay untouched. Native data is removed through the provider that recorded each snapshot; a failed deletion leaves its catalog entry available for retry.

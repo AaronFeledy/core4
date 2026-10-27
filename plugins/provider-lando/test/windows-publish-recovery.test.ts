@@ -80,33 +80,39 @@ test("limits optional recovery to shared-only loopback TCP publications", () => 
     port: 80,
     publication: { bindAddress: "127.0.0.1" },
   } as const;
-  expect(supportsWindowsPublishedRecovery({ networking, endpoints: [endpoint] })).toBe(true);
+  const attachments = [{ name: "shared", aliases: [] }];
+  expect(supportsWindowsPublishedRecovery({ networking, attachments, endpoints: [endpoint] })).toBe(true);
   expect(
     supportsWindowsPublishedRecovery({
       networking,
+      attachments,
       endpoints: [{ ...endpoint, publication: { bindAddress: "0.0.0.0" } }],
     }),
   ).toBe(false);
   expect(
     supportsWindowsPublishedRecovery({
       networking,
+      attachments,
       endpoints: [{ ...endpoint, protocol: "udp" }],
     }),
   ).toBe(false);
   expect(
     supportsWindowsPublishedRecovery({
       networking,
-      networks: { one: {}, two: {} },
+      attachments: [...attachments, { name: "authored", aliases: [] }],
       endpoints: [endpoint],
     }),
   ).toBe(false);
   expect(
     supportsWindowsPublishedRecovery({
       networking: { ...networking, perAppBridge: { name: "private" } },
+      attachments,
       endpoints: [endpoint],
     }),
   ).toBe(false);
-  expect(supportsWindowsPublishedRecovery({ networking: undefined, endpoints: [endpoint] })).toBe(false);
+  expect(
+    supportsWindowsPublishedRecovery({ networking: undefined, attachments, endpoints: [endpoint] }),
+  ).toBe(false);
 });
 test("treats internal facets of a published listener as the same physical publication", () => {
   // Given a published listener that the normalizer also retains as an internal named facet.
@@ -125,8 +131,13 @@ test("treats internal facets of a published listener as the same physical public
   const facet = { _tag: "internal", protocol: "http", port: 80, name: "web" } as const;
   const internalOnly = { _tag: "internal", protocol: "tcp", port: 9000 } as const;
   // When / Then only an unpublished physical listener disables recovery.
-  expect(supportsWindowsPublishedRecovery({ networking, endpoints: [facet, published] })).toBe(true);
-  expect(supportsWindowsPublishedRecovery({ networking, endpoints: [published, internalOnly] })).toBe(false);
+  const attachments = [{ name: "shared", aliases: [] }];
+  expect(supportsWindowsPublishedRecovery({ networking, attachments, endpoints: [facet, published] })).toBe(
+    true,
+  );
+  expect(
+    supportsWindowsPublishedRecovery({ networking, attachments, endpoints: [published, internalOnly] }),
+  ).toBe(false);
 });
 test("uses strict Docker-compatible network responses from the production endpoint", () => {
   expect(WINDOWS_COMPAT_NETWORK_LIST_PATH).toBe("/networks");

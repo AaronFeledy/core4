@@ -39,10 +39,8 @@ const errorText = (error: unknown): string =>
 
 /** Whether the applied root itself holds a Landofile; a Landofile in a parent folder is another app's. */
 const landofilePresentAt = (root: string): Effect.Effect<Result.Result<boolean, string>> =>
-  Effect.tryPromise({
-    try: () => presentLandofileLayers(root),
-    catch: errorText,
-  }).pipe(
+  presentLandofileLayers(root).pipe(
+    Effect.mapError(errorText),
     Effect.map((layers) => representativeLandofileLayer(layers) !== undefined),
     Effect.result,
   );

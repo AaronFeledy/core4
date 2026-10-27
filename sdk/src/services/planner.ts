@@ -6,14 +6,18 @@ import type {
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
-  HomePathCapabilityError,
   LandofileValidationError,
   NotImplementedError,
   PublicationUnsupportedError,
   RouteInputError,
   RouteProviderMismatchError,
 } from "../errors/index.ts";
-import type { AppPlan, LandofileShape, ProviderCapabilities } from "../schema/index.ts";
+import type {
+  AppPlan,
+  CurrentExecutableAppPlan,
+  LoadScopedLandofile,
+  ProviderCapabilities,
+} from "../schema/index.ts";
 import type { ProviderError, ProviderSelectionError } from "./provider.ts";
 
 export type AppPlannerError =
@@ -23,7 +27,6 @@ export type AppPlannerError =
   | CapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError;
 
@@ -49,9 +52,9 @@ export class AppPlanner extends Context.Service<
   AppPlanner,
   {
     readonly plan: (
-      landofile: LandofileShape,
+      landofile: LoadScopedLandofile,
       providerCapabilities: ProviderCapabilities,
-    ) => Effect.Effect<AppPlan, AppPlannerError>;
+    ) => Effect.Effect<CurrentExecutableAppPlan, AppPlannerError>;
   }
 >()("@lando/core/AppPlanner") {}
 

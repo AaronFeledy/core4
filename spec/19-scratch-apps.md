@@ -1,7 +1,7 @@
 # Lando v4: Scratch Apps
 
-> **Part 19 of 19** · [Index](./README.md)
-> **Read next:** *(end of spec)*
+> **Part 19 of 20** · [Index](./README.md)
+> **Read next:** [20 Programmable Execution](./20-programmable-execution.md)
 
 **Scratch apps** are short-lived Lando apps whose resources and materialized state are owned by an Effect `Scope`. They support isolated forks of existing apps, recipe-backed temporary stacks, and library-hosted test environments.
 
@@ -14,7 +14,7 @@
 A scratch app:
 
 - Has an identity disjoint from user and global apps (§21.2).
-- Has a Lando-managed root at `<userCacheRoot>/scratch/<id>/`, populated from a source app or recipe.
+- Has a Lando-managed root at `<userCacheRoot>/scratch/<id>/`, populated from a source app, recipe, or explicit programmatic configuration and workspace.
 - Uses the standard Landofile, planner, build, provider, router, and certificate contracts.
 - Is owned by a `Scope` whose finalizer destroys containers, applicable volumes, routes, host-proxy state, transcripts, caches, and the materialized root.
 - Is excluded from cwd discovery and is addressable only through `apps:scratch:*` or the library API.
@@ -40,14 +40,15 @@ Scratch ids MAY appear in user-facing output and are not secrets.
 
 Scratch state lives under `<userCacheRoot>/scratch/<id>/`, including the materialized root and the `scratch-app-plan`, `scratch-app-info`, and `scratch-build-results` caches (§12.1). Build transcripts live under the scratch branch of the standard build artifact root (§12.4).
 
-The entire scratch tree MUST be excluded from cwd discovery and `cwd-app-map`. Scope finalization removes the root, caches, and transcripts after resource destruction. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
+The entire scratch tree MUST be excluded from cwd discovery. Scope finalization removes the root, caches, and transcripts after resource destruction. A crash may leave them behind; `apps:scratch:gc` reaps them (§21.11).
 
 ### 21.4 Scratch sources
 
-`ScratchSource` is a tagged contract with exactly two variants:
+`ScratchSource.kind` is `fork`, `recipe`, or `config`:
 
 - `fork` identifies the resolved source app root, source app id, and copied Landofile layers.
-- `from-recipe` identifies a standard `RecipeRef` and resolved answers (§8.8.4).
+- `recipe` identifies a standard `RecipeRef` and resolved answers (§8.8.4).
+- `config` carries `config: Schema.Encoded<typeof LandofileAuthoringShapeWire>` and authoritative `sourceRoot: AbsolutePath` (§21.4.3). Acquisition payloads are separate from registry/listing source summaries.
 
 #### 21.4.1 Fork mode
 
@@ -65,6 +66,14 @@ The entire scratch tree MUST be excluded from cwd discovery and `cwd-app-map`. S
 `apps:scratch:start --from <recipe-ref>` materializes through the standard recipe pipeline (§8.8). Recipe `postInit:` actions MUST NOT run unless `--run-post-init` is set.
 
 Recipe resolution, prompt precedence, validation, fragments, and assets follow §8.8. Missing non-interactive answers fail through the recipe error contract and remove partial state. The generated Landofile uses the scratch id. Scratch mode defaults to `baked` isolation (§21.7).
+
+#### 21.4.3 Programmatic configuration mode
+
+The `config` source requires strict authoring-wire validation, one conversion to native authoring input, and canonical preparation/composition/finalization. It MUST NOT re-decode runtime Landofiles, accept caller plans, or serialize temporary YAML only to reload it.
+
+Copy the workspace under fork containment/exclusion rules; default isolation is `full`. The supplied document is authoritative over copied `.lando.*` and ambient local/user layers. Explicit includes and load inputs follow canonical policy inside the managed workspace. Standard scratch planning, build, and readiness apply, with session admission before materialization (§22.6).
+
+Retain the `LoadScopedLandofile` and managed-root provenance with the handle/plan for later operations and cleanup; never rediscover copied configuration. Registry/listing summaries contain kind, root identity, and digest, not authored input or resolved secrets. Existing applied-plan persistence and orphan recovery remain authoritative.
 
 ### 21.5 `ScratchAppService` core service
 
@@ -117,8 +126,10 @@ Acquisition wraps materialization and start; scratch start wraps the standard Ap
 | Mode | `appMount` and relative mounts | Absolute mounts |
 |---|---|---|
 | `full` | Resolve against the copied scratch root. Default for fork mode. | Pass through unchanged. |
-| `baked` | Suppressed. Default for recipe mode. | Pass through unchanged. |
-| `cwd` | Resolve against the cwd captured at start. | Pass through unchanged. |
+| `baked` | Recipe mode (the default there): resolve against the Lando-owned materialized recipe root. Fork mode: suppressed, with the exclude shadows, nested includes, and file-sync sessions that belonged to them. | Pass through unchanged. |
+| `cwd` | Resolve against the cwd captured at start, in every service. | Pass through unchanged. |
+
+"Relative mounts" are the bind entries planning marked `relativeTo: app` (§6.4). Under `full` and recipe `baked`, a relative mount whose source leaves the scratch root, lexically or through a symlink on an existing ancestor, is not mounted, and acquisition publishes a warning naming the service and target; the scratch root is Lando-owned, so mounting inside it exposes no host files. `--mount-cwd` without a target rebinds those mounts to the cwd; `--mount-cwd=<path>` instead adds one plain bind of the cwd at `<path>`, replacing whatever was planned exactly there, and leaves app mounts and sessions untouched.
 
 `--mount-cwd` is sugar for `--isolate=cwd`; in fork mode it MUST warn that it overrides the safer `full` default. Combining it with an explicit incompatible isolation mode fails with `ScratchIsolationConflictError`. `--isolate=passthrough` is reserved and unsupported, raising `ScratchIsolationUnsupportedError`. Copy exclusions apply only to fork materialization.
 
@@ -133,7 +144,7 @@ At plan time, scratch storage obeys this rewrite:
 | `global` | `app` by default | Removed. |
 | `global` with `--share-global-storage` | `global` | Preserved under §6.5. |
 
-Scratch destroy also removes the scratch app's catalogued snapshots, because the ephemeral root leaves nothing else that could reclaim them; this is the one retention exception to §10.11.2. Selection uses the plan's owner key and the scratch app id together, matching the volume selector, so a `--isolate=cwd` scratch that shares the source app's owner never removes the source app's snapshots. `--keep-volumes` keeps both volumes and snapshots. Without a plan, snapshot purge is skipped and reported as `unknown-owner`.
+Scratch destroy also removes the scratch app's catalogued snapshots, because the ephemeral root leaves nothing else that could reclaim them; this is the one retention exception to §10.11.2. Selection uses the plan's owner key and the scratch app id together, matching the volume selector, so a `--isolate=cwd` scratch that shares the source app's owner never removes the source app's snapshots. `--keep-volumes` keeps both named volumes and snapshots; it cannot keep an anonymous volume, which leaves with its container (§6.5). Without a plan, snapshot purge is skipped and reported as `unknown-owner`.
 
 The `scope: global` to `scope: app` rewrite is mandatory unless `--share-global-storage` is explicitly set. It MUST NOT be inferred from another flag. Scratch volumes carry the scratch labels and standard storage ownership labels using the effective scope.
 
@@ -159,7 +170,7 @@ Scratch `AppFeature` code may consume permitted `globalServices.<name>.*` expres
 |---|---|---|
 | `apps:scratch:start` | `scratch:start`, `scratch` | Acquire from exactly one of `--fork` or `--from`; foreground by default, detached with `--detach`. |
 | `apps:scratch:stop` | `scratch:stop` | Stop and destroy the selected scratch or the current foreground scratch. |
-| `apps:scratch:destroy` | `scratch:destroy` | Force resource destruction; `--keep-volumes` retains volumes for inspection. |
+| `apps:scratch:destroy` | `scratch:destroy` | Force resource destruction; `--keep-volumes` retains named volumes for inspection. |
 | `apps:scratch:list` | `scratch:list` | List registry entries and provider-label orphans; JSON is the canonical machine form. |
 | `apps:scratch:info` | `scratch:info` | Report runtime info with service and format selection. |
 | `apps:scratch:logs` | `scratch:logs` | Stream logs with standard service, follow, tail, and since filters. |
@@ -174,7 +185,7 @@ Behavior-defining flags are `--fork`, `--from`, `--source`, `--isolate=full|bake
 
 Foreground mode owns the scratch in the command scope and blocks until exit or interruption. Detached mode records the identity, source, isolation, policy, owner, and start state in `<userCacheRoot>/scratch/registry.bin` and returns. `--keep-volumes` applies to foreground and explicit stop cleanup but MUST NOT prevent `apps:poweroff` cleanup. `--keep-on-failure` retains failed state for explicit inspection and destruction.
 
-Scratch startup MUST pass the shared §6.7 readiness barrier before reporting success, returning a started handle, marking the registry running, or executing `apps:scratch:run` tooling. Startup failure and interruption at any phase MUST follow scratch scope cleanup, including routes, containers, applicable volumes, and the materialized root; `--keep-on-failure` retains failed acquisition state. The user-app and global-app retention policy of §6.7 does not apply to scratch apps and MUST NOT suppress scratch cleanup. Scratch remediation MUST address the scratch identity and MUST NOT prescribe `lando start`.
+Scratch startup MUST pass the shared §6.7 readiness barrier before reporting success, returning a started handle, marking the registry running, or executing `apps:scratch:run` tooling. Startup failure and interruption at any phase MUST follow scratch scope cleanup, including routes, containers, applicable volumes, and the materialized root; `--keep-on-failure` retains failed acquisition state. One acquisition-failure cleanup boundary covers apply through startup completion: an ordinary failure, not only interruption, reaps task-owned instance resources unless keep-on-failure applies, and it MUST NOT remove the scratch source root. Successful-scope and detached cleanup behavior is unchanged. The user-app and global-app retention policy of §6.7 does not apply to scratch apps and MUST NOT suppress scratch cleanup. Scratch remediation MUST address the scratch identity and MUST NOT prescribe `lando start`.
 
 #### 21.10.2 Top-level alias reservation
 

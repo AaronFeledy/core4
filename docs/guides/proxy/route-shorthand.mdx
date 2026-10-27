@@ -20,6 +20,7 @@ name: route-shorthand-demo
 services:
   app:
     type: "node:22"
+    port: 8080
     primary: true
     routes:
       - app.lndo.site
@@ -30,8 +31,8 @@ services:
 ```
 
 Save the Landofile in your app directory, then lint it before starting containers.
-A successful lint checks the route syntax; it does not prove that the service is
-listening or serving HTTP:
+A successful lint checks route syntax and binds each authored route to a declared
+HTTP or HTTPS listener. It does not contact the service to prove that it is serving HTTP:
 
 ```sh
 lando app:config:lint
@@ -72,6 +73,7 @@ Write an object route for a scheme or filters. Neither form matches on a query s
 services:
   app:
     type: "node:22"
+    port: 8080
     primary: true
     routes:
       - hostname: api.lndo.site
@@ -93,7 +95,7 @@ services:
 
 Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
 
-Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, and shorthand once, after the expression resolves, under rule `landofile.route`. Every bad field is reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues.
+Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, shorthand, and authored HTTP endpoint selection after the expression resolves, under rule `landofile.route`. Independent findings are reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues. An expression that cannot resolve still stops materialization at its first error.
 
 Layer merging matches routes by the same scheme, case-insensitive hostname, and path-prefix identity used for conflict detection, regardless of spelling. Omitted scheme means HTTPS and omitted path prefix means `/`. Backend ports do not change that identity. `both` participates in both schemes; overlaying only HTTPS keeps the inherited HTTP entry.
 
@@ -170,10 +172,18 @@ services:
 The first route names no endpoint, so it goes to `site` because that listener is
 marked primary. Without `primary: true`, that route has two equal candidates.
 The same happens to the generated default route of a service that declares two
-unmarked HTTP listeners and no `routes:`. Planning fails with a
+unmarked HTTP listeners and no `routes:`. An authored ambiguous route fails lint;
+an ambiguous generated default route fails only during planning. Both report a
 `LandofileValidationError` whose remediation tells you to mark one listener
 `primary: true` or name the endpoint. `lando app:cache:refresh` reports it
 without starting containers.
+
+For a raw Compose service, declare `protocol: http` or `https` on its real listener.
+An image name, port 80, `expose:`, and a TCP endpoint's `appProtocol: http` do not
+prove HTTP. Service and app features may contribute declared listeners. Lint uses
+the same declarations as planning without applying features or acquiring a provider.
+If a service cannot resolve, its bindings are skipped rather than reported as
+missing HTTP. See [Fix a route's HTTP endpoint](../landofile/config-lint.mdx#fix-a-routes-http-endpoint).
 
 `primary: true` is the only accepted value; leave the key off the other entries.
 It only chooses which listener Lando treats as the main one. It doesn't change
@@ -391,10 +401,10 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
       <UseFixture name="route-shorthand-invalid" />
     </Step>
     <Step name="lint-invalid-route">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "hostname\\[:port\\]\\[/pathPrefix\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "hostname\\[:port\\]\\[/pathPrefix\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />
@@ -406,10 +416,10 @@ Skip lint and `lando start` reports the same entries, at the same paths, in one 
       <UseFixture name="route-object-invalid" />
     </Step>
     <Step name="lint-invalid-object-hostname">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0,\\s*\"hostname\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*endpoint[^\"]*pathPrefix" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"routes\",\\s*0,\\s*\"hostname\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*endpoint[^\"]*pathPrefix" } }} />
     </Step>
     <Step name="cleanup-invalid-object">
       <Cleanup />

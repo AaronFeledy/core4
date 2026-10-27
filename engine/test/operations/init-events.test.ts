@@ -1,21 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Layer, Option, Stream } from "effect";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runAppEvent, runAppInitEvents } from "../../src/operations/events.ts";
-import { withProjectEvents } from "../../src/planner/effective-events.ts";
+import * as EnvironmentResolver from "../../src/services/environment-value-resolver.ts";
 import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";
+import * as EnvSecretStore from "../../src/services/secret-store.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import { withAuthoredProjectEvents as withProjectEvents } from "./event-plan.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("init-events"),
@@ -25,7 +23,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -42,6 +39,9 @@ const eventRuntime = (
   failures: ReadonlySet<string> = new Set(),
 ) =>
   Layer.mergeAll(
+    EnvironmentResolver.layer.pipe(
+      Layer.provide(Layer.merge(RedactionService.layer, EnvSecretStore.layerWith({ env: {} }))),
+    ),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       EventService,
@@ -57,9 +57,7 @@ const eventRuntime = (
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...makeRedactionService(),
       }),
     ),
     Layer.succeed(
@@ -156,13 +154,12 @@ describe("app initialization lifecycle events", () => {
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected post-init failure");
     const failure = Cause.findErrorOption(exit.cause);
-    expect(failure).toMatchObject({
-      _tag: "Some",
-      value: {
-        _tag: "LandofileEventStepFailedError",
-        event: "post-init",
-        outputTail: "[redacted]",
-      },
+    expect(Option.isSome(failure)).toBe(true);
+    if (!Option.isSome(failure)) throw new Error("Expected typed post-init failure");
+    expect(failure.value).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      event: "post-init",
+      outputTail: "[redacted]",
     });
     expect(JSON.stringify(failure)).not.toContain(secret);
     expect(published).not.toContain("message.warn");

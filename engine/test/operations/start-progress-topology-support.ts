@@ -12,6 +12,7 @@ import {
   AppId,
   type AppPlan,
   AppPlan as AppPlanSchema,
+  LoadScopedLandofile,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -40,16 +41,14 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import * as GlobalAppServiceLayer from "../../src/global-app/service.ts";
 import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { startApp } from "../../src/operations/start.ts";
 import * as LandoConfigService from "../../src/services/config.ts";
+import * as EnvironmentValueResolverLayer from "../../src/services/environment-value-resolver.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import { makeEnvSecretStore } from "../../src/services/secret-store.ts";
 import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import * as TestLandofileLayers from "../services/landofile-layer.ts";
@@ -80,7 +79,6 @@ export const web: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -101,6 +99,7 @@ const testAppRoot = mkdtempSync(join(tmpdir(), "lando-test-start-"));
 process.once("exit", () => rmSync(testAppRoot, { recursive: true, force: true }));
 
 export const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("test-start"),
   name: "test-start",
   slug: "test-start",
@@ -108,7 +107,6 @@ export const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -155,7 +153,10 @@ export const makeHarness = (
     readonly appliedFileSyncSessions?: ReadonlyArray<import("@lando/sdk/schema").FileSyncSessionSpec>;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly secretStore?: SecretStoreShape;
-    readonly onApply?: (plan: AppPlan, options?: ApplyOptions) => void;
+    readonly onApply?: (
+      plan: AppPlan,
+      options?: ApplyOptions,
+    ) => void | number | Effect.Effect<void, import("@lando/sdk/services").ProviderError>;
     readonly onStop?: (...args: Parameters<RuntimeProviderShape["stop"]>) => void;
     readonly inspect?: RuntimeProviderShape["inspect"];
     readonly exec?: RuntimeProviderShape["exec"];
@@ -168,6 +169,7 @@ export const makeHarness = (
     readonly disposeFileSyncTargets?: RuntimeProviderShape["disposeFileSyncTargets"];
   } = {},
 ) => {
+  const redaction = makeRedactionService();
   const plannedApp = options.plannedApp ?? plan;
   const stateStore = options.stateStore ?? makeTestStateStore();
   const events: LandoEvent[] = [];
@@ -183,7 +185,16 @@ export const makeHarness = (
   const apply =
     options.apply ??
     ((appliedPlan: AppPlan, applyOptions: ApplyOptions) =>
-      Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
+      Effect.forEach(
+        Object.values(appliedPlan.services),
+        (service) => applyOptions.resolveServiceEnvironment?.(service) ?? Effect.succeed(service.environment),
+      ).pipe(
+        Effect.andThen(
+          Effect.suspend(() => {
+            const result = options.onApply?.(appliedPlan, applyOptions);
+            return Effect.isEffect(result) ? result : Effect.void;
+          }),
+        ),
         Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
       ));
   const provider: RuntimeProviderShape = {
@@ -323,9 +334,21 @@ export const makeHarness = (
     TestLandofileLayers.layerTransactionGuard,
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(
+          LoadScopedLandofile.make({
+            stage: "load-scoped",
+            document: { name: plannedApp.name, services: {} },
+            pendingSites: [],
+            context: { appRoot: plannedApp.root, env: {} },
+          }),
+        ),
+      }),
     ),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(
+      AppPlanner,
+      AppPlanner.of({ plan: () => Effect.succeed({ ...plannedApp, valueModel: 1 as const }) }),
+    ),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistry),
     Layer.succeed(
       EventService,
@@ -352,10 +375,7 @@ export const makeHarness = (
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, redactionOptions) =>
-          Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
+        ...redaction,
       }),
     ),
     Layer.succeed(
@@ -406,6 +426,14 @@ export const makeHarness = (
             options.onBuildApp?.(appPlan);
           }),
       }),
+    ),
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(SecretStore, options.secretStore ?? makeEnvSecretStore()),
+          Layer.succeed(RedactionService, redaction),
+        ),
+      ),
     ),
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),

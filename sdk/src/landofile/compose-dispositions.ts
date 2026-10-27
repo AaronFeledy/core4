@@ -40,13 +40,25 @@ const PRESERVED_EXACT_PATH_ENTRY = {
 const preservedExactPaths: ReadonlySet<string> = new Set(ComposePreservedPathKey.literals);
 
 const preservedEntry = (path: string): ComposeDispositionEntry =>
-  path === "x-*"
-    ? PRESERVED_INERT_EXTENSION_ENTRY
-    : preservedExactPaths.has(path)
-      ? PRESERVED_EXACT_PATH_ENTRY
-      : PRESERVED_ENTRY;
+  path === "networks.*.x-*"
+    ? {
+        disposition: "preserved",
+        rationale: "Retained in the Landofile as inert metadata; never interpreted or capability-gated.",
+      }
+    : path === "x-*"
+      ? PRESERVED_INERT_EXTENSION_ENTRY
+      : preservedExactPaths.has(path)
+        ? PRESERVED_EXACT_PATH_ENTRY
+        : PRESERVED_ENTRY;
 
 const rejectedEntry = (path: string): ComposeDispositionEntry => {
+  if (path.startsWith("networks.*.")) {
+    return {
+      disposition: "rejected",
+      rationale: "Lando owns network address and interface settings.",
+      remediation: `Lando doesn't pin network addresses or interface settings. Remove ${path} and reach the service by its name or an alias.`,
+    };
+  }
   if (path === "extends" || path.startsWith("extends.")) {
     return {
       disposition: "rejected",
@@ -68,6 +80,13 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
       remediation: `Translate ${path} to Lando networks: configuration.`,
     };
   }
+  if (path === "configs.uid" || path === "configs.gid") {
+    return {
+      disposition: "rejected",
+      rationale: "Config grants mount a read-only copy of a host file; Lando cannot change its owner.",
+      remediation: `Remove ${path} and set the grant's mode (for example "0444") so the service user can read the file.`,
+    };
+  }
   if (path.startsWith("deploy.") && !path.startsWith("deploy.resources")) {
     return {
       disposition: "rejected",
@@ -85,6 +104,9 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
 type NormalizedServicePath = readonly [path: string, planTarget?: ReadonlyArray<string>];
 
 const normalizedServicePaths = [
+  ["networks", ["networking"]],
+  ["networks.*", ["networking"]],
+  ["networks.*.aliases", ["networking"]],
   ["build", ["artifact"]],
   ["build.args"],
   ["build.args.*"],
@@ -110,6 +132,11 @@ const normalizedServicePaths = [
   ["healthcheck.test"],
   ["healthcheck.timeout"],
   ["image", ["artifact"]],
+  ["configs", ["mounts"]],
+  ["configs.mode"],
+  ["configs.source"],
+  ["configs.target"],
+  ["configs.x-*"],
   ["ports", ["endpoints"]],
   ["ports.app_protocol"],
   ["ports.host_ip"],
@@ -118,7 +145,7 @@ const normalizedServicePaths = [
   ["ports.published"],
   ["ports.target"],
   ["user", ["user"]],
-  ["volumes", ["mounts", "storage", "extensions.compose.tmpfs"]],
+  ["volumes", ["mounts"]],
   // Type-specific volume options reach only their own destination, never the root's full set.
   ["volumes.bind", ["mounts"]],
   ["volumes.bind.create_host_path", ["mounts"]],
@@ -126,21 +153,19 @@ const normalizedServicePaths = [
   ["volumes.source"],
   ["volumes.target"],
   ["volumes.type"],
-  ["volumes.volume", ["storage"]],
-  ["volumes.volume.subpath", ["storage"]],
+  ["volumes.volume", ["mounts"]],
+  ["volumes.volume.subpath", ["mounts"]],
+  ["tmpfs", ["mounts"]],
+  ["volumes.tmpfs", ["mounts"]],
+  ["volumes.tmpfs.mode", ["mounts"]],
+  ["volumes.tmpfs.size", ["mounts"]],
+  ["volumes.tmpfs.x-*", ["mounts"]],
   ["working_dir", ["workingDirectory"]],
 ] as const satisfies ReadonlyArray<NormalizedServicePath>;
 
 const preservedServicePaths = [
   "cap_add",
   "cap_drop",
-  "configs",
-  "configs.gid",
-  "configs.mode",
-  "configs.source",
-  "configs.target",
-  "configs.uid",
-  "configs.x-*",
   "depends_on.*.restart",
   "deploy",
   "deploy.resources",
@@ -196,18 +221,6 @@ const preservedServicePaths = [
   "logging.options",
   "logging.options.*",
   "logging.x-*",
-  "networks",
-  "networks.*",
-  "networks.*.aliases",
-  "networks.*.driver_opts",
-  "networks.*.driver_opts.*",
-  "networks.*.gw_priority",
-  "networks.*.interface_name",
-  "networks.*.ipv4_address",
-  "networks.*.ipv6_address",
-  "networks.*.link_local_ips",
-  "networks.*.mac_address",
-  "networks.*.priority",
   "networks.*.x-*",
   "platform",
   "privileged",
@@ -228,20 +241,26 @@ const preservedServicePaths = [
   "stop_signal",
   "sysctls",
   "sysctls.*",
-  "tmpfs",
   "ulimits",
   "ulimits.*",
   "ulimits.*.hard",
   "ulimits.*.soft",
   "ulimits.*.x-*",
-  "volumes.tmpfs",
-  "volumes.tmpfs.mode",
-  "volumes.tmpfs.size",
-  "volumes.tmpfs.x-*",
   "x-*",
 ] as const;
 
 const rejectedServicePaths = [
+  "configs.gid",
+  "configs.uid",
+  "networks.*.driver_opts",
+  "networks.*.driver_opts.*",
+  "networks.*.gw_priority",
+  "networks.*.interface_name",
+  "networks.*.ipv4_address",
+  "networks.*.ipv6_address",
+  "networks.*.link_local_ips",
+  "networks.*.mac_address",
+  "networks.*.priority",
   "annotations",
   "annotations.*",
   "attach",
@@ -510,7 +529,7 @@ export const composeTopLevelDispositions: Readonly<Record<string, ComposeDisposi
   },
   networks: {
     disposition: "normalized",
-    rationale: "Normalizes into AppPlan.networks.",
+    rationale: "Normalizes into AppPlan.networking when a service joins the declared network.",
   },
   configs: {
     disposition: "preserved",

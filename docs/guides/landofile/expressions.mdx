@@ -7,7 +7,7 @@ tags: [beta, docs, landofile]
 
 # Landofile expressions
 
-Load-time `{{ recipe.<option> }}` and `{{ env.* }}` sites resolve when Lando reads the Landofile. Plan-time `{{ app.* }}` and `{{ proxy.* }}` sites resolve when Lando builds the plan, in route hostnames, `environment:` values, service config, and tooling commands. `${...}` shell params stay blocked.
+Load-time `{{ recipe.<option> }}` and `{{ env.* }}` sites resolve when Lando reads the Landofile. Plan-time `{{ app.* }}` and `{{ proxy.* }}` sites resolve when Lando builds the plan, in route hostnames, `environment:` values, service config, and tooling commands. Shell-style `${VAR}` is not something Lando evaluates: write `$${VAR}` when the container shell should see `${VAR}`.
 
 A whole-file template, includes, and env overlays still exist for the jobs expressions don't cover.
 
@@ -15,7 +15,7 @@ A whole-file template, includes, and env overlays still exist for the jobs expre
 template: handlebars
 ```
 
-Use the documented `{{ ... }}` expressions rather than shell-style `${VARS}` interpolation in volumes or tooling; Lando rejects the latter.
+Use the documented `{{ ... }}` expressions rather than shell-style `${VARS}` interpolation; Lando rejects the latter anywhere in a Landofile. To read a host variable into the Landofile, write `{{ env.VAR }}`. To hand `${VAR}` to a container shell untouched, see [Keep `${VAR}` and `{{` as text](#keep-var-and--as-text).
 
 ## Load-time recipe and env
 
@@ -73,7 +73,9 @@ Anything they can't read (`number('eight')`, `boolean('maybe')`) comes back as `
 
 ### A load-time result that contains `{{` stays text
 
-An env var, a recipe option, or data read with `load()` or `import()` whose value is `{{ app.name }}` does not become a plan-time expression. A `{{ app.name }}` inside a loaded JSON or YAML file stays text. Lando never evaluates values an expression produced. `lando app:config --format=json` shows that text with its braces escaped, `{{{{ app.name }}` (and `$${` for a `${`); the value the service gets is the plain `{{ app.name }}`.
+An env var, a recipe option, or data read with `load()` or `import()` whose value is `{{ app.name }}` does not become a plan-time expression. Loaded `${secret:KEY}` text never becomes a secret reference either. Lando treats expression results as data, even when another service uses that data as a credential or environment value.
+
+Lando parses expression sites once, when it reads your files, and keeps a record of where they were. A string an expression produced is not on that list, so later passes never scan it for `{{` or `${`. The bytes stay as produced: a loaded `{{ app.name }}` is the text `{{ app.name }}`, a loaded `$${HOME}` is the text `$${HOME}`, and `lando app:config --format=json` shows them that way. Config output can still redact sensitive values.
 
 Plan-time scopes (`app.*`, `proxy.*`, `services.<name>.creds.*`) fill text only. Put `{{ app.name }}` at a boolean, number, list, or object field and validation fails at that path, with a suggestion to use a literal or a recipe/env expression. A plan-time expression at a text field whose result is not text, like `{{ eq(app.name, 'x') }}` in `database:`, fails when the plan is built.
 
@@ -131,7 +133,7 @@ For the Landofile above, the database name comes back as `expressions-demo`.
 
 ## Plan-time service credentials
 
-`{{ services.<name>.creds.* }}` reads another service's resolved database credentials: `.user`, `.password`, `.database`, and `.rootPassword`. Use it wherever plan-time sites already work: `environment:` values, service config, tooling `cmd` / `cmds`, and `x-` values.
+`{{ services.<name>.creds.* }}` reads another service's resolved database credentials: `.user`, `.password`, `.database`, and `.rootPassword`. `{{ services.<name>.port }}` reads the port the database listens on, `port:` when you set it and the type's default otherwise. Use them wherever plan-time sites already work: `environment:` values, service config, tooling `cmd` / `cmds`, and `x-` values.
 
 ```yaml
 name: Creds Demo
@@ -140,12 +142,15 @@ services:
     type: "node:22"
     primary: true
     environment:
-      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ services.database.creds.database }}"
   database:
     type: "postgres:16"
+    port: 5433
 ```
 
-`web` starts with a working `DATABASE_URL`. No copying the generated password out of `lando info`, no second place for it to go stale.
+`web` starts with a working `DATABASE_URL` pointing at `database:5433`. No copying the generated password out of `lando info`, no second place for it to go stale, and the URL follows `port:` when you change it.
+
+`url.encodeComponent()` percent-encodes its argument the way a URL userinfo or path segment needs (RFC 3986, UTF-8). Use it around a password in a URL; a generated password is URL-safe, but an authored one may contain `@`, `/`, or `%`. Lando never encodes for you based on where the value sits.
 
 Lando resolves `database` first and `web` after it, whatever order the Landofile lists them in, so the values are the ones the database actually uses, including an authored `creds:` block on `database`. That ordering is what lets a service's own `creds:` read another service: a replica can set `password: "{{ services.primary.creds.password }}"`. Mixed sites like `"{{ app.name }}:{{ services.database.creds.user }}"` are fine.
 
@@ -156,9 +161,56 @@ lando app:config:lint --format=json
 lando app:cache:refresh
 ```
 
-Two limits. A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's; both fail the plan as a cycle, because credentials exist only after the service resolves. And values that arrive through `env_file:` are never interpolated, so put the expression in `environment:`.
+A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's. Both cases fail the plan as a cycle because credentials exist only after the service resolves.
+
+Values from `env_file:` are never interpolated. `${NAME}` stays literal, and lint warns if it appears in an unquoted or double-quoted value. Single quotes suppress that warning; they do not enable interpolation. To read a host variable, put `NAME: "{{ env.NAME }}"` under the service's `environment:` instead. See [Quote env file values](./env-overrides.mdx#quote-env-file-values) for the escaping rules.
+
+A plugin's derived service type inherits its parent's published credentials unless it publishes a replacement. Those values remain available to the same credential expressions after Lando saves and reloads the plan.
 
 Lando recognizes the password through the database service's `POSTGRES_PASSWORD` or `LANDO_DB_PASSWORD` value and masks it in command output. Automatic collection excludes public defaults and passwords that exactly match their own database user or database name, so those names remain readable in other text. Password fields in `lando info` and `PASSWORD=` assignments in `lando logs` are still masked. Values explicitly registered as secrets or resolved from a [secret store](../config/secret-stores.mdx) remain masked even when they match one of these exceptions.
+
+### A password from a secret store stays a reference
+
+When `creds.password` is a `${secret:...}` reference, every `{{ services.<name>.creds.password }}` that reads it carries the reference along instead of a value. Lando resolves it from the store when it creates the consuming container, not when it builds the plan, so the plan and its cache never hold the secret. Three operations preserve that: copying the value whole, concatenating it with text or other values, and `url.encodeComponent()`. The `DATABASE_URL` above does all three.
+
+Anything else needs the bytes at plan time, so `{{ upper(services.database.creds.password) }}` or `{{ length(services.database.creds.password) }}` fails the plan with `ConfigExpressionError` at that site, and the remediation names the three supported operations. Lint reports the same site with its path:
+
+```sh
+lando app:config:lint --format=json
+lando app:cache:refresh
+```
+
+See [Secret stores](../config/secret-stores.mdx#where-references-resolve) for which authored sites create a reference.
+
+## Keep `${VAR}` and `{{` as text
+
+Double the opener. `$${HOME}` reaches the container as `${HOME}`, and `{{{{ app.name }}` reaches it as `{{ app.name }}`. Use this for a `command:`, an `environment:` value, or a tooling `cmd` that needs literal expression-looking text. To expand a variable, invoke a shell explicitly, as the `sh -c` commands below do. An environment value itself is not a shell command and stays literal.
+
+```yaml
+name: escaped-literals
+services:
+  app:
+    type: "node:22"
+    primary: true
+    command: 'sh -c "echo $${HOME}"'
+    environment:
+      GREETING: "pre-$${HOME}-post"
+      TEMPLATE: "{{{{ app.name }}"
+tooling:
+  home:
+    service: app
+    cmds:
+      - 'sh -c "echo $${HOME}"'
+```
+
+Lando decodes the escape once, when it parses the file, and `lando app:config:lint` accepts it. From there the value is ordinary text: `lando app:config --format=json` shows `GREETING` as `pre-${HOME}-post`, and the container or tooling shell receives the same `${HOME}`. Lando never reads your host `HOME` for it, and `$${secret:KEY}` is plain text too, never a secret-store lookup. Authored `${secret:KEY}` references are the one `${` form Lando resolves, at supported environment and password sites. A reference can stand alone or have text around it; see [Secret stores](../config/secret-stores.mdx#where-references-resolve).
+
+```sh
+lando app:config --format=json
+lando app:cache:refresh
+```
+
+An unescaped `${HOME}`, `${HOME:-/root}`, or any other `${...}` shell form outside that one secret shape is not supported. Lando does not guess whether you meant your host's value or the container's, so loading fails with `LandofileValidationError` naming the value path, for example `services.app.environment.GREETING`, and the layer file that wrote it. Write `$${HOME}` for the container's value or `{{ env.HOME }}` for your host's.
 
 ## Find a bad expression
 
@@ -168,7 +220,7 @@ A plan-time expression that points at nothing, like `{{ app.nope }}`, fails with
 lando app:config:lint --format=json
 ```
 
-That returns `valid: false` and a violation whose `path` walks to the bad site, for example `["tooling", "probe", "cmds", 0]`.
+That returns `valid: false` and a violation whose `path` walks to the bad site, for example `["tooling", "probe", "cmds", 0]`. An unescaped `${HOME}` lints the same way, with its `path` at the value, for example `["services", "app", "environment", "GREETING"]`.
 
 <Guide>
   <Scenario id="plan-time-sites-resolve" render>
@@ -219,10 +271,10 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <UseFixture name="expressions-plan-time-typed-field" />
     </Step>
     <Step name="lint-plan-time-typed-field">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"primary\"\\s*\\]" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*plan-time scopes" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"primary\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"suggestion\":\\s*\"[^\"]*plan-time scopes" } }} />
     </Step>
     <Step name="cleanup-plan-time-typed-field">
       <Cleanup />
@@ -238,9 +290,9 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <Verify errorTag="ConfigExpressionError" expect={{ regex: "Expression resolved to a missing value" }} />
     </Step>
     <Step name="lint-missing-value">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"probe\",\\s*\"cmds\",\\s*0\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"probe\",\\s*\"cmds\",\\s*0\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-missing-value">
       <Cleanup />
@@ -263,6 +315,65 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
     </Step>
   </Scenario>
 
+  <Scenario id="bound-password-helper-fails" render>
+    <Step name="scaffold-bound-password-helper">
+      <UseFixture name="expressions-bound-password-helper" />
+    </Step>
+    <Step name="refresh-bound-password-helper">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="ConfigExpressionError" expect={{ regex: "url\\.encodeComponent" }} />
+    </Step>
+    <Step name="lint-bound-password-helper">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"DB_PASSWORD_UPPER\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-bound-password-helper">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="escaped-literals-stay-text" render>
+    <Step name="scaffold-escaped-literals">
+      <UseFixture name="expressions-escaped-literals" />
+    </Step>
+    <Step name="lint-escaped-literals">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="read-escaped-literals">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"GREETING\":\\s*\"pre-\\$\\{HOME\\}-post\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"TEMPLATE\":\\s*\"\\{\\{ app\\.name \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "echo \\$\\{HOME\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\\$\\$\\{HOME\\}" } } }} />
+    </Step>
+    <Step name="resolve-escaped-literals">
+      <Run command="lando app:cache:refresh" />
+    </Step>
+    <Step name="cleanup-escaped-literals">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="unescaped-shell-param-fails" render>
+    <Step name="scaffold-unescaped-shell">
+      <UseFixture name="expressions-unescaped-shell" />
+    </Step>
+    <Step name="read-unescaped-shell">
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "services\\.app\\.environment\\.GREETING" }} />
+    </Step>
+    <Step name="lint-unescaped-shell">
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"environment\",\\s*\"GREETING\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup-unescaped-shell">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="missing-creds-service-fails" render>
     <Step name="scaffold-missing-creds">
       <UseFixture name="expressions-missing-creds" />
@@ -272,9 +383,9 @@ That returns `valid: false` and a violation whose `path` walks to the bad site, 
       <Verify errorTag="ConfigExpressionError" expect={{ regex: "Expression resolved to a missing value" }} />
     </Step>
     <Step name="lint-missing-creds">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"DATABASE_URL\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"environment\",\\s*\"DATABASE_URL\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-missing-creds">
       <Cleanup />
@@ -290,4 +401,4 @@ Share fragments across apps with `includes:`. See [Includes and the lockfile](./
 
 Override config from the environment with `LANDO_CONFIG__` or `env_file:`. See [Env overrides](./env-overrides.mdx).
 
-`${VARS}` interpolation in volumes or tooling is not supported. Lando rejects it with `NotImplementedError` naming the file. `load()` and `import()` stay on their own file-IO path.
+Host-shell forms like `${VAR:-default}` are not evaluated anywhere in a Landofile, including volumes and tooling. Lando rejects them with `LandofileValidationError` naming the file and the value path; escape them as `$${...}` when the container shell should expand them. `load()` and `import()` stay on their own file-IO path.

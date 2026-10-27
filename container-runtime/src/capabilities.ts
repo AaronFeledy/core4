@@ -25,6 +25,8 @@ export const decodeProviderCapabilitiesFor = (providerId: string) => (input: unk
           requiredValue: "@lando/sdk/schema ProviderCapabilities",
           actualValue: input,
           cause,
+          remediation:
+            "Choose a provider that supports `ProviderCapabilities`, or remove that requirement from the app.",
         }),
     ),
   );
@@ -81,6 +83,7 @@ export interface ProviderCapabilityConstants {
   readonly composeProjectFields?: ProviderCapabilitiesShape["composeProjectFields"];
   readonly composePreservedPaths?: ProviderCapabilitiesShape["composePreservedPaths"];
   readonly composeServiceFields?: ProviderCapabilitiesShape["composeServiceFields"];
+  readonly authoredNetworks?: ProviderCapabilitiesShape["authoredNetworks"];
   readonly providerExtensions: ProviderCapabilitiesShape["providerExtensions"];
   readonly hostProxy?: ProviderCapabilitiesShape["hostProxy"];
   readonly agentSocket?: AgentSocketProviderCapabilities;
@@ -101,6 +104,7 @@ export const buildProviderCapabilities = (
     serviceHealth: "lando",
     hostReachability: "emulated",
     sharedCrossAppNetwork: true,
+    ...(constants.authoredNetworks === undefined ? {} : { authoredNetworks: constants.authoredNetworks }),
     persistentStorage: true,
     bindMounts: constants.bindMounts,
     bindMountPerformance: constants.bindMountPerformance,

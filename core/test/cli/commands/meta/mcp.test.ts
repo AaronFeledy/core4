@@ -54,7 +54,7 @@ describe("native meta:mcp dispatch", () => {
     );
 
     // When / Then
-    expect(source).toContain('if (entry.spec.id === "meta:mcp") return runMetaMcp(argv);');
+    expect(source).toContain('if (entry.spec.id === "meta:mcp") return runMetaMcp(argv, signal);');
     expect(source).not.toContain("input.flags.list !== true");
   });
 });

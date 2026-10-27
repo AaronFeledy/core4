@@ -85,7 +85,7 @@ describe("ruby:3.3 ServiceType", () => {
     // Then: the image supplies cwd and there is no app-relative webroot.
     expect(plan.environment.LANDO_WEBROOT).toBeUndefined();
     expect(plan.workingDirectory).toBeUndefined();
-    expect(plan.appMount).toBeUndefined();
+    expect(serviceAppMount(plan)).toBeUndefined();
     expect(plan.extensions["lando-service-ruby"]).not.toHaveProperty("webroot");
   });
   test("plans a default Ruby 3.3 web service with framework=none defaults", async () => {
@@ -96,11 +96,15 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
 
-    expect(plan.mounts).toEqual([]);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3000, protocol: "http", name: "web", primary: true },
@@ -283,3 +287,4 @@ describe("ruby:3.3 ServiceType", () => {
     );
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

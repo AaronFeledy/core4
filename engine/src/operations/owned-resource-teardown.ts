@@ -44,10 +44,12 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
       servicesRemoved: Array<OwnedResourcesCleanupResult["servicesRemoved"][number]>;
       networksRemoved: number;
       volumesRemoved: number;
+      skipped: Array<NonNullable<OwnedResourcesCleanupResult["skipped"]>[number]>;
     } = {
       servicesRemoved: [],
       networksRemoved: 0,
       volumesRemoved: 0,
+      skipped: [],
     };
     yield* runAllAndMergeFailures(
       providers.map((cleanup) =>
@@ -56,11 +58,13 @@ export const prepareOwnedResourceCleanupFrom = Effect.fnUntraced(function* (
             result.servicesRemoved.push(...removed.servicesRemoved);
             result.networksRemoved += removed.networksRemoved;
             result.volumesRemoved += removed.volumesRemoved;
+            result.skipped.push(...(removed.skipped ?? []));
           }),
         ),
       ),
     );
-    return result;
+    const { skipped, ...removed } = result;
+    return { ...removed, ...(skipped.length === 0 ? {} : { skipped }) };
   });
 });
 

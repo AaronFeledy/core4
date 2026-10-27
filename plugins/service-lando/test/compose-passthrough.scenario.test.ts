@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
+import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -8,7 +9,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -83,9 +84,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -111,15 +128,22 @@ const makeProvider = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
   };
   return { provider, calls };
 };
 
-const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
+const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
       Effect.provide(PluginRegistryLayer.layer),
     ),
@@ -127,13 +151,13 @@ const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
 
 const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => compileTestLandofile(options.landofile)),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -155,11 +179,12 @@ const makeToolingLayer = (options: {
   );
   return Layer.mergeAll(
     PrivateFileAccessService.layer,
+    toolingValueResolverLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
     LandoEventService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
     emptyConfigServiceLayer,
   );
 };
@@ -207,10 +232,10 @@ describe("compose passthrough — scenario: third-party image with default endpo
     ).toEqual([]);
     expect(whoami.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
-    expect(whoami.appMount).toMatchObject({ target: "/app", readOnly: false });
-    expect(whoami.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(false);
+    expect(serviceAppMount(whoami)).toMatchObject({ target: "/app", readOnly: false });
+    expect(whoami.mounts.filter((m) => m.type === "bind" && String(m.target) === "/app")).toHaveLength(1);
 
-    expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+    expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
   });
 
   test("`lando whoami-probe` tooling alias routes a curl against the third-party service via provider.exec", async () => {
@@ -267,7 +292,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
     const sidekick = appPlan.services[ServiceName.make("sidekick")];
     if (sidekick === undefined) throw new Error("sidekick service missing from compose passthrough plan");
 
-    expect(sidekick.appMount).toBeUndefined();
+    expect(serviceAppMount(sidekick)).toBeUndefined();
     expect(sidekick.mounts).toEqual([]);
     expect(
       Object.keys(sidekick.environment).filter(
@@ -283,6 +308,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
         publication: { hostPort: 9090 },
       },
     ]);
-    expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+    expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

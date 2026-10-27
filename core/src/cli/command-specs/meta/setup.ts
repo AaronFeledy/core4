@@ -1,3 +1,4 @@
+import { RedactionService } from "@lando/redaction/service";
 /**
  * `lando meta:setup` prepares the host provider, CA, router, and shell integration.
  *
@@ -153,7 +154,12 @@ export const setupSpec: LandoCommandSpec<
     const userDataRootRaw = globalConfig.userDataRoot;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
-    const recorder = makeSetupReadinessRecorder(userDataRoot, selectedProviderId);
+    const redaction = yield* Effect.serviceOption(RedactionService);
+    const recorder = makeSetupReadinessRecorder(
+      userDataRoot,
+      selectedProviderId,
+      redaction._tag === "Some" ? redaction.value : undefined,
+    );
     const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
       Effect.tapError((cause) => recorder.recordFailure("network", cause)),
     );
@@ -243,6 +249,8 @@ export const setupSpec: LandoCommandSpec<
           return new ShellProfileIntegrationError({
             message: "Shell profile integration failed.",
             stderr: cause.message,
+            remediation:
+              "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.",
           });
         },
       }).pipe(
@@ -255,6 +263,8 @@ export const setupSpec: LandoCommandSpec<
           new ShellProfileIntegrationError({
             message: "Shell profile integration failed.",
             stderr: shellProfile.stderr,
+            remediation:
+              "Fix shell profile write permissions, then rerun `lando setup` or `lando shellenv` to finish PATH integration.",
           }),
         );
       }

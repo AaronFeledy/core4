@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import { FileIoError, FileNotFoundError, FilePermissionError } from "@lando/sdk/errors";
-import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, PortablePath, ServiceName, serviceAppMount } from "@lando/sdk/schema";
 import { AppPlanner, CacheService, FileSystem, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import * as AppCacheService from "../../src/cache/service.ts";
 import { canShadowHostPath } from "../../src/planner/shadow-host-checks.ts";
@@ -54,15 +54,17 @@ test.each([
     // When the production planner assembles the app.
     const appPlan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (service) =>
-        service.plan(rememberLandofileAppRoot(landofile, appRoot), TestRuntimeProvider.capabilities),
+        service.plan(literalTestLandofile(landofile, appRoot), TestRuntimeProvider.capabilities),
       ).pipe(Effect.provide(planner)),
     );
 
     // Then canonical identity produces exactly one store and one mount.
     const store = "shadowapp-web-app-vendor-64784057";
     expect(appPlan.stores).toEqual([{ name: store, scope: "service", kind: "data" }]);
-    expect(appPlan.services[ServiceName.make("web")]?.storage).toEqual([
-      { store, target: PortablePath.make("/app/vendor"), readOnly: false },
+    expect(
+      appPlan.services[ServiceName.make("web")]?.mounts.filter((mount) => mount.type === "volume"),
+    ).toEqual([
+      { type: "volume", store, target: PortablePath.make("/app/vendor"), readOnly: false, origin: "derived" },
     ]);
   } finally {
     await rm(appRoot, { recursive: true, force: true });
@@ -72,11 +74,25 @@ test.each([
 test.each([
   [new FileNotFoundError({ message: "missing", path: "/app/missing" }), true],
   [
-    new FileIoError({ message: "parent is file", path: "/app/file/child", cause: { code: "ENOTDIR" } }),
+    new FileIoError({
+      message: "parent is file",
+      path: "/app/file/child",
+      cause: { code: "ENOTDIR" },
+      remediation:
+        "Ensure `/app/file/child` exists and is readable/writable by this user, then re-run the command.",
+    }),
     false,
   ],
   [new FilePermissionError({ message: "denied", path: "/app/private", cause: { code: "EACCES" } }), true],
-  [new FileIoError({ message: "io", path: "/app/io", cause: { code: "EIO" } }), true],
+  [
+    new FileIoError({
+      message: "io",
+      path: "/app/io",
+      cause: { code: "EIO" },
+      remediation: "Ensure `/app/io` exists and is readable/writable by this user, then re-run the command.",
+    }),
+    true,
+  ],
 ] as const)("preserves shadow eligibility for stat failure %j", async (error, expected) => {
   // Given the real filesystem service with only stat failing at its boundary.
   const fileSystem = await Effect.runPromise(Effect.provide(FileSystem, BunFileSystem.layer));
@@ -145,7 +161,7 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
       // When planning with accelerated bind mounts.
       const plan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (service) =>
-          service.plan(rememberLandofileAppRoot(landofile, appRoot), {
+          service.plan(literalTestLandofile(landofile, appRoot), {
             ...TestRuntimeProvider.capabilities,
             bindMountPerformance: "slow",
           }),
@@ -154,7 +170,9 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
 
       // Then only directories (and missing paths) get volumes, without dropping ignores.
       const web = plan.services[ServiceName.make("web")];
-      const shadow = web?.storage.find((mount) => String(mount.target) === `/app/${effectiveExclude}`);
+      const shadow = web?.mounts
+        .filter((mount) => mount.type === "volume")
+        .find((mount) => String(mount.target) === `/app/${effectiveExclude}`);
       const shadowed = kind === "directory-link";
       expect(shadow !== undefined).toBe(shadowed);
       if (shadow !== undefined) expect(plan.stores.some((store) => store.name === shadow.store)).toBe(true);
@@ -162,9 +180,14 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
         expect(
           plan.stores.some((store) => store.name.includes(kind === "gitfile" ? "app-git-" : "app-authored-")),
         ).toBe(false);
-      if (exclude !== ".git") expect(web?.appMount?.excludes).toContain(effectiveExclude);
-      expect(web?.mounts.some((mount) => mount.source === "/elsewhere/.git/worktrees/x")).toBe(false);
-      expect(web?.storage.some((mount) => String(mount.target) === "/app/node_modules")).toBe(true);
+      if (exclude !== ".git")
+        expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toContain(effectiveExclude);
+      expect(
+        web?.mounts.some((mount) => mount.type === "bind" && mount.source === "/elsewhere/.git/worktrees/x"),
+      ).toBe(false);
+      expect(
+        web?.mounts.some((mount) => mount.type === "volume" && String(mount.target) === "/app/node_modules"),
+      ).toBe(true);
       expect(plan.fileSync.some(({ session }) => session.excludes.includes(effectiveExclude))).toBe(true);
     } finally {
       await rm(appRoot, { recursive: true, force: true });
@@ -179,7 +202,7 @@ test("invalidates cached Git mounts when .git changes between directory and gitf
   process.env.LANDO_USER_CACHE_ROOT = join(appRoot, "cache");
   try {
     await mkdir(join(appRoot, ".git"));
-    const landofile = rememberLandofileAppRoot(
+    const landofile = literalTestLandofile(
       Schema.decodeUnknownSync(LandofileShape)({
         name: "shadowapp",
         runtime: 4,
@@ -213,7 +236,9 @@ test("invalidates cached Git mounts when .git changes between directory and gitf
       );
     const first = await runPlan();
     expect(
-      first.services[ServiceName.make("web")]?.storage.some((mount) => mount.target === "/app/.git"),
+      first.services[ServiceName.make("web")]?.mounts.some(
+        (mount) => mount.type === "volume" && mount.target === "/app/.git",
+      ),
     ).toBe(false);
     await runPlan();
     expect(writes).toBe(1);
@@ -228,11 +253,14 @@ test("invalidates cached Git mounts when .git changes between directory and gitf
     // Then the stale cache is replaced with a Git metadata bind, never a shadow.
     expect(writes).toBe(2);
     expect(
-      second.services[ServiceName.make("web")]?.storage.some((mount) => mount.target === "/app/.git"),
+      second.services[ServiceName.make("web")]?.mounts.some(
+        (mount) => mount.type === "volume" && mount.target === "/app/.git",
+      ),
     ).toBe(false);
     expect(second.stores.some((store) => store.name.includes("app-git-"))).toBe(false);
     expect(second.services[ServiceName.make("web")]?.mounts).toContainEqual({
       type: "bind",
+      origin: "derived",
       source: metadata,
       target: PortablePath.make(metadata),
       readOnly: false,
@@ -245,9 +273,11 @@ test("invalidates cached Git mounts when .git changes between directory and gitf
     await mkdir(join(appRoot, ".git"));
     const third = await runPlan();
     expect(writes).toBe(3);
-    expect(third.services[ServiceName.make("web")]?.mounts.some((mount) => mount.source === metadata)).toBe(
-      false,
-    );
+    expect(
+      third.services[ServiceName.make("web")]?.mounts.some(
+        (mount) => mount.type === "bind" && mount.source === metadata,
+      ),
+    ).toBe(false);
   } finally {
     if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
     else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;

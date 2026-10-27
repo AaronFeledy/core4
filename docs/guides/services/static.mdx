@@ -78,17 +78,14 @@ services:
   web:
     type: static
     user: nginx
-    home: false
     port: 8080
 ```
 
-`home: false` is there because Lando persists the planned user's home directory and only knows where `root`'s home is on this image. Use `home.path:` instead when you want that directory to survive a rebuild. `port:` moves the listen port itself, not just Lando's endpoint, because Lando templates it into the generated config. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
+Lando plans no home store for the `nginx` account, whose home on this image is its cache directory; set `home.path:` when you want a directory to survive a rebuild. `port:` moves the listen port itself, not just Lando's endpoint, because Lando templates it into the generated config. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
 
 `static:caddy` writes nothing at start either, but it still listens on `80` by default, so the same port rule applies there.
 
 ## Pin a version
-
-For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` to pin a specific nginx or Caddy version:
 

@@ -90,6 +90,8 @@ test("returns one redacted manual warning when app state cannot be read", async 
     providerId,
     operation: "observeRuntime",
     message: "Unable to inspect secret-path applied plan state.",
+    remediation:
+      "Install or start the selected runtime provider and confirm it can perform `observeRuntime`.",
   });
   // When doctor collects missing-root checks.
   const checks = await Effect.runPromise(

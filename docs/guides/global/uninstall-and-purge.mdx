@@ -10,8 +10,8 @@ tags: [beta, docs, global, lifecycle]
 
 Use `lando global:uninstall` to clear the host-level global app's generated
 services, not to remove the Lando CLI. If you only need to stop one shared service,
-use `lando global:stop --service` instead. Volumes are retained unless you choose
-a purge operation.
+use `lando global:stop --service` instead. Named volumes are retained unless you choose
+a purge operation. Anonymous volumes follow their container, as described in [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
 ## Stop one global service
 
@@ -22,7 +22,7 @@ lando global:status --service mailpit --format=json
 
 That stops Mailpit and removes its container. Status reports it as `stopped` in `result.services[].status`. `--service` (or `-s`) is repeatable: `lando global:stop -s mailpit -s ssh-agent` stops both.
 
-Dependencies aren't stopped for you. Lando leaves volumes, the shared network, and every service you didn't name alone, so Traefik keeps serving its routes. An unknown name fails before anything stops. A selected stop needs the global app's applied state; if containers outlived it, the command fails and changes nothing.
+Dependencies aren't stopped for you. Lando leaves named volumes, the shared network, and every service you didn't name alone, so Traefik keeps serving its routes. An unknown name fails before anything stops. A selected stop needs the global app's applied state; if containers outlived it, the command fails and changes nothing.
 
 This isn't a permanent off switch. Starting an app that needs a global service can bring it back. To start it yourself:
 
@@ -35,7 +35,7 @@ Mailpit's route needs Traefik, so that also starts Traefik when it's stopped and
 ## Clear generated services
 
 Run this to regenerate the global Landofile with its services cleared. Provider
-volumes stay in place, and the command does not require `--yes`.
+named volumes stay in place, and the command does not require `--yes`.
 
 ```sh
 lando global:uninstall
@@ -63,7 +63,7 @@ Destroy acts on the provider where the global app actually runs. If multiple pro
 lando global:destroy --provider=lando --yes
 ```
 
-This reads and cleans up only the selected provider. Volumes stay unless you pass `--purge`.
+This reads and cleans up only the selected provider. Named volumes stay unless you pass `--purge`.
 
 To move the global app to another provider, do not destroy it by hand. See [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
@@ -87,7 +87,7 @@ lando global:status
 lando global:config
 ```
 
-With no `--service`, `global:stop` tears down the whole global app's running provider resources and keeps volumes. `global:restart` and `global:rebuild` always act on the whole global app. `lando poweroff` stops the global app after your apps unless you pass `--keep-global`. `global:config` prints the effective global Landofile, merged from the generated file and your canonical `.lando.yml` overrides, plus the paths behind it.
+With no `--service`, `global:stop` tears down the whole global app's running provider resources and keeps named volumes. `global:restart` and `global:rebuild` always act on the whole global app. `lando poweroff` stops the global app after your apps unless you pass `--keep-global`. `global:config` prints the effective global Landofile, merged from the generated file and your own layers (YAML or TypeScript, includes resolved), plus the paths behind it.
 
 Each `meta:global:*` command publishes a `global:*` alias.
 

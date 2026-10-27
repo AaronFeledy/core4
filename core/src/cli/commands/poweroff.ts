@@ -49,7 +49,7 @@ export class PoweroffStopError extends Schema.TaggedError<PoweroffStopError>()("
   appId: Schema.String,
   providerId: Schema.String,
   cause: Schema.Unknown,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
 export type PoweroffServices = ConfigService | EventService | RuntimeProviderRegistry | ScratchAppService;

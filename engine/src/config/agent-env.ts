@@ -81,7 +81,7 @@ export const resolveAgentEnvAllowlist = (policy: AgentEnvPolicy, hostEnv: HostEn
 
 interface AgentContextEnvMergeOptions {
   readonly allowlist?: ReadonlyArray<string>;
-  readonly lowerThanEnv?: Readonly<Record<string, string>>;
+  readonly lowerThanEnv?: Readonly<Record<string, unknown>>;
 }
 
 export const resolveAgentContextEnv = (
@@ -95,11 +95,11 @@ export const resolveForwardedAgentEnvNames = (
 ): ReadonlyArray<string> =>
   Object.keys(resolveAgentContextEnv(hostEnv, resolveAgentEnvAllowlist(policy, hostEnv)));
 
-export const withAgentContextEnv = (
-  explicitEnv: Readonly<Record<string, string>> | undefined,
+export const withAgentContextEnv = <Value = string>(
+  explicitEnv: Readonly<Record<string, Value>> | undefined,
   hostEnv: HostEnv,
   options: AgentContextEnvMergeOptions = {},
-): Record<string, string> | undefined => {
+): Record<string, Value | string> | undefined => {
   const forwarded = resolveAgentContextEnv(hostEnv, options.allowlist ?? AGENT_CONTEXT_ENV_ALLOWLIST);
   for (const name of Object.keys(options.lowerThanEnv ?? {})) delete forwarded[name];
   const merged = { ...forwarded, ...(explicitEnv ?? {}) };

@@ -2,12 +2,9 @@ import type { AppId } from "@lando/sdk/schema";
 import {
   AbsolutePath,
   type FileSyncPlan,
-  type FileSyncSessionSpec,
   ServiceName,
   type ServicePlan,
-  appMountSyncIgnores,
-  fileSyncVolumeName,
-  sameAppMountTarget,
+  plannedFileSyncSessions,
 } from "@lando/sdk/schema";
 
 import { type ContributionRef, contributionId } from "./service-types.ts";
@@ -15,14 +12,13 @@ import { type ContributionRef, contributionId } from "./service-types.ts";
 export const DEFAULT_APP_MOUNT_EXCLUDES = ["node_modules", "vendor", "tmp"] as const;
 
 export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
-  const appMount = servicePlan.appMount;
-  if (appMount === undefined) return servicePlan;
   return {
     ...servicePlan,
-    appMount: {
-      ...appMount,
-      excludes: [...new Set([...DEFAULT_APP_MOUNT_EXCLUDES, ...appMount.excludes])],
-    },
+    mounts: servicePlan.mounts.map((mount) =>
+      mount.type === "bind" && mount.role === "app"
+        ? { ...mount, excludes: [...new Set([...DEFAULT_APP_MOUNT_EXCLUDES, ...(mount.excludes ?? [])])] }
+        : mount,
+    ),
   };
 };
 
@@ -35,48 +31,21 @@ export const collectFileSyncEntries = (params: {
   readonly engineId: string;
 }): ReadonlyArray<FileSyncPlan> => {
   const { appId, appRoot, appName, serviceName, servicePlan, engineId } = params;
-  const entries: Array<FileSyncPlan> = [];
   const app = { kind: "user" as const, id: appId, root: AbsolutePath.make(appRoot) };
-  const branded = ServiceName.make(serviceName);
-  const appMount = servicePlan.appMount;
-  if (appMount !== undefined && appMount.realization === "accelerated") {
-    const session: FileSyncSessionSpec = {
-      app,
-      service: branded,
-      mountKey: "app-mount",
-      source: appMount.source,
-      target: {
-        _tag: "volume",
-        name: fileSyncVolumeName(appName, serviceName, "app-mount"),
-        path: appMount.target,
+  return (plannedFileSyncSessions({ name: appName, services: { [serviceName]: servicePlan } }) ?? []).map(
+    (entry) => ({
+      engineId,
+      session: {
+        app,
+        service: ServiceName.make(entry.service),
+        mountKey: entry.mountKey,
+        source: AbsolutePath.make(entry.source),
+        target: { _tag: "volume" as const, name: entry.volumeName, path: entry.targetPath },
+        mode: "two-way-safe" as const,
+        excludes: entry.excludes,
       },
-      mode: "two-way-safe",
-      excludes: appMountSyncIgnores(servicePlan),
-    };
-    entries.push({ engineId, session });
-  }
-  for (const [index, mount] of servicePlan.mounts.entries()) {
-    if (mount.type !== "bind" || mount.realization !== "accelerated") continue;
-    if (sameAppMountTarget(appMount, mount)) continue;
-    const source = mount.source;
-    if (source === undefined) continue;
-    const mountKey = `mount-${index}`;
-    const session: FileSyncSessionSpec = {
-      app,
-      service: branded,
-      mountKey,
-      source: AbsolutePath.make(source),
-      target: {
-        _tag: "volume",
-        name: fileSyncVolumeName(appName, serviceName, mountKey),
-        path: mount.target,
-      },
-      mode: "two-way-safe",
-      excludes: [],
-    };
-    entries.push({ engineId, session });
-  }
-  return entries;
+    }),
+  );
 };
 
 export const resolveFileSyncEngineId = (

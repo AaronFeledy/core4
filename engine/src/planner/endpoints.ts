@@ -4,20 +4,22 @@ import { type Context, Effect, Predicate, Schema } from "effect";
 import {
   type CapabilityError,
   DataTreeOwnershipCapabilityError,
-  HomePathCapabilityError,
   LandofileValidationError,
-  PublicationUnsupportedError,
+  type PublicationUnsupportedError,
   type RouteInputError,
+  ServiceFeatureError,
 } from "@lando/sdk/errors";
 import {
   type AppId,
   type FileSyncPlan,
+  type LandofileShape,
   type ProviderCapabilities,
   type ProviderId,
   type RoutePlan,
   ServicePlan,
   type StorageScope,
   selectHttpEndpoint,
+  serviceAppMount,
 } from "@lando/sdk/schema";
 
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
@@ -25,22 +27,22 @@ import { sortRecord } from "../services/draft.ts";
 import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
-import {
-  bindRealization,
-  missingCapability,
-  serviceArtifactBuildRemediation,
-  serviceBindRemediation,
-} from "./compose-capabilities.ts";
+import { bindRealization, missingCapability } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
 import { resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
 import { collectFileSyncEntries } from "./file-sync.ts";
 import { type GitHostCheck, readGitDirectories, worktreeGitMounts } from "./git-host-checks.ts";
 import { applyServiceHome } from "./home.ts";
+import { deriveMountOverlays, prepareServiceMounts, realizeServiceMounts } from "./mounts.ts";
+import {
+  publicationCapabilityError,
+  requiredLogSourceCapabilityError,
+  serviceResourceCapabilityErrors,
+} from "./resource-capabilities.ts";
 import { makeRouteAccumulator, prioritizeRoutes } from "./route-identity.ts";
-import type { PlannedServiceDraft } from "./service-types.ts";
-import { type ShadowHostCheck, checkShadowHosts } from "./shadow-host-checks.ts";
-import { expandExcludesToShadows } from "./storage.ts";
+import { type PlannedServiceDraft, servicePlanError } from "./service-types.ts";
+import type { ShadowHostCheck } from "./shadow-host-checks.ts";
 export { resolveRoute } from "./endpoint-routes.ts";
 
 export interface FinalizedServices {
@@ -63,6 +65,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly configs?: LandofileShape["configs"];
   readonly defaultDomain: string;
   readonly provider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
@@ -73,7 +76,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   FinalizedServices,
   | LandofileValidationError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | RouteInputError
@@ -103,6 +105,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     hostnames,
     authoredArtifact,
     authored,
+    authoredStorage,
     draft,
     homeIntent,
     logSources,
@@ -111,20 +114,12 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   } of input.plannedServiceDrafts) {
     const followLogSources = runtimeFollowLogSources(logSources);
     const providerSupportsLogSources = input.providerCapabilities.serviceLogSources === true;
-    if (!providerSupportsLogSources) {
-      const requiredFollowSource = followLogSources.find((source) => source.required === true);
-      if (requiredFollowSource !== undefined) {
-        yield* Effect.fail(
-          missingCapability(
-            input.provider,
-            name,
-            `required follow log source ${String(requiredFollowSource.id)}`,
-            "serviceLogSources",
-            `Use strategy: redirect for service ${name} log source ${String(requiredFollowSource.id)}, or choose a provider that advertises serviceLogSources.`,
-          ),
-        );
-      }
-    }
+    const requiredFollowSource = followLogSources.find((source) => source.required === true);
+    const logSourceError = requiredLogSourceCapabilityError(input.provider, input.providerCapabilities, {
+      name,
+      ...(requiredFollowSource === undefined ? {} : { id: String(requiredFollowSource.id) }),
+    });
+    if (logSourceError !== undefined) yield* Effect.fail(logSourceError);
 
     const unavailableFollowSources = providerSupportsLogSources
       ? []
@@ -146,7 +141,50 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
               })),
             },
           };
+    const context = {
+      appRoot: input.appRoot,
+      appSlug: input.appSlug,
+      serviceName: name,
+      configs: input.configs,
+    };
+    const preparedMounts = prepareServiceMounts({
+      context,
+      servicePlan: servicePlanFromDraft(draft, [], input.metadata, extensionsForPlan),
+      normalizedConfig: draft.normalizedConfig,
+      storage: authoredStorage,
+    });
+    if (preparedMounts instanceof LandofileValidationError || preparedMounts instanceof ServiceFeatureError)
+      return yield* Effect.fail(servicePlanError(input.appRoot, name, preparedMounts));
+    const volumeTargets = new Set<string>(
+      preparedMounts.mounts.filter((mount) => mount.type === "volume").map((mount) => mount.target),
+    );
+    const storageOwnership = (draft.storageOwnership ?? []).filter((tree) => volumeTargets.has(tree.target));
     const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
+    const shadowResult = yield* deriveMountOverlays({
+      context,
+      servicePlan: preparedMounts,
+      fileSystem: input.fileSystem,
+    });
+    shadowHostChecks.push(...shadowResult.shadowHostChecks);
+    const planWithShadows = shadowResult.servicePlan;
+    const appMount = serviceAppMount(planWithShadows);
+    let gitDirectories: GitHostCheck["directories"] = null;
+    if (bindRealization(input.providerCapabilities) === "passthrough" && appMount !== undefined) {
+      const gitPath = `${appMount.source}/.git`;
+      gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
+      gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
+    }
+    const homePlan = applyServiceHome({
+      servicePlan: {
+        ...planWithShadows,
+        mounts: [...planWithShadows.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
+      },
+      serviceName: name,
+      appSlug: input.appSlug,
+      appRoot: input.appRoot,
+      intent: homeIntent,
+    });
+    if (homePlan instanceof LandofileValidationError) return yield* Effect.fail(homePlan);
     // Data-tree ownership resolves here, where the composed `draft.user` and
     // the service type's image identity are both final. The step it produces
     // prepares the tree during the image build, so the planned user owns the
@@ -156,29 +194,50 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       serviceType: homeIntent.serviceType,
       identity: homeIntent.identity,
       hasCustomImage: homeIntent.customImage === true,
-      trees: draft.storageOwnership ?? [],
+      trees: storageOwnership,
       plannedUser: draft.user,
     });
     if (ownedTrees instanceof DataTreeOwnershipCapabilityError) {
       return yield* Effect.fail(ownedTrees);
     }
-    const ownershipStep = dataTreeOwnershipStep(ownedTrees);
-    const draftForPlan =
-      ownershipStep === undefined && redirectSteps.length === 0
-        ? draft
-        : {
-            ...draft,
-            buildSteps: [
-              ...(ownershipStep === undefined ? [] : [ownershipStep]),
-              ...draft.buildSteps,
-              ...redirectSteps,
-            ],
-          };
+    const ownershipTrees = [...ownedTrees];
+    const home = homePlan.home;
+    if (
+      home?.state === "persisted" &&
+      home.user !== undefined &&
+      !homeIntent.customImage &&
+      homeIntent.identity?.preparedHomes?.includes(home.user)
+    ) {
+      const preparedHome = resolveDataTreeOwnership({
+        serviceName: name,
+        serviceType: homeIntent.serviceType,
+        identity: homeIntent.identity,
+        hasCustomImage: false,
+        trees: [{ target: home.target, seededOwners: [] }],
+        plannedUser: home.user,
+      });
+      if (preparedHome instanceof DataTreeOwnershipCapabilityError) return yield* Effect.fail(preparedHome);
+      ownershipTrees.push(...preparedHome);
+    }
+    const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
+    const draftForPlan = {
+      ...draft,
+      storageOwnership,
+      buildSteps: [
+        ...(ownershipStep === undefined ? [] : [ownershipStep]),
+        ...draft.buildSteps,
+        ...redirectSteps,
+      ],
+    };
     const endpoints = normalizeEndpoints(draft.endpoints, draft.normalizedConfig);
     const endpointError = endpointValidationError(endpoints, { appRoot: input.appRoot, serviceName: name });
     if (endpointError !== undefined) return yield* Effect.fail(endpointError);
     const planned = applyHostReachability(
-      servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForPlan),
+      {
+        ...servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForPlan),
+        mounts: homePlan.mounts,
+        home: homePlan.home,
+      },
       input.providerCapabilities.hostReachability,
     );
     const servicePlan = {
@@ -187,82 +246,21 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ...(logSources.length === 0 ? {} : { logSources }),
     };
 
-    if (
-      (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&
-      (!input.providerCapabilities.bindMounts || input.providerCapabilities.bindMountPerformance === "none")
-    ) {
-      yield* Effect.fail(
-        missingCapability(input.provider, name, "bind mount", "bindMounts", serviceBindRemediation(name)),
-      );
-    }
-
     const withArtifact =
       authoredArtifact === undefined ? servicePlan : { ...servicePlan, artifact: authoredArtifact };
-    if (withArtifact.artifact?.kind === "build" && !input.providerCapabilities.artifactBuild) {
-      yield* Effect.fail(
-        missingCapability(
-          input.provider,
-          name,
-          "artifact build",
-          "artifactBuild",
-          serviceArtifactBuildRemediation(name),
-        ),
-      );
-    }
-
-    const realization = bindRealization(input.providerCapabilities);
-    const hostChecks = yield* checkShadowHosts(withArtifact.appMount, input.fileSystem);
-    const shadowableExcludes = new Set<string>();
-    for (const { exclude, ...check } of hostChecks) {
-      shadowHostChecks.push(check);
-      if (check.shadowed) shadowableExcludes.add(exclude);
-    }
-    const shadowResult = expandExcludesToShadows(
-      input.appSlug,
+    for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
       name,
-      withArtifact,
-      input.appRoot,
-      shadowableExcludes,
-    );
-    if (shadowResult instanceof LandofileValidationError) {
-      return yield* Effect.fail(shadowResult);
-    }
-    const planWithShadows = shadowResult.servicePlan;
-    const appMount = planWithShadows.appMount;
-    const servicePlanWithCapabilityRealization: ServicePlan = {
-      ...planWithShadows,
-      ...(appMount === undefined ? {} : { appMount: { ...appMount, realization } }),
-      mounts: planWithShadows.mounts.map((mount) =>
-        mount.type === "bind" ? { ...mount, realization: "passthrough" as const } : mount,
-      ),
-    };
+      artifactBuild: withArtifact.artifact?.kind === "build" || ownershipStep !== undefined,
+    }))
+      yield* Effect.fail(error);
 
-    let gitDirectories: GitHostCheck["directories"] = null;
-    if (realization === "passthrough" && appMount !== undefined) {
-      const gitPath = `${appMount.source}/.git`;
-      gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
-      gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
-    }
-    const withHome = applyServiceHome({
-      servicePlan: {
-        ...servicePlanWithCapabilityRealization,
-        mounts: [
-          ...servicePlanWithCapabilityRealization.mounts,
-          ...worktreeGitMounts(servicePlanWithCapabilityRealization, gitDirectories),
-        ],
-      },
-      serviceName: name,
-      appSlug: input.appSlug,
-      appRoot: input.appRoot,
-      intent: homeIntent,
-    });
-    if (withHome instanceof HomePathCapabilityError) {
-      return yield* Effect.fail(withHome);
-    }
-    if (withHome instanceof LandofileValidationError) {
-      return yield* Effect.fail(withHome);
-    }
-    const servicePlanWithHome = withHome;
+    for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
+      name,
+      bindMounts: withArtifact.mounts.some((mount) => mount.type === "bind"),
+      persistentStorage: withArtifact.mounts.some((mount) => mount.type === "volume"),
+    }))
+      yield* Effect.fail(error);
+    const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities);
 
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
@@ -299,32 +297,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       ),
     };
 
-    if (
-      servicePlanWithRoutes.endpoints.some((endpoint) => endpoint._tag === "published") &&
-      input.providerCapabilities.hostPortPublish === "none"
-    ) {
-      yield* Effect.fail(
-        new PublicationUnsupportedError({
-          message: `Provider ${input.provider} cannot publish endpoints for service ${name}.`,
-          providerId: input.provider,
-          service: name,
-          capability: "hostPortPublish",
-          remediation: `Choose a provider with host port publish support or make service ${name} endpoints internal.`,
-        }),
-      );
-    }
-
-    if (servicePlanWithRoutes.storage.length > 0 && !input.providerCapabilities.persistentStorage) {
-      yield* Effect.fail(
-        missingCapability(
-          input.provider,
-          name,
-          "persistent storage",
-          "persistentStorage",
-          `Choose a provider with persistent storage support or remove persistent storage from service ${name}.`,
-        ),
-      );
-    }
+    const publicationError = publicationCapabilityError(input.provider, input.providerCapabilities, {
+      name,
+      published: servicePlanWithRoutes.endpoints.some((endpoint) => endpoint._tag === "published"),
+    });
+    if (publicationError !== undefined) yield* Effect.fail(publicationError);
 
     const healthcheck = servicePlanWithRoutes.healthcheck;
     if (healthcheck !== undefined && healthcheck.kind !== "command" && healthcheck.kind !== "none") {
@@ -341,8 +318,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
 
     serviceHostnames[name] = hostnames;
     services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithRoutes);
-    for (const shadow of shadowResult.shadowStores) pushStore(shadow.name, shadow.scope);
-    for (const mount of servicePlanWithRoutes.storage) {
+    for (const mount of servicePlanWithRoutes.mounts) {
+      if (mount.type !== "volume") continue;
       const authoredInfo = authored.byStore.get(mount.store);
       pushStore(
         mount.store,

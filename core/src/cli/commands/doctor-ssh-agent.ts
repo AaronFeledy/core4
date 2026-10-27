@@ -3,13 +3,15 @@ import { probeSshAgent } from "@lando/engine/subsystems/ssh-agent/agent-probe";
 import {
   type HostAgentDiscoveryOptions,
   discoverHostSshAgent,
+  hostSshAgentSourceLabel,
 } from "@lando/engine/subsystems/ssh-agent/host-agent-discovery";
 import {
   awaitRuntimeSshAgent,
   runtimeSshAgentReady,
-  sidecarSocketState,
+  sidecarSocketCheck,
 } from "@lando/engine/subsystems/ssh-agent/session";
 import { resolveSshAgentIntent } from "@lando/engine/subsystems/ssh/intent";
+import { SshAgentUnavailableError, causeMessage } from "@lando/sdk/errors";
 import { AppId, type GlobalConfig, type ProviderCapabilities } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -21,9 +23,9 @@ import {
 } from "@lando/sdk/services";
 import { type Context, Effect, Option, Result } from "effect";
 import { loadUserLandofile } from "../app-resolution";
-import { redactString } from "../redact";
 import { gpgAgentPostureDetail } from "./doctor-gpg-agent";
 import { type DoctorSubsystemCheck, SSH_SPEC, type SshAgentPostureDetails } from "./doctor-subsystem-checks";
+import { resolveSecretsRedactor } from "./secrets-redactor";
 
 type Details = typeof SshAgentPostureDetails.Type;
 
@@ -53,7 +55,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
     ? yield* loadUserLandofile(landofiles.value).pipe(Effect.catch(() => Effect.succeed(undefined)))
     : undefined;
   const intent = resolveSshAgentIntent({
-    landofile: landofile ?? {},
+    landofile: landofile?.document ?? {},
     globalConfig: sshAgent === undefined ? undefined : { sshAgent },
   });
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
@@ -65,6 +67,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   let delivery: Details["delivery"] = capabilities?.agentSocket?.delivery ?? "none";
   let runtimeVolume: string | undefined;
   let waitAfterSetup = false;
+  let readinessDetail: string | undefined;
   const probeAgent = (upstream: Parameters<typeof probeSshAgent>[0]) =>
     Effect.tryPromise({
       try: () => (input.probe ?? probeSshAgent)(upstream, { timeoutMs: 1_000 }),
@@ -76,7 +79,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         const socket = yield* input.sshService.getAgentSocket(AppId.make("global"));
         const provider =
           socket.runtimeVolume !== undefined && Option.isSome(registry)
-            ? yield* registry.value.select(landofile?.provider)
+            ? yield* registry.value.select(landofile?.document.provider)
             : undefined;
         const globalApp = yield* Effect.serviceOption(GlobalAppService);
         const globalProvider = Option.isSome(globalApp) ? yield* globalApp.value.providerId : undefined;
@@ -87,16 +90,19 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         ) {
           delivery = "runtime-volume";
           runtimeVolume = socket.runtimeVolume;
+          const readiness = waitAfterSetup ? yield* awaitRuntimeSshAgent() : undefined;
+          readinessDetail = readiness?.detail;
           return {
             source: "sidecar" as const,
-            reachable: waitAfterSetup
-              ? (yield* awaitRuntimeSshAgent()) === "ready"
-              : yield* runtimeSshAgentReady,
+            reachable: readiness === undefined ? yield* runtimeSshAgentReady : readiness.state === "ready",
           };
         }
         const upstream = { _tag: "unix" as const, path: socket.socketPath };
-        if (waitAfterSetup) yield* awaitRuntimeSshAgent(sidecarSocketState(upstream, input.probe));
+        if (waitAfterSetup)
+          readinessDetail = (yield* awaitRuntimeSshAgent(sidecarSocketCheck(upstream, input.probe))).detail;
         const probed = yield* Effect.result(probeAgent(upstream));
+        // After repair, the final socket probe decides reachability, so its failure is the reason to report.
+        if (waitAfterSetup && probed._tag === "Failure") readinessDetail = causeMessage(probed.failure);
         return {
           source: "sidecar" as const,
           reachable: probed._tag === "Success",
@@ -119,16 +125,25 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
           source: discovered.upstream.source,
           reachable: true,
           identities: discovered.identities,
+          ...(discovered.danglingEnvSocket === undefined
+            ? {}
+            : { danglingEnvSocket: discovered.danglingEnvSocket }),
         } satisfies Details["upstream"];
       }
       default:
         return intent.mode satisfies never;
     }
   }).pipe(
-    Effect.catch(() =>
+    Effect.catch((error) =>
       Effect.succeed({
         source: intent.mode === "sidecar" ? "sidecar" : "none",
         reachable: false,
+        ...(error instanceof SshAgentUnavailableError
+          ? {
+              reason: error.reason,
+              ...(error.socketPath === undefined ? {} : { socketPath: error.socketPath }),
+            }
+          : {}),
       } satisfies Details["upstream"]),
     ),
   );
@@ -150,9 +165,12 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
         fixContext.fixCommand = "ssh.setup";
         fixContext.fixExitCode = recovered ? "0" : "1";
         if (!recovered) {
-          fixContext.fixError = Result.isFailure(setup)
-            ? redactString(setup.failure.message)
-            : "SSH agent forwarding remains degraded after setup.";
+          const { redact } = yield* resolveSecretsRedactor({ sourceEnv: input.env ?? process.env });
+          fixContext.fixError = redact(
+            Result.isFailure(setup)
+              ? setup.failure.message
+              : `SSH agent forwarding remains degraded after setup.${readinessDetail === undefined ? "" : ` Last probe failure: ${readinessDetail}`}`,
+          );
         }
         break;
       }
@@ -162,6 +180,17 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
   }
   const ready = upstream.reachable && delivery !== "none";
   const recovery = intent.mode === "sidecar" ? "automatic" : "manual";
+  const danglingEnvNote =
+    upstream.danglingEnvSocket === undefined || upstream.source === "sidecar" || upstream.source === "none"
+      ? {}
+      : {
+          danglingEnvSocket: upstream.danglingEnvSocket,
+          note: `SSH_AUTH_SOCK points at a socket that no longer exists; using the ${hostSshAgentSourceLabel(upstream.source)} agent instead.`,
+        };
+  const hostSolution =
+    upstream.reason === "env-socket-dangling"
+      ? "The shell's agent socket points at one that no longer exists (common after VS Code or SSH reconnects). Open a new terminal, then restart the app. Select a provider with agentSocket delivery; host forwarding fails closed when unavailable."
+      : "Start your SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path. Select a provider with agentSocket delivery; host forwarding fails closed when unavailable.";
   const securityPosture: "sidecar-managed-keys" | "host-signatures" | "host-win32-loopback" =
     intent.mode === "sidecar"
       ? "sidecar-managed-keys"
@@ -185,7 +214,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
       ? yield* config.value.get("gpgAgent").pipe(Effect.catch(() => Effect.succeed(undefined)))
       : input.globalConfig?.gpgAgent;
   const gpg = yield* gpgAgentPostureDetail({
-    landofile: landofile ?? {},
+    landofile: landofile?.document ?? {},
     ...(configuredGpg === undefined ? {} : { globalGpg: configuredGpg }),
     ...(input.gpgRunner === undefined ? {} : { runner: input.gpgRunner }),
     ...(input.discovery?.exists === undefined ? {} : { exists: input.discovery.exists }),
@@ -204,6 +233,9 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
       upstreamSource: upstream.source,
       upstreamReachable: String(upstream.reachable),
       ...(upstream.identities === undefined ? {} : { identities: String(upstream.identities) }),
+      ...(upstream.reason === undefined ? {} : { reason: upstream.reason }),
+      ...(upstream.socketPath === undefined ? {} : { socketPath: upstream.socketPath }),
+      ...danglingEnvNote,
       delivery,
       ...(runtimeVolume === undefined ? {} : { runtimeVolume }),
       securityPosture,
@@ -225,7 +257,7 @@ export const sshAgentPostureCheck = Effect.fnUntraced(function* (
             kind: input.fix ? "manual" : recovery,
             description:
               intent.mode === "host"
-                ? "Start your SSH agent and set sshAgent.socket or SSH_AUTH_SOCK to its socket path. Select a provider with agentSocket delivery; host forwarding fails closed when unavailable."
+                ? hostSolution
                 : `${input.fix ? SSH_SPEC.manualRemediation : SSH_SPEC.automaticRemediation} Select a provider with agentSocket delivery if delivery is none. Sidecar forwarding is best-effort.`,
             ...(intent.mode === "sidecar"
               ? { command: input.fix ? "lando setup" : "lando doctor --fix" }

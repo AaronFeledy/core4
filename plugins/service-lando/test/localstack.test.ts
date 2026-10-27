@@ -10,6 +10,7 @@ import {
   localstackServiceType,
 } from "../src/services/localstack.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { recordFeatureContext } from "./support/record-feature-context.ts";
 
 const metadata = {
   resolvedAt: "2026-08-18T00:00:00Z",
@@ -41,14 +42,35 @@ const planLocalStackService = (serviceDefinition: Record<string, unknown>) =>
   });
 
 describe("localstack ServiceType", () => {
+  test("returns a typed declaration failure for a secret-bound gateway", async () => {
+    const { ctx } = recordFeatureContext({
+      serviceType: "localstack",
+      normalizedConfig: {
+        type: "localstack",
+        environment: { GATEWAY_LISTEN: { _tag: "SecretRef", reference: "GATEWAY" } },
+      },
+      config: {},
+    });
+    const declare = localstackServiceFeature.declareEndpoints;
+    if (declare === undefined) throw new Error("LocalStack declaration fixture missing");
+    const result = await Effect.runPromise(declare(ctx).pipe(Effect.result));
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({ _tag: "ServiceFeatureError", feature: LOCALSTACK_FEATURE_ID });
+      expect(result.failure.message).toContain("services.web.environment.GATEWAY_LISTEN");
+    }
+  });
+
   test("plans the default artifact, persistent storage, and named HTTP endpoint", async () => {
     const plan = await planLocalStackService({ type: "localstack" });
 
     expect(plan.type).toBe("localstack");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "localstack/localstack:4.14.0" });
     expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:4566", PERSISTENCE: "1" });
-    expect(plan.storage).toEqual([
+    expect(plan.mounts.filter((mount) => mount.type === "volume")).toEqual([
       {
+        origin: "service",
+        type: "volume",
         store: "myapp-localstack-data",
         target: PortablePath.make("/var/lib/localstack"),
         readOnly: false,
@@ -102,20 +124,25 @@ describe("localstack ServiceType", () => {
     });
   });
 
-  test("derives the planned port from GATEWAY_LISTEN when port is omitted", async () => {
-    const plan = await planLocalStackService({
-      type: "localstack",
-      environment: { GATEWAY_LISTEN: "0.0.0.0:24666" },
-    });
+  test.each(["0.0.0.0:24666", "127.0.0.1:24666", "24666"])(
+    "derives the listener from GATEWAY_LISTEN %s when port is omitted",
+    async (gateway) => {
+      // Given / When: the environment alone selects a nondefault listener.
+      const plan = await planLocalStackService({
+        type: "localstack",
+        environment: { GATEWAY_LISTEN: gateway },
+      });
 
-    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "0.0.0.0:24666" });
-    expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 24666, protocol: "http", name: "cloud", primary: true },
-    ]);
-    expect(plan.healthcheck).toMatchObject({
-      command: ["sh", "-c", "curl -sf http://localhost:24666/_localstack/health"],
-    });
-  });
+      // Then: declaration, actual bind, and healthcheck agree.
+      expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: gateway });
+      expect(plan.endpoints).toEqual([
+        { _tag: "internal", port: 24666, protocol: "http", name: "cloud", primary: true },
+      ]);
+      expect(plan.healthcheck).toMatchObject({
+        command: ["sh", "-c", "curl -sf http://localhost:24666/_localstack/health"],
+      });
+    },
+  );
 
   test("preserves authored environment and process fields", async () => {
     const plan = await planLocalStackService({

@@ -1,3 +1,4 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Flags } from "../../spec/metadata";
 
 import { type ShellAppResult, renderShellAppResult, shellApp } from "../../commands/shell";
@@ -40,6 +41,6 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
       ...(service === undefined ? {} : { service }),
     });
   },
-  successExitCode: (result) => result.exitCode,
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
   render: (result) => renderShellAppResult(result as ShellAppResult),
 };

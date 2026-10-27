@@ -257,15 +257,15 @@ describe("Downloader layer threads network trust through HttpClient", () => {
   const payload = new TextEncoder().encode("trust canary payload");
   const expectedSha256 = sha256Hex(payload);
 
-  const runCanary = async (
-    url: string,
-    trust: ResolvedNetworkTrust,
-  ): Promise<{ proxy?: string; tls?: { ca?: ReadonlyArray<string> } }> => {
-    const captured: Array<{ proxy?: string; tls?: { ca?: ReadonlyArray<string> } }> = [];
-    const captureFetch = ((_input: string | URL | Request, init?: unknown) => {
-      captured.push((init ?? {}) as { proxy?: string; tls?: { ca?: ReadonlyArray<string> } });
-      return Promise.resolve(new Response(payload));
-    }) as unknown as typeof fetch;
+  const runCanary = async (url: string, trust: ResolvedNetworkTrust): Promise<BunFetchRequestInit> => {
+    const captured: BunFetchRequestInit[] = [];
+    const captureFetch: typeof fetch = Object.assign(
+      (_input: string | URL | Request, init?: BunFetchRequestInit) => {
+        captured.push(init ?? {});
+        return Promise.resolve(new Response(payload));
+      },
+      { preconnect: fetch.preconnect },
+    );
 
     const request: DownloadRequest = {
       url,
@@ -286,13 +286,6 @@ describe("Downloader layer threads network trust through HttpClient", () => {
               httpClientLayerWith({
                 fetch: captureFetch,
                 systemCaPems: () => [],
-                direct: (requestUrl, init) =>
-                  captureFetch(requestUrl.href, {
-                    method: init.method,
-                    headers: init.headers,
-                    signal: init.signal,
-                    ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
-                  }),
               }),
             ),
           ),
@@ -308,7 +301,7 @@ describe("Downloader layer threads network trust through HttpClient", () => {
       caPems: ["-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"],
       trustHost: true,
     });
-    expect(init.proxy).toBe("http://proxy.https:8443");
+    expect(init.proxy).toEqual({ url: "http://proxy.https:8443", respectNoProxy: false });
     expect(init.tls?.ca).toContain("-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----");
   });
 
@@ -318,7 +311,7 @@ describe("Downloader layer threads network trust through HttpClient", () => {
       caPems: ["-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----"],
       trustHost: true,
     });
-    expect(init.proxy).toBeUndefined();
+    expect(init.proxy).toBe(false);
     expect(init.tls?.ca).toContain("-----BEGIN CERTIFICATE-----\nFAKE\n-----END CERTIFICATE-----");
   });
 });

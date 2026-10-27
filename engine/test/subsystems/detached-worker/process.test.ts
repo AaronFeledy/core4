@@ -10,6 +10,33 @@ import { ownerOnlyFileAccess } from "../../private-file-access.ts";
 const readySchema = Schema.TaggedStruct("ready", { token: Schema.String });
 
 describe("detached worker readiness diagnostics", () => {
+  test("masks the worker environment in early-exit log diagnostics", async () => {
+    // Given: a worker writes an unlabelled environment secret to its real log.
+    const root = await mkdtemp(join(tmpdir(), "worker-env-crash-"));
+    const secret = "detached-worker-environment-canary";
+    const worker = await spawnDetachedWorker(
+      {
+        argv: [process.execPath, "-e", "console.error(process.env.P5_WORKER_SECRET); process.exit(7);"],
+        env: { ...process.env, P5_WORKER_SECRET: secret },
+        logsDir: root,
+        privateFileAccess: ownerOnlyFileAccess,
+      },
+      { readySchema, logLabel: "test" },
+    );
+    try {
+      // When: readiness reports the worker's actual early exit.
+      const failure = await worker.readReady().catch((cause: unknown) => cause);
+      // Then: the log projection masks the environment value before rendering it.
+      expect(failure).toMatchObject({
+        name: "DetachedWorkerExitedBeforeReadyError",
+        stderrTail: "[redacted]",
+      });
+    } finally {
+      await worker.terminate();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("does not ignore worker stderr for the worker lifetime", async () => {
     const source = await Bun.file(
       new URL("../../../src/subsystems/detached-worker/process.ts", import.meta.url),
