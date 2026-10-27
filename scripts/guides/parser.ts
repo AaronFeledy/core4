@@ -1,7 +1,7 @@
 import { GuideHiddenScenarioReasonError } from "@lando/core/errors";
 import type { Root } from "mdast";
 import * as Components from "../../sdk/src/docs/components/index.ts";
-import { GuideRootError } from "./diagnostic.ts";
+import { GuideRootError, GuideStructureError } from "./diagnostic.ts";
 import {
   type MdxNode,
   decodeFrontmatter,
@@ -21,6 +21,17 @@ import type {
   GuideStepNode,
 } from "./model.ts";
 import { resolveGuide } from "./resolve.ts";
+
+const structureChildren: Readonly<Record<string, readonly string[]>> = {
+  root: ["Guide"],
+  Guide: ["Scenario"],
+  Scenario: ["Step", "Hidden", "Skip", "Tabs"],
+  Hidden: ["Step"],
+  Skip: ["Step"],
+  Tab: ["Step"],
+  Tabs: ["Tab"],
+  Step: ["Run", "Verify", "Cleanup", "Variable", "UseFixture", "Inspect", "Inline"],
+};
 
 const parseComponent = (node: MdxNode, sourcePath: string): GuideStepComponent | undefined => {
   if (node.name == null) return undefined;
@@ -193,6 +204,30 @@ export const parseGuideRoot = (sourcePath: string, root: Root): GuideScenarioAst
         "Combine all Scenario elements under one top-level <Guide> and remove the extra Guide blocks. Rerun bun run lint:guides and bun run codegen:guide-scenarios.",
     });
   }
+  const walk = (node: MdxNode, parent: MdxNode): void => {
+    if ((node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") && node.name != null) {
+      Components.assertSupportedGuideComponent(node.name, sourcePath);
+      const parentName = parent.type === "mdxJsxFlowElement" ? (parent.name ?? parent.type) : parent.type;
+      const inline = node.type === "mdxJsxTextElement";
+      if (inline || !structureChildren[parentName]?.includes(node.name)) {
+        const line = lineOf(node);
+        const column = node.position?.start?.column ?? 1;
+        throw new GuideStructureError({
+          code: inline ? "guide.structure.inline" : "guide.structure.placement",
+          sourcePath,
+          line,
+          column,
+          component: node.name,
+          parent: parentName,
+          message: `Unsupported ${inline ? "inline" : "placement of"} <${node.name}> inside ${parentName} at ${sourcePath}:${line}:${column}.`,
+          remediation:
+            "Use block JSX with Guide at the document root, Scenario under Guide, Step/Hidden/Skip/Tabs under Scenario, Tab under Tabs, Step under Hidden/Skip/Tab, and executable leaves only under Step. Do not nest guide wrappers or place executable JSX in markdown prose. Rerun bun run lint:guides and bun run codegen:guide-scenarios.",
+        });
+      }
+    }
+    for (const child of node.children ?? []) walk(child, node);
+  };
+  walk(root, root);
   const frontmatter = decodeFrontmatter(sourcePath, parseFrontmatter(sourcePath, firstYaml(root)));
   if (guide !== undefined) propsOf(guide, sourcePath);
   const ast = {
@@ -207,12 +242,6 @@ export const parseGuideRoot = (sourcePath: string, root: Root): GuideScenarioAst
             .filter((child) => child.name === "Scenario")
             .map((child) => parseScenario(child, sourcePath)),
   };
-  const walk = (node: MdxNode): void => {
-    if ((node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") && node.name != null)
-      Components.assertSupportedGuideComponent(node.name, sourcePath);
-    for (const child of node.children ?? []) walk(child);
-  };
-  walk(root);
   return resolveGuide(ast);
 };
 export const parseGuideScenarioAst = (sourcePath: string, content: string): GuideScenarioAst =>

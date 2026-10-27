@@ -3,7 +3,7 @@ import {
   GuideHiddenScenarioReasonError,
   NotImplementedError,
 } from "@lando/core/errors";
-import { GuidePropError, GuideRootError, GuideSemanticError } from "./diagnostic.ts";
+import { GuidePropError, GuideRootError, GuideSemanticError, GuideStructureError } from "./diagnostic.ts";
 import { type MdxNode, lineOf } from "./mdx.ts";
 
 export interface GuideLintDiagnostic {
@@ -42,7 +42,7 @@ export const formatErrorMessage = (error: unknown): string => {
   return error instanceof Error ? error.message : String(error);
 };
 export const errorDiagnostic = (sourcePath: string, error: unknown): GuideLintDiagnostic => {
-  if (error instanceof GuidePropError)
+  if (error instanceof GuidePropError || error instanceof GuideStructureError)
     return {
       ...error,
       line: error.line,

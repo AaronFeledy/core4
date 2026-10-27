@@ -37,6 +37,17 @@ export class GuideRootError extends Schema.TaggedError<GuideRootError>()("GuideR
   remediation: Schema.String,
 }) {}
 
+export class GuideStructureError extends Schema.TaggedError<GuideStructureError>()("GuideStructureError", {
+  code: Schema.Literals(["guide.structure.inline", "guide.structure.placement"]),
+  message: Schema.String,
+  sourcePath: Schema.String,
+  line: Schema.Number,
+  column: Schema.Number,
+  component: Schema.String,
+  parent: Schema.String,
+  remediation: Schema.String,
+}) {}
+
 export const semanticError = (
   guide: ParsedGuide,
   scenario: GuideScenarioNode,
