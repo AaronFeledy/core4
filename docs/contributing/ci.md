@@ -22,7 +22,7 @@ Pull requests select the highest profile needed by their changed paths:
 
 Mixed changes select the highest profile: `docs`, `guides`, `runtime`, then `providers`. An empty comparison selects `runtime`; unavailable comparison history selects `providers`. A Git command failure fails selection. Deleted and renamed paths count too. The path rules live in `scripts/ci-selection.ts`. `bun test --changed` is a local convenience, not the merge gate.
 
-Pushes to `main` and manual `ci` dispatches run broad hosted coverage, including all six binary artifacts required by the release workflow. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when a PR needs the broad hosted checks before merge.
+Pushes to `main`, manual `ci` dispatches, and pull requests changing the root `.bun-version` run broad hosted coverage, including all six binary artifacts required by the release workflow. The toolchain rule applies even when the PR also changes other paths. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when another PR needs the broad hosted checks before merge.
 
 General Linux tests run on Ubuntu 26.04. Portable Linux x64 binaries still build on Ubuntu 24.04 for their older glibc baseline. The focused install/use/uninstall lifecycle also keeps Ubuntu 24.04 coverage without duplicating the broad test suite.
 
@@ -30,7 +30,7 @@ General Linux tests run on Ubuntu 26.04. Portable Linux x64 binaries still build
 
 CI pins Bun via `.bun-version` at 1.4.3; the Beta 1 floor is `>=1.4.3`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version.
 
-Pull requests run portable static checks once on Linux x64. Broad runs retain the six-platform static matrix. The stable `static-checks` summary feeds the required `ci` check.
+Non-broad pull requests run portable static checks once on Linux x64. Broad runs, including PRs changing the root `.bun-version`, retain the six-platform static matrix. The stable `static-checks` summary feeds the required `ci` check.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -534,7 +534,7 @@ Do not run this purge scenario on a workstation or shared runtime. Isolated Land
 
 ## Alpha platform scope
 
-Public Alpha 1 live evidence is six compile targets, not Linux x64 only. Compile smoke is not an Alpha exit. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Main and manual CI own the broad hosted matrix; PR CI selects its smaller profile. Nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
+Public Alpha 1 live evidence is six compile targets, not Linux x64 only. Compile smoke is not an Alpha exit. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Main, manual CI, and PRs changing the root `.bun-version` run the broad hosted matrix; other PRs select their smaller path-based profile. Nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
 
 ## Docs build
 
