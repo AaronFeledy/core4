@@ -2,14 +2,19 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { engineInfoArchitecture } from "@lando/container-runtime/capabilities";
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { AppInfoResultSchema } from "@lando/engine/operations/info";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
-import { makePodmanApiClient } from "@lando/provider-podman";
+import { makeLandoPaths } from "@lando/paths";
+import { mvpProviderCapabilities } from "@lando/provider-lando";
+import { makePodmanApiClient, podmanCapabilitiesForPlatform } from "@lando/provider-podman";
 import { Effect, Schema } from "effect";
 import { decodeInfoCliEnvelope } from "./convergence-cli.ts";
+import { selectCatalogHomes } from "./home-persistence-fixture.ts";
 
 const socket = resolveLiveProviderSocket();
+const providerId = process.env.LANDO_CONFIG__default_provider_id ?? "podman";
 const imageList = Schema.Array(
   Schema.Struct({
     Id: Schema.String,
@@ -24,13 +29,47 @@ test.skipIf(socket === undefined)(
   "service users can write persisted homes across rebuild and user changes isolate stores",
   async () => {
     if (socket === undefined) throw new Error("A live Podman socket is required");
+    expect(["lando", "podman"], "Configure a Lando or independent Podman fixture provider").toContain(
+      providerId,
+    );
+    if (providerId === "lando")
+      expect(socket.socketPath, "The opted-in socket must match the configured managed runtime").toBe(
+        makeLandoPaths().providerSocketPath,
+      );
+    const api = makePodmanApiClient(socket.socketPath);
+    const providerArch = engineInfoArchitecture(await Effect.runPromise(api.info)) ?? "unknown";
     const root = await mkdtemp(join(tmpdir(), "lando-home-persistence-live-"));
     const nonce = crypto.randomUUID().slice(0, 8);
     const name = `home-live-${nonce}`;
     // Unique service names also namespace derived image tags for exact, race-safe cleanup.
     const php = `php-${nonce}`;
     const node = `node-${nonce}`;
-    const api = makePodmanApiClient(socket.socketPath);
+    const platform =
+      process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : "linux";
+    const capabilities =
+      providerId === "lando"
+        ? mvpProviderCapabilities(platform, process.arch)
+        : podmanCapabilitiesForPlatform(platform);
+    // Match the host facts and declared capabilities used by the production architecture guard.
+    const selectedHomes = selectCatalogHomes(process.arch, capabilities, providerArch);
+    if (selectedHomes.excluded.length > 0)
+      console.info("HOME_PERSISTENCE_EXCLUDED", {
+        arch: process.arch,
+        providerArch,
+        provider: providerId,
+        types: selectedHomes.excluded.map(([type]) => type),
+      });
+    const catalogHomes = selectedHomes.supported.map(([type, user, target], index) => ({
+      type,
+      user,
+      target,
+      service: `catalog-${index}-${nonce}`,
+    }));
+    const persistedHomes = [
+      { service: php, user: "www-data", target: "/var/www" },
+      { service: node, user: "node", target: "/home/node" },
+      ...catalogHomes,
+    ];
     const request = api.request;
     if (request === undefined) throw new Error("Podman HTTP API is required");
     const call = (input: EngineHttpRequest) =>
@@ -58,7 +97,7 @@ test.skipIf(socket === undefined)(
         ],
         {
           cwd: root,
-          env: { ...env, LANDO_PROVIDER: "podman", LANDO_TELEMETRY_ENABLED: "false" },
+          env: { ...env, LANDO_PROVIDER: providerId, LANDO_TELEMETRY_ENABLED: "false" },
           stdin: "ignore",
           stdout: "pipe",
           stderr: "pipe",
@@ -94,7 +133,7 @@ test.skipIf(socket === undefined)(
       [
         `name: ${name}`,
         "runtime: 4",
-        "provider: podman",
+        `provider: ${providerId}`,
         "router:",
         "  enabled: false",
         "services:",
@@ -109,18 +148,28 @@ test.skipIf(socket === undefined)(
         "    type: node:22",
         `    user: ${nodeUser}`,
         "    appMount: false",
+        "    healthcheck:",
+        "      kind: command",
+        "      command: [node, --version]",
+        ...catalogHomes.flatMap(({ type, service }) => [
+          `  ${service}:`,
+          `    type: ${type}`,
+          "    appMount: false",
+          "    certs: false",
+          "    healthcheck: false",
+          "    entrypoint: []",
+          "    command: [sh, -c, 'trap \"exit 0\" TERM INT; while :; do sleep 1; done']",
+          ...(type.startsWith("varnish") ? [`    backend: ${node}`] : []),
+        ]),
         "",
       ].join("\n");
     const marker = `home-marker-${nonce}`;
     const stores = new Set<string>();
     try {
-      // Given fresh PHP/FPM and Node services running as their non-root users.
+      // Keep catalog daemons idle so the fixture isolates image-user and fresh-volume behavior.
       await Bun.write(join(root, ".lando.yml"), landofile("node"));
       await lando(["start", "--format=json"]);
-      for (const [service, user, target] of [
-        [php, "www-data", "/var/www"],
-        [node, "node", "/home/node"],
-      ] as const) {
+      for (const { service, user, target } of persistedHomes) {
         const home = await homeFor(service);
         stores.add(home.store);
         expect(home.target, service).toBe(target);
@@ -128,12 +177,10 @@ test.skipIf(socket === undefined)(
         const written = await lando([
           "exec",
           service,
-          "--user",
-          user,
           "--",
           "sh",
           "-c",
-          `test "$(id -un)" = '${user}' && test "$HOME" = '${target}' && printf '%s' '${marker}' > "$HOME/.lando-home-live" && cat "$HOME/.lando-home-live"`,
+          `test "$(id -un)" = '${user}' && test "$HOME" = '${target}' && test "$(stat -c %u "$HOME")" = "$(id -u)" && printf '%s' '${marker}' > "$HOME/.lando-home-live" && cat "$HOME/.lando-home-live"`,
         ]);
         expect(written.stdout.trim(), `${service}: home must be writable as ${user}`).toBe(marker);
       }
@@ -141,22 +188,10 @@ test.skipIf(socket === undefined)(
 
       // When the app is rebuilt, the mounted home files and store identities survive.
       await lando(["rebuild", "--yes", "--format=json"]);
-      for (const [service, user] of [
-        [php, "www-data"],
-        [node, "node"],
-      ] as const) {
+      for (const { service } of persistedHomes) {
         const home = await homeFor(service);
         expect(stores.has(home.store), service).toBe(true);
-        const retained = await lando([
-          "exec",
-          service,
-          "--user",
-          user,
-          "--",
-          "sh",
-          "-c",
-          'cat "$HOME/.lando-home-live"',
-        ]);
+        const retained = await lando(["exec", service, "--", "sh", "-c", 'cat "$HOME/.lando-home-live"']);
         expect(retained.stdout.trim(), service).toBe(marker);
       }
 
@@ -210,10 +245,10 @@ test.skipIf(socket === undefined)(
         const derivedTags = afterImages
           .flatMap((image) => image.RepoTags ?? [])
           .filter((tag) =>
-            [php, node].some((service) =>
+            persistedHomes.some(({ service }) =>
               tag
                 .replace(/^(localhost|docker.io\/library)\//u, "")
-                .startsWith(`lando-build-podman-${service}-`),
+                .startsWith(`lando-build-${providerId}-${service}-`),
             ),
           )
           .sort((left, right) => Number(left.includes("-base:")) - Number(right.includes("-base:")));
@@ -221,7 +256,15 @@ test.skipIf(socket === undefined)(
           .filter((image) => !beforeImages.has(image.Id))
           .flatMap((image) =>
             (image.RepoTags ?? []).filter((tag) =>
-              ["docker.io/library/php:8.3-fpm-bookworm", "docker.io/library/node:22"].includes(tag),
+              [
+                "docker.io/library/php:8.3-fpm-bookworm",
+                "docker.io/library/node:22",
+                "mcr.microsoft.com/mssql/server:2019-latest",
+                "mcr.microsoft.com/mssql/server:2022-latest",
+                "docker.io/library/solr:9",
+                "docker.io/library/varnish:6",
+                "docker.io/library/varnish:7",
+              ].includes(tag),
             ),
           );
         for (const tag of [...derivedTags, ...pulledTags]) {

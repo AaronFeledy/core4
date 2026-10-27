@@ -119,7 +119,7 @@ const expectations = {
       target: PortablePath.make("/run/app"),
       origin: "authored",
       readOnly: false,
-      options: `size=67108864,mode=${(1770).toString(8)}`,
+      options: "size=67108864,mode=1770",
     });
   },
   "corpus/runtime-knobs.compose.yaml": (context) => {
