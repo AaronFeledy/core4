@@ -78,7 +78,7 @@ services:
 
 Some service types add their own excludes on top of the defaults. Python adds `__pycache__` and `.venv`. Ruby adds `.bundle`. Merged order is defaults, then service-type presets, then your excludes. A host `.venv` is hidden inside the container; add `appMount.includes: [.venv]` to keep the host tree.
 
-Excludes are literal paths relative to the mount target. They do not match nested directories with the same name, and they do not accept globs. A venv at `backend/.venv` needs its own `backend/.venv` exclude, the same as a nested `node_modules`.
+Excludes create volume overlays at literal paths relative to the mount target; they do not create overlays for nested directories with the same name. Add `backend/.venv` to give that path its own overlay. With accelerated sync, Mutagen treats a name without `/`, such as `.venv`, as an ignore at every directory depth, so nested venvs are excluded from synchronization even without their own overlay. Use literal paths rather than globs for predictable behavior across mount modes.
 
 ## How an exclude works
 

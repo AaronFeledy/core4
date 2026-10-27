@@ -16,9 +16,11 @@ or launch the application server; the default command keeps the service running
 for setup. Add `.venv/` to `.gitignore` and commit `requirements.txt` so the
 dependency list stays with your project.
 
-The recipe's entrypoint initializes `/app/.venv` when its pip is missing, then
-executes the original command. `VIRTUAL_ENV` and `PATH` select this virtual
-environment for tooling and commands you run yourself. Packages install into a
+The recipe's entrypoint runs `python -m venv /app/.venv` when
+`/app/.venv/bin/pip` is not executable, then executes the original command.
+`VIRTUAL_ENV` and `PATH` select this virtual environment for tooling and commands
+you run yourself. This initializes an empty environment; it does not guarantee
+repair of a damaged existing venv. Packages install into a
 service-owned `/app/.venv` overlay, not the host mount. Restart and a plain
 `lando destroy` keep it; `lando destroy --volumes` or `--purge` removes it.
 

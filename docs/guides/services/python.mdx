@@ -129,7 +129,7 @@ lando uv pip install --python /app/.venv/bin/python -r requirements.txt
 lando exec app -- /app/.venv/bin/python --version
 ```
 
-`lando pip install` into the image works for a quick try, but a rebuild drops those packages. Use `appMount.includes: [.venv]` if you want the host tree, for example for IDE autocomplete. A nested venv such as `backend/.venv` needs its own exclude. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
+`lando pip install` into the image works for a quick try, but a rebuild drops those packages. Use `appMount.includes: [.venv]` if you want the host tree, for example for IDE autocomplete. A nested venv such as `backend/.venv` needs its own exclude to get a service-owned overlay. See [Exclude paths from the app mount](../setup/file-sync-excludes.mdx).
 
 Need a one-shot system install with uv instead of a venv?
 
