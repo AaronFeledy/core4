@@ -126,8 +126,10 @@ Bare provenance is the common one for apps hand-written before `lando init` reco
 
 <Guide>
   <Scenario id="already-current" render>
+    <Step name="scaffold-current">
+      <Run command="lando init --recipe lamp --name=migrate-demo --yes" />
+    </Step>
     <Step name="dry-run-current">
-      <UseFixture name="managed-lamp" />
       <Run command="lando app:config:migrate --dry-run" />
       <Verify command="lando app:config:migrate --dry-run --format=json" expect={{ stdout: { regex: "\"mode\":\\s*\"dry-run\"" } }} />
       <Verify command="lando app:config:migrate --dry-run --format=json" expect={{ stdout: { regex: "\"status\":\\s*\"no-op\"" } }} />
@@ -135,8 +137,9 @@ Bare provenance is the common one for apps hand-written before `lando init` reco
     <Step name="write-current">
       <Run command="lando app:config:migrate --yes" />
       <Verify command="lando app:config:migrate --yes --format=json" expect={{ stdout: { regex: "\"noMutation\":\\s*\"already-current\"" } }} />
-      <Verify file="managed-lamp/.lando.yml" expect={{ regex: "name: migrate-demo" }} />
-      <Verify file="managed-lamp/.lando.yml" expect={{ regex: "version: 0\\.1\\.0" }} />
+      <Verify file="migrate-demo/.lando.yml" expect={{ regex: "name: migrate-demo" }} />
+      <Verify file="migrate-demo/.lando.yml" expect={{ regex: "version: 0\\.1\\.0" }} />
+      <Verify file="migrate-demo/.lando.yml" expect={{ regex: "sourceKind: bundled" }} />
     </Step>
     <Step name="current-cleanup">
       <Cleanup />

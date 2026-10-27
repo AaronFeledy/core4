@@ -144,7 +144,7 @@ Init writes `.lando.yml` only. Add the Gemfile and site while `builder` is parke
     <Step name="init-invalid">
       <Variable name="appName" value="jekyll-bad" display="jekyll-bad" />
       <Run command="lando init --recipe jekyll --name={{appName}} --yes --answer=ruby=3.2" expectExit={1} />
-      <Verify errorTag="RecipeInitBlockedError" expect={{ regex: "blocked at translate" }} />
+      <Verify errorTag="RecipeInitBlockedError" expect={{ regex: "blocked at validate" }} />
     </Step>
   </Scenario>
 </Guide>
