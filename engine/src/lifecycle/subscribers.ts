@@ -7,7 +7,6 @@ import type { LandoEvent } from "@lando/sdk/events";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AbsolutePath, type NotifyConfig, type PluginManifest } from "@lando/sdk/schema";
 import {
-  CommandRegistry,
   ConfigService,
   EventService,
   Logger,
@@ -26,7 +25,7 @@ import { EventDispatchControl } from "../services/event-service.ts";
 import { makePublishRender } from "./publish-render.ts";
 import { resolveNotifyConfig } from "./subscriber-config.ts";
 import type { IndexedSubscriber } from "./subscriber-index.ts";
-import { makeSubscriberRegistrationClosure } from "./subscriber-index.ts";
+import { makeSubscriberRegistrationClosure, staticSubscriberCommandIds } from "./subscriber-index.ts";
 import {
   type RuntimeSubscriberFactory,
   type RuntimeSubscriberHandler,
@@ -40,12 +39,7 @@ export const canonicalSubscriberCommandIds = (
   commands: ReadonlyArray<RegisteredCommand> = [],
   builtIns: ReadonlyArray<string> = builtInCommandIds(),
 ): ReadonlyArray<string> => {
-  const ids = new Set<string>(builtIns);
-  for (const manifest of manifests) {
-    for (const command of manifest.contributes?.commands ?? []) {
-      ids.add(typeof command === "string" ? command : command.id);
-    }
-  }
+  const ids = new Set(staticSubscriberCommandIds(manifests, builtIns));
   for (const command of commands) ids.add(command.id);
   return [...ids];
 };
@@ -162,43 +156,37 @@ export const layer = (
       const httpClient = yield* HttpClient.HttpClient;
       const redaction = yield* RedactionService;
       const manifests = yield* plugins.list;
-      const commandRegistry = yield* CommandRegistry;
-      const resolvedCommands = yield* commandRegistry.list;
-      const commandIds = canonicalSubscriberCommandIds(manifests, resolvedCommands, builtIns);
       const hasNotifySubscriber = manifests.some((manifest) =>
         manifest.subscribers?.some((subscriber) => subscriber.configKey === "notify"),
       );
       const notify = hasNotifySubscriber ? yield* resolveNotifyConfig(yield* configService.load) : undefined;
       const closure = makeSubscriberRegistrationClosure(manifests);
-      const index = yield* closure.close(commandIds);
+      const index = yield* closure.close({ builtIns });
       const handlers = new Map<IndexedSubscriber, Effect.Effect<RuntimeSubscriberHandler, PluginLoadError>>();
-      for (const entries of index.values()) {
-        for (const subscriber of entries) {
-          if (handlers.has(subscriber)) continue;
-          const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
-            paths.pluginStateDir(subscriber.pluginName),
-          );
-          const context = makeLandoPluginContext({
-            id: subscriber.pluginName,
-            managedFileService: managedFiles,
-            stateStore,
-            pluginStateRoot,
-            privateFileAccess,
-            httpClient,
-            publishRender: makePublishRender(events, redaction),
-          });
-          const getHandler = yield* makeCachedSubscriberHandler(
-            loadSubscriberFactory(subscriber, modules),
-            context,
-            projectedConfig(subscriber, notify),
-          );
-          handlers.set(subscriber, getHandler);
-        }
+      for (const subscriber of index.subscribers) {
+        const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
+          paths.pluginStateDir(subscriber.pluginName),
+        );
+        const context = makeLandoPluginContext({
+          id: subscriber.pluginName,
+          managedFileService: managedFiles,
+          stateStore,
+          pluginStateRoot,
+          privateFileAccess,
+          httpClient,
+          publishRender: makePublishRender(events, redaction),
+        });
+        const getHandler = yield* makeCachedSubscriberHandler(
+          loadSubscriberFactory(subscriber, modules),
+          context,
+          projectedConfig(subscriber, notify),
+        );
+        handlers.set(subscriber, getHandler);
       }
       yield* dispatchControl.install({
-        hasSubscribers: (eventName) => index.has(eventName),
+        hasSubscribers: (eventName) => index.forEvent(eventName).length > 0,
         dispatch: (event) => {
-          const entries = index.get(event._tag) ?? [];
+          const entries = index.forEvent(event._tag);
           if (!Schema.is(LandoEventSchema)(event)) {
             return Effect.fail(
               new EventError({

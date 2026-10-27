@@ -193,9 +193,10 @@ set. An empty string is a valid bound value. A reference to a name with no bindi
 and so is a binding that nothing references.
 
 Everything else stays literal: `<Run runtime="library" code>` and
-`displayCode`, `<Inline>` code, matcher values, `--answer` strings, and shell
-payloads. A dotted token such as `{{ app.name }}` in a Landofile template or
-foreign syntax is not a guide binding and is left as written.
+`displayCode`, `<Inline>` code, matcher values, `Run.answers` strings, and shell
+payloads. Tokens inside `Run.command` are substituted, including tokens in
+`--answer` arguments. A dotted token such as `{{ app.name }}` in a Landofile
+template or foreign syntax is not a guide binding and is left as written.
 
 Hidden steps can reference visible or hidden bindings. A visible component
 cannot reference a binding declared only in a `<Hidden>` block, even when

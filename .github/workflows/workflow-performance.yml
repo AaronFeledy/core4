@@ -45,7 +45,7 @@ jobs:
 #     runs-on: ubuntu-26.04
 #     timeout-minutes: 20
 #     steps:
-#       - uses: actions/checkout@v5
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 #
 #       - name: Isolate Lando roots
 #         shell: bash
@@ -87,7 +87,7 @@ jobs:
 #     runs-on: ubuntu-26.04
 #     timeout-minutes: 360
 #     steps:
-#       - uses: actions/checkout@v5
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 #
 #       - name: Setup Bun
 #         uses: oven-sh/setup-bun@v2
@@ -285,7 +285,7 @@ jobs:
 #     runs-on: ubuntu-24.04-arm
 #     timeout-minutes: 360
 #     steps:
-#       - uses: actions/checkout@v5
+#       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 #
 #       - name: Setup Bun
 #         uses: oven-sh/setup-bun@v2

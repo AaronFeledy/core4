@@ -20,6 +20,16 @@
     "RouteInputError"
   ],
   "configErrorFields": ["_tag", "cause", "issues", "message", "path", "remediation"],
+  "managedFileTransactionErrorReasons": [
+    "path",
+    "conflict",
+    "io",
+    "journal",
+    "lock",
+    "checkpoint",
+    "blocked",
+    "pending-transaction"
+  ],
   "noProviderInstalledErrorFields": ["_tag", "message", "remediation"],
   "pluginManifestErrorFields": ["_tag", "issues", "message", "pluginName", "remediation"],
   "guideFrontmatterValidationErrorFields": [
@@ -226,6 +236,7 @@
       "status:Effect.Effect<ReadonlyArray<ManagedFileInfo>,ManagedFileError>"
     ],
     "ManagedFileTransactionGuard": [
+      "assertReadable:(appRoot:string) => Effect.Effect<void,ManagedFileTransactionError>",
       "ensureConsistent:(appRoot:string) => Effect.Effect<void,ManagedFileTransactionError>",
       "pending:(appRoot:string) => Effect.Effect<ManagedFileTransactionPendingReport|null,ManagedFileTransactionError>"
     ],

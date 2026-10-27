@@ -24,7 +24,7 @@ jobs:
       contents: read
       issues: write
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout}
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
         with:
           persist-credentials: false
       - uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}

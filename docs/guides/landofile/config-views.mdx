@@ -85,6 +85,9 @@ don't block the write. The command reports the remaining issues and their fixes
 once, as a text warning or a `LANDO_CONFIG_PREEXISTING_ISSUES` warning in the
 JSON envelope. Comments stay in the file. Inferred values use the first
 interpretation that meets this rule. `edit` still validates the whole edited
-configuration before saving.
+configuration before saving. Add `--dry-run` to any of the three to run that
+validation without writing; a change the file already holds reports
+`(no change)`. For the preview, no-op, and lockfile rules, see
+[Set, unset, and edit from the CLI](./your-landofile.mdx#set-unset-and-edit-from-the-cli).
 
 Next: [lint every source](./config-lint.mdx) or [change a layer](./your-landofile.mdx#override-a-list-in-a-local-layer).

@@ -32,7 +32,7 @@ describe("compose-go bump workflow", () => {
   test("uses reviewed action pins without persisting checkout credentials", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
-    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout}`);
+    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1`);
     expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}`);
     expect(workflow).toContain("          persist-credentials: false");
     expect(workflow).not.toContain("actions/checkout@v5");

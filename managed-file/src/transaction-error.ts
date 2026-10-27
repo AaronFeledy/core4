@@ -9,12 +9,18 @@ const DEFAULT_REMEDIATION =
   "Preserve the transaction journal and backups; inspect the recorded state before retrying.";
 export const HARDLINK_PUBLICATION_REMEDIATION =
   "Exclusive hardlink publish was refused. Lando will not rename over the target or copy partial bytes. Use a hardlink-capable filesystem.";
+const PENDING_REMEDIATION =
+  "Resolve the pending managed-file transaction with an ordinary load before retrying the candidate read.";
 
 export const transactionError = (
   reason: ManagedFileTransactionError["reason"],
   phase: ManagedFileTransactionError["phase"],
   path = "",
-  remediation = reason === "blocked" ? BLOCKED_REMEDIATION : DEFAULT_REMEDIATION,
+  remediation = reason === "blocked"
+    ? BLOCKED_REMEDIATION
+    : reason === "pending-transaction"
+      ? PENDING_REMEDIATION
+      : DEFAULT_REMEDIATION,
 ): ManagedFileTransactionError =>
   new ManagedFileTransactionError({
     reason,

@@ -212,7 +212,7 @@ describe("platform-readiness workflow", () => {
     // Then
     for (const id of PLATFORM_IDS) {
       const job = jobBlock(workflow, id);
-      const checkout = job.indexOf("actions/checkout@v5");
+      const checkout = job.indexOf("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1");
       const isolate = job.indexOf("Isolate Lando roots");
       expect(checkout).toBeGreaterThan(-1);
       expect(isolate).toBeGreaterThan(checkout);

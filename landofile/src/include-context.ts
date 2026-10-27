@@ -5,6 +5,7 @@ import type {
   LandofileLockMismatchError,
   LandofileParseError,
   LandofileValidationError,
+  ManagedFileTransactionError,
   NotImplementedError,
 } from "@lando/sdk/errors";
 import type { ParsedPendingSite } from "@lando/sdk/schema";
@@ -104,7 +105,6 @@ export interface ResolveContext {
   readonly noNetwork: boolean;
   readonly loadPolicy: LandofileLoadPolicy;
   readonly ports?: LandofileRuntimePorts;
-  readonly stateStore: StateStoreShape | undefined;
   readonly onRelaxedRead?: ResolveLandofileIncludesOptions["onRelaxedRead"];
 }
 export interface FragmentResult {
@@ -150,5 +150,6 @@ export type ResolveIncludesError =
   | LandofileLockMismatchError
   | LandofileParseError
   | LandofileValidationError
+  | ManagedFileTransactionError
   | ResolveLandofileLoadExpressionError
   | NotImplementedError;

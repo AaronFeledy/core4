@@ -7,7 +7,7 @@ import { captureCompilationContext, sourceCarrier } from "./compilation.ts";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
 import { type LegacyFailureSource, legacyLoadFailure } from "./legacy-load-failure.ts";
-import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
+import type { LandofileLoadContext } from "./load-context.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { rememberLandofileReferencedFiles } from "./load-expression-provenance.ts";
 import { resolveLandofileLoadExpressions } from "./load-expression.ts";
@@ -57,7 +57,7 @@ const parseLandofileSource = (
 export const prepareLandofileSource = Effect.fn("Landofile.prepareSource")(function* (
   filePath: string,
   context?: LandofileLoadContext,
-  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard"> & {
+  inputs?: Pick<LandofileRuntimeInputs, "templates"> & {
     readonly sourceReplacement?: { readonly content: string } | undefined;
   },
 ) {
@@ -72,7 +72,6 @@ export const prepareLandofileSource = Effect.fn("Landofile.prepareSource")(funct
       context?.compilationContext ??
       captureCompilationContext(context?.appRoot ?? dirname(filePath), inputs?.templates.context?.env),
   };
-  yield* ensureConsistentRoot(resolvedContext.appRoot, inputs);
   const content = inputs?.sourceReplacement?.content ?? (yield* readFileContent(filePath));
   const form = filePath.endsWith(".ts") ? ("typescript" as const) : ("yaml" as const);
   const parsed = yield* form === "typescript"
@@ -193,7 +192,7 @@ const checkLandofileSource = Effect.fnUntraced(function* (file: string, value: u
 export const prepareLandofileLayer = Effect.fn("Landofile.prepareLayer")(function* (
   filePath: string,
   context?: LandofileLoadContext,
-  inputs?: Pick<LandofileRuntimeInputs, "templates" | "transactionGuard">,
+  inputs?: Pick<LandofileRuntimeInputs, "templates">,
 ) {
   const source = yield* prepareLandofileSource(filePath, context, inputs);
   return yield* prepareLandofileValue(source);

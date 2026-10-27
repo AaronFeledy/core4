@@ -15,7 +15,7 @@ export const renderContainerHelperJob = (): string => `  ${CONTAINER_HELPER_JOB_
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${isolateLandoRootsStep}
 
@@ -63,7 +63,7 @@ export const renderContainerHelperArm64Job = (): string => `  ${CONTAINER_HELPER
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${isolateLandoRootsStep}
 

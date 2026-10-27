@@ -22,6 +22,11 @@ const displayValue = (value: unknown): string => {
   return `${escaped.length > 160 ? `${escaped.slice(0, 157)}...` : escaped} (${kind})`;
 };
 
+/**
+ * A no-op (`changed: false`) ends with `(no change)` whether or not it was a dry run, since nothing would
+ * be written either way, and never claims validity: a repair-tolerant write can leave pre-existing issues
+ * elsewhere in the file.
+ */
 export const renderConfigWriteResult = (input: {
   readonly file: string;
   readonly subcommand?: string | undefined;
@@ -32,17 +37,20 @@ export const renderConfigWriteResult = (input: {
   readonly editSavedLabel: string;
 }): string | undefined => {
   const { file, key } = input;
+  const dryRun = input.dryRun === true;
   switch (input.subcommand) {
     case "set": {
       const redactor = createStandaloneRedactor("secrets", { redactionTokens: configRedactionTokens(input) });
       const value = displayValue(redactor.redactValue(input.value));
-      return `${file}: ${input.dryRun === true ? "would set" : "set"} ${key} = ${value}${input.dryRun === true ? " (dry run)" : ""}.`;
+      if (input.changed === false) return `${file}: ${key} is already set to ${value} (no change).`;
+      return dryRun ? `${file}: would set ${key} = ${value} (dry run).` : `${file}: set ${key} = ${value}.`;
     }
     case "unset":
       if (input.changed !== true) return `${file}: ${key} was not present (no change).`;
-      return input.dryRun === true ? `${file}: would unset ${key} (dry run).` : `${file}: unset ${key}.`;
+      return dryRun ? `${file}: would unset ${key} (dry run).` : `${file}: unset ${key}.`;
     case "edit":
-      return input.dryRun === true
+      if (input.changed === false) return `${file}: no edits made to ${input.editSavedLabel} (no change).`;
+      return dryRun
         ? `${file}: would save edited ${input.editSavedLabel} (dry run).`
         : `${file}: saved edited ${input.editSavedLabel}.`;
     case "validate":

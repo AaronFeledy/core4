@@ -132,9 +132,7 @@ The same rule applies to tooling: `tooling.check: echo local` or `tooling.check:
 
 Inspect the effective result with `lando app:config --format=json`. A bad local value carries its effective `issues[].path` plus `issues[].source` with the original file, layer, and authored path. The error's `remediation` is separate from those locations. Source coordinates appear only when the parser actually recorded them.
 
-Compare individual layers with `lando app:config --source raw --format=json`, or inspect their authored composition with `--source merged`. Both can show values that effective validation rejects. See [Inspect each stage of your Landofile](./config-views.mdx).
-
-`lando app:config set` and `unset` change the canonical YAML source, not the merged result. Before saving, Lando validates that partial authored candidate and the effective stack with the candidate substituted at canonical precedence. `set` and `unset` allow unchanged validation problems elsewhere while you repair one key; a write is rejected if it introduces a problem or leaves the written key or a descendant invalid. Lando still needs to read the layer stack, so unreadable files or malformed YAML in another layer block the operation. `edit` can repair malformed YAML and saves your exact buffer, including template directives. `--dry-run` performs the same validation without writing; an unchanged unset creates no file. Set/unset don't rewrite templated or TypeScript sources.
+Compare individual layers with `lando app:config --source raw --format=json`, or inspect their authored composition with `--source merged`. Both can show values that effective validation rejects. See [Inspect each stage of your Landofile](./config-views.mdx). To change a layer from the command line instead of an editor, see [Set, unset, and edit from the CLI](#set-unset-and-edit-from-the-cli).
 
 - Routes match by scheme, case-insensitive hostname, and path prefix in either shorthand or object spelling. Omitted scheme means HTTPS and omitted path means `/`. A `both` route participates in both scheme identities; an HTTPS-only overlay leaves its HTTP route alone. Backends and filters are not route identity.
 - `dependsOn` matches by service, in list, map, or object-entry form. Logs match by `id`, which defaults to the path basename.
@@ -261,6 +259,44 @@ Where they go:
 
 Run `lando app:config:lint` to check directive placement before you start the app.
 
+## Set, unset, and edit from the CLI
+
+`lando app:config set`, `unset`, and `edit` change `.lando.yml`, the canonical layer. They don't touch the merged result, and they don't rewrite a local, TypeScript, or templated layer. Reach for them when you want one key changed and validated from a script or a shell, without opening the file.
+
+```sh
+lando app:config set services.web.port 4000
+lando app:config unset services.web.port
+lando app:config edit
+```
+
+Before saving, Lando validates the candidate file on its own and the effective stack with the candidate in place of `.lando.yml`. A problem the file already had elsewhere doesn't stop you from repairing one key; a write is rejected if it introduces a problem or leaves the written key, or anything under it, invalid. Lando still has to read every layer, so an unreadable file or malformed YAML in another layer stops the command. `edit` opens the file in `$VISUAL` or `$EDITOR`, or the one you pass with `--editor`; it can repair malformed YAML and saves your buffer byte for byte, template directives included.
+
+### Preview with `--dry-run`
+
+Add `--dry-run` to any of the three to run the same validation and report the outcome without writing. The text result says what Lando `would` do and ends with `(dry run)`; `--format=json` carries `"dryRun": true` and the value Lando would write. A dry-run `edit` still opens your editor; Lando validates what you save and then discards it.
+
+```sh
+lando app:config set services.web.port 4000 --dry-run --format=json
+```
+
+In an app whose `.lando.yml` includes `./fragments/web.yml`, the result shows `4000` as the value Lando would write, and both files are byte for byte what they were. A rejected candidate, say `services.web.primary maybe`, fails with `LandofileWriteValidationError` and leaves them alone the same way.
+
+A preview reports on the files as they are now. Run the command again without `--dry-run` to write; that run validates again rather than replaying the preview, so a layer that changed in between is checked, not assumed. A preview is also a normal command run as far as plugins are concerned: if `app:config` is listed under `notify.commands` in your [user config](../config/global-config.mdx), a dry run can notify when it finishes, the same as a write. The notification means the command finished, not that anything was saved.
+
+### When nothing would change
+
+Lando validates a no-op the same way and writes nothing. A `set` whose value already sits in `.lando.yml` as written reports `<key> is already set to <value> (no change)`; `unset` of a key the file doesn't hold reports `(no change)` too; `edit` where you save the buffer untouched reports `no edits made to Landofile (no change)`. In JSON, `"changed": false` says the same thing, with or without `--dry-run`. A no-op isn't reported as a write or a preview, and it isn't a validity stamp: a pre-existing problem elsewhere in the file still shows up as a warning.
+
+"As written" means the authored file, before merging and defaults. A value the app inherits from an included fragment or another layer is not a key in `.lando.yml`: `set` to that same value writes the key, and `unset` of it reports `(no change)` and leaves the effective value where it was. To remove a merged value, use [`!override` or `!reset`](#replace-or-remove-a-value-with-override-and-reset) in a layer above the one that supplies it.
+
+### Include pins arrive with the next load
+
+Validating a candidate resolves the includes it names: Lando reads the pins already in `.lando.lock.yml`, checks cached fragments against their checksums, and may fetch a new remote fragment into the include cache under your user cache root so it can check the effective config. It never writes the lockfile, with or without `--dry-run`, and a rejected candidate leaves it alone too. An accepted write changes only `.lando.yml`. The next ordinary load, for example `lando app:config` or `lando start`, publishes the pin for a new or re-versioned include once the whole effective config has loaded successfully; `lando app:includes:update` does the same on request. A floating ref such as a branch isn't frozen by a preview: the load that pins it resolves the ref again. See [Pin a remote include](./includes-and-lockfile.mdx#pin-a-remote-include).
+
+### An unfinished write blocks the read
+
+If an earlier multi-file write didn't finish, for example an interrupted `lando app:config:translate --write`, `set`, `unset`, and `edit` stop with `ManagedFileTransactionError` (`reason: pending-transaction`) instead of validating against a half-written layer set. They never finish that write for you. Run an ordinary load such as `lando app:config`, which completes the recovery, then retry. A write that already committed but still has its journal doesn't block.
+
 ## Reach for other keys
 
 | Key | What it does |
@@ -348,6 +384,33 @@ lando info
       <Verify errorTag="LandofileParseError" expect={{ regex: "block mapping" }} />
     </Step>
     <Step name="cleanup-flow-mapping">
+      <Cleanup />
+    </Step>
+  </Scenario>
+  <Scenario id="config-set-dry-run-leaves-files-alone" render>
+    <Step name="scaffold-local-include">
+      <UseFixture name="config-set-dry-run" />
+    </Step>
+    <Step name="preview-the-change">
+      <Run command="lando app:config set services.web.port 4000 --dry-run --format=json" />
+      <Verify command="lando app:config set services.web.port 4000 --dry-run --format=json" expect={{ stdout: { regex: "\"dryRun\":\\s*true" } }} />
+      <Verify command="lando app:config set services.web.port 4000 --dry-run --format=json" expect={{ stdout: { regex: "\"value\":\\s*4000" } }} />
+      <Verify file="config-set-dry-run/.lando.yml" expect={{ regex: "^name: config-set-dry-run\\nincludes:\\n  - \\./fragments/web\\.yml\\nservices:\\n  web:\\n    primary: true\\n$" }} />
+      <Verify file="config-set-dry-run/fragments/web.yml" expect={{ regex: "^services:\\n  web:\\n    type: \"node:22\"\\n    port: 3000\\n$" }} />
+    </Step>
+    <Step name="set-a-value-the-file-already-holds">
+      <Run command="lando app:config set name config-set-dry-run --format=json" />
+      <Verify command="lando app:config set name config-set-dry-run --format=json" expect={{ stdout: { regex: "\"changed\":\\s*false" } }} />
+      <Verify command="lando app:config set name config-set-dry-run --format=json" expect={{ stdout: { not: { regex: "\"dryRun\":\\s*true" } } }} />
+      <Verify file="config-set-dry-run/.lando.yml" expect={{ regex: "^name: config-set-dry-run\\nincludes:\\n  - \\./fragments/web\\.yml\\nservices:\\n  web:\\n    primary: true\\n$" }} />
+    </Step>
+    <Step name="reject-a-bad-candidate">
+      <Run command="lando app:config set services.web.primary maybe --dry-run --format=json" expectExit={1} />
+      <Verify errorTag="LandofileWriteValidationError" expect={{ regex: "primary" }} />
+      <Verify file="config-set-dry-run/.lando.yml" expect={{ regex: "^name: config-set-dry-run\\nincludes:\\n  - \\./fragments/web\\.yml\\nservices:\\n  web:\\n    primary: true\\n$" }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*3000" } }} />
+    </Step>
+    <Step name="cleanup-local-include">
       <Cleanup />
     </Step>
   </Scenario>

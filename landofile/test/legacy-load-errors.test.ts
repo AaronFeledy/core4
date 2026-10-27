@@ -147,6 +147,7 @@ test("blocks pending transactions before inspecting legacy content", async () =>
       Effect.provideService(
         ManagedFileTransactionGuard,
         ManagedFileTransactionGuard.of({
+          assertReadable: () => Effect.void,
           ensureConsistent: () =>
             Effect.suspend(() => {
               calls++;

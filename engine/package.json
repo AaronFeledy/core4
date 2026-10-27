@@ -33,6 +33,8 @@
     "./cache/service": "./src/cache/service.ts",
     "./composition": "./src/composition.ts",
     "./config-write/dot-path": "./src/config-write/dot-path.ts",
+    "./config-write/editor": "./src/config-write/editor.ts",
+    "./config-write/readiness": "./src/config-write/readiness.ts",
     "./config-write/value-parse": "./src/config-write/value-parse.ts",
     "./config-write/verbs": "./src/config-write/verbs.ts",
     "./config-write/write-core": "./src/config-write/write-core.ts",
@@ -251,7 +253,7 @@
   },
   "devDependencies": {
     "@lando/service-lando": "workspace:*",
-    "@types/semver": "^7.7.1"
+    "@types/semver": "^7.8.0"
   },
   "scripts": {
     "build": "tsc -b",

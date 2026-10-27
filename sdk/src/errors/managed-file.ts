@@ -29,6 +29,8 @@ export class ManagedFileError extends Schema.TaggedError<ManagedFileError>()("Ma
  * rejections, `journal` covers an unreadable or out-of-order recovery record,
  * `lock` covers cooperative canonical-root lock contention, `checkpoint` covers
  * an interrupted durability boundary, and `io` covers filesystem failures.
+ * `pending-transaction` rejects a candidate read while a prepared or committing
+ * transaction awaits recovery; candidate reads never perform that recovery.
  *
  * The canonical-root lock is cooperative and the digest recheck performed
  * immediately before each mutation is not a compare-and-swap. Together they
@@ -39,7 +41,16 @@ export class ManagedFileError extends Schema.TaggedError<ManagedFileError>()("Ma
 export class ManagedFileTransactionError extends Schema.TaggedError<ManagedFileTransactionError>()(
   "ManagedFileTransactionError",
   {
-    reason: Schema.Literals(["path", "conflict", "io", "journal", "lock", "checkpoint", "blocked"]),
+    reason: Schema.Literals([
+      "path",
+      "conflict",
+      "io",
+      "journal",
+      "lock",
+      "checkpoint",
+      "blocked",
+      "pending-transaction",
+    ]),
     phase: Schema.Literals(["prepare", "commit", "inspect", "cleanup", "recover"]),
     path: Schema.String.pipe(Schema.check(Schema.isMaxLength(4096))),
     cause: Schema.Literals(["filesystem", "invariant", "interrupted-checkpoint"]),
@@ -47,4 +58,29 @@ export class ManagedFileTransactionError extends Schema.TaggedError<ManagedFileT
       Schema.check(Schema.isMaxLength(256)),
     ),
   },
-) {}
+) {
+  override readonly message: string = (() => {
+    switch (this.reason) {
+      case "pending-transaction":
+        return "A pending managed-file transaction must finish recovery before this read.";
+      case "blocked":
+        return "A blocked managed-file transaction requires manual resolution.";
+      case "conflict":
+        return "A managed-file transaction conflicts with a changed file.";
+      case "path":
+        return "A managed-file transaction target failed path safety checks.";
+      case "journal":
+        return "The managed-file transaction journal could not be read or advanced.";
+      case "lock":
+        return "The managed-file transaction lock could not be acquired.";
+      case "checkpoint":
+        return "The managed-file transaction was interrupted at a durability checkpoint.";
+      case "io":
+        return "A filesystem operation failed during the managed-file transaction.";
+      default: {
+        const exhaustive: never = this.reason;
+        return exhaustive;
+      }
+    }
+  })();
+}
