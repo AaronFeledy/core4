@@ -1,363 +1,137 @@
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  assessTranslateExpectations,
-  orderTranslateDiagnostics,
-} from "@lando/engine/planner/home-expectations";
-import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
-import { runConfigTranslator } from "@lando/landofile/config-translate";
-import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
-import { compiledLandofileSource } from "@lando/landofile/serializer";
 import { type TransactionOptions, makeManagedFileTransactions } from "@lando/managed-file/transaction";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { containsReservedBinding } from "@lando/sdk/expressions";
-import { mergeLandofiles } from "@lando/sdk/landofile";
-import { renderCompiledRecipeSnapshot, validateRecipeSecretPrompts } from "@lando/sdk/recipes";
+import { InitTargetExistsError } from "@lando/sdk/errors";
+import type { ConfigTranslateDiagnostic, RecipeManifest } from "@lando/sdk/schema";
+import type { ConfigTranslatorShape, RecipeDecomposerFactory } from "@lando/sdk/services";
+import { Effect } from "effect";
+import { encodeRecipeLandofile } from "./init-pipeline/encoding.ts";
 import {
-  AbsolutePath,
-  type ConfigTranslateDiagnostic,
-  ConfigTranslateRecipeRequestInput,
-  LandofileAuthoringFragment,
-  LandofileAuthoringFragmentNative,
-  type RecipeManifest,
-  RecipeOptionValue,
-} from "@lando/sdk/schema";
-import { REDACTED } from "@lando/sdk/secrets";
-import {
-  ConfigTranslatorRegistry,
-  type ConfigTranslatorShape,
-  type RecipeDecomposerFactory,
-} from "@lando/sdk/services";
-import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
-import { Effect, Option, Result, Schema } from "effect";
-import { RECIPE_TRANSLATOR_ID } from "./config-translator.ts";
-import {
-  type RecipeAuxiliaryContentSource,
-  auxiliaryDestination,
-  readAuxiliaryScaffoldContent,
-  writeAuxiliaryScaffold,
-} from "./init-pipeline/files.ts";
+  type RecipeInitBlockedError,
+  RecipeInitCommitError,
+  RecipeInitPostInitError,
+} from "./init-pipeline/errors.ts";
 import { runBoundPostInit } from "./init-pipeline/post-init.ts";
-import { containsSecretValue, secretReference } from "./init-pipeline/secrets.ts";
-import { postInitAuthorizationIssue } from "./post-init/authorization.ts";
 import type { PostInitOutcome, RunPostInitOptions } from "./post-init/runtime.ts";
-import { makeRecipeTranslatorModule } from "./translator-module.ts";
+import type { PreparedRecipeInit } from "./prepared-init.ts";
 
-export class RecipeInitBlockedError extends Schema.TaggedError<RecipeInitBlockedError>()(
-  "RecipeInitBlockedError",
-  {
-    message: Schema.String,
-    stage: Schema.Literals(["secret-prompts", "translate", "validate", "encode", "diagnostics"]),
-    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-  },
-) {}
-export class RecipeInitCommitError extends Schema.TaggedError<RecipeInitCommitError>()(
-  "RecipeInitCommitError",
-  {
-    message: Schema.String,
-    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-    phase: Schema.String,
-    reason: Schema.String,
-  },
-) {}
-export class RecipeInitPostInitError extends Schema.TaggedError<RecipeInitPostInitError>()(
-  "RecipeInitPostInitError",
-  {
-    message: Schema.String,
-    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
-    committedLandofile: Schema.String,
-    committedAuxiliaryFiles: Schema.Array(Schema.String),
-    failedAction: Schema.String,
-    rolledBack: Schema.Literal(false),
-  },
-) {}
-
-export interface RecipeInitPipelineRequest {
-  readonly appRoot: string;
-  readonly landofileBasename?: string;
-  readonly manifest: RecipeManifest;
-  readonly decomposer: RecipeDecomposerFactory;
-  readonly answers: Readonly<Record<string, unknown>>;
-  readonly secretAnswers?: Readonly<Record<string, string>>;
-  readonly appName: string;
-  readonly encoder: ConfigTranslatorShape;
-  readonly journalRoot: () => string;
-  readonly contentSource?: RecipeAuxiliaryContentSource;
-  readonly sourceRoot?: string;
-  readonly checkpoint?: NonNullable<TransactionOptions["checkpoint"]>;
-  readonly privateFileAccess: PrivateFileAccess;
-  readonly runPostInit?: (options: RunPostInitOptions) => Promise<PostInitOutcome>;
-}
-export interface RecipeInitPipelineResult {
-  readonly landofilePath: string;
-  readonly auxiliaryFiles: ReadonlyArray<string>;
-  readonly backups: ReadonlyArray<string>;
-  readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
-  readonly postInit: PostInitOutcome;
-}
-
-const blocked = (stage: RecipeInitBlockedError["stage"]) =>
-  new RecipeInitBlockedError({
-    stage,
-    message: `Recipe initialization blocked at ${stage}; no scaffold was written.`,
-    remediation: "Correct the recipe inputs, translator, or encoder before retrying initialization.",
-  });
-
+export {
+  RecipeInitBlockedError,
+  RecipeInitCommitError,
+  RecipeInitPostInitError,
+} from "./init-pipeline/errors.ts";
+export { prepareRecipeInit } from "./prepared-init.ts";
 export interface RecipeLandofilePreviewRequest {
   readonly manifest: RecipeManifest;
   readonly decomposer: RecipeDecomposerFactory;
   readonly answers: Readonly<Record<string, unknown>>;
   readonly secretAnswers?: Readonly<Record<string, string>>;
   readonly appName: string;
+  readonly appRoot?: string;
   readonly encoder: ConfigTranslatorShape;
 }
-
+export interface RecipeInitPipelineRequest extends TransactionOptions {
+  readonly prepared: PreparedRecipeInit;
+  readonly postInitEnabled?: boolean;
+  readonly runPostInit?: (options: RunPostInitOptions) => Promise<PostInitOutcome>;
+}
 export interface RecipeLandofilePreview {
   readonly text: string;
-  readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
+  readonly diagnostics: readonly ConfigTranslateDiagnostic[];
 }
-
-interface EncodedRecipeLandofile extends RecipeLandofilePreview {
-  readonly redact: (text: string) => string;
-  readonly containsSecret: (value: unknown) => boolean;
+export type RecipeInitReceipt = Effect.Success<
+  ReturnType<ReturnType<typeof makeManagedFileTransactions>["run"]>
+>;
+export interface RecipeInitPipelineResult {
+  readonly landofilePath: string;
+  readonly auxiliaryFiles: readonly string[];
+  readonly backups: readonly string[];
+  readonly diagnostics: readonly ConfigTranslateDiagnostic[];
+  readonly postInit: PostInitOutcome;
+  readonly receipt: RecipeInitReceipt;
 }
-
-// Preview and commit share validation and encoding; prompt answers can change
-// between the preview and the write.
-const encodeRecipeLandofile = Effect.fnUntraced(function* (
-  request: RecipeLandofilePreviewRequest & {
-    readonly appRoot?: string;
-    readonly landofileBasename?: string;
-  },
-): Effect.fn.Return<EncodedRecipeLandofile, RecipeInitBlockedError, never> {
-  const validated = validateRecipeSecretPrompts(request.manifest);
-  if (Result.isFailure(validated)) return yield* Effect.fail(blocked("secret-prompts"));
-  const raw = validated.success
-    .filter(({ disposition }) => disposition.kind === "init-only")
-    .map(({ promptName }) => request.secretAnswers?.[promptName])
-    .filter((value): value is string => value !== undefined && value.length > 0);
-  const containsSecret = (value: unknown) => containsSecretValue(raw, value);
-  if (
-    containsSecret([
-      request.answers,
-      request.manifest,
-      request.appRoot,
-      request.appName,
-      request.landofileBasename,
-    ]) ||
-    validated.success.some(({ promptName }) => Object.hasOwn(request.answers, promptName))
-  ) {
-    return yield* Effect.fail(blocked("secret-prompts"));
-  }
-  const references = yield* Effect.try({
-    try: () =>
-      Object.fromEntries(
-        validated.success.map(({ promptName, disposition }) => [
-          promptName,
-          secretReference(disposition, request.secretAnswers?.[promptName]),
-        ]),
-      ),
-    catch: () => blocked("secret-prompts"),
-  });
-  const input = yield* Schema.decodeUnknownEffect(ConfigTranslateRecipeRequestInput)({
-    _tag: "recipe-request",
-    recipe: { id: request.manifest.id, version: request.manifest.version },
-    sourceId: `recipe:${request.manifest.id}@${request.manifest.version}`,
-    answers: request.answers,
-    secretAnswers: references,
-  }).pipe(Effect.mapError(() => blocked("translate")));
-  const service = yield* Effect.serviceOption(RedactionService);
-  if (Option.isSome(service)) yield* service.value.registerValues(raw);
-  const options = { redactionTokens: raw, sourceEnv: { ...process.env } };
-  const base = Option.isSome(service)
-    ? yield* service.value.forProfile("secrets", options)
-    : createStandaloneRedactor("secrets", options);
-  // Exact masking also covers short values intentionally excluded by profile heuristics.
-  const tokens = [...new Set(raw)].sort((left, right) => right.length - left.length);
-  const redact = (text: string) =>
-    base.redactString(tokens.reduce((text, secret) => text.replaceAll(secret, REDACTED), text));
-  const redactor = { ...base, redactString: redact };
-  const module = yield* Effect.try({
-    try: () =>
-      makeRecipeTranslatorModule({
-        decomposers: new Map([[request.manifest.id, request.decomposer]]),
-        redactor,
-      }),
-    catch: () => blocked("translate"),
-  });
-  const translators = yield* Effect.flatMap(ConfigTranslatorRegistry, (registry) => registry.list).pipe(
-    Effect.provide(ConfigTranslatorRegistryLayer.layerWith([module])),
-    Effect.mapError(() => blocked("translate")),
-  );
-  const translator = translators.find(({ id }) => id === RECIPE_TRANSLATOR_ID);
-  if (translator === undefined) return yield* Effect.fail(blocked("translate"));
-  const translated = yield* Effect.suspend(() => runConfigTranslator(translator, input)).pipe(
-    Effect.catch(() => Effect.fail(blocked("translate"))),
-  );
-  const output = translated.outputs[0];
-  if (translated.outputs.length !== 1 || output?.targetLayer !== "canonical")
-    return yield* Effect.fail(blocked("validate"));
-  const mapping = yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(output.fragment).pipe(
-    Effect.flatMap((value) => Schema.encodeEffect(LandofileAuthoringFragmentNative)(value)),
-    Effect.flatMap(Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))),
-    Effect.mapError(() => blocked("validate")),
-  );
-  const compilationContext = { appRoot: AbsolutePath.make(request.appRoot ?? process.cwd()), env: {} };
-  const snapshot = request.manifest.snapshot;
-  if (containsReservedBinding(mapping)) return yield* Effect.fail(blocked("validate"));
-  let source = mapping;
-  if (snapshot !== undefined) {
-    const compiled = yield* Effect.fromResult(
-      renderCompiledRecipeSnapshot(
-        snapshot,
-        yield* Schema.decodeUnknownEffect(Schema.Record(Schema.String, RecipeOptionValue))({
-          ...snapshot.defaults,
-          ...request.answers,
-        }).pipe(Effect.mapError(() => blocked("validate"))),
-        compilationContext,
-      ),
-    ).pipe(Effect.mapError(() => blocked("validate")));
-    const snapshotSource = yield* Effect.try({
-      try: () => compiledLandofileSource(compiled),
-      catch: () => blocked("encode"),
-    });
-    source = { ...snapshotSource, ...(mapping.recipe === undefined ? {} : { recipe: mapping.recipe }) };
-  }
-  const context = mergeLandofiles([source, { name: request.appName }]);
-  yield* Schema.decodeUnknownEffect(LandofileAuthoringFragment)(context, {
-    onExcessProperty: "error",
-  }).pipe(Effect.mapError(() => blocked("validate")));
-  if (containsSecret(context)) return yield* Effect.fail(blocked("validate"));
-  const encode = request.encoder.encode;
-  if (encode === undefined) return yield* Effect.fail(blocked("encode"));
-  const encoded = yield* Effect.suspend(() => encode({ context, fragment: context })).pipe(
-    Effect.catch(() => Effect.fail(blocked("encode"))),
-  );
-  const assessmentDiagnostics = yield* assessTranslateExpectations(translated.expectations, context);
-  const diagnostics = orderTranslateDiagnostics(
-    [...translated.diagnostics, ...encoded.diagnostics, ...assessmentDiagnostics],
-    [input.sourceId],
-  ).map((diagnostic) => ({
-    ...diagnostic,
-    message: redact(diagnostic.message),
-    ...(diagnostic.remediation === undefined ? {} : { remediation: redact(diagnostic.remediation) }),
-  }));
-  if (
-    diagnostics.some(({ kind }) => kind === "unsupported" || kind === "non-portable") ||
-    containsSecret(diagnostics)
-  )
-    return yield* Effect.fail(blocked("diagnostics"));
-  if (containsSecret(encoded.text)) return yield* Effect.fail(blocked("encode"));
-  return { text: encoded.text, diagnostics, redact, containsSecret };
-});
-
-/**
- * Encode the Landofile a recipe would write, without creating or mutating any
- * file. Used for pre-write preview surfaces such as the init name prompt.
- */
 export const previewRecipeLandofile = (
   request: RecipeLandofilePreviewRequest,
-): Effect.Effect<RecipeLandofilePreview, RecipeInitBlockedError, never> =>
+): Effect.Effect<RecipeLandofilePreview, RecipeInitBlockedError> =>
   Effect.map(encodeRecipeLandofile(request), ({ text, diagnostics }) => ({ text, diagnostics }));
 
 export const runRecipeInitPipeline = Effect.fn("RecipeInitPipeline.run")(function* (
   request: RecipeInitPipelineRequest,
-): Effect.fn.Return<
-  RecipeInitPipelineResult,
-  RecipeInitBlockedError | RecipeInitCommitError | RecipeInitPostInitError,
-  never
-> {
-  if (
-    (request.manifest.postInit ?? []).some(
-      (action) => postInitAuthorizationIssue(action, request.manifest.prompts ?? []) !== undefined,
-    )
-  ) {
-    return yield* Effect.fail(blocked("validate"));
-  }
-  const { text, diagnostics, redact, containsSecret } = yield* encodeRecipeLandofile(request);
-  const basename = request.landofileBasename ?? ".lando.yml";
-  const landofilePath = join(request.appRoot, basename);
-  // The pipeline owns the Landofile itself, so a manifest entry that targets a
-  // Landofile layer is the recipe's own template and is never written here.
-  const auxiliaryEntries = (request.manifest.files ?? [])
-    .map((file, index) => ({ file, index }))
-    .filter(
-      ({ file }) => file.dest !== basename && file.dest !== LANDOFILE_NAME && file.dest !== LANDOFILE_TS_NAME,
+) {
+  const plan = request.prepared;
+  const landofilePath = join(plan.appRoot, ".lando.yml");
+  const conflict = plan.conflicts[0];
+  if (conflict !== undefined)
+    return yield* Effect.fail(
+      new InitTargetExistsError({
+        message: "Init target already has a Landofile.",
+        path: join(plan.appRoot, conflict),
+        remediation: "Remove the existing Landofile or choose a different directory.",
+      }),
     );
-  if (
-    auxiliaryEntries.some(
-      ({ file }) => file.when !== undefined || file.mode !== undefined || file.engine !== undefined,
-    )
-  ) {
-    return yield* Effect.fail(blocked("validate"));
-  }
   yield* Effect.tryPromise({
-    try: async () => {
-      for (const { file } of auxiliaryEntries) {
-        auxiliaryDestination(request.appRoot, file.dest);
-        await readAuxiliaryScaffoldContent({
-          file,
-          appName: request.appName,
-          contentSource: request.contentSource,
-          sourceRoot: request.sourceRoot,
-        });
-      }
-    },
-    catch: () => blocked("validate"),
+    try: () => mkdir(plan.appRoot, { recursive: true }),
+    catch: () =>
+      new RecipeInitCommitError({
+        phase: "prepare",
+        reason: "io",
+        message: "Could not create the initialization destination.",
+        remediation: "Check destination permissions before retrying initialization.",
+      }),
   });
-  const receipt = yield* makeManagedFileTransactions({
-    journalRoot: request.journalRoot,
-    ...(request.checkpoint === undefined ? {} : { checkpoint: request.checkpoint }),
-    privateFileAccess: request.privateFileAccess,
-  })
+  const transactions = makeManagedFileTransactions(request);
+  const receipt = yield* transactions
     .run({
-      appRoot: request.appRoot,
-      operations: [{ kind: "write", path: basename, content: text, expectedBefore: { present: false } }],
+      appRoot: plan.appRoot,
+      operations: plan.outputs.map(({ destination, content, mode }) => ({
+        kind: "create",
+        path: destination,
+        content,
+        mode,
+      })),
+      readConditions: [{ path: ".lando.ts", expectedBefore: { present: false } }],
     })
     .pipe(
-      Effect.mapError(
-        (error) =>
-          new RecipeInitCommitError({
-            phase: error.phase,
-            reason: error.reason,
-            message: redact(
-              `Recipe scaffold transaction failed (${error.phase}/${error.reason}): ${error.cause}${error.path === "" ? "" : ` at ${error.path}`}.`,
-            ),
-            remediation: redact(error.remediation),
-          }),
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          const journal = yield* transactions
+            .readJournal(plan.appRoot)
+            .pipe(Effect.orElseSucceed(() => null));
+          return yield* Effect.fail(
+            new RecipeInitCommitError({
+              phase: error.phase,
+              reason: error.reason,
+              message: plan.redact(
+                `Recipe static publication failed (${error.phase}/${error.reason})${error.path === "" ? "" : ` at ${error.path}`}. No post-init actions ran; published files were not rolled back.`,
+              ),
+              remediation: plan.redact(error.remediation),
+              ...(journal === null ? {} : { transactionId: journal.id, transactionState: journal.state }),
+            }),
+          );
+        }),
       ),
     );
-  const auxiliaryFiles: string[] = [];
+  const auxiliaryFiles = plan.outputs.slice(1).map(({ destination }) => join(plan.appRoot, destination));
   const postFailure = (failedAction: string) =>
     new RecipeInitPostInitError({
-      message: `Recipe action ${failedAction} failed; the committed scaffold was kept. External side effects were NOT rolled back.`,
+      message: `Recipe action ${failedAction} failed; committed files were kept. External side effects were NOT rolled back.`,
       remediation:
-        "The committed scaffold was kept and external side effects were NOT rolled back. Inspect the named action and committed files before retrying.",
+        "Inspect the named action and committed files before retrying. External effects are not recoverable by the static transaction.",
       committedLandofile: landofilePath,
-      committedAuxiliaryFiles: [...auxiliaryFiles],
+      committedAuxiliaryFiles: auxiliaryFiles,
       failedAction,
       rolledBack: false,
     });
-  for (const { file, index } of auxiliaryEntries) {
-    const path = yield* Effect.tryPromise({
-      try: () =>
-        writeAuxiliaryScaffold({
-          appRoot: request.appRoot,
-          file,
-          appName: request.appName,
-          containsSecret,
-          contentSource: request.contentSource,
-          sourceRoot: request.sourceRoot,
-        }),
-      catch: () => postFailure(`files[${index}]`),
-    });
-    if (path !== undefined) auxiliaryFiles.push(path);
-  }
-  const postInit = yield* runBoundPostInit({ request, redact, postFailure });
+  const postInit =
+    request.postInitEnabled === false
+      ? { executed: [] }
+      : yield* runBoundPostInit({ request, redact: plan.redact, postFailure });
   return {
     landofilePath,
     auxiliaryFiles,
-    backups: receipt.backups.map((path) => join(request.appRoot, path)),
-    diagnostics,
+    backups: receipt.backups.map((path) => join(plan.appRoot, path)),
+    diagnostics: plan.diagnostics,
     postInit,
-  };
+    receipt,
+  } satisfies RecipeInitPipelineResult;
 });

@@ -67,7 +67,7 @@ const discoverFrom = async (cwd: string) => {
 };
 
 describe("lando init --recipe (non-node-postgres)", () => {
-  test("rejects file rendering for a local recipe that is not node-postgres", async () => {
+  test("rejects a local recipe without config before writing", async () => {
     await withTempCwd(async (dir) => {
       await Bun.write(
         join(dir, "my-recipe", "recipe.yml"),
@@ -82,11 +82,8 @@ describe("lando init --recipe (non-node-postgres)", () => {
         caught = err;
       }
       expect(caught).toBeInstanceOf(Error);
-      const message = (caught as Error).message;
-      expect(message).toContain("not supported");
-      expect(message).toContain("only bundled built-in recipes");
-      expect(message).not.toMatch(/\bAlpha\b/);
-      expect(message).not.toMatch(/\bBeta\b/);
+      expect(caught).toMatchObject({ _tag: "RecipeManifestValidationError" });
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(false);
     });
   });
 });
@@ -209,13 +206,13 @@ describe("lando init --full", () => {
 });
 
 describe("lando init --recipe (non-node-postgres)", () => {
-  test("rejects file rendering for a local recipe that is not node-postgres", async () => {
+  test("rejects invalid local config before creating the named app", async () => {
     await withTempCwd(async (dir) => {
       const recipeDir = join(dir, "my-recipe");
       await mkdir(recipeDir, { recursive: true });
       await writeFile(
         join(recipeDir, "recipe.yml"),
-        "id: my-recipe\ntitle: My Recipe\ndescription: A test local recipe.\nversion: 0.1.0\n",
+        "id: my-recipe\ntitle: My Recipe\ndescription: A test local recipe.\nversion: 0.1.0\nconfig:\n  runtime: invalid\n",
       );
 
       const { initAppWithOwnerOnlyFileAccess: initApp } = await import("../_support/private-file-access.ts");
@@ -232,11 +229,8 @@ describe("lando init --recipe (non-node-postgres)", () => {
         caught = err;
       }
       expect(caught).toBeInstanceOf(Error);
-      const message = (caught as Error).message;
-      expect(message).toContain("not supported");
-      expect(message).toContain("only bundled built-in recipes");
-      expect(message).not.toMatch(/\bAlpha\b/);
-      expect(message).not.toMatch(/\bBeta\b/);
+      expect(caught).toMatchObject({ _tag: "RecipeInitBlockedError", stage: "translate" });
+      expect(await Bun.file(join(dir, "test-app", ".lando.yml")).exists()).toBe(false);
     });
   });
 });

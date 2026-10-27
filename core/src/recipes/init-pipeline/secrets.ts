@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type { ConfigTranslateSecretReference, RecipeSecretDisposition } from "@lando/sdk/schema";
 
 export const secretReference = (
@@ -26,6 +27,10 @@ export const secretReference = (
 
 export const containsSecretValue = (raw: readonly string[], value: unknown): boolean => {
   if (typeof value === "string") return raw.some((secret) => value.includes(secret));
+  if (value instanceof Uint8Array) {
+    const bytes = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    return raw.some((secret) => bytes.includes(secret, 0, "utf8"));
+  }
   if (Array.isArray(value)) return value.some((item) => containsSecretValue(raw, item));
   return (
     typeof value === "object" &&

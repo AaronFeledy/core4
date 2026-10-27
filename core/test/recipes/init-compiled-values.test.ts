@@ -2,31 +2,27 @@ import { expect, test } from "bun:test";
 import { plugin } from "@lando/lando4";
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
-import { PortablePath, RecipeManifest, ServiceName } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
-import { makeOptionBearingDecomposer } from "../../src/recipes/builtin/option-bearing-decomposer.ts";
-import { symfonyRecipeSource, symfonyRecipeYaml } from "../../src/recipes/builtin/symfony/manifest.ts";
+import { compileRecipeSource } from "@lando/sdk/recipes";
+import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
+import { source } from "../../src/recipes/builtin/symfony/source.ts";
+import { makeCompiledRecipeDecomposer } from "../../src/recipes/compiled-decomposer.ts";
 import { previewRecipeLandofile } from "../../src/recipes/init-pipeline.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 
 test("scaffolds snapshot-authored URL sites without promoting option-produced binding text", async () => {
   // Given
-  const original = Effect.runSync(
-    parseRecipeYaml({ source: symfonyRecipeSource, content: symfonyRecipeYaml }).pipe(
-      Effect.flatMap(Schema.decodeUnknownEffect(RecipeManifest)),
+  const manifest = Result.getOrThrow(
+    compileRecipeSource(
+      {
+        ...source,
+        options: { ...source.options, webroot: { type: { kind: "string" }, default: "public" } },
+      },
+      { sourceKind: "local", packageName: "fixture", assets: [] },
     ),
   );
-  if (original.snapshot === undefined) throw new Error("fixture snapshot missing");
-  const snapshot = {
-    ...original.snapshot,
-    optionTypes: { ...original.snapshot.optionTypes, webroot: { kind: "string" as const } },
-  };
-  const manifest = { ...original, snapshot };
-  const decomposer = makeOptionBearingDecomposer({
-    producer: snapshot.identity,
-    displayName: "compiled fixture",
-    optionTypes: snapshot.optionTypes,
-    fragment: () => ({ services: {} }),
+  const decomposer = makeCompiledRecipeDecomposer(manifest, {
+    source: "fixture",
+    appRoot: AbsolutePath.make("/tmp/compiled-init"),
   });
   const encoderLoader = plugin.configTranslators?.get("lando4");
   if (encoderLoader === undefined) throw new Error("lando4 encoder missing");
