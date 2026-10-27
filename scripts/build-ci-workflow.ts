@@ -306,7 +306,7 @@ ${codegenStep}
 
       - name: Upload Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: docs/dist
 
@@ -341,7 +341,7 @@ ${timingStartStep}
 ${setupBunSteps}
 
       - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-linux-x64
           path: dist
@@ -394,7 +394,7 @@ export const landoRootlessPrereqSteps = `      - name: Provision rootless runtim
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true`;
 
 const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: runtime-bundle-linux-x64-current
           path: dist/cache/runtime-bundle
@@ -560,7 +560,7 @@ ${timingStartStep}
 
       - name: Restore assembled Linux x64 runtime bundle
         id: runtime-bundle-cache
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache}
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
           key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
@@ -577,7 +577,7 @@ ${timingStartStep}
 
       - name: Setup Go for Linux Podman source build
         if: ${linuxRuntimeBundleCacheMiss}
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo}
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 
@@ -630,7 +630,7 @@ ${timingNoticeStep("runtime-bundle-win32-x64", 15)}
 `;
 
 const windowsManagedSetupSteps = `      - name: Download current-commit Windows runtime bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle
@@ -698,7 +698,7 @@ ${codegenStep}
 ${containerHelperDownloadStep}
 
       - name: Download ${platform.id} binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-${platform.id}
           path: dist
@@ -737,7 +737,7 @@ const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 ${landoRuntimeBundleSetupSteps}`;
 
 const linuxGuideScenarioE2eSteps = `      - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: lando-linux-x64
           path: dist
