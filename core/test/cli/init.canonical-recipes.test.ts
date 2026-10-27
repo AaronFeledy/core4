@@ -301,8 +301,11 @@ describe("lando init — canonical common-stack recipes", () => {
           id: canonical.recipe,
           version: manifest.version,
           producer: manifest.snapshot?.identity,
-          options: Object.keys(manifest.snapshot?.optionTypes ?? {}).length === 0 ? {} : result.answers,
         });
+        if (typeof landofile.recipe !== "object") throw new Error("Expected generated recipe provenance");
+        expect(landofile.recipe.options).toEqual(
+          Object.fromEntries(Object.entries(result.answers).filter(([name]) => name !== "name")),
+        );
 
         const services = landofile.services ?? {};
         const actualServiceNames = Object.keys(services).sort();

@@ -2,6 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, readdir, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makePromiseInteractionPrompter } from "../../src/interaction/prompter.ts";
+import { makeTestInteractionService } from "../../src/testing/interaction.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { externalRecipeSource, externalRecipeYaml } from "./fixtures/external-source.ts";
 
@@ -105,6 +107,7 @@ test("raw secret bytes in an auxiliary asset block the Landofile commit", async 
   const { root, options } = await fixture();
   const recipe = join(root, "external");
   const token = "päss🔐";
+  const interaction = makeTestInteractionService({ answers: { token } });
   await Bun.write(
     join(recipe, "recipe.yml"),
     externalRecipeYaml(
@@ -122,9 +125,18 @@ test("raw secret bytes in an auxiliary asset block the Landofile commit", async 
   );
   await Bun.write(join(recipe, "asset"), new Uint8Array([0xff, ...new TextEncoder().encode(token), 0xfe]));
   // When / Then
-  await expect(initApp({ ...options, recipe, answers: { token } })).rejects.toMatchObject({
+  await expect(
+    initApp({
+      ...options,
+      recipe,
+      nonInteractive: false,
+      interaction: makePromiseInteractionPrompter(interaction.service),
+    }),
+  ).rejects.toMatchObject({
     _tag: "RecipeInitBlockedError",
     stage: "validate",
   });
+  expect(interaction.transcript()).toContainEqual(expect.objectContaining({ name: "token", type: "secret" }));
   expect(await Bun.file(join(options.destination, ".lando.yml")).exists()).toBe(false);
+  expect(await Bun.file(join(options.destination, "notice")).exists()).toBe(false);
 });

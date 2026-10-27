@@ -18,4 +18,5 @@ files:
   - src: extra.txt
     dest: extra.txt
 postInit:
-  - type: gitInit
+  - type: message
+    text: Child initialized
