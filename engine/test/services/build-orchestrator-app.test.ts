@@ -47,7 +47,6 @@ const service = (name: string, milliseconds: number): ServicePlan => ({
   artifact: { kind: "ref" as const, ref: `test/${name}:latest` },
   environment: name === "node" ? { DB_PASSWORD: "bare-db-password", APP_REGION: "us-east-1" } : {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

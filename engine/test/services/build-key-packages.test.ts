@@ -25,7 +25,6 @@ const key = (buildSteps: ReadonlyArray<PackageStep>) => {
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

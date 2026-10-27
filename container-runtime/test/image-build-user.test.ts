@@ -39,7 +39,6 @@ const buildWithInspection = (
     artifact: { kind: "ref", ref: "debian:12" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

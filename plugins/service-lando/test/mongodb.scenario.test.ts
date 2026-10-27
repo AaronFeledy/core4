@@ -205,9 +205,10 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     expect(db.endpoints).toEqual([
       { _tag: "internal", port: 27017, protocol: "tcp", name: "db", primary: true },
     ]);
-    expect(db.storage).toHaveLength(1);
-    expect(db.storage[0]?.store).toBe("myapp-mongodb-data");
-    expect(String(db.storage[0]?.target)).toBe("/data/db");
+    const volumes = db.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-mongodb-data");
+    expect(String(volumes[0]?.target)).toBe("/data/db");
     expect(db.healthcheck?.kind).toBe("command");
     expect(db.healthcheck?.target?.port).toBe(27017);
     expect(db.readiness?.target?.port).toBe(27017);

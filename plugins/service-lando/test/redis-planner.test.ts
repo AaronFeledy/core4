@@ -29,7 +29,11 @@ test("creates no generated stores when Redis persistence is disabled", async () 
   );
   // Then
   expect(plan.stores).toEqual([]);
-  expect(Object.values(plan.services).flatMap((service) => service.storage)).toEqual([]);
+  expect(
+    Object.values(plan.services).flatMap((service) =>
+      service.mounts.filter((mount) => mount.type === "volume"),
+    ),
+  ).toEqual([]);
 });
 
 test("refuses an authored Redis command that bypasses explicit authentication", async () => {

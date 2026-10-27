@@ -8,7 +8,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { DateTime } from "effect";
+import { DateTime, Effect } from "effect";
 
 const overlayFixture = (): AppPlan => {
   const metadata = {
@@ -23,7 +23,6 @@ const overlayFixture = (): AppPlan => {
     primary: true,
     environment: { KEEP: "yes" },
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -54,11 +53,13 @@ test("adds SSH_AUTH_SOCK and a read-only directory mount only to eligible servic
   // Given
   const plan = overlayFixture();
   // When
-  const result = withSshAgentOverlay(plan, {
-    kind: "ssh",
-    socketName: "agent.sock",
-    mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/socket") },
-  });
+  const result = Effect.runSync(
+    withSshAgentOverlay(plan, {
+      kind: "ssh",
+      socketName: "agent.sock",
+      mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/socket") },
+    }),
+  );
   // Then
   expect(result.services[ServiceName.make("web")]?.environment).toEqual({
     KEEP: "yes",
@@ -67,6 +68,7 @@ test("adds SSH_AUTH_SOCK and a read-only directory mount only to eligible servic
   expect(result.services[ServiceName.make("web")]?.mounts).toEqual([
     {
       type: "bind",
+      origin: "integration",
       source: "/relay/socket",
       target: PortablePath.make("/run/lando/ssh-agent"),
       readOnly: true,
@@ -77,7 +79,7 @@ test("adds SSH_AUTH_SOCK and a read-only directory mount only to eligible servic
   expect(result.services[ServiceName.make("db")]).toBe(plan.services[ServiceName.make("db")]);
 });
 
-test("strip removes the overlay and volume delivery replaces rather than duplicates mounts", async () => {
+test("strip removes the overlay and volume delivery rejects duplicate targets", async () => {
   const { withSshAgentOverlay, stripSshAgentOverlay } = await import(
     "../../../src/subsystems/ssh-agent/overlay.ts"
   );
@@ -88,15 +90,59 @@ test("strip removes the overlay and volume delivery replaces rather than duplica
     socketName: "agent.sock",
     mount: { _tag: "volume" as const, volume: "agent-volume" },
   };
-  const overlaid = withSshAgentOverlay(withSshAgentOverlay(plan, session), session);
+  const overlaid = Effect.runSync(withSshAgentOverlay(plan, session));
+  const duplicate = Effect.runSync(withSshAgentOverlay(overlaid, session).pipe(Effect.result));
   // When
   const result = stripSshAgentOverlay(overlaid);
   // Then
   expect(overlaid.services[ServiceName.make("web")]?.mounts).toHaveLength(1);
   expect(overlaid.services[ServiceName.make("web")]?.mounts[0]).toMatchObject({
     type: "volume",
-    source: "agent-volume",
+    store: "agent-volume",
     readOnly: true,
   });
   expect(result).toEqual(plan);
+  expect(duplicate._tag).toBe("Failure");
+  if (duplicate._tag === "Failure") expect(duplicate.failure._tag).toBe("SshAgentTransportError");
+});
+
+test("rejects when the overlay target collides with a planned mount", async () => {
+  const { withSshAgentOverlay, stripSshAgentOverlay } = await import(
+    "../../../src/subsystems/ssh-agent/overlay.ts"
+  );
+  const { SshAgentTransportError } = await import("@lando/sdk/errors");
+  // Given an eligible service already claiming the agent socket directory
+  const plan = overlayFixture();
+  const web = plan.services[ServiceName.make("web")];
+  if (web === undefined) throw new Error("missing web");
+  const colliding = {
+    ...plan,
+    services: {
+      ...plan.services,
+      [web.name]: {
+        ...web,
+        mounts: [
+          {
+            type: "bind" as const,
+            origin: "authored" as const,
+            source: "/other",
+            target: PortablePath.make("/run/lando/ssh-agent"),
+            readOnly: true,
+            createHostPath: false,
+            realization: "passthrough" as const,
+          },
+        ],
+      },
+    },
+  };
+  // When/Then
+  const result = Effect.runSync(
+    withSshAgentOverlay(stripSshAgentOverlay(colliding), {
+      kind: "ssh",
+      socketName: "agent.sock",
+      mount: { _tag: "bind-directory", directory: AbsolutePath.make("/relay/socket") },
+    }).pipe(Effect.result),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(SshAgentTransportError);
 });

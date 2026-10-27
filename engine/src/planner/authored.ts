@@ -15,10 +15,9 @@ import {
   serviceFeatureExtension,
   toAppFeatureDraft,
 } from "./extensions.ts";
-import { mergeDefaultExcludes } from "./file-sync.ts";
 import { serviceHomeIntent } from "./home.ts";
 import { type PlannedServiceDraft, type ResolvedService, servicePlanError } from "./service-types.ts";
-import { applyAuthoredStorage, plannedContainerDestination } from "./storage.ts";
+import { plannedContainerDestination } from "./storage.ts";
 
 export const validateAuthoredAppMount = (
   service: ServiceConfig,
@@ -115,15 +114,10 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
         ),
       ),
     );
-    const withDefaultExcludes = mergeDefaultExcludes(composition.plan);
-    const withStorage = applyAuthoredStorage(
-      applyAuthoredHealthcheck(withDefaultExcludes, service),
+    const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
+      applyAuthoredHealthcheck(composition.plan, service),
       service,
-      input.appRoot,
-      name,
     );
-    if (withStorage instanceof LandofileValidationError) return yield* Effect.fail(withStorage);
-    const authoredServicePlanWithoutLabels = applyAuthoredDependencies(withStorage, service);
     const authoredServicePlan = mergeComposeKnobs(
       mergeComposeExtension(authoredServicePlanWithoutLabels, service),
       service,
@@ -162,6 +156,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
           };
     plannedServiceDrafts.push({
       name,
+      authoredStorage: service.storage,
       hostnames: service.hostnames ?? [],
       authoredArtifact,
       authored,

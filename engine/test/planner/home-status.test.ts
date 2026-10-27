@@ -18,7 +18,6 @@ const basePlan = Schema.decodeUnknownSync(ServicePlan)({
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -61,7 +60,7 @@ test.each([
   expect(result).not.toBeInstanceOf(LandofileValidationError);
   if (result instanceof LandofileValidationError) return;
   expect(result.home).toEqual(expected);
-  expect(result.storage).toHaveLength(expected.state === "persisted" ? 1 : 0);
+  expect(result.mounts).toHaveLength(expected.state === "persisted" ? 1 : 0);
 });
 
 test("sets unknown no-identity instead of guessing a home", () => {
@@ -76,7 +75,7 @@ test("sets unknown no-identity instead of guessing a home", () => {
       identity: undefined,
     }),
   });
-  expect(result).toMatchObject({ home: { state: "unknown", reason: "no-identity" }, storage: [] });
+  expect(result).toMatchObject({ home: { state: "unknown", reason: "no-identity" }, mounts: [] });
 });
 
 test.each([undefined, "10001:10001"])(
@@ -105,7 +104,11 @@ test.each([undefined, "10001:10001"])(
 );
 
 test.each([
-  ["storage", { storage: [{ store: "mine", target: "/home/./node/", readOnly: false }] }, "volume"],
+  [
+    "storage",
+    { mounts: [{ type: "volume", store: "mine", target: "/home/./node/", readOnly: false }] },
+    "volume",
+  ],
   [
     "bind",
     {
@@ -124,9 +127,7 @@ test.each([
   [
     "volume",
     {
-      mounts: [
-        { type: "volume", source: "mine", target: "/home/node", readOnly: false, realization: "passthrough" },
-      ],
+      mounts: [{ type: "volume", store: "mine", target: "/home/node", readOnly: false }],
     },
     "volume",
   ],
@@ -138,18 +139,26 @@ test.each([
   [
     "appMount",
     {
-      appMount: {
-        source: "/tmp/app",
-        target: "/home/other/../node",
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: "/tmp/app",
+          target: "/home/other/../node",
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "passthrough",
+        },
+      ],
     },
     "bind",
   ],
-  ["tmpfs option", { extensions: { compose: { tmpfs: ["/home/node/:rw,size=1m"] } } }, "tmpfs"],
+  [
+    "tmpfs option",
+    { mounts: [{ type: "tmpfs", target: "/home/node/", readOnly: false, options: "size=1m" }] },
+    "tmpfs",
+  ],
 ] as const)("keeps authored %s at the canonical home target", (_name, overrides, mount) => {
   const servicePlan = Schema.decodeUnknownSync(ServicePlan)({
     ...Schema.encodeSync(ServicePlan)(basePlan),
@@ -164,7 +173,7 @@ test.each([
     intent: { serviceType: "node:22", identity },
   });
   expect(result).toMatchObject({ home: { state: "authored", target: "/home/node", mount } });
-  if (!(result instanceof LandofileValidationError)) expect(result.storage).toEqual(servicePlan.storage);
+  if (!(result instanceof LandofileValidationError)) expect(result.mounts).toEqual(servicePlan.mounts);
 });
 
 test("does not treat parent or child mounts as the exact home target", () => {

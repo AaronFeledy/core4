@@ -12,7 +12,6 @@ export const ComposeServiceKnobKey = Schema.Literals([
   "devices",
   "ulimits",
   "sysctls",
-  "tmpfs",
   "shm_size",
   "dns",
   "dns_search",

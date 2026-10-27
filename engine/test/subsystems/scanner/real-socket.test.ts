@@ -74,7 +74,6 @@ const planWith = (scanner: ScanPlan): AppPlan => ({
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       routes: [],
       dependsOn: [],
       hostAliases: [],

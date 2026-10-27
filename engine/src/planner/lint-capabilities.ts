@@ -1,4 +1,8 @@
-import type { CapabilityError, PublicationUnsupportedError } from "@lando/sdk/errors";
+import {
+  type CapabilityError,
+  LandofileValidationError,
+  type PublicationUnsupportedError,
+} from "@lando/sdk/errors";
 import {
   ServiceName,
   type ServicePlan,
@@ -13,6 +17,7 @@ import { runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { resolveGpgAgentIntent } from "../subsystems/gpg-agent/intent.ts";
 import { SSH_AGENT_FEATURE_ID } from "../subsystems/ssh/api.ts";
 import { resolveSshAgentIntent } from "../subsystems/ssh/intent.ts";
+import { compileAuthoredMounts } from "./authored-mounts.ts";
 import {
   appFeatureCapabilityError,
   assertAuthoredNetworksSupported,
@@ -115,6 +120,17 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         yield* check(assertComposePreservedPathsSupported(provider, capabilities, services));
       }
     const config = seed.resolution.normalizedConfig;
+    const compiledMounts = compileAuthoredMounts(
+      {
+        appRoot: resolution.appRoot,
+        appSlug: resolution.appSlug,
+        serviceName: name,
+        configs: landofile.configs,
+      },
+      config,
+      seed.service.storage,
+    );
+    const mounts = compiledMounts instanceof LandofileValidationError ? [] : compiledMounts;
     const projection = resolution.endpointProjection.services.get(seed.name);
     const endpoints = projection?.endpoints;
     const publicationError = publicationCapabilityError(provider, capabilities, {
@@ -144,9 +160,9 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
       name,
       bindMounts:
         (seed.resolution.base === "lando" && config.appMount !== false) ||
-        config.volumes?.some((volume) => volume.type === "bind") === true,
+        mounts.some((mount) => mount.type === "bind"),
       artifactBuild: config.build !== undefined && isComposeBuild(config.build),
-      persistentStorage: seed.authored.byStore.size > 0,
+      persistentStorage: mounts.some((mount) => mount.type === "volume"),
     }))
       record(error);
   }

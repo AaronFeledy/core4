@@ -66,7 +66,7 @@ for (const target of targets) {
       const mount = { type: "volume" as const, source: "user-data", target, readOnly: false };
       const authored: ServicePlan = {
         ...selected,
-        storage: [{ store: mount.source, target: PortablePath.make(target), readOnly: false }],
+        mounts: [{ type: "volume", store: mount.source, target: PortablePath.make(target), readOnly: false }],
       };
       // When
       const { row } = await runInfo(authored, { status: "present", mounts: [mount] }, labels);
@@ -112,14 +112,19 @@ const overlays = {
 } as const;
 
 for (const kind of ["ssh", "gpg"] as const) {
-  const applied = overlays[kind]({ ...plan, services: { [eligible.name]: eligible } });
+  const input = { ...plan, services: { [eligible.name]: eligible } };
+  const applied = kind === "ssh" ? Effect.runSync(overlays.ssh(input)) : Effect.runSync(overlays.gpg(input));
   const selected = applied.services[eligible.name];
   if (selected === undefined) throw new TypeError("Missing applied fixture service");
-  const observed = selected.mounts.map(({ type, source, target, readOnly }) => ({
-    type,
-    ...(source === undefined ? {} : { source }),
-    target,
-    readOnly,
+  const observed = selected.mounts.map((mount) => ({
+    type: mount.type,
+    ...(mount.type === "bind"
+      ? { source: mount.source }
+      : mount.type === "volume"
+        ? { source: mount.store }
+        : {}),
+    target: mount.target,
+    readOnly: mount.readOnly,
   }));
   const otherTargets = targets.filter((target) => !observed.some((mount) => mount.target === target));
   const userMounts = otherTargets.map((target) => ({ type: "volume" as const, source: "user-data", target }));

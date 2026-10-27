@@ -73,7 +73,6 @@ const nginxService = (): ServicePlan => ({
   command: ["sh", "-c", nginxStartScript],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -132,7 +131,6 @@ const traefikService = (): ServicePlan => ({
   command: ["sh", "-c", traefikStartScript],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",

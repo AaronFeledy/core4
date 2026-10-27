@@ -10,6 +10,7 @@ import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
 import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
+import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
 import {
   ensureStartTransactionConsistent,
@@ -45,6 +46,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
         const stateStore = yield* StateStore;
         const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
         const plan = resolvedTarget.plan;
+        yield* rotateChangedFileSync(resolvedTarget);
         const provider = yield* registry.select(plan);
         return yield* withPlanVolumeCoordination({
           plan,

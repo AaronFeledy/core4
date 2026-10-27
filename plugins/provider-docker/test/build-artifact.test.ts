@@ -40,7 +40,6 @@ const service = (
   ...(artifact === undefined ? {} : { artifact }),
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

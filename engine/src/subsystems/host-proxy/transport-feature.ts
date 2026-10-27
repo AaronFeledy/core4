@@ -20,6 +20,7 @@ interface HostProxyRunLandoFeatureMutators {
   addEnv(name: string, value: string): void;
   addMount(mount: {
     readonly type: "bind";
+    readonly origin: "integration";
     readonly source: string;
     readonly target: typeof PortablePath.Type;
     readonly readOnly: boolean;
@@ -39,6 +40,7 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
       service.addEnv("LANDO_HOST_PROXY_SOCKET", HOST_PROXY_CONTAINER_SOCKET);
       service.addMount({
         type: "bind",
+        origin: "integration",
         source: session.socketPath,
         target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
         readOnly: true,
@@ -52,6 +54,7 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
     for (const target of [HOST_PROXY_CONTAINER_LANDO, "/usr/local/bin/xdg-open", "/usr/local/bin/open"])
       service.addMount({
         type: "bind",
+        origin: "integration",
         source: session.shimPath,
         target: PortablePath.make(target),
         readOnly: true,
@@ -73,7 +76,11 @@ const stripHostProxyService = (service: ServicePlan): ServicePlan => ({
     Object.entries(service.environment).filter(([name]) => !isHostProxyRunLandoEnvName(name)),
   ),
   mounts: service.mounts.filter(
-    (mount) => !(mount.type === "bind" && HOST_PROXY_MOUNT_TARGETS.has(mount.target)),
+    (mount) =>
+      !(
+        HOST_PROXY_MOUNT_TARGETS.has(mount.target) &&
+        (mount.origin === "integration" || (mount.origin === undefined && mount.type === "bind"))
+      ),
   ),
   extensions: Object.fromEntries(
     Object.entries(service.extensions).filter(([name]) => name !== HOST_PROXY_TRANSPORT_EXTENSION_KEY),

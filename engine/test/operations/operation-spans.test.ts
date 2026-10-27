@@ -29,7 +29,6 @@ test("nests provider inspection under the operation span when info runs against 
         artifact: { kind: "ref", ref: "nginx:alpine" },
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],

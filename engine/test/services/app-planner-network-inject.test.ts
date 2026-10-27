@@ -141,9 +141,9 @@ test("injects global, project, and inline CAs into lando-base services", async (
     expect(edge).toBeDefined();
     if (web === undefined || edge === undefined) throw new Error("expected planned services");
 
-    const caMounts = web.mounts.filter((mount) =>
-      String(mount.target).startsWith("/usr/local/share/ca-certificates/lando-"),
-    );
+    const caMounts = web.mounts
+      .filter((mount) => mount.type === "bind")
+      .filter((mount) => String(mount.target).startsWith("/usr/local/share/ca-certificates/lando-"));
     expect(caMounts.map((mount) => mount.source)).toEqual([
       globalPath,
       projectPath,
@@ -162,7 +162,9 @@ test("injects global, project, and inline CAs into lando-base services", async (
       serviceFeatureBuildSteps(edge.extensions).some((step) => step.id === "lando.security:trust-store"),
     ).toBe(false);
 
-    const bundleMount = web.mounts.find((mount) => String(mount.target) === "/etc/lando/certs/ca-bundle.pem");
+    const bundleMount = web.mounts
+      .filter((mount) => mount.type === "bind")
+      .find((mount) => String(mount.target) === "/etc/lando/certs/ca-bundle.pem");
     expect(bundleMount?.source).toEqual(expect.stringContaining(cacheRoot));
     if (bundleMount?.source === undefined) throw new Error("expected CA bundle mount");
     expect(await readFile(bundleMount.source, "utf-8")).toBe(`${globalPem}${projectPem}${inlinePem}`);
@@ -225,8 +227,8 @@ test("keeps project CAs when global CA inheritance is disabled", async () => {
     });
 
     const web = result.services[ServiceName.make("web")];
-    expect(web?.mounts.some((mount) => mount.source === globalPath)).toBe(false);
-    expect(web?.mounts.some((mount) => mount.source === projectPath)).toBe(true);
+    expect(web?.mounts.some((mount) => mount.type === "bind" && mount.source === globalPath)).toBe(false);
+    expect(web?.mounts.some((mount) => mount.type === "bind" && mount.source === projectPath)).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

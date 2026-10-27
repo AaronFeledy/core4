@@ -60,7 +60,6 @@ const service: ServicePlan = {
     PLAIN: "visible",
   },
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

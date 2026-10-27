@@ -33,7 +33,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -314,7 +313,7 @@ describe("agent socket storage reconciliation", () => {
     const sidecar: ServicePlan = {
       ...service,
       endpoints: [],
-      storage: [{ store: "agent-volume", target, readOnly: false }],
+      mounts: [{ type: "volume", store: "agent-volume", target, readOnly: false }],
     };
     expect(bringUpRecreateReasons(plan, sidecar, { bindSources: {} }, { skipAbsentFields: true })).toEqual([
       "bind-source",
@@ -341,7 +340,14 @@ describe("agent socket storage reconciliation", () => {
     const dataService: ServicePlan = {
       ...service,
       endpoints: [],
-      storage: [{ store: "database-data", target: PortablePath.make("/var/lib/database"), readOnly: false }],
+      mounts: [
+        {
+          type: "volume",
+          store: "database-data",
+          target: PortablePath.make("/var/lib/database"),
+          readOnly: false,
+        },
+      ],
     };
     expect(
       bringUpRecreateReasons(plan, dataService, { bindSources: {} }, { skipAbsentFields: true }),

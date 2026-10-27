@@ -208,8 +208,9 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
     expect(search.endpoints).toEqual([
       { _tag: "internal", port: 9200, protocol: "http", name: "search", primary: true },
     ]);
-    expect(search.storage).toHaveLength(1);
-    expect(search.storage[0]?.store).toBe("myapp-opensearch-data");
+    const volumes = search.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-opensearch-data");
     expect(search.healthcheck?.kind).toBe("command");
     expect(search.healthcheck?.command).toEqual([
       "bash",

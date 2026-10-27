@@ -54,7 +54,6 @@ const mailpitService = (): ServicePlan => ({
   artifact: { kind: "ref", ref: MAILPIT_IMAGE },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     { _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp", name: "smtp" },
     {
@@ -84,7 +83,6 @@ const senderService = (): ServicePlan => ({
   command: ["sleep", "infinity"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

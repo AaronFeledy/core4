@@ -71,11 +71,14 @@ const fragmentIssues = (source: SourceDocument): readonly ConfigLintViolation[] 
     onExcessProperty: "error",
     errors: "all",
   });
-  if (Result.isSuccess(decoded)) return [];
+  // A key can decode and still be rejected (for example a config grant's uid), so report rejections either way.
   const rejections = analyzeComposeRejections(source.document);
+  if (Result.isSuccess(decoded) && rejections.length === 0) return [];
   const issues = [
     ...rejections.map(rejectionViolation),
-    ...violationsFromSchema(decoded.failure.issue, source.document, rejections),
+    ...(Result.isSuccess(decoded)
+      ? []
+      : violationsFromSchema(decoded.failure.issue, source.document, rejections)),
   ];
   return issues.map((issue) =>
     attributeLintIssue(

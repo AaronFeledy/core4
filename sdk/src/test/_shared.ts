@@ -148,7 +148,6 @@ export const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   command: ["node", "-e", CONTRACT_SERVICE_SCRIPT],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],

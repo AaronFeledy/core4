@@ -221,6 +221,25 @@ describe("storage remediation", () => {
 });
 
 describe("observation wording", () => {
+  test("explains planned provenance in summary and plain mount rows", () => {
+    // Given an automatically derived shadow volume.
+    const derived = service("web", [
+      planned({
+        type: "volume",
+        target: "/app/vendor",
+        source: "vendor",
+        lifetime: "retained",
+        provenance: "derived",
+      }),
+    ]);
+    // When rendering both text surfaces.
+    const summary = buildInfoSummary(result(derived));
+    const plain = renderInfoAppResult(result(derived));
+    // Then the target explains why it exists without exposing its source in the summary.
+    expect(storageFieldsOf(summary)).toEqual(["retained=/app/vendor (store, derived)"]);
+    expect(plain).toContain("web\tmount\t/app/vendor\tstore\tvendor\tretained\tmounted\t-\tderived");
+  });
+
   test("marks an absent planned store as not mounted while keeping its declared lifetime", () => {
     const stopped = service(
       "db",
