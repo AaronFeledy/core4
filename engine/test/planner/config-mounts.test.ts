@@ -133,7 +133,7 @@ test.each([
     });
     const result = await lint();
     expect(result.valid).toBe(false);
-    expect(result.violations.map(({ path }) => path)).toEqual(expected);
+    expect(result.violations).toMatchObject(expected.map((path) => ({ path })));
   });
 });
 
