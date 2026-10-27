@@ -42,15 +42,10 @@ const renderRun = (component: Extract<GuideStepComponent, { kind: "Run" }>, sour
     ].join("\n");
   if ("command" in props)
     return [
-      `    const runAttempt = yield* Effect.result(context.runCli(${quote(props.command)}, {`,
+      `    lastRun = yield* context.runCli(${quote(props.command)}, {`,
       `      answers: ${JSON.stringify(props.answers ?? {})},`,
-      "    }));",
-      "    if (Result.isFailure(runAttempt)) {",
-      "      lastFailure = runAttempt.failure;",
-      "    } else {",
-      "      lastRun = runAttempt.success;",
-      `      expect(runAttempt.success.exitCode, \`stdout:\\n\${runAttempt.success.stdout}\\nstderr:\\n\${runAttempt.success.stderr}\`).toBe(${props.expectExit ?? 0});`,
-      "    }",
+      "    });",
+      `    expect(lastRun.exitCode, \`stdout:\\n\${lastRun.stdout}\\nstderr:\\n\${lastRun.stderr}\`).toBe(${props.expectExit ?? 0});`,
     ].join("\n");
   return `    yield* context.shell(${quote(props.shell)});`;
 };
@@ -82,10 +77,9 @@ const renderVerify = (component: Extract<GuideStepComponent, { kind: "Verify" }>
       "    expect(matched).toBe(true);",
     ].join("\n");
   return [
-    "    const failureForErrorTag = lastFailure ?? lastRun;",
-    '    const failureText = typeof failureForErrorTag === "string" ? failureForErrorTag : JSON.stringify(failureForErrorTag);',
-    "    const actual = (failureForErrorTag as { _tag?: string })?._tag ?? failureText;",
-    `    const matched = actual.includes(${quote(props.errorTag ?? "")})${expected === undefined ? "" : ` && matchesExpected(failureText, ${expected})`};`,
+    '    const failureText = lastRun === undefined ? "" : `${lastRun.stdout}\\n${lastRun.stderr}`;',
+    "    const actual = errorTagFromRun(lastRun);",
+    `    const matched = actual === ${quote(props.errorTag ?? "")}${expected === undefined ? "" : ` && matchesExpected(failureText, ${expected})`};`,
     `    yield* context.transcript.append({ kind: "verify", target: "errorTag", matched, expected: ${quote(props.errorTag ?? "")}, actual });`,
     "    expect(matched).toBe(true);",
   ].join("\n");

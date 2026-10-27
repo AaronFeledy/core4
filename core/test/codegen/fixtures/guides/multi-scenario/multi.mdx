@@ -13,7 +13,7 @@ provider: test
   <Scenario id="hidden-regression" render={false} reason="Hidden regression coverage">
     <Step name="hidden-step">
       <Run command="init" />
-      <Verify command="status" expect={{ schema: "StatusEvent" }} />
+      <Verify event="post-init" expect={{ schema: "PostInitEvent" }} />
     </Step>
   </Scenario>
 </Guide>

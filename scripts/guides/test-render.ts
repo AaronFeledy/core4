@@ -102,10 +102,35 @@ ${scenario.render === false ? "// @render: false\n" : ""}${variantHeader}${varia
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { Cause, Effect, Exit, Result } from "effect";
+import { Cause, Effect, Exit, Result, Schema } from "effect";
+import { publicSchemaRegistry } from "@lando/sdk/schema";
+import type { ScenarioRunResult } from "@lando/core/testing";
 ${usesLibraryRuntime ? 'import * as LandoCore from "@lando/core";\nimport * as LandoTesting from "@lando/core/testing";' : usesE2eRuntime ? 'import { ScenarioContextFactory, hasLiveProviderSocket } from "@lando/core/testing";' : 'import { withScenarioContext } from "@lando/core/testing";'}
 
 ${usesE2eRuntime ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1";' : ""}
+
+const schemas: Readonly<Record<string, Schema.Top>> = publicSchemaRegistry;
+const machineError = Schema.Struct({
+  _tag: Schema.optionalKey(Schema.String),
+  code: Schema.optionalKey(Schema.String),
+});
+const decodeMachineFailure = Schema.decodeUnknownResult(Schema.fromJsonString(Schema.Struct({
+  error: Schema.optionalKey(machineError),
+  errors: Schema.optionalKey(Schema.Array(machineError)),
+  code: Schema.optionalKey(Schema.String),
+})));
+const errorTagFromRun = (run: ScenarioRunResult | undefined): string | undefined => {
+  if (run === undefined || run.exitCode === 0) return undefined;
+  if (run._tag !== undefined) return run._tag;
+  for (const output of [run.stdout, run.stderr]) {
+    const decoded = decodeMachineFailure(output);
+    if (Result.isSuccess(decoded)) {
+      const tag = decoded.success.error?._tag ?? decoded.success.errors?.[0]?.code ?? decoded.success.code;
+      if (tag !== undefined) return tag;
+    }
+  }
+  return /^code:[ \\t]*([A-Za-z0-9_]+)[ \\t]*$/m.exec(run.stderr)?.[1];
+};
 
 const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   if (expected === undefined) return actual !== undefined;
@@ -115,7 +140,10 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   if (expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
     const record = expected as Record<string, unknown>;
     if (typeof record.regex === "string") return new RegExp(record.regex).test(String(actual));
-    if (typeof record.schema === "string") return actual !== undefined;
+    if (typeof record.schema === "string") {
+      const schema = Object.hasOwn(schemas, record.schema) ? schemas[record.schema] : undefined;
+      return schema !== undefined && Schema.is(Schema.toEncoded(schema))(actual);
+    }
     if (Array.isArray(record.anyOf)) return record.anyOf.some((item) => matchesExpected(actual, item));
     if (Object.hasOwn(record, "not")) return !matchesExpected(actual, record.not);
     if (actual === null || typeof actual !== "object") return false;
@@ -134,8 +162,7 @@ ${
 }  const exit = await Effect.runPromiseExit(
     ${contextRunner}({ guideId: ${JSON.stringify(guide.frontmatter.id)}, scenarioId: ${JSON.stringify(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
-        let lastRun: unknown;
-        let lastFailure: unknown;
+        let lastRun: ScenarioRunResult | undefined;
 ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? "" : `${cleanupFinalizers}\n`}${steps}
       }),
     ),
