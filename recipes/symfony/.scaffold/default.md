@@ -38,7 +38,7 @@ lando init --recipe symfony --name=my-symfony-app --yes \
 ## 1. scaffold
 
 ```bash
-lando init --recipe symfony --name=my-symfony-mariadb --yes
+lando init --recipe symfony --name=my-symfony-app --yes
 ```
 
 ## 2. start

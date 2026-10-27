@@ -39,7 +39,7 @@ For day-to-day tooling and database hosts, see [Run the Backdrop recipe](/guides
 ## 1. scaffold
 
 ```bash
-lando init --recipe backdrop --name=my-backdrop-mysql --yes
+lando init --recipe backdrop --name=my-backdrop-app --yes
 ```
 
 ## 2. start

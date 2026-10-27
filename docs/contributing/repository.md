@@ -97,11 +97,12 @@ checking guide drift. Use the [CI runbook](./ci.md) to reproduce a specific job,
 including focused tests, guide checks, and provider integration tests.
 
 Executable guides check reader-facing workflows, while integration tests check
-behavior against external systems. Guide fixtures and `provider: test` can model
-operations without starting containers. They do not prove live runtime behavior
-or produce a real transcript of every displayed command. Use real-provider e2e
-scenarios for that evidence. Keep regressions with no documentation purpose in
-tests rather than inventing a guide to hold them.
+behavior against external systems. To write or debug one scenario, follow
+[author an executable guide scenario](./guide-authoring.md). Guide fixtures
+and `provider: test` can model operations without starting containers. They do
+not prove live runtime behavior or produce a real transcript of every displayed
+command. Use real-provider e2e scenarios for that evidence. Keep regressions
+with no documentation purpose in tests rather than inventing a guide to hold them.
 
 ## Keep development and release artifacts distinct
 
