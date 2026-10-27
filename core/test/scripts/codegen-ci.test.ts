@@ -482,7 +482,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "runs only the signal suite on both hosted Darwin architectures for runtime PRs",
+    "runs signal and exec umask suites on both hosted Darwin architectures for runtime PRs",
     async () => {
       await runCodegen();
       const workflow = Schema.decodeUnknownSync(
@@ -524,10 +524,17 @@ describe("ci workflow codegen", () => {
       const commands = job.steps.flatMap((step) => (step.run === undefined ? [] : [step.run]));
       expect(commands.filter((command) => command.startsWith("bun test"))).toEqual([
         "bun test core/test/cli/process-signals.test.ts",
+        "bun test container-runtime/test/exec-umask.test.ts",
       ]);
       expect(commands).toContain("bun install --frozen-lockfile");
       expect(commands.indexOf("bun run codegen")).toBeLessThan(
         commands.indexOf("bun test core/test/cli/process-signals.test.ts"),
+      );
+      expect(commands.indexOf("bun test core/test/cli/process-signals.test.ts")).toBeLessThan(
+        commands.indexOf("bun test container-runtime/test/exec-umask.test.ts"),
+      );
+      expect(job.steps.find((step) => step.name === "Test exec umask behavior")?.run).toBe(
+        "bun test container-runtime/test/exec-umask.test.ts",
       );
       expect(job.steps.find((step) => step.name === "Isolate Lando roots")?.run).toContain(
         "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf",

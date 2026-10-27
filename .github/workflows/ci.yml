@@ -250,6 +250,9 @@ jobs:
       - name: Test native process signal handling
         run: bun test core/test/cli/process-signals.test.ts
 
+      - name: Test exec umask behavior
+        run: bun test container-runtime/test/exec-umask.test.ts
+
   docs-build:
     needs: [selection]
     if: ${{ always() && !cancelled() && !failure() && needs.selection.result == 'success' && (needs.selection.outputs.broad == 'true' || needs.selection.outputs.profile == 'docs' || needs.selection.outputs.profile == 'guides' || needs.selection.outputs.profile == 'runtime') }}
