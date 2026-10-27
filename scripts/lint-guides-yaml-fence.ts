@@ -28,6 +28,7 @@ const YAML_FENCE_LANGS = new Set(["yaml", "yml"]);
 const LANDOFILE_KEYS = new Set(Object.keys(LandofileShape.schema.fields));
 const SERVICE_KEYS = new Set([...Object.keys(ServiceConfig.fields), "working_dir", "env_file", "depends_on"]);
 const GLOBAL_CONFIG_KEYS = new Set(Object.keys(GlobalConfig.fields));
+const AmbiguousConfig = Schema.Union([LandofileAuthoringFragmentNative, GlobalConfig]);
 
 export type YamlFenceMdxNode = MdxNode;
 
@@ -40,6 +41,7 @@ export type ClassifiedForm =
   | { readonly kind: "full" }
   | { readonly kind: "fragment"; readonly value: unknown }
   | { readonly kind: "global" }
+  | { readonly kind: "ambiguous" }
   | { readonly kind: "skip" };
 
 /**
@@ -66,6 +68,8 @@ export const classifyYamlFenceDocument = (value: unknown): ClassifiedForm => {
   )
     return { kind: "skip" };
   if (Object.hasOwn(value, "name")) return { kind: "full" };
+  if (keys.length > 0 && keys.every((key) => LANDOFILE_KEYS.has(key) && GLOBAL_CONFIG_KEYS.has(key)))
+    return { kind: "ambiguous" };
   if (hasLandofileKey || keys.every((key) => LANDOFILE_KEYS.has(key) || key.startsWith("x-")))
     return { kind: "fragment", value };
   if (
@@ -136,6 +140,9 @@ export const validateClassified = (context: YamlLintContext, value: unknown, for
       break;
     case "global":
       decoding = decodeStrict(GlobalConfig, value);
+      break;
+    case "ambiguous":
+      decoding = decodeStrict(AmbiguousConfig, value);
       break;
     case "fragment":
       decoding = decodeStrict(LandofileAuthoringFragmentNative, form.value);
