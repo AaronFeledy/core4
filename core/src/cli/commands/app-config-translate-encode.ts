@@ -1,3 +1,4 @@
+import { assessTranslateExpectations } from "@lando/engine/planner/home-expectations";
 import { landofileLayerPaths } from "@lando/landofile/layers";
 import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
 import { ConfigTranslateError } from "@lando/sdk/errors";
@@ -12,7 +13,6 @@ import {
 } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
-import { assessTranslateExpectations } from "../../config/translate-expectations.ts";
 import { layerOrder } from "./app-config-translate-document-set.ts";
 
 export const encodeTranslateOutputs = Effect.fnUntraced(function* (

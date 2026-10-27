@@ -1,4 +1,3 @@
-import { assessServiceHome } from "@lando/engine/planner/home-assessment";
 import { compareKeyPaths, isPlainRecord } from "@lando/sdk/landofile";
 import {
   type ConfigTranslateDiagnostic,
@@ -7,6 +6,7 @@ import {
 } from "@lando/sdk/schema";
 import { PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result, Schema } from "effect";
+import { assessServiceHome } from "./home-assessment.ts";
 
 export const orderTranslateDiagnostics = (
   diagnostics: readonly ConfigTranslateDiagnostic[],

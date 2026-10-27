@@ -1,4 +1,8 @@
 import { join } from "node:path";
+import {
+  assessTranslateExpectations,
+  orderTranslateDiagnostics,
+} from "@lando/engine/planner/home-expectations";
 import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
@@ -25,7 +29,6 @@ import {
 } from "@lando/sdk/services";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { Effect, Option, Result, Schema } from "effect";
-import { assessTranslateExpectations, orderTranslateDiagnostics } from "../config/translate-expectations.ts";
 import { RECIPE_TRANSLATOR_ID } from "./config-translator.ts";
 import {
   type RecipeAuxiliaryContentSource,

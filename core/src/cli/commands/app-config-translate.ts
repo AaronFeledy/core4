@@ -37,7 +37,7 @@ import type { AppConfigTranslateResult } from "./app-config-translate-output.ts"
 import { renderTranslateTargets } from "./app-config-translate-output.ts";
 import { readTranslateDocuments } from "./app-config-translate-read.ts";
 export { CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES } from "./app-config-translate-read.ts";
-import { orderTranslateDiagnostics } from "../../config/translate-expectations.ts";
+import { orderTranslateDiagnostics } from "@lando/engine/planner/home-expectations";
 import { selectTranslator } from "./app-config-translate-selection.ts";
 import {
   discoverSourceFiles,

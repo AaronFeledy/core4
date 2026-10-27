@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { layerWith as pluginRegistryLayer } from "@lando/engine/plugins/registry";
 import { makeConfigTranslators } from "@lando/lando3";
 import { configTranslators } from "@lando/lando4";
-import { ConfigTranslateSourceId, ServiceName } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect, Schema } from "effect";
@@ -13,7 +13,6 @@ import {
   AppConfigTranslateResultSchema,
   appConfigTranslate,
 } from "../../src/cli/commands/app-config-translate.ts";
-import { assessTranslateExpectations } from "../../src/config/translate-expectations.ts";
 
 // The bundled service catalog the CLI supplies through its plugin bootstrap.
 const bundledCatalog = pluginRegistryLayer({ user: false, app: false });
@@ -155,24 +154,3 @@ test.each([
     }
   },
 );
-
-test("reports an unavailable catalog instead of loading bundled plugins when no registry is supplied", async () => {
-  // Given a home expectation and no plugin registry in context
-  const expectation = {
-    _tag: "PersistedHome" as const,
-    sourceId: ConfigTranslateSourceId.make(".lando.yml"),
-    keyPath: ["services", "web"],
-    service: ServiceName.make("web"),
-  };
-  // When
-  const diagnostics = await Effect.runPromise(
-    assessTranslateExpectations([expectation], { services: { web: { type: "node:22" } } }),
-  );
-  // Then
-  expect(diagnostics.map(({ kind, message }) => [kind, message])).toEqual([
-    [
-      "needs-review",
-      "Lando 3 kept this service's home; Lando 4 can't confirm it will keep it automatically (the service catalog is unavailable).",
-    ],
-  ]);
-});

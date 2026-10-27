@@ -31,3 +31,14 @@ test("omits home when an older plan has no home field", async () => {
   // Then no home fact is invented.
   expect(row).not.toHaveProperty("home");
 });
+
+test("keeps home after status so scripts matching a service's leading fields keep working", async () => {
+  // Given a service whose home is a nested object.
+  const { row } = await runInfo({ ...service, home: homes[0] });
+  if (row === undefined) throw new Error("Expected a service info row");
+  // When the row is encoded to its JSON wire form.
+  const json = JSON.stringify(Schema.encodeSync(AppInfoServiceSchema)(row));
+  // Then no object closes between the service name and its status.
+  expect(json).toMatch(/"service":"web"[^}]*"status":"/u);
+  expect(json.indexOf('"status"')).toBeLessThan(json.indexOf('"home"'));
+});
