@@ -1,0 +1,17 @@
+id: tool-runner
+title: Tool Runner
+description: One disposable BusyBox service for running one-off commands.
+version: 1.0.0
+config:
+  runtime: 4
+  services:
+    tools:
+      type: lando
+      image: busybox:1.37
+      command: sleep infinity
+files:
+  - src: README.tmpl
+    dest: README.md
+    template: true
+  - src: banner.txt
+    dest: banner.txt
