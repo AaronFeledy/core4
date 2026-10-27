@@ -137,6 +137,10 @@ lando destroy -y
 
 Snapshots survive plain `destroy` and `--volumes`. **`lando destroy --purge -y` also deletes this folder's catalogued snapshots**, including native data through the provider that recorded each snapshot. It works when an earlier destroy left only ownership inventory. Snapshots belong to the source volume's canonical owner root, so other app folders keep theirs even if they share this app's name. See [Import and export app databases](../tooling/db-import-export.mdx) before moving a database between apps or providers.
 
+If a selected volume is still in use, the removal error names the containers holding it when the runtime can report them. Holder lookup is best effort; unavailable details do not make the removal succeed.
+
+Wait for any data operation to finish, then inspect the named container before removing it and retrying. Lando does not automatically reclaim leftover data helpers. A stopped container or a data-helper label does not prove that the operation has released it; an import, export or output drain may still need it.
+
 Changing providers doesn't move an applied app. If `lando start` fails with `AppPlacementError`, retire the old copy explicitly:
 
 ```sh
