@@ -51,6 +51,6 @@
     "@lando/engine": "workspace:*",
     "@lando/provider-docker": "workspace:*",
     "@lando/provider-lando": "workspace:*",
-    "@types/semver": "^7.7.1"
+    "@types/semver": "^7.8.0"
   }
 }
