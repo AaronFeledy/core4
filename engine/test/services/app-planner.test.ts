@@ -198,6 +198,7 @@ test("planning emits phase spans beneath AppPlanner.plan", async () => {
     "AppPlanner.planServices",
     "AppPlanner.applyPreparedFeatures",
     "AppPlanner.finalizeServices",
+    "AppPlanner.normalizeNetworks",
     "AppPlanner.validateServiceProbes",
   ]);
   const discover = spans.find((span) => span.name === "AppPlanner.discover");
@@ -332,16 +333,18 @@ const appMountOnlyServiceType = makeLegacyServiceTypeFake({
       artifact: { kind: "ref", ref: "appmount-only:latest" },
       environment: {},
       workingDirectory: PortablePath.make("/app"),
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [],
-      storage: [],
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: AbsolutePath.make(appRoot),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "passthrough",
+        },
+      ],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -362,7 +365,6 @@ const socketOnlyServiceType = makeLegacyServiceTypeFake({
       ...(service.user === undefined ? {} : { user: service.user }),
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [
         {
           _tag: "internal",
@@ -389,7 +391,6 @@ const publishedEndpointServiceType = makeLegacyServiceTypeFake({
       primary,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [{ _tag: "published", protocol: "http", port: 8080, name, publication: {} }],
       routes: [],
       dependsOn: [],
@@ -402,13 +403,23 @@ const publishedEndpointServiceType = makeLegacyServiceTypeFake({
 const customPluginRegistry = {
   list: Effect.succeed([]),
   load: (pluginName: string) =>
-    Effect.fail(new PluginLoadError({ message: `Plugin ${pluginName} is not registered.`, pluginName })),
+    Effect.fail(
+      new PluginLoadError({
+        message: `Plugin ${pluginName} is not registered.`,
+        pluginName,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    ),
   loadServiceType: (id: string) => {
     if (id === appMountOnlyServiceType.id) return Effect.succeed(appMountOnlyServiceType);
     if (id === socketOnlyServiceType.id) return Effect.succeed(socketOnlyServiceType);
     if (id === publishedEndpointServiceType.id) return Effect.succeed(publishedEndpointServiceType);
     return Effect.fail(
-      new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+      new PluginLoadError({
+        message: `Service type ${id} is not registered.`,
+        pluginName: id,
+        remediation: "Install or register the plugin, then retry.",
+      }),
     );
   },
   loadServiceFeature: (id: string) => {
@@ -419,12 +430,22 @@ const customPluginRegistry = {
     ].find((candidate) => candidate.id === id);
     return feature === undefined
       ? Effect.fail(
-          new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+          new PluginLoadError({
+            message: `Service feature ${id} is not registered.`,
+            pluginName: id,
+            remediation: "Install or register the plugin, then retry.",
+          }),
         )
       : Effect.succeed(feature);
   },
   loadAppFeature: (id: string) =>
-    Effect.fail(new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id })),
+    Effect.fail(
+      new PluginLoadError({
+        message: `App feature ${id} is not registered.`,
+        pluginName: id,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    ),
 };
 
 const followLogSourceServiceType = (required: boolean): ServiceType => ({
@@ -1326,6 +1347,7 @@ describe("AppPlannerLayer.layer", () => {
       const web = appPlan.services[ServiceName.make("web")];
       expect(web?.extensions["@lando/core/service-features"]).toEqual({
         featureIds: ["service-lando.compose", "lando.app-mount"],
+        dataTrees: [],
         buildSteps: [],
       });
     });
@@ -1835,16 +1857,18 @@ describe("AppPlannerLayer.layer", () => {
             artifact: { kind: "ref", ref: "cached-type:latest" },
             environment: {},
             workingDirectory: PortablePath.make("/app"),
-            appMount: {
-              source: AbsolutePath.make(appRoot),
-              target: PortablePath.make("/app"),
-              readOnly: false,
-              excludes: [],
-              includes: [],
-              realization: "passthrough",
-            },
-            mounts: [],
-            storage: [],
+            mounts: [
+              {
+                type: "bind",
+                role: "app",
+                source: AbsolutePath.make(appRoot),
+                target: PortablePath.make("/app"),
+                readOnly: false,
+                excludes: [],
+                includes: [],
+                realization: "passthrough",
+              },
+            ],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -1888,6 +1912,7 @@ describe("AppPlannerLayer.layer", () => {
                         new PluginLoadError({
                           message: `Service feature ${id} is not registered.`,
                           pluginName: id,
+                          remediation: "Install or register the plugin, then retry.",
                         }),
                       ),
                 loadAppFeature: () => Effect.die("not used"),
@@ -1969,16 +1994,18 @@ describe("AppPlannerLayer.layer", () => {
             artifact: { kind: "ref", ref: "env-file-cache-type:latest" },
             environment: {},
             workingDirectory: PortablePath.make("/app"),
-            appMount: {
-              source: AbsolutePath.make(appRoot),
-              target: PortablePath.make("/app"),
-              readOnly: false,
-              excludes: [],
-              includes: [],
-              realization: "passthrough",
-            },
-            mounts: [],
-            storage: [],
+            mounts: [
+              {
+                type: "bind",
+                role: "app",
+                source: AbsolutePath.make(appRoot),
+                target: PortablePath.make("/app"),
+                readOnly: false,
+                excludes: [],
+                includes: [],
+                realization: "passthrough",
+              },
+            ],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -2022,6 +2049,7 @@ describe("AppPlannerLayer.layer", () => {
                         new PluginLoadError({
                           message: `Service feature ${id} is not registered.`,
                           pluginName: id,
+                          remediation: "Install or register the plugin, then retry.",
                         }),
                       ),
                 loadAppFeature: () => Effect.die("not used"),
@@ -2251,7 +2279,11 @@ describe("AppPlannerLayer.layer", () => {
           id === "test.smtp"
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2306,7 +2338,11 @@ describe("AppPlannerLayer.layer", () => {
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2379,19 +2415,31 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === serviceFeature.id
             ? Effect.succeed(serviceFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: (id: string) =>
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2429,7 +2477,6 @@ describe("AppPlannerLayer.layer", () => {
             primary,
             environment: {},
             mounts: [],
-            storage: [],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -2473,19 +2520,31 @@ describe("AppPlannerLayer.layer", () => {
           id === buildStepServiceType.id
             ? Effect.succeed(buildStepServiceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === buildStepServiceType.testFeature.id
             ? Effect.succeed(buildStepServiceType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: (id: string) =>
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2508,6 +2567,7 @@ describe("AppPlannerLayer.layer", () => {
 
       expect(appPlan.services[ServiceName.make("web")]?.extensions["@lando/core/service-features"]).toEqual({
         source: "service-feature",
+        dataTrees: [],
         featureIds: ["build-step-backed.test-plan"],
         buildSteps: [
           { id: "base-install", phase: "build", command: ["bun", "install"] },
@@ -2555,7 +2615,11 @@ describe("AppPlannerLayer.layer", () => {
           id === featureDefinition.id
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2608,7 +2672,11 @@ describe("AppPlannerLayer.layer", () => {
           id === "test.php-only"
             ? Effect.succeed(featureDefinition)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -2690,13 +2758,17 @@ describe("AppPlannerLayer.layer", () => {
       expect(web?.artifact).toEqual({ kind: "ref", ref: "node:lts" });
       expect(web?.environment).toMatchObject({ NODE_ENV: "development" });
       expect(String(web?.workingDirectory)).toBe("/app");
-      expect(web?.appMount).toMatchObject({
+      expect(serviceAppMount(web ?? { mounts: [] })).toMatchObject({
         source: appRoot,
         target: "/app",
         readOnly: false,
         realization: "passthrough",
       });
-      expect(web?.mounts).toEqual([]);
+      expect(
+        web?.mounts.filter(
+          (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+        ),
+      ).toEqual([]);
       expect(web?.endpoints).toEqual([
         { _tag: "internal", port: 3000, protocol: "http", primary: true, name: "web" },
         {
@@ -2728,7 +2800,11 @@ describe("AppPlannerLayer.layer", () => {
           publication: { hostPort: 5432 },
         },
       ]);
-      expect(db?.storage[0]?.target).toBe(PortablePath.make("/var/lib/postgresql/data"));
+      expect(
+        db?.mounts
+          .filter((mount) => mount.type === "volume")
+          .find((mount) => mount.target === "/var/lib/postgresql/data")?.target,
+      ).toBe(PortablePath.make("/var/lib/postgresql/data"));
     });
   });
 
@@ -2777,13 +2853,17 @@ describe("AppPlannerLayer.layer", () => {
       expect(web?.type).toBe("node:22");
       expect(web?.artifact).toEqual({ kind: "ref", ref: "node:22" });
       expect(String(web?.workingDirectory)).toBe("/app");
-      expect(web?.appMount).toMatchObject({
+      expect(serviceAppMount(web ?? { mounts: [] })).toMatchObject({
         source: appRoot,
         target: "/app",
         readOnly: false,
         realization: "passthrough",
       });
-      expect(web?.mounts).toEqual([]);
+      expect(
+        web?.mounts.filter(
+          (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+        ),
+      ).toEqual([]);
 
       expect(worker?.type).toBe("node:22");
       expect(worker?.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
@@ -2945,15 +3025,23 @@ describe("AppPlannerLayer.layer", () => {
       const appPlan = await plan(landofileFixture, slowBindMountCapabilities);
       const web = appPlan.services[ServiceName.make("web")];
 
-      expect(web?.appMount?.realization).toBe("accelerated");
-      expect(web?.appMount).toMatchObject({
+      expect(serviceAppMount(web ?? { mounts: [] })?.realization).toBe("accelerated");
+      expect(serviceAppMount(web ?? { mounts: [] })).toMatchObject({
         source: process.cwd(),
         target: "/app",
         readOnly: false,
         realization: "accelerated",
       });
-      expect(web?.mounts).toEqual([]);
-      expect(web?.mounts.some((mount) => mount.type === "volume")).toBe(false);
+      expect(
+        web?.mounts.filter(
+          (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+        ),
+      ).toEqual([]);
+      expect(web?.mounts.filter((mount) => mount.type === "volume").map((mount) => mount.target)).toEqual([
+        PortablePath.make("/app/node_modules"),
+        PortablePath.make("/app/tmp"),
+        PortablePath.make("/app/vendor"),
+      ]);
     });
   });
 
@@ -3006,16 +3094,18 @@ describe("AppPlannerLayer.layer", () => {
             artifact: { kind: "ref", ref: "accelerated-appmount:latest" },
             environment: {},
             workingDirectory: PortablePath.make("/app"),
-            appMount: {
-              source: AbsolutePath.make(appRoot),
-              target: PortablePath.make("/app"),
-              readOnly: false,
-              excludes: [],
-              includes: [],
-              realization: "passthrough",
-            },
-            mounts: [],
-            storage: [],
+            mounts: [
+              {
+                type: "bind",
+                role: "app",
+                source: AbsolutePath.make(appRoot),
+                target: PortablePath.make("/app"),
+                readOnly: false,
+                excludes: [],
+                includes: [],
+                realization: "passthrough",
+              },
+            ],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -3045,7 +3135,11 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.testFeature.id
             ? Effect.succeed(serviceType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadAppFeature: () => Effect.die("not used"),
       };
@@ -3310,8 +3404,12 @@ describe("AppPlannerLayer.layer", () => {
 
       expect(appPlan.stores).toHaveLength(2);
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
-      const postgresMount = appPlan.services[ServiceName.make("db")]?.storage[0]?.store;
-      const redisMount = appPlan.services[ServiceName.make("cache")]?.storage[0]?.store;
+      const postgresMount = appPlan.services[ServiceName.make("db")]?.mounts
+        .filter((mount) => mount.type === "volume")
+        .find((mount) => mount.target === "/var/lib/postgresql/data")?.store;
+      const redisMount = appPlan.services[ServiceName.make("cache")]?.mounts
+        .filter((mount) => mount.type === "volume")
+        .find((mount) => mount.target === "/data")?.store;
       expect(postgresMount).toBeDefined();
       expect(redisMount).toBeDefined();
       const storeNames = appPlan.stores.map((s) => s.name).sort();
@@ -3371,9 +3469,11 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
 
-      expect(appPlan.services[ServiceName.make("web")]?.storage.map((mount) => mount.store)).toEqual(
-        expect.arrayContaining(["lando-cache-home-node-npm", "lando-cache-php-deps"]),
-      );
+      expect(
+        appPlan.services[ServiceName.make("web")]?.mounts
+          .filter((mount) => mount.type === "volume")
+          .map((mount) => mount.store),
+      ).toEqual(expect.arrayContaining(["lando-cache-home-node-npm", "lando-cache-php-deps"]));
       expect(appPlan.stores.filter((store) => store.kind === "cache")).toEqual([
         { name: "lando-cache-home-node-npm", scope: "global", kind: "cache", key: "home-node-npm" },
         { name: "lando-cache-php-deps", scope: "global", kind: "cache", key: "php-deps" },
@@ -3407,9 +3507,16 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
 
-      const webStorage = appPlan.services[ServiceName.make("web")]?.storage ?? [];
+      const webStorage =
+        appPlan.services[ServiceName.make("web")]?.mounts.filter((mount) => mount.type === "volume") ?? [];
       expect(webStorage.filter((mount) => String(mount.target) === "/var/cache")).toEqual([
-        { store: "lando-cache-var-cache", target: PortablePath.make("/var/cache"), readOnly: false },
+        {
+          type: "volume",
+          store: "lando-cache-var-cache",
+          target: PortablePath.make("/var/cache"),
+          origin: "authored",
+          readOnly: false,
+        },
       ]);
       expect(webStorage.map((mount) => mount.store)).toEqual(
         expect.arrayContaining(["lando-cache-var-cache", "extra-data"]),
@@ -3528,7 +3635,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(web?.appMount?.excludes).toEqual(DEFAULT_APP_MOUNT_EXCLUDES);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(DEFAULT_APP_MOUNT_EXCLUDES);
     });
   });
 
@@ -3546,7 +3653,10 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
       const web = appPlan.services[ServiceName.make("web")];
-      expect(web?.appMount?.excludes).toEqual([...DEFAULT_APP_MOUNT_EXCLUDES, "dist"]);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual([
+        ...DEFAULT_APP_MOUNT_EXCLUDES,
+        "dist",
+      ]);
     });
   });
 
@@ -3567,10 +3677,10 @@ describe("AppPlannerLayer.layer", () => {
         providerLandoCapabilities,
       );
       const web = appPlan.services[ServiceName.make("web")];
-      expect(web?.appMount?.excludes).toEqual(
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(
         expect.arrayContaining([...DEFAULT_APP_MOUNT_EXCLUDES, "__pycache__", "dist"]),
       );
-      expect(web?.appMount?.excludes).toContain("__pycache__");
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toContain("__pycache__");
     });
   });
 
@@ -3618,13 +3728,17 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
 
       const web = appPlan.services[ServiceName.make("web")];
-      const shadowTargets = web?.storage.map((entry) => entry.target).sort() ?? [];
+      const shadowTargets =
+        web?.mounts
+          .filter((mount) => mount.type === "volume")
+          .map((entry) => entry.target)
+          .sort() ?? [];
       expect(shadowTargets).toEqual([
         PortablePath.make("/app/node_modules"),
         PortablePath.make("/app/tmp"),
         PortablePath.make("/app/vendor"),
       ]);
-      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor", "tmp"]);
+      expect(serviceAppMount(web ?? { mounts: [] })?.excludes).toEqual(["node_modules", "vendor", "tmp"]);
     });
   });
 
@@ -3695,7 +3809,7 @@ describe("AppPlannerLayer.layer", () => {
     await withTempCwd(async () => {
       const appPlan = await plan(landofileFixture);
 
-      expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-myapp", driver: "bridge" });
     });
   });
 
@@ -3709,7 +3823,7 @@ describe("AppPlannerLayer.layer", () => {
         },
       });
 
-      expect(appPlan.networks).toEqual([{ name: "lando-my-app", shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: "lando-my-app", driver: "bridge" });
     });
   });
 
@@ -3737,7 +3851,7 @@ describe("AppPlannerLayer.layer", () => {
       expect(appPlan.name).toBe(name);
       expect(appPlan.id).toBe(AppId.make(slug));
       expect(appPlan.slug).toBe(slug);
-      expect(appPlan.networks).toEqual([{ name: `lando-${slug}`, shared: false, driver: "bridge" }]);
+      expect(appPlan.networking?.perAppBridge).toEqual({ name: `lando-${slug}`, driver: "bridge" });
       expect(appPlan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toContain(
         `web.${slug}.internal`,
       );
@@ -3753,7 +3867,7 @@ describe("AppPlannerLayer.layer", () => {
         services: {},
       });
 
-      expect(appPlan.networks).toEqual([]);
+      expect(appPlan.networking).toBeUndefined();
     });
   });
 
@@ -4068,13 +4182,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4082,7 +4204,11 @@ describe("AppPlannerLayer.layer", () => {
           id === appFeature.id
             ? Effect.succeed(appFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -4156,13 +4282,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = baseDefaultFeatures.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4255,13 +4389,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4269,7 +4411,11 @@ describe("AppPlannerLayer.layer", () => {
           id === appFeature.id
             ? Effect.succeed(appFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `App feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `App feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -4349,13 +4495,21 @@ describe("AppPlannerLayer.layer", () => {
           id === serviceType.id
             ? Effect.succeed(serviceType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) => {
           const definition = features.get(id);
           return definition === undefined
             ? Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               )
             : Effect.succeed(definition);
         },
@@ -4406,7 +4560,6 @@ describe("AppPlannerLayer.layer", () => {
             artifact: { kind: "ref", ref: `${id}:latest` },
             environment: {},
             mounts: [],
-            storage: [],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -4593,7 +4746,6 @@ describe("AppPlannerLayer.layer", () => {
             artifact: { kind: "ref", ref: service.image ?? "fake-db:latest" },
             environment: {},
             mounts: [],
-            storage: [],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -4613,13 +4765,21 @@ describe("AppPlannerLayer.layer", () => {
           id === "fake-db"
             ? Effect.succeed(pinnedType)
             : Effect.fail(
-                new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service type ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
         loadServiceFeature: (id: string) =>
           id === basePinnedType.testFeature.id
             ? Effect.succeed(basePinnedType.testFeature)
             : Effect.fail(
-                new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
+                new PluginLoadError({
+                  message: `Service feature ${id} is not registered.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
               ),
       };
 
@@ -5050,7 +5210,9 @@ const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
 
 const allKnobServiceConfig = allKnobLandofile.services?.[ServiceName.make("web")] as Record<string, unknown>;
 
-const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter((key) => key !== "image");
+const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter(
+  (key) => key !== "image" && key !== "tmpfs",
+);
 
 const allKnobCapabilities: ProviderCapabilities = {
   ...providerLandoCapabilities,
@@ -5063,7 +5225,6 @@ const allKnobCapabilities: ProviderCapabilities = {
       "devices",
       "ulimits",
       "sysctls",
-      "tmpfs",
       "shm_size",
       "dns",
       "dns_search",
@@ -5203,37 +5364,36 @@ describe("Compose runtime knobs", () => {
     });
   });
 
-  const tmpfsInjectingServiceType = makeLegacyServiceTypeFake({
-    id: "tmpfs-injecting",
+  const initInjectingServiceType = makeLegacyServiceTypeFake({
+    id: "init-injecting",
     toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
       Schema.decodeUnknownSync(ServicePlan)({
         name: ServiceName.make(name),
-        type: "tmpfs-injecting",
+        type: "init-injecting",
         provider,
         primary,
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
         hostAliases: [],
         metadata,
-        extensions: { compose: { tmpfs: ["/run"] } },
+        extensions: { compose: { init: true } },
       }),
   });
 
   const injectedLandofile: LandofileShape = {
     name: "injected-knobs",
     runtime: 4,
-    services: { [ServiceName.make("web")]: { type: "tmpfs-injecting", home: false } },
+    services: { [ServiceName.make("web")]: { type: "init-injecting", home: false } },
   };
 
-  const tmpfsInjectingRegistry = {
-    ...registryWithServiceType(tmpfsInjectingServiceType),
+  const initInjectingRegistry = {
+    ...registryWithServiceType(initInjectingServiceType),
     loadServiceFeature: (id: string) =>
-      id === tmpfsInjectingServiceType.testFeature.id
-        ? Effect.succeed(tmpfsInjectingServiceType.testFeature)
+      id === initInjectingServiceType.testFeature.id
+        ? Effect.succeed(initInjectingServiceType.testFeature)
         : customPluginRegistry.loadServiceFeature(id),
   };
 
@@ -5243,7 +5403,7 @@ describe("Compose runtime knobs", () => {
         planTestLandofile(appPlanner, injectedLandofile, providerCapabilities),
       ).pipe(
         Effect.provide(AppPlannerLayer.layer),
-        Effect.provide(Layer.succeed(PluginRegistry, tmpfsInjectingRegistry)),
+        Effect.provide(Layer.succeed(PluginRegistry, initInjectingRegistry)),
       ),
     );
 
@@ -5256,7 +5416,7 @@ describe("Compose runtime knobs", () => {
       expect(expectSomeFailure(exit)).toMatchObject({
         _tag: "CapabilityError",
         service: "web",
-        key: "tmpfs",
+        key: "init",
         capability: "composeSpec",
       });
     });
@@ -5322,3 +5482,4 @@ describe("Compose runtime knobs", () => {
     });
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

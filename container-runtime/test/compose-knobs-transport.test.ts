@@ -30,7 +30,7 @@ interface IpcFixture {
 }
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const serviceName = ServiceName.make("web");
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),
@@ -54,7 +54,6 @@ const plan: AppPlan = {
       artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -64,7 +63,6 @@ const plan: AppPlan = {
     } satisfies ServicePlan,
   },
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "compose-knob-transport-network", driver: "bridge" } },
   stores: [],
   fileSync: [],

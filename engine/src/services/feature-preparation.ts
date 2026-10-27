@@ -1,7 +1,7 @@
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import type { EndpointPlan } from "@lando/sdk/schema";
+import { type EndpointPlan, validationIssuesFromSchemaIssue } from "@lando/sdk/schema";
 import type { AppFeatureServiceView, ServiceFeatureDefinition } from "@lando/sdk/services";
-import { Effect, Result, Schema, SchemaIssue } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { sortRecord } from "./draft.ts";
 import type { ComposeServiceInput } from "./feature.ts";
 
@@ -34,14 +34,15 @@ export const decodeServiceFeatureConfig = (
     onExcessProperty: "error",
   });
   if (Result.isFailure(decoded)) {
-    const details = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue)
-      .issues.map((issue) => issue.message)
+    const details = validationIssuesFromSchemaIssue(decoded.failure.issue)
+      .map((issue) => issue.message)
       .join("; ");
     return Effect.fail(
       new ServiceFeatureError({
         message: `Invalid service feature config: ${details}`,
         feature: feature.id,
         cause: decoded.failure,
+        remediation: "Correct the service feature configuration in the Landofile, then re-run.",
       }),
     );
   }
@@ -51,6 +52,7 @@ export const decodeServiceFeatureConfig = (
       new ServiceFeatureError({
         message: "Service feature config must decode to an object",
         feature: feature.id,
+        remediation: "Correct the service feature configuration in the Landofile, then re-run.",
       }),
     );
   return Effect.succeed(sortRecord(Object.fromEntries(Object.entries(value))));

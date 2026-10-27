@@ -2,8 +2,6 @@ import type { DestroyAppError, DestroyAppResult } from "@lando/sdk/app";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
 import { EventService, RouterService, RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
-import { deleteCwdAppMapEntriesForRoot } from "../cache/cwd-app-map.ts";
-import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { withAppMutationLock } from "./app-mutation-lock.ts";
@@ -148,8 +146,6 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         >([remove, cleanupDestroyHostState(plan, tree)]);
       }
       if (fileSync !== undefined) yield* fileSync.complete;
-      if (target !== undefined)
-        yield* deleteCwdAppMapEntriesForRoot({ cacheRoot: resolveUserCacheRoot(), appRoot: plan.root });
       if (plan.followUpOrphans) {
         const remaining = yield* registry.resolveTeardownEvidence(plan.root);
         if (remaining.kind === "orphans") {

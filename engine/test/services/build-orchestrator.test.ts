@@ -71,7 +71,6 @@ const servicePlan = (name: "web" | "db"): ServicePlan => ({
   primary: name === "web",
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -91,7 +90,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [db.name]: db },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -418,7 +416,11 @@ describe("BuildOrchestratorLayer.layer", () => {
 
   test("settles every artifact task when scratch cache access fails", async () => {
     // Given
-    const cacheFailure = new StateStoreError({ reason: "io", operation: "open" });
+    const cacheFailure = new StateStoreError({
+      reason: "io",
+      operation: "open",
+      remediation: "Injected state-store open failure for build orchestrator fixture.",
+    });
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-failure"),
@@ -485,8 +487,14 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "buildArtifact",
       message: "build failed",
+      remediation:
+        "Re-run the command after checking `test` logs for the `buildArtifact` failure; if it persists, report the error with that operation name.",
     });
-    const cacheFailure = new StateStoreError({ reason: "io", operation: "update" });
+    const cacheFailure = new StateStoreError({
+      reason: "io",
+      operation: "update",
+      remediation: "Injected state-store update failure for build orchestrator fixture.",
+    });
     const scratchPlan: AppPlan = {
       ...plan,
       id: AppId.make("scratch-cache-write-failure"),
@@ -538,6 +546,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "buildArtifact",
       message: "build failed",
+      remediation:
+        "Re-run the command after checking `test` logs for the `buildArtifact` failure; if it persists, report the error with that operation name.",
     });
     const calls: string[] = [];
     const siblingStarted = Deferred.makeUnsafe<void>();
@@ -611,6 +621,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable topsecret",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const pulls: ArtifactPullSpec[] = [];
     const provider = {
@@ -662,6 +674,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable topsecret",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const provider = {
       ...TestRuntimeProvider,
@@ -709,11 +723,15 @@ describe("BuildOrchestratorLayer.layer", () => {
       providerId: "test",
       operation: "pullArtifact",
       message: "registry unavailable",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const localFailure = new ProviderInternalError({
       providerId: "test",
       operation: "pullArtifact",
       message: "local copy missing",
+      remediation:
+        "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
     });
     const pulls: ArtifactPullSpec[] = [];
     const provider = {
@@ -1402,6 +1420,8 @@ describe("BuildOrchestratorLayer.layer", () => {
         providerId: "test",
         operation: "pullArtifact",
         message: "pull failed",
+        remediation:
+          "Re-run the command after checking `test` logs for the `pullArtifact` failure; if it persists, report the error with that operation name.",
       });
       const retryCalls: string[] = [];
       const failingProvider = {

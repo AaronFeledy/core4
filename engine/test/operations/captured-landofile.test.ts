@@ -51,7 +51,6 @@ const fixture = () => {
         primary: true,
         environment: {},
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -61,7 +60,6 @@ const fixture = () => {
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -208,6 +206,7 @@ for (const [name, invoke] of Object.entries(operations)) {
       filePath: "/captured/.lando.yml",
       line: undefined,
       column: undefined,
+      remediation: "Correct the YAML syntax in /captured/.lando.yml.",
     });
     f.setFailure(error);
     const result = await Effect.runPromise(
@@ -230,6 +229,7 @@ test("supplied shallow info never loads, even when a fallback load would fail", 
       filePath: "/captured/.lando.yml",
       line: undefined,
       column: undefined,
+      remediation: "Correct the YAML syntax in /captured/.lando.yml.",
     }),
   );
   const result = await Effect.runPromise(infoApp({}, f.target).pipe(Effect.provide(f.layer)));

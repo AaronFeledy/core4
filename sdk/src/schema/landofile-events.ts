@@ -259,6 +259,7 @@ export const EventStep = Schema.Union([
 ]).annotate({
   identifier: "EventStep",
   description: "One ordered events-as-tasks step.",
+  message: "Expected a command string or a step with exactly one of cmd, task, command, defer, or for",
 });
 export type EventStep = typeof EventStep.Type;
 

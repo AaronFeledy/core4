@@ -19,7 +19,13 @@ import { resolveStatePath } from "./paths.ts";
 import { type PrivateFileAccess, PrivateFileAccessService } from "./private-file-access.ts";
 
 const ioError = (operation: string, path: string, cause: unknown): StateStoreError =>
-  new StateStoreError({ reason: "io", operation, path, cause });
+  new StateStoreError({
+    reason: "io",
+    operation,
+    path,
+    cause,
+    remediation: `Check permissions and free space on state path ${path}, then retry.`,
+  });
 
 const makeDiskBucketBackend = (privateFileAccess: PrivateFileAccess): StateBucketBackend => ({
   readBytes: (file, operation) =>

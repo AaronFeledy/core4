@@ -7,7 +7,7 @@ import type { ServiceType } from "@lando/sdk/services";
 
 import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
-import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
+import { APACHE_DEFAULT_SITE_BUILD_STEP_ID, hasCustomPhpImage } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
@@ -49,6 +49,25 @@ const composePhpPlan = (serviceType: ServiceType, raw: unknown, appRoot = APP_RO
     metadata,
     featureOverrides,
   });
+
+test.each([
+  "php:8.3-apache-bookworm",
+  "docker.io/library/php:8.3-apache-bookworm",
+  "index.docker.io/php:8.3-apache-bookworm",
+  "registry-1.docker.io/library/php:8.3-apache-bookworm",
+])("recognizes official PHP alias %s as catalog-owned", (image) => {
+  const service = decodeService({ type: "php:8.3", image });
+  expect(hasCustomPhpImage(service)).toBe(false);
+});
+
+test.each([
+  "ghcr.io/library/php:8.3-apache-bookworm",
+  "localhost/php:8.3-apache-bookworm",
+  "php:8.3-apache-bookworm@sha256:abc",
+])("retains custom PHP identity for %s", (image) => {
+  const service = decodeService({ type: "php:8.3", image });
+  expect(hasCustomPhpImage(service)).toBe(true);
+});
 
 interface PlannedBuildStep {
   readonly id?: string;
@@ -96,11 +115,15 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
 
-    expect(plan.mounts).toEqual([]);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
@@ -451,7 +474,7 @@ describe("php serving modes (via:)", () => {
       mounts: [{ source: "./alternate", target: "/app", readOnly: true }],
     });
 
-    expect(plan.appMount).toBeUndefined();
+    expect(serviceAppMount(plan)).toBeUndefined();
     expect(plan.mounts).toHaveLength(1);
     expect(plan.mounts[0]).toMatchObject({
       type: "bind",
@@ -489,8 +512,8 @@ describe("php serving modes (via:)", () => {
       appRoot,
     );
 
-    expect(plan.mounts).toHaveLength(1);
-    expect(plan.mounts[0]).toMatchObject({
+    expect(plan.mounts.filter((mount) => mount.type === "bind" && mount.role !== "app")).toHaveLength(1);
+    expect(plan.mounts.find((mount) => mount.type === "bind" && mount.role !== "app")).toMatchObject({
       type: "bind",
       source: `${appRoot}\\.lando\\php\\drupal-cms.ini`,
       target: "/usr/local/etc/php/conf.d/zz-lando-drupal-cms.ini",
@@ -623,3 +646,4 @@ describe("php serving modes (via:)", () => {
     );
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

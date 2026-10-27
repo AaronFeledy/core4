@@ -7,6 +7,7 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
+import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
 import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
@@ -104,6 +105,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly io?: RendererIO;
     readonly runtimeForBootstrap?: CompiledRuntimeFactory;
     readonly tracer?: Tracer.Tracer;
+    readonly signal?: AbortSignal;
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
@@ -158,9 +160,12 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(options.renderEffect === undefined ? {} : { renderEffect: options.renderEffect }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     ...(options.io === undefined ? {} : { io: options.io }),
+    ...(options.signal === undefined ? {} : { signal: options.signal }),
     render,
-    formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) =>
-      commandErrorMessage(failure, activeCommandId),
+    formatError: (
+      failure: import("@lando/sdk/command-result").ProjectedFailure,
+      redactor: import("@lando/sdk/secrets").Redactor,
+    ) => commandErrorMessage(failure, activeCommandId, redactor),
     ...(options.tracer === undefined ? {} : { tracer: options.tracer }),
   };
   const selection = activeTrace();
@@ -184,16 +189,21 @@ export const runCompiledCommand = <A, E, R, RE>(
 
 export const runWithProcessAbortSignal = async (
   run: (signal: AbortSignal) => Promise<void>,
+  options: { readonly signal?: AbortSignal } = {},
 ): Promise<void> => {
+  if (options.signal !== undefined) {
+    if (!options.signal.aborted) await run(options.signal);
+    return;
+  }
   const controller = new AbortController();
-  const interrupt = () => controller.abort("SIGINT");
-  const terminate = () => controller.abort("SIGTERM");
-  (process as NodeJS.EventEmitter).once("SIGINT", interrupt);
-  (process as NodeJS.EventEmitter).once("SIGTERM", terminate);
+  const handlers = defaultInterruptSignals().map((signal) => {
+    const abort = () => controller.abort(signal);
+    (process as NodeJS.EventEmitter).on(signal, abort);
+    return { signal, abort };
+  });
   try {
     await run(controller.signal);
   } finally {
-    (process as NodeJS.EventEmitter).off("SIGINT", interrupt);
-    (process as NodeJS.EventEmitter).off("SIGTERM", terminate);
+    for (const { signal, abort } of handlers) (process as NodeJS.EventEmitter).off(signal, abort);
   }
 };

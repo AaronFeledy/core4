@@ -35,7 +35,6 @@ const plan = (overrides: Partial<AppPlan> = {}): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-22T00:00:00Z"), source: ".lando.yml", runtime: 4 },
@@ -201,6 +200,7 @@ describe("resolveLandofileEventPlan", () => {
       filePath: join(root, ".lando.yml"),
       line: 3,
       column: 1,
+      remediation: `Correct the YAML syntax in ${join(root, ".lando.yml")} at line 3.`,
     });
 
     // When
@@ -236,7 +236,6 @@ describe("resolveLandofileEventPlan", () => {
             artifact: { kind: "ref", ref: "postgres:16" },
             environment: { DB_PASSWORD: "hunter2-secret" },
             mounts: [],
-            storage: [],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -256,6 +255,7 @@ describe("resolveLandofileEventPlan", () => {
       filePath: join(root, ".lando.yml"),
       line: 1,
       column: 1,
+      remediation: `Correct the Landofile expression in ${join(root, ".lando.yml")}.`,
     });
 
     // When

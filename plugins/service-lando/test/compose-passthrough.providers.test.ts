@@ -153,13 +153,17 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     const worker = plan.services[ServiceName.make("worker")];
     expect(worker?.mounts).toContainEqual({
       type: "bind",
+      origin: "authored",
+      relativeTo: "app",
       source: expect.stringContaining("/existing"),
       target: PortablePath.make("/existing"),
       readOnly: false,
       createHostPath: false,
       realization: "passthrough",
     });
-    expect(worker?.storage).toContainEqual({
+    expect(worker?.mounts).toContainEqual({
+      type: "volume",
+      origin: "authored",
       store: "composeapp-worker-state",
       target: PortablePath.make("/var/state"),
       readOnly: false,
@@ -174,6 +178,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     expect(worker?.extensions).toEqual({
       "@lando/core/service-features": {
         featureIds: ["service-lando.compose", "lando.app-mount"],
+        dataTrees: [],
         buildSteps: [],
       },
       lando: { labels: { "com.example.team": "platform" } },
@@ -185,8 +190,11 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     const plan = await planFor(composeLandofile, "lando");
     const worker = plan.services[ServiceName.make("worker")];
 
-    expect(worker?.appMount).toMatchObject({ target: "/app", readOnly: false });
-    expect(worker?.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(false);
+    expect(worker === undefined ? undefined : serviceAppMount(worker)).toMatchObject({
+      target: "/app",
+      readOnly: false,
+    });
+    expect(worker?.mounts.filter((m) => m.type === "bind" && String(m.target) === "/app")).toHaveLength(1);
     // compose is an l337 service and must not inject the LANDO_* env layer.
     expect(
       Object.keys(worker?.environment ?? {}).filter(
@@ -195,7 +203,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     ).toEqual([]);
     expect(worker?.environment.LANDO_HOST_IP).toBe("host.lando.internal");
 
-    expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
+    expect(plan.networking?.perAppBridge).toEqual({ name: "lando-composeapp", driver: "bridge" });
   });
 
   test("appMount: false opts out — no appMount, no synthetic /app bind", async () => {
@@ -214,11 +222,12 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
     const plan = await planFor(optedOut, "lando");
     const worker = plan.services[ServiceName.make("worker")];
 
-    expect(worker?.appMount).toBeUndefined();
+    expect(worker === undefined ? undefined : serviceAppMount(worker)).toBeUndefined();
     expect(worker?.mounts).toEqual([]);
     expect(worker?.environment.LANDO_APP_ROOT).toBeUndefined();
     expect(worker?.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
 
-    expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
+    expect(plan.networking?.perAppBridge).toEqual({ name: "lando-composeapp", driver: "bridge" });
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

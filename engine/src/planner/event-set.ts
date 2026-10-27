@@ -6,6 +6,7 @@ import {
   LandofileShape,
   type LoadScopedLandofile,
   type ProviderCapabilities,
+  type ProviderId,
   ServiceScopedLandofile,
 } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
@@ -16,6 +17,7 @@ import { resolveUserAppDefaults } from "./app-defaults.ts";
 import {
   compileEffectiveTooling,
   connectionClientOwners,
+  disabledToolingSources,
   toolingBeforeDefaults,
 } from "./effective-tooling.ts";
 import { requireServiceProjection } from "./endpoint-availability.ts";
@@ -41,6 +43,7 @@ export interface KnownEventSetInput {
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
   readonly pathsService: Context.Service.Shape<typeof PathsService> | undefined;
   readonly capabilities?: ProviderCapabilities;
+  readonly resolveCapabilities?: (provider: ProviderId) => ProviderCapabilities | undefined;
   readonly file?: string;
   readonly appRoot?: string;
 }
@@ -71,6 +74,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
   const appDefaults = resolveUserAppDefaults(appName, appRoot, pathsService, globalConfig);
   const hostProvider = yield* hostProviderIdFrom(globalConfig?.defaultProviderId);
   const provider = landofile.provider ?? hostProvider;
+  const capabilities = input.capabilities ?? input.resolveCapabilities?.(provider);
   const manifests = yield* pluginRegistry.list.pipe(
     Effect.mapError(
       (error) =>
@@ -100,7 +104,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     registeredServiceTypeIds: manifests.flatMap((manifest) =>
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     ),
-    ...(input.capabilities === undefined ? {} : { capabilities: input.capabilities }),
+    ...(capabilities === undefined ? {} : { capabilities }),
   });
   // Every service type has published its credentials now, so the sites the
   // identity pass deferred (tooling, extensions, and the services themselves)
@@ -144,7 +148,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
       ...serviceScoped.pendingSites,
     ];
   }
-  const validated = validateResolvedLandofile({ landofile, landofilePath, blocked });
+  const validated = validateResolvedLandofile({ landofile, landofilePath, blocked, appSlug });
   const projection = yield* projectEndpoints({
     services: seeds.services,
     unavailable: seeds.unavailable,
@@ -184,6 +188,7 @@ export const resolveLandofileForPlanning = Effect.fn("AppPlanner.resolve")(funct
     appDefaults,
     provider,
     hostProvider,
+    capabilities,
     manifests,
     routes: validated.routes,
     canonicalFile: input.file,
@@ -227,6 +232,7 @@ const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLando
     services,
     effectiveTooling,
     connectionClients: connectionClientOwners({ landofile, services: toolingServices }),
+    disabledToolingSources: disabledToolingSources(landofile, effectiveTooling),
     invocationSites,
     knownEventNames,
   };

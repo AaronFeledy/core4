@@ -82,7 +82,6 @@ const baseServicePlan = (
   primary,
   environment,
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -102,7 +101,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     metadata,
@@ -242,14 +240,18 @@ describe("ProviderExecToolingEngine.layer", () => {
     const service = {
       ...baseServicePlan("appserver", true),
       workingDirectory: PortablePath.make("/app/web"),
-      appMount: {
-        source: AbsolutePath.make("/workspace/drupal"),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "passthrough",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: AbsolutePath.make("/workspace/drupal"),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "passthrough",
+          excludes: [],
+          includes: [],
+        },
+      ],
     } satisfies ServicePlan;
     const plan = makePlan([service]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
@@ -270,14 +272,18 @@ describe("ProviderExecToolingEngine.layer", () => {
     const service = {
       ...baseServicePlan("appserver", true),
       workingDirectory: PortablePath.make("/app/web"),
-      appMount: {
-        source: AbsolutePath.make("/workspace/drupal"),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "passthrough",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: AbsolutePath.make("/workspace/drupal"),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "passthrough",
+          excludes: [],
+          includes: [],
+        },
+      ],
     } satisfies ServicePlan;
     const plan = makePlan([service]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
@@ -296,14 +302,18 @@ describe("ProviderExecToolingEngine.layer", () => {
   test("keeps an explicit container dir that is not under a host mount", async () => {
     const service = {
       ...baseServicePlan("appserver", true),
-      appMount: {
-        source: AbsolutePath.make("/workspace/drupal"),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "passthrough",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: AbsolutePath.make("/workspace/drupal"),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "passthrough",
+          excludes: [],
+          includes: [],
+        },
+      ],
     } satisfies ServicePlan;
     const plan = makePlan([service]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
@@ -325,14 +335,18 @@ describe("ProviderExecToolingEngine.layer", () => {
     const service = {
       ...baseServicePlan("appserver", true),
       workingDirectory: PortablePath.make("/app/web"),
-      appMount: {
-        source: AbsolutePath.make("/workspace/drupal"),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "passthrough",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: AbsolutePath.make("/workspace/drupal"),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "passthrough",
+          excludes: [],
+          includes: [],
+        },
+      ],
     } satisfies ServicePlan;
     const plan = makePlan([service]);
     const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);

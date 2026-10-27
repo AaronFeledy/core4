@@ -37,5 +37,9 @@
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
     "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./compression": "./src/compression.ts"
   }
 }

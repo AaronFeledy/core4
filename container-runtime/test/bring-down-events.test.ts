@@ -17,7 +17,6 @@ test("publishes paired stop events for each service when containers are already 
     artifact: { kind: "ref" as const, ref: "node:22" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -32,7 +31,6 @@ test("publishes paired stop events for each service when containers are already 
     root: AbsolutePath.make("/absent"),
     provider,
     services: Object.fromEntries(services.map((service) => [service.name, service])),
-    networks: [],
     stores: [],
     routes: [],
     fileSync: [],
@@ -53,7 +51,7 @@ test("publishes paired stop events for each service when containers are already 
   const result = await Effect.runPromise(
     bringDown(plan, {
       api,
-      ctx: { providerId: "lando", remediation: "retry" },
+      ctx: { providerId: "lando", remediation: "retry", env: {} },
       eventService: {
         publish: (event) =>
           Effect.sync(() => {

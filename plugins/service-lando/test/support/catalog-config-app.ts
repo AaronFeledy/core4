@@ -52,15 +52,16 @@ export const composeCatalogConfigPlan = (args: {
       provider: ProviderId.make("lando"),
       services: { [servicePlan.name]: servicePlan },
       routes: [],
-      networks: [],
       // The named volumes the service asks for have to appear on the app plan
       // as well, or teardown has no store to remove and every run leaks the
       // data volume it created.
-      stores: servicePlan.storage.map((mount) => ({
-        name: mount.store,
-        scope: "app" as const,
-        kind: "data" as const,
-      })),
+      stores: servicePlan.mounts
+        .filter((mount) => mount.type === "volume")
+        .map((mount) => ({
+          name: mount.store,
+          scope: "app" as const,
+          kind: "data" as const,
+        })),
       fileSync: [],
       metadata: servicePlan.metadata,
       extensions: {},

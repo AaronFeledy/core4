@@ -136,6 +136,8 @@ for (const failBuild of [false, true]) {
                         message: "injected build failure",
                         providerId: "lando",
                         operation: "build",
+                        remediation:
+                          "Install or start the `lando` provider and confirm it can perform `build`.",
                       }),
                     );
                   return built;

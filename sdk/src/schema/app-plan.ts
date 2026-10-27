@@ -7,20 +7,21 @@ import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
-import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan } from "./mounts.ts";
+import { DataStorePlan, MountPlan } from "./mounts.ts";
 import {
+  type AuthoredNetworkPlan,
   CertificatePlan,
   DependencyPlan,
   EndpointPlan,
   HealthcheckPlan,
   HostAliasPlan,
-  NetworkPlan,
   NetworkingPlan,
   RoutePlan,
   RouteRef,
   ScanPlan,
 } from "./networking.ts";
 import {
+  AbsoluteContainerPath,
   AbsolutePath,
   AppId,
   CommandSpec,
@@ -33,6 +34,41 @@ import {
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
+
+export const ServiceHomePlan = Schema.Union([
+  Schema.Struct({
+    state: Schema.Literal("persisted").annotate({ description: "Lando generated a persistent home store." }),
+    target: AbsoluteContainerPath.annotate({ description: "Resolved home directory inside the container." }),
+    store: Schema.String.annotate({ description: "Generated home store name." }),
+    user: Schema.optionalKey(Schema.String).annotate({
+      description: "User principal whose home is persisted, when known.",
+    }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("authored").annotate({
+      description: "An authored mount already covers the home directory.",
+    }),
+    target: AbsoluteContainerPath.annotate({ description: "Resolved home directory inside the container." }),
+    mount: Schema.Literals(["volume", "bind", "tmpfs"]).annotate({
+      description: "Kind of authored mount at the home target.",
+    }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("disabled").annotate({ description: "Home persistence was explicitly disabled." }),
+  }),
+  Schema.Struct({
+    state: Schema.Literal("unknown").annotate({
+      description: "No home store can be planned from the declared image identity.",
+    }),
+    reason: Schema.Literals(["custom-image", "no-identity", "undeclared-user"]).annotate({
+      description: "Why the home directory is unknown.",
+    }),
+    user: Schema.optionalKey(Schema.String).annotate({
+      description: "User principal whose home is unknown, when known.",
+    }),
+  }),
+]).annotate({ identifier: "ServiceHomePlan", description: "Resolved service home persistence status." });
+export type ServiceHomePlan = typeof ServiceHomePlan.Type;
 
 const ServicePlanFields = {
   name: ServiceName,
@@ -48,10 +84,14 @@ const ServicePlanFields = {
   entrypoint: Schema.optionalKey(CommandSpec),
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
+  home: Schema.optionalKey(ServiceHomePlan).annotate({
+    description: "Resolved home status, always set by the planner; optional for hand-built plans.",
+  }),
   workingDirectory: Schema.optionalKey(PortablePath),
-  appMount: Schema.optionalKey(AppMountPlan),
-  mounts: Schema.Array(MountPlan),
-  storage: Schema.Array(DataStoreMountPlan),
+  mounts: Schema.Array(MountPlan).annotate({
+    description:
+      "Every container mount, sorted shallow to deep with unique targets; the app-source bind has role app.",
+  }),
   endpoints: Schema.Array(EndpointPlan),
   routes: Schema.Array(RouteRef),
   dependsOn: Schema.Array(DependencyPlan),
@@ -92,10 +132,6 @@ export const ServicePlan = Schema.Union([
 ]);
 export type ServicePlan = typeof ServicePlan.Type;
 
-// Shared file-sync naming and mount-target contract used by the planner and providers.
-export const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
-  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
 export const LANDO_SHARED_CROSS_APP_NETWORK = "lando_bridge_network" as const;
 
 const perAppBridgeNetworkName = (slug: string): string => `lando-${slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
@@ -107,9 +143,27 @@ const serviceCrossAppAliases = (
 ): ReadonlyArray<string> => Array.from(new Set([`${serviceName}.${slug}.internal`, ...hostnames]));
 
 /**
+ * Lando-generated name for an app-owned authored network. App slugs never
+ * contain `_`, so the name cannot collide with any app's per-app bridge.
+ */
+export const landoAuthoredNetworkName = (slug: string, key: string): string => `lando-${slug}_${key}`;
+
+/** Authored intent for one top-level Landofile network that services join. */
+type AuthoredNetworkIntent = {
+  readonly key: string;
+  readonly external: boolean;
+  /** Physical name of an external network; defaults to `key`. Owned networks always use a Lando name. */
+  readonly name?: string | undefined;
+  readonly driver?: string | undefined;
+  /** Joined services and the aliases authored for each on this network. */
+  readonly members: Readonly<Record<string, ReadonlyArray<string>>>;
+};
+
+/**
  * Build the typed `NetworkingPlan`: a private bridge unless explicitly disabled,
- * plus shared cross-app membership when the selected provider supports
- * `sharedCrossAppNetwork`. The planner emits this; providers consume it.
+ * shared cross-app membership when the selected provider supports
+ * `sharedCrossAppNetwork`, and the authored networks services join on top of
+ * both. The planner emits this; providers consume it.
  */
 export const landoNetworkingPlan = (input: {
   readonly slug: string;
@@ -117,10 +171,39 @@ export const landoNetworkingPlan = (input: {
   readonly sharedCrossAppNetwork: boolean;
   readonly perAppBridge?: boolean;
   readonly serviceHostnames?: Readonly<Record<string, ReadonlyArray<string>>> | undefined;
+  /** Extra per-service aliases on the per-app bridge (`networks.default.aliases`). */
+  readonly bridgeAliases?: Readonly<Record<string, ReadonlyArray<string>>> | undefined;
+  readonly authoredNetworks?: ReadonlyArray<AuthoredNetworkIntent> | undefined;
 }): NetworkingPlan => {
+  const bridgeAliases = Object.fromEntries(
+    Object.entries(input.bridgeAliases ?? {}).filter(([, aliases]) => aliases.length > 0),
+  );
   const perAppBridge =
-    input.perAppBridge === false ? null : { name: perAppBridgeNetworkName(input.slug), driver: "bridge" };
-  if (!input.sharedCrossAppNetwork) return { perAppBridge };
+    input.perAppBridge === false
+      ? null
+      : {
+          name: perAppBridgeNetworkName(input.slug),
+          driver: "bridge",
+          ...(Object.keys(bridgeAliases).length === 0 ? {} : { aliases: bridgeAliases }),
+        };
+  const authoredNetworks = (input.authoredNetworks ?? []).map(
+    (network): AuthoredNetworkPlan => ({
+      key: network.key,
+      name: network.external
+        ? (network.name ?? network.key)
+        : landoAuthoredNetworkName(input.slug, network.key),
+      external: network.external,
+      ...(network.external ? {} : { driver: network.driver ?? "bridge" }),
+      members: Object.fromEntries(
+        Object.entries(network.members).map(([service, aliases]) => [
+          service,
+          { aliases: serviceCrossAppAliases(input.slug, service, aliases) },
+        ]),
+      ),
+    }),
+  );
+  const authored = authoredNetworks.length === 0 ? {} : { authoredNetworks };
+  if (!input.sharedCrossAppNetwork) return { perAppBridge, ...authored };
   const aliases: Record<string, ReadonlyArray<string>> = {};
   for (const serviceName of input.serviceNames) {
     aliases[serviceName] = serviceCrossAppAliases(
@@ -132,6 +215,7 @@ export const landoNetworkingPlan = (input: {
   return {
     perAppBridge,
     sharedNetworkMembership: { name: LANDO_SHARED_CROSS_APP_NETWORK, aliases },
+    ...authored,
   };
 };
 
@@ -143,16 +227,39 @@ export const landoAppNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">)
   return name === undefined ? [] : [name];
 };
 
+/** Every network the plan attaches any service to: per-app bridge, shared network, then authored networks. */
 export const landoNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => {
   if (plan.networking !== undefined) {
     const names = [...landoAppNetworkNames(plan)];
     if (plan.networking.sharedNetworkMembership !== undefined) {
       names.push(plan.networking.sharedNetworkMembership.name);
     }
+    for (const network of plan.networking.authoredNetworks ?? []) names.push(network.name);
     return Array.from(new Set(names));
   }
   return Array.from(new Set([...landoAppNetworkNames(plan), LANDO_SHARED_CROSS_APP_NETWORK]));
 };
+
+/** Networks the app owns: the per-app bridge and every non-external authored network. */
+export const landoOwnedNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> =>
+  Array.from(
+    new Set([
+      ...landoAppNetworkNames(plan),
+      ...(plan.networking?.authoredNetworks ?? [])
+        .filter((network) => !network.external)
+        .map((network) => network.name),
+    ]),
+  );
+
+/** Authored networks that exist outside Lando; Lando joins them but never creates or removes them. */
+export const landoExternalNetworkNames = (plan: Pick<AppPlan, "networking">): ReadonlyArray<string> =>
+  Array.from(
+    new Set(
+      (plan.networking?.authoredNetworks ?? [])
+        .filter((network) => network.external)
+        .map((network) => network.name),
+    ),
+  );
 
 export const landoSharedNetworkName = (plan: Pick<AppPlan, "networking">): string | undefined =>
   plan.networking !== undefined
@@ -172,14 +279,52 @@ export const landoServiceNetworkAliases = (
   return serviceCrossAppAliases(plan.slug, service.name);
 };
 
-export const sameAppMountTarget = (
-  appMount: ServicePlan["appMount"],
-  mount: ServicePlan["mounts"][number],
-): boolean =>
-  appMount !== undefined &&
-  mount.type === "bind" &&
-  mount.source === appMount.source &&
-  mount.target === appMount.target;
+export const ServiceNetworkAttachment = Schema.Struct({
+  name: Schema.String.annotate({ description: "Provider-visible name of the network the service joins." }),
+  aliases: Schema.Array(Schema.String).annotate({
+    description: "DNS aliases for this service on the network.",
+  }),
+}).annotate({
+  identifier: "ServiceNetworkAttachment",
+  description:
+    "One realized service network attachment, including its physical network name and DNS aliases.",
+});
+export type ServiceNetworkAttachment = typeof ServiceNetworkAttachment.Type;
+
+/**
+ * The networks one service joins and its DNS aliases on each, in attachment
+ * order: the per-app bridge (service name plus `networks.default.aliases`),
+ * the shared network (`landoServiceNetworkAliases`), then each authored
+ * network the service is a member of. This is the only derivation providers
+ * use for container create, connect, fingerprint, and recreate checks.
+ */
+export const landoServiceNetworkAttachments = (
+  plan: Pick<AppPlan, "slug" | "networking">,
+  service: Pick<ServicePlan, "name">,
+): ReadonlyArray<ServiceNetworkAttachment> => {
+  const attachments: ServiceNetworkAttachment[] = [];
+  const bridge = landoAppNetworkName(plan);
+  const shared = landoSharedNetworkName(plan);
+  if (bridge !== undefined) {
+    attachments.push({
+      name: bridge,
+      aliases: Array.from(
+        new Set([
+          service.name,
+          ...(shared === undefined ? [`${service.name}.${plan.slug}.internal`] : []),
+          ...(plan.networking?.perAppBridge?.aliases?.[service.name] ?? []),
+        ]),
+      ),
+    });
+  }
+  if (shared !== undefined)
+    attachments.push({ name: shared, aliases: landoServiceNetworkAliases(plan, service) });
+  for (const network of plan.networking?.authoredNetworks ?? []) {
+    const member = network.members[service.name];
+    if (member !== undefined) attachments.push({ name: network.name, aliases: member.aliases });
+  }
+  return attachments;
+};
 
 /**
  * One file-sync session entry on an `AppPlan`.
@@ -243,9 +388,6 @@ export const AppPlan = Schema.Struct({
     description: "Service plans keyed by service name.",
   }),
   routes: Schema.Array(RoutePlan).annotate({ description: "Resolved application routes." }),
-  networks: Schema.Array(NetworkPlan).annotate({
-    description: "Provider-neutral networks owned by this application.",
-  }),
   /**
    * Typed per-app networking intent: the per-app bridge plus optional
    * shared cross-app network membership. Populated by the planner; omitted for

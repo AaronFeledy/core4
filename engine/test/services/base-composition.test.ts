@@ -143,6 +143,7 @@ describe("lando base composition", () => {
     });
     expect(plan.environment.LANDO_CA_BUNDLE).toBe("/etc/lando/certs/ca-bundle.pem");
     expect(plan.mounts).toContainEqual({
+      origin: "service",
       type: "bind",
       source: "/host/ca-bundle.pem",
       target: PortablePath.make("/etc/lando/certs/ca-bundle.pem"),

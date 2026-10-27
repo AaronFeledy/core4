@@ -40,7 +40,11 @@ export const layerFromSources = Layer.effectContext(
       catch: (cause) =>
         cause instanceof ConfigError
           ? cause
-          : new ConfigError({ message: "Failed to load global config.", cause }),
+          : new ConfigError({
+              message: "Failed to load global config.",
+              cause,
+              remediation: "Run `lando config validate` and repair the reported keys, then retry.",
+            }),
     });
     const commandIds = yield* configCommandIds(sources, captured);
     const decoded = decodeGlobalConfigSources(sources, {

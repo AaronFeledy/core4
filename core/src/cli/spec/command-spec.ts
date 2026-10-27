@@ -108,7 +108,7 @@ export class CommandRegistrationError extends Schema.TaggedError<CommandRegistra
   {
     message: Schema.String,
     commandId: Schema.optionalKey(Schema.String),
-    remediation: Schema.optionalKey(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

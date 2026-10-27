@@ -1,12 +1,14 @@
+import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 
 import { Effect } from "effect";
 
 import { AppResolveError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AbsolutePath,
+  AbsolutePath,
   type AppPlan,
   type AppRef,
+  type AppliedStateInventory,
   ProviderId,
   type ResourceOwnership,
   appIdentityKey,
@@ -25,6 +27,7 @@ export type AppliedStateProvider = Pick<
   RuntimeProviderShape,
   "id" | "appliedPlans" | "isAvailable" | "list" | "listVolumes"
 > & {
+  readonly appliedStateInventory?: Effect.Effect<AppliedStateInventory, ProviderError>;
   readonly resourceOwnership?: (
     root: AbsolutePath,
   ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
@@ -98,8 +101,26 @@ const groupOrphans = (
 
 type RuntimeEvidence = Effect.Success<ReturnType<typeof runtimeEvidence>>;
 
+const canonicalPath = (path: string): Effect.Effect<string> =>
+  Effect.tryPromise(() => realpath(path)).pipe(
+    Effect.catch(() =>
+      Effect.logDebug("applied-state canonicalPath falling back to lexical path").pipe(
+        Effect.annotateLogs({ path }),
+        Effect.as(path),
+      ),
+    ),
+  );
+
+const isSameOrDescendantPath = (ancestor: string, candidate: string): boolean => {
+  const child = relative(ancestor, candidate);
+  return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+};
+
 const gatherAppliedPlans = (provider: AppliedStateProvider) =>
-  (provider.appliedPlans ?? Effect.succeed([])).pipe(
+  (provider.appliedStateInventory === undefined
+    ? (provider.appliedPlans ?? Effect.succeed([]))
+    : provider.appliedStateInventory.pipe(Effect.map((inventory) => inventory.plans))
+  ).pipe(
     Effect.flatMap((appliedPlans) =>
       Effect.forEach(appliedPlans, (plan) =>
         String(plan.provider) === provider.id
@@ -121,7 +142,15 @@ export const observeProviderRuntime = (
 ): Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>, AppResolveError | ProviderError> =>
   Effect.forEach(providers, (provider) =>
     Effect.gen(function* () {
-      const appliedPlans = yield* gatherAppliedPlans(provider);
+      // An unreadable receipt is unknown for observation, never absence for teardown.
+      const appliedPlans = yield* gatherAppliedPlans(provider).pipe(
+        Effect.catchIf(
+          (error) =>
+            error instanceof ProviderUnavailableError &&
+            (error.operation === "applied-state.read" || error.operation === "applied-state.list"),
+          () => Effect.succeed([]),
+        ),
+      );
       const runtime = yield* runtimeEvidence(provider, { includeUnplanned: true });
       return { providerId: ProviderId.make(provider.id), appliedPlans, ...runtime };
     }),
@@ -147,11 +176,28 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
       }),
     );
   }
+  const lookupRoot = AbsolutePath.make(yield* canonicalPath(root));
   const plans = (yield* Effect.forEach(providers, gatherAppliedPlans)).flat();
+  const protectedInventories =
+    ownership === "ancestor"
+      ? yield* Effect.forEach(providers, (provider) =>
+          (provider.appliedStateInventory ?? Effect.succeed({ plans: [], unreadable: [] })).pipe(
+            Effect.map((inventory) => ({ providerId: provider.id, unreadable: inventory.unreadable })),
+          ),
+        )
+      : [];
+  const isProtected = (providerId: string, appId: string) =>
+    protectedInventories.some(
+      (inventory) =>
+        inventory.providerId === providerId &&
+        inventory.unreadable.some((entry) => entry.appId === undefined || entry.appId === appId),
+    );
   const belongsToApp = (providerId: string, appId: string) => {
     const plan = plans.find(
       (candidate) =>
-        candidate.provider === providerId && candidate.id === appId && candidate.identity?.appRoot === root,
+        candidate.provider === providerId &&
+        candidate.id === appId &&
+        candidate.identity?.appRoot === lookupRoot,
     );
     return plan === undefined
       ? app.kind !== "scratch" || app.id === appId
@@ -160,22 +206,24 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   const readOwnership = Effect.gen(function* () {
     const rawInventories = yield* Effect.forEach(
       providers,
-      (provider) => provider.resourceOwnership?.(root) ?? Effect.succeed(undefined),
+      (provider) => provider.resourceOwnership?.(lookupRoot) ?? Effect.succeed(undefined),
     );
     for (const [index, hints] of rawInventories.entries()) {
       if (hints === undefined) continue;
       const provider = providers[index];
       if (
         provider === undefined ||
-        hints.appRoot !== root ||
-        hints.ownerKey !== appIdentityKey("owner", root) ||
+        hints.appRoot !== lookupRoot ||
+        hints.ownerKey !== appIdentityKey("owner", lookupRoot) ||
         hints.providerId !== provider.id
       )
         return yield* Effect.fail(orphanRefusal);
     }
     const inventories = rawInventories.map((hints): ResourceOwnership | undefined => {
       if (hints === undefined) return undefined;
-      const appIds = hints.appIds.filter((id) => belongsToApp(hints.providerId, id));
+      const appIds = hints.appIds.filter(
+        (id) => belongsToApp(hints.providerId, id) && !isProtected(hints.providerId, id),
+      );
       return appIds.length === 0 ? undefined : { ...hints, appIds };
     });
     const ownershipHints = inventories.filter((item): item is ResourceOwnership => item !== undefined);
@@ -202,12 +250,9 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
   const teardownOwnership = ownership === "exact" ? yield* readOwnership : [];
   const matches = plans
     .filter((plan) => {
-      if (!matchesAppPlanIdentity(plan, app)) return false;
       const appRoot = plan.identity?.appRoot;
-      if (appRoot === undefined) return false;
-      if (ownership === "exact") return appRoot === root;
-      const child = relative(appRoot, root);
-      return child === "" || (!child.startsWith("..") && !isAbsolute(child));
+      if (appRoot === undefined || !matchesAppPlanIdentity(plan, app)) return false;
+      return ownership === "exact" ? appRoot === lookupRoot : isSameOrDescendantPath(appRoot, lookupRoot);
     })
     .sort((left, right) => String(right.identity?.appRoot).length - String(left.identity?.appRoot).length);
   const selected = matches[0];
@@ -232,8 +277,8 @@ const collectEvidence = Effect.fn("RuntimeProviderRegistry.collectEvidence")(fun
     const evidence = yield* Effect.forEach(providers, (provider) =>
       runtimeEvidence(provider, ownership === "exact" ? { includeUnplanned: true } : {}),
     );
-    const groups = groupOrphans(root, providers, evidence).filter((group) =>
-      belongsToApp(group.providerId, group.appId),
+    const groups = groupOrphans(lookupRoot, providers, evidence).filter(
+      (group) => belongsToApp(group.providerId, group.appId) && !isProtected(group.providerId, group.appId),
     );
     return groups.length > 0
       ? { kind: "orphans" as const, groups, ...owned }

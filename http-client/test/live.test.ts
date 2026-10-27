@@ -429,7 +429,12 @@ describe("HttpClient network trust", () => {
 
     const configLayer = Layer.effect(
       ConfigService,
-      Effect.fail(new ConfigError({ message: "global config unavailable" })),
+      Effect.fail(
+        new ConfigError({
+          message: "global config unavailable",
+          remediation: "Provide a ConfigService for the live HTTP fixture.",
+        }),
+      ),
     );
 
     const capture = captureFetch();

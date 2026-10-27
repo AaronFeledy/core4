@@ -20,7 +20,7 @@ import {
 
 const providerId = ProviderId.make("lando");
 const serviceName = ServiceName.make("web");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-09-01T00:00:00Z"),
   source: "container-runtime/bring-up-nft.test.ts",
@@ -35,7 +35,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -53,7 +52,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "start-remediation-network", driver: "bridge" } },
   stores: [],
   fileSync: [],

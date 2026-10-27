@@ -41,7 +41,6 @@ const makeService = (
   artifact,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -59,7 +58,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "lando-mailpit-app", driver: "bridge" } },
   stores: [],
   fileSync: [],
@@ -87,7 +85,8 @@ const makeFakeApi = (options: FakeApiOptions = {}) => {
       const responseFor = (): EngineHttpResponse => {
         if (request.method === "GET" && request.path.startsWith("/networks/"))
           return { status: 404, body: "" };
-        if (request.path === "/networks/create") return { status: 201, body: "" };
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create")
+          return { status: 201, body: "" };
         if (request.method === "GET" && request.path.includes("/images/") && request.path.endsWith("/json")) {
           const ref = decodeURIComponent(request.path.slice("/libpod/images/".length, -"/json".length));
           return {

@@ -39,7 +39,6 @@ const servicePlanFixture: typeof ServicePlan.Encoded = {
       realization: "passthrough",
     },
   ],
-  storage: [],
   endpoints: [
     {
       _tag: "internal",
@@ -67,7 +66,6 @@ const appPlanFixture: typeof AppPlan.Encoded = {
   provider: "lando",
   services: { web: servicePlanFixture },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -147,8 +145,10 @@ describe("ServicePlan", () => {
     expect(decoded.primary).toBe(true);
     expect(decoded.environment).toEqual({ NODE_ENV: "development" });
     expect(decoded.mounts).toHaveLength(1);
-    expect(decoded.mounts[0]?.target).toBe(PortablePath.make("/app"));
-    expect(decoded.mounts[0]?.realization).toBe("passthrough");
+    const mount = decoded.mounts[0];
+    if (mount === undefined || mount.type !== "bind") throw new Error("expected bind mount");
+    expect(mount.target).toBe(PortablePath.make("/app"));
+    expect(mount.realization).toBe("passthrough");
     expect(decoded.endpoints).toHaveLength(1);
     const endpoint = decoded.endpoints[0];
     if (endpoint === undefined) throw new Error("endpoint missing");
@@ -271,7 +271,7 @@ describe("AppPlan", () => {
     expect(web.mounts).toHaveLength(1);
     expect(web.endpoints).toHaveLength(1);
     expect(decoded.routes).toEqual([]);
-    expect(decoded.networks).toEqual([]);
+    expect(decoded.networking).toBeUndefined();
     expect(decoded.stores).toEqual([]);
     expect(decoded.metadata.runtime).toBe(4);
   });

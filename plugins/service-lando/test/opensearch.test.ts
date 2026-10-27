@@ -70,10 +70,11 @@ describe("opensearch ServiceType", () => {
         ref: "opensearchproject/opensearch:2",
       });
       expect(plan.command).toBeUndefined();
-      expect(plan.storage).toHaveLength(1);
-      expect(plan.storage[0]?.store).toBe("myapp-opensearch-data");
-      expect(String(plan.storage[0]?.target)).toBe("/usr/share/opensearch/data");
-      expect(plan.storage[0]?.readOnly).toBe(false);
+      const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+      expect(volumes).toHaveLength(1);
+      expect(volumes[0]?.store).toBe("myapp-opensearch-data");
+      expect(String(volumes[0]?.target)).toBe("/usr/share/opensearch/data");
+      expect(volumes[0]?.readOnly).toBe(false);
       expect(plan.endpoints).toEqual([
         { _tag: "internal", port: 9200, protocol: "http", name: "search", primary: true },
       ]);

@@ -9,7 +9,7 @@ import {
   ConfigTranslateNoTranslatorsError,
   type ConfigTranslatorConflictError,
   type LandofileFormConflictError,
-  LandofileNotFoundError,
+  type LandofileNotFoundError,
   type LandofileParseError,
   type NotImplementedError,
   type PluginDescriptorMismatchError,
@@ -24,7 +24,7 @@ import {
   resolveConfigTranslators,
   runConfigTranslator,
 } from "@lando/landofile/config-translate";
-import { findLandofilePath } from "@lando/landofile/discovery";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 
 import {
   buildDocumentSetShape,
@@ -37,6 +37,7 @@ import type { AppConfigTranslateResult } from "./app-config-translate-output.ts"
 import { renderTranslateTargets } from "./app-config-translate-output.ts";
 import { readTranslateDocuments } from "./app-config-translate-read.ts";
 export { CONFIG_TRANSLATE_MAX_DOCUMENT_BYTES } from "./app-config-translate-read.ts";
+import { orderTranslateDiagnostics } from "@lando/engine/planner/home-expectations";
 import { selectTranslator } from "./app-config-translate-selection.ts";
 import {
   discoverSourceFiles,
@@ -107,16 +108,7 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
     };
   }
 
-  const cwd = options.cwd ?? process.cwd();
-  const inputPath = yield* Effect.promise(() => findLandofilePath(cwd));
-  if (inputPath === undefined) {
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: "No .lando.yml found. Run `lando init` to create one before translating.",
-        cwd,
-      }),
-    );
-  }
+  const { filePath: inputPath } = yield* findDiscoveredLandofilePath(options.cwd);
 
   if (resolved.length === 0) {
     return yield* Effect.fail(
@@ -179,6 +171,7 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
     outputs,
     diagnostics: frontendDiagnostics,
     deletions,
+    expectations,
   } = yield* runConfigTranslator(selected, {
     _tag: "landofile-document-set",
     documents,
@@ -192,19 +185,21 @@ export const appConfigTranslate = Effect.fn("AppConfigTranslate.translate")(func
     ? []
     : yield* encodeTranslateOutputs(
         { appRoot, inputPath },
-        { outputs, currentLowerV4Fragments },
+        { outputs, currentLowerV4Fragments, ...(expectations === undefined ? {} : { expectations }) },
         target.encode,
       );
-  const { redactor } = yield* resolveSecretsRedactor();
+  const { redactor } = yield* resolveSecretsRedactor({ sourceEnv: { ...process.env } });
   const encodingDiagnostics = [...frontendDiagnostics, ...encoded.flatMap((result) => result.diagnostics)];
   const includeDiagnostics = yield* validateTranslatedIncludeTargets(appRoot, outputs);
-  const diagnostics = [...encodingDiagnostics, ...includeDiagnostics].map((diagnostic) => ({
-    ...diagnostic,
-    message: redactor.redactString(diagnostic.message),
-    ...(diagnostic.remediation === undefined
-      ? {}
-      : { remediation: redactor.redactString(diagnostic.remediation) }),
-  }));
+  const diagnostics = orderTranslateDiagnostics([...encodingDiagnostics, ...includeDiagnostics], files).map(
+    (diagnostic) => ({
+      ...diagnostic,
+      message: redactor.redactString(diagnostic.message),
+      ...(diagnostic.remediation === undefined
+        ? {}
+        : { remediation: redactor.redactString(diagnostic.remediation) }),
+    }),
+  );
   const targets = encodingDiagnostics.some((diagnostic) => diagnostic.kind === "unsupported")
     ? []
     : encoded.map((result) => result.target);

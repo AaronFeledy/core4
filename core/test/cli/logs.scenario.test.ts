@@ -83,7 +83,6 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   command: name === "web" ? ["node", "server.js"] : ["postgres"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints:
     name === "web"
       ? [{ _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } }]
@@ -113,7 +112,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -186,6 +184,7 @@ const makeLogsLayer = (
           providerId: "lando",
           operation: "buildArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
         }),
       ),
     pullArtifact: () =>
@@ -194,6 +193,7 @@ const makeLogsLayer = (
           providerId: "lando",
           operation: "pullArtifact",
           message: "unavailable",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
         }),
       ),
     removeArtifact: () => Effect.void,

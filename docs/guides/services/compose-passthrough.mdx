@@ -15,12 +15,11 @@ services:
   whoami:
     type: compose
     image: traefik/whoami:v1.10
-    home: false
     ports:
       - 80:80
 ```
 
-`home: false` disables home persistence for this custom image. The example publishes host port `80`, which must be free; choose another host-side port in `ports:` if needed and use it in the probe below.
+Because the image comes from your Landofile, Lando plans no home store for it. The example publishes host port `80`, which must be free; choose another host-side port in `ports:` if needed and use it in the probe below.
 
 Start it. Lando puts the passthrough service on the app network:
 
@@ -51,7 +50,6 @@ services:
     type: compose
     image: alpine:3.20
     appMount: false
-    home: false
     command: sh -c "printf ready && exec sleep infinity"
 ```
 
@@ -84,7 +82,11 @@ else the image needs with `environment:` or `env_file:`.
 
 Lando still bind-mounts the app source at `/app`, or at `appMount.target`
 when you set one, and joins the service to the per-app network `lando-<slug>`
-so it can reach the rest of the app by service name.
+so it can reach the rest of the app by service name. To put it on more
+networks as well, declare them under top-level `networks:` and list them on
+the service; see [Reach another project's services](../config/networks.mdx).
+To bring a whole compose file in as services of your app, use top-level
+`include:`; the same guide covers it.
 
 ## Skip the app mount
 

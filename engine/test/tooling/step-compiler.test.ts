@@ -100,6 +100,7 @@ describe("compileEventStepProgram", () => {
       kind: "task",
       cause: { _tag: "ToolingStepSelectorUnavailableError", selector: "sources" },
     });
+    expect(error.remediation).toBe(error.cause.remediation);
   });
 
   test("validates literal canonical command inputs at compile time", async () => {
@@ -167,6 +168,7 @@ describe("compileEventStepProgram", () => {
       cause: { _tag: "ToolingCompileError", tool: "{{ vars.cmd }}" },
     });
     expect(error.cause).toBeInstanceOf(ToolingCompileError);
+    expect(error.remediation).toBe(error.cause.remediation);
   });
 
   test("treats escaped shell forms as compile-time literals", async () => {

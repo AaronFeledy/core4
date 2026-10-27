@@ -97,12 +97,13 @@ const scratchRegistryError = (operation: string, message: string, cause: unknown
     operation,
     message,
     cause,
-    ...(typeof cause === "object" &&
-    cause !== null &&
-    "remediation" in cause &&
-    typeof cause.remediation === "string"
-      ? { remediation: cause.remediation }
-      : {}),
+    remediation:
+      typeof cause === "object" &&
+      cause !== null &&
+      "remediation" in cause &&
+      typeof cause.remediation === "string"
+        ? cause.remediation
+        : "Repair the scratch registry state under the user data root, then retry.",
   });
 
 const sortById = (entries: RegistryEntries): RegistryEntries =>

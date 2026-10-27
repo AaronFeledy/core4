@@ -143,6 +143,7 @@ for (const prepareExit of [0, 1]) {
         readOnly: true,
         createHostPath: false,
         realization: "passthrough",
+        origin: "integration",
       });
       expect(closed).toBe(1);
       if (prepareExit === 0) {

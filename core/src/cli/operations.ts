@@ -35,29 +35,29 @@ export const invokeOperation = <A, E, R>(
   operation: Effect.Effect<A, E, R>,
   options: InvokeOperationOptions<A, E> = {},
 ): Effect.Effect<InvokeOperationResult<A, E>, never, R> =>
-  Effect.map(Effect.exit(operation), (exit) => {
+  Effect.flatMap(Effect.exit(operation), (exit): Effect.Effect<InvokeOperationResult<A, E>> => {
     if (Exit.isSuccess(exit)) {
       const output = options.render?.(exit.value);
-      return {
-        ok: true,
+      return Effect.succeed({
+        ok: true as const,
         value: exit.value,
         ...(output === undefined ? {} : { output }),
-      };
+      });
     }
 
     // Typed failures use the shared primary/additional projection; only untyped causes propagate as defects.
     const primary = primaryFailureReason(exit.cause);
     if (primary !== undefined && Cause.isFailReason(primary)) {
       const output = options.renderError?.(primary.error);
-      return {
-        ok: false,
+      return Effect.succeed({
+        ok: false as const,
         error: primary.error,
         additionalErrors: failureOutcomeFromCause(exit.cause).additionalErrors,
         ...(output === undefined ? {} : { output }),
-      };
+      });
     }
 
-    throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
+    return Effect.orDie(Effect.failCause(exit.cause));
   });
 
 export * from "@lando/engine/operations/start";

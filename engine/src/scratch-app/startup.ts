@@ -38,6 +38,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
           operation: "start",
           message: `Unable to start scratch app ${id}.`,
           cause,
+          remediation: "Run `lando doctor`, fix the provider failure, then retry scratch start.",
         }),
     ),
   );
@@ -56,6 +57,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
             operation: "start",
             message: `Unable to ready scratch app ${id}.`,
             cause,
+            remediation: "Wait for services to become healthy, or run `lando doctor` and retry.",
           }),
     ),
   );
@@ -98,7 +100,8 @@ export const withScratchAcquisition = <A, E, R>(
             operation: error.operation,
             message: `${error.message} ${error.cause.message}`,
             remediation: request.keepOnFailure
-              ? error.cause.remediation
+              ? (error.cause.remediation ??
+                "Inspect the retained scratch instance, fix the source Landofile, then retry.")
               : "Correct the source Landofile and retry scratch acquisition. Use --keep-on-failure to retain a failing instance for inspection.",
             cause: error.cause,
           });

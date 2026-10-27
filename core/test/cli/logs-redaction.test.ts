@@ -76,7 +76,6 @@ const database: ServicePlan = {
   command: ["postgres"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn: [],
@@ -101,7 +100,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -122,11 +120,21 @@ const makeLayer = (rawLine: string) => {
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
       Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "buildArtifact",
+          message: "x",
+          remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
+        }),
       ),
     pullArtifact: () =>
       Effect.fail(
-        new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "pullArtifact",
+          message: "x",
+          remediation: "Install or start the `lando` provider and confirm it can perform `pullArtifact`.",
+        }),
       ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),

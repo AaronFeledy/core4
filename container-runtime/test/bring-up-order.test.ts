@@ -14,7 +14,7 @@ import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("bring-up-order-app");
 const dbName = ServiceName.make("db");
 const dependentNames = {
@@ -35,7 +35,6 @@ const servicePlan = (name: ServicePlan["name"], primary: boolean): ServicePlan =
   artifact: { kind: "ref", ref: "debian:12.11-slim" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -69,7 +68,6 @@ const planWithDependency = (dependentName: ServicePlan["name"], required: boolea
     provider: providerId,
     services: { [dependentName]: dependent, [dbName]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -379,7 +377,6 @@ test("unchanged container ID across failed B then retry", async () => {
     provider: providerId,
     services: { [apiSvc.name]: apiSvc, [webSvc.name]: webSvc },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -424,7 +421,6 @@ test("corrected config recreates ONLY B", async () => {
     provider: providerId,
     services: { [apiSvc.name]: apiSvc, [webSvc.name]: webSvc },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -482,7 +478,6 @@ test("a filtered apply leaves an unselected container's real ID untouched", asyn
     provider: providerId,
     services: { [web.name]: web, [db.name]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

@@ -18,7 +18,9 @@ export class EnvironmentValueResolutionError extends Schema.TaggedError<Environm
     reason: Schema.Literals(["unresolved-binding", "invalid-value", "budget-exceeded"]).annotate({
       description: "Resolution failure classification.",
     }),
-    remediation: Schema.String.annotate({ description: "Action needed to resolve the environment safely." }),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
+      description: "Action needed to resolve the environment safely.",
+    }),
   },
   { description: "Environment descriptor resolution failed before dispatch." },
 ) {}
@@ -30,6 +32,9 @@ export class PlanReplanRequiredError extends Schema.TaggedError<PlanReplanRequir
       description: "Historical plan creation rejection discriminator.",
     }),
     providerId: Schema.String.annotate({ description: "Provider asked to create or recreate services." }),
+    cause: Schema.optional(Schema.Unknown).annotate({
+      description: "Failure preventing applied-plan verification.",
+    }),
     operation: Schema.String.annotate({
       description: "Creation operation rejected by the eligibility gate.",
     }),
@@ -38,7 +43,7 @@ export class PlanReplanRequiredError extends Schema.TaggedError<PlanReplanRequir
     valueModel: Schema.optionalKey(Schema.Literal(1)).annotate({
       description: "Observed value model marker, absent on historical plans.",
     }),
-    remediation: Schema.String.annotate({
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
       description: "Replan command or instructions required before creation.",
     }),
   },

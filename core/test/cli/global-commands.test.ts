@@ -56,6 +56,7 @@ import { PreAppStartEvent } from "@lando/sdk/events";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import * as AppCacheService from "@lando/engine/cache/service";
@@ -109,6 +110,7 @@ interface ProviderCalls {
 }
 
 type HarnessLayer = Layer.Layer<
+  | import("@lando/sdk/services").StateStore
   | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
@@ -193,16 +195,18 @@ const fakeServiceType = makeLegacyServiceTypeFake({
       artifact: { kind: "ref", ref: "lando-global-service:test" },
       environment: service.environment ?? {},
       workingDirectory: PortablePath.make("/app"),
-      appMount: {
-        source: AbsolutePath.make(appRoot),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "passthrough",
-      },
-      mounts: [],
-      storage: [],
+      mounts: [
+        {
+          type: "bind",
+          source: AbsolutePath.make(appRoot),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "passthrough",
+          role: "app",
+        },
+      ],
       endpoints: [
         { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
       ],
@@ -330,6 +334,7 @@ const makeHarness = async (
               providerId: "lando",
               operation: "destroy",
               message: "provider unavailable",
+              remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
             }),
           )
         : Effect.sync(() => {
@@ -346,6 +351,8 @@ const makeHarness = async (
             providerId: String(providerId),
             operation: "inspect",
             message: "provider unavailable",
+            remediation:
+              "Install or start the selected runtime provider and confirm it can perform `inspect`.",
           }),
         );
       }
@@ -397,6 +404,7 @@ const makeHarness = async (
     buildApp: () => Effect.void,
   });
   const layer = Layer.mergeAll(
+    testStateStoreLayer,
     PrivateFileAccessService.layer,
     Layer.succeed(PathsService, makeLandoPaths()),
     LandoConfigService.layer,
@@ -1683,6 +1691,19 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("config reports a canonical TypeScript Landofile as the overlay path", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness);
+      const root = join(harness.dataRoot, "global");
+      await rm(join(root, ".lando.yml"), { force: true });
+      await writeFile(join(root, ".lando.ts"), "export default { runtime: 4 };\n");
+
+      const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
+
+      expect(result.userLandofile).toBe(join(root, ".lando.ts"));
+    });
+  });
+
   test("config displays authored overrides consistently with global planning", async () => {
     // Given generated services and a canonical override written through the config command.
     await withHarness(async (harness) => {
@@ -2086,7 +2107,7 @@ describe("meta:global command effects", () => {
     await withHarness(async (harness) => {
       const missingProvider = new NoProviderInstalledError({
         message: "No runtime provider is installed.",
-        suggestion: "Run lando setup.",
+        remediation: "Run lando setup.",
       });
       const layer = Layer.mergeAll(
         harness.layer,

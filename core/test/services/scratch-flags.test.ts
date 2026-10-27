@@ -1,17 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
 import {
   type AppPlan,
+  PortablePath,
   type ProviderCapabilities,
   ProviderId,
   type ServicePlan,
   landoSharedNetworkName,
+  serviceAppMount,
 } from "@lando/core/schema";
 import {
+  EventService,
   PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -99,7 +102,8 @@ const makeCapabilities = (sharedCrossAppNetwork: boolean): ProviderCapabilities 
   rootless: true,
   privilegedServices: false,
   architectureEmulation: false,
-  composeSpec: "portable",
+  composeSpec: "native",
+  authoredNetworks: true,
   providerExtensions: [],
 });
 
@@ -154,7 +158,11 @@ const withScratchEnv = async <T>(
 const die = (operation: string) =>
   Effect.die(new Error(`scratch flags test provider should not call ${operation}`));
 
-const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
+const makeLayer = (
+  appliedPlans: AppPlan[],
+  sharedCrossAppNetwork = true,
+  initApp?: typeof ScratchAppServiceLayer.ScratchInitAppPort.Service,
+) => {
   const capabilities = makeCapabilities(sharedCrossAppNetwork);
   const provider: RuntimeProviderShape = RuntimeProvider.of({
     ...TestRuntimeProvider,
@@ -218,7 +226,9 @@ const makeLayer = (appliedPlans: AppPlan[], sharedCrossAppNetwork = true) => {
     registryLive,
     ScratchRegistryLayer.ScratchRegistry.layer,
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
-    ScratchInitAppPortLayer.layer,
+    initApp === undefined
+      ? ScratchInitAppPortLayer.layer
+      : Layer.succeed(ScratchAppServiceLayer.ScratchInitAppPort, initApp),
     BunDataMover.layer.pipe(
       Layer.provide(registryLive),
       Layer.provide(
@@ -262,6 +272,92 @@ const acquireRecipe = (appliedPlans: AppPlan[], input: Record<string, unknown>) 
   ).pipe(Effect.provide(makeLayer(appliedPlans)));
 
 describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
+  test.each(["full", "baked", "cwd"] as const)(
+    "fork %s isolates app-relative mounts through provider acquisition",
+    async (isolate) => {
+      const yaml = `${forkLandofile}    mounts:\n      - ./config:/etc/project\n      - ../outside:/outside\n    appMount:\n      target: /app\n      excludes: [vendor]\n  worker:\n    type: node:22\n    mounts:\n      - ./jobs:/jobs\n`;
+      await withScratchEnv(yaml, async (dir) => {
+        const absolute = `${yaml}      - ${dir}:/absolute\n`;
+        await writeFile(join(dir, ".lando.yml"), absolute);
+        const applied: AppPlan[] = [];
+        await Effect.runPromise(
+          Effect.flatMap(ScratchAppService, (scratch) =>
+            Effect.scoped(scratch.acquire({ source: { kind: "fork" }, detached: true, isolate })),
+          ).pipe(Effect.provide(makeLayer(applied))),
+        );
+        const acquired = applied[0];
+        if (acquired === undefined) throw new Error("scratch acquire did not apply a plan");
+        const primary = primaryService(acquired);
+        const relative = primary.mounts.find((mount) => mount.target === "/etc/project");
+        const worker = Object.values(acquired.services).find((service) => service.name === "worker");
+        expect(worker?.mounts.find((mount) => mount.target === "/absolute")).toMatchObject({
+          type: "bind",
+          source: dir,
+        });
+        if (isolate === "baked") {
+          expect(String(acquired.root)).toBe(dir);
+          expect(serviceAppMount(primary)).toBeUndefined();
+          expect(relative).toBeUndefined();
+          expect(primary.mounts.find((mount) => mount.target === "/app/vendor")).toBeUndefined();
+          expect(worker?.mounts.find((mount) => mount.target === "/jobs")).toBeUndefined();
+          expect(acquired.fileSync).toEqual([]);
+        } else {
+          const expectedRoot = isolate === "cwd" ? dir : acquired.root;
+          expect(relative).toMatchObject({
+            type: "bind",
+            source: join(expectedRoot, "config"),
+            realization: "passthrough",
+          });
+          expect(worker?.mounts.find((mount) => mount.target === "/jobs")).toMatchObject({
+            source: join(expectedRoot, "jobs"),
+            realization: "passthrough",
+          });
+          expect(serviceAppMount(primary)?.source).toBe(expectedRoot);
+          expect(primary.mounts.some((mount) => mount.target === "/outside")).toBe(isolate === "cwd");
+          if (isolate === "full") expect(acquired.root).not.toBe(dir);
+        }
+      });
+    },
+  );
+
+  test("recipe baked keeps its scaffold and warns for each lexical or symlink escape", async () => {
+    await withScratchEnv(undefined, async (dir) => {
+      const applied: AppPlan[] = [];
+      const initApp: typeof ScratchAppServiceLayer.ScratchInitAppPort.Service = {
+        initApp: async ({ destination }) => {
+          await mkdir(join(destination, "safe"), { recursive: true });
+          await symlink(dir, join(destination, "escape"), "dir");
+          await writeFile(
+            join(destination, ".lando.yml"),
+            `${forkLandofile}    mounts:\n      - ./safe:/safe\n      - ../outside:/lexical\n      - ./escape/missing:/symlink\n      - ${dir}:/absolute\n`,
+          );
+        },
+      };
+      const warnings = await Effect.runPromise(
+        Effect.gen(function* () {
+          const scratch = yield* ScratchAppService;
+          const events = yield* EventService;
+          yield* Effect.scoped(scratch.acquire({ source: { kind: "recipe", ref: "test" }, detached: true }));
+          return yield* events.query("message.warn");
+        }).pipe(Effect.provide(makeLayer(applied, true, initApp))),
+      );
+      const acquired = applied[0];
+      if (acquired === undefined) throw new Error("scratch acquire did not apply a plan");
+      const primary = primaryService(acquired);
+      expect(serviceAppMount(primary)?.source).toBe(acquired.root);
+      expect(primary.mounts.find((mount) => mount.target === "/safe")).toMatchObject({
+        source: join(acquired.root, "safe"),
+      });
+      expect(primary.mounts.find((mount) => mount.target === "/absolute")).toMatchObject({ source: dir });
+      expect(primary.mounts.some((mount) => mount.target === "/lexical" || mount.target === "/symlink")).toBe(
+        false,
+      );
+      expect(warnings).toHaveLength(2);
+      for (const target of ["/lexical", "/symlink"])
+        expect(warnings.filter(({ body }) => body.includes(`appserver:${target}`))).toHaveLength(1);
+    });
+  });
+
   test("default mount-cwd rebinds the primary service's appMount source to $PWD", async () => {
     await withScratchEnv(undefined, async (dir) => {
       const appliedPlans: AppPlan[] = [];
@@ -269,9 +365,9 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       const primary = primaryService(appliedPlan);
-      expect(primary.appMount).toBeDefined();
-      expect(String(primary.appMount?.source)).toBe(dir);
-      expect(primary.appMount?.realization).toBe("passthrough");
+      expect(serviceAppMount(primary)).toBeDefined();
+      expect(String(serviceAppMount(primary)?.source)).toBe(dir);
+      expect(serviceAppMount(primary)?.realization).toBe("passthrough");
       expect(String(appliedPlan.root)).not.toBe(dir);
     });
   });
@@ -283,12 +379,16 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       const primary = primaryService(appliedPlan);
-      expect(String(primary.appMount?.source)).not.toBe(dir);
+      expect(String(serviceAppMount(primary)?.source)).not.toBe(dir);
+      expect(serviceAppMount(primary)?.target).toBe(PortablePath.make("/app"));
       const added = primary.mounts.find((mount) => mount.target === "/srv/site");
       expect(added).toBeDefined();
       expect(added?.type).toBe("bind");
-      expect(added?.source).toBe(dir);
-      expect(added?.realization).toBe("passthrough");
+      if (added?.type === "bind") {
+        expect(added.source).toBe(dir);
+        expect(added.realization).toBe("passthrough");
+        expect(added.role).toBeUndefined();
+      }
     });
   });
 
@@ -310,6 +410,34 @@ describe("ScratchAppServiceLayer.layer --mount-cwd transform", () => {
 });
 
 describe("ScratchAppServiceLayer.layer --share-global-storage transform", () => {
+  test("preserves authored memberships and default aliases when sharing global storage", async () => {
+    const yaml = `${forkLandofile}\nnetworks:\n  peer:\n    external: true\n`;
+    const withNetworks = yaml.replace(
+      "    primary: true",
+      "    primary: true\n    networks:\n      peer:\n        aliases: [api]\n      default:\n        aliases: [www]",
+    );
+    await withScratchEnv(withNetworks, async () => {
+      const appliedPlans: AppPlan[] = [];
+      await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(
+            service.acquire({ source: { kind: "fork" }, detached: true, shareGlobalStorage: true }),
+          ),
+        ).pipe(Effect.provide(makeLayer(appliedPlans))),
+      );
+      const networking = appliedPlans.at(0)?.networking;
+      expect(networking?.authoredNetworks).toMatchObject([
+        {
+          key: "peer",
+          external: true,
+          name: "peer",
+          members: { appserver: { aliases: expect.arrayContaining(["api"]) } },
+        },
+      ]);
+      expect(networking?.perAppBridge?.aliases).toMatchObject({ appserver: ["www"] });
+      expect(networking?.sharedNetworkMembership?.name).toBe("lando_bridge_network");
+    });
+  });
   test("joins the shared cross-app network and stamps the share marker", async () => {
     await withScratchEnv(undefined, async () => {
       const appliedPlans: AppPlan[] = [];
@@ -348,7 +476,7 @@ describe("ScratchAppServiceLayer.layer mount-cwd + share-global-storage together
       const appliedPlan = appliedPlans.at(0);
       if (appliedPlan === undefined) throw new Error("scratch acquire did not apply a plan");
       const primary = primaryService(appliedPlan);
-      expect(String(primary.appMount?.source)).toBe(dir);
+      expect(String(serviceAppMount(primary)?.source)).toBe(dir);
       expect(appliedPlan.networking?.sharedNetworkMembership).toBeDefined();
       expect(scratchMarker(appliedPlan).shareGlobalStorage).toBe(true);
     });

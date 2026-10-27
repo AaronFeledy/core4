@@ -15,7 +15,6 @@ services:
   appserver:
     type: compose
     image: dunglas/frankenphp:1.12.7-php8.4
-    home: false
     ports:
       - 9080:9080
     environment:
@@ -28,8 +27,6 @@ tooling:
     service: appserver
     cmd: frankenphp
 ```
-
-Landofile-supplied images need `home: false` or `home.path`; omitting both refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/).
 
 `SERVER_NAME: ":9080"` tells FrankenPHP (Caddy) to listen for HTTP on container port `9080`. The short port form publishes that port on the host. Drop a page at `public/index.php`, then start:
 
@@ -77,7 +74,6 @@ services:
   appserver:
     type: compose
     build: .
-    home: false
     ports:
       - 9080:9080
     environment:
@@ -151,7 +147,7 @@ From another service, call that URL. Do not use `localhost` inside another conta
   </Scenario>
 </Guide>
 
-`lando destroy -y` removes containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes containers and networks. Named volumes stay unless you pass `--volumes` or `--purge`.
 
 ## Next
 

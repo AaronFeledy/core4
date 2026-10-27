@@ -57,7 +57,6 @@ export const web: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     { _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } },
   ],
@@ -79,7 +78,6 @@ export const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [{ name: "database", scope: "service", kind: "data" }],
   fileSync: [],
   metadata,

@@ -84,7 +84,7 @@ const runRestart = (service: ServicePlan, recorded = applied, driftAtStop = fals
       return bringUp(runtimePlan, {
         ...options,
         api,
-        ctx: { providerId: "lando", remediation: "Retry." },
+        ctx: { providerId: "lando", remediation: "Retry.", env: {} },
         ensureImage: () => Effect.die("restart must not pull"),
         resolveServiceEnvironment: () => Effect.die("restart must not resolve creation values"),
       });

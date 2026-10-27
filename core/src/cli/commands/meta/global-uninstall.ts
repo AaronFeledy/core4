@@ -44,7 +44,12 @@ export const GlobalUninstallResultSchema = Schema.Struct({
 
 type GlobalUninstallError = LoadObservedGlobalPlanError | GlobalDistConflictError | ProviderError;
 
-type GlobalUninstallServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+type GlobalUninstallServices =
+  | AppPlanner
+  | FileSystem
+  | GlobalAppService
+  | RuntimeProviderRegistry
+  | import("@lando/sdk/services").StateStore;
 
 const pluginUninstallError = (plugin: string): GlobalAppError =>
   new GlobalAppError({

@@ -47,7 +47,6 @@ const service = (name: string, milliseconds: number): ServicePlan => ({
   artifact: { kind: "ref" as const, ref: `test/${name}:latest` },
   environment: name === "node" ? { DB_PASSWORD: "bare-db-password", APP_REGION: "us-east-1" } : {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -71,7 +70,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -296,6 +294,8 @@ describe("BuildOrchestrator artifact phase", () => {
       providerId,
       operation: "buildArtifact",
       message: "synthetic artifact failure",
+      remediation:
+        "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
     });
     const provider = {
       ...TestRuntimeProvider,

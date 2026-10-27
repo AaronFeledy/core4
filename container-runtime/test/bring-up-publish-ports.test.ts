@@ -18,7 +18,7 @@ import { bringUp } from "../src/podman/bring-up.ts";
 import { SERVICE_PUBLISH_PORT_MIN, type ServicePublishProbe } from "../src/service-publish-ports.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("publish-ports");
 const serviceName = ServiceName.make("web");
 const metadata = {
@@ -37,7 +37,6 @@ const planWithPublication = (publication: EndpointPublication): AppPlan => {
     artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [
       {
         _tag: "published",
@@ -62,7 +61,6 @@ const planWithPublication = (publication: EndpointPublication): AppPlan => {
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "publish-ports-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -112,7 +110,10 @@ const makeFakeApi = (input: {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "POST" && request.path.endsWith("/connect")) {
@@ -456,7 +457,9 @@ describe("create-body service publish ports", () => {
     expect(createHostPort(fake.calls, 1)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
     expect(ports).toEqual([SERVICE_PUBLISH_PORT_MIN, SERVICE_PUBLISH_PORT_MIN + 1]);
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
-    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: `/containers/${containerName}?force=true&v=true` },
+    ]);
   });
 
   test("a stopped existing container recovers with a fresh port", async () => {
@@ -479,7 +482,9 @@ describe("create-body service publish ports", () => {
     expect(createCalls(fake.calls)).toHaveLength(1);
     expect(createHostPort(fake.calls)).toBe(String(SERVICE_PUBLISH_PORT_MIN + 1));
     expect(fake.calls.filter((call) => call.path.endsWith("/start"))).toHaveLength(2);
-    expect(fake.calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
+    expect(fake.calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: `/containers/${containerName}?force=true&v=true` },
+    ]);
   });
 
   test.each([false, true])(

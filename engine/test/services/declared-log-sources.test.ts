@@ -2,12 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadLandofileFile } from "@lando/landofile/service";
+import { loadLandofileFile, loadLandofileLayers } from "@lando/landofile/service";
 import { AbsolutePath, LogSourceId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
-import { decodeGlobalLandofile } from "../../src/operations/global-plan.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
@@ -28,7 +27,7 @@ for (const type of ["node:22", "compose"]) {
             Effect.gen(function* () {
               const landofile = yield* adapter === "file"
                 ? loadLandofileFile(file)
-                : decodeGlobalLandofile({ file, cwd: root, content });
+                : loadLandofileLayers(root, file);
               const planner = yield* AppPlanner;
               return yield* planner.plan(landofile, TestRuntimeProvider.capabilities);
             }).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),

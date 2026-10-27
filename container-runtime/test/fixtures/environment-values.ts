@@ -23,7 +23,6 @@ export const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -39,7 +38,6 @@ export const plan: AppPlan = {
   root: AbsolutePath.make("/tmp/lando-values"),
   provider: service.provider,
   services: { [service.name]: service },
-  networks: [],
   routes: [],
   stores: [],
   fileSync: [],
@@ -51,7 +49,7 @@ export const legacyPlan = (): AppPlan => {
   const { valueModel: _marker, ...legacy } = plan;
   return legacy;
 };
-export const ctx = { providerId: "docker", remediation: "Retry." };
+export const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
 
 export const fakeEngine = (existing?: AppPlan, initiallyRunning = true) => {
   const calls: EngineHttpRequest[] = [];

@@ -32,7 +32,11 @@ const ARGV_SENTINEL_SUFFIX = ' "$@"';
 
 const makeHostShellRunner = (privateFileAccess: typeof PrivateFileAccessService.Service) =>
   makeShellRunnerService(() => {
-    throw new ShellExecError({ message: "Interactive host tooling is unavailable.", command: "" });
+    throw new ShellExecError({
+      message: "Interactive host tooling is unavailable.",
+      command: "",
+      remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
+    });
   }, privateFileAccess);
 
 const wrapShellAsToolingError = (tool: string, shellError: ShellExecError): ToolingExecError =>
@@ -41,12 +45,16 @@ const wrapShellAsToolingError = (tool: string, shellError: ShellExecError): Tool
     tool,
     ...(shellError.exitCode === undefined ? {} : { exitCode: shellError.exitCode }),
     cause: shellError,
+    remediation:
+      shellError.remediation ??
+      `Fix the host shell command for tooling.${tool} so it exits 0, then rerun the task.`,
   });
 
 const missingHostStepsError = (tool: string): ToolingExecError =>
   new ToolingExecError({
     message: `Host tooling task ${tool} has no structural host steps to run.`,
     tool,
+    remediation: `Add host: steps under tooling.${tool}, then run lando app:cache:refresh.`,
   });
 
 const unsupportedPositionalError = (tool: string): ToolingCompileError =>

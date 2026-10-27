@@ -108,13 +108,19 @@ const configReadError = (path: string, cause: unknown): ConfigError =>
         message: `${cause instanceof MinimalYamlError ? "Invalid YAML in config file" : "Failed to read global config"} ${path}: ${cause instanceof Error ? cause.message : String(cause)}`,
         path,
         cause,
-        ...(cause instanceof MinimalYamlError
-          ? { remediation: "Fix the YAML syntax with `lando config edit` or edit config.yml directly." }
-          : {}),
+        remediation:
+          cause instanceof MinimalYamlError
+            ? "Fix the YAML syntax with `lando config edit` or edit config.yml directly."
+            : `Fix permissions on ${path} or restore it, then retry the config command.`,
       });
 
 const configWriteError = (path: string, cause: unknown): ConfigError =>
-  new ConfigError({ message: `Failed to write global config: ${path}`, path, cause });
+  new ConfigError({
+    message: `Failed to write global config: ${path}`,
+    path,
+    cause,
+    remediation: `Make ${path} writable, then retry \`lando config set\` or \`lando config edit\`.`,
+  });
 
 const readConfigObject = (path: string): Record<string, unknown> => {
   if (!existsSync(path)) return {};
@@ -419,7 +425,12 @@ export const config = Effect.fn("AppOperation.config")(function* (
     yield* recordConfigWarning({ code: "LANDO_MESSAGE_WARN", message });
   const merged = yield* Schema.encodeEffect(GlobalConfigView)(decoded.success.config).pipe(
     Effect.mapError(
-      (cause) => new ConfigError({ message: "Failed to project public global config.", cause }),
+      (cause) =>
+        new ConfigError({
+          message: "Failed to project public global config.",
+          cause,
+          remediation: "Run `lando config validate` and repair invalid global config keys before retrying.",
+        }),
     ),
   );
 

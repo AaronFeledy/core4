@@ -3,7 +3,6 @@ services:
   appserver:
     type: compose
     image: dunglas/frankenphp:1.12.7-php8.4
-    home: false
     ports:
       - 9080:9080
     environment:

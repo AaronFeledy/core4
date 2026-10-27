@@ -31,7 +31,6 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
-  DataStoreMountPlan,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
   HostPlatform,
@@ -39,7 +38,6 @@ import type {
   HostProxyBridgeResult,
   LogSource,
   LogSourceId,
-  MountPlan,
   NetworkConfig,
   PortNumber,
   PortablePath,
@@ -56,12 +54,14 @@ import type {
   VolumeIdentity,
   VolumeInfo,
   VolumeLocator,
+  VolumeMountPlan,
   VolumeRef,
   VolumeRestoreSpec,
   VolumeSnapshotArtifact,
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
+import type { MountObservation } from "../schema/service-mount.ts";
 import type { PrivilegeService } from "./process.ts";
 
 export type ProviderError =
@@ -214,7 +214,7 @@ export interface EphemeralRunSpec {
   readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
-  readonly mounts?: ReadonlyArray<MountPlan | DataStoreMountPlan>;
+  readonly mounts?: ReadonlyArray<VolumeMountPlan>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;
@@ -259,6 +259,8 @@ export interface ServiceRuntimeInfo {
   readonly labels?: Readonly<Record<string, string>>;
   readonly imageIdentity?: string;
   readonly publications: PublicationObservation;
+  /** Mount table from the same container inspection, absent when unsupported. */
+  readonly mounts?: MountObservation;
   readonly lastStartedAt?: Date;
   /** Inspect fingerprint of published host ports. Absent when the container is missing. */
   readonly publishFingerprint?: string;
@@ -326,6 +328,9 @@ export class RuntimeProviderRegistry extends Context.Service<
     readonly appliedPlansFor: (
       root: AbsolutePath,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
+    readonly assertAppliedStateReadable?: (
+      plan: Pick<AppPlan, "id" | "provider">,
+    ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;
     readonly select: (
       target?: AppPlan | ProviderId,
     ) => Effect.Effect<RuntimeProviderShape, ProviderSelectionError>;

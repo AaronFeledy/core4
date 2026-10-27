@@ -104,7 +104,13 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
   base: "lando",
   versions: VERSIONS,
   artifacts: ARTIFACTS,
-  identity: rootIdentity(),
+  identity:
+    image === ARTIFACTS["6"]
+      ? rootIdentity()
+      : {
+          defaultUser: "varnish",
+          homes: { root: "/root" },
+        },
   schema: VarnishServiceConfig,
   resolve: (input) => {
     const backend = input.service.backend?.trim() ?? "";
@@ -120,6 +126,7 @@ const makeVarnishServiceType = (id: string, image: string): ServiceType => ({
             },
           ],
           serviceType: id,
+          remediation: "Add backend: pointing at an existing service in this Landofile.",
         }),
       );
     }

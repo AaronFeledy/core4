@@ -46,7 +46,6 @@ const web: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -79,18 +78,22 @@ const acceleratedPlan = (root: AbsolutePath, sessionRoot: AbsolutePath): AppPlan
     services: {
       [web.name]: {
         ...web,
-        appMount: {
-          source: sessionRoot,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          realization: "accelerated",
-          excludes: ["node_modules", "vendor"],
-          includes: ["vendor"],
-        },
+        mounts: [
+          {
+            type: "bind",
+            role: "app",
+            source: sessionRoot,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            realization: "accelerated",
+            excludes: ["node_modules", "vendor"],
+            includes: ["vendor"],
+            mountKey: "app-mount",
+          },
+        ],
       },
     },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [{ engineId: "mutagen", session }],
     metadata,
@@ -99,26 +102,57 @@ const acceleratedPlan = (root: AbsolutePath, sessionRoot: AbsolutePath): AppPlan
 };
 
 describe("verifiedFileSyncSessions", () => {
-  test("accepts storage-only overlays when their relative targets are ignored", () => {
+  test.each([
+    ["applied-sync-web-app-mount", "unknown"],
+    ["applied-sync-web-mount-deadbeef", "unknown"],
+    ["applied-sync-web-mount-0", "missing"],
+  ] as const)("classifies an unlabelled previous sync volume %s as %s", async (name, status) => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-sync-name-"));
+    try {
+      const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
+      const plan = acceleratedPlan(AbsolutePath.make("/repo"), AbsolutePath.make("/repo"));
+      const current = { ...plan, services: { [web.name]: web }, fileSync: [] };
+      const api = {
+        request: () =>
+          Effect.succeed({ status: 200, body: JSON.stringify({ Volumes: [{ Name: name, Labels: {} }] }) }),
+      };
+      expect(await Effect.runPromise(inspectAppliedFileSync(state, api, current))).toEqual({ status });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("accepts volume overlays when their relative targets are ignored", () => {
     // Given a session covering node_modules without an app-mount exclude.
     const prior = acceleratedPlan(AbsolutePath.make("/repo"), AbsolutePath.make("/repo"));
     const service = prior.services[web.name];
-    if (service?.appMount === undefined) throw new Error("Expected app mount");
+    if (service === undefined) throw new Error("Expected service");
+    const appBind = service.mounts.find((mount) => mount.type === "bind" && mount.role === "app");
+    if (appBind === undefined || appBind.type !== "bind") throw new Error("Expected app mount");
     const stored: AppPlan = {
       ...prior,
       services: {
         [web.name]: {
           ...service,
-          appMount: { ...service.appMount, excludes: [] },
-          storage: [
-            { store: "dependencies", target: PortablePath.make("/app/node_modules"), readOnly: false },
+          mounts: [
+            {
+              ...appBind,
+              excludes: [],
+              includes: [],
+            },
+            {
+              type: "volume",
+              store: "dependencies",
+              target: PortablePath.make("/app/node_modules"),
+              readOnly: false,
+            },
           ],
         },
       },
     };
     // When verifying the persisted sessions.
     const sessions = verifiedFileSyncSessions(stored);
-    // Then the storage overlay is recognized as covered.
+    // Then the volume overlay is recognized as covered via bindSyncIgnores.
     expect(sessions).toEqual(prior.fileSync.map(({ session }) => session));
   });
 

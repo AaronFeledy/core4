@@ -793,15 +793,15 @@ describe("SDK provider error contract", () => {
     expect(error.cause).toBeInstanceOf(Error);
   });
 
-  test("NoProviderInstalledError carries message + optional suggestion", () => {
+  test("NoProviderInstalledError carries message + remediation", () => {
     const error = new NoProviderInstalledError({
       message: "No runtime provider is installed.",
-      suggestion: "Run `lando setup`.",
+      remediation: "Run `lando setup`.",
     });
 
     expect(error._tag).toBe("NoProviderInstalledError");
     expect(error.message).toBe("No runtime provider is installed.");
-    expect(error.suggestion).toBe("Run `lando setup`.");
+    expect(error.remediation).toBe("Run `lando setup`.");
   });
 
   test("decoding ProviderCapabilityError preserves redacted details", () => {
@@ -814,6 +814,7 @@ describe("SDK provider error contract", () => {
       capability: "rootless",
       requiredValue: true,
       actualValue: false,
+      remediation: "Enable rootless mode for this provider, then retry.",
     });
 
     expect(Result.isSuccess(decoded)).toBe(true);

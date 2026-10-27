@@ -1,7 +1,7 @@
 import { Schema, SchemaTransformation } from "effect";
 import { LandofileAuthoringFragmentWire, LandofileAuthoringShapeWire } from "./landofile-authoring.ts";
 import { LandofileLayer } from "./landofile-reference.ts";
-import { PortablePath } from "./primitives.ts";
+import { PortablePath, ServiceName } from "./primitives.ts";
 import { SHA256_PREFIXED_DIGEST_PATTERN, patternString } from "./string-forms.ts";
 
 const SECRET_REFERENCE_PATTERN = /^\$\{secret:[^}]+\}$/;
@@ -182,6 +182,27 @@ export const ConfigTranslateDeletion = Schema.Struct({
   }),
   reason: Schema.optionalKey(Schema.String.annotate({ description: "Reason for the deletion intent." })),
 }).annotate(metadata("ConfigTranslateDeletion", "Deletion intent, never a translator mutation."));
+export const ConfigTranslateExpectation = Schema.Union([
+  Schema.Struct({
+    _tag: Schema.Literal("PersistedHome").annotate({
+      description: "Home persistence expectation discriminator.",
+    }),
+    sourceId: ConfigTranslateSourceId.annotate({
+      description: "Input source responsible for the expectation.",
+    }),
+    keyPath: Schema.Array(Schema.Union([Schema.String, Schema.Int])).annotate({
+      description: "Source object keys and array indices.",
+    }),
+    service: ServiceName.annotate({
+      description: "Converted Lando 4 service whose home the source persisted.",
+    }),
+  }),
+]).annotate(
+  metadata(
+    "ConfigTranslateExpectation",
+    "Source-attributed intent assessed by the host against the final converted configuration.",
+  ),
+);
 export const ConfigTranslateResult = Schema.Struct({
   outputs: Schema.Array(ConfigTranslateOutput).annotate({
     description: "Unique target-layer authoring fragments.",
@@ -192,6 +213,11 @@ export const ConfigTranslateResult = Schema.Struct({
   deletions: Schema.Array(ConfigTranslateDeletion).annotate({
     description: "Deletion intents in canonical source order.",
   }),
+  expectations: Schema.optionalKey(
+    Schema.Array(ConfigTranslateExpectation).annotate({
+      description: "Source expectations for host assessment against the final merged authoring context.",
+    }),
+  ),
 }).annotate(metadata("ConfigTranslateResult", "Translation outputs with diagnostics and deletion intents."));
 export const ConfigTranslateEncodeInput = Schema.Struct({
   context: authoringContext,
@@ -225,6 +251,7 @@ export type ConfigTranslateSpan = typeof ConfigTranslateSpan.Type;
 export type ConfigTranslateDiagnostic = typeof ConfigTranslateDiagnostic.Type;
 export type ConfigTranslateOutput = typeof ConfigTranslateOutput.Type;
 export type ConfigTranslateDeletion = typeof ConfigTranslateDeletion.Type;
+export type ConfigTranslateExpectation = typeof ConfigTranslateExpectation.Type;
 export type ConfigTranslateResult = typeof ConfigTranslateResult.Type;
 export type ConfigTranslateEncodeInput = typeof ConfigTranslateEncodeInput.Type;
 export type ConfigTranslateEncodeResult = typeof ConfigTranslateEncodeResult.Type;

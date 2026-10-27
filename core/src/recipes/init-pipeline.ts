@@ -1,4 +1,8 @@
 import { join } from "node:path";
+import {
+  assessTranslateExpectations,
+  orderTranslateDiagnostics,
+} from "@lando/engine/planner/home-expectations";
 import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
@@ -43,14 +47,14 @@ export class RecipeInitBlockedError extends Schema.TaggedError<RecipeInitBlocked
   {
     message: Schema.String,
     stage: Schema.Literals(["secret-prompts", "translate", "validate", "encode", "diagnostics"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 export class RecipeInitCommitError extends Schema.TaggedError<RecipeInitCommitError>()(
   "RecipeInitCommitError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     phase: Schema.String,
     reason: Schema.String,
   },
@@ -59,7 +63,7 @@ export class RecipeInitPostInitError extends Schema.TaggedError<RecipeInitPostIn
   "RecipeInitPostInitError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     committedLandofile: Schema.String,
     committedAuxiliaryFiles: Schema.Array(Schema.String),
     failedAction: Schema.String,
@@ -163,7 +167,7 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   }).pipe(Effect.mapError(() => blocked("translate")));
   const service = yield* Effect.serviceOption(RedactionService);
   if (Option.isSome(service)) yield* service.value.registerValues(raw);
-  const options = { redactionTokens: raw };
+  const options = { redactionTokens: raw, sourceEnv: { ...process.env } };
   const base = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
     : createStandaloneRedactor("secrets", options);
@@ -228,7 +232,11 @@ const encodeRecipeLandofile = Effect.fnUntraced(function* (
   const encoded = yield* Effect.suspend(() => encode({ context, fragment: context })).pipe(
     Effect.catch(() => Effect.fail(blocked("encode"))),
   );
-  const diagnostics = [...translated.diagnostics, ...encoded.diagnostics].map((diagnostic) => ({
+  const assessmentDiagnostics = yield* assessTranslateExpectations(translated.expectations, context);
+  const diagnostics = orderTranslateDiagnostics(
+    [...translated.diagnostics, ...encoded.diagnostics, ...assessmentDiagnostics],
+    [input.sourceId],
+  ).map((diagnostic) => ({
     ...diagnostic,
     message: redact(diagnostic.message),
     ...(diagnostic.remediation === undefined ? {} : { remediation: redact(diagnostic.remediation) }),

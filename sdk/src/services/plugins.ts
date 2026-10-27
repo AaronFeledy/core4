@@ -10,6 +10,7 @@ import type {
   AbsoluteContainerPath,
   ContainerUser,
   DatabaseConnection,
+  HostPlatform,
   LogSource,
   PlanMetadata,
   PluginManifest,
@@ -27,6 +28,14 @@ export class PluginRegistry extends Context.Service<
   PluginRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
+    /**
+     * A provider's capabilities declared offline for the given host, without constructing the provider.
+     * Undefined when the provider contributes no offline declaration.
+     */
+    readonly declaredProviderCapabilities?: (
+      id: ProviderId,
+      platform: HostPlatform,
+    ) => ProviderCapabilities | undefined;
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
     readonly loadServiceType: (
       id: string,
@@ -140,6 +149,9 @@ export interface ServiceImageIdentity {
   readonly defaultUser: ContainerUser;
   /** Home directory per user principal, keyed without any `:group` suffix. */
   readonly homes: Readonly<Record<string, AbsoluteContainerPath>>;
+  /** Principals whose passwd home the image does not create or give to that user.
+   * Lando creates and owns it in a root build step so a fresh home store seeds correctly. */
+  readonly preparedHomes?: ReadonlyArray<string>;
 }
 
 /**

@@ -161,7 +161,9 @@ lando app:config:lint --format=json
 lando app:cache:refresh
 ```
 
-Two limits. A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's; both fail the plan as a cycle, because credentials exist only after the service resolves. And values that arrive through `env_file:` are never interpolated, so put the expression in `environment:`.
+A service cannot read its own `services.<name>.creds`, and two services cannot each read the other's. Both cases fail the plan as a cycle because credentials exist only after the service resolves.
+
+Values from `env_file:` are never interpolated. `${NAME}` stays literal, and lint warns if it appears in an unquoted or double-quoted value. Single quotes suppress that warning; they do not enable interpolation. To read a host variable, put `NAME: "{{ env.NAME }}"` under the service's `environment:` instead. See [Quote env file values](./env-overrides.mdx#quote-env-file-values) for the escaping rules.
 
 A plugin's derived service type inherits its parent's published credentials unless it publishes a replacement. Those values remain available to the same credential expressions after Lando saves and reloads the plan.
 

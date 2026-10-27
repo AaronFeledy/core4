@@ -12,6 +12,7 @@ import {
   type ProviderCapabilities,
   ProviderId,
   landoAppNetworkName,
+  serviceAppMount,
 } from "@lando/core/schema";
 import {
   AppPlanner,
@@ -340,6 +341,7 @@ const makeScratchForkLayer = (
                 operation: "registry.write",
                 message: "injected registry upsert failure",
                 cause: undefined,
+                remediation: "Injected registry upsert failure for scratch fork fixture.",
               }),
             );
           }
@@ -540,7 +542,6 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
           identity: { appRoot: globalRoot, ownerKey: "global-owner" },
           provider: ProviderId.make("docker"),
           services: {},
-          networks: [],
           stores: [],
           routes: [],
           fileSync: [],
@@ -835,7 +836,9 @@ describe("ScratchAppServiceLayer.layer fork acquire", () => {
       const primaryService = Object.values(appliedPlans.at(0)?.services ?? {}).find(
         (service) => service.primary,
       );
-      expect(String(primaryService?.appMount?.source)).toBe(dir);
+      expect(String(primaryService === undefined ? undefined : serviceAppMount(primaryService)?.source)).toBe(
+        dir,
+      );
       expect(result.resolved).toEqual(result.handle);
       expect(result.stopped).toEqual(result.handle);
       expect(result.destroyed).toEqual(result.keepHandle);

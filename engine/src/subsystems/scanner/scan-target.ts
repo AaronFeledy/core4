@@ -181,6 +181,8 @@ const probeRunError = (url: string, cause: unknown, redactor: Redactor): Scanner
     ),
     scannerId: SCANNER_ID,
     cause: redactor.redactValue(cause),
+    remediation:
+      "Start the app services and ensure a scanner implementation is installed, then re-run URL checks.",
   });
 
 const redDetail = (finalStatus: AttemptStatus, elapsedMs: number): string => {

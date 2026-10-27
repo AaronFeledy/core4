@@ -28,7 +28,6 @@ for (const hostHome of ["/home/first", "/home/second"]) {
       provider: ProviderId.make("lando"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       extensions: {},

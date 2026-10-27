@@ -65,6 +65,7 @@ export const loadSubscriberFactory = (
       new PluginLoadError({
         pluginName: subscriber.pluginName,
         message: `Bundled subscriber factory ${subscriber.entry.id} is not registered.`,
+        remediation: `Register subscriber factory ${subscriber.entry.id} on the ${subscriber.pluginName} bundled plugin descriptor.`,
       }),
     );
   }
@@ -74,6 +75,7 @@ export const loadSubscriberFactory = (
       new PluginLoadError({
         pluginName: subscriber.pluginName,
         message: `Bundled subscriber factory ${subscriber.entry.id} failed to load: ${String(cause)}`,
+        remediation: `Repair plugin ${subscriber.pluginName} so subscriber factory ${subscriber.entry.id} loads.`,
       }),
   }).pipe(
     Effect.flatMap((factory) =>
@@ -83,6 +85,7 @@ export const loadSubscriberFactory = (
             new PluginLoadError({
               pluginName: subscriber.pluginName,
               message: `Bundled subscriber factory ${subscriber.entry.id} did not export a factory.`,
+              remediation: `Export a subscriber factory for ${subscriber.entry.id} from plugin ${subscriber.pluginName}.`,
             }),
           ),
     ),
@@ -113,6 +116,7 @@ const subscriberEventError = (
     event: input.event._tag,
     message: `Subscriber ${input.subscriber.pluginName}/${input.subscriber.entry.id} failed to load.`,
     cause,
+    remediation: "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
   });
 
 const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> => {
@@ -197,7 +201,12 @@ export const layer = (
           const entries = index.get(event._tag) ?? [];
           if (!Schema.is(LandoEventSchema)(event)) {
             return Effect.fail(
-              new EventError({ event: event._tag, message: "Indexed event failed schema validation." }),
+              new EventError({
+                event: event._tag,
+                message: "Indexed event failed schema validation.",
+                remediation:
+                  "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+              }),
             );
           }
           return Effect.forEach(

@@ -34,7 +34,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "mongo:7" },
   environment: {},
   mounts: [],
-  storage: [],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -53,7 +52,6 @@ const plan: AppPlan = {
   provider: service.provider,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -126,7 +124,7 @@ test("keeps native and Compose health cheap with the same compiler target", () =
   expect(native.Healthcheck).toMatchObject({
     Test: ["CMD", "env", "LANDO_PROBE_HOST=db", "LANDO_PROBE_PORT=27017", "bash", "-c", "exit 0"],
   });
-  const compose = renderCompose(plan, { providerId: "test", remediation: "retry" });
+  const compose = renderCompose(plan, { providerId: "test", remediation: "retry", env: {} });
   expect(compose).toContain('"LANDO_PROBE_HOST=db"');
   expect(compose).toContain('"LANDO_PROBE_PORT=27017"');
   expect(compose).not.toContain('"strong"');

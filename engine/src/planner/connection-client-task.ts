@@ -24,20 +24,23 @@ export const resolveConnectionClientTask = Effect.fnUntraced(function* (input: {
   const owner = connectionClientsForPlan(input.plan)[input.name];
   if (owner === undefined || Object.hasOwn(input.currentLandofile?.tooling ?? {}, input.name))
     return { task: input.task, sites: input.sites };
-  const refused = new PlanReplanRequiredError({
-    app: input.plan.id,
-    providerId: input.plan.provider,
-    operation: "database connection",
-    message: `Applied connection facts for generated client ${input.name} are unavailable or incompatible.`,
-    remediation: "Run `lando start` to apply the database plan, then retry.",
-  });
+  const refusal = (cause?: unknown) =>
+    new PlanReplanRequiredError({
+      app: input.plan.id,
+      providerId: input.plan.provider,
+      operation: "database connection",
+      message: `Applied connection facts for generated client ${input.name} are unavailable or incompatible.`,
+      remediation: "Run `lando start` to apply the database plan, then retry.",
+      cause,
+    });
+  const refused = refusal();
   const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
   const plugins = yield* Effect.serviceOption(PluginRegistry);
   if (Option.isNone(registry) || Option.isNone(plugins)) return yield* Effect.fail(refused);
   const root = AbsolutePath.make(
-    yield* canonicalMissingAppRoot(input.plan.root).pipe(Effect.mapError(() => refused)),
+    yield* canonicalMissingAppRoot(input.plan.root).pipe(Effect.mapError(refusal)),
   );
-  const plans = yield* registry.value.appliedPlansFor(root).pipe(Effect.mapError(() => refused));
+  const plans = yield* registry.value.appliedPlansFor(root).pipe(Effect.mapError(refusal));
   const owned = plans.filter(
     (plan) =>
       plan.id === input.plan.id &&
@@ -59,7 +62,7 @@ export const resolveConnectionClientTask = Effect.fnUntraced(function* (input: {
     return yield* Effect.fail(refused);
   const definition = yield* plugins.value
     .loadServiceType(service.serviceTypeId)
-    .pipe(Effect.mapError(() => refused));
+    .pipe(Effect.mapError(refusal));
   if (definition.id !== service.serviceTypeId) return yield* Effect.fail(refused);
   const factoryTask = definition.toolingForConnection?.(owner, service.connection)[input.name];
   if (factoryTask === undefined) return yield* Effect.fail(refused);

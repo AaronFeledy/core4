@@ -54,11 +54,11 @@ describe.each([
   });
 
   test.each([
-    ["./conf/server.conf", "/srv/apps/myapp", "/srv/apps/myapp/conf/server.conf"],
-    ["/etc/server.conf", "/srv/apps/myapp", "/etc/server.conf"],
-    ["C:\\conf\\server.conf", "/srv/apps/myapp", "C:\\conf\\server.conf"],
-    ["./conf/server.conf", "C:\\app", "C:\\app\\conf\\server.conf"],
-  ])("resolves %s against %s as a read-only mount", (server, appRoot, source) => {
+    ["./conf/server.conf", "/srv/apps/myapp", "/srv/apps/myapp/conf/server.conf", "app"],
+    ["/etc/server.conf", "/srv/apps/myapp", "/etc/server.conf", undefined],
+    ["C:\\conf\\server.conf", "/srv/apps/myapp", "C:\\conf\\server.conf", undefined],
+    ["./conf/server.conf", "C:\\app", "C:\\app\\conf\\server.conf", "app"],
+  ])("resolves %s against %s as a read-only mount", (server, appRoot, source, relativeTo) => {
     // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType,
@@ -70,7 +70,10 @@ describe.each([
     Effect.runSync(feature.apply({ ...ctx, appRoot }));
     // Then
     expect(calls.filter(([method]) => method === "addMount")).toEqual([
-      ["addMount", { type: "bind", source, target, readOnly: true }],
+      [
+        "addMount",
+        { type: "bind", source, target, readOnly: true, ...(relativeTo === undefined ? {} : { relativeTo }) },
+      ],
     ]);
   });
 });

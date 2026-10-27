@@ -125,7 +125,13 @@ test("attaches effective tooling on fresh and cache-hit plans and keys service t
         loadServiceType: (id: string) =>
           id === serviceType.id
             ? Effect.succeed(serviceType)
-            : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+            : Effect.fail(
+                new PluginLoadError({
+                  message: `Unknown service type ${id}.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
+              ),
         loadServiceFeature: (id: string) =>
           id === feature.id ? Effect.succeed(feature) : registry.loadServiceFeature(id),
       }),
@@ -256,7 +262,13 @@ const phpPlannerLayer = (serviceType: ServiceType) => {
         loadServiceType: (id: string) =>
           id === serviceType.id
             ? Effect.succeed(serviceType)
-            : Effect.fail(new PluginLoadError({ message: `Unknown service type ${id}.`, pluginName: id })),
+            : Effect.fail(
+                new PluginLoadError({
+                  message: `Unknown service type ${id}.`,
+                  pluginName: id,
+                  remediation: "Install or register the plugin, then retry.",
+                }),
+              ),
       }),
     ),
   ).pipe(Layer.provide(PluginRegistryLayer.layer));

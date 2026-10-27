@@ -93,6 +93,8 @@ describe("@lando/service-lando registration", () => {
       "node",
       "node:lts",
       "node:22",
+      "node:24",
+      "node:26",
       "opensearch",
       "opensearch:2",
       "php:8.1",
@@ -173,7 +175,9 @@ describe("@lando/service-lando registration", () => {
       ["tcp", 5672],
       ["http", 15672],
     ]);
-    expect(queue.storage).toContainEqual({
+    expect(queue.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "catalog-app-rabbitmq-data",
       target: PortablePath.make("/var/lib/rabbitmq"),
       readOnly: false,
@@ -193,7 +197,9 @@ describe("@lando/service-lando registration", () => {
     expect(objectStore.command).toEqual([
       "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",
     ]);
-    expect(objectStore.storage).toContainEqual({
+    expect(objectStore.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "catalog-app-minio-data",
       target: PortablePath.make("/data"),
       readOnly: false,
@@ -204,7 +210,9 @@ describe("@lando/service-lando registration", () => {
     expect(
       aws.endpoints.flatMap((endpoint) => ("port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [])),
     ).toEqual([["http", 4566]]);
-    expect(aws.storage).toContainEqual({
+    expect(aws.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "catalog-app-localstack-data",
       target: PortablePath.make("/var/lib/localstack"),
       readOnly: false,
@@ -317,7 +325,9 @@ describe("@lando/service-lando registration", () => {
       hostname: "api.dotnet-app.lndo.site",
       backend: { service: ServiceName.make("api"), protocol: "http", port: 5000 },
     });
-    expect(api.storage).toContainEqual({
+    expect(api.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "lando-cache-nuget",
       target: PortablePath.make("/root/.nuget/packages"),
       readOnly: false,
@@ -352,7 +362,9 @@ describe("@lando/service-lando registration", () => {
     expect(database.environment.SQLCMDPASSWORD).toBe(saPassword);
     expect(database.environment.LANDO_DB_USER).toBe("sa");
     expect(database.environment.LANDO_DB_PASSWORD).toBe(saPassword);
-    expect(database.storage).toContainEqual({
+    expect(database.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "sql-app-mssql-data",
       target: PortablePath.make("/var/opt/mssql"),
       readOnly: false,

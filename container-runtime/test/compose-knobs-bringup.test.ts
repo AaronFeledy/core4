@@ -15,7 +15,7 @@ import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("compose-knob-bringup");
 const serviceName = ServiceName.make("web");
 const metadata = {
@@ -48,7 +48,6 @@ const baseService: ServicePlan = {
       createHostPath: false,
     },
   ],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -83,7 +82,6 @@ const planWithCompose = (
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "compose-knob-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -108,7 +106,10 @@ const makeFakeApi = () => {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {
@@ -143,36 +144,41 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v3:6e726238ddbf7f1585b472d01f0d5387409e328280144627198b4168ebc9cbe8"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web"]}}}}';
+  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v3:757a3980dbf3238decc59e55a30c10294773d4e432d40a99d2c1334235c6f65a"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web","web.compose-knob-bringup.internal"]}}}}';
 
 describe("Podman Compose knob bring-up realization", () => {
-  test("detects a colon target collision through API Mounts", async () => {
-    // Given
-    const fake = makeFakeApi();
-    const plan = planWithCompose();
-    const target = PortablePath.make("/workspace:v1");
-    const service: ServicePlan = {
-      ...baseService,
-      mounts: [{ type: "bind", source: "/host", target, readOnly: false, realization: "passthrough" }],
-      extensions: { compose: { tmpfs: [{ target }] } },
-    };
-    // When
-    const exit = await Effect.runPromiseExit(
-      bringUp({ ...plan, services: { [service.name]: service } }, { api: fake.api, ctx }),
-    );
-    // Then
-    const failures = Exit.isFailure(exit)
-      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
-      : [];
-    expect(failures).toContainEqual(
-      expect.objectContaining({
-        _tag: "ServiceStartError",
-        operation: "bringUp.knobs",
-        details: expect.objectContaining({ knob: "tmpfs", target }),
-      }),
-    );
-    expect(findCreateRequest(fake.calls)).toBeUndefined();
-  });
+  test.each(["/workspace:v1", "/workspace", "/etc/config"])(
+    "rejects tmpfs colliding with a planned bind at %s before create",
+    async (path) => {
+      const fake = makeFakeApi();
+      const plan = planWithCompose();
+      const target = PortablePath.make(path);
+      const service: ServicePlan = {
+        ...baseService,
+        mounts: [
+          {
+            type: "bind",
+            source: "/host",
+            target,
+            readOnly: false,
+            realization: "passthrough",
+            ...(path === "/etc/config" ? { createHostPath: false } : {}),
+          },
+          { type: "tmpfs", target, readOnly: false, options: "size=64m" },
+        ],
+      };
+      const exit = await Effect.runPromiseExit(
+        bringUp({ ...plan, services: { [service.name]: service } }, { api: fake.api, ctx }),
+      );
+      const failures = Exit.isFailure(exit)
+        ? exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error)
+        : [];
+      expect(failures).toContainEqual(
+        expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.create", service: "web" }),
+      );
+      expect(findCreateRequest(fake.calls)).toBeUndefined();
+    },
+  );
 
   test("Given knobs and plan-derived networking, when creating a container, then HostConfig merges every source", async () => {
     // Given
@@ -230,42 +236,6 @@ describe("Podman Compose knob bring-up realization", () => {
     const searchParams = new URL(`http://localhost${create?.path ?? ""}`).searchParams;
     expect(searchParams.get("name")).toBe("lando-compose-knob-bringup-web");
     expect(searchParams.get("platform")).toBe("linux/amd64");
-  });
-
-  test("Given tmpfs colliding with a Binds target, when bringing up, then creation fails with ServiceStartError", async () => {
-    // Given
-    const fake = makeFakeApi();
-    const plan = planWithCompose({ tmpfs: ["/workspace:size=64m"] });
-
-    // When
-    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
-
-    // Then
-    const failures = Exit.isFailure(exit)
-      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
-      : [];
-    expect(failures).toContainEqual(
-      expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.knobs", service: "web" }),
-    );
-    expect(findCreateRequest(fake.calls)).toBeUndefined();
-  });
-
-  test("Given tmpfs colliding with a Mounts target, when bringing up, then creation fails with ServiceStartError", async () => {
-    // Given
-    const fake = makeFakeApi();
-    const plan = planWithCompose({ tmpfs: ["/etc/config"] });
-
-    // When
-    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
-
-    // Then
-    const failures = Exit.isFailure(exit)
-      ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
-      : [];
-    expect(failures).toContainEqual(
-      expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.knobs", service: "web" }),
-    );
-    expect(findCreateRequest(fake.calls)).toBeUndefined();
   });
 
   test("Given no plan-derived ExtraHosts, when extra_hosts is realized, then only knob entries are emitted", async () => {

@@ -33,7 +33,6 @@ const plan: CurrentExecutableAppPlan = {
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -47,7 +46,6 @@ const plan: CurrentExecutableAppPlan = {
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

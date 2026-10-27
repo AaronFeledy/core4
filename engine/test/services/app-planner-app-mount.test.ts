@@ -5,6 +5,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { mergeLandofiles } from "@lando/sdk/landofile";
 import {
   LandofileShape,
+  PortablePath,
   type ServiceConfig,
   ServiceName,
   formatValidationIssuePath,
@@ -29,6 +30,29 @@ const planExit = (service: typeof ServiceConfig.Encoded, capabilities = TestRunt
     ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer)),
   );
 };
+
+test.each([
+  { mode: 0o755, octal: "755" },
+  { mode: 0o770, octal: "770" },
+  { mode: 0o1770, octal: "1770" },
+  { mode: 0o2770, octal: "2770" },
+  { mode: 0o3770, octal: "3770" },
+  { mode: 1770, octal: "3352" },
+])("Compose tmpfs numeric bitmask $mode plans as octal $octal", async ({ mode, octal }) => {
+  const exit = await planExit({
+    type: "compose",
+    image: "alpine:3.20",
+    volumes: [{ type: "tmpfs", target: "/run/app", tmpfs: { size: 67108864, mode } }],
+  });
+  if (!Exit.isSuccess(exit)) throw new Error(Cause.pretty(exit.cause));
+  expect(exit.value.services[ServiceName.make("web")]?.mounts).toContainEqual({
+    type: "tmpfs",
+    target: PortablePath.make("/run/app"),
+    readOnly: false,
+    origin: "authored",
+    options: `size=67108864,mode=${octal}`,
+  });
+});
 
 test.each([
   {
@@ -113,7 +137,7 @@ test("appMount destination shorthand sets the mount and active defaults", async 
   const exit = await planExit({ type: "apache", appMount: "/site" });
   if (!Exit.isSuccess(exit)) throw new Error(Cause.pretty(exit.cause));
   const web = exit.value.services[ServiceName.make("web")];
-  expect(String(web?.appMount?.target)).toBe("/site");
+  expect(String(serviceAppMount(web ?? { mounts: [] })?.target)).toBe("/site");
   expect(web?.environment.LANDO_APP_ROOT).toBe("/site");
   expect(String(web?.workingDirectory)).toBe("/site");
 });
@@ -146,7 +170,7 @@ test("an authored apache mount replaces app-source intent at an equivalent desti
   expect(Exit.isSuccess(exit)).toBe(true);
   if (!Exit.isSuccess(exit)) throw new Error("Expected planning success");
   const web = exit.value.services[ServiceName.make("web")];
-  expect(web?.appMount).toBeUndefined();
+  expect(serviceAppMount(web ?? { mounts: [] })).toBeUndefined();
   expect(web?.mounts).toMatchObject([{ type: "bind", source: `${APP_ROOT}/alternate`, target: "/site" }]);
   expect(web?.environment).toMatchObject({ LANDO_APP_ROOT: "/site", LANDO_PROJECT_MOUNT: "/site" });
   expect(String(web?.workingDirectory)).toBe("/site");
@@ -185,7 +209,7 @@ test("a moved tomcat appMount resolves its relative webroot", async () => {
   expect(Exit.isSuccess(exit)).toBe(true);
   if (!Exit.isSuccess(exit)) throw new Error("Expected planning success");
   const web = exit.value.services[ServiceName.make("web")];
-  expect(String(web?.appMount?.target)).toBe("/workspace");
+  expect(String(serviceAppMount(web ?? { mounts: [] })?.target)).toBe("/workspace");
   expect(web?.environment.LANDO_WEBROOT).toBe("/workspace/target/myapp");
   expect(String(web?.workingDirectory)).toBe("/workspace");
 });
@@ -227,3 +251,4 @@ for (const type of ["php:8.3", "nginx", "apache", "static:nginx", "tomcat"]) {
     },
   );
 }
+import { serviceAppMount } from "@lando/sdk/schema";

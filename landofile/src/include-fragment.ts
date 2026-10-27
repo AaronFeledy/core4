@@ -5,8 +5,9 @@ import { LandofileShape } from "@lando/sdk/schema";
 import { Effect, Predicate } from "effect";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
+import { composeIncludeDefaults } from "./include-compose-defaults.ts";
 import type { FragmentResult, ResolveContext, ResolveIncludesError } from "./include-context.ts";
-import { includeError } from "./include-guard.ts";
+import { includeError, realpathOrSelf } from "./include-guard.ts";
 import { rememberLandofileReferencedFiles } from "./load-expression-provenance.ts";
 import { resolveLandofileLoadExpressions } from "./load-expression.ts";
 import { parseLandofile } from "./parser.ts";
@@ -20,7 +21,7 @@ import {
 } from "./version-constraint.ts";
 
 export const parseFragment = (
-  fragment: FragmentResult,
+  fragment: FragmentResult & { readonly kind: "landofile" | "compose" | "tooling" },
   ctx: ResolveContext,
   layer: VersionConstraintEntry["layer"],
 ): Effect.Effect<Record<string, unknown>, ResolveIncludesError> =>
@@ -101,15 +102,25 @@ export const parseFragment = (
                 "Remove top-level name:, runtime:, and recipe: from the fragment; the including Landofile owns the app's identity and recipe options.",
             }),
           );
-        return prepareOverlay(
-          parsed,
-          { file: fragment.filePath, layer },
-          getSourceDocuments(parsed)[0]?.document ?? parsed,
-        ).pipe(
-          Effect.map((prepared) =>
-            copyLandofileProvenance(parsed, rememberOrigins(prepared.value, prepared.origins)),
-          ),
-        );
+        return Effect.gen(function* () {
+          // Remote snapshots live in a shared cache, not the app's bindable source tree.
+          // Canonicalize both roots so Windows 8.3 / symlink aliases still rebase to portable paths.
+          const composeRoots =
+            fragment.kind === "compose" && fragment.remoteOrigin === undefined && !fragment.userOwned
+              ? {
+                  appRoot: yield* Effect.promise(() => realpathOrSelf(ctx.appRoot)),
+                  sourceRoot: yield* Effect.promise(() => realpathOrSelf(fragment.root)),
+                }
+              : undefined;
+          const document =
+            fragment.kind === "compose" ? composeIncludeDefaults(parsed, composeRoots) : parsed;
+          const prepared = yield* prepareOverlay(
+            document,
+            { file: fragment.filePath, layer },
+            getSourceDocuments(parsed)[0]?.document ?? parsed,
+          );
+          return copyLandofileProvenance(parsed, rememberOrigins(prepared.value, prepared.origins));
+        });
       },
     ),
   );

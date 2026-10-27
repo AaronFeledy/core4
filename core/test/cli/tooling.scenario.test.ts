@@ -95,7 +95,6 @@ const makeService = (name: string, primary = false): ServicePlan => ({
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -114,7 +113,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
     services.map((service) => [String(service.name), service]),
   ) as AppPlan["services"],
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -498,7 +496,11 @@ describe("runTooling — CLI rendering", () => {
           PluginRegistry,
           PluginRegistry.of({
             list: Effect.fail(
-              new PluginManifestError({ message: "plugin registry unavailable", issues: ["not used"] }),
+              new PluginManifestError({
+                message: "plugin registry unavailable",
+                issues: [{ path: [], message: "not used" }],
+                remediation: "Correct the plugin manifest.",
+              }),
             ),
             load: () => Effect.die("not used"),
             loadServiceType: () => Effect.die("not used"),

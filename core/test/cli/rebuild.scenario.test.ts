@@ -106,7 +106,6 @@ const servicePlan = (name: string): ServicePlan => ({
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints:
     name === "web"
       ? [
@@ -138,7 +137,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

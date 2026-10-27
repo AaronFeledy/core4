@@ -63,7 +63,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -80,16 +79,18 @@ const servicePlan = (name: string, target: string, eligible = true): ServicePlan
   provider: ProviderId.make("lando"),
   primary: name === "appserver",
   environment: {},
-  appMount: {
-    source: AbsolutePath.make("/srv/apps/demo"),
-    target: PortablePath.make(target),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      source: AbsolutePath.make("/srv/apps/demo"),
+      target: PortablePath.make(target),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+      role: "app",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -1343,8 +1344,9 @@ console.log(JSON.stringify({
               ? {
                   privateFileAccess: {
                     ...ownerOnlyFileAccess,
-                    verify: async () => {
-                      throw new Error("private access rejected");
+                    verify: async (candidate) => {
+                      if (candidate === path) throw new Error("private access rejected");
+                      await ownerOnlyFileAccess.verify(candidate);
                     },
                   },
                 }

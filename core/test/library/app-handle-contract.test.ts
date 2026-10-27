@@ -68,7 +68,6 @@ const cacheService: ServicePlan = {
   command: [],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 6379, protocol: "tcp", name: "redis" }],
   routes: [],
   dependsOn: [],
@@ -86,18 +85,22 @@ const planWithFileSync = (root: string): AppPlan => ({
   services: {
     [cacheService.name]: {
       ...cacheService,
-      appMount: {
-        source: AbsolutePath.make(root),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "accelerated",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          source: AbsolutePath.make(root),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          role: "app",
+          excludes: [],
+          includes: [],
+          mountKey: "app-mount",
+        },
+      ],
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [
     {

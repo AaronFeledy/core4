@@ -32,6 +32,30 @@ const lint = () =>
   );
 
 describe("retained lint snapshot", () => {
+  test("reports a rejected Compose key once, at its field", async () => {
+    await write(
+      ".lando.yml",
+      "name: snapshot\nservices:\n  web:\n    type: compose\n    image: alpine:3.20\n    container_name: fixed\n",
+    );
+    const snapshot = await lint();
+    expect(snapshot.result.valid).toBe(false);
+    expect(snapshot.result.violations.map((violation) => [violation.rule, violation.path])).toEqual([
+      ["landofile.compose-rejection", ["services", "web", "container_name"]],
+    ]);
+  });
+
+  test("reports a rejected key inside a decodable list entry at its field", async () => {
+    await write(
+      ".lando.yml",
+      'name: snapshot\nconfigs:\n  appini:\n    file: ./a.ini\nservices:\n  web:\n    type: compose\n    image: alpine:3.20\n    configs:\n      - source: appini\n        uid: "1000"\n',
+    );
+    const snapshot = await lint();
+    expect(snapshot.result.valid).toBe(false);
+    expect(snapshot.result.violations.map((violation) => [violation.rule, violation.path])).toEqual([
+      ["landofile.compose-rejection", ["services", "web", "configs", 0, "uid"]],
+    ]);
+  });
+
   test("retains a successful resolved object alongside masked fragment findings from includes", async () => {
     await write(
       ".lando.yml",
@@ -95,34 +119,22 @@ describe("retained lint snapshot", () => {
     );
   });
 
-  test("retains findings from distinct physical layers and with distinct messages", async () => {
+  test("keeps physical layers distinct while merging the unchanged effective defect", async () => {
     await write(".lando.base.yml", "runtime: wrong\n");
     await write(".lando.yml", "name: snapshot\nruntime: wrong\n");
     const snapshot = await lint();
     const issues = snapshot.result.violations.filter((issue) => issue.path[0] === "runtime");
-    expect(issues).toHaveLength(3);
+    expect(issues).toHaveLength(2);
     expect(
-      issues.map(({ source, scopes }) => ({
+      issues.map(({ source, scopes, message }) => ({
         file: source !== undefined && "file" in source ? source.file : undefined,
         scopes,
+        message,
       })),
     ).toEqual([
-      { file: join(root, ".lando.base.yml"), scopes: ["fragment"] },
-      { file: join(root, ".lando.yml"), scopes: ["fragment"] },
-      { file: join(root, ".lando.yml"), scopes: ["effective"] },
+      { file: join(root, ".lando.base.yml"), scopes: ["fragment"], message: "Expected 4" },
+      { file: join(root, ".lando.yml"), scopes: ["fragment", "effective"], message: "Expected 4" },
     ]);
-    expect(
-      new Set(
-        issues
-          .filter(
-            (issue) =>
-              issue.source !== undefined &&
-              "file" in issue.source &&
-              issue.source.file === join(root, ".lando.yml"),
-          )
-          .map((issue) => issue.message),
-      ).size,
-    ).toBe(2);
   });
 
   test("evaluates TypeScript and strictly finalizes only once", async () => {

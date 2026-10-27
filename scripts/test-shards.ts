@@ -7,13 +7,7 @@
  * Do not pass `--update-timings` with `--run`: a single shard would overwrite
  * the committed full timings file. Refresh with `update-test-timings.ts`.
  *
- * Native `bun test --shard` does not know this repo's exclusions, so this
- * script still collects the file set. Shards cover the same files as
- * `bun run test:unit` EXCEPT:
- * - files owned by dedicated CI jobs (`library-api-tests`, `recipe-tests`),
- *   which would otherwise run twice per PR, and
- * - NIGHTLY_TIER_TESTS, heavy meta-suites that re-run generators or other
- *   test files; nightly.yml runs them (see build-nightly-workflow.ts).
+ * The collector excludes integration tests except the three fake-client provider contract suites, plus suites owned by dedicated jobs and the nightly tier.
  *
  * Balance comes from `bun test --shard --timings=.bun-test-timings.json`.
  */
@@ -52,6 +46,13 @@ const INCLUDE_GLOBS: ReadonlyArray<string> = [
 
 const INTEGRATION_SUFFIX = ".integration.test.ts";
 
+// These suites use fake clients and need PR coverage without a live provider.
+export const FAKE_CLIENT_PROVIDER_TESTS: ReadonlyArray<string> = [
+  "plugins/provider-lando/test/contract.integration.test.ts",
+  "plugins/provider-docker/test/contract.integration.test.ts",
+  "plugins/provider-podman/test/contract.integration.test.ts",
+];
+
 const COVERED_BY_DEDICATED_CI_JOBS: ReadonlyArray<string> = [
   "core/test/library/",
   "sdk/test/library/",
@@ -78,7 +79,7 @@ export const NIGHTLY_TIER_TESTS: ReadonlyArray<string> = [
 const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
 
 export const isShardedUnitTest = (path: string): boolean =>
-  !path.endsWith(INTEGRATION_SUFFIX) &&
+  (!path.endsWith(INTEGRATION_SUFFIX) || FAKE_CLIENT_PROVIDER_TESTS.includes(path)) &&
   !NIGHTLY_TIER_TESTS.includes(path) &&
   !COVERED_BY_DEDICATED_CI_JOBS.some((prefix) =>
     prefix.endsWith("/") ? path.startsWith(prefix) : path === prefix,

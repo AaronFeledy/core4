@@ -31,6 +31,7 @@ const plan = async (
               message: "Failed to launch the Lando runtime service.",
               providerId: "test",
               operation: "listVolumes",
+              remediation: "Install or start the `test` provider and confirm it can perform `listVolumes`.",
             }),
           );
         }
@@ -40,6 +41,8 @@ const plan = async (
               message: "Volume lookup failed",
               providerId: "test",
               operation: "listVolumes",
+              remediation:
+                "Re-run the command after checking `test` logs for the `listVolumes` failure; if it persists, report the error with that operation name.",
             }),
           );
         }
@@ -96,7 +99,11 @@ describe("MySQL volume adoption through the real planner", () => {
     async (type) => {
       const { appPlan, calls } = await plan({ [ServiceName.make("db")]: { type } }, [legacy]);
 
-      expect(appPlan.services[ServiceName.make("db")]?.storage[0]?.store).toBe(legacy);
+      expect(
+        appPlan.services[ServiceName.make("db")]?.mounts
+          .filter((mount) => mount.type === "volume")
+          .find((mount) => mount.target === "/var/lib/mysql")?.store,
+      ).toBe(legacy);
       expect(appPlan.stores.map((store) => store.name)).toEqual([legacy]);
       expect(appPlan.identity?.ownerKey).toBeDefined();
       expect(effectiveToolingForPlan(appPlan)?.mysql?.service).toBe("db");
@@ -109,7 +116,11 @@ describe("MySQL volume adoption through the real planner", () => {
     async (...volumes) => {
       const { appPlan } = await plan({ [ServiceName.make("db")]: { type: "mysql" } }, volumes);
 
-      expect(appPlan.services[ServiceName.make("db")]?.storage[0]?.store).toBe(scoped);
+      expect(
+        appPlan.services[ServiceName.make("db")]?.mounts
+          .filter((mount) => mount.type === "volume")
+          .find((mount) => mount.target === "/var/lib/mysql")?.store,
+      ).toBe(scoped);
       expect(appPlan.stores.map((store) => store.name)).toEqual([scoped]);
     },
   );
@@ -123,10 +134,16 @@ describe("MySQL volume adoption through the real planner", () => {
       [legacy],
     );
 
-    expect(appPlan.services[ServiceName.make("db")]?.storage[0]?.store).toBe(scoped);
-    expect(appPlan.services[ServiceName.make("analytics")]?.storage[0]?.store).toBe(
-      "mysql-adoption-analytics-mysql-data",
-    );
+    expect(
+      appPlan.services[ServiceName.make("db")]?.mounts
+        .filter((mount) => mount.type === "volume")
+        .find((mount) => mount.target === "/var/lib/mysql")?.store,
+    ).toBe(scoped);
+    expect(
+      appPlan.services[ServiceName.make("analytics")]?.mounts
+        .filter((mount) => mount.type === "volume")
+        .find((mount) => mount.target === "/var/lib/mysql")?.store,
+    ).toBe("mysql-adoption-analytics-mysql-data");
     expect(appPlan.stores.map((store) => store.name)).toEqual([
       scoped,
       "mysql-adoption-analytics-mysql-data",
@@ -147,7 +164,11 @@ describe("MySQL volume adoption through the real planner", () => {
   test("Given an unavailable provider, when planning, then it keeps the scoped identity", async () => {
     const { appPlan } = await plan({ [ServiceName.make("db")]: { type: "mysql" } }, [legacy], false, true);
 
-    expect(appPlan.services[ServiceName.make("db")]?.storage[0]?.store).toBe(scoped);
+    expect(
+      appPlan.services[ServiceName.make("db")]?.mounts
+        .filter((mount) => mount.type === "volume")
+        .find((mount) => mount.target === "/var/lib/mysql")?.store,
+    ).toBe(scoped);
     expect(appPlan.stores.map((store) => store.name)).toEqual([scoped]);
   });
 });

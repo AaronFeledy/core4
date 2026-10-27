@@ -114,7 +114,6 @@ const servicePlan = (name: "web"): ServicePlan => ({
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     { _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } },
   ],
@@ -137,7 +136,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -433,6 +431,7 @@ describe("lando restart", () => {
       providerId: "lando",
       operation: "buildArtifact",
       message: "build failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `buildArtifact`.",
     });
     const harness = makeRestartLayer({ buildEffect: Effect.fail(failure) });
 

@@ -137,7 +137,7 @@ test("does not trust a live-shaped API without owned published ingress", async (
 });
 
 test.each(["linux", "darwin", "win32", "wsl"] as const)(
-  "proves helper ingress read-only on %s with IPv6",
+  "probes the loopback helper on %s despite a stale IPv6 fingerprint",
   async (platform) => {
     const fixture = makeObserveFixture();
     const paths = { ...fixture.paths, platform };
@@ -160,8 +160,8 @@ test.each(["linux", "darwin", "win32", "wsl"] as const)(
     expect(fixture.ownedRequests).toEqual([[38080, 38443]]);
     expect(fixture.requests[0]?.url).toBe("http://traefik.example.test/api/rawdata");
     expect(fixture.probes).toEqual([
-      ["::1", 80, "http"],
-      ["::1", 443, "https"],
+      ["127.0.0.1", 80, "http"],
+      ["127.0.0.1", 443, "https"],
     ]);
     expect(fixture.mutations).toEqual([]);
   },

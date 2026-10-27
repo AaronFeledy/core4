@@ -320,6 +320,8 @@ describe("RouterService registry selection", () => {
               new ProxyError({
                 message: "selection must not run",
                 proxyId: "unavailable",
+                remediation:
+                  "Install or repair the `unavailable` router plugin and ensure `defaultRouterService` points at an installed id.",
               }),
             ),
         },

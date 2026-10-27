@@ -8,6 +8,7 @@ import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registr
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { sshSpec } from "../../src/cli/command-specs/app/ssh.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
+import { DEFAULT_SERVICE_LOGIN_SHELL } from "../../src/cli/service-login-shell.ts";
 
 const providerId = ProviderId.make("test");
 const serviceName = ServiceName.make("appserver");
@@ -28,7 +29,6 @@ const plan: CurrentExecutableAppPlan = {
       primary: true,
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -42,7 +42,6 @@ const plan: CurrentExecutableAppPlan = {
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -272,5 +271,61 @@ describe("exec command spec", () => {
     // Then
     expect(stdinModes).toEqual([undefined]);
     expect(commands).toEqual([spec === sshSpec ? ["cat"] : commandArgv]);
+  });
+
+  test("ssh default command prefers bash when present and falls back to sh", async () => {
+    const commands: Array<ReadonlyArray<string>> = [];
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      execStream: (_target, command) => {
+        commands.push(command.command);
+        return Stream.fromIterable([{ exitCode: 0 }]);
+      },
+    };
+    const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Layer.build(runtime.layer).pipe(
+          Effect.map((context) => Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) })),
+          Effect.flatMap(
+            (context) =>
+              sshSpec
+                .run({ argv: [], parsedArgv: [], flags: {}, args: {} })
+                .pipe(Effect.provide(context)) as Effect.Effect<unknown, unknown>,
+          ),
+        ),
+      ),
+    );
+
+    expect(commands).toEqual([DEFAULT_SERVICE_LOGIN_SHELL]);
+  });
+
+  test("ssh respects an explicit command override", async () => {
+    const commands: Array<ReadonlyArray<string>> = [];
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      execStream: (_target, command) => {
+        commands.push(command.command);
+        return Stream.fromIterable([{ exitCode: 0 }]);
+      },
+    };
+    const runtime = makeTestRuntime({ bootstrap: "app", with: { RuntimeProvider: provider } });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Layer.build(runtime.layer).pipe(
+          Effect.map((context) => Context.add(context, AppPlanner, { plan: () => Effect.succeed(plan) })),
+          Effect.flatMap(
+            (context) =>
+              sshSpec
+                .run({ argv: [], parsedArgv: ["zsh", "-l"], flags: {}, args: {} })
+                .pipe(Effect.provide(context)) as Effect.Effect<unknown, unknown>,
+          ),
+        ),
+      ),
+    );
+
+    expect(commands).toEqual([["zsh", "-l"]]);
   });
 });

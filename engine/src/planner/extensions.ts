@@ -1,5 +1,6 @@
 import type { BuildScript, BuildScriptStep, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
-import type { ServiceBuildStepIntent, ServiceTypeResolution } from "@lando/sdk/services";
+import { serviceAppMount } from "@lando/sdk/schema";
+import type { ServiceBuildStepIntent, ServiceMountIntent, ServiceTypeResolution } from "@lando/sdk/services";
 import { Predicate } from "effect";
 
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
@@ -21,7 +22,10 @@ export const normalizeBuildScripts = (value: BuildScript | undefined): ReadonlyA
   return value.map(normalizeBuildStep);
 };
 
-export const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+export const mergeComposeExtension = <S extends Pick<ServicePlan, "extensions">>(
+  servicePlan: S,
+  service: ServiceConfig,
+): S => {
   const startInterval = service.healthcheck === false ? undefined : service.healthcheck?.startInterval;
   const hasDependencyRestart =
     service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
@@ -30,7 +34,6 @@ export const mergeComposeExtension = (servicePlan: ServicePlan, service: Service
     service.labels === undefined &&
     startInterval === undefined &&
     !hasDependencyRestart &&
-    service.networks === undefined &&
     service.configs === undefined &&
     service.secrets === undefined &&
     service.profiles === undefined &&
@@ -61,7 +64,6 @@ export const mergeComposeExtension = (servicePlan: ServicePlan, service: Service
     }
     compose.depends_on = dependsOn;
   }
-  if (service.networks !== undefined) compose.networks = service.networks;
   if (service.configs !== undefined) compose.configs = service.configs;
   if (service.secrets !== undefined) compose.secrets = service.secrets;
   if (service.profiles !== undefined) compose.profiles = service.profiles;
@@ -103,52 +105,70 @@ export const toAppFeatureDraft = (
   servicePlan: ServicePlan,
   serviceResolution: ServiceTypeResolution,
   featureIds: ReadonlyArray<string>,
-): AppFeatureServiceDraft => ({
-  name: servicePlan.name,
-  serviceName: name,
-  type: servicePlan.type,
-  ...(servicePlan.serviceTypeId === undefined ? {} : { serviceTypeId: servicePlan.serviceTypeId }),
-  serviceType: servicePlan.type,
-  provider: servicePlan.provider,
-  primary: servicePlan.primary,
-  base: serviceResolution.base,
-  framework: serviceResolution.normalizedConfig.framework,
-  featureIds,
-  normalizedConfig: serviceResolution.normalizedConfig,
-  ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
-  ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
-  ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),
-  environment: { ...servicePlan.environment },
-  ...(servicePlan.connection === undefined ? {} : { connection: servicePlan.connection }),
-  ...(servicePlan.nonSqlCreds === undefined ? {} : { nonSqlCreds: servicePlan.nonSqlCreds }),
-  ...(servicePlan.user === undefined ? {} : { user: servicePlan.user }),
-  ...(servicePlan.workingDirectory === undefined ? {} : { workingDirectory: servicePlan.workingDirectory }),
-  ...(servicePlan.appMount === undefined
-    ? {}
-    : {
-        appMount: {
-          source: servicePlan.appMount.source,
-          target: servicePlan.appMount.target,
-          readOnly: servicePlan.appMount.readOnly,
-          excludes: servicePlan.appMount.excludes,
-          includes: servicePlan.appMount.includes,
-        },
-      }),
-  mounts: servicePlan.mounts.map((mount) => {
-    const { realization: _realization, ...intent } = mount;
-    return intent;
-  }),
-  buildSteps: serviceFeatureBuildSteps(servicePlan.extensions),
-  storage: servicePlan.storage.map((storage) => ({ ...storage })),
-  storageOwnership: serviceFeatureDataTrees(servicePlan.extensions),
-  endpoints: servicePlan.endpoints.map((endpoint) => ({ ...endpoint })),
-  dependsOn: servicePlan.dependsOn.map((dependency) => ({ ...dependency })),
-  ...(servicePlan.healthcheck === undefined ? {} : { healthcheck: servicePlan.healthcheck }),
-  ...(servicePlan.readiness === undefined ? {} : { readiness: servicePlan.readiness }),
-  ...(servicePlan.certs === undefined ? {} : { certs: servicePlan.certs }),
-  hostAliases: servicePlan.hostAliases.map((alias) => ({ ...alias })),
-  ...(serviceResolution.metadata === undefined ? {} : { provenance: serviceResolution.metadata }),
-});
+): AppFeatureServiceDraft => {
+  const appMount = serviceAppMount(servicePlan);
+  return {
+    name: servicePlan.name,
+    serviceName: name,
+    type: servicePlan.type,
+    ...(servicePlan.serviceTypeId === undefined ? {} : { serviceTypeId: servicePlan.serviceTypeId }),
+    serviceType: servicePlan.type,
+    provider: servicePlan.provider,
+    primary: servicePlan.primary,
+    base: serviceResolution.base,
+    framework: serviceResolution.normalizedConfig.framework,
+    featureIds,
+    normalizedConfig: serviceResolution.normalizedConfig,
+    ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
+    ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
+    ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),
+    environment: { ...servicePlan.environment },
+    ...(servicePlan.connection === undefined ? {} : { connection: servicePlan.connection }),
+    ...(servicePlan.nonSqlCreds === undefined ? {} : { nonSqlCreds: servicePlan.nonSqlCreds }),
+    ...(servicePlan.user === undefined ? {} : { user: servicePlan.user }),
+    ...(servicePlan.workingDirectory === undefined ? {} : { workingDirectory: servicePlan.workingDirectory }),
+    ...(appMount === undefined
+      ? {}
+      : {
+          appMount: {
+            source: appMount.source,
+            target: appMount.target,
+            readOnly: appMount.readOnly,
+            excludes: appMount.excludes ?? [],
+            includes: appMount.includes ?? [],
+          },
+        }),
+    mounts: servicePlan.mounts.flatMap((mount): ServiceMountIntent[] => {
+      switch (mount.type) {
+        case "bind": {
+          const { realization: _realization, role, mountKey: _mountKey, ...intent } = mount;
+          return role === "app" ? [] : [intent];
+        }
+        case "tmpfs":
+          return [mount];
+        case "volume":
+          return [];
+      }
+    }),
+    buildSteps: serviceFeatureBuildSteps(servicePlan.extensions),
+    storage: servicePlan.mounts
+      .filter((mount) => mount.type === "volume")
+      .map((mount) => ({
+        store: mount.store,
+        target: mount.target,
+        readOnly: mount.readOnly,
+        ...(mount.subpath === undefined ? {} : { subpath: mount.subpath }),
+      })),
+    storageOwnership: serviceFeatureDataTrees(servicePlan.extensions),
+    endpoints: servicePlan.endpoints.map((endpoint) => ({ ...endpoint })),
+    dependsOn: servicePlan.dependsOn.map((dependency) => ({ ...dependency })),
+    ...(servicePlan.healthcheck === undefined ? {} : { healthcheck: servicePlan.healthcheck }),
+    ...(servicePlan.readiness === undefined ? {} : { readiness: servicePlan.readiness }),
+    ...(servicePlan.certs === undefined ? {} : { certs: servicePlan.certs }),
+    hostAliases: servicePlan.hostAliases.map((alias) => ({ ...alias })),
+    ...(serviceResolution.metadata === undefined ? {} : { provenance: serviceResolution.metadata }),
+  };
+};
 
 export const servicePlanFromDraft = (
   draft: DraftServicePlan,
@@ -172,9 +192,26 @@ export const servicePlanFromDraft = (
       : { nonSqlCreds: draft.nonSqlCreds }),
   ...(draft.user === undefined ? {} : { user: draft.user }),
   ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
-  ...(draft.appMount === undefined ? {} : { appMount: { ...draft.appMount, realization: "passthrough" } }),
-  mounts: draft.mounts.map((mount) => ({ ...mount, realization: "passthrough" })),
-  storage: draft.storage.map((storage) => ({ ...storage })),
+  mounts: [
+    ...(draft.appMount === undefined
+      ? []
+      : [
+          {
+            ...draft.appMount,
+            type: "bind" as const,
+            origin: "service" as const,
+            relativeTo: "app" as const,
+            role: "app" as const,
+            realization: "passthrough" as const,
+          },
+        ]),
+    ...draft.mounts.map((mount) =>
+      mount.type === "bind"
+        ? { ...mount, origin: "service" as const, realization: "passthrough" as const }
+        : { ...mount, origin: "service" as const },
+    ),
+    ...draft.storage.map((storage) => ({ ...storage, origin: "service" as const, type: "volume" as const })),
+  ],
   endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
   routes: routes.map((route) => ({ ...route })),
   dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
@@ -193,13 +230,19 @@ const servicePlanExtensionsFromDraft = (
 ): ServicePlan["extensions"] => {
   const featureIds = draft.featureIds ?? [];
   const dataTrees = draft.storageOwnership ?? [];
-  if (draft.buildSteps.length === 0 && featureIds.length === 0 && dataTrees.length === 0) return extensions;
+  if (
+    draft.buildSteps.length === 0 &&
+    featureIds.length === 0 &&
+    dataTrees.length === 0 &&
+    serviceFeatureExtension(extensions)?.dataTrees === undefined
+  )
+    return extensions;
   return {
     ...extensions,
     [SERVICE_FEATURES_EXTENSION_KEY]: {
       ...serviceFeatureExtension(extensions),
       ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
-      ...(dataTrees.length === 0 ? {} : { dataTrees: dataTrees.map((tree) => ({ ...tree })) }),
+      dataTrees: dataTrees.map((tree) => ({ ...tree })),
       buildSteps: draft.buildSteps.map(({ user: authoredUser, ...step }) => {
         const user = authoredUser ?? draft.user;
         return { ...step, ...(user === undefined ? {} : { user }) };

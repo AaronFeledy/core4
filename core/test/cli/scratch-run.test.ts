@@ -10,6 +10,7 @@ import {
   ProviderId,
   ServiceName,
   StreamFrame,
+  serviceAppMount,
 } from "@lando/core/schema";
 import {
   type ApplyOptions,
@@ -601,14 +602,15 @@ describe("scratchRun", () => {
       expect(stopCalls).toEqual([{ app: String(plan.id), volumes: false }]);
 
       const toolboxService = plan.services[Object.keys(plan.services)[0] as keyof typeof plan.services];
+      const appBind = toolboxService === undefined ? undefined : serviceAppMount(toolboxService);
       const mountsCwd =
-        toolboxService?.appMount?.source === dir ||
+        appBind?.source === dir ||
         toolboxService?.mounts.some((mount) => mount.type === "bind" && mount.source === dir) === true;
       expect(mountsCwd).toBe(true);
 
-      const appMountTarget = toolboxService?.appMount?.target;
+      const appMountTarget = appBind?.target;
       const duplicateAppMountBinds = (toolboxService?.mounts ?? []).filter(
-        (mount) => mount.target === appMountTarget && mount.source !== toolboxService?.appMount?.source,
+        (mount) => mount !== appBind && mount.target === appMountTarget,
       );
       expect(duplicateAppMountBinds).toEqual([]);
     });
@@ -629,7 +631,7 @@ describe("scratchRun", () => {
       const plan = recorded.appliedPlans[0];
       if (plan === undefined) throw new Error("scratch run did not apply a plan");
       const service = plan.services[Object.keys(plan.services)[0] as keyof typeof plan.services];
-      expect(service?.appMount?.source === dir).toBe(false);
+      expect(service !== undefined && serviceAppMount(service)?.source === dir).toBe(false);
       expect(service?.mounts.some((mount) => mount.type === "bind" && mount.source === dir)).toBe(false);
     });
   });
@@ -1575,6 +1577,8 @@ describe("scratch run streaming spec", () => {
                 operation: "exec",
                 service: "toolbox",
                 message: "exec failed",
+                remediation:
+                  "Confirm service `toolbox` is running and the exec command is valid inside that container, then retry.",
               }),
             ),
         });

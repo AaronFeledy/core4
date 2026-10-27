@@ -14,7 +14,11 @@ for (const action of ["snapshot", "import", "reset", "restore"] as const) {
       // Given a real sidecar catalog and a fallible completion publisher.
       const fixture = await makeRetentionTestDeps();
       const source = action === "restore" ? await Effect.runPromise(fixture.snapshot("manual")) : undefined;
-      const failure = new EventError({ message: "Completion subscriber failed.", event: eventTag });
+      const failure = new EventError({
+        message: "Completion subscriber failed.",
+        event: eventTag,
+        remediation: "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+      });
       const deps = {
         ...fixture.deps,
         publish: (event: Parameters<typeof fixture.deps.publish>[0]) =>

@@ -13,9 +13,10 @@ import type { LandofileService, UserLandofileError } from "@lando/sdk/services";
 export type { UserLandofileError };
 
 import { compileLandofileFile } from "./file-compile.ts";
-import { landofileLayerPaths } from "./layers.ts";
+import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
+import { withDiscoveryCwd } from "./operation-discovery.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { findDiscoveredLandofilePath, loadLandofileLayers } from "./service.ts";
+import { loadLandofileLayers } from "./service.ts";
 
 const RESERVED_APP_IDS: ReadonlySet<string> = new Set(["global"]);
 
@@ -50,6 +51,7 @@ const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>
         filePath: root,
         line: undefined,
         column: undefined,
+        remediation: `Ensure the app directory ${root} exists and is accessible.`,
         cause,
       }),
   });
@@ -63,25 +65,28 @@ export const withResolvedCwd = <A, E, R>(
   root: string,
   use: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | LandofileParseError, R> =>
-  Effect.flatMap(Effect.fiberId, (fiberId) =>
-    CwdResolutionOwner.pipe(
-      Effect.flatMap((owner) => {
-        const useAtRoot = Effect.suspend(() =>
-          root === process.cwd()
-            ? use
-            : Effect.acquireUseRelease(
-                enterDir(root),
-                () => use,
-                (original) => Effect.sync(() => process.chdir(original)),
-              ),
-        );
-        const ownsLock = owner === fiberId;
-        return ownsLock
-          ? useAtRoot
-          : cwdResolutionLock.withPermits(1)(
-              useAtRoot.pipe(Effect.provideService(CwdResolutionOwner, fiberId)),
-            );
-      }),
+  withDiscoveryCwd(
+    root,
+    Effect.flatMap(Effect.fiberId, (fiberId) =>
+      CwdResolutionOwner.pipe(
+        Effect.flatMap((owner) => {
+          const useAtRoot = Effect.suspend(() =>
+            root === process.cwd()
+              ? use
+              : Effect.acquireUseRelease(
+                  enterDir(root),
+                  () => use,
+                  (original) => Effect.sync(() => process.chdir(original)),
+                ),
+          );
+          const ownsLock = owner === fiberId;
+          return ownsLock
+            ? useAtRoot
+            : cwdResolutionLock.withPermits(1)(
+                useAtRoot.pipe(Effect.provideService(CwdResolutionOwner, fiberId)),
+              );
+        }),
+      ),
     ),
   );
 
@@ -107,23 +112,13 @@ export interface UserAppResolution {
 }
 
 export const makeUserAppResolution = (options: UserAppResolutionOptions): UserAppResolution => {
-  const discoveredLandofilePath = (): Effect.Effect<
-    { readonly filePath: string; readonly appRoot: string } | undefined
-  > =>
-    Effect.promise(() =>
-      findDiscoveredLandofilePath(process.cwd()).then(
-        (result) => result,
-        () => undefined,
-      ),
-    );
-
   const loadUserLandofile = (
     landofileService: Context.Service.Shape<typeof LandofileService>,
   ): Effect.Effect<LoadScopedLandofile, UserLandofileError> =>
     landofileService.discover.pipe(
       Effect.flatMap((landofile) => {
-        return discoveredLandofilePath().pipe(
-          Effect.map((discovered) => ({ landofile, sourcePath: discovered?.filePath })),
+        return presentLandofileLayers(landofile.context.appRoot).pipe(
+          Effect.map((layers) => ({ landofile, sourcePath: representativeLandofileLayer(layers)?.filePath })),
         );
       }),
       Effect.tap(({ landofile }) => assertUserAppIdNotReserved(landofile.document)),

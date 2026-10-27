@@ -31,7 +31,6 @@ services:
     type: compose
     image: ollama/ollama:latest
     appMount: false
-    home: false
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
@@ -92,7 +91,7 @@ In a POSIX script without interactive input, append `</dev/null` to `lando ollam
 The Landofile keeps a few responsibilities separate:
 
 - `router.enabled: false` skips shared routing. Host requests use the published port; services use the app network.
-- `appMount: false` keeps your source out of the Ollama container. `home: false` disables Lando's managed home for this custom image; the named volume supplies Ollama's storage instead.
+- `appMount: false` keeps your source out of the Ollama container. Lando plans no home store for this Landofile-supplied image; the named volume supplies Ollama's storage instead.
 - `ollama-models:/root/.ollama` stores downloaded models in the provider's named volume, not your project directory or a native host Ollama installation.
 - The `ollama list` healthcheck checks that the server answers, not that a model can generate text. `lando start` waits for that check, and `service_healthy` holds the dependent `app` service until it succeeds. Model downloads remain a separate step.
 - The `ollama` and `node` tooling commands run inside their named services and append your arguments. The Node service mounts your project at `/app`; `endpoints: []` avoids advertising a web server that this example doesn't run.

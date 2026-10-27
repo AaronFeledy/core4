@@ -46,8 +46,8 @@ describe("memcached ServiceType", () => {
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 11211, protocol: "tcp", name: "cache", primary: true },
     ]);
-    expect(plan.storage).toEqual([]);
-    expect(plan.appMount).toBeUndefined();
+    expect(plan.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
+    expect(serviceAppMount(plan)).toBeUndefined();
   });
 
   test("respects image, port, and command overrides", async () => {
@@ -113,3 +113,4 @@ describe("memcached ServiceType", () => {
     expect(plan.user).toBe("memcache");
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

@@ -132,17 +132,54 @@ const makeRedactorOptions = (
   };
 };
 
+/** Key the profile and every value so cache hits cannot inherit another caller's secrets. */
+type CompiledRedactors = Map<string, Redactor>;
+
+const COMPILED_REDACTOR_LIMIT = 32;
+
+const compileRedactor = (
+  cache: CompiledRedactors,
+  profile: RedactionProfile,
+  options: CreateRedactorOptions,
+): Redactor => {
+  // Transcript environment roots are not part of the value key.
+  if (options.env !== undefined) return createRedactor(profile, options);
+  const key = JSON.stringify([
+    profile,
+    [...(options.values ?? [])],
+    [...(options.authoritativeValues ?? [])],
+  ]);
+  const cached = cache.get(key);
+  if (cached !== undefined) {
+    cache.delete(key);
+    cache.set(key, cached);
+    return cached;
+  }
+  const compiled = createRedactor(profile, options);
+  cache.set(key, compiled);
+  if (cache.size > COMPILED_REDACTOR_LIMIT) {
+    const oldest = cache.keys().next();
+    if (oldest.done !== true) cache.delete(oldest.value);
+  }
+  return compiled;
+};
+
+/** Standalone redactors hold only caller-supplied values, so they share one cache. */
+const standaloneCompiled: CompiledRedactors = new Map();
+
 const makeRegisteredRedactor = (
   profile: RedactionProfile,
   registry: { readonly values: Iterable<string>; readonly generation: () => number },
   options: RedactionForProfileOptions | undefined,
+  cache: CompiledRedactors,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable => {
-  let generation = registry.generation();
-  let redactor = createRedactor(profile, makeRedactorOptions(registry.values, options));
+  // Compile on first use: many redactors are built for error paths that never run.
+  let generation = -1;
+  let redactor: Redactor | undefined;
   const current = (): Redactor => {
-    if (generation !== registry.generation()) {
-      redactor = createRedactor(profile, makeRedactorOptions(registry.values, options));
+    if (redactor === undefined || generation !== registry.generation()) {
       generation = registry.generation();
+      redactor = compileRedactor(cache, profile, makeRedactorOptions(registry.values, options));
     }
     return redactor;
   };
@@ -167,7 +204,7 @@ export const createStandaloneRedactor = (
   profile: RedactionProfile,
   options?: RedactionForProfileOptions,
 ): Redactor & Redactable.Redactable & Inspectable.Inspectable =>
-  makeRegisteredRedactor(profile, { values: [], generation: () => 0 }, options);
+  makeRegisteredRedactor(profile, { values: [], generation: () => 0 }, options, standaloneCompiled);
 
 export const createPayloadValues = (
   secretValues: Iterable<string>,
@@ -188,6 +225,7 @@ export const makeRedactionOwner = () => {
   const values = new RedactionValues();
   let generation = 0;
   const registry = { values, generation: () => generation };
+  const compiled: CompiledRedactors = new Map();
   const service: RedactionServiceShape = {
     registerValues: (incoming) =>
       Effect.sync(() => {
@@ -209,12 +247,14 @@ export const makeRedactionOwner = () => {
           return supplier();
         };
       }),
-    forProfile: (profile, options) => Effect.sync(() => makeRegisteredRedactor(profile, registry, options)),
+    forProfile: (profile, options) =>
+      Effect.sync(() => makeRegisteredRedactor(profile, registry, options, compiled)),
   };
   return {
     service,
     dispose: () => {
       values.clear();
+      compiled.clear();
       generation += 1;
     },
   };

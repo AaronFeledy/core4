@@ -39,6 +39,8 @@ const imageIs = (image: string | undefined, name: string): boolean =>
 export const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   if (service.type !== undefined) return service.type;
   const image = service.image;
+  if (image?.startsWith("node:26")) return "node:26";
+  if (image?.startsWith("node:24")) return "node:24";
   if (image?.startsWith("node:22")) return "node:22";
   if (image?.startsWith("node:")) return "node:lts";
   if (imageIs(image, "postgres")) return "postgres";
@@ -276,6 +278,7 @@ export type AuthoredStorageInfo = {
 
 export type PlannedServiceDraft = {
   readonly name: string;
+  readonly authoredStorage: ServiceConfig["storage"];
   readonly hostnames: ReadonlyArray<string>;
   readonly authoredArtifact: ServicePlan["artifact"];
   readonly authored: ResolvedService["authored"];

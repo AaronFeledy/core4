@@ -3,6 +3,7 @@ import {
   type ProjectedFailure,
   buildCommandResultEnvelope,
   identityRedactor,
+  taggedErrorJson,
 } from "@lando/sdk/command-result";
 import { McpTransportError } from "@lando/sdk/errors";
 import { FailureRole } from "@lando/sdk/schema";
@@ -51,32 +52,12 @@ const ownString = (value: object, key: string): string | undefined => {
 };
 
 const projectFailure = (error: unknown): object => {
-  if (error === null || typeof error !== "object") {
-    return { _tag: "UnknownError", message: typeof error === "string" ? error : "Command failed." };
+  if (error !== null && typeof error === "object" && isRuntimeProxy(error))
+    throw inspectionFailure("MCP command failure");
+  if (error !== null && typeof error === "object") {
+    for (const field of ["_tag", "message", "remediation", "reason"]) ownString(error, field);
   }
-  if (isRuntimeProxy(error)) throw inspectionFailure("MCP command failure");
-  const tag = ownString(error, "_tag") ?? ownString(error, "name") ?? "UnknownError";
-  const message = ownString(error, "message") ?? "Command failed.";
-  const remediation = ownString(error, "remediation");
-  const reason = ownString(error, "reason");
-  const projected = Object.create(
-    Object.getPrototypeOf(error),
-    Object.fromEntries(
-      Object.keys(error)
-        .filter((key) => key !== "cause" && key !== "stack" && key !== "redactionTokens")
-        .flatMap((key) => {
-          const descriptor = Object.getOwnPropertyDescriptor(error, key);
-          return descriptor !== undefined && "value" in descriptor ? [[key, descriptor]] : [];
-        }),
-    ),
-  );
-  Object.assign(projected, {
-    _tag: tag,
-    message,
-    ...(remediation === undefined ? {} : { remediation }),
-    ...(reason === undefined ? {} : { reason }),
-  });
-  return projected;
+  return taggedErrorJson(error);
 };
 
 const inspectAdditionalFailures = (

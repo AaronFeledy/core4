@@ -6,17 +6,15 @@ import {
   type ServiceConfig,
   ServiceName,
   type ServicePlan,
+  orderMounts,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 
+import { prepareServiceMounts } from "@lando/engine/planner/mounts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
 import { type ComposeServiceFeature, composeService } from "@lando/engine/services/feature";
-import {
-  applyAuthoredHealthcheck,
-  mergeDefaultExcludes,
-  validateAuthoredAppMount,
-} from "@lando/engine/services/planner";
+import { applyAuthoredHealthcheck, validateAuthoredAppMount } from "@lando/engine/services/planner";
 import { serviceFeatures } from "../../src/features/index.ts";
 import { assertConnectionProjections } from "../../src/services/_connection-helpers.ts";
 
@@ -108,5 +106,12 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
   if (args.applyAuthoredWrappers === false) return rawPlan;
   const appMountError = validateAuthoredAppMount(args.service, args.appRoot, serviceName);
   if (appMountError !== undefined) throw appMountError;
-  return applyAuthoredHealthcheck(mergeDefaultExcludes(rawPlan), args.service);
+  const planned = prepareServiceMounts({
+    context: { appRoot: args.appRoot, appSlug: args.appName ?? "myapp", serviceName },
+    servicePlan: rawPlan,
+    normalizedConfig: resolution.normalizedConfig,
+    storage: args.service.storage,
+  });
+  if (planned instanceof Error) throw planned;
+  return applyAuthoredHealthcheck({ ...planned, mounts: orderMounts(planned.mounts) }, args.service);
 };

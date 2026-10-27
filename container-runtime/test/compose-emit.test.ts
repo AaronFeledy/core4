@@ -17,11 +17,60 @@ import {
 import { FileSystem } from "@lando/sdk/services";
 import { yamlRoundTripRecord } from "@lando/sdk/test";
 
-import { commonContainerLabels } from "../src/plan.ts";
+import { commonContainerLabels, containerHostConfigFragment } from "../src/plan.ts";
 import { composePath, emitCompose, renderCompose } from "../src/podman/compose.ts";
+import { networkPlan } from "./authored-network-fixture.ts";
+
+test("emits member-only authored networks, bridge aliases, external names and owned drivers", () => {
+  // Given / When
+  const document: unknown = Bun.YAML.parse(
+    renderCompose(networkPlan, { providerId: "docker", remediation: "Retry.", env: {} }),
+  );
+  // Then
+  expect(document).toMatchObject({
+    services: {
+      web: {
+        networks: {
+          "lando-networks": { aliases: ["web", "frontend"] },
+          lando_bridge_network: { aliases: ["web.networks.internal"] },
+          "lando-networks_private": { aliases: ["web.networks.internal", "private-web"] },
+          "sibling net": { aliases: ["web.networks.internal", "public-web"] },
+        },
+      },
+      worker: {
+        networks: {
+          "lando-networks": { aliases: ["worker"] },
+          lando_bridge_network: { aliases: ["worker.networks.internal"] },
+        },
+      },
+    },
+    networks: {
+      "lando-networks_private": { driver: "macvlan" },
+      "sibling net": { external: true, name: "sibling net" },
+    },
+  });
+  expect(document).toHaveProperty("services.worker.networks", {
+    "lando-networks": { aliases: ["worker"] },
+    lando_bridge_network: { aliases: ["worker.networks.internal"] },
+  });
+});
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
+
+test.each(["macvlan", undefined])("emits the canonical bridge driver %s with a bridge default", (driver) => {
+  // Given a plan whose bridge driver exists only on NetworkingPlan.
+  const plan: AppPlan = {
+    ...networkPlan,
+    networking: {
+      perAppBridge: { name: "lando-networks", ...(driver === undefined ? {} : { driver }) },
+    },
+  };
+  // When the provider renders Compose.
+  const document: unknown = Bun.YAML.parse(renderCompose(plan, ctx));
+  // Then the provider uses the canonical driver or its default.
+  expect(document).toHaveProperty("networks.lando-networks.driver", driver ?? "bridge");
+});
 
 interface FileSystemCall {
   readonly operation: string;
@@ -34,11 +83,26 @@ const makeFileSystemFake = () => {
   const files = new Map<string, string>();
   const directories = new Set<string>();
   const unsupported = (operation: string, path: string) =>
-    Effect.fail(new FileIoError({ message: `fake FileSystem does not support ${operation}`, path }));
+    Effect.fail(
+      new FileIoError({
+        message: `fake FileSystem does not support ${operation}`,
+        path,
+        remediation:
+          "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+      }),
+    );
   const layer = Layer.succeed(
     FileSystem,
     FileSystem.of({
-      read: (path: string) => Stream.fail(new FileIoError({ message: "fake read", path })),
+      read: (path: string) =>
+        Stream.fail(
+          new FileIoError({
+            message: "fake read",
+            path,
+            remediation:
+              "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+          }),
+        ),
       readText: (path: string) => unsupported("readText", path),
       write: (path: string, content: string | Uint8Array) => {
         calls.push({ operation: "write", path });
@@ -89,21 +153,19 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
     ref: name === "web" ? "node:22-alpine" : "postgres:16-alpine",
   },
   environment: name === "web" ? { NODE_ENV: "development" } : { POSTGRES_PASSWORD: "lando" },
-  ...(name === "web"
-    ? {
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          excludes: ["node_modules"],
-          includes: [],
-          realization: "passthrough" as const,
-        },
-      }
-    : {}),
   mounts:
     name === "web"
       ? [
+          {
+            type: "bind",
+            source: appRoot,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            excludes: ["node_modules"],
+            includes: [],
+            realization: "passthrough",
+            role: "app",
+          },
           {
             type: "bind",
             source: "/srv/shared/config",
@@ -112,17 +174,14 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
             realization: "passthrough",
           },
         ]
-      : [],
-  storage:
-    name === "database"
-      ? [
+      : [
           {
+            type: "volume",
             store: "myapp_database_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
           },
-        ]
-      : [],
+        ],
   endpoints:
     name === "web"
       ? [
@@ -157,7 +216,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
-  networks: [{ name: "myapp_default", shared: false, driver: "bridge" }],
   stores: [
     { name: "myapp_database_data", scope: "service", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
@@ -169,6 +227,68 @@ const plan: AppPlan = {
 
 /** The plan carries no identity, so ownership is derived from its root the way the writer derives it. */
 const ownerKey = appIdentityKey("owner", appRoot);
+
+test.each([
+  { mode: 0o755, octal: "755" },
+  { mode: 0o1770, octal: "1770" },
+  { mode: 0o2770, octal: "2770" },
+  { mode: 0o3770, octal: "3770" },
+  { mode: 1770, octal: "3352" },
+])("tmpfs bitmask $mode remains coherent across Docker, Podman and Compose", ({ mode, octal }) => {
+  const mounted: ServicePlan = {
+    ...web,
+    mounts: [
+      {
+        type: "tmpfs",
+        target: PortablePath.make("/run/app"),
+        readOnly: false,
+        options: `size=67108864,mode=${octal}`,
+      },
+      {
+        type: "tmpfs",
+        target: PortablePath.make("/run:app"),
+        readOnly: true,
+        options: `size=67108864,mode=${octal}`,
+      },
+    ],
+  };
+  expect(containerHostConfigFragment(plan, mounted).Tmpfs).toEqual({
+    "/run/app": `size=67108864,mode=${octal}`,
+    "/run:app": `ro,size=67108864,mode=${octal}`,
+  });
+  for (const providerId of ["docker", "podman"]) {
+    const document = Bun.YAML.parse(
+      renderCompose(
+        { ...plan, services: { [mounted.name]: mounted } },
+        { providerId, remediation: "Retry.", env: {} },
+      ),
+    );
+    expect(document).toMatchObject({
+      services: {
+        web: {
+          tmpfs: [`/run/app:size=67108864,mode=${octal}`],
+          volumes: [{ type: "tmpfs", target: "/run:app", read_only: true, tmpfs: { size: 67108864, mode } }],
+        },
+      },
+    });
+  }
+});
+
+test.each(["mode=1780", "mode=-1", "mode=1.5", "mode="])(
+  "Compose rejects invalid octal tmpfs option %s",
+  (options) => {
+    const mounted: ServicePlan = {
+      ...web,
+      mounts: [{ type: "tmpfs", target: PortablePath.make("/run:app"), readOnly: false, options }],
+    };
+    expect(() =>
+      renderCompose(
+        { ...plan, services: { [mounted.name]: mounted } },
+        { providerId: "docker", remediation: "Retry.", env: {} },
+      ),
+    ).toThrow("requires octal text");
+  },
+);
 
 const topLevelKeys = (content: string): string[] =>
   content
@@ -194,37 +314,52 @@ describe("Podman Compose emission", () => {
       // Given
       const withColons: ServicePlan = {
         ...web,
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app:ro"),
-          readOnly: true,
-          realization,
-          excludes: [],
-          includes: [],
-        },
         mounts: [
+          {
+            type: "bind",
+            source: appRoot,
+            target: PortablePath.make("/app:ro"),
+            readOnly: true,
+            realization,
+            excludes: [],
+            includes: [],
+            role: "app",
+            ...(realization === "accelerated" ? { mountKey: "app-mount" } : {}),
+          },
           {
             type: "bind",
             source: "/host/config",
             target: PortablePath.make("/config:v1"),
             readOnly: false,
             realization,
+            ...(realization === "accelerated" ? { mountKey: "mount-c0f10001" } : {}),
           },
           {
             type: "volume",
-            source: "named",
+            store: "named",
             target: PortablePath.make("/named:v1"),
             readOnly: true,
-            realization: "passthrough",
           },
           {
             type: "tmpfs",
             target: PortablePath.make("/tmp:v1"),
             readOnly: false,
+            options: "size=8m,mode=1777",
+          },
+          {
+            type: "volume",
+            store: "data",
+            target: PortablePath.make("/data:v1"),
+            readOnly: true,
+          },
+          {
+            type: "bind",
+            source: "/srv/apps/myapp/config",
+            target: PortablePath.make("/etc/config:v1"),
+            readOnly: true,
             realization: "passthrough",
           },
         ],
-        storage: [{ store: "data", target: PortablePath.make("/data:v1"), readOnly: true }],
         extensions: { compose: { configs: [{ source: "config", target: "/etc/config:v1" }] } },
       };
       // When
@@ -251,12 +386,17 @@ describe("Podman Compose emission", () => {
               },
               {
                 type: realization === "accelerated" ? "volume" : "bind",
-                source: realization === "accelerated" ? "My-App-web-mount-0" : "/host/config",
+                source: realization === "accelerated" ? "My-App-web-mount-c0f10001" : "/host/config",
                 target: "/config:v1",
                 read_only: false,
               },
               { type: "volume", source: "named", target: "/named:v1", read_only: true },
-              { type: "tmpfs", target: "/tmp:v1", read_only: false },
+              {
+                type: "tmpfs",
+                target: "/tmp:v1",
+                read_only: false,
+                tmpfs: { size: "8m", mode: 0o1777 },
+              },
               { type: "volume", source: "data", target: "/data:v1", read_only: true },
               { type: "bind", source: "/srv/apps/myapp/config", target: "/etc/config:v1", read_only: true },
             ],
@@ -314,6 +454,16 @@ describe("Podman Compose emission", () => {
   test("renders Compose config grants as read-only bind volumes", () => {
     const webWithConfigs: ServicePlan = {
       ...web,
+      mounts: [
+        ...web.mounts,
+        ...["/phpini", "/usr/local/etc/php/conf.d/zz-custom.ini"].map((target) => ({
+          type: "bind" as const,
+          source: "/srv/apps/myapp/php.ini",
+          target: PortablePath.make(target),
+          realization: "passthrough" as const,
+          readOnly: true,
+        })),
+      ],
       extensions: {
         compose: {
           configs: [
@@ -391,7 +541,7 @@ describe("Podman Compose emission", () => {
     expect(content).toContain('    depends_on:\n      database:\n        condition: "service_healthy"\n');
   });
 
-  test("tmpfs mounts appear under tmpfs: key, not in volumes: list", () => {
+  test("plain tmpfs mounts appear under tmpfs: with options and ro, not in volumes:", () => {
     const webWithTmpfs: ServicePlan = {
       ...web,
       mounts: [
@@ -399,8 +549,13 @@ describe("Podman Compose emission", () => {
         {
           type: "tmpfs",
           target: PortablePath.make("/tmp/cache"),
+          readOnly: true,
+          options: "size=64m,mode=1777",
+        },
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/scratch"),
           readOnly: false,
-          realization: "passthrough",
         },
       ],
     };
@@ -412,13 +567,158 @@ describe("Podman Compose emission", () => {
       ctx,
     );
 
-    expect(content).toContain('    tmpfs:\n      - "/tmp/cache"\n');
+    expect(content).toContain('    tmpfs:\n      - "/tmp/cache:ro,size=64m,mode=1777"\n      - "/scratch"\n');
 
     const lines = content.split("\n");
     const volumesIdx = lines.findIndex((l) => l === "    volumes:");
     const nextSectionIdx = lines.findIndex((l, i) => i > volumesIdx && /^ {4}[a-z]/u.test(l));
     const volumesLines = lines.slice(volumesIdx + 1, nextSectionIdx === -1 ? lines.length : nextSectionIdx);
-    expect(volumesLines.every((l) => !l.includes("/tmp/cache"))).toBe(true);
+    expect(volumesLines.every((l) => !l.includes("/tmp/cache") && !l.includes("/scratch"))).toBe(true);
+  });
+
+  test("colon-target tmpfs uses long volumes syntax and rejects unsupported option tokens", () => {
+    const ok: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/run:x"),
+          readOnly: true,
+          options: "size=8m,mode=1770",
+        },
+      ],
+    };
+    const parsed = Bun.YAML.parse(renderCompose({ ...plan, services: { [ok.name]: ok } }, ctx));
+    expect(parsed).toMatchObject({
+      services: {
+        web: {
+          volumes: [
+            {
+              type: "tmpfs",
+              target: "/run:x",
+              read_only: true,
+              tmpfs: { size: "8m", mode: 0o1770 },
+            },
+          ],
+        },
+      },
+    });
+    expect(parsed).not.toHaveProperty("services.web.tmpfs");
+
+    const bad: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/run:x"),
+          readOnly: false,
+          options: "size=8m,uid=0",
+        },
+      ],
+    };
+    expect(() => renderCompose({ ...plan, services: { [bad.name]: bad } }, ctx)).toThrowError(
+      expect.objectContaining({ providerId: "podman", operation: "emitCompose" }),
+    );
+  });
+
+  test("duplicate mount targets fail at the provider boundary", () => {
+    const dup: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "bind",
+          source: "/a",
+          target: PortablePath.make("/dup"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+        {
+          type: "tmpfs",
+          target: PortablePath.make("/dup"),
+          readOnly: false,
+        },
+      ],
+    };
+    expect(() => renderCompose({ ...plan, services: { [dup.name]: dup } }, ctx)).toThrowError(
+      expect.objectContaining({ providerId: "podman", operation: "emitCompose" }),
+    );
+  });
+
+  test("a Compose config grant at a planned mount target fails at the provider boundary", () => {
+    const granted: ServicePlan = {
+      ...web,
+      mounts: [
+        { type: "tmpfs", target: PortablePath.make("/etc/app.ini"), readOnly: false },
+        {
+          type: "bind",
+          source: "/srv/apps/myapp/app.ini",
+          target: PortablePath.make("/etc/app.ini"),
+          readOnly: true,
+          realization: "passthrough",
+        },
+      ],
+      extensions: { compose: { configs: [{ source: "appini", target: "/etc/app.ini" }] } },
+    };
+    expect(() =>
+      renderCompose(
+        {
+          ...plan,
+          services: { [granted.name]: granted },
+          extensions: { compose: { configs: { appini: { file: "app.ini" } } } },
+        },
+        ctx,
+      ),
+    ).toThrowError(expect.objectContaining({ providerId: "podman", operation: "emitCompose" }));
+  });
+
+  test("nested bind under volume and keyed acceleration preserve plan order", () => {
+    const nested: ServicePlan = {
+      ...web,
+      mounts: [
+        {
+          type: "bind",
+          source: appRoot,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          role: "app",
+          mountKey: "app-mount",
+          excludes: ["vendor"],
+        },
+        {
+          type: "volume",
+          store: "myapp-web-vendor-shadow",
+          target: PortablePath.make("/app/vendor"),
+          readOnly: false,
+        },
+        {
+          type: "bind",
+          source: "/srv/apps/myapp/vendor/acme/sdk",
+          target: PortablePath.make("/app/vendor/acme/sdk"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+        {
+          type: "bind",
+          source: "/srv/extra",
+          target: PortablePath.make("/extra"),
+          readOnly: false,
+          realization: "accelerated",
+          mountKey: "mount-deadbeef",
+        },
+      ],
+    };
+    const content = renderCompose({ ...plan, services: { [nested.name]: nested } }, ctx);
+    const entries = [
+      '      - "My-App-web-app-mount:/app"',
+      '      - "myapp-web-vendor-shadow:/app/vendor"',
+      '      - "/srv/apps/myapp/vendor/acme/sdk:/app/vendor/acme/sdk"',
+      '      - "My-App-web-mount-deadbeef:/extra"',
+    ] as const;
+    for (const entry of entries) expect(content).toContain(`${entry}\n`);
+    const order = entries.map((entry) => content.indexOf(entry));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((left, right) => left - right));
   });
 
   test("uses long volume syntax only for subpath and disabled bind path creation", () => {
@@ -441,13 +741,15 @@ describe("Podman Compose emission", () => {
           readOnly: false,
           createHostPath: false,
           realization: "accelerated",
+          mountKey: "mount-synced",
         },
       ],
     };
     const databaseWithSubpath: ServicePlan = {
       ...database,
-      storage: [
+      mounts: [
         {
+          type: "volume",
           store: "myapp_database_data",
           target: PortablePath.make("/var/lib/postgresql/data"),
           readOnly: true,
@@ -469,7 +771,7 @@ describe("Podman Compose emission", () => {
 
     expect(content).toContain('      - "/srv/apps/myapp:/app"\n');
     expect(content).toContain('      - "/srv/shared/config:/config:ro"\n');
-    expect(content).toContain('      - "My-App-web-mount-2:/synced"\n');
+    expect(content).toContain('      - "My-App-web-mount-synced:/synced"\n');
     expect(content).toContain(
       '      - type: "bind"\n        source: "/srv/existing/config"\n        target: "/existing-config"\n        read_only: false\n        bind:\n          create_host_path: false\n',
     );
@@ -516,22 +818,23 @@ describe("Podman Compose emission", () => {
     expect(fileSystem.calls).toEqual([]);
   });
 
-  test("Given a podman ctx, When renderCompose rejects a sourceless mount, Then the thrown error names that providerId", () => {
+  test("Given a podman ctx, When renderCompose rejects accelerated bind without mountKey, Then the thrown error names that providerId", () => {
     // Given
-    const sourceless: ServicePlan = {
+    const missingKey: ServicePlan = {
       ...database,
       mounts: [
         {
           type: "bind",
+          source: "/host",
           target: PortablePath.make("/nope"),
           readOnly: false,
-          realization: "passthrough",
+          realization: "accelerated",
         },
       ],
     };
 
     // When / Then
-    expect(() => renderCompose({ ...plan, services: { [sourceless.name]: sourceless } }, ctx)).toThrowError(
+    expect(() => renderCompose({ ...plan, services: { [missingKey.name]: missingKey } }, ctx)).toThrowError(
       expect.objectContaining({ providerId: "podman", operation: "emitCompose" }),
     );
   });
@@ -690,8 +993,9 @@ describe("Compose mapping-key quoting", () => {
       ...web,
       name: ServiceName.make("yes"),
       environment,
-      storage: [
+      mounts: [
         {
+          type: "volume",
           store: "yes",
           target: PortablePath.make("/data"),
           readOnly: false,

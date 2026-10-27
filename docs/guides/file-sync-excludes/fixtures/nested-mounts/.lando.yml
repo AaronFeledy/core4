@@ -1,0 +1,22 @@
+name: nested-mounts-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    appMount:
+      target: /app
+      includes:
+        - vendor/acme/sdk
+    mounts:
+      - source: ./packages/ui
+        target: /app/node_modules/@acme/ui
+    tmpfs:
+      - /app/tmp
+  tools:
+    type: "node:22"
+    appMount: false
+    mounts:
+      - source: ./tools
+        target: /tools
+        excludes:
+          - node_modules

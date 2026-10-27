@@ -41,7 +41,13 @@ export const layerUnavailable = Layer.succeed(
         }),
     ),
     removeRoutes: unavailableOperation(
-      () => new ProxyError({ message: ROUTER_UNAVAILABLE_MESSAGE, proxyId: UNAVAILABLE_ID }),
+      () =>
+        new ProxyError({
+          message: ROUTER_UNAVAILABLE_MESSAGE,
+          proxyId: UNAVAILABLE_ID,
+          remediation:
+            "Install a RouterService plugin and set `defaultRouterService` to an installed router id.",
+        }),
     ),
     status: Effect.succeed({ state: "stopped" as const, authorities: [], configuredApps: [] }),
     observeRoutes: () =>

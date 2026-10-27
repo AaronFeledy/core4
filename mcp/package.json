@@ -38,9 +38,13 @@
   "keywords": ["lando", "mcp", "json-rpc"],
   "dependencies": {
     "@lando/engine": "workspace:*",
+    "@lando/landofile": "workspace:*",
     "@lando/redaction": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@lando/renderer": "workspace:*"
   },
   "scripts": {
     "build": "tsc -b",

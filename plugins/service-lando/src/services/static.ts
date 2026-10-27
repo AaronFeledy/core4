@@ -133,6 +133,11 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
     id,
     name: id,
     base: "lando",
+    // Verified linux/amd64: nginx:1.26-alpine config
+    // sha256:42ce3d3585d47518cb0c1ef4bd3d8a65c1edfcbbfd423eda86990a83f378b111 has
+    // nginx:x:101:101:nginx:/var/cache/nginx:/sbin/nologin (cache, not a persisted home).
+    // caddy:2-alpine config sha256:3067cc4e02c091399edbd5d65f85a3ff4d511574aecadb47f280c3761e68852e
+    // has only root. Both server choices therefore declare only the root home.
     identity: rootIdentity(),
     schema: Schema.Unknown,
     resolve: (input) =>

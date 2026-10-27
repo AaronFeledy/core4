@@ -10,6 +10,7 @@ import {
 } from "@lando/sdk/services";
 import { Effect, Option } from "effect";
 import { type AppliedPlanCacheOptions, makeAppliedPlanCache } from "./applied-plan-cache.ts";
+import { removeOrphanedNetworks } from "./orphaned-networks.ts";
 import { makeOwnedResourcesCleanup } from "./resource-cleanup.ts";
 import { makeResourceOwnershipStore } from "./resource-ownership.ts";
 export { makeResourceOwnershipStore } from "./resource-ownership.ts";
@@ -44,8 +45,18 @@ type ProviderPlanStateOptions = AppliedPlanCacheOptions &
   };
 
 export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
+  removeOrphanedNetworks: (plan: AppPlan, previous: AppPlan | undefined) =>
+    removeOrphanedNetworks(plan, previous, {
+      ctx: options.ctx,
+      ...(options.api === undefined ? {} : { api: options.api }),
+      store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
+    }),
   ownership: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
   cleanupOwnedResources: makeOwnedResourcesCleanup({
+    checkAppliedState: (app) =>
+      options.appliedPlanState === undefined
+        ? Effect.void
+        : options.load(options.appliedPlanState, app).pipe(Effect.asVoid),
     store: makeResourceOwnershipStore(options.ctx.providerId, options.appliedPlanState),
     ctx: options.ctx,
     ...(options.api === undefined ? {} : { api: options.api }),
@@ -57,7 +68,7 @@ export const makeProviderPlanState = (options: ProviderPlanStateOptions) => ({
           providerId: options.ctx.providerId,
           api: options.api,
           capabilities: options.capabilities,
-          redactDetails: options.redactDetails,
+          redactor: options.redactor,
           ...(options.pullHelperImage === undefined ? {} : { pullHelperImage: options.pullHelperImage }),
           ...(options.volumeCreationLabels === undefined
             ? {}
@@ -76,6 +87,8 @@ export const bindResolvedProviderOps = (
 ) =>
   makeResolvedProviderOps({
     ...input,
+    beforeMutation:
+      input.beforeMutation ?? ((app) => state.appliedPlans.resolveMutationPlan(app).pipe(Effect.asVoid)),
     resolvePlan: state.appliedPlans.resolvePlan,
     ...(state.dataPlane === undefined ? {} : { dataPlane: state.dataPlane }),
   });
@@ -111,6 +124,7 @@ export const notImplementedError = (providerId: string, operation: string) =>
     providerId,
     operation,
     message: `provider-${providerId} does not implement ${operation} yet.`,
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 export const composeAdaptersFor = (ctx: ProviderErrorContext) => ({

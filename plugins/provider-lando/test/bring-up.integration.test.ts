@@ -64,6 +64,23 @@ const waitForHttpBody = async (url: string, expectedBody: string): Promise<strin
   throw lastError ?? new Error(`Timed out waiting for ${url}`);
 };
 
+const waitForTcpPort = async (hostname: string, port: number): Promise<void> => {
+  for (let attempt = 1; attempt <= liveProbeAttempts; attempt += 1) {
+    try {
+      const socket = await Bun.connect({
+        hostname,
+        port,
+        socket: { data() {}, open() {}, close() {} },
+      });
+      socket.end();
+      return;
+    } catch (error) {
+      if (attempt === liveProbeAttempts) throw error;
+      await sleep(liveProbeDelayMs);
+    }
+  }
+};
+
 const servicePlan = (name: "node" | "database"): ServicePlan => ({
   name: ServiceName.make(name),
   type: name === "node" ? "node" : "postgres",
@@ -72,20 +89,21 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? nodeCommand : ["postgres", "-c", "port=55432"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  ...(name === "node"
-    ? {
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          excludes: [],
-          includes: [],
-          realization: "passthrough",
-        },
-      }
-    : {}),
-  mounts: [],
-  storage: [],
+  mounts:
+    name === "node"
+      ? [
+          {
+            type: "bind",
+            role: "app",
+            source: appRoot,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            excludes: [],
+            includes: [],
+            realization: "passthrough",
+          },
+        ]
+      : [],
   endpoints:
     name === "node"
       ? [
@@ -128,7 +146,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -152,7 +169,6 @@ const makeAliasProbePlan = (): AppPlan => ({
       command: ["node", "-e", "setInterval(() => {}, 1000)"],
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -162,7 +178,6 @@ const makeAliasProbePlan = (): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -252,16 +267,28 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
             }),
           };
         }
-        if (request.path === "/networks/create") {
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
           if (hooks.networkCreateFailureBody !== undefined) {
             return { status: 500, body: hooks.networkCreateFailureBody };
           }
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
               Labels: Schema.optional(Schema.Record(Schema.String, Schema.String)),
             }),
-          )(request.body);
+          )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
           networks.add(body.Name);
           networkLabels.set(body.Name, body.Labels ?? {});
           return { status: 201, body: JSON.stringify({ Id: `${body.Name}-id` }) };
@@ -380,7 +407,7 @@ describe("provider-lando bringUp", () => {
       "pre-service-start",
       "post-service-start",
     ]);
-    expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
+    expect(fake.calls.some((call) => call.path === "/libpod/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path.includes("/start"))).toBe(true);
     const nodeCreate = fake.calls.find(
       (call) =>
@@ -397,14 +424,16 @@ describe("provider-lando bringUp", () => {
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 2)
         .map((call) => call.body),
     ).toEqual([
       {
-        Name: "lando-bringupapp",
-        Driver: "bridge",
-        Labels: {
+        name: "lando-bringupapp",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
           "dev.lando.app": plan.id,
           "dev.lando.app-root": appRoot,
           "dev.lando.owner": appIdentityKey("owner", appRoot),
@@ -439,18 +468,20 @@ describe("provider-lando bringUp", () => {
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
       "custom-app-net": { Aliases: ["node"] },
-      "custom-shared-net": { Aliases: ["node.custom.internal"] },
+      "custom-shared-net": { Aliases: ["node.bringupapp.internal", "node.custom.internal"] },
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 2)
         .map((call) => call.body),
     ).toEqual([
       {
-        Name: "custom-app-net",
-        Driver: "bridge",
-        Labels: {
+        name: "custom-app-net",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
           "dev.lando.app": plan.id,
           "dev.lando.app-root": appRoot,
           "dev.lando.owner": appIdentityKey("owner", appRoot),
@@ -465,7 +496,15 @@ describe("provider-lando bringUp", () => {
     const fake = makeFakeApi();
     const cacheService: ServicePlan = {
       ...node,
-      storage: [{ store: "lando-cache-npm", target: PortablePath.make("/home/node/.npm"), readOnly: false }],
+      mounts: [
+        ...node.mounts,
+        {
+          type: "volume",
+          store: "lando-cache-npm",
+          target: PortablePath.make("/home/node/.npm"),
+          readOnly: false,
+        },
+      ],
     };
     const cachePlan: AppPlan = {
       ...plan,
@@ -517,18 +556,20 @@ describe("provider-lando bringUp", () => {
     );
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
-      "custom-app-only": { Aliases: ["node"] },
+      "custom-app-only": { Aliases: ["node", "node.bringupapp.internal"] },
     });
     expect(
       fake.calls
-        .filter((call) => call.path === "/networks/create")
+        .filter((call) => call.path === "/networks/create" || call.path === "/libpod/networks/create")
         .slice(0, 1)
         .map((call) => call.body),
     ).toEqual([
       {
-        Name: "custom-app-only",
-        Driver: "bridge",
-        Labels: {
+        name: "custom-app-only",
+        driver: "bridge",
+        dns_enabled: true,
+        options: { metric: "50" },
+        labels: {
           "dev.lando.app": plan.id,
           "dev.lando.app-root": appRoot,
           "dev.lando.owner": appIdentityKey("owner", appRoot),
@@ -544,21 +585,25 @@ describe("provider-lando bringUp", () => {
     const acceleratedNode: ServicePlan = {
       ...node,
       dependsOn: [],
-      appMount: {
-        source: acceleratedAppRoot,
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        excludes: [],
-        includes: [],
-        realization: "accelerated",
-      },
       mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: acceleratedAppRoot,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "accelerated",
+          mountKey: "app-mount",
+        },
         {
           type: "bind",
           source: AbsolutePath.make("/tmp/lando-accel-cache"),
           target: PortablePath.make("/cache"),
           readOnly: true,
           realization: "accelerated",
+          mountKey: "mount-cace0001",
         },
       ],
     };
@@ -576,22 +621,22 @@ describe("provider-lando bringUp", () => {
     const body = create?.body as CreateContainerBody | undefined;
     expect(body?.HostConfig?.Binds).toEqual([
       "BringUp-App-node-app-mount:/app",
-      "BringUp-App-node-mount-0:/cache:ro",
+      "BringUp-App-node-mount-cace0001:/cache:ro",
     ]);
   });
 
-  test("fails passthrough bind mounts without a source before creating the container", async () => {
+  test("fails accelerated bind mounts without a mountKey before creating the container", async () => {
     const fake = makeFakeApi();
-    const { appMount: _omitAppMount, ...nodeWithoutAppMount } = node;
     const invalidNode: ServicePlan = {
-      ...nodeWithoutAppMount,
+      ...node,
       dependsOn: [],
       mounts: [
         {
           type: "bind",
+          source: "/host/cache",
           target: PortablePath.make("/cache"),
           readOnly: false,
-          realization: "passthrough",
+          realization: "accelerated",
         },
       ],
     };
@@ -911,12 +956,7 @@ describe("provider-lando bringUp", () => {
 
         const responseBody = await waitForHttpBody("http://127.0.0.1:31080", "lando-bringup-ok");
         expect(responseBody).toBe("lando-bringup-ok");
-        const socket = await Bun.connect({
-          hostname: "127.0.0.1",
-          port: 55432,
-          socket: { data() {}, open() {}, close() {} },
-        });
-        socket.end();
+        await waitForTcpPort("127.0.0.1", 55432);
       } finally {
         for (const service of Object.values(plan.services)) {
           await Effect.runPromise(

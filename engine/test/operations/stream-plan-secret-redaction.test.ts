@@ -65,7 +65,6 @@ const plan: CurrentExecutableAppPlan = {
         primary: true,
         environment: { DISPLAY_VALUE: "${secret:X}", DISPLAY_URL: "${secret:Y}" },
         mounts: [],
-        storage: [],
         endpoints: [],
         routes: [],
         dependsOn: [],
@@ -76,7 +75,6 @@ const plan: CurrentExecutableAppPlan = {
     ],
   ]),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -202,6 +200,8 @@ describe("live plan-secret redaction", () => {
       providerId: provider.id,
       operation: "readAppEnvironment",
       message: "Read denied.",
+      remediation:
+        "Install or start the selected runtime provider and confirm it can perform `readAppEnvironment`.",
     });
     const failedProvider = { ...provider, readAppEnvironment: () => Effect.fail(failure) };
     const result = await Effect.runPromise(

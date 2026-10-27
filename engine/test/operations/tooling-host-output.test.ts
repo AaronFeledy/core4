@@ -43,7 +43,6 @@ const harness = (
     provider: ProviderId.make("test"),
     services: {},
     routes: [],
-    networks: [],
     fileSync: [],
     stores: [],
     extensions: {},

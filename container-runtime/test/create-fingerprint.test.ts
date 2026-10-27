@@ -8,6 +8,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  landoNetworkingPlan,
 } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
@@ -28,7 +29,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:1.27-alpine", digest: "sha256:before" },
   environment: { MODE: "before", PASSWORD: "${secret:db/password}" },
   mounts: [],
-  storage: [],
   endpoints: [],
   hostAliases: [],
   routes: [],
@@ -45,7 +45,6 @@ const plan: AppPlan = {
   provider: service.provider,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -57,6 +56,51 @@ const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
 const fixtureRedaction = makeRedactionService();
 
 describe("desired immutable create config", () => {
+  test("pins the mount-list-only default fingerprint bytes", () => {
+    // Given the default plan without authored networks or bridge aliases.
+    // When / Then the mount-only create projection stays pinned.
+    expect(fingerprint(service)).toBe("v3:ff31e0d13cdd99844ead8b79b3d972ea97ff8f331f26997d674feaa6c3dd4bb8");
+  });
+  test("keeps explicit shared membership attachments and fingerprint byte-identical to the legacy plan", () => {
+    // Given
+    const explicit = {
+      ...plan,
+      networking: landoNetworkingPlan({
+        slug: plan.slug,
+        serviceNames: [service.name],
+        sharedCrossAppNetwork: true,
+      }),
+    };
+    // When
+    const actual = fingerprint(service, explicit);
+    // Then
+    expect(actual).toBe("v3:ff31e0d13cdd99844ead8b79b3d972ea97ff8f331f26997d674feaa6c3dd4bb8");
+  });
+
+  test.each(["membership", "bridge aliases", "authored aliases"])("fingerprints %s changes", (change) => {
+    // Given one member service and an authored network.
+    const networking = (changed: boolean) =>
+      landoNetworkingPlan({
+        slug: plan.slug,
+        serviceNames: [service.name],
+        sharedCrossAppNetwork: true,
+        bridgeAliases: changed && change === "bridge aliases" ? { web: ["frontend"] } : {},
+        authoredNetworks:
+          changed && change === "membership"
+            ? []
+            : [
+                {
+                  key: "extra",
+                  external: false,
+                  members: { web: changed && change === "authored aliases" ? ["alias"] : [] },
+                },
+              ],
+      });
+    // When / Then attachment changes alter the immutable create identity.
+    expect(fingerprint(service, { ...plan, networking: networking(true) })).not.toBe(
+      fingerprint(service, { ...plan, networking: networking(false) }),
+    );
+  });
   test("distinguishes literal, reference, raw composite, and encoded composite identities", () => {
     // Given
     const values = [
@@ -83,14 +127,18 @@ describe("desired immutable create config", () => {
     [
       "app mount",
       {
-        appMount: {
-          source: plan.root,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          realization: "passthrough",
-          excludes: [],
-          includes: [],
-        },
+        mounts: [
+          {
+            type: "bind",
+            role: "app",
+            source: plan.root,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            realization: "passthrough",
+            excludes: [],
+            includes: [],
+          },
+        ],
       },
     ],
     [
@@ -111,7 +159,15 @@ describe("desired immutable create config", () => {
     [
       "storage subpath",
       {
-        storage: [{ store: "data", target: PortablePath.make("/data"), readOnly: false, subpath: "tenant" }],
+        mounts: [
+          {
+            type: "volume",
+            store: "data",
+            target: PortablePath.make("/data"),
+            readOnly: false,
+            subpath: "tenant",
+          },
+        ],
       },
     ],
     ["healthcheck", { healthcheck: { kind: "none", intervalSeconds: 10, timeoutSeconds: 5, retries: 3 } }],
@@ -121,6 +177,19 @@ describe("desired immutable create config", () => {
     ["host config knob", { extensions: { compose: { privileged: true } } }],
     ["top-level knob", { extensions: { compose: { stop_signal: "SIGQUIT" } } }],
     ["query knob", { extensions: { compose: { platform: "linux/arm64" } } }],
+    [
+      "tmpfs options",
+      {
+        mounts: [
+          {
+            type: "tmpfs",
+            target: PortablePath.make("/scratch"),
+            readOnly: true,
+            options: "size=64m,mode=1777",
+          },
+        ],
+      },
+    ],
   ];
   test.each(changes)("changes the fingerprint for %s drift", (_name, change) => {
     // Given two desired configurations differing in one immutable input.
@@ -141,6 +210,58 @@ describe("desired immutable create config", () => {
     // Then equivalent create arguments match and reordered arguments do not.
     expect(actual).toBe(fingerprint(normalized));
     expect(actual).not.toBe(fingerprint({ ...normalized, command: ["sleep 60", "-lc", "sh"] }));
+  });
+
+  test("ignores bind sync metadata but fingerprints its physical volume identity", () => {
+    const mount = {
+      type: "bind",
+      source: "/host/app",
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      realization: "accelerated",
+      mountKey: "app-mount",
+    } as const;
+    const before: ServicePlan = { ...service, mounts: [mount] };
+    const metadataOnly: ServicePlan = {
+      ...before,
+      mounts: [{ ...mount, role: "app", excludes: ["vendor"], includes: [".git"] }],
+    };
+    const changedIdentity: ServicePlan = { ...before, mounts: [{ ...mount, mountKey: "mount-deadbeef" }] };
+    expect(fingerprint(metadataOnly)).toBe(fingerprint(before));
+    expect(fingerprint(changedIdentity)).not.toBe(fingerprint(before));
+  });
+
+  test("fingerprints tmpfs runtime options independently of its target", () => {
+    const mount = {
+      type: "tmpfs",
+      target: PortablePath.make("/scratch"),
+      readOnly: false,
+      options: "size=64m",
+    } as const;
+    const before: ServicePlan = { ...service, mounts: [mount] };
+    const after: ServicePlan = { ...service, mounts: [{ ...mount, options: "size=128m" }] };
+    expect(fingerprint(after)).not.toBe(fingerprint(before));
+  });
+
+  test("changes the fingerprint when publication bindAddress changes", () => {
+    // Given two published endpoints that differ only in host bind.
+    const published = (bindAddress: string): ServicePlan => ({
+      ...service,
+      endpoints: [
+        {
+          _tag: "published",
+          port: 80,
+          protocol: "http",
+          publication: { bindAddress, hostPort: 8080 },
+        },
+      ],
+    });
+    // When both label sets are emitted.
+    const loopback = fingerprint(published("127.0.0.1"));
+    const lan = fingerprint(published("0.0.0.0"));
+    // Then a bind change is visible create-config drift.
+    expect(lan).not.toBe(loopback);
+    expect(lan).toMatch(/^v3:[a-f0-9]{64}$/u);
   });
 
   test("ignores map order, metadata, runtime host ports, and unrelated extensions", () => {
@@ -270,7 +391,7 @@ describe("desired immutable create config", () => {
     // Given one desired service consumed by both provider paths.
     const body = containerCreateBodyFragment(plan, service);
     // When Compose emits that same plan.
-    const content = renderCompose(plan, { providerId: "podman", remediation: "Retry." });
+    const content = renderCompose(plan, { providerId: "podman", remediation: "Retry.", env: {} });
     // Then both actual output surfaces carry the same opaque label.
     expect(body).toMatchObject({ Labels: { [CREATE_CONFIG_LABEL]: fingerprint(service) } });
     expect(content).toContain(`dev.lando.create-config: "${fingerprint(service)}"`);

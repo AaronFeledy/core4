@@ -53,7 +53,12 @@ export type GlobalStatusResult = typeof GlobalStatusResultSchema.Type;
 
 type GlobalStatusError = LoadObservedGlobalPlanError | ProviderError | ToolingExecError;
 
-type GlobalStatusServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+type GlobalStatusServices =
+  | AppPlanner
+  | FileSystem
+  | GlobalAppService
+  | RuntimeProviderRegistry
+  | import("@lando/sdk/services").StateStore;
 
 const globalStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
 
