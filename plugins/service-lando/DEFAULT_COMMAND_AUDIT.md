@@ -9,7 +9,7 @@ identity rather than as root.
 
 A launcher that writes into a root-owned path therefore fails whenever the
 author sets a non-root `user:`. The container exits on its own start command,
-and the next operation against it — a rebuild, an exec, a healthcheck — fails
+and the next operation against it, such as a rebuild, an exec, or a healthcheck, fails
 against a container that is already gone, which hides the real cause.
 
 This file records every bundled default command, what it writes, and whether it
@@ -54,16 +54,17 @@ section below.
 | `static` / `static:nginx` | `src/services/static.ts` `defaultStaticCommand` | `/tmp/lando-nginx.conf` | works | **fixed** |
 | `solr` with `cores:` | `src/services/solr.ts` | `/var/solr/data/<core>/conf`, under a `/var/solr` tree prepared in the image for the planned user | works | **fixed** |
 | `minio` | `src/services/minio.ts` | `mkdir` under `/data`, a tree prepared in the image for the planned user | works | **fixed** |
+| `mssql` on the selected catalog image | `src/services/mssql-startup.ts` | SQL Server creates the configured database under `/var/opt/mssql`; the wrapper writes no config files | default `mssql` user owns the image data tree; other users need access to it | process fixtures and live 2019/2022 backup, restore, and persistent restart verified |
 | `varnish` without a VCL bind | `src/services/varnish.ts` | `/tmp/lando-backend.vcl` | write works; the daemon still needs root for its default `:80` | safe write, privileged port |
 | `redis` with `password:` | `src/services/redis.ts` | `/tmp/lando-redis.conf` | works | safe |
 | `php:*` via `cli` | `src/services/php-via.ts` `PHP_CLI_KEEP_ALIVE` | none | works | safe |
 | `node`, `go`, `python`, `ruby`, `dotnet` | respective `src/services/*.ts` | none | works | safe |
 | `memcached`, `valkey`, `redis` without `password:` | respective `src/services/*.ts` | none | works | safe |
 | `static:caddy` | `src/services/static.ts` | none | write-free; default `:80` is still privileged | safe write, privileged port |
-| `postgres`, `mongodb` with `config.server` | `src/services/postgres.ts`, `src/services/mongodb.ts` | none — the command only names a config path | works | safe |
+| `postgres`, `mongodb` with `config.server` | `src/services/postgres.ts`, `src/services/mongodb.ts` | none; the command only names a config path | works | safe |
 
 Service types with no Lando-emitted default command (`compose`, `lando`,
-`mariadb`, `mysql`, `mssql`, `mailhog`, `mailpit`, `phpmyadmin`, `tomcat`,
+`mariadb`, `mysql`, `mailhog`, `mailpit`, `phpmyadmin`, `tomcat`,
 `rabbitmq`, `localstack`, `elasticsearch`, `opensearch`, `meilisearch`) are out
 of scope here: their images own startup, and Lando adds no write.
 
@@ -101,7 +102,7 @@ directives needed one extra move. `apache2.conf` reads
 enabled, whose `<VirtualHost *:80>` pins `DocumentRoot /var/www/html`. A `-c`
 directive is applied after the whole configuration tree is read, but it lands on
 the main server, and a virtual host keeps its own `DocumentRoot` through the
-merge — so a directive alone cannot move the document root while that site is
+merge. A directive alone therefore cannot move the document root while that site is
 enabled. A build step retires the enabled site, which leaves the main server
 answering every request and makes the launcher's directives the whole
 configuration.
@@ -262,7 +263,7 @@ Two mechanisms were considered and rejected for the service type itself:
 
 - Requesting `cap_add: ["NET_BIND_SERVICE"]` through the Compose extension.
   `findUnsupportedComposeKnob` fails closed when the active provider declares no
-  `composeKnobs`, and `@lando/provider-docker` declares none — so this would
+  `composeKnobs`, and `@lando/provider-docker` declares none. This would
   break non-root services on the one provider that does not need the capability.
 - Reading provider capabilities inside the feature. `ServiceFeatureContext`
   deliberately exposes no provider or capability accessor; a feature may only

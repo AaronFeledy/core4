@@ -44,8 +44,8 @@ const derivedTypeScriptPolicies = [
   },
   {
     ids: ["provider-images"],
-    ignoreProbe: "data-mover/src/generated/provider-images.ts",
-    trackingPath: "data-mover/src/generated/provider-images.ts",
+    ignoreProbe: "container-runtime/src/generated/provider-images.ts",
+    trackingPath: "container-runtime/src/generated/provider-images.ts",
   },
   {
     ids: ["bundled-plugins"],
@@ -75,7 +75,6 @@ const committedWorkflowPolicies = [
   { id: "release-workflow", path: ".github/workflows/release.yml" },
   { id: "provider-matrix-workflow", path: ".github/workflows/provider-matrix.yml" },
   { id: "runtime-bundle-workflow", path: ".github/workflows/runtime-bundle.yml" },
-  { id: "php-base-workflow", path: ".github/workflows/php-base-images.yml" },
   { id: "compose-vendor-bump-workflow", path: ".github/workflows/compose-vendor-bump.yml" },
   { id: "tomcat-bump-workflow", path: ".github/workflows/tomcat-bump.yml" },
   { id: "platform-readiness-workflow", path: ".github/workflows/platform-readiness.yml" },

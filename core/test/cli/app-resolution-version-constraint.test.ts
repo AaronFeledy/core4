@@ -12,7 +12,7 @@ import { LandofileService, Renderer } from "@lando/sdk/services";
 import { assertLandoVersionConstraint, loadUserLandofile } from "@lando/engine/landofile/app-resolution";
 import { resolveLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
-import { buildLandofileLoadScope } from "@lando/landofile/compile";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -20,7 +20,7 @@ import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 const landofile = (lando?: string): LandofileShape => (lando === undefined ? {} : { lando });
 
 const fakeLandofileService = (shape: LandofileShape): Context.Service.Shape<typeof LandofileService> => ({
-  discover: Effect.succeed(shape),
+  discover: Effect.succeed(literalLandofile(shape, process.cwd())),
 });
 
 const capturingRendererLayer = (
@@ -188,7 +188,7 @@ describe("loadUserLandofile version-constraint enforcement", () => {
   test("returns the Landofile when the constraint is satisfied", async () => {
     const result = await Effect.runPromise(loadUserLandofile(fakeLandofileService(landofile(">=0.0.0"))));
 
-    expect(result.lando).toBe(">=0.0.0");
+    expect(result.document.lando).toBe(">=0.0.0");
   });
 
   test("enforces included lando constraints even when the root layer is looser", async () => {
@@ -214,7 +214,7 @@ describe("loadUserLandofile version-constraint enforcement", () => {
         Effect.flip(assertLandoVersionConstraint(resolved, { runningVersion: "4.2.0" })),
       );
 
-      expect(resolved.lando).toBe(">=4.1");
+      expect(resolved.document.lando).toBe(">=4.1");
       expect(error._tag).toBe("LandofileVersionConstraintError");
       if (error._tag !== "LandofileVersionConstraintError") throw new Error("wrong error tag");
       expect(error.constraints).toEqual([
@@ -248,3 +248,4 @@ describe("loadUserLandofile version-constraint enforcement", () => {
     }
   });
 });
+import { literalLandofile } from "../_support/value-contracts.ts";

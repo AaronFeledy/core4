@@ -8,6 +8,7 @@ import { type ApplyOptions, RuntimeProviderRegistry, SshService } from "@lando/s
 import { Effect, Exit, Scope } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import * as worker from "../../src/subsystems/ssh-agent/detached-worker.ts";
+import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 import { SSH_AGENT_PLAN_EXTENSION_KEY } from "../../src/subsystems/ssh/intent.ts";
 import { makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
@@ -42,8 +43,8 @@ test.each(["sidecar", "host"] as const)(
     const provider = await Effect.runPromise(harness.runtimeProviderRegistry.select());
     let closed = 0;
     const released = Promise.withResolvers<void>();
-    const startWorker = spyOn(worker, "startDetachedAgentRelayWorker").mockImplementation(() =>
-      Effect.succeed({
+    const startWorker = spyOn(worker, "startDetachedAgentRelayWorker").mockImplementation((options) => {
+      const session: AgentRelaySession = {
         appId: selected.id,
         sessionId: "rebuild-session",
         kind: "ssh",
@@ -54,8 +55,9 @@ test.each(["sidecar", "host"] as const)(
           closed += 1;
           released.resolve();
         },
-      }),
-    );
+      };
+      return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
+    });
     try {
       // When
       await Effect.runPromise(
@@ -70,11 +72,11 @@ test.each(["sidecar", "host"] as const)(
                 plan: selected,
                 root: selected.root,
                 app: { kind: "user", id: selected.id, root: selected.root },
-                landofile: {
+                landofile: literalTestLandofile({
                   name: selected.name,
                   services: {},
                   sshAgent: { sidecar: mode === "sidecar", socket: socketPath },
-                },
+                }),
               },
               { scope },
             );
@@ -102,7 +104,7 @@ test.each(["sidecar", "host"] as const)(
       expect(applied[0]?.services[web.name]?.environment.SSH_AUTH_SOCK).toBe(
         "/run/lando/ssh-agent/agent.sock",
       );
-      expect(applyOptions[0]?.serviceEnvironment?.[web.name]?.SSH_AUTH_SOCK).toBeUndefined();
+      expect(applyOptions[0]).not.toHaveProperty(["serviceEnvironment", web.name, "SSH_AUTH_SOCK"]);
       expect(applyOptions[0]?.recordedPlan?.services[web.name]?.environment.SSH_AUTH_SOCK).toBeUndefined();
       expect(applied[0]?.services[web.name]?.mounts).toContainEqual({
         type: "bind",
@@ -147,7 +149,11 @@ test.each(["sidecar", "host"] as const)(
             plan: selected,
             root: selected.root,
             app: { kind: "user", id: selected.id, root: selected.root },
-            landofile: { name: selected.name, services: {}, sshAgent: { sidecar: mode === "sidecar" } },
+            landofile: literalTestLandofile({
+              name: selected.name,
+              services: {},
+              sshAgent: { sidecar: mode === "sidecar" },
+            }),
           },
         ).pipe(Effect.result, Effect.provide(harness.layer)),
       );
@@ -170,3 +176,4 @@ test.each(["sidecar", "host"] as const)(
     }
   },
 );
+import { literalTestLandofile } from "../compiled-landofile.ts";

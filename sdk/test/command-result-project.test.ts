@@ -5,6 +5,7 @@ import {
   encodeCommandResult,
   listSelectableResultKeys,
   projectEncodedResult,
+  resolveCommandCompletion,
 } from "@lando/sdk/command-result";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -40,7 +41,37 @@ const DeepResultSchema = Schema.Struct({
 const plainRedactor = createRedactor("secrets", { values: [] });
 const decodeEnvelope = (line: string) => Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(line));
 
+const UnionResultSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("person"),
+    name: Schema.String,
+    redactionTokens: Schema.Array(Schema.String),
+  }),
+  Schema.Struct({
+    age: Schema.Number,
+    kind: Schema.Literal("age"),
+    redactionTokens: Schema.Array(Schema.String),
+  }),
+]);
+const person = { kind: "person", name: "ada", redactionTokens: ["private"] };
+
 describe("listSelectableResultKeys", () => {
+  test.each([
+    ["union order, shared keys and private metadata", UnionResultSchema, ["kind", "name", "age"]],
+    [
+      "nested mixed union",
+      Schema.Union([Schema.String, Schema.Union([UnionResultSchema, Schema.Array(Schema.String)])]),
+      ["kind", "name", "age"],
+    ],
+    ["literal-only union", Schema.Union([Schema.Literal("a"), Schema.Literal("b")]), []],
+    ["literals", Schema.Literals(["a", "b"]), []],
+  ] as const)("discovers declared object keys for %s", (_name, schema, expected) => {
+    // Given the declared schema; when its selectable keys are discovered.
+    const keys = listSelectableResultKeys(schema);
+    // Then keys follow declaration order, not the active value or internal metadata.
+    expect(keys).toEqual(expected);
+  });
+
   test("returns struct field names when the schema has fields", () => {
     const keys = listSelectableResultKeys(
       Schema.Struct({ name: Schema.String, age: Schema.optionalKey(Schema.Number) }),
@@ -171,6 +202,25 @@ describe("projectEncodedResult", () => {
 });
 
 describe("encodeCommandResult nested projection", () => {
+  test("preserves typed projection errors for a completed command failure", () => {
+    const outcome = resolveCommandCompletion("app:exec", { name: "ada" }, () => ({ ok: false, exitCode: 7 }));
+    const error = Effect.runSync(
+      encodeCommandResult({
+        command: "app:exec",
+        resultSchema: Schema.Struct({ name: Schema.String }),
+        outcome,
+        redactor: plainRedactor,
+        projectResultKeys: ["missing"],
+      }).pipe(Effect.catch((error) => Effect.succeed(error))),
+    );
+    expect(error).toMatchObject({
+      _tag: "JsonProjectionError",
+      reason: "unknown_key",
+      keys: ["missing"],
+      available: ["name"],
+    });
+  });
+
   test("projects urls.appserver inside the success envelope", () => {
     const line = Effect.runSync(
       encodeCommandResult({
@@ -202,5 +252,56 @@ describe("encodeCommandResult nested projection", () => {
     );
 
     expect(decodeEnvelope(line).result).toEqual({ a: { b: { c: "leaf" } } });
+  });
+});
+
+describe("encodeCommandResult union projection", () => {
+  test.each([{ keys: ["name"] }, { keys: ["name", "age"] }])(
+    "projects present fields and omits absent declared fields for %j",
+    ({ keys }) => {
+      // Given a person member with no age field.
+      const value = person;
+      // When projection uses the real encoder.
+      const line = Effect.runSync(
+        encodeCommandResult({
+          command: "app:info",
+          resultSchema: UnionResultSchema,
+          outcome: { _tag: "success", value },
+          redactor: plainRedactor,
+          projectResultKeys: keys,
+        }),
+      );
+      // Then only the present requested public field is emitted.
+      const envelope = decodeEnvelope(line);
+      expect(envelope.ok).toBe(true);
+      expect(envelope.result).toEqual({ name: "ada" });
+    },
+  );
+
+  test.each([
+    [["nope"], person, "unknown_key"],
+    [["redactionTokens"], person, "unknown_key"],
+    [["name", "name"], person, "duplicate_key"],
+    [["name"], "ada", "non_object_result"],
+  ] as const)("preserves projection errors for keys %j", (keys, value, reason) => {
+    // Given a union admitting both object and scalar results.
+    const resultSchema = Schema.Union([UnionResultSchema, Schema.String]);
+    // When the encoder attempts an invalid projection, capture its typed failure.
+    const error = Effect.runSync(
+      encodeCommandResult({
+        command: "app:info",
+        resultSchema,
+        outcome: { _tag: "success", value },
+        redactor: plainRedactor,
+        projectResultKeys: keys,
+      }).pipe(Effect.catch((error) => Effect.succeed(error))),
+    );
+    // Then the tagged failure retains its reason, requested keys and public allowlist.
+    expect(error).toMatchObject({
+      _tag: "JsonProjectionError",
+      reason,
+      keys,
+      available: value === "ada" ? [] : ["kind", "name", "age"],
+    });
   });
 });

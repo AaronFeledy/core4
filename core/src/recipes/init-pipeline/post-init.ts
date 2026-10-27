@@ -67,6 +67,7 @@ export const runBoundPostInit = Effect.fn("RecipeInitPipeline.postInit")(functio
           );
         };
         return (request.runPostInit ?? runPostInit)({
+          redact,
           actions: [action],
           destination: request.appRoot,
           recipeId: request.manifest.id,

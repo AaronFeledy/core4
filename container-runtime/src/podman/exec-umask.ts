@@ -83,7 +83,9 @@ export const isUmaskProbeCommand = (command: ReadonlyArray<string>): boolean =>
 export const isShellProbeCommand = (command: ReadonlyArray<string>): boolean =>
   sameArgv(command, EXEC_UMASK_SHELL_PROBE_COMMAND);
 
-export const peekExecUmask = (api: EngineHttpApi): ExecUmaskProbeResult | undefined => umaskOk.get(api);
+export const peekExecUmask = (
+  api: EngineHttpApi,
+): Extract<ExecUmaskProbeResult, { readonly status: "ok" }> | undefined => umaskOk.get(api);
 
 export const rememberExecUmask = (api: EngineHttpApi, result: ExecUmaskProbeResult): void => {
   if (result.status !== "ok") return;

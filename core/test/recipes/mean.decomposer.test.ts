@@ -63,7 +63,8 @@ describe("mean decomposition", () => {
           environment: {
             NODE_ENV: "development",
             PORT: 3000,
-            MONGO_URL: "mongodb://lando:lando@database:27017/{{ app.name }}?authSource=admin",
+            MONGO_URL:
+              "mongodb://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?authSource=admin",
           },
           dependsOn: ["database"],
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
@@ -127,7 +128,7 @@ describe("mean decomposition", () => {
     expect(meanSnapshot.identity.contentDigest).toBe(MEAN_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
     expect(MEAN_CONTENT_DIGEST).toBe(
-      "sha256:d7e6de6d2b9c54794877b71e73e6b520ada7c6f8b9bbf196621934378eeb3fc0",
+      "sha256:32b53b5bcf4b6deb9060cd5a7656e847ffab4b6d28e77edf9b26a037f9398186",
     );
   });
 

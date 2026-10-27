@@ -11,6 +11,20 @@
     "runs": 20,
     "overheadBudgetMs": 150
   },
+  "landofileLoad": {
+    "description": "Warm in-process loadLandofileLayers on the pre-decode-once integration base; tracing disabled, three warmups, median and nearest-rank p95 in milliseconds.",
+    "baseCommit": "29b5256f24a897019b9debb9724f93fe5682b2ae",
+    "platform": "linux-x64",
+    "runs": 30,
+    "warmups": 3,
+    "allowedRegressionPercent": 25,
+    "fixtures": {
+      "one-layer": { "medianMs": 1.393825, "p95Ms": 2.774572 },
+      "three-layers": { "medianMs": 1.914836, "p95Ms": 4.357594 },
+      "six-layers": { "medianMs": 2.031858, "p95Ms": 3.590605 },
+      "fragment-heavy": { "medianMs": 4.635316, "p95Ms": 6.835827 }
+    }
+  },
   "toolingHotPath": {
     "description": "Linux x64 hot-path benchmark gate for lando <tooling-alias>. The target is 150 ms warm p95; the tracked 900 ms current baseline documents the present compiled-binary host-tooling warm path and must be reviewed when changed.",
     "platform": "linux-x64",

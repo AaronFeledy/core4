@@ -10,12 +10,60 @@ permissions:
   contents: read
 
 jobs:
+  container-helper:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      # The builder publishes no routes, so the job skips router setup.
+      - name: Set up Lando with Docker
+        run: bun core/bin/lando.ts setup --yes --provider=docker --skip-proxy --skip-install-ca --skip-shell-integration --skip-file-sync
+
+      - name: Build and test the container helper with Lando
+        run: |
+          bun run scripts/build-container-helper.ts --test
+          bun test core/test/container-helper/helper.integration.test.ts
+
+      - name: Upload container helper
+        uses: actions/upload-artifact@v6
+        with:
+          name: container-helper
+          path: core/container-helper/dist/
+          if-no-files-found: error
+          retention-days: 14
 
   file-sync-contract-linux-x64:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -35,6 +83,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -54,6 +109,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -73,6 +135,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -88,10 +157,18 @@ jobs:
           LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   provider-lando-e2e-linux-x64:
-    runs-on: ubuntu-24.04
+    needs: [container-helper]
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -100,6 +177,16 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Regenerate derived sources
         run: bun run codegen
@@ -213,9 +300,9 @@ jobs:
         run: |
           podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
           echo "$!" > /tmp/podman-service.pid
-          for i in {1..30}; do test -S /tmp/podman.sock && exit 0; sleep 1; done
-          cat /tmp/podman-service.log
-          exit 1
+          for i in {1..30}; do test -S /tmp/podman.sock && break; sleep 1; done
+          curl --fail --max-time 5 --unix-socket /tmp/podman.sock http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
 
       - name: Build Linux x64 binary
         run: |
@@ -231,14 +318,12 @@ jobs:
         env:
           LANDO_GUIDE_E2E: "1"
           LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"
-          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
       - name: Run live integration suites
         run: |
-          bun test core/test/live
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
         env:
-          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
       - name: Teardown Podman
@@ -267,14 +352,22 @@ jobs:
           retention-days: 7
 
   published-manifest-setup-linux-x64:
+    needs: [container-helper]
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-24.04, ubuntu-26.04]
+        runs-on: [ubuntu-26.04]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -283,6 +376,16 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Provision rootless runtime prerequisites
         run: |
@@ -320,7 +423,7 @@ jobs:
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
@@ -344,14 +447,14 @@ jobs:
       - name: Verify the published bundle downloaded, verified, and installed
         run: |
           for _ in {1..30}; do
-            test -S "$HOME/.local/share/lando/runtime/run/podman.sock" && break
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
             sleep 1
           done
-          test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
-          test -x "$HOME/.local/share/lando/runtime/bin/podman"
-          if ldd "$HOME/.local/share/lando/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          test -x "$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          if ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
             echo "::error title=runtime-bundle-portability::managed podman has non-portable or missing shared libraries"
-            ldd "$HOME/.local/share/lando/runtime/bin/podman" || true
+            ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" || true
             exit 1
           fi
 
@@ -359,16 +462,24 @@ jobs:
         if: always()
         run: |
           dist/lando poweroff || true
-          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"
-          LANDO_PODMAN_ARGS=(--root "$HOME/.local/share/lando/runtime/storage" --runroot "$HOME/.local/share/lando/runtime/run" --config "$HOME/.local/share/lando/runtime/config")
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
           "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
   mysql-arm-client-linux-arm64:
+    needs: [container-helper]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -377,6 +488,16 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
 
       - name: Provision rootless runtime prerequisites
         run: |
@@ -473,19 +594,11 @@ jobs:
         run: |
           mkdir -p dist
           bun run --filter='@lando/core' build:manifest
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
           ./dist/lando --version
           test "$(uname -m)" = aarch64
-
-      - name: Isolate Lando roots
-        run: |
-          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
-          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
-          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Configure rootless overlay storage
         run: |
@@ -494,7 +607,7 @@ jobs:
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$RUNNER_TEMP/lando-data/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$RUNNER_TEMP/lando-storage.conf" >> "$GITHUB_ENV"
 
@@ -579,7 +692,7 @@ jobs:
           retention-days: 7
 
   nightly-tier-unit-tests-linux-x64:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -596,7 +709,7 @@ jobs:
         run: bun test core/test/scripts/codegen-ci.test.ts core/test/build/linux-acceptance-criteria-10-14.test.ts
 
   refresh-test-timings-linux-x64:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
@@ -625,7 +738,7 @@ jobs:
           retention-days: 14
 
   runtime-bundle-manifest-live:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
@@ -641,7 +754,11 @@ jobs:
       - name: Verify committed runtime-bundle manifest resolves live
         run: bun run check:runtime-bundle-manifest --live
 
+      - name: Verify runtime bundle licenses and source links live
+        run: bun run check:runtime-bundle-licenses --live
+
   distribution-rehearsal-linux-x64:
+    needs: [container-helper]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -655,14 +772,22 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Download container helper
+        uses: actions/download-artifact@v7
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Compile all platform binaries
         run: |
           mkdir -p dist/bundle
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/bundle/log-file-access', { recursive: true });"
           bun install --frozen-lockfile --os="*" --cpu="*"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --version "$VERSION" --minify --sourcemap=external

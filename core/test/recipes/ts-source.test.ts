@@ -37,6 +37,19 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("resolveRecipeRef — programmatic recipe.ts", () => {
+  test("loads host SDK recipe helpers from an external directory", async () => {
+    await withTempCwd(async (dir) => {
+      await Bun.write(
+        join(dir, "host-recipe/recipe.ts"),
+        `
+        import { defineRecipe } from "@lando/sdk/schema";
+        export default defineRecipe({ id: "host-recipe", title: "Host", description: "Host SDK recipe", version: "0.1.0" });
+      `,
+      );
+      const result = await Effect.runPromise(resolveRecipeRef("./host-recipe", { cwd: dir }));
+      expect(result.manifest?.id).toBe("host-recipe");
+    });
+  });
   test("committed recipe.ts (defineRecipe + Recipe type) loads with prompts/runs/fetchAllowlist/postInit", async () => {
     const recipeDir = join(FIXTURE_ROOT, "programmatic-recipe");
     const exit = await runResolve(recipeDir, FIXTURE_ROOT);

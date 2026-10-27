@@ -1,12 +1,24 @@
-import { RouteInputError } from "@lando/sdk/errors";
 import { parseRouteHostname, parseRoutePathPrefix, parseRouteShorthand } from "@lando/sdk/landofile";
-import type { RouteFilter, RouteInput, RouteObjectInput } from "@lando/sdk/schema";
+import {
+  type RouteFilter,
+  type RouteInput,
+  type RouteObjectInput,
+  type ValidationIssue,
+  type ValidationIssuePath,
+  type ValidationIssueSource,
+  formatValidationIssuePath,
+} from "@lando/sdk/schema";
 import { Result } from "effect";
 
 export { parseRouteShorthand } from "@lando/sdk/landofile";
 
 export interface NormalizedRoute {
-  readonly source?: { readonly key: string; readonly file?: string };
+  readonly source?: {
+    readonly key: string;
+    readonly file?: string;
+    readonly path?: ValidationIssuePath;
+    readonly provenance?: ValidationIssueSource;
+  };
   readonly hostname: string;
   readonly scheme?: "http" | "https" | "both";
   readonly endpoint?: string | number;
@@ -14,35 +26,40 @@ export interface NormalizedRoute {
   readonly filters: ReadonlyArray<RouteFilter>;
 }
 
-type RouteContext = { readonly keyPath: string; readonly file?: string };
+type RouteContext = {
+  readonly path: ValidationIssuePath;
+  readonly file?: string;
+  readonly provenance?: ValidationIssueSource;
+};
 
 const routeSource = (ctx: RouteContext) => ({
-  key: ctx.keyPath,
+  key: formatValidationIssuePath(ctx.path),
+  path: ctx.path,
   ...(ctx.file === undefined ? {} : { file: ctx.file }),
+  ...(ctx.provenance === undefined ? {} : { provenance: ctx.provenance }),
 });
 
-const objectFieldErrors = (route: RouteObjectInput, ctx: RouteContext): ReadonlyArray<RouteInputError> => {
+const objectFieldErrors = (route: RouteObjectInput, ctx: RouteContext): ReadonlyArray<ValidationIssue> => {
+  const keyPath = formatValidationIssuePath(ctx.path);
   const hostname = parseRouteHostname(route.hostname);
   const pathPrefix = route.pathPrefix === undefined ? undefined : parseRoutePathPrefix(route.pathPrefix);
   return [
     ...(Result.isFailure(hostname)
       ? [
-          new RouteInputError({
-            ...routeSource(ctx),
-            key: `${ctx.keyPath}.hostname`,
+          {
+            path: [...ctx.path, "hostname"],
             message: hostname.failure,
-            remediation: `Set ${ctx.keyPath}.hostname to the host pattern only, such as app.lndo.site; put a scheme, port, or path in scheme, endpoint, or pathPrefix, or write the route as hostname[:port][/pathPrefix] shorthand.`,
-          }),
+            suggestion: `Set ${keyPath}.hostname to the host pattern only, such as app.lndo.site; put a scheme, port, or path in scheme, endpoint, or pathPrefix, or write the route as hostname[:port][/pathPrefix] shorthand.`,
+          },
         ]
       : []),
     ...(pathPrefix !== undefined && Result.isFailure(pathPrefix)
       ? [
-          new RouteInputError({
-            ...routeSource(ctx),
-            key: `${ctx.keyPath}.pathPrefix`,
+          {
+            path: [...ctx.path, "pathPrefix"],
             message: pathPrefix.failure,
-            remediation: `Correct ${ctx.keyPath}.pathPrefix to begin with / and contain no whitespace, query string, or fragment.`,
-          }),
+            suggestion: `Correct ${keyPath}.pathPrefix to begin with / and contain no whitespace, query string, or fragment.`,
+          },
         ]
       : []),
   ];
@@ -51,11 +68,11 @@ const objectFieldErrors = (route: RouteObjectInput, ctx: RouteContext): Readonly
 export const normalizeRoute = (
   route: RouteInput,
   ctx: RouteContext,
-): Result.Result<NormalizedRoute, RouteInputError> => {
+): Result.Result<NormalizedRoute, ReadonlyArray<ValidationIssue>> => {
   const source = routeSource(ctx);
   if (typeof route !== "string") {
-    const [error] = objectFieldErrors(route, ctx);
-    if (error !== undefined) return Result.fail(error);
+    const errors = objectFieldErrors(route, ctx);
+    if (errors.length > 0) return Result.fail(errors);
     return Result.succeed({
       hostname: route.hostname,
       source,
@@ -67,25 +84,12 @@ export const normalizeRoute = (
   }
   return Result.mapError(
     Result.map(parseRouteShorthand(route), (normalized) => ({ ...normalized, filters: [], source })),
-    (message) =>
-      new RouteInputError({
-        ...source,
+    (message) => [
+      {
+        path: ctx.path,
         message,
-        remediation: `Correct ${ctx.keyPath} using hostname[:port][/pathPrefix]. ${message}`,
-      }),
+        suggestion: `Correct ${source.key} using hostname[:port][/pathPrefix]. ${message}`,
+      },
+    ],
   );
 };
-
-/** Every invalid field of one route; lint reports them all while planning stops at the first. */
-export const routeInputErrors = (route: RouteInput, ctx: RouteContext): ReadonlyArray<RouteInputError> =>
-  typeof route === "string"
-    ? Result.match(normalizeRoute(route, ctx), { onFailure: (error) => [error], onSuccess: () => [] })
-    : objectFieldErrors(route, ctx);
-
-export const normalizeRoutes = (
-  routes: ReadonlyArray<RouteInput>,
-  ctx: RouteContext,
-): Result.Result<ReadonlyArray<NormalizedRoute>, RouteInputError> =>
-  Result.all(
-    routes.map((route, index) => normalizeRoute(route, { ...ctx, keyPath: `${ctx.keyPath}[${index}]` })),
-  );

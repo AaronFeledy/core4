@@ -1,0 +1,327 @@
+---
+id: node-tanstack-start
+provider: test
+timeout: 90000
+tags: [beta, docs, node, tanstack, postgres, drizzle, service]
+---
+
+# Run a TanStack Start app on Postgres
+
+Run a local TanStack Start app that reads Postgres rows through a server function, with Node, npm, and the database inside Lando.
+
+You need Lando 4 with a ready provider and network access to download packages. The default provider is `lando` (managed Podman). You don't need Node or Postgres installed on your host.
+
+If you use Docker with a WSL 2 backend, keep this project in the WSL distribution's Linux filesystem, such as `~/projects/tanstack-start-demo`, rather than `/mnt/c/...`. Run Lando from WSL and edit through a WSL-connected editor. Windows-side edits can miss Vite's file-change notifications, leaving the page unchanged even when its connection works. See [Vite's WSL file-watching guidance](https://vite.dev/config/server-options.html#server-watch).
+
+Use a new directory and a disposable database. The scaffold command overwrites matching files, and the schema commands change the database. This is a local development setup, not a production deployment.
+
+## Start Node and Postgres
+
+```sh
+mkdir tanstack-start-demo
+cd tanstack-start-demo
+```
+
+Save this as `.lando.yml`:
+
+```yaml
+name: tanstack-start-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+    port: 3000
+    environment:
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+    dependsOn:
+      database:
+        condition: service_healthy
+  database:
+    type: "postgres:18"
+tooling:
+  npm:
+    cmd: [npm]
+    description: Run npm inside the web service.
+    service: web
+    dir: /app
+  npx:
+    cmd: [npx]
+    description: Run npx inside the web service.
+    service: web
+    dir: /app
+```
+
+Start the services and check both runtimes:
+
+```sh
+lando app:config:lint
+lando start
+lando info
+lando exec web -- node --version
+lando psql -c 'SELECT version();'
+```
+
+Check for Node 22.12 or newer within the 22.x line and PostgreSQL 18. The scaffold uses Vite 8, whose [Node requirements](https://vite.dev/guide/#scaffolding-your-first-vite-project) exclude early Node 22 releases. Keep `type: "node:22"`; `node:lts` is a moving image tag.
+
+Lando mounts your app at `/app`. The `npm` and `npx` tooling entries run there inside `web`; the Node service doesn't add them for you. `lando psql` comes from the Postgres service and supplies its credentials.
+
+`web` starts with Lando's idle Node command. Its URL won't serve a page until you start Vite below.
+
+## Scaffold the app
+
+Run this from the directory that holds only your `.lando.yml`. `--force` allows the non-empty target and can overwrite files; don't run it over an existing application.
+
+```sh
+lando npx --yes @tanstack/cli@0.72.0 create tanstack-start-demo \
+  --target-dir . --force \
+  --blank --add-ons drizzle \
+  --package-manager npm --no-git --no-intent -y
+lando npm ls --depth=0
+```
+
+The CLI installs the packages and generates the route tree. Check that the package listing completes without missing dependencies. Your `.lando.yml` stays in place.
+
+`--blank` creates one route without the starter UI or a test stack. The Drizzle add-on defaults to PostgreSQL and adds `drizzle-orm`, `drizzle-kit`, `pg`, `@types/pg`, the `db:*` scripts, and `src/db/schema.ts` with a `todos` table. No global TypeScript or Drizzle install is needed. See the [TanStack CLI options](https://tanstack.com/cli/latest/docs/cli-reference).
+
+The CLI version is pinned, but it resolves some dependency versions when you scaffold. Commit the generated `package.json` and `package-lock.json` to keep that app reproducible. `node_modules` stays in a Lando volume, separate from host-installed packages.
+
+## Point Drizzle at the database
+
+Remove the placeholder `DATABASE_URL` line from the generated `.env.local`. Keep any other variables you've added. Lando supplies the real URL to `web`, so you don't need to copy the password into an env file.
+
+Replace `drizzle.config.ts` with:
+
+```ts
+import { defineConfig } from 'drizzle-kit'
+
+const databaseUrl = process.env.DATABASE_URL
+if (!databaseUrl) {
+  throw new Error('DATABASE_URL is missing. Run Drizzle through lando npm.')
+}
+
+export default defineConfig({
+  out: './drizzle',
+  schema: './src/db/schema.ts',
+  dialect: 'postgresql',
+  dbCredentials: {
+    url: databaseUrl,
+  },
+})
+```
+
+This config uses the service environment and checks that the URL exists. It also avoids the scaffold's `string | undefined` TypeScript error. Run database commands through `lando npm`, not host npm.
+
+Inside `web`, Postgres is at `database:5432`, not `localhost`. Lando fills the URL from the database service's credentials: user `lando`, database name `tanstack-start-demo`, and a password derived from the app name. These are development credentials. This Landofile doesn't publish the database port to your host.
+
+`condition: service_healthy` waits for Postgres to accept connections before starting `web`. It doesn't create the application's tables; that's the next command.
+
+## Create the table and add a row
+
+Use `db:push` only against the disposable database for this walkthrough. It applies schema changes directly, without migration files. For a project that needs reviewed SQL in git, use the [migration workflow below](#use-migration-files-instead) instead of this first command.
+
+```sh
+lando npm run db:push
+lando psql -c "INSERT INTO todos (title) VALUES ('Ship the guide');"
+lando psql -c 'SELECT id, title FROM todos;'
+```
+
+Check that the query lists `Ship the guide`. The first command uses the add-on's `pg` driver and [Drizzle Kit push](https://orm.drizzle.team/docs/drizzle-kit-push); the last two use Postgres's own client. Running the insert again adds another row.
+
+## Read the rows in a server function
+
+Replace `src/routes/index.tsx` with:
+
+```tsx
+import { createFileRoute } from '@tanstack/react-router'
+import { createServerFn } from '@tanstack/react-start'
+import { desc } from 'drizzle-orm'
+
+import { db } from '#/db/index'
+import { todos } from '#/db/schema'
+
+const getTodos = createServerFn({ method: 'GET' }).handler(async () => {
+  return db.query.todos.findMany({ orderBy: [desc(todos.createdAt)] })
+})
+
+export const Route = createFileRoute('/')({
+  loader: () => getTodos(),
+  component: Home,
+})
+
+function Home() {
+  const rows = Route.useLoaderData()
+  return (
+    <main>
+      <h1>Todos</h1>
+      <ul>
+        {rows.map((todo) => (
+          <li key={todo.id}>{todo.title}</li>
+        ))}
+      </ul>
+    </main>
+  )
+}
+```
+
+The [server function](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions) runs inside `web`, where the generated `src/db/index.ts` reads `process.env.DATABASE_URL`. Keep database access in the handler, not directly in the route loader or component: loaders can also run in the browser. Never rename the secret to `VITE_DATABASE_URL`; the `VITE_` prefix exposes values to client code.
+
+## Let Vite answer the Lando URL
+
+Replace the blank scaffold's `vite.config.ts` with:
+
+```ts
+import { defineConfig } from 'vite'
+import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import viteReact from '@vitejs/plugin-react'
+
+export default defineConfig({
+  resolve: { tsconfigPaths: true },
+  server: {
+    host: '0.0.0.0',
+    port: 3000,
+    strictPort: true,
+    allowedHosts: ['web.tanstack-start-demo.lndo.site'],
+  },
+  plugins: [tanstackStart(), viteReact()],
+})
+```
+
+`host` lets Lando's proxy reach Vite from outside the container. `port` matches the Landofile and the scaffold's `dev` script; setting Lando's `PORT` environment variable alone doesn't configure Vite. `strictPort` makes a second server fail rather than silently choosing a port the proxy doesn't use.
+
+The default URL is `https://web.tanstack-start-demo.lndo.site`. If you change the app name or `proxy.defaultDomain`, use the hostname from `lando info` in `allowedHosts`, without the scheme or port. Keep the explicit hostname list; don't use `allowedHosts: true` or allow every `lndo.site` hostname. See [Vite's server options](https://vite.dev/config/server-options).
+
+Keep `tanstackStart()` before `viteReact()`. The scaffold's Vite 8 supports `resolve.tsconfigPaths`, so you don't need a separate path-alias plugin.
+
+Typecheck the app:
+
+```sh
+lando npx tsc --noEmit
+```
+
+Check that it exits successfully. If you add more routes later, run `lando npm run generate-routes` before typechecking. The blank scaffold doesn't install a linter or unit-test runner; add your chosen tools before expecting `npm run lint` or `npm test` to exist.
+
+## Serve it on `lando start`
+
+Add this line under `services.web` in `.lando.yml`, alongside `port`. Keep the existing `database`, `environment`, `dependsOn`, and `tooling` entries:
+
+```yaml
+command: [npm, run, dev]
+```
+
+Then restart with the changed config:
+
+```sh
+lando app:config:lint
+lando start
+lando info
+```
+
+Open the `web` URL from `lando info` and check that it lists `Ship the guide`. The first request can take a moment while Vite starts. Seeing the row checks the proxy, the server function, and the database together. Change the heading in `src/routes/index.tsx` and save; check that the browser updates too.
+
+Prefer a foreground server? Leave `command:` out and run `lando npm run dev`, then stop it with Ctrl-C. Use one method at a time; both need port `3000`.
+
+## Check the production build
+
+```sh
+lando npm run build
+lando exec web -- ls dist/client dist/server
+```
+
+Check that the build succeeds and creates client and server output. This builds the app; it doesn't deploy it or replace the running development server. For a production Node server or a hosting adapter, follow [TanStack Start's hosting guide](https://tanstack.com/start/latest/docs/framework/react/guide/hosting) rather than treating the raw server bundle as a standalone web server.
+
+## Use migration files instead
+
+Choose this workflow before running `db:push`, on a fresh database:
+
+```sh
+lando npm run db:generate
+```
+
+Review the SQL under `drizzle/`, then apply it:
+
+```sh
+lando npm run db:migrate
+lando psql -c 'SELECT id, title FROM todos;'
+```
+
+The query should succeed, with no rows until you insert one. Commit the migration files along with the schema. [Generate](https://orm.drizzle.team/docs/drizzle-kit-generate) writes SQL; [migrate](https://orm.drizzle.team/docs/drizzle-kit-migrate) applies unapplied migrations and records them.
+
+Don't apply an initial create-table migration to the database you already populated with `db:push`: that workflow didn't record a migration history. Use a separate fresh database for this alternative, or plan an explicit baseline for existing data. Don't delete a database just to make a migration pass.
+
+## Restore packages after a fresh clone
+
+A new clone doesn't have the packages in Lando's `node_modules` volume. If its Landofile already contains `command: [npm, run, dev]`, temporarily remove that line so `web` can start idle:
+
+```sh
+lando start
+lando npm ci
+lando npm run generate-routes
+lando npx tsc --noEmit
+```
+
+`npm ci` uses the committed lockfile and replaces installed packages. Restore the `command` line and run `lando start` again, then check the URL from `lando info`. Initialize an empty database with the schema workflow your project uses before opening a database-backed page.
+
+## Fix file ownership on Linux with Docker
+
+The scaffold runs as root in `web`. With a Docker bind mount on Linux, generated files can be owned by root on your host. If your editor can't save them, run this only in the new app directory from this walkthrough:
+
+```sh
+lando exec web -- chown -R "$(id -u):$(id -g)" /app
+```
+
+Your host shell supplies your user and group IDs. This changes ownership throughout `/app`, so don't use it on an unrelated or shared project. Save a source-file edit in your editor to check the result.
+
+## Check the config
+
+`lando app:config:lint` validates the Landofile, and `lando app:config` shows its configuration without starting containers. These checks cover the services, credential expression, health gate, tooling, and dev-server command. They don't resolve a live database connection, boot Postgres, or run TanStack.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="tanstack-start-demo" />
+    </Step>
+    <Step name="confirm-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"web\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*3000" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{\\s*\"type\":\\s*\"postgres:18\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"DATABASE_URL\":\\s*\"postgresql://\\{\\{ services\\.database\\.creds\\.user \\}\\}:\\{\\{ services\\.database\\.creds\\.password \\}\\}@database:5432/" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dependsOn\":\\s*\\{\\s*\"database\":\\s*\\{\\s*\"condition\":\\s*\"service_healthy\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"service\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "\"command\":\\s*\\[" } } }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="dev-server-command" render>
+    <Step name="scaffold-serve">
+      <UseFixture name="tanstack-start-serve" />
+    </Step>
+    <Step name="confirm-command">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\\[\\s*\"npm\"\\s*,\\s*\"run\"\\s*,\\s*\"dev\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"condition\":\\s*\"service_healthy\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Tear down
+
+`lando destroy -y` removes the app containers and app-owned networks. Postgres data, the `node_modules` volume, and your source files remain.
+
+```sh
+lando destroy -y
+```
+
+Adding `--volumes` also deletes those volumes, including every row in Postgres. Back up anything you want to keep before using that flag.
+
+## Keep building
+
+- [Run TypeScript on a Node service](./node-typescript.mdx) for typecheck and unit-test tooling
+- [Add PostgreSQL](./postgres.mdx) for versions, credentials, and `psql`
+- [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials) for the expressions used in `DATABASE_URL`
+- [Run the SvelteKit recipe](../recipes/sveltekit-workflow.mdx) for another Vite-based app

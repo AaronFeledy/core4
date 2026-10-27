@@ -76,7 +76,6 @@ describe("solr service type — live integration: system info endpoint", () => {
           provider: providerId,
           services: { [search.name]: search },
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata: search.metadata,

@@ -38,7 +38,14 @@ describe("ServiceFeature contract surface", () => {
     const feature: ServiceFeatureDefinition = {
       id: "test.failing",
       priority: 50,
-      apply: () => Effect.fail(new ServiceFeatureError({ message: "nope", feature: "test.failing" })),
+      apply: () =>
+        Effect.fail(
+          new ServiceFeatureError({
+            message: "nope",
+            feature: "test.failing",
+            remediation: "Correct the `test.failing` feature configuration in the Landofile, then re-run.",
+          }),
+        ),
     };
     expect(typeof feature.apply).toBe("function");
   });

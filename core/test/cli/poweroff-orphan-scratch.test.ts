@@ -6,7 +6,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
 import * as LandoConfigService from "@lando/engine/services/config";
-import { ProviderUnavailableError, ScratchAppError, ScratchAppNotFoundError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, ScratchAppError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ScratchAppService } from "@lando/sdk/services";
@@ -29,6 +29,9 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
     const providerLayer = Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([ProviderId.make("lando")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () =>
@@ -41,6 +44,7 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
                   service: ServiceName.make("web"),
                   providerId: ProviderId.make("lando"),
                   status: "running" as const,
+                  publications: { status: "unknown" as const },
                   labels: { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": id },
                 },
               ]),
@@ -53,44 +57,49 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
           }),
       }),
     );
-    const scratchLayer = Layer.succeed(
-      ScratchAppService,
-      ScratchAppService.of({
-        kind: "scratch",
-        root: Effect.succeed(AbsolutePath.make(root)),
-        ensureRoot: Effect.die("unexpected ensureRoot"),
-        synthesizeId: () => Effect.die("unexpected synthesizeId"),
-        paths: () => Effect.die("unexpected paths"),
-        acquire: () => Effect.die("unexpected acquire"),
-        resolveById: () => Effect.die("unexpected resolve"),
-        list: () => Effect.succeed([]),
-        info: () => Effect.die("unexpected info"),
-        start: () => Effect.die("unexpected start"),
-        stop: () => Effect.die("unexpected stop"),
-        gc: () => Effect.die("must prune only this orphan, not every scratch app"),
-        destroy: Effect.fnUntraced(function* (target, options) {
-          calls.push("destroy");
-          expect(target).toBe(id);
-          expect(options).toEqual({ keepVolumes: false });
-          switch (mode) {
-            case "registered":
-              return { id, app: { kind: "scratch" as const, id, root: AbsolutePath.make(root) } };
-            case "destroy-failure":
-              return yield* Effect.fail(new ScratchAppError({ operation: "destroy", message: "Denied" }));
-            case "orphan":
-            case "prune-failure":
-              return yield* Effect.fail(
-                new ScratchAppNotFoundError({
-                  id,
-                  message: "Missing registry entry",
-                  suggestions: [],
-                  remediation: "List registered scratch apps.",
-                }),
-              );
-          }
-        }),
-      }),
+    const scannerLayer = ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(
+      Layer.provide(providerLayer),
     );
+    const scratchLayer = Layer.effect(
+      ScratchAppService,
+      Effect.map(ScratchResourceScannerLayer.ScratchResourceScanner, (scanner) =>
+        ScratchAppService.of({
+          kind: "scratch",
+          root: Effect.succeed(AbsolutePath.make(root)),
+          ensureRoot: Effect.die("unexpected ensureRoot"),
+          synthesizeId: () => Effect.die("unexpected synthesizeId"),
+          paths: () => Effect.die("unexpected paths"),
+          acquire: () => Effect.die("unexpected acquire"),
+          resolveById: () => Effect.die("unexpected resolve"),
+          list: () => Effect.succeed([]),
+          info: () => Effect.die("unexpected info"),
+          start: () => Effect.die("unexpected start"),
+          stop: () => Effect.die("unexpected stop"),
+          gc: () => Effect.die("must prune only this orphan, not every scratch app"),
+          destroy: Effect.fnUntraced(function* (target, options) {
+            calls.push("destroy");
+            expect(target).toBe(id);
+            expect(options).toEqual({ keepVolumes: false, reason: "poweroff" });
+            switch (mode) {
+              case "registered":
+                return { id, app: { kind: "scratch" as const, id, root: AbsolutePath.make(root) } };
+              case "destroy-failure":
+                return yield* Effect.fail(
+                  new ScratchAppError({
+                    operation: "destroy",
+                    message: "Denied",
+                    remediation: "Injected destroy denial for poweroff orphan fixture.",
+                  }),
+                );
+              case "orphan":
+              case "prune-failure":
+                yield* scanner.pruneScratch(id);
+                return { id, app: { kind: "scratch" as const, id, root: AbsolutePath.make(root) } };
+            }
+          }),
+        }),
+      ),
+    ).pipe(Layer.provide(scannerLayer));
     const events = Layer.succeed(
       EventService,
       EventService.of({
@@ -118,13 +127,7 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
         }).pipe(
           Effect.result,
           Effect.provide(
-            Layer.mergeAll(
-              LandoConfigService.layer,
-              providerLayer,
-              scratchLayer,
-              events,
-              ScratchResourceScannerLayer.ScratchResourceScanner.layer.pipe(Layer.provide(providerLayer)),
-            ),
+            Layer.mergeAll(LandoConfigService.layer, providerLayer, scratchLayer, events, scannerLayer),
           ),
         ),
       );

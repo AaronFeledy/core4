@@ -7,7 +7,7 @@ tags: [beta, docs, nginx, service, webserver]
 
 # Add nginx
 
-Put `type: nginx` in your services block. Lando pulls `nginx:1.26-alpine` and listens on `80`. Your repository is mounted at `/app` and served as the document root:
+Add `type: nginx` under `services` in `.lando.yml`. Lando pulls `nginx:1.26-alpine` and listens on `80`. Your repository is mounted at `/app` and served as the document root:
 
 ```yaml
 name: nginx-demo
@@ -33,7 +33,7 @@ services:
 
 ## Open the URL
 
-The proxy auto-derives an HTTPS hostname from the nginx service's HTTP endpoint, something like `web.<app>.lndo.site`. You only need a `proxy:` block to customize hostnames.
+Lando derives an HTTPS hostname from the nginx service's HTTP endpoint, such as `web.<app>.lndo.site`. Use the URL reported by `lando info`, including any fallback port. You only need a `proxy:` block to customize hostnames.
 
 ## Pair nginx with PHP
 
@@ -86,11 +86,10 @@ services:
   web:
     type: nginx
     user: nginx
-    home: false
     port: 8080
 ```
 
-`home: false` is there because Lando persists the planned user's home directory and only knows where `root`'s home is on this image. Use `home.path:` instead when you want that directory to survive a rebuild. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
+Lando plans no home store for the `nginx` account, whose home on this image is its cache directory; set `home.path:` when you want a directory to survive a rebuild. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
 
 If you set your own `command:` or `entrypoint:`, your startup owns nginx's configuration. Lando does not generate a launcher or remove the image's default site.
 

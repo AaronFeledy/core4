@@ -4,6 +4,7 @@ import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { NotImplementedError, RecipePostInitError } from "@lando/sdk/errors";
 import type { RecipePostInitAction } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 
 import {
   type BunSelfSpawner,
@@ -55,11 +56,22 @@ export interface RunPostInitOptions {
   readonly runs?: ReadonlyArray<string>;
   readonly commandRunner?: ChoicesCommandRunner;
   readonly recipeRoot?: string;
+  readonly redact?: (text: string) => string;
 }
 
-const secretsRedactor = createStandaloneRedactor("secrets");
+type ResolvedPostInitOptions = RunPostInitOptions & {
+  readonly redact: (text: string) => string;
+  readonly env: NodeJS.ProcessEnv;
+};
 
-export const redactBunOutput = (text: string): string => secretsRedactor.redactString(text);
+/** Env-aware pattern/exact redactor for post-init when the caller did not inject one. */
+const fallbackPostInitRedactor = (sourceEnv: Readonly<Record<string, string | undefined>>): Redactor =>
+  createStandaloneRedactor("secrets", { sourceEnv: { ...sourceEnv } });
+
+export const redactBunOutput = (
+  text: string,
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
+): string => fallbackPostInitRedactor(sourceEnv).redactString(text);
 
 const realpathOrUndefined = async (path: string): Promise<string | undefined> => {
   try {
@@ -150,11 +162,11 @@ const spawnBun = async (
   cwd: string,
   index: number,
   verb: string,
-  options: RunPostInitOptions,
+  options: ResolvedPostInitOptions,
 ): Promise<void> => {
   const spawner = options.spawner ?? defaultBunSelfSpawner;
   const execPath = options.execPath ?? process.execPath;
-  const childEnv = buildChildEnv(options.env ?? process.env);
+  const childEnv = buildChildEnv(options.env);
 
   const result = await spawner.spawn({ cmd: [execPath, ...argv], env: childEnv, cwd });
 
@@ -170,9 +182,7 @@ const spawnBun = async (
       actionType: "bun",
       actionVerb: verb,
       kind: "exit",
-      remediation: redactBunOutput(
-        `\`bun ${verb}\` exited with code ${result.exitCode} in ${cwd}. ${detail}`,
-      ),
+      remediation: options.redact(`\`bun ${verb}\` exited with code ${result.exitCode} in ${cwd}. ${detail}`),
       exitCode: result.exitCode,
     });
   }
@@ -312,7 +322,7 @@ const ADD_CATEGORY_FLAGS = [
 const runBun = async (
   action: Extract<RecipePostInitAction, { type: "bun" }>,
   index: number,
-  options: RunPostInitOptions,
+  options: ResolvedPostInitOptions,
 ): Promise<void> => {
   const cwd = await resolveBunCwd(action.cwd, options.destination, options.recipeId, index, action.verb);
 
@@ -414,14 +424,15 @@ const rejectGitInit = (index: number): never => {
 const runCommand = async (
   action: Extract<RecipePostInitAction, { type: "command" }>,
   index: number,
-  options: RunPostInitOptions,
+  options: ResolvedPostInitOptions,
 ): Promise<void> => {
   const runner = options.commandRunner ?? createDefaultChoicesCommandRunner({ cwd: options.destination });
   const result = await runner({ command: action.cmd, args: action.args ?? [] });
 
   if (result.exitCode !== 0) {
-    const stderr = redactBunOutput(result.stderr.trim());
-    const stdout = redactBunOutput(result.stdout.trim());
+    const redact = options.redact;
+    const stderr = redact(result.stderr.trim());
+    const stdout = redact(result.stdout.trim());
     const details = [stderr, stdout].filter((line) => line !== "").join(" ");
     throw new RecipePostInitError({
       message: `postInit[${index}] (command ${action.cmd}) failed with exit code ${result.exitCode}.`,
@@ -429,7 +440,7 @@ const runCommand = async (
       actionIndex: index,
       actionType: "command",
       kind: "exit",
-      remediation: redactBunOutput(
+      remediation: redact(
         `Command \`${action.cmd}\` exited with code ${result.exitCode}.${details === "" ? "" : ` Output: ${details}`} Fix the command or remove it from the recipe postInit action.`,
       ),
       exitCode: result.exitCode,
@@ -439,9 +450,15 @@ const runCommand = async (
 
 export const runPostInit = async (options: RunPostInitOptions): Promise<PostInitOutcome> => {
   const executed: PostInitExecutedAction[] = [];
-  const selected = options.actions.map((action, index) => shouldRunPostInitAction(action, options, index));
+  const sourceEnv = { ...(options.env ?? process.env) };
+  const resolved: ResolvedPostInitOptions = {
+    ...options,
+    env: sourceEnv,
+    redact: options.redact ?? fallbackPostInitRedactor(sourceEnv).redactString,
+  };
+  const selected = resolved.actions.map((action, index) => shouldRunPostInitAction(action, resolved, index));
 
-  for (const [index, action] of options.actions.entries()) {
+  for (const [index, action] of resolved.actions.entries()) {
     if (!selected[index]) {
       executed.push({ index, type: action.type, skipped: true });
       continue;
@@ -449,12 +466,12 @@ export const runPostInit = async (options: RunPostInitOptions): Promise<PostInit
 
     switch (action.type) {
       case "message": {
-        await runMessage(action, options);
+        await runMessage(action, resolved);
         executed.push({ index, type: "message" });
         break;
       }
       case "bun": {
-        await runBun(action, index, options);
+        await runBun(action, index, resolved);
         executed.push({ index, type: "bun", verb: action.verb });
         break;
       }
@@ -463,7 +480,7 @@ export const runPostInit = async (options: RunPostInitOptions): Promise<PostInit
         break;
       }
       case "command": {
-        await runCommand(action, index, options);
+        await runCommand(action, index, resolved);
         executed.push({ index, type: "command" });
         break;
       }

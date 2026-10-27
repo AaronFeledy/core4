@@ -6,7 +6,7 @@ export class CommandConfirmationError extends Schema.TaggedError<CommandConfirma
   "CommandConfirmationError",
   {
     message: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     reason: Schema.Literals(["declined", "non-interactive"]),
   },
 ) {}

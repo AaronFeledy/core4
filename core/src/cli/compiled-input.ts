@@ -101,6 +101,10 @@ export const compiledCommandInputFromArgv = (
 
   const args: Record<string, unknown> = {};
   for (const [index, name] of argNames.entries()) {
+    if (argDefinitions[name]?.multiple === true) {
+      args[name] = positionals.slice(index);
+      break;
+    }
     const value = positionals[index];
     if (value !== undefined) args[name] = value;
   }

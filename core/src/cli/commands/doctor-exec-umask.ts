@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import {
+  EXEC_UMASK_COMPENSATION,
   EXEC_UMASK_PROBE_COMMAND,
   isWorldWritableUmask,
   parseProcSelfStatusUmask,
@@ -36,6 +37,7 @@ export type ExecUmaskProbeStatus = "ok" | "unprobed";
 export interface ExecUmaskDiagnosis {
   readonly engineVersion: string;
   readonly execUmask: string;
+  readonly effectiveExecUmask: string;
   readonly compensating: boolean;
   readonly probeStatus: ExecUmaskProbeStatus;
 }
@@ -43,26 +45,34 @@ export interface ExecUmaskDiagnosis {
 const COMPENSATING_REMEDIATION: DoctorSolution = {
   kind: "manual",
   description:
-    "The container engine inherits umask 0000 for exec processes. Lando wraps exec with umask 0022 so created files are not world-writable.",
+    "The raw exec probe reported umask 0000. A probe through Lando's exec wrapper reported 0022. Commands that set their own umask can produce different permissions.",
 };
 
 export const diagnoseExecUmask = (input: {
   readonly engineVersion: string | undefined;
   readonly stdout: string | undefined;
+  readonly effectiveStdout?: string;
 }): ExecUmaskDiagnosis => {
   const engineVersion =
     input.engineVersion === undefined || input.engineVersion.length === 0 ? "unknown" : input.engineVersion;
-  if (input.stdout === undefined) {
-    return { engineVersion, execUmask: "unprobed", compensating: false, probeStatus: "unprobed" };
-  }
-  const umask = parseProcSelfStatusUmask(input.stdout);
+  const umask = parseProcSelfStatusUmask(input.stdout ?? "");
   if (umask === undefined) {
-    return { engineVersion, execUmask: "unprobed", compensating: false, probeStatus: "unprobed" };
+    return {
+      engineVersion,
+      execUmask: "unprobed",
+      effectiveExecUmask: "unprobed",
+      compensating: false,
+      probeStatus: "unprobed",
+    };
   }
+  const effectiveExecUmask = isWorldWritableUmask(umask)
+    ? (parseProcSelfStatusUmask(input.effectiveStdout ?? "") ?? "unprobed")
+    : umask;
   return {
     engineVersion,
     execUmask: umask,
-    compensating: isWorldWritableUmask(umask),
+    effectiveExecUmask,
+    compensating: isWorldWritableUmask(umask) && effectiveExecUmask === EXEC_UMASK_COMPENSATION,
     probeStatus: "ok",
   };
 };
@@ -74,8 +84,9 @@ export const buildExecUmaskDoctorCheck = (
   runtimeStatus: string,
   selection?: DoctorSelectionRecord,
 ): DoctorCheck => {
-  const status: DoctorStatus = diagnosis.compensating ? "warn" : "pass";
-  const severity: DoctorSeverity = diagnosis.compensating ? "warn" : "info";
+  const status: DoctorStatus =
+    diagnosis.probeStatus === "unprobed" || isWorldWritableUmask(diagnosis.execUmask) ? "warn" : "pass";
+  const severity: DoctorSeverity = status === "warn" ? "warn" : "info";
   return {
     name: EXEC_UMASK_CHECK_NAME,
     status,
@@ -93,6 +104,7 @@ export const buildExecUmaskDoctorCheck = (
       providerVersion: provider.version,
       engineVersion: diagnosis.engineVersion,
       execUmask: diagnosis.execUmask,
+      effectiveExecUmask: diagnosis.effectiveExecUmask,
       compensating: String(diagnosis.compensating),
       probeStatus: diagnosis.probeStatus,
     },
@@ -124,11 +136,24 @@ export const collectExecUmaskDoctorCheck = Effect.fnUntraced(function* (input: {
             { command: [...EXEC_UMASK_PROBE_COMMAND], raw: true },
           )
           .pipe(
-            Effect.map((result) => (result.exitCode === 0 ? `${result.stdout}${result.stderr}` : undefined)),
+            Effect.map((result) => (result.exitCode === 0 ? result.stdout : undefined)),
             Effect.catch(() => Effect.succeed(undefined)),
           );
+  const effectiveStdout =
+    service !== undefined && isWorldWritableUmask(parseProcSelfStatusUmask(probed ?? "") ?? "")
+      ? yield* input.provider
+          .exec({ app: service.app, service: service.service }, { command: [...EXEC_UMASK_PROBE_COMMAND] })
+          .pipe(
+            Effect.map((result) => (result.exitCode === 0 ? result.stdout : undefined)),
+            Effect.catch(() => Effect.succeed(undefined)),
+          )
+      : undefined;
   return buildExecUmaskDoctorCheck(
-    diagnoseExecUmask({ engineVersion: input.engineVersion, stdout: probed }),
+    diagnoseExecUmask({
+      engineVersion: input.engineVersion,
+      stdout: probed,
+      ...(effectiveStdout === undefined ? {} : { effectiveStdout }),
+    }),
     input.provider,
     input.runtime,
     input.runtimeStatus,

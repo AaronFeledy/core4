@@ -1,74 +1,123 @@
 import { dirname } from "node:path";
-import { loadLandofileLayers } from "@lando/landofile/service";
+import { getLandofileValueSource } from "@lando/landofile/validation";
+import { normalizeHostPlatform } from "@lando/paths";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
-import { resolveKnownEventSet } from "../planner/event-set.ts";
+import { resolveLandofileForPlanning } from "../planner/event-set.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
+import { lintCapabilityIssues } from "../planner/lint-capabilities.ts";
+import { toolingAndEventIssues } from "../planner/tooling-event-issues.ts";
 
 import type {
-  CommandAliasConflictError,
   LandofileFormConflictError,
   LandofileNotFoundError,
-  LandofileUnknownEventError,
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { ConfigLintResult } from "@lando/sdk/schema";
+import type { ConfigLintResult, ProviderId, ValidationIssue } from "@lando/sdk/schema";
 
-import { type LintLandofileOptions, routeViolations } from "@lando/landofile/lint";
-import { lintLandofile, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
+import {
+  type LintLandofileOptions,
+  attributeEffectiveLintIssue,
+  mergeLintFindings,
+} from "@lando/landofile/lint";
+import { lintLandofileSnapshot } from "../services/landofile-live.ts";
+import { lintEnvFiles, snapshotLintFileSystem } from "./config-lint-env-files.ts";
 
 export type AppConfigLintOptions = LintLandofileOptions;
 
+const sourceFile = (source: ValidationIssue["source"]): string | undefined =>
+  source !== undefined && "file" in source ? source.file : undefined;
+
 /**
- * Schema and resolved event-name validation shared by config lint and doctor.
+ * Config lint shared by `app:config:lint` and doctor: the load snapshot's
+ * findings plus the planner's resolved-Landofile validation stage, so lint
+ * reports resolve-pass, reserved tooling-name, and fully resolved event-name
+ * findings together without building a plan.
  */
 export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
   options: AppConfigLintOptions = {},
 ): Effect.fn.Return<
   ConfigLintResult,
-  | LandofileNotFoundError
-  | LandofileFormConflictError
-  | LandofileUnknownEventError
-  | LandofileValidationError
-  | CommandAliasConflictError
-  | NotImplementedError,
+  LandofileNotFoundError | LandofileFormConflictError | LandofileValidationError | NotImplementedError,
   PluginRegistry
 > {
-  const result = yield* lintLandofile(options);
-  if (!result.valid) return result;
-  const runtimeInputs = yield* scopedLandofileRuntimeInputs;
-  const loaded = yield* loadLandofileLayers(dirname(result.file), result.file, {
-    ...runtimeInputs,
-    ...(options.templates === undefined ? {} : { templates: options.templates }),
-  }).pipe(Effect.result);
-  if (Result.isFailure(loaded)) {
-    return { ...result, valid: false, violations: [{ path: [], message: loaded.failure.message }] };
-  }
+  const snapshot = yield* lintLandofileSnapshot(options);
+  const { result } = snapshot;
+  if (snapshot.resolved === undefined) return result;
+  const landofile = snapshot.resolved;
   const pluginRegistry = yield* PluginRegistry;
   const configService = Option.getOrUndefined(yield* Effect.serviceOption(ConfigService));
-  const fileSystem = Option.getOrUndefined(yield* Effect.serviceOption(FileSystem));
+  const fileSystem = yield* snapshotLintFileSystem(
+    Option.getOrUndefined(yield* Effect.serviceOption(FileSystem)),
+  );
   const pathsService = Option.getOrUndefined(yield* Effect.serviceOption(PathsService));
-  const resolved = yield* resolveKnownEventSet({
-    landofile: loaded.success,
+  const resolved = yield* resolveLandofileForPlanning({
+    landofile,
     pluginRegistry,
     configService,
     fileSystem,
     pathsService,
-    file: result.file,
+    ...(pluginRegistry.declaredProviderCapabilities === undefined
+      ? {}
+      : {
+          resolveCapabilities: (id: ProviderId) =>
+            pluginRegistry.declaredProviderCapabilities?.(
+              id,
+              pathsService?.platform ?? normalizeHostPlatform(),
+            ),
+        }),
+    file: snapshot.landofilePath,
+    appRoot: dirname(snapshot.landofilePath),
   }).pipe(Effect.result);
+  const envFindings = yield* lintEnvFiles(
+    Result.isSuccess(resolved) ? resolved.success.resolution.compiled : landofile,
+    snapshot.landofilePath,
+    fileSystem,
+    landofile.document,
+  );
   if (Result.isFailure(resolved)) {
     if (resolved.failure._tag === "ConfigExpressionError") {
+      const path = configExpressionIssuePath(resolved.failure);
+      const source = getLandofileValueSource(landofile, path);
       return {
         ...result,
         valid: false,
-        violations: [
-          { path: configExpressionIssuePath(resolved.failure), message: resolved.failure.message },
-        ],
+        violations: mergeLintFindings([
+          ...result.violations,
+          ...envFindings,
+          {
+            rule: "landofile.expression",
+            severity: "error",
+            path,
+            message: resolved.failure.message,
+            scopes: ["effective"],
+            ...(source === undefined ? {} : { source }),
+          },
+        ]),
       };
     }
     return yield* Effect.fail(resolved.failure);
   }
-  const violations = routeViolations(resolved.success.landofile, { deferExpressions: false });
-  return violations.length === 0 ? result : { ...result, valid: false, violations };
+  const issues = [
+    ...(resolved.success._tag === "Invalid" ? resolved.success.issues : []),
+    ...toolingAndEventIssues(resolved.success.resolution),
+    ...(yield* lintCapabilityIssues(resolved.success.resolution)),
+  ];
+  const evaluated = issues
+    .filter(
+      (issue) =>
+        !envFindings.some(
+          (finding) =>
+            finding.severity === "error" && JSON.stringify(finding.path) === JSON.stringify(issue.path),
+        ),
+    )
+    .map((issue) => attributeEffectiveLintIssue(landofile, issue));
+  const violations = mergeLintFindings([...result.violations, ...envFindings, ...evaluated]);
+  return {
+    ...result,
+    file: sourceFile(violations[0]?.source) ?? result.file,
+    valid: !violations.some((issue) => issue.severity === "error"),
+    violations,
+  };
 });

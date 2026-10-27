@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { makeLandoPaths } from "@lando/paths";
 import { FileIoError, FileNotFoundError, FilePermissionError } from "@lando/sdk/errors";
 import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, CacheService, FileSystem, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import * as AppCacheService from "../../src/cache/service.ts";
 import { canShadowHostPath } from "../../src/planner/shadow-host-checks.ts";
@@ -54,7 +54,7 @@ test.each([
     // When the production planner assembles the app.
     const appPlan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (service) =>
-        service.plan(rememberLandofileAppRoot(landofile, appRoot), TestRuntimeProvider.capabilities),
+        service.plan(literalTestLandofile(landofile, appRoot), TestRuntimeProvider.capabilities),
       ).pipe(Effect.provide(planner)),
     );
 
@@ -72,11 +72,25 @@ test.each([
 test.each([
   [new FileNotFoundError({ message: "missing", path: "/app/missing" }), true],
   [
-    new FileIoError({ message: "parent is file", path: "/app/file/child", cause: { code: "ENOTDIR" } }),
+    new FileIoError({
+      message: "parent is file",
+      path: "/app/file/child",
+      cause: { code: "ENOTDIR" },
+      remediation:
+        "Ensure `/app/file/child` exists and is readable/writable by this user, then re-run the command.",
+    }),
     false,
   ],
   [new FilePermissionError({ message: "denied", path: "/app/private", cause: { code: "EACCES" } }), true],
-  [new FileIoError({ message: "io", path: "/app/io", cause: { code: "EIO" } }), true],
+  [
+    new FileIoError({
+      message: "io",
+      path: "/app/io",
+      cause: { code: "EIO" },
+      remediation: "Ensure `/app/io` exists and is readable/writable by this user, then re-run the command.",
+    }),
+    true,
+  ],
 ] as const)("preserves shadow eligibility for stat failure %j", async (error, expected) => {
   // Given the real filesystem service with only stat failing at its boundary.
   const fileSystem = await Effect.runPromise(Effect.provide(FileSystem, BunFileSystem.layer));
@@ -145,7 +159,7 @@ test.each(["gitfile", "directory", "file", "directory-link", "file-link", "file-
       // When planning with accelerated bind mounts.
       const plan = await Effect.runPromise(
         Effect.flatMap(AppPlanner, (service) =>
-          service.plan(rememberLandofileAppRoot(landofile, appRoot), {
+          service.plan(literalTestLandofile(landofile, appRoot), {
             ...TestRuntimeProvider.capabilities,
             bindMountPerformance: "slow",
           }),
@@ -179,7 +193,7 @@ test("invalidates cached Git mounts when .git changes between directory and gitf
   process.env.LANDO_USER_CACHE_ROOT = join(appRoot, "cache");
   try {
     await mkdir(join(appRoot, ".git"));
-    const landofile = rememberLandofileAppRoot(
+    const landofile = literalTestLandofile(
       Schema.decodeUnknownSync(LandofileShape)({
         name: "shadowapp",
         runtime: 4,

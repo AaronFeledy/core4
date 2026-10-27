@@ -1,13 +1,22 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { mkdtempSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
-import { DateTime, Effect, Exit, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { AppResolveError, LandofileValidationError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { makeRedactionService } from "@lando/redaction/service";
+import type { LandofileEventsOutcome } from "@lando/sdk/app";
+import {
+  AppResolveError,
+  LandofileEventsSkippedError,
+  LandofileValidationError,
+  ProviderUnavailableError,
+} from "@lando/sdk/errors";
+import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import {
   AbsolutePath,
   AppId,
@@ -22,10 +31,12 @@ import type { AppliedOrphanGroup, ListFilter, ServiceRuntimeInfo } from "@lando/
 import {
   AppPlanner,
   EventService,
+  InteractionService,
   LandofileService,
   PathsService,
   RuntimeProviderRegistry,
   StateStore,
+  ToolingEngine,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
@@ -39,11 +50,18 @@ import {
 } from "../../src/operations/applied-state-target.ts";
 import { destroyApp, destroyAppAtRoot, destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { stopApp, stopAppForTarget } from "../../src/operations/stop.ts";
+import { withProjectEvents } from "../../src/planner/effective-events.ts";
+import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { compileAuthoredEventPlan } from "../authored-invocations.ts";
+import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { web } from "./destroy-progress-topology-support.ts";
 
 const providerId = ProviderId.make("lando");
+const isolatedDataRoot = mkdtempSync(join(tmpdir(), "lando-applied-teardown-data-"));
+afterAll(() => rm(isolatedDataRoot, { recursive: true, force: true }));
 
 for (const kind of ["applied", "orphans", "absent"] as const) {
   test(`dispatches only the ${kind} handler when teardown evidence is ${kind}`, async () => {
@@ -114,7 +132,7 @@ for (const landofilePresent of [true, false]) {
 test("calls onDesired when desired resolution succeeds", async () => {
   await withTempRoot(async (root) => {
     // Given
-    const plan = planAt(root);
+    const plan = currentTestPlan(planAt(root));
     const harness = makeLayer({ desiredPlan: plan });
     // When
     const result = await Effect.runPromise(
@@ -143,7 +161,6 @@ const planAt = (root: string): AppPlan => ({
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -189,6 +206,7 @@ const appliedPlanMismatches: ReadonlyArray<readonly [string, (plan: AppPlan) => 
 
 const invalidDesiredConfig = new LandofileValidationError({
   message: "The current Landofile is invalid.",
+  remediation: "Fix the current Landofile before applying it.",
   file: ".lando.yml",
   issues: [{ path: [], message: "invalid test fixture" }],
 });
@@ -208,6 +226,7 @@ const makeLayer = (input: {
   readonly desiredPlan?: AppPlan;
   readonly orphans?: ReadonlyArray<AppliedOrphanGroup>;
   readonly providerId?: string;
+  readonly ambiguous?: boolean;
   readonly destroy?: () => Effect.Effect<void, ProviderUnavailableError>;
   readonly observed?: ReadonlyArray<ServiceRuntimeInfo>;
   readonly listFailure?: ProviderUnavailableError;
@@ -229,6 +248,7 @@ const makeLayer = (input: {
   const removalAttempts: Array<{ readonly service: string; readonly containerId: string | undefined }> = [];
   const desiredLoads: string[] = [];
   const evidenceRoots: string[] = [];
+  const published: LandoEvent[] = [];
   let appliedPlan = input.appliedPlan;
   const provider = {
     ...TestRuntimeProvider,
@@ -289,6 +309,10 @@ const makeLayer = (input: {
       ),
   };
   const registry = {
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.succeed(
+        appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],
+      ),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(provider),
@@ -297,6 +321,18 @@ const makeLayer = (input: {
     // malformed plan still reaches the ownership validators under test.
     resolveTeardownEvidence: (root: AbsolutePath) => {
       evidenceRoots.push(root);
+      if (input.ambiguous === true)
+        return Effect.flatMap(TeardownProvider, (selected) =>
+          selected === appliedPlan?.provider && appliedPlan !== undefined
+            ? Effect.succeed({ kind: "applied" as const, plan: appliedPlan })
+            : Effect.fail(
+                new AppResolveError({
+                  message: "Two providers claim this root",
+                  reason: "ambiguous",
+                  remediation: "Remove one of the conflicting providers or selector fields, then retry.",
+                }),
+              ),
+        );
       if (input.ownershipFailure !== undefined) return Effect.fail(input.ownershipFailure);
       if (
         appliedPlan !== undefined &&
@@ -320,7 +356,17 @@ const makeLayer = (input: {
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(StateStore, makeTestStateStore().service),
-    Layer.succeed(PathsService, makeLandoPaths({ env: {}, platform: "linux" })),
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        userDataRoot: isolatedDataRoot,
+        userCacheRoot: join(isolatedDataRoot, "cache"),
+        userConfRoot: join(isolatedDataRoot, "conf"),
+        systemPluginRoot: join(isolatedDataRoot, "sys"),
+        env: {},
+        platform: "linux",
+      }),
+    ),
     Layer.succeed(
       LandofileService,
       LandofileService.of({
@@ -328,7 +374,9 @@ const makeLayer = (input: {
           desiredLoads.push("discover");
           return input.desiredPlan === undefined
             ? Effect.fail(invalidDesiredConfig)
-            : Effect.succeed({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape);
+            : Effect.succeed(
+                literalTestLandofile({ name: input.desiredPlan.name, services: {} } satisfies LandofileShape),
+              );
         }),
       }),
     ),
@@ -338,14 +386,17 @@ const makeLayer = (input: {
         plan: () =>
           input.desiredPlan === undefined
             ? Effect.die("desired planning must not run")
-            : Effect.succeed(input.desiredPlan),
+            : Effect.succeed(currentTestPlan(input.desiredPlan)),
       }),
     ),
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(
       EventService,
       EventService.of({
-        publish: () => Effect.void,
+        publish: (event) =>
+          Effect.sync(() => {
+            if (Schema.is(LandoEventSchema)(event)) published.push(event);
+          }),
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
@@ -364,6 +415,7 @@ const makeLayer = (input: {
     removalAttempts,
     desiredLoads,
     evidenceRoots,
+    published,
     appliedPlan: () => appliedPlan,
   };
 };
@@ -401,6 +453,7 @@ const orphanGroup = (input: {
     service: ServiceName.make(name),
     providerId,
     status: "running",
+    publications: { status: "unknown" as const },
     ...((input.withoutContainerId ?? []).includes(name) ? {} : { containerId: `container-${name}` }),
   })),
   volumes: [
@@ -410,6 +463,20 @@ const orphanGroup = (input: {
 });
 
 describe("applied-state teardown", () => {
+  test("destroy with an explicit provider resolves ambiguous applied state and retains volumes", async () => {
+    await withTempRoot(async (root) => {
+      const applied = planAt(root);
+      const harness = makeLayer({ appliedPlan: applied, ambiguous: true });
+      const result = await Effect.runPromise(
+        withResolvedCwd(root, destroyApp({ providerId: applied.provider })).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+      expect(result.outcome).toBe("destroyed");
+      expect(harness.destroyCalls).toEqual([applied]);
+      expect(harness.destroyTargets[0]?.volumes).toBe(false);
+    });
+  });
   test.each(["stop", "destroy"] as const)(
     "explicit-target %s preflights other-provider inventory before mutation",
     async (operation) => {
@@ -420,6 +487,8 @@ describe("applied-state teardown", () => {
           providerId: "docker",
           operation: "resource-ownership",
           message: "Other provider inventory is corrupt.",
+          remediation:
+            "Install or start the `docker` provider and confirm it can perform `resource-ownership`.",
         });
         const harness = makeLayer({ appliedPlan, ownershipFailure: failure });
         // When
@@ -458,6 +527,7 @@ describe("applied-state teardown", () => {
               appRoot: AbsolutePath.make(root),
               providerId,
               status: "running",
+              publications: { status: "unknown" },
               containerId: "foreign",
             },
           ],
@@ -483,6 +553,7 @@ describe("applied-state teardown", () => {
           providerId,
           operation: "list",
           message: "Cannot inventory containers.",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `list`.",
         }),
       });
       await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
@@ -497,6 +568,8 @@ describe("applied-state teardown", () => {
         providerId,
         operation: "removeObservedService",
         message: "Cannot remove stray container.",
+        remediation:
+          "Install or start the selected runtime provider and confirm it can perform `removeObservedService`.",
       });
       const harness = makeLayer({
         appliedPlan: planAt(root),
@@ -611,7 +684,7 @@ describe("applied-state teardown", () => {
       expect(result.outcome).toBe("destroyed");
       expect(harness.destroyCalls).toEqual([appliedPlan]);
       expect(harness.desiredLoads).toEqual([]);
-      expect(harness.evidenceRoots).toEqual([root, root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root]);
     });
   });
 
@@ -679,7 +752,7 @@ describe("applied-state teardown", () => {
         servicesDestroyed: ["leftover"],
         volumesRemoved: true,
       });
-      expect(harness.evidenceRoots).toEqual([root, root, root, root]);
+      expect(harness.evidenceRoots).toEqual([root, root, root]);
     });
   });
 
@@ -694,7 +767,7 @@ describe("applied-state teardown", () => {
         destroyAppAtRoot(join(alias, "gone")).pipe(Effect.provide(harness.layer)),
       );
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root, root]);
+      expect(harness.evidenceRoots).toEqual([join(alias, "gone"), root, root]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });
@@ -713,7 +786,7 @@ describe("applied-state teardown", () => {
 
       // Then the recorded path wins over the symlink's current destination.
       expect(result.outcome).toBe("destroyed");
-      expect(harness.evidenceRoots).toEqual([recorded, recorded, recorded]);
+      expect(harness.evidenceRoots).toEqual([recorded, recorded]);
       expect(harness.destroyCalls).toEqual([appliedPlan]);
     });
   });
@@ -727,7 +800,13 @@ describe("applied-state teardown", () => {
         withResolvedCwd(root, stopApp()).pipe(Effect.provide(harness.layer)),
       );
 
-      expect(result).toEqual({ app: appliedPlan.name, outcome: "stopped", servicesStopped: [] });
+      expect(result).toEqual({
+        app: appliedPlan.name,
+        outcome: "stopped",
+        servicesStopped: [],
+        // This layer has no redactor, so the loader detail stays out of the reason.
+        landofileEvents: { status: "skipped", reason: `the Landofile in ${root} could not be loaded` },
+      });
       expect(harness.destroyCalls).toEqual([appliedPlan]);
       expect(harness.appliedPlan()).toEqual(appliedPlan);
     });
@@ -818,7 +897,7 @@ describe("applied-state teardown", () => {
   );
 
   test.each(["stop", "destroy"] as const)(
-    "%s consults applied state before it loads the desired config",
+    "%s preserves the applied plan while loading desired config for authored events",
     async (operation) => {
       await withTempRoot(async (root) => {
         const appliedPlan = planAt(root);
@@ -830,7 +909,7 @@ describe("applied-state teardown", () => {
           await Effect.runPromise(withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)));
         }
 
-        expect(harness.desiredLoads).toEqual([]);
+        expect(harness.desiredLoads).toEqual(["discover"]);
         expect(harness.destroyCalls).toEqual([appliedPlan]);
       });
     },
@@ -984,6 +1063,42 @@ describe("applied-state teardown", () => {
     });
   });
 
+  test("CLI destroy reads the root journal once across recorded orphan identities", async () => {
+    await withTempRoot(async (root) => {
+      const base = planAt(root);
+      const retainedPlan = retainedPlanAt(root);
+      const other = orphanGroup({ root, services: ["db"] });
+      const otherId = AppId.make("aaa-other-app");
+      const harness = makeLayer({
+        desiredPlan: retainedPlan,
+        orphans: [
+          {
+            ...other,
+            appId: otherId,
+            services: other.services.map((service) => ({ ...service, app: otherId })),
+          },
+          orphanGroup({ root, services: ["web"] }),
+        ],
+      });
+      await Effect.runPromise(
+        beginOrResumeAcceleratedStart(retainedPlan, { kind: "user", id: base.id, root: base.root }).pipe(
+          Effect.flatMap((pending) => pending.advance("apply-intent")),
+          Effect.provide(harness.layer),
+        ),
+      );
+      const result = await Effect.runPromiseExit(
+        withResolvedCwd(root, destroyApp()).pipe(Effect.provide(harness.layer)),
+      );
+      // Both identities share the root's journal, so destroy takes the retained path once
+      // and reaches session disposal instead of refusing an ambiguous match.
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(JSON.stringify(result)).toContain("An accelerated mount has no matching file sync engine.");
+      expect(harness.mutationOrder).toEqual([]);
+      expect(harness.removalAttempts).toEqual([]);
+      expect(harness.published.map((event) => event._tag)).not.toContain("pre-destroy");
+    });
+  });
+
   test("CLI destroy does not use the old ordinary applied plan for retained migration", async () => {
     await withTempRoot(async (root) => {
       const oldPlan = planAt(root);
@@ -1100,6 +1215,7 @@ describe("applied-state teardown", () => {
         providerId: "lando",
         operation: "destroy",
         message: "runtime unavailable",
+        remediation: "Install or start the `lando` provider and confirm it can perform `destroy`.",
       });
       const harness = makeLayer({ appliedPlan, destroy: () => Effect.fail(failure) });
 
@@ -1107,6 +1223,327 @@ describe("applied-state teardown", () => {
 
       expect(harness.destroyCalls).toEqual([appliedPlan]);
       expect(harness.appliedPlan()).toEqual(appliedPlan);
+    });
+  });
+});
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { currentTestPlan } from "../current-plan.ts";
+
+describe("Landofile events on applied-state teardown", () => {
+  const recordingEngine = (executed: string[]) =>
+    ToolingEngine.of({
+      id: "recording",
+      run: (invocation) =>
+        Effect.sync(() => {
+          executed.push(invocation.commands[0]?.[2]?.replace(/ "[$]@"$/u, "") ?? invocation.tool);
+          return {
+            tool: invocation.tool,
+            service: invocation.service ?? "web",
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+          };
+        }),
+    });
+  const eventRuntime = (executed: string[]) =>
+    Layer.mergeAll(
+      Layer.succeed(ToolingEngine, recordingEngine(executed)),
+      testEnvironmentResolverLayerFor(makeRedactionService()),
+    );
+  /** Landofile-event notices only; the harness has no proxy, which destroy warns about separately. */
+  const notices = (published: ReadonlyArray<LandoEvent>) =>
+    published.flatMap((event) =>
+      (event._tag === "message.info" || event._tag === "message.warn") &&
+      event.body.startsWith("Skipping Landofile events")
+        ? [[event._tag, event.body] as const]
+        : [],
+    );
+  const teardown = (
+    operation: "stop" | "destroy",
+  ): Effect.Effect<
+    { readonly outcome?: string; readonly landofileEvents?: LandofileEventsOutcome },
+    Effect.Error<ReturnType<typeof stopApp>> | Effect.Error<ReturnType<typeof destroyApp>>,
+    Effect.Services<ReturnType<typeof stopApp>> | Effect.Services<ReturnType<typeof destroyApp>>
+  > => (operation === "stop" ? stopApp() : destroyApp());
+  const withWeb = (plan: AppPlan): AppPlan => ({
+    ...plan,
+    services: { [web.name]: { ...web, primary: true } },
+  });
+
+  test.each(["stop", "destroy"] as const)(
+    "%s uses current parsed runtime sites without altering applied ownership",
+    async (operation) => {
+      const executed: string[] = [];
+      await withTempRoot(async (root) => {
+        const appliedPlan = withWeb(planAt(root));
+        const desiredPlan = await compileAuthoredEventPlan(
+          attachEffectiveTooling(appliedPlan, { cleanup: { cmd: "echo {{ vars.value }}" } }),
+          {
+            [`pre-${operation}`]: [
+              { cmd: "echo {{ event._tag }}", for: ["one"] },
+              { task: "cleanup", vars: { value: "{{{{ event._tag }}" } },
+              { defer: "echo deferred-{{ item }}", for: ["a", "b"] },
+            ],
+          },
+        );
+        const harness = makeLayer({ appliedPlan, desiredPlan });
+        await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+          ),
+        );
+        expect(executed).toEqual([
+          `echo pre-${operation}`,
+          "echo {{ event._tag }}",
+          "echo deferred-b",
+          "echo deferred-a",
+        ]);
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+        expect(appliedPlan.events).toBeUndefined();
+        expect(appliedPlan.extensions).not.toHaveProperty("@lando/core/invocation-authority");
+      });
+    },
+  );
+
+  test.each([
+    ["stop", ["pre-init", "post-init", "pre-stop", "post-stop"]],
+    ["destroy", ["pre-init", "post-init", "pre-destroy", "post-destroy"]],
+  ] as const)("%s runs the current Landofile's steps against the applied app", async (operation, events) => {
+    await withTempRoot(async (root) => {
+      // Given an applied plan read back without events and a Landofile that declares them
+      const executed: string[] = [];
+      const appliedPlan = withWeb(planAt(root));
+      const desiredPlan = withProjectEvents(
+        appliedPlan,
+        Object.fromEntries(events.map((event) => [event, [`echo ${event}`]])),
+      );
+      const harness = makeLayer({ appliedPlan, desiredPlan });
+
+      // When
+      await Effect.runPromise(
+        withResolvedCwd(
+          root,
+          teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+        ),
+      );
+
+      // Then every Landofile step ran, in lifecycle order, and nothing was skipped
+      expect(executed).toEqual(events.map((event) => `echo ${event}`));
+      expect(notices(harness.published)).toEqual([]);
+      expect(harness.destroyCalls).toEqual([appliedPlan]);
+    });
+  });
+
+  test.each(["stop", "destroy"] as const)(
+    "%s runs a task: step whose tooling comes from the current Landofile, before the provider teardown",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given the applied record carries no tooling, while the current Landofile defines the task
+        const executed: string[] = [];
+        const appliedPlan = withWeb(planAt(root));
+        const desiredPlan = attachEffectiveTooling(
+          withProjectEvents(appliedPlan, { [`pre-${operation}`]: [{ task: "cleanup" }] }),
+          { cleanup: { cmd: "echo teardown" } },
+        );
+        const harness = makeLayer({ appliedPlan, desiredPlan });
+
+        // When
+        await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+          ),
+        );
+
+        // Then
+        expect(executed).toEqual(["echo teardown"]);
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+      });
+    },
+  );
+
+  test.each(["stop", "destroy"] as const)(
+    "%s reports in its result that Landofile events ran",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given
+        const appliedPlan = withWeb(planAt(root));
+        const harness = makeLayer({ appliedPlan, desiredPlan: appliedPlan });
+
+        // When
+        const result = await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime([]), harness.layer))),
+          ),
+        );
+
+        // Then
+        expect(result.landofileEvents).toEqual({ status: "ran" });
+      });
+    },
+  );
+
+  test.each(["stop", "destroy"] as const)(
+    "%s still tears down when the Landofile no longer loads, and says why its events were skipped",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given the applied plan but a Landofile the loader rejects
+        const executed: string[] = [];
+        const appliedPlan = withWeb(planAt(root));
+        const harness = makeLayer({ appliedPlan });
+
+        // When
+        const result = await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+          ),
+        );
+
+        // Then
+        expect(result.outcome).toBe(operation === "stop" ? "stopped" : "destroyed");
+        expect(executed).toEqual([]);
+        const reason = `the Landofile in ${root} could not be loaded. The current Landofile is invalid`;
+        expect(notices(harness.published)).toEqual([
+          ["message.warn", `Skipping Landofile events for applied-teardown: ${reason}.`],
+        ]);
+        expect(result.landofileEvents).toEqual({ status: "skipped", reason });
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+      });
+    },
+  );
+
+  test.each(["stop", "destroy"] as const)(
+    "%s uses applied state when both Landofile forms exist",
+    async (operation) => {
+      await withTempRoot(async (root) => {
+        // Given
+        await Bun.write(join(root, ".lando.ts"), 'export default { name: "conflict" };\n');
+        const appliedPlan = withWeb(planAt(root));
+        const harness = makeLayer({ appliedPlan });
+        // When
+        const result = await Effect.runPromise(
+          withResolvedCwd(
+            root,
+            teardown(operation).pipe(Effect.provide(Layer.merge(eventRuntime([]), harness.layer))),
+          ),
+        );
+        // Then
+        expect(result.outcome).toBe(operation === "stop" ? "stopped" : "destroyed");
+        expect(harness.destroyCalls).toEqual([appliedPlan]);
+        expect(result.landofileEvents).toEqual({
+          status: "skipped",
+          reason: expect.stringContaining(`Both ${join(root, ".lando.yml")} and ${join(root, ".lando.ts")}`),
+        });
+      });
+    },
+  );
+
+  const interaction = (answer: boolean, interactive = true) =>
+    Layer.succeed(
+      InteractionService,
+      InteractionService.of({
+        id: "test",
+        isInteractive: Effect.succeed(interactive),
+        prompt: () => Effect.die("not used"),
+        promptAll: () => Effect.die("not used"),
+        confirm: () => Effect.succeed(answer),
+        select: () => Effect.die("not used"),
+        secret: () => Effect.die("not used"),
+      }),
+    );
+
+  describe("destroy that removes data while a present Landofile cannot source its hooks", () => {
+    const run = (
+      root: string,
+      options: { readonly volumes?: boolean; readonly yes?: boolean },
+      extra: Layer.Layer<InteractionService> | Layer.Layer<never> = Layer.empty,
+    ) => {
+      const appliedPlan = withWeb(planAt(root));
+      const harness = makeLayer({ appliedPlan });
+      return {
+        harness,
+        exit: Effect.runPromiseExit(
+          withResolvedCwd(
+            root,
+            destroyApp(options).pipe(Effect.provide(Layer.mergeAll(eventRuntime([]), harness.layer, extra))),
+          ),
+        ),
+      };
+    };
+
+    test("fails closed without --yes when nothing can confirm", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, { volumes: true });
+        const outcome = await exit;
+        expect(Exit.isFailure(outcome)).toBe(true);
+        if (Exit.isFailure(outcome)) {
+          const error = Cause.squash(outcome.cause);
+          expect(error).toBeInstanceOf(LandofileEventsSkippedError);
+          expect((error as LandofileEventsSkippedError).reason).toContain("could not be loaded");
+        }
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    });
+
+    test("fails when an interactive session declines", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, { volumes: true }, interaction(false));
+        const outcome = await exit;
+        expect(Exit.isFailure(outcome)).toBe(true);
+        expect(harness.destroyCalls).toEqual([]);
+      });
+    });
+
+    test("proceeds when an interactive session confirms", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, { volumes: true }, interaction(true));
+        const outcome = await exit;
+        expect(Exit.isSuccess(outcome)).toBe(true);
+        expect(harness.destroyCalls).toHaveLength(1);
+      });
+    });
+
+    test("proceeds with --yes and still reports the skip", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, { volumes: true, yes: true });
+        const outcome = await exit;
+        expect(Exit.isSuccess(outcome)).toBe(true);
+        if (Exit.isSuccess(outcome)) expect(outcome.value.landofileEvents?.status).toBe("skipped");
+        expect(harness.destroyCalls).toHaveLength(1);
+      });
+    });
+
+    test("does not gate a destroy that keeps data", async () => {
+      await withTempRoot(async (root) => {
+        const { harness, exit } = run(root, {});
+        expect(Exit.isSuccess(await exit)).toBe(true);
+        expect(harness.destroyCalls).toHaveLength(1);
+      });
+    });
+  });
+
+  test("destroy at a missing root skips Landofile events with a notice", async () => {
+    await withTempRoot(async (parent) => {
+      // Given
+      const root = join(parent, "gone");
+      const executed: string[] = [];
+      const appliedPlan = withWeb(planAt(root));
+      const harness = makeLayer({ appliedPlan });
+
+      // When
+      const result = await Effect.runPromise(
+        destroyAppAtRoot(root).pipe(Effect.provide(Layer.merge(eventRuntime(executed), harness.layer))),
+      );
+
+      // Then
+      expect(result.outcome).toBe("destroyed");
+      expect(executed).toEqual([]);
+      expect(notices(harness.published)).toEqual([
+        ["message.info", `Skipping Landofile events for applied-teardown: no Landofile in ${root}.`],
+      ]);
     });
   });
 });

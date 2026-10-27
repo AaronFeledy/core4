@@ -3,7 +3,7 @@ import { Effect, Schema } from "effect";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "memcached:1.6";
@@ -16,7 +16,6 @@ const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.setCommand(service.command ?? ["memcached", "-p", String(port)]);
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
@@ -26,6 +25,10 @@ export const memcachedServiceFeature: ServiceFeatureDefinition = {
   id: MEMCACHED_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "tcp" }),
+    ),
   apply: serviceFeatureApply(
     MEMCACHED_FEATURE_ID,
     "memcached service feature failed to apply",

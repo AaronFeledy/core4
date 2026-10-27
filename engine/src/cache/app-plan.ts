@@ -6,9 +6,10 @@ import { deserialize, serialize } from "node:v8";
 
 import { Clock, Effect, Schema } from "effect";
 
-import { CacheError, isErrnoCode } from "@lando/sdk/errors";
+import { CacheError, type LandofileFormConflictError, isErrnoCode } from "@lando/sdk/errors";
 import {
   AppPlan,
+  CurrentExecutableAppPlan,
   type LandofileShape,
   type PluginManifest,
   type ProviderCapabilities,
@@ -40,7 +41,7 @@ import { defaultPlanningRuntimeIdentity } from "./planning-runtime.ts";
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 24n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 36n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -54,6 +55,7 @@ interface AppPlanCachePayload {
 }
 
 export interface AppPlanCacheKeyInput {
+  readonly hostProvider: string;
   readonly appRoot: string;
   readonly landofile: LandofileShape;
   readonly providerCapabilities?: ProviderCapabilities;
@@ -106,32 +108,36 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
   landofile?: LandofileShape,
-): Effect.Effect<AppPlanSourceFingerprint, CacheError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const includeLockfilePath = join(appRoot, ".lando.lock.yml");
-      const layers = await presentLandofileLayers(appRoot);
-      return {
-        landofileContentHashes: await Promise.all(
-          layers.map(async (layer) => ({
-            source: layer.filePath,
-            hash: (await readOptionalHash(layer.filePath)) ?? "",
-          })),
-        ),
-        includeLockfileHash: await readOptionalHash(includeLockfilePath),
-        includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
-        referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
-        includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
-      };
-    },
-    catch: (cause) =>
-      new CacheError({
-        message: `Failed to read app-plan cache source fingerprint for ${appRoot}.`,
-        key: "app-plan",
-        path: appRoot,
-        cause,
+): Effect.Effect<AppPlanSourceFingerprint, CacheError | LandofileFormConflictError> =>
+  presentLandofileLayers(appRoot).pipe(
+    Effect.flatMap((layers) =>
+      Effect.tryPromise({
+        try: async () => {
+          const includeLockfilePath = join(appRoot, ".lando.lock.yml");
+          return {
+            landofileContentHashes: await Promise.all(
+              layers.map(async (layer) => ({
+                source: layer.filePath,
+                hash: (await readOptionalHash(layer.filePath)) ?? "",
+              })),
+            ),
+            includeLockfileHash: await readOptionalHash(includeLockfilePath),
+            includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
+            referencedFiles: landofile === undefined ? [] : getLandofileReferencedFiles(landofile),
+            includeSources: landofile === undefined ? [] : getLandofileIncludeSources(landofile),
+          };
+        },
+        catch: (cause) =>
+          new CacheError({
+            message: `Failed to read app-plan cache source fingerprint for ${appRoot}.`,
+            key: "app-plan",
+            path: appRoot,
+            cause,
+            remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
+          }),
       }),
-  });
+    ),
+  );
 
 const normalizeManifest = (manifest: PluginManifest) => ({
   name: manifest.name,
@@ -159,6 +165,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       planningRuntime: input.planningRuntime ?? defaultPlanningRuntimeIdentity(),
       hostHome: input.hostHome ?? homedir(),
       appRoot: input.appRoot,
+      hostProvider: input.hostProvider,
       landofile: input.landofile,
       sourceFingerprint:
         input.sourceFingerprint === undefined
@@ -210,7 +217,7 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   }
 };
 
-const withDerivedRouteRequirements = (plan: AppPlan): AppPlan => {
+const withDerivedRouteRequirements = (plan: CurrentExecutableAppPlan): CurrentExecutableAppPlan => {
   if (plan.routes.length === 0 || !routerEnabled(plan)) return plan;
 
   const current = plan.requires?.globalServices ?? [];
@@ -237,7 +244,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
   readonly appName: string;
   readonly appRoot: string;
   readonly key: string;
-}): Effect.fn.Return<AppPlan | null, CacheError> {
+}): Effect.fn.Return<CurrentExecutableAppPlan | null, CacheError> {
   const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
   const bytes = yield* Effect.tryPromise({
     try: () => readFile(path),
@@ -247,6 +254,7 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
         key: "app-plan",
         path,
         cause,
+        remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
       }),
   }).pipe(
     Effect.catchIf(
@@ -270,13 +278,14 @@ export const readCachedAppPlan = Effect.fnUntraced(function* (input: {
     if (!sameGitDirectories(current, check.directories)) return null;
   }
   return yield* Effect.try({
-    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
+    try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(CurrentExecutableAppPlan)(payload.plan)),
     catch: (cause) =>
       new CacheError({
         message: `Cached app plan at ${path} failed schema decode.`,
         key: "app-plan",
         path,
         decodeError: cause,
+        remediation: "Delete the Lando cache entry `app-plan` and re-run the command.",
       }),
   }).pipe(Effect.catch(() => Effect.succeed(null)));
 });

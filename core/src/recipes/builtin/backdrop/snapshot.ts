@@ -16,7 +16,7 @@ import { backdropSettings } from "./settings.ts";
 
 export const BACKDROP_RECIPE_VERSION = "0.1.0";
 export const BACKDROP_CONTENT_DIGEST =
-  "sha256:eb05a430766128eb49b94931f51f2c96064d2f2a3fbf6bcb338cbc50f6e663f1";
+  "sha256:e9733cf3573d04092019adcb32893dc0851a91ab4ce38010fe05524fea98edf0";
 export const backdropProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-backdrop",

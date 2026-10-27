@@ -7,7 +7,7 @@ tags: [beta, docs, valkey, service]
 
 # Add Valkey
 
-Put `type: valkey` in your services block. Lando pulls `valkey/valkey:8` and listens on `6379`:
+Add `type: valkey` under `services` in `.lando.yml`. Lando pulls `valkey/valkey:8` and listens on `6379`:
 
 ```yaml
 name: valkey-demo
@@ -38,16 +38,20 @@ tooling:
 
 ## Connect from another service
 
-`lando info` advertises both a `valkey://` endpoint (primary) and a `redis://` alias, so new and existing client libraries connect without code changes:
+From another app service, use hostname `cache` and port `6379`. `localhost` inside that service refers to its own container, not Valkey.
+
+`lando info` lists the App Network connection as a `valkey://` URL with a `redis://` alternate, so new and existing client libraries connect without code changes:
 
 ```
-valkey://localhost:6379
-redis://localhost:6379
+valkey://cache:6379
+redis://cache:6379
 ```
+
+Valkey publishes no host port by default, so there is no Host connection to open from this machine. Add a `ports:` entry when a desktop client needs one.
 
 ## Open the client
 
-The fixture above declares `valkey-cli` as an app tooling alias. Ping the cache to verify it's reachable:
+The Landofile above declares `valkey-cli` as an app tooling alias. Ping the cache to verify it's reachable:
 
 ```sh
 lando valkey-cli ping

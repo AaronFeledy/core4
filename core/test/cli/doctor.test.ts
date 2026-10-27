@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
@@ -36,11 +36,12 @@ const providerWithComposeServiceFields = {
   id: "lando",
   capabilities: {
     ...TestRuntimeProvider.capabilities,
-    composeServiceFields: { supported: ["networks", "configs", "secrets", "profiles", "labels"] },
+    composeServiceFields: { supported: ["configs", "secrets", "profiles", "labels"] },
   },
 } satisfies typeof TestRuntimeProvider;
 
 const OPTIONAL_CAPABILITY_FIELDS = new Set([
+  "authoredNetworks",
   "composePreservedPaths",
   "composeProjectFields",
   "hostProxy",
@@ -73,6 +74,9 @@ const resultEnvelope = (ndjson: string) => {
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
   RuntimeProviderRegistry.of({
+    resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make(provider.id)]),
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
@@ -257,7 +261,7 @@ describe("meta:doctor command", () => {
         timestamp: "1970-01-01T00:00:00.000Z",
         checks: 3,
         failed: 0,
-        warned: 0,
+        warned: 1,
       },
     });
 
@@ -319,7 +323,7 @@ describe("meta:doctor command", () => {
     expect(setupSolution?.description).toContain("lando setup");
 
     const complete = resultEnvelope(ndjson).result as Record<string, unknown>;
-    expect(complete.warned).toBe(2);
+    expect(complete.warned).toBe(3);
     expect(complete.failed).toBe(0);
 
     expect(text).toContain("selected-provider: warn");
@@ -685,7 +689,7 @@ describe("meta:doctor command", () => {
         expect(conflictCheck.severity).toBe("warn");
         expect(conflictCheck.context.conflictKind).toBe("provider-lando-podman-socket");
         expect(conflictCheck.context.socketPath).toBe(socket);
-        expect(conflictCheck.context.providerLandoStatePath).toBe(statePath);
+        expect(normalize(conflictCheck.context.providerLandoStatePath ?? "")).toBe(normalize(statePath));
         const solution = conflictCheck.solutions[0];
         expect(solution?.kind).toBe("manual");
         expect(solution?.description).toContain("lando setup --provider=");
@@ -716,6 +720,9 @@ describe("meta:doctor command", () => {
         const socket = "/run/user/1000/podman/podman.sock";
         await writeProviderLandoState(dataRoot, socket);
         const registry = RuntimeProviderRegistry.of({
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          appliedPlansFor: () => Effect.succeed([]),
           list: Effect.succeed([ProviderId.make("podman")]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.die("provider-podman should not be constructed when conflict is pre-detected"),

@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
+import type { StartAppResult } from "@lando/sdk/app";
 import { buildStartSummary, renderStartAppResult } from "../../src/cli/commands/start-result.ts";
+import { connections } from "./connection-fixtures";
 
 test("successful starts with restarting services use warning summaries without claiming complete readiness", () => {
-  const result = {
+  const result: StartAppResult = {
     app: "supervised",
     servicesStarted: [
-      { name: "web", state: "ready", endpoints: [] },
-      { name: "worker", state: "restarting", endpoints: [] },
+      { name: "web", state: "ready", connections: connections(["http://web:3000"], "app") },
+      { name: "worker", state: "restarting", connections: [] },
     ],
   };
   const summary = buildStartSummary(result);
@@ -19,7 +21,10 @@ test("successful starts with restarting services use warning summaries without c
 
 test("rebuild keeps its success heading but warns about restarting services", () => {
   const summary = buildStartSummary(
-    { app: "supervised", servicesStarted: [{ name: "worker", state: "restarting", endpoints: [] }] },
+    {
+      app: "supervised",
+      servicesStarted: [{ name: "worker", state: "restarting", connections: [] }],
+    },
     "rebuild",
   );
   expect(summary.title).toBe("Rebuilt");

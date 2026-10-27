@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -6,7 +7,7 @@ import type { ServiceType } from "@lando/sdk/services";
 
 import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
-import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
+import { APACHE_DEFAULT_SITE_BUILD_STEP_ID, hasCustomPhpImage } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
@@ -49,6 +50,25 @@ const composePhpPlan = (serviceType: ServiceType, raw: unknown, appRoot = APP_RO
     featureOverrides,
   });
 
+test.each([
+  "php:8.3-apache-bookworm",
+  "docker.io/library/php:8.3-apache-bookworm",
+  "index.docker.io/php:8.3-apache-bookworm",
+  "registry-1.docker.io/library/php:8.3-apache-bookworm",
+])("recognizes official PHP alias %s as catalog-owned", (image) => {
+  const service = decodeService({ type: "php:8.3", image });
+  expect(hasCustomPhpImage(service)).toBe(false);
+});
+
+test.each([
+  "ghcr.io/library/php:8.3-apache-bookworm",
+  "localhost/php:8.3-apache-bookworm",
+  "php:8.3-apache-bookworm@sha256:abc",
+])("retains custom PHP identity for %s", (image) => {
+  const service = decodeService({ type: "php:8.3", image });
+  expect(hasCustomPhpImage(service)).toBe(true);
+});
+
 interface PlannedBuildStep {
   readonly id?: string;
   readonly user?: string;
@@ -68,7 +88,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof ServiceTypeError
+          ? [error.message, ...(error.issues ?? []).map((issue) => issue.suggestion ?? "")].join(" ")
+          : error instanceof Error
+            ? error.message
+            : String(error);
       expect(message).toMatch(pattern);
     },
   );
@@ -96,7 +121,9 @@ describe("php:8.2 ServiceType", () => {
 
     expect(plan.mounts).toEqual([]);
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
@@ -206,7 +233,9 @@ describe("php:8.2 ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/php:8.2-custom" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
   });
@@ -223,15 +252,16 @@ describe("php:8.3 ServiceType", () => {
   });
 
   test("rejects unsupported PHP versions with remediation", async () => {
-    await expectRejectsToThrow(
-      composePhpPlan(php83ServiceType, { type: "php:9.0" }),
-      /Unsupported PHP version "9.0"\./,
-    );
-
-    await expectRejectsToThrow(
-      composePhpPlan(php83ServiceType, { type: "php:9.0" }),
-      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4, php:8.5, php:8.6/,
-    );
+    await expect(composePhpPlan(php83ServiceType, { type: "php:9.0" })).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["type"],
+          message: 'Unsupported PHP version "9.0".',
+          suggestion:
+            "Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4, php:8.5, php:8.6 (got php:9.0).",
+        },
+      ],
+    });
   });
 
   test("rejects versions outside the supported catalog", async () => {
@@ -314,7 +344,9 @@ describe("php serving modes (via:)", () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "apache" });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain('LANDO_HOST_OS:-}" = win32');
     expect(plan.command?.[2]).toContain("stat -c '%u:%g'");
@@ -489,7 +521,9 @@ describe("php serving modes (via:)", () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm" });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-fpm-bookworm" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9000, protocol: "tcp", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9000, protocol: "tcp", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]);
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
@@ -543,7 +577,9 @@ describe("php serving modes (via:)", () => {
   test("via fpm listens on an authored port", async () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", via: "fpm", port: 9070 });
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9070, protocol: "tcp", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9070, protocol: "tcp", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9070"]);
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain("listen = 9070");

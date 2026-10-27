@@ -1,8 +1,8 @@
 import { sha256Hex } from "@lando/sdk/digest";
 
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
-import { PortablePath, type ServiceConfig, type ServiceCreds } from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig, type ServiceCreds, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   addEnvRecord,
@@ -13,8 +13,9 @@ import {
 } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
+import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { addServicePortEndpoints, assertListenerConfig, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 
@@ -65,9 +66,7 @@ const credsFor = (input: {
 const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const creds = credsFor({ appName: ctx.appName, appRoot: ctx.appRoot, service });
-  assertListenerConfig(service, ctx.serviceName, POSTGRES_LISTENER);
-  const port = plannedPort(service, POSTGRES_LISTENER);
+  const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   addEnvRecord(ctx, familyEnvFor("postgres", creds));
@@ -82,7 +81,6 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   // Probe over TCP: the image's first-boot init server listens only on the unix socket.
   ctx.setHealthcheck(
     commandHealthcheck(
@@ -104,12 +102,35 @@ export const postgresServiceFeature: ServiceFeatureDefinition = {
   id: POSTGRES_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => servicePortEndpoints(ctx, { port: connectionFor(ctx).port, protocol: "tcp" })),
   apply: serviceFeatureApply(
     POSTGRES_FEATURE_ID,
     "postgres service feature failed to apply",
     applyPostgresFeature,
   ),
 };
+
+const postgresToolingForConnection: NonNullable<ServiceType["toolingForConnection"]> = (name, connection) =>
+  connection.family !== "postgres"
+    ? {}
+    : {
+        psql: {
+          description: "Open the PostgreSQL client for this service.",
+          dir: PortablePath.make("/"),
+          service: name,
+          cmd: [
+            "psql",
+            "-p",
+            String(connection.port),
+            "-U",
+            connection.creds.user,
+            "-d",
+            connection.creds.database,
+          ],
+          env: { PGPASSWORD: connection.creds.password },
+        },
+      };
 
 export const postgresServiceType: ServiceType = {
   id: "postgres",
@@ -119,12 +140,15 @@ export const postgresServiceType: ServiceType = {
   artifacts: ARTIFACTS,
   identity: rootIdentity(),
   schema: Schema.Unknown,
+  toolingForConnection: postgresToolingForConnection,
   resolve: (input) => {
-    const creds = credsFor(input);
     return serviceTypeResolve("postgres", "postgres service type failed to resolve", () => {
-      assertListenerConfig(input.service, input.name, POSTGRES_LISTENER);
+      const creds = credsFor(input);
+      const port = plannedPort(input.service, POSTGRES_LISTENER);
+      assertListenerConfig(input.service, POSTGRES_LISTENER);
       return {
         base: "lando",
+        connection: { family: "postgres", creds, port },
         normalizedConfig: {
           ...input.service,
           type: "postgres",
@@ -135,23 +159,11 @@ export const postgresServiceType: ServiceType = {
           },
         },
         features: [{ id: POSTGRES_FEATURE_ID }],
-        tooling: {
-          psql: {
-            description: "Open the PostgreSQL client for this service.",
-            dir: PortablePath.make("/"),
-            service: input.name,
-            cmd: [
-              "psql",
-              "-p",
-              String(plannedPort(input.service, POSTGRES_LISTENER)),
-              "-U",
-              creds.user,
-              "-d",
-              creds.database,
-            ],
-            env: { PGPASSWORD: creds.password },
-          },
-        },
+        tooling: postgresToolingForConnection(ServiceName.make(input.name), {
+          family: "postgres",
+          creds,
+          port,
+        }),
       };
     });
   },

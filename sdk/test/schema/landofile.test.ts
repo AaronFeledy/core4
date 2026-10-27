@@ -55,6 +55,23 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
 };
 
 describe("LandofileShape — schema gate", () => {
+  test("include checksum is rejected with the usual unknown-key issue", () => {
+    // Given
+    const input = { includes: [{ source: "github:acme/shared", path: "web.yml", checksum: "ignored" }] };
+    // When
+    const result = Schema.decodeUnknownResult(LandofileShape)(input, { onExcessProperty: "error" });
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      const issues = SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues;
+      expect(issues).toContainEqual(
+        expect.objectContaining({
+          path: ["includes", 0, "checksum"],
+          message: "Expected no excess property",
+        }),
+      );
+    }
+  });
   test("LandofileShape strictly decodes and round-trips per-app command aliases", () => {
     // Given
     const input = {
@@ -562,6 +579,7 @@ describe("LandofileShape (MVP)", () => {
 
     const err = new LandofileValidationError({
       message: `Landofile rejected ${rejectedKeys.length} unknown key(s): ${rejectedKeys.join(", ")}`,
+      remediation: "Remove unknown keys or correct their spelling.",
       file: "/srv/apps/myapp/.lando.yml",
       issues: rejectedKeys.map((key) => ({
         path: key.length === 0 ? [] : key.split("."),
@@ -777,11 +795,12 @@ describe("LandofileShape — tooling: supported schema", () => {
     // Then
     expect(decoded.toolingDefaults).toEqual({
       ...input.toolingDefaults,
+      env: { APP_ENV: "development", DEBUG: "false" },
       dir: PortablePath.make("/app"),
     });
     expect(decoded.tooling?.build?.dir).toBe(PortablePath.make("/app/frontend"));
-    expect(decoded.tooling?.build?.env).toEqual({ APP_ENV: "test", CI: true });
-    expect(encoded).toEqual(input);
+    expect(decoded.tooling?.build?.env).toEqual({ APP_ENV: "test", CI: "true" });
+    expect(Schema.decodeUnknownSync(LandofileShape)(encoded, { onExcessProperty: "error" })).toEqual(decoded);
   });
 
   test("strict decoding rejects unknown tooling defaults fields", () => {

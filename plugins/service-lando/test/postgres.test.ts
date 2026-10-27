@@ -70,7 +70,9 @@ describe("postgres ServiceType", () => {
     expect(plan.storage[0]?.store).toBe("myapp-postgresql-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/postgresql/data");
     expect(plan.storage[0]?.readOnly).toBe(false);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5432, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 5432, protocol: "tcp", name: "db", primary: true },
+    ]);
     expect(plan.mounts.find((m) => String(m.target) === POSTGRES_CONFIG_TARGET)).toBeUndefined();
     expect(plan.command).toBeUndefined();
   });
@@ -92,7 +94,9 @@ describe("postgres ServiceType", () => {
       PGPORT: "15432",
       LANDO_DB_PORT: "15432",
     });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 15432, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 15432, protocol: "tcp", name: "db", primary: true },
+    ]);
     expect(plan.healthcheck?.command).toEqual([
       "pg_isready",
       "-h",
@@ -124,21 +128,37 @@ describe("postgres ServiceType", () => {
   });
 
   test("rejects PGPORT selecting a non-default port without port:", async () => {
-    await expect(planPostgres({ type: "postgres", environment: { PGPORT: "6543" } })).rejects.toThrow(
-      "Set port: 6543",
-    );
+    await expect(planPostgres({ type: "postgres", environment: { PGPORT: "6543" } })).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["environment", "PGPORT"],
+          message: "PGPORT is 6543, but the service listens on 5432.",
+          suggestion: "Set port: 6543 instead; Lando sets PGPORT from port:.",
+        },
+      ],
+    });
   });
 
   test("accepts a PGPORT that matches port", async () => {
     const plan = await planPostgres({ type: "postgres", port: 6543, environment: { PGPORT: "6543" } });
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 6543, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 6543, protocol: "tcp", name: "db", primary: true },
+    ]);
   });
 
   test("rejects a PGPORT that disagrees with port", async () => {
     await expect(
       planPostgres({ type: "postgres", port: 6000, environment: { PGPORT: "6543" } }),
-    ).rejects.toThrow("Set port: 6543");
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["environment", "PGPORT"],
+          message: "PGPORT is 6543, but the service listens on 6000.",
+          suggestion: "Set port: 6543 instead; Lando sets PGPORT from port:.",
+        },
+      ],
+    });
   });
 
   test("rejects a PGPORT that is not a port number", async () => {
@@ -218,10 +238,13 @@ describe("postgres ServiceType", () => {
     const plan = await planPostgres({ type: "postgres", ports: ["127.0.0.1:15432:5432"] });
 
     expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 5432, protocol: "tcp", name: "db", primary: true },
       {
         _tag: "published",
         port: 5432,
         protocol: "tcp",
+        name: "db",
+        primary: true,
         publication: { bindAddress: "127.0.0.1", hostPort: 15432 },
       },
     ]);

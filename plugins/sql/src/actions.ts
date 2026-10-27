@@ -1,11 +1,12 @@
 import { Effect } from "effect";
 
-import { SqlCommandFailedError, type VolumeNotFoundError } from "@lando/sdk/errors";
+import type { VolumeNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type DataTransferResult,
   type DataTransferSpec,
+  type Environment,
   PortablePath,
   type PrunePolicy,
   ServiceName,
@@ -17,34 +18,34 @@ import {
   type SnapshotRestoreOptions,
   type VolumeRef,
 } from "@lando/sdk/schema";
+import type { ExecResult } from "@lando/sdk/services";
+import { checkedSqlExecution } from "./checked-execution.ts";
 
 import type { DumpCompression } from "./compression.ts";
 import { withHostDumpCompression } from "./compression.ts";
 import type { SqlCreds } from "./creds.ts";
+import { resolveSqlEnvironment } from "./environment.ts";
+import { type SqlFamily, dumpCommand, loadCommand, resetCommand } from "./families.ts";
 import {
-  type SqlFamily,
-  dumpCommand,
-  loadCommand,
   mssqlBackupCommand,
   mssqlBackupServicePath,
   mssqlPrepareBackupCommand,
   mssqlRestoreCommand,
-  resetCommand,
-} from "./families.ts";
+} from "./mssql.ts";
 import type { SqlPlan, SqlPlanService } from "./views.ts";
 import { requireDatabaseMount } from "./volume-target.ts";
 
 export type SqlExec = (
   service: string,
   command: ReadonlyArray<string>,
-  env?: Readonly<Record<string, string>>,
-) => Effect.Effect<{ readonly ok: boolean; readonly stdout: string }, unknown>;
+  env?: Environment,
+) => Effect.Effect<ExecResult, unknown>;
 
 export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
   readonly snapshot: (store: VolumeRef, opts?: SnapshotOptions) => Effect.Effect<SnapshotHandle, unknown>;
   readonly restore: (
-    id: string,
+    handle: SnapshotHandle,
     store: VolumeRef,
     opts?: SnapshotRestoreOptions,
   ) => Effect.Effect<void, unknown>;
@@ -65,22 +66,6 @@ export const requireVolume = (
     Effect.map((mount) => ({ app: AppId.make(plan.id), store: mount.store })),
   );
 
-const requireExecOk = (
-  result: { readonly ok: boolean },
-  service: string,
-  command: ReadonlyArray<string>,
-): Effect.Effect<void, SqlCommandFailedError> =>
-  result.ok
-    ? Effect.void
-    : Effect.fail(
-        new SqlCommandFailedError({
-          message: `Database command failed in ${service}.`,
-          service,
-          command,
-          remediation: "Inspect the service logs, then retry the import, export, or reset.",
-        }),
-      );
-
 export const runExport = Effect.fn("Sql.export")(function* (
   mover: SqlMover,
   exec: SqlExec,
@@ -89,7 +74,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
     readonly service: string;
     readonly family: SqlFamily;
     readonly creds: SqlCreds;
-    readonly env: Readonly<Record<string, string>>;
+    readonly env: Environment;
     readonly file: string;
     readonly compression: DumpCompression;
   },
@@ -100,15 +85,15 @@ export const runExport = Effect.fn("Sql.export")(function* (
     path: input.file,
     compression: input.compression,
     direction: "export",
-    transfer: (workingPath) => {
+    transfer: Effect.fn("Sql.export.transfer")(function* (workingPath: string) {
       const path = AbsolutePath.make(workingPath);
       if (input.family === "mssql") {
         const bak = mssqlBackupServicePath(input.creds.database);
         const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
-        return Effect.gen(function* () {
-          const prepare = mssqlPrepareBackupCommand();
-          yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
-          yield* requireExecOk(yield* exec(input.service, backup, input.env), input.service, backup);
+        return yield* Effect.gen(function* () {
+          const prepare = mssqlPrepareBackupCommand(input.creds.database);
+          yield* checkedSqlExecution(exec(input.service, prepare, input.env), { ...input, command: prepare });
+          yield* checkedSqlExecution(exec(input.service, backup, input.env), { ...input, command: backup });
           return yield* mover.transfer({
             from: {
               _tag: "servicePath",
@@ -121,18 +106,18 @@ export const runExport = Effect.fn("Sql.export")(function* (
           });
         });
       }
-      return mover.transfer({
+      return yield* mover.transfer({
         from: {
           _tag: "serviceCmd",
           app,
           service,
           command: dumpCommand(input.family, input.creds),
-          env: input.env,
+          env: yield* resolveSqlEnvironment(input.env),
         },
         to: { _tag: "hostPath", path },
         overwrite: true,
       });
-    },
+    }),
   });
 });
 
@@ -144,7 +129,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
     readonly service: string;
     readonly family: SqlFamily;
     readonly creds: SqlCreds;
-    readonly env: Readonly<Record<string, string>>;
+    readonly env: Environment;
     readonly file: string;
     readonly compression: DumpCompression;
     readonly expectedDigest?: string;
@@ -157,7 +142,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
     compression: input.compression,
     direction: "import",
     ...(input.expectedDigest === undefined ? {} : { expectedDigest: input.expectedDigest }),
-    transfer: (workingPath, stagedDigest) => {
+    transfer: Effect.fn("Sql.import.transfer")(function* (workingPath: string, stagedDigest?: string) {
       // DataMover checks the file at workingPath. Uncompressed imports keep the
       // original dump digest from ensureReadableDump; compressed imports pass
       // the staged uncompressed digest from the helper.
@@ -165,9 +150,9 @@ export const runImport = Effect.fn("Sql.import")(function* (
       const path = AbsolutePath.make(workingPath);
       if (input.family === "mssql") {
         const bak = mssqlBackupServicePath(input.creds.database);
-        return Effect.gen(function* () {
-          const prepare = mssqlPrepareBackupCommand();
-          yield* requireExecOk(yield* exec(input.service, prepare, input.env), input.service, prepare);
+        return yield* Effect.gen(function* () {
+          const prepare = mssqlPrepareBackupCommand(input.creds.database);
+          yield* checkedSqlExecution(exec(input.service, prepare, input.env), { ...input, command: prepare });
           const transfer = yield* mover.transfer({
             from: { _tag: "hostPath", path, trusted: true },
             to: {
@@ -180,23 +165,23 @@ export const runImport = Effect.fn("Sql.import")(function* (
             ...(digest === undefined ? {} : { expectedDigest: digest }),
           });
           const restore = mssqlRestoreCommand(input.creds.database, input.creds.port);
-          yield* requireExecOk(yield* exec(input.service, restore, input.env), input.service, restore);
+          yield* checkedSqlExecution(exec(input.service, restore, input.env), { ...input, command: restore });
           return transfer;
         });
       }
-      return mover.transfer({
+      return yield* mover.transfer({
         from: { _tag: "hostPath", path, trusted: true },
         to: {
           _tag: "serviceCmd",
           app,
           service,
           command: loadCommand(input.family, input.creds),
-          env: input.env,
+          env: yield* resolveSqlEnvironment(input.env),
         },
         overwrite: true,
         ...(digest === undefined ? {} : { expectedDigest: digest }),
       });
-    },
+    }),
   });
 });
 
@@ -205,12 +190,10 @@ export const runReset = Effect.fn("Sql.reset")(function* (
   service: string,
   family: SqlFamily,
   creds: SqlCreds,
-  env: Readonly<Record<string, string>>,
+  env: Environment,
 ) {
   const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
   const command = resetCommand(family, usesMysqlRoot ? { ...creds, user: "root" } : creds);
   const resetEnv = usesMysqlRoot ? { ...env, MYSQL_PWD: creds.rootPassword } : env;
-  return yield* exec(service, command, resetEnv).pipe(
-    Effect.flatMap((result) => requireExecOk(result, service, command)),
-  );
+  yield* checkedSqlExecution(exec(service, command, resetEnv), { service, command, env: resetEnv });
 });

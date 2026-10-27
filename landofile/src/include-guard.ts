@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import { isPathWithin } from "@lando/paths";
 
 import { LandofileIncludeError } from "@lando/sdk/errors";
+import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 
 export const INCLUDE_REMEDIATION =
   "Check the includes: entry and retry after the referenced Landofile fragment is available.";
@@ -21,13 +22,31 @@ export const includeError = (input: {
   readonly source: string;
   readonly kind: LandofileIncludeError["kind"];
   readonly remediation?: string;
+  readonly path?: LandofileIncludeError["path"];
 }): LandofileIncludeError =>
   new LandofileIncludeError({
     message: withoutControlBytes(input.message),
     source: withoutControlBytes(input.source),
     kind: input.kind,
     remediation: withoutControlBytes(input.remediation ?? INCLUDE_REMEDIATION),
+    path: input.path,
   });
+
+export const attributeIncludeError = <E>(
+  error: E,
+  provenance?: Partial<AuthoredOrigin>,
+): E | LandofileIncludeError =>
+  error instanceof LandofileIncludeError
+    ? new LandofileIncludeError({
+        message: error.message,
+        source: error.source,
+        kind: error.kind,
+        remediation: error.remediation,
+        path: error.path ?? provenance?.path,
+        file: error.file ?? provenance?.file,
+        layer: error.layer ?? provenance?.layer,
+      })
+    : error;
 
 export const realpathOrSelf = (path: string): Promise<string> => realpath(path).catch(() => path);
 

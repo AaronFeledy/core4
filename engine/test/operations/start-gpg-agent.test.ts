@@ -72,7 +72,7 @@ test("gpg capability-missing fails before apply", async () => {
   expect(applied).toBe(false);
 });
 
-test("gpg overlays eligible services and closes the session on use failure", async () => {
+test("gpg overlays eligible services and retains the detached session on use failure", async () => {
   // Given
   let closed = false;
   const session: AgentRelaySession = {
@@ -109,7 +109,7 @@ test("gpg overlays eligible services and closes the session on use failure", asy
     ),
   );
   // Then
-  expect(closed).toBe(true);
+  expect(closed).toBe(false);
 });
 
 test("gpg home preparation runs only when the caller invokes it after apply", async () => {
@@ -227,7 +227,7 @@ for (const exitCode of [0, 1]) {
         });
         expect(JSON.stringify(result)).not.toContain("private diagnostic");
       }
-      expect(closed).toBe(2);
+      expect(closed).toBe(0);
     }
   });
 }
@@ -245,6 +245,7 @@ const fakeWorker = (stateDir: string, terminated: { count: number }) => (spec: D
   let configDigest = "";
   return {
     pid: 4242,
+    logPath: join(stateDir, "agent-relay-worker.log"),
     argv: spec.argv,
     writeStdin: async (text: string) => {
       configDigest = JSON.parse(text).configDigest;
@@ -312,7 +313,7 @@ test("startGpgAgentSession leaves the exported keyring on disk once the worker o
   }
 });
 
-test("startGpgAgentSession terminates the worker when the keyring export fails", async () => {
+test("startGpgAgentSession retains the recorded worker when the keyring export fails", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "gpg-session-"));
   const paths = makeLandoPaths({ userDataRoot: root, platform: "linux" });
@@ -339,7 +340,7 @@ test("startGpgAgentSession terminates the worker when the keyring export fails",
       _tag: "Failure",
       failure: { _tag: "GpgAgentUnavailableError", reason: "gpg-missing" },
     });
-    expect(terminated.count).toBe(1);
+    expect(terminated.count).toBe(0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -399,7 +400,11 @@ for (const prepareExit of [0, 1]) {
               plan: selected,
               root: selected.root,
               app: { kind: "user", id: selected.id, root: selected.root },
-              landofile: { name: selected.name, services: {}, gpgAgent: { forward: true } },
+              landofile: literalTestLandofile({
+                name: selected.name,
+                services: {},
+                gpgAgent: { forward: true },
+              }),
             },
           ),
         ).pipe(
@@ -422,15 +427,15 @@ for (const prepareExit of [0, 1]) {
       // Then
       if (prepareExit === 0) {
         expect(result._tag).toBe("Success");
-        expect(calls).toEqual(["apply", "gpg-prepare", "build-app", "routes", "post-start"]);
+        expect(calls).toEqual(["apply", "gpg-prepare", "build-app", "remove-routes", "post-start"]);
         expect(closed).toBe(0);
       } else {
         expect(result).toMatchObject({
           _tag: "Failure",
           failure: { _tag: "GpgAgentTransportError", stage: "worker" },
         });
-        expect(calls).toEqual(["apply", "gpg-prepare", "destroy"]);
-        expect(closed).toBe(1);
+        expect(calls).toEqual(["apply", "gpg-prepare"]);
+        expect(closed).toBe(0);
       }
     } finally {
       gpgSession.mockRestore();
@@ -438,3 +443,4 @@ for (const prepareExit of [0, 1]) {
     }
   });
 }
+import { literalTestLandofile } from "../compiled-landofile.ts";

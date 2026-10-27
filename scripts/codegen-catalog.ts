@@ -31,11 +31,18 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    // Imports every bundled plugin, including their mutagen and PHP msmtp pins.
+    // Imports every bundled plugin, including their mutagen and PHP msmtp pins and the
+    // provider-image pins that `@lando/container-runtime` re-exports.
     // Without these edges pin generators and importers run in the same
     // wave and the import can observe the file mid-truncation (`Bun.write` is
     // not atomic), which surfaces as `JSON Parse error: Unexpected EOF`.
-    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
+    dependsOn: [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "provider-images",
+    ],
     id: "bundled-plugins",
     ownership: "derived",
     script: "build-bundled-plugins.ts",
@@ -101,7 +108,13 @@ export const CODEGEN_CATALOG = [
   },
   {
     // Also imports every bundled plugin; see `bundled-plugins`.
-    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
+    dependsOn: [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "provider-images",
+    ],
     id: "setup-plugin-flags",
     ownership: "derived",
     script: "build-setup-plugin-flags.ts",
@@ -212,6 +225,18 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "dependency-audit-workflow",
+    ownership: "committed-workflow",
+    script: "build-dependency-audit-workflow.ts",
+    workspace: "repo",
+  },
+  {
+    id: "install-lifecycle-workflow",
+    ownership: "committed-workflow",
+    script: "build-install-lifecycle-journey-workflow.ts",
+    workspace: "repo",
+  },
+  {
     id: "release-workflow",
     ownership: "committed-workflow",
     script: "build-release-workflow.ts",
@@ -227,12 +252,6 @@ export const CODEGEN_CATALOG = [
     id: "runtime-bundle-workflow",
     ownership: "committed-workflow",
     script: "build-runtime-bundle-workflow.ts",
-    workspace: "repo",
-  },
-  {
-    id: "php-base-workflow",
-    ownership: "committed-workflow",
-    script: "build-php-base-workflow.ts",
     workspace: "repo",
   },
   {

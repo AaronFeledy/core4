@@ -7,7 +7,9 @@ tags: [beta, docs, mssql, service, database]
 
 # Add SQL Server
 
-Put `type: mssql` in your services block. That shorthand is the 2022 image. It listens on `1433`, keeps data in `/var/opt/mssql`, and ships `sqlcmd` tooling:
+Use an amd64 host or a provider with architecture emulation; otherwise planning fails before the container starts. This service uses the Developer edition and sets `ACCEPT_EULA=Y`, so review the upstream license terms before starting it.
+
+Add `type: mssql` under `services` in `.lando.yml`. That shorthand is the 2022 image. It listens on `1433`, keeps data in `/var/opt/mssql`, and ships `sqlcmd` tooling:
 
 ```yaml
 name: mssql-demo
@@ -15,6 +17,32 @@ services:
   database:
     type: mssql
 ```
+
+Start the service and check the database:
+
+```sh
+lando start
+lando sqlcmd -d master -Q "SELECT name, state_desc FROM sys.databases"
+lando logs --service database
+```
+
+On the selected catalog image, Lando starts SQL Server, waits for it to accept
+connections, and creates the resolved `creds.database` if it doesn't exist. The
+default name is your app name. Every start checks again without dropping or
+replacing an existing database. Initialization failure fails startup. The
+healthcheck connects to `master` and checks that the target database is online
+and accessible, including after a restart. It never creates a database or keeps
+a target connection open.
+
+When Lando creates the database, its startup logs include a
+`lando.database.created` record naming that database. A warm startup reuses the
+database without emitting another creation record.
+
+A custom `image:`, `build:`, `command:`, or `entrypoint:` owns initialization
+instead. An explicit `image:` equal to the selected catalog image still gets
+Lando's launcher unless you override the build or process. Your custom startup
+must make the configured database available before the read-only healthcheck can
+pass.
 
 <Guide>
   <Scenario id="happy-path" render>
@@ -43,7 +71,15 @@ services:
 
 ## Set credentials
 
-Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. The image also gets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer`. Omit `rootPassword` and Lando generates one per app and service, so don't guess it. `lando info` redacts it too.
+Set `creds:` when you need explicit values. `rootPassword` becomes `SA_PASSWORD` inside the container. The login is `sa`. Lando sets `ACCEPT_EULA=Y` and `MSSQL_PID=Developer` on the image. Omit `rootPassword` and Lando generates one per app and service, so don't guess it. `lando info` redacts it too.
+
+Use `sa`; another `creds.user` fails planning rather than creating a separate login.
+`creds.password`, `creds.rootPassword`, and any authored native password aliases
+must agree. Secret references must name the same reference, without reading the
+secret during planning. The launcher and generated clients read the password from
+the runtime environment, not a password argument.
+
+Replace `ReplaceMe!2026` with a private password before using this example. SQL Server requires at least eight characters and characters from at least three categories: uppercase letters, lowercase letters, digits, and symbols. See [Microsoft's container password requirements](https://learn.microsoft.com/sql/linux/install-upgrade/quickstart-install-docker). Alternatively, omit `rootPassword` and use Lando's generated value.
 
 ```yaml
 services:
@@ -51,7 +87,7 @@ services:
     type: mssql
     creds:
       user: sa
-      rootPassword: secret
+      rootPassword: "ReplaceMe!2026"
       database: LANDO_DB
 ```
 
@@ -90,7 +126,7 @@ Other services connect to `database` on port `14330`; SQL Server tools write tha
 
 Port `1434` fails during planning. SQL Server reserves it for its dedicated admin connection, so a server listening there never becomes ready.
 
-Lando sets `MSSQL_TCP_PORT` from `port:`. An authored `MSSQL_TCP_PORT` must match the planned port, or planning fails. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor that port.
+Lando sets `MSSQL_TCP_PORT` from `port:`. An authored `MSSQL_TCP_PORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.<name>.environment.MSSQL_TCP_PORT`. An authored `command:` or `entrypoint:` owns the daemon's flags and must honor that port.
 
 Apply the change with `lando rebuild`, then connect through the generated client:
 

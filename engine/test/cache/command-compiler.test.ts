@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import { ToolingCompileError } from "@lando/sdk/errors";
-import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
+import { LandofileShape, type PluginManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import {
@@ -17,14 +18,17 @@ const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
 });
 
 describe("compileToolingCommands", () => {
-  test("indexes disabled tasks as hidden so the router can refuse them", () => {
-    // Given
-    const source = landofile({ retired: { cmd: "echo retired", disabled: true } });
-    // When
-    const entries = compileAppCommands(source, []);
-    // Then
-    expect(entries).toEqual([{ id: "app:retired", summary: "", hidden: true }]);
-  });
+  test.each([false, { cmd: "echo retired", disabled: true }])(
+    "indexes disabled task %j as hidden so the router can refuse it",
+    (task) => {
+      // Given
+      const source = Schema.decodeUnknownSync(LandofileShape)({ tooling: { retired: task } });
+      // When
+      const entries = compileAppCommands(source, []);
+      // Then
+      expect(entries).toEqual([{ id: "app:retired", summary: "", hidden: true }]);
+    },
+  );
 
   test("preserves normalized flag metadata and ordered args when input is declared", () => {
     // Given

@@ -17,7 +17,14 @@ import {
   SqlServiceAmbiguousError,
   VolumeNotFoundError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, AppId, ServiceName, SnapshotInfo } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  ServiceName,
+  SnapshotInfo,
+  appIdentityKey,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 
 import { dumpCommand, loadCommand } from "../src/families.ts";
 import { type SqlCommandDeps, dbInputFromCommand, executeDbCommand } from "../src/run.ts";
@@ -27,12 +34,16 @@ import { sourcePlan } from "./support/source-plan.ts";
 const SECRET = "s3cret-pass";
 
 const writeCompressed = async (path: string, payload: string, compression: "gzip" | "zstd") => {
-  const bytes = Buffer.from(
-    await new Response(
-      new Blob([payload]).stream().pipeThrough(new CompressionStream(compression)),
-    ).arrayBuffer(),
-  );
-  writeFileSync(path, bytes);
+  switch (compression) {
+    case "gzip":
+      writeFileSync(path, Bun.gzipSync(payload));
+      return;
+    case "zstd":
+      writeFileSync(path, Bun.zstdCompressSync(payload));
+      return;
+    default:
+      return compression satisfies never;
+  }
 };
 
 afterEach(cleanupSqlTestDeps);
@@ -69,7 +80,13 @@ describe("executeDbCommand", () => {
           inspected.push(target);
           expect(harness.countAttempts()).toBe(0);
           expect(harness.lifecycle()).toEqual([]);
-          return { app: target.app, service: target.service, providerId: source.provider, status: "running" };
+          return {
+            app: target.app,
+            service: target.service,
+            providerId: source.provider,
+            status: "running",
+            publications: { status: "unknown" as const },
+          };
         }),
     });
     // When: seeding from the applied source.
@@ -228,6 +245,7 @@ describe("executeDbCommand", () => {
                   service: target.service,
                   providerId: source.provider,
                   status: "stopped",
+                  publications: { status: "unknown" as const },
                 }),
             }
           : {}),
@@ -319,18 +337,29 @@ describe("executeDbCommand", () => {
     expect({ fromApp, fromPath }).toEqual({ fromApp: "sibling", fromPath: "/workspace/sibling" });
   });
 
-  test("lists only snapshots owned by the current canonical app root by default", async () => {
-    // Given: snapshots stored under an app id shared by more than one worktree.
-    const harness = makeSqlTestDeps({ password: SECRET });
+  test.each([false, true])(
+    "lists only the current owner with an identity-less plan: %s",
+    async (legacyPlan) => {
+      // Given: snapshots stored under an app id shared by more than one worktree.
+      const harness = makeSqlTestDeps({ password: SECRET });
+      const { identity: _identity, ...planWithoutIdentity } = harness.deps.plan;
 
-    // When: the user lists snapshots without an explicit source selector.
-    await run(harness.deps, { action: "snapshots", yes: false });
+      // When: the user lists snapshots without an explicit source selector.
+      await run(
+        { ...harness.deps, plan: legacyPlan ? planWithoutIdentity : harness.deps.plan },
+        { action: "snapshots", yes: false },
+      );
 
-    // Then: the query is constrained by planner-owned app identity.
-    expect(harness.snapshotFilters()).toEqual([
-      { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
-    ]);
-  });
+      // Then: the query is constrained by planner-owned app identity.
+      expect(harness.snapshotFilters()).toEqual([
+        {
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
+      ]);
+    },
+  );
 
   test("constrains an explicit app source to sibling worktrees in the same repository", async () => {
     // Given: an app with a proven Git repository group.
@@ -390,7 +419,7 @@ describe("executeDbCommand", () => {
     // Then: the query uses the canonical physical source root.
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(harness.snapshotFilters()).toEqual([
-      { sourceRoot: AbsolutePath.make(sibling), service: ServiceName.make("database") },
+      { ownerKey: appIdentityKey("owner", sibling), service: ServiceName.make("database") },
     ]);
   });
 
@@ -418,16 +447,16 @@ describe("executeDbCommand", () => {
   test("previews and confirms retention within the current root and service", async () => {
     // Given: two manual snapshots and an automatic recovery point for the selected database.
     const harness = makeSqlTestDeps({ password: SECRET });
+    const owner = planAppIdentity({ root: AbsolutePath.make(harness.root) });
     const snapshots = [
       SnapshotInfo.make({
         id: "manual-new",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:new",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T03:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -438,13 +467,12 @@ describe("executeDbCommand", () => {
       }),
       SnapshotInfo.make({
         id: "manual-old",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:old",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T01:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -455,13 +483,12 @@ describe("executeDbCommand", () => {
       }),
       SnapshotInfo.make({
         id: "reset-recovery",
+        owner,
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         digest: "sha256:recovery",
         sizeBytes: 12,
         createdAt: DateTime.makeUnsafe("2026-09-11T00:00:00Z"),
         metadata: {
-          sourceRoot: AbsolutePath.make(harness.root),
-          ownerKey: "owner:sql-app",
           service: ServiceName.make("database"),
           volumeInstanceId: "volume-instance:database",
           family: "mysql",
@@ -498,7 +525,11 @@ describe("executeDbCommand", () => {
     expect(confirmed.value.retentionApplied).toBe(true);
     expect(policies).toEqual([
       {
-        filter: { app: AppId.make("sql-app"), store: "sql-app_database_data", ownerKey: "owner:sql-app" },
+        filter: {
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
         keepLatest: 1,
       },
     ]);
@@ -578,7 +609,7 @@ describe("executeDbCommand", () => {
       const command = transfer.from.command;
       expect(Array.isArray(command)).toBe(true);
       if (!Array.isArray(command)) throw new Error("expected argv command");
-      expect(command[0]).toBe("sh");
+      expect(command[0]).toBe("bash");
       expect(command.join(" ")).toContain("mongodump --archive");
       expect(command.join(" ")).not.toContain("| gzip");
       expect(command.join(" ")).not.toContain("zstd");
@@ -603,7 +634,7 @@ describe("executeDbCommand", () => {
         .map(({ command }) => command)
         .slice(-2),
     ).toEqual([
-      ["mkdir", "-p", "/var/opt/mssql/backup"],
+      expect.arrayContaining(["/var/opt/mssql/backup", "/var/opt/mssql/backup/sql-app.bak"]),
       expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
     ]);
     const transfer = harness.transfers()[0];
@@ -632,7 +663,7 @@ describe("executeDbCommand", () => {
         .map(({ command }) => command)
         .slice(-2),
     ).toEqual([
-      ["mkdir", "-p", "/var/opt/mssql/backup"],
+      expect.arrayContaining(["/var/opt/mssql/backup", "/var/opt/mssql/backup/sql-app.bak"]),
       expect.arrayContaining(["/opt/mssql-tools18/bin/sqlcmd", "-C"]),
     ]);
     expect(exit.value.sizeBytes).toBe(12);
@@ -876,14 +907,14 @@ describe("executeDbCommand", () => {
     expect(transfer?.expectedDigest).toMatch(/^[a-f0-9]{64}$/u);
   });
 
-  test("treats a failed count probe as non-empty and requires confirmation", async () => {
+  test("reports a failed count before requesting import confirmation", async () => {
     const harness = makeSqlTestDeps({ password: SECRET, countFails: true });
 
     const exit = await run(harness.deps, { action: "import", file: "dump.sql", yes: false });
 
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlConfirmRequiredError);
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(SqlCommandFailedError);
     expect(harness.transfers()).toEqual([]);
   });
 
@@ -925,9 +956,9 @@ describe("executeDbCommand", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
     const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
-    expect(error).toBeInstanceOf(SqlRecoveryOperationError);
-    if (error instanceof SqlRecoveryOperationError) {
-      expect(error.cause).toBeInstanceOf(SqlCommandFailedError);
+    expect(error).toBeInstanceOf(SqlCommandFailedError);
+    if (error instanceof SqlCommandFailedError) {
+      expect(error.exitCode).toBe(1);
       expect(error.recoverySnapshotId).toMatch(/^snap-/u);
     }
   });
@@ -962,8 +993,9 @@ describe("executeDbCommand", () => {
     expect(exit.value.snapshotId).not.toBe("before-change");
     expect(harness.snapshots()[0]?.store).toBe("sql-app_database_data");
     expect(harness.snapshots()[0]?.format).toBe("tar.gz");
+    expect(harness.snapshots()[0]?.repoGroupKey).toBe("repository:sql-app");
     const metadata = harness.snapshots()[0]?.metadata;
-    expect(String(metadata?.sourceRoot)).toBe(harness.root);
+    expect(harness.snapshots()[0]?.owner.appRoot).toBe(AbsolutePath.make(harness.root));
     expect(String(metadata?.service)).toBe("database");
     expect(metadata?.volumeInstanceId).toBe("volume-instance:sql-app_database_data");
     expect(metadata?.family).toBe("mysql");
@@ -1137,6 +1169,11 @@ describe("executeDbCommand", () => {
     expect(harness.restores()).toEqual([
       {
         id: "seed-source",
+        handle: {
+          id: "seed-source",
+          ownerKey: appIdentityKey("owner", harness.root),
+          store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
+        },
         store: { app: AppId.make("sql-app"), store: "sql-app_database_data" },
         opts: { mode: "seed" },
       },
@@ -1182,11 +1219,16 @@ describe("executeDbCommand", () => {
       expect(Exit.isSuccess(exit)).toBe(true);
       expect(harness.restores()[0]).toMatchObject({ id: "source-id" });
       expect(filters).toEqual([
-        { id: "baseline" },
+        {
+          id: "baseline",
+          app: AppId.make("sql-app"),
+          store: "sql-app_database_data",
+          ownerKey: appIdentityKey("owner", harness.root),
+        },
         {
           app: AppId.make("sql-app"),
           store: "sql-app_database_data",
-          ownerKey: "owner:sql-app",
+          ownerKey: appIdentityKey("owner", harness.root),
           label: "baseline",
         },
       ]);
@@ -1262,9 +1304,9 @@ describe("executeDbCommand", () => {
       const metadata = source.metadata;
       const incompatible = {
         version: { version: "5.7" },
-        ownerKey: { ownerKey: "foreign-owner" },
+        ownerKey: {},
         imageIdentity: { imageIdentity: "foreign-image" },
-        sourceRoot: { sourceRoot: AbsolutePath.make("/foreign-root") },
+        sourceRoot: {},
         service: { service: ServiceName.make("other-service") },
         family: { family: "postgres" },
       };
@@ -1274,6 +1316,11 @@ describe("executeDbCommand", () => {
           Effect.succeed([
             {
               ...source,
+              owner: {
+                ...source.owner,
+                ...(mismatch === "ownerKey" ? { ownerKey: "foreign-owner" } : {}),
+                ...(mismatch === "sourceRoot" ? { appRoot: AbsolutePath.make("/foreign-root") } : {}),
+              },
               metadata: { ...metadata, ...incompatible[mismatch] },
             },
           ]),

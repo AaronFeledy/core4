@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
-import { AppId, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { AppId, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import type { NormalizedRoute } from "@lando/landofile/route-normalize";
@@ -56,7 +56,26 @@ const metadata: ServicePlan["metadata"] = {
 };
 
 describe("finalizeServices auto-generated hostnames", () => {
-  test("routes to the first HTTP endpoint after TCP using the configured default domain", async () => {
+  test.each(["docker", "lando"])("keeps %s HTTP endpoints internal", async (providerId) => {
+    const provider = ProviderId.make(providerId);
+    const draft = phpishDraft(undefined);
+    const result = await Effect.runPromise(
+      finalizeServices({
+        plannedServiceDrafts: [{ ...draft, draft: { ...draft.draft, provider } }],
+        appId: AppId.make(APP_SLUG),
+        appRoot: APP_ROOT,
+        appSlug: APP_SLUG,
+        defaultDomain: DEFAULT_DOMAIN,
+        provider,
+        providerCapabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
+        metadata,
+        fileSyncEngineId: undefined,
+      }),
+    );
+    const service = Schema.decodeUnknownSync(ServicePlan)(result.services.appserver);
+    expect(service.endpoints).toEqual([HTTP_ENDPOINT]);
+  });
+  test("routes to the marked HTTP primary after TCP using the configured default domain", async () => {
     // Given
     const draft = phpishDraft(undefined);
     const plannedServiceDraft: PlannedServiceDraft = {
@@ -65,8 +84,8 @@ describe("finalizeServices auto-generated hostnames", () => {
         ...draft.draft,
         endpoints: [
           { _tag: "internal", protocol: "tcp", port: 1025, name: "smtp" },
-          { _tag: "internal", protocol: "http", port: 8025, name: "ui" },
           { _tag: "internal", protocol: "http", port: 8080, name: "secondary" },
+          { _tag: "internal", protocol: "http", port: 8025, name: "ui", primary: true },
         ],
       },
     };

@@ -147,10 +147,10 @@ describe("Landofile package seam", () => {
     expect(shimSource).not.toMatch(/from "@lando\/sdk\/landofile"/u);
   });
 
-  test("keeps the core serializer entry point export-identical to the sdk source", async () => {
+  test("keeps the core serializer entry point export-identical to its canonical source", async () => {
     // Given / When
     const coreModule: unknown = await import("@lando/core/landofile");
-    const sdkModule: unknown = await import("@lando/sdk/landofile");
+    const sdkModule: unknown = await import("@lando/landofile/serializer");
 
     // Then
     if (!Predicate.isObject(coreModule) || !Predicate.isObject(sdkModule)) {
@@ -160,6 +160,7 @@ describe("Landofile package seam", () => {
     expect(Object.keys(coreModule).sort()).toEqual(
       [
         "ComposeDispositionMatrixError",
+        "GENERIC_FLOW_MAPPING_REMEDIATION",
         "LANDOFILE_LAYER_ORDER",
         "LANDOFILE_LEADING_COMMENT_BLOCKS",
         "LANDOFILE_MERGE_DIRECTIVE",
@@ -169,6 +170,7 @@ describe("Landofile package seam", () => {
         "LandofileReset",
         "assertLayerMergeCompleteness",
         "compareKeyPaths",
+        "compiledLandofileSource",
         "composeServiceDispositions",
         "composeTagDispositions",
         "composeTopLevelDispositions",
@@ -176,9 +178,13 @@ describe("Landofile package seam", () => {
         "decodeLandofileAuthoringLayer",
         "decodeLandofileLayer",
         "detectLandofileTags",
+        "directivePathProblem",
+        "emitCompiledLandofileYaml",
         "emitLandofileYaml",
         "emitLandofileYamlEither",
+        "encodeLandofileSourceValue",
         "expandRouteSchemes",
+        "flowMappingRemediation",
         "isLandofileOverride",
         "isLandofileReset",
         "isLegacyTagged",
@@ -188,6 +194,7 @@ describe("Landofile package seam", () => {
         "listLayerMergeRules",
         "mergeLandofiles",
         "mergeValues",
+        "mergeValuesWithOrigins",
         "override",
         "parseLandofile",
         "parseLegacyLandofile",
@@ -204,6 +211,8 @@ describe("Landofile package seam", () => {
         "splitComposeCommand",
         "validateConfigTranslateInput",
         "validateConfigTranslateResult",
+        "valueOriginAt",
+        "withValueOrigins",
       ].sort(),
     );
   });

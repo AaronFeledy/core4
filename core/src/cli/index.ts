@@ -9,6 +9,8 @@ import type { RunCliOptions } from "./run";
 export type { RunCliOptions } from "./run";
 
 export const runCli = async (options: RunCliOptions): Promise<void> => {
+  if (options.signal?.aborted) return;
   const cli = await import("./run");
+  if (options.signal?.aborted) return;
   await cli.runCli(options);
 };

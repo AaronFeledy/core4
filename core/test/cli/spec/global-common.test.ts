@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, AppId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type ServiceConnection, type StartedService } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import {
   availableGlobalServiceList,
@@ -78,7 +78,7 @@ test.each([
     services: {},
     withRemediation: true,
     message: "meta:global:start: service nope is not in the global app plan.",
-    remediation: undefined,
+    remediation: "Add service nope to the Landofile, or pick an existing service name.",
   },
   {
     services,
@@ -90,7 +90,7 @@ test.each([
     services,
     withRemediation: false,
     message: "meta:global:info: service nope is not in the global app plan (available: mail, proxy).",
-    remediation: undefined,
+    remediation: "Use one of the available services (mail, proxy).",
   },
 ])("preserves the error fields with remediation=$withRemediation", (fixture) => {
   const commandId = fixture.withRemediation ? "meta:global:start" : "meta:global:info";
@@ -104,7 +104,7 @@ test.each([
   expect(result.tool).toBe(commandId);
   expect(result.message).toBe(fixture.message);
   expect(result.remediation).toBe(fixture.remediation);
-  expect(Object.hasOwn(result, "remediation")).toBe(fixture.remediation !== undefined);
+  expect(result.remediation.trim().length).toBeGreaterThan(0);
 });
 
 test.each([
@@ -150,10 +150,40 @@ test("rejects the first unknown requested name before dependency expansion", asy
 });
 
 test.each([
-  { endpoints: [], expected: "web (running) no endpoints" },
-  { endpoints: ["https://a", "https://b"], expected: "web (running) https://a, https://b" },
-])("renders endpoints when the service has $endpoints", ({ endpoints, expected }) => {
-  const service = { name: "web", state: "running", endpoints };
+  { endpoints: [], internal: [], expected: "web (running) no endpoints" },
+  {
+    endpoints: ["https://a", "https://b"],
+    internal: [],
+    expected: "web (running) Host: https://a, https://b",
+  },
+  { endpoints: [], internal: ["tcp://web:1025"], expected: "web (running) App Network: tcp://web:1025" },
+  {
+    endpoints: ["https://a"],
+    internal: ["http://web:8025"],
+    expected: "web (running) Host: https://a App Network: http://web:8025",
+  },
+])("renders host $endpoints and app-network $internal addresses", ({ endpoints, internal, expected }) => {
+  const connection = (url: string, scope: "host" | "app"): ServiceConnection => ({
+    ...(scope === "host"
+      ? ({ scope: "host", source: "publication" } as const)
+      : ({ scope: "app", source: "listener" } as const)),
+    binding: "assigned",
+    state: "active",
+    url,
+    protocol: "http",
+    host: "web",
+    port: 80,
+    alternateUrls: [],
+    endpoint: { port: 80, transport: "tcp", names: [], primary: false },
+  });
+  const service: StartedService = {
+    name: "web",
+    state: "running",
+    connections: [
+      ...endpoints.map((url) => connection(url, "host")),
+      ...internal.map((url) => connection(url, "app")),
+    ],
+  };
   const result = renderGlobalServiceRow(service);
   expect(result).toBe(expected);
 });

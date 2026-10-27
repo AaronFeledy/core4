@@ -144,7 +144,7 @@ const pendingHarness = Effect.fnUntraced(function* (phase: (typeof phases)[numbe
 });
 
 test.each([...phases])(
-  "first interrupted %s attempt resumes the same sessions and attempt",
+  "unfinished %s attempt resumes the same sessions, including stop/manual-removal leftovers",
   async (phase) => {
     // Given a first unfinished attempt with durable session history.
     const harness = await Effect.runPromise(pendingHarness(phase));
@@ -302,7 +302,7 @@ test.each(phases.flatMap((phase) => (["owned", "absent"] as const).map((evidence
       }),
     );
     const result = await Effect.runPromiseExit(
-      stopApp({}, { ...target, landofile: { name: "test-start", services: {} } }).pipe(
+      stopApp({}, { ...target, landofile: literalTestLandofile({ name: "test-start", services: {} }) }).pipe(
         Effect.provide(harness.layer),
       ),
     );
@@ -327,7 +327,7 @@ test.each(["preparing", "sessions-ready"] as const)(
   },
 );
 
-test("failed provider apply drains its lease and the next start resumes the same history", async () => {
+test("failed provider apply retains sessions and the next start resumes the same history", async () => {
   // Given a provider that fails its first apply after sessions are ready.
   let first = true;
   const harness = await Effect.runPromise(
@@ -343,6 +343,7 @@ test("failed provider apply drains its lease and the next start resumes the same
                   providerId: "lando",
                   operation: "apply",
                   message: "apply failed",
+                  remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
                 }),
               );
             }
@@ -353,13 +354,14 @@ test("failed provider apply drains its lease and the next start resumes the same
   );
   const failed = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
   expect(Exit.isFailure(failed)).toBe(true);
-  expect(harness.calls).toContain("drain");
+  expect(harness.calls).not.toContain("drain");
   const before = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  // When start retries after app-wide rollback.
+  // When start retries the retained attempt.
   const result = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
-  // Then history survives the compensation and the same attempt completes.
+  // Then history survives and the same attempt completes.
   expect(Exit.isSuccess(result)).toBe(true);
   const after = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
   expect(after.pending).toMatchObject({ attemptId: before.pending?.attemptId, phase: "completed" });
   expect(harness.calls.filter((call) => /^(create|terminate):/.test(call))).toEqual([]);
 });
+import { literalTestLandofile } from "../compiled-landofile.ts";

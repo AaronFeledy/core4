@@ -18,13 +18,19 @@ const withApp = async <A>(files: Readonly<Record<string, string>>, run: (appRoot
   }
 };
 
-const failureMessage = (exit: Exit.Exit<unknown, unknown>): string => {
-  if (!Exit.isFailure(exit)) return "";
+const failureValue = (exit: Exit.Exit<unknown, unknown>): unknown => {
+  if (!Exit.isFailure(exit)) throw new TypeError("Expected failure");
   const failure = Cause.findErrorOption(exit.cause);
-  return Option.isSome(failure) ? String((failure.value as { message?: unknown }).message ?? "") : "";
+  return Option.getOrThrow(failure);
+};
+const failureMessage = (exit: Exit.Exit<unknown, unknown>): string => {
+  const failure = failureValue(exit);
+  if (!(failure instanceof Error)) throw new TypeError("Expected error");
+  return failure.message;
 };
 
-const load = (appRoot: string) => loadLandofileLayers(appRoot, join(appRoot, ".lando.yml"));
+const load = (appRoot: string) =>
+  loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")).pipe(Effect.map((compiled) => compiled.document));
 
 const withEnv = async <A>(entries: Readonly<Record<string, string | undefined>>, run: () => Promise<A>) => {
   const previous = Object.fromEntries(Object.keys(entries).map((key) => [key, process.env[key]]));
@@ -61,7 +67,7 @@ describe("recipe option expressions in a loaded Landofile", () => {
   test.each([
     'environment:\n      FOO: "{{ env.LANDO_QA_LITERAL }}"',
     'environment: "{{ { FOO: env.LANDO_QA_LITERAL } }}"',
-  ])("escapes load-produced text before decoding %s", async (field) => {
+  ])("preserves load-produced literal text when decoding %s", async (field) => {
     // Given
     await withEnv({ LANDO_QA_LITERAL: " {{ app.name }} ${VALUE}" }, () =>
       withApp(
@@ -73,14 +79,14 @@ describe("recipe option expressions in a loaded Landofile", () => {
           const loaded = await Effect.runPromise(load(root));
           // Then
           expect(loaded.services?.[ServiceName.make("web")]?.environment?.FOO).toBe(
-            " {{{{ app.name }} $${VALUE}",
+            " {{ app.name }} ${VALUE}",
           );
         },
       ),
     );
   });
 
-  test("escapes strings recursively inside load-produced objects and arrays", async () => {
+  test("preserves literal strings inside load-produced objects and arrays", async () => {
     // Given
     await withEnv({ LANDO_QA_LITERAL: "{{ app.name }}", LANDO_QA_SHELL: "${VALUE}" }, () =>
       withApp(
@@ -92,7 +98,7 @@ describe("recipe option expressions in a loaded Landofile", () => {
           // When
           const loaded = await Effect.runPromise(load(root));
           // Then
-          expect(loaded["x-produced"]).toEqual({ nested: { values: ["{{{{ app.name }}", "${VALUE}"] } });
+          expect(loaded["x-produced"]).toEqual({ nested: { values: ["{{ app.name }}", "${VALUE}"] } });
         },
       ),
     );
@@ -168,7 +174,7 @@ describe("recipe option expressions in a loaded Landofile", () => {
         // When
         const result = await Effect.runPromise(loadLandofileFile(join(root, ".lando.yml")));
         // Then
-        expect(result.router?.httpPort).toBe(8088);
+        expect(result.document.router?.httpPort).toBe(8088);
       },
     );
   });
@@ -223,6 +229,18 @@ describe("recipe option expressions in a loaded Landofile", () => {
         const result = await Effect.runPromise(load(root).pipe(Effect.result));
         // Then
         expect(result._tag).toBe("Failure");
+        if (field.includes("LANDO_TYPED_MISSING")) {
+          expect(result).toMatchObject({
+            _tag: "Failure",
+            failure: {
+              _tag: "ConfigExpressionError",
+              filePath: join(root, ".lando.base.yml"),
+              path: "services.web.primary",
+              expression: "{{ env.LANDO_TYPED_MISSING }}",
+            },
+          });
+          return;
+        }
         if (result._tag !== "Failure" || result.failure._tag !== "LandofileValidationError")
           throw new Error("Expected validation failure");
         expect(result.failure.file).toBe(join(root, ".lando.base.yml"));
@@ -333,8 +351,12 @@ describe("recipe option expressions in a loaded Landofile", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("services.appserver.type");
-        expect(failureMessage(exit)).toContain("recipe option the Landofile does not set");
+        expect(failureValue(exit)).toMatchObject({
+          _tag: "ConfigExpressionError",
+          path: "services.appserver.type",
+          filePath: join(appRoot, ".lando.yml"),
+          expression: "php:{{ recipe.missing }}",
+        });
       },
     );
   });
@@ -358,7 +380,11 @@ describe("recipe option expressions in a loaded Landofile", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("services.appserver.type");
+        expect(failureValue(exit)).toMatchObject({
+          _tag: "ConfigExpressionError",
+          path: "services.appserver.type",
+          filePath: join(appRoot, ".lando.yml"),
+        });
         expect(failureMessage(exit)).toContain("records no recipe options");
       },
     );
@@ -467,7 +493,12 @@ describe("env expressions in a loaded Landofile", () => {
 
           // Then
           expect(Exit.isFailure(exit)).toBe(true);
-          expect(failureMessage(exit)).toContain("services.web.image");
+          expect(failureValue(exit)).toMatchObject({
+            _tag: "ConfigExpressionError",
+            path: "services.web.image",
+            filePath: join(appRoot, ".lando.yml"),
+            expression: "node:{{ env.LANDO_MISSING_FIXTURE }}",
+          });
         },
       );
     });
@@ -491,8 +522,13 @@ describe("env expressions in a loaded Landofile", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("services.web.image");
-        expect(failureMessage(exit)).toContain("load-time expression budget");
+        expect(failureValue(exit)).toMatchObject({
+          _tag: "ConfigExpressionError",
+          path: "services.web.image",
+          filePath: join(appRoot, ".lando.yml"),
+          expression: "{{ range(0, 50000) }}",
+        });
+        expect(failureMessage(exit)).toContain("maxCollectionSize");
       },
     );
   });
@@ -636,8 +672,11 @@ describe("shell parameter text alongside deferred-scope expressions", () => {
 
         // Then
         expect(Exit.isFailure(exit)).toBe(true);
-        expect(failureMessage(exit)).toContain("tooling.scaffold.cmd");
-        expect(failureMessage(exit)).toContain("recipe option the Landofile does not set");
+        expect(failureValue(exit)).toMatchObject({
+          _tag: "ConfigExpressionError",
+          path: "tooling.scaffold.cmd",
+          filePath: join(appRoot, ".lando.yml"),
+        });
       },
     );
   });

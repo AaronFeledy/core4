@@ -10,7 +10,7 @@ import { makeSocketHttpClient, socketHttpConnection } from "../src/transport.ts"
 
 test("preserves stdout and exit zero when the attach socket resets in the response tick", async () => {
   // Given
-  const ctx = { providerId: "lando", remediation: "Run lando doctor." } as const;
+  const ctx = { providerId: "lando", remediation: "Run lando doctor.", env: {} } as const;
   const app = AppId.make("attach-reset");
   const service = ServiceName.make("app");
   const provider = ProviderId.make("lando");
@@ -27,7 +27,6 @@ test("preserves stdout and exit zero when the attach socket resets in the respon
     provider,
     metadata,
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     extensions: {},

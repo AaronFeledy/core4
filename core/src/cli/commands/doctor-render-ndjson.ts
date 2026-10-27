@@ -30,6 +30,7 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "bundleVersion",
   "engineVersion",
   "execUmask",
+  "effectiveExecUmask",
   "compensating",
   "probeStatus",
   "platform",

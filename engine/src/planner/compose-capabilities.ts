@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { CapabilityError } from "@lando/sdk/errors";
-import type { AppPlan, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import type { AppPlan, ProviderCapabilities, ProviderId, ServicePlan } from "@lando/sdk/schema";
 
 import { collectComposeKnobs, findUnsupportedComposeKnob } from "../services/compose-knobs.ts";
 import {
@@ -16,6 +16,8 @@ import {
   collectComposeServiceFields,
   findUnsupportedComposeServiceField,
 } from "../services/compose-service-fields.ts";
+
+type ComposeServices = Readonly<Record<string, Pick<ServicePlan, "name" | "extensions">>>;
 
 export const missingCapability = (
   providerId: ProviderId,
@@ -33,10 +35,33 @@ export const missingCapability = (
     remediation,
   });
 
+export const assertAuthoredNetworksSupported = (
+  providerId: ProviderId,
+  capabilities: ProviderCapabilities,
+  networking: AppPlan["networking"],
+): Effect.Effect<void, CapabilityError> => {
+  if (
+    capabilities.authoredNetworks === true ||
+    ((networking?.authoredNetworks?.length ?? 0) === 0 && networking?.perAppBridge?.aliases === undefined)
+  )
+    return Effect.void;
+  return Effect.fail(
+    new CapabilityError({
+      message: `Provider ${providerId} does not support authored networks or network aliases.`,
+      feature: "authored networks",
+      capability: "authoredNetworks",
+      providerId: String(providerId),
+      key: "networks",
+      remediation:
+        "Remove authored networks and network aliases, or choose a provider that supports authoredNetworks.",
+    }),
+  );
+};
+
 export const assertComposeKnobsSupported = (
   providerId: ProviderId,
   capabilities: ProviderCapabilities,
-  services: AppPlan["services"],
+  services: ComposeServices,
 ): Effect.Effect<void, CapabilityError> => {
   const unsupported = findUnsupportedComposeKnob(collectComposeKnobs(services), capabilities);
   if (unsupported === undefined) return Effect.void;
@@ -56,7 +81,7 @@ export const assertComposeKnobsSupported = (
 export const assertComposeServiceFieldsSupported = (
   providerId: ProviderId,
   capabilities: ProviderCapabilities,
-  services: AppPlan["services"],
+  services: ComposeServices,
 ): Effect.Effect<void, CapabilityError> => {
   const use = findUnsupportedComposeServiceField(collectComposeServiceFields(services), capabilities);
   if (use === undefined) return Effect.void;
@@ -95,7 +120,7 @@ export const assertComposeProjectFieldsSupported = (
 export const assertComposePreservedPathsSupported = (
   providerId: ProviderId,
   capabilities: ProviderCapabilities,
-  services: AppPlan["services"],
+  services: ComposeServices,
 ): Effect.Effect<void, CapabilityError> => {
   const use = findUnsupportedComposePreservedPath(collectComposePreservedPaths(services), capabilities);
   if (use === undefined) return Effect.void;

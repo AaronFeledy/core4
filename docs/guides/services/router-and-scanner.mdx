@@ -7,7 +7,7 @@ tags: [beta, docs, services, router, scanner]
 
 # Turn the router off and tune the post-start URL scanner
 
-Lando starts a shared router for every app and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. Both behaviors have knobs. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
+Lando starts a shared router for every app that has routes and, once the app is up, probes each published HTTP and HTTPS URL to make sure something answers. You can configure these behaviors separately. Turn the router off when you only want host ports, and tune or disable the scanner per service when the default probe doesn't fit.
 
 ```yaml
 name: router-and-scanner-demo
@@ -24,7 +24,7 @@ proxy:
     - web.router-and-scanner-demo.lndo.site
 ```
 
-Check it, then start:
+Save the example in `.lando.yml`, then run these commands from the app directory:
 
 ```sh
 lando app:config:lint
@@ -32,7 +32,7 @@ lando start
 lando info
 ```
 
-With `router.enabled: false`, `lando info` lists only the endpoints `web` publishes on host ports. The `web.router-and-scanner-demo.lndo.site` route stays in the Landofile, but nobody serves it until you flip the router back on.
+With `router.enabled: false`, the Host connections `lando info` prints for `web` are the host ports it publishes, and its App Network address, `http://web:80`, is still listed for other services in the app. The `web.router-and-scanner-demo.lndo.site` route stays in the Landofile and still appears as a route connection, marked inactive and not published, with no hyperlink. Lando does not publish it while the router is off.
 
 ## Turn the router off
 
@@ -41,7 +41,7 @@ router:
   enabled: false
 ```
 
-When the router is off, Lando skips two things at start: it doesn't launch the shared router, and it doesn't hand the app's routes to it. Everything else runs as usual. Services still get their host ports, `lando ssh` and `lando exec` still work, and `lando info` still prints the endpoints that exist. What you lose is the `*.lndo.site` hostnames.
+When the router is off, Lando skips two things at start: it doesn't launch the shared router, and it doesn't hand the app's routes to it. Everything else runs as usual. Services still get their host ports, `lando ssh` and `lando exec` still work, and `lando info` still prints the host ports and App Network addresses that exist. What you lose is the `*.lndo.site` hostnames: their route connections stay listed so you can see what is configured, but they are inactive and nobody serves them.
 
 `lando open` and `lando share` follow the same rule. Neither hands you a hostname nobody serves: they reach for a published host port instead, and when there is nothing left to reach, `lando open` says the router is off rather than telling you to declare the route you already declared.
 
@@ -52,7 +52,7 @@ The rest of the `router:` block works the same whether or not you touch `enabled
 | Key | What it does |
 | --- | --- |
 | `enabled` | Start the shared router and publish this app's routes. Default `true`. |
-| `bindAddress` | Host address the router listens on. |
+| `bindAddress` | Host address the router listens on. Global-only (`config.yml` or `LANDO_ROUTER_BIND_ADDRESS`); a Landofile value is ignored and lint warns. |
 | `httpPort` | Host port for plain HTTP. |
 | `httpsPort` | Host port for HTTPS. |
 | `httpFallbacks` | Extra HTTP ports to try when `httpPort` is taken. |
@@ -95,6 +95,8 @@ The value resolves through normal config precedence. Last one wins:
 
 So a global `router.enabled: false` turns the router off for every app on the machine, and a single app can opt back in with `router.enabled: true` in its own Landofile. The reverse works too: leave the global default alone and disable the router for the one app that doesn't want it.
 
+You don't need any of that for an app with no routes. A database-only, worker, or build app never starts the router, and its `lando start` only withdraws routes it published earlier.
+
 ## Tune the scanner per service
 
 Once the app is up, `lando start` checks every HTTP and HTTPS URL each service publishes before returning. Rows say what your app or web server returned. Your app's own answer isn't a Lando warning; only Lando-side problems enter command warnings. A failed check doesn't fail `lando start`. Cancelling during the check still interrupts start and closes its in-flight requests.
@@ -108,7 +110,7 @@ The tree finishes with the number of URLs that answered, or counts of errors and
 Full `lando restart` and `lando rebuild` show the same scan progress. Services with
 `scanner: false` get no scan row, and an app with no scan targets gets no empty tree.
 
-The scanner skips `tcp://`, `udp://`, and database endpoints; `lando info` still lists them. A Compose port mapping such as `9080:9080` describes the transport, not the application protocol. If you know that port serves HTTP, check it directly:
+The scanner skips `tcp://`, `udp://`, and database connections; `lando info` still lists them. A Compose port mapping such as `9080:9080` describes the transport, not the application protocol, so Lando reports it as `tcp` rather than guessing HTTP. If you know that port serves HTTP, declare it with `protocol: http` in an explicit `endpoints:` entry so the scanner and `lando open` pick it up, or check it directly:
 
 ```sh
 curl --fail http://localhost:9080/
@@ -130,7 +132,7 @@ services:
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `path` | `/` | Path appended to each published URL before probing. |
+| `path` | `/` | Path appended to each scanned URL before probing. A route's own `pathPrefix` stays in front of it. |
 | `okCodes` | none | Extra HTTP statuses to accept beyond 2xx. Handy for a `301` on `/` or a `401` behind basic auth. |
 | `retries` | `2` | Retries after the first attempt, so the default is three tries. |
 | `timeout` | `20000` | Deadline in milliseconds for the whole probe of one URL, retries included. |
@@ -162,7 +164,7 @@ Skip every service on this machine by setting the same key in your global config
 scanner: false
 ```
 
-Per-service `scanner:` settings override the global one. A global `false` turns scanning off unless a service authors an object to opt back in. Pick this for a service that has no HTTP surface worth probing, or for a machine where the first request always takes longer than any sane timeout.
+Per-service `scanner:` settings override the global one. A global `false` turns scanning off unless a service authors an object to opt back in. Pick this for a service that has no HTTP surface worth probing, or when you deliberately want to skip the post-start HTTP check.
 
 <Guide>
   <Scenario id="router-disabled" render>
@@ -203,9 +205,9 @@ Per-service `scanner:` settings override the global one. A global `false` turns 
       <UseFixture name="router-and-scanner-invalid" />
     </Step>
     <Step name="lint-invalid-retries">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"scanner\",\\s*\"retries\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"scanner\",\\s*\"retries\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />

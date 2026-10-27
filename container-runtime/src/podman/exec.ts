@@ -26,7 +26,7 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
-import { httpResponseDetails, redactDetails } from "../redact.ts";
+import { httpResponseDetails, redactDetails, redactorFor } from "../redact.ts";
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "../streams.ts";
 import { ContainerTransportError } from "../transport.ts";
 import {
@@ -92,7 +92,9 @@ const execFailure = (
     operation: "exec",
     service: session.service.name,
     message: failure.message,
-    details: redactDetails(failure.details),
+    details: redactDetails(failure.details, redactorFor(session.ctx)),
+    remediation:
+      "Confirm the target service is running and the exec command is valid inside that container, then retry.",
   });
 
 const execStartHttpStatus = (error: ExecError): number | undefined => {
@@ -674,7 +676,10 @@ export const execStream = (
         ).pipe(Stream.flatMap((startWithExit) => startWithExit));
       }),
     );
-  }).pipe(Stream.withSpan("RuntimeProvider.execStream"));
+  }).pipe(
+    Stream.interruptWhen(interruptOnSignal(command.signal)),
+    Stream.withSpan("RuntimeProvider.execStream"),
+  );
 
 export const exec = Effect.fn("RuntimeProvider.exec")(function* (
   plan: AppPlan,

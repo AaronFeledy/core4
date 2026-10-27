@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
+import { homeStoreName } from "../../src/planner/home.ts";
 
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -74,7 +75,9 @@ describe("build step user identity", () => {
     const after = await Effect.runPromise(
       buildKeyForService(provider, {
         ...service,
-        storage: [{ store: "lando-app-web-home", target: PortablePath.make("/root"), readOnly: false }],
+        storage: [
+          { store: homeStoreName("app", "web", "root"), target: PortablePath.make("/root"), readOnly: false },
+        ],
       }),
     );
     // Then
@@ -134,7 +137,9 @@ describe("appBuildKeyForStep user identity", () => {
       ...input,
       service: {
         ...service,
-        storage: [{ store: "lando-app-web-home", target: PortablePath.make("/root"), readOnly: false }],
+        storage: [
+          { store: homeStoreName("app", "web", "root"), target: PortablePath.make("/root"), readOnly: false },
+        ],
       },
     });
     // Then

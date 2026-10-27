@@ -1,6 +1,13 @@
 # Start a Laravel app
 
-`lando init --recipe laravel` scaffolds PHP, Composer, Node 22, MariaDB or PostgreSQL, Redis, Artisan, npm, and an optional queue worker.
+Create a Laravel development stack with PHP, Composer, Node 22, MariaDB or
+PostgreSQL, Redis, and an optional queue worker. The recipe adds Artisan and
+npm tooling, but writes a Landofile rather than a Laravel application.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe laravel --name=my-laravel-app --yes
@@ -9,21 +16,12 @@ lando start
 lando info
 ```
 
-The named init creates `my-laravel-app/`. Change into it before app commands. `--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
-
-```sh
-lando init --recipe laravel --name=my-laravel-app --yes \
-  --answer=php=8.1 \
-  --answer=database=postgres:16 \
-  --answer=composer=2.7.7 \
-  --answer=webroot=public \
-  --answer=worker=true
-```
-
-`lando start` prints the app URL. `lando info` repeats it.
+The named init creates `my-laravel-app/`. Change into it before app commands. `lando start` prints the app URL. `lando info` repeats it.
 
 The recipe writes a Landofile, not a Laravel application. For a new app, create
-Laravel in `tmp-app` because `.lando.yml` makes the root nonempty:
+Laravel in `tmp-app` because `.lando.yml` makes the root nonempty. Use the
+following copy step only for a new app: it copies files into the app root and
+removes `tmp-app` afterward. Existing files with matching names can be replaced:
 
 ```sh
 lando composer create-project laravel/laravel tmp-app --prefer-dist --no-interaction
@@ -53,7 +51,23 @@ The worker uses `restart: unless-stopped`. Before Laravel and its dependencies a
 lando logs --service=worker
 ```
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+## Choose stack options
+
+`--yes` uses PHP 8.4, MariaDB 11.4, Composer 2, webroot `public`, and no worker. Pass `--answer` to change those. PHP 8.6 is a valid `--answer=php=8.6`.
+
+To choose a different stack, use this initialization command instead of the
+default one above. Run it from the parent directory, not inside the app:
+
+```sh
+lando init --recipe laravel --name=my-laravel-app --yes \
+  --answer=php=8.1 \
+  --answer=database=postgres:16 \
+  --answer=composer=2.7.7 \
+  --answer=webroot=public \
+  --answer=worker=true
+```
+
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/recipes/laravel-workflow/).
 

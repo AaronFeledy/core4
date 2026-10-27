@@ -18,18 +18,6 @@ const applyMailpitFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? MAILPIT_IMAGE });
   ctx.addEnv("MP_SMTP_BIND_ADDR", `0.0.0.0:${smtpPort}`);
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(smtpPort),
-    protocol: "tcp",
-    name: "smtp",
-  });
-  ctx.addEndpoint({
-    _tag: "internal",
-    port: Schema.decodeUnknownSync(PortNumber)(MAILPIT_WEB_PORT),
-    protocol: "http",
-    name: "ui",
-  });
   ctx.setHealthcheck(commandHealthcheck(["/mailpit", "readyz"], 15));
 
   applyAuthoredProcessFields(ctx);
@@ -39,6 +27,25 @@ export const mailpitServiceFeature: ServiceFeatureDefinition = {
   id: MAILPIT_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() => {
+      const smtpPort = ctx.normalizedConfig.port ?? MAILPIT_SMTP_PORT;
+      return [
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(smtpPort),
+          protocol: "tcp" as const,
+          name: "smtp",
+          primary: true as const,
+        },
+        {
+          _tag: "internal" as const,
+          port: Schema.decodeUnknownSync(PortNumber)(MAILPIT_WEB_PORT),
+          protocol: "http" as const,
+          name: "ui",
+        },
+      ];
+    }),
   apply: serviceFeatureApply(
     MAILPIT_FEATURE_ID,
     "mailpit service feature failed to apply",
@@ -70,8 +77,17 @@ export const mailpitServiceType: ServiceType = {
         () =>
           new ServiceTypeError({
             serviceType: "mailpit",
+            issues: [
+              {
+                path: [],
+                message:
+                  "Mailpit service names must start with a letter, digit, or underscore and contain only letters, digits, underscores, dots, or hyphens.",
+              },
+            ],
             message:
               "Mailpit service names must start with a letter, digit, or underscore and contain only letters, digits, underscores, dots, or hyphens.",
+            remediation:
+              "Rename the mailpit service so it starts with a letter, digit, or underscore and uses only letters, digits, underscores, dots, or hyphens.",
           }),
       ),
     ),

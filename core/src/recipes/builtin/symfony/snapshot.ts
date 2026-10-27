@@ -5,7 +5,7 @@ import { recipeSnapshotYaml } from "../snapshot-yaml.ts";
 
 export const SYMFONY_RECIPE_VERSION = "0.1.0";
 export const SYMFONY_CONTENT_DIGEST =
-  "sha256:0d6606fdae30b856e52b9883f03c13a6fb9355e76bd52b0784e3977d6871e49e";
+  "sha256:dc9cff41cf8b7d8f281589526f9b29bafba22c5f0dc0ef6c2ed94275407bcbae";
 export const symfonyProducer: RecipeProducer = {
   sourceKind: "bundled",
   packageName: "@lando/recipe-symfony",
@@ -56,10 +56,10 @@ export const symfonySnapshot: RecipeSnapshot = {
                         lit("mariadb:11.4"),
                       ),
                       lit(
-                        "mysql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:3306/{{ services.database.creds.database }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
+                        "mysql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=11.4.0-MariaDB&charset=utf8mb4",
                       ),
                       lit(
-                        "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}?serverVersion=16&charset=utf8",
+                        "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8",
                       ),
                     ),
                   ],

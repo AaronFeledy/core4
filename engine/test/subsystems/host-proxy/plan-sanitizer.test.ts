@@ -14,7 +14,7 @@ import { AppPlanSanitizer } from "@lando/sdk/services";
 
 import * as AppPlanSanitizerLayer from "../../../src/subsystems/host-proxy/plan-sanitizer-live.ts";
 import {
-  HOST_PROXY_CONTAINER_SHIM,
+  HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   stripHostProxyRunLando,
 } from "../../../src/subsystems/host-proxy/transport-feature.ts";
@@ -29,6 +29,7 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
   const service = {
     name: ServiceName.make("web"),
     type: "lando",
+    serviceTypeId: "derived-web",
     provider: ProviderId.make("lando"),
     primary: true,
     artifact: { kind: "ref", ref: "node:22-alpine" },
@@ -39,10 +40,17 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
       LANDO_HOST_PROXY_SESSION: "session-id",
     },
     mounts: [
+      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
+        type: "bind" as const,
+        source: "/tmp/lando-shim",
+        target: PortablePath.make(target),
+        readOnly: true,
+        realization: "passthrough" as const,
+      })),
       {
         type: "bind",
         source: "/tmp/lando-shim",
-        target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
+        target: PortablePath.make(HOST_PROXY_CONTAINER_LANDO),
         readOnly: true,
         realization: "passthrough",
       },
@@ -73,7 +81,6 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -90,6 +97,16 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
 
   // Then
   expect(sanitized).toEqual(stripHostProxyRunLando(fixturePlan));
+  expect(sanitized.services[service.name]?.serviceTypeId).toBe("derived-web");
+  expect(sanitized.services[service.name]?.mounts).toEqual([
+    {
+      type: "volume",
+      source: "app-data",
+      target: PortablePath.make("/data"),
+      readOnly: false,
+      realization: "passthrough",
+    },
+  ]);
 });
 
 test("sanitizer strips ssh-agent overlay", async () => {
@@ -123,7 +140,6 @@ test("sanitizer strips ssh-agent overlay", async () => {
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -175,7 +191,6 @@ test("sanitizer strips gpg-agent overlay", async () => {
     provider: ProviderId.make("lando"),
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

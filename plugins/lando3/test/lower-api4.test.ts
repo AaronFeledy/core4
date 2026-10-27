@@ -220,6 +220,10 @@ describe("API-4 service lowering", () => {
     expect(result.patch.healthcheck).toEqual({ command: "true", retries: 100, intervalSeconds: 1 });
     expect(paths(result, "dropped")).toEqual([path("healthcheck", "user")]);
   });
+  test("keeps disabled healthchecks as the canonical false switch", () => {
+    const result = lowerApi4Service({ healthcheck: false }, ctx);
+    expect(result.patch.healthcheck).toBe(false);
+  });
   test("canonicalizes CA aliases when cas is supplied", () => {
     const result = lowerApi4Service({ security: { cas: ["./ca.pem"] } }, ctx);
     expect(result.patch.security).toEqual({ ca: ["./ca.pem"] });
@@ -259,6 +263,7 @@ describe("API-4 service lowering", () => {
     expect(paths(result, "dropped")).toEqual([path("moreHttpPorts"), path("home")]);
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics[1]?.message).toContain("Lando 4 default");
+    expect(result.patch).not.toHaveProperty("home");
   });
   test("removes an authored LANDO_HOST_IP so capability decides it", () => {
     const result = lowerApi4Service({ environment: { LANDO_HOST_IP: "10.0.2.2", KEEP: "1" } }, ctx);

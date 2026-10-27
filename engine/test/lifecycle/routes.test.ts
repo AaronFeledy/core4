@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
+import { ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import type { RouterServiceShape } from "@lando/sdk/services";
+import { RouterService, type RouterServiceShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
-import { applyAppRoutes, routeUrlsForPlan } from "../../src/lifecycle/routes.ts";
+import { applyAppRoutes } from "../../src/lifecycle/routes.ts";
+import { collectObservedConnections, observeService } from "../../src/operations/connection-collector.ts";
+import { web } from "../operations/start-progress-topology-support.ts";
 
 const service = ServiceName.make("web");
 const cachedPlan: AppPlan = {
@@ -14,7 +17,9 @@ const cachedPlan: AppPlan = {
   slug: "demo",
   root: AbsolutePath.make("/srv/apps/demo"),
   provider: ProviderId.make("lando"),
-  services: {},
+  services: {
+    [service]: { ...web, name: service, endpoints: [{ _tag: "internal", protocol: "http", port: 8080 }] },
+  },
   routes: [
     {
       hostname: "demo.lndo.site",
@@ -24,7 +29,6 @@ const cachedPlan: AppPlan = {
       backend: { service, protocol: "http", port: 8080 },
     },
   ],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -36,6 +40,42 @@ const cachedPlan: AppPlan = {
 };
 
 describe("applyAppRoutes", () => {
+  test.each([false, true])(
+    "withdraws routes without setup when the plan has no routes (cleanup fails: %s)",
+    async (fails) => {
+      // Given
+      const plan: AppPlan = { ...cachedPlan, routes: [], router: { enabled: true } };
+      const calls: AppPlan["id"][] = [];
+      const proxy: RouterServiceShape = {
+        ...makeTestRouterService(),
+        setup: () => expect.unreachable("route-free app must not run setup"),
+        applyRoutes: () => expect.unreachable("route-free app must not publish routes"),
+        removeRoutes: (app) =>
+          Effect.sync(() => void calls.push(app)).pipe(
+            Effect.andThen(
+              fails
+                ? Effect.fail(
+                    new ProxyError({
+                      message: "router unavailable",
+                      proxyId: "test",
+                      remediation:
+                        "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+                    }),
+                  )
+                : Effect.void,
+            ),
+          ),
+      };
+
+      // When
+      const result = await Effect.runPromise(applyAppRoutes(proxy, plan));
+
+      // Then
+      expect(calls).toEqual([plan.id]);
+      expect(result).toEqual({ app: plan.id, appliedRoutes: [], authorities: [] });
+    },
+  );
+
   test("skips setup and route publication when the plan disables the router", async () => {
     // Given: declared routes and a conflicting Landofile must not override the plan.
     const plan: AppPlan = { ...cachedPlan, router: { enabled: false } };
@@ -93,13 +133,18 @@ describe("applyAppRoutes", () => {
   }
 });
 
-describe("routeUrlsForPlan", () => {
-  test("returns an empty map without reading status when the plan disables the router", async () => {
+describe("route connection collection", () => {
+  test("retains inactive configured routes without reading status when the plan disables the router", async () => {
     // Given
     const plan: AppPlan = { ...cachedPlan, router: { enabled: false } };
     const calls: string[] = [];
     const proxy: RouterServiceShape = {
       ...makeTestRouterService(),
+      observeRoutes: () =>
+        Effect.succeed({
+          configuredAuthorities: [{ scheme: "https", hostname: "demo.lndo.site", port: 38443 }],
+          observation: { status: "unknown" },
+        }),
       get status() {
         calls.push("status");
         return Effect.succeed({
@@ -111,18 +156,42 @@ describe("routeUrlsForPlan", () => {
     };
 
     // When
-    const urls = await Effect.runPromise(routeUrlsForPlan(proxy, plan));
+    const rows = await Effect.runPromise(
+      collectObservedConnections(plan, [
+        observeService(plan, {
+          app: plan.id,
+          service,
+          providerId: plan.provider,
+          status: "running",
+          publications: { status: "unknown" },
+        }),
+      ]).pipe(Effect.provideService(RouterService, proxy)),
+    );
 
     // Then
     expect(calls).toEqual([]);
-    expect(urls).toEqual(new Map());
+    expect(rows[0]?.connections.find((connection) => connection.source === "route")).toMatchObject({
+      state: "inactive",
+      url: "https://demo.lndo.site:38443",
+    });
   });
 
-  test("returns routed URLs when the plan enables the router", async () => {
+  test("returns active routed connections only with matching live evidence", async () => {
     // Given
     const plan: AppPlan = { ...cachedPlan, router: { enabled: true } };
     const proxy: RouterServiceShape = {
       ...makeTestRouterService(),
+      observeRoutes: () =>
+        Effect.succeed({
+          configuredAuthorities: [],
+          observation: {
+            status: "present",
+            publications: plan.routes.map((route) => ({
+              route,
+              authority: { scheme: "https", hostname: "demo.lndo.site", port: 38443 },
+            })),
+          },
+        }),
       status: Effect.succeed({
         state: "running",
         authorities: [{ scheme: "https", hostname: "demo.lndo.site", port: 38443 }],
@@ -131,9 +200,22 @@ describe("routeUrlsForPlan", () => {
     };
 
     // When
-    const urls = await Effect.runPromise(routeUrlsForPlan(proxy, plan));
+    const rows = await Effect.runPromise(
+      collectObservedConnections(plan, [
+        observeService(plan, {
+          app: plan.id,
+          service,
+          providerId: plan.provider,
+          status: "running",
+          publications: { status: "unknown" },
+        }),
+      ]).pipe(Effect.provideService(RouterService, proxy)),
+    );
 
     // Then
-    expect(urls).toEqual(new Map([[service, ["https://demo.lndo.site:38443"]]]));
+    expect(rows[0]?.connections.find((connection) => connection.source === "route")).toMatchObject({
+      state: "active",
+      url: "https://demo.lndo.site:38443",
+    });
   });
 });

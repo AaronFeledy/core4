@@ -74,7 +74,9 @@ describe("opensearch ServiceType", () => {
       expect(plan.storage[0]?.store).toBe("myapp-opensearch-data");
       expect(String(plan.storage[0]?.target)).toBe("/usr/share/opensearch/data");
       expect(plan.storage[0]?.readOnly).toBe(false);
-      expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "http", name: "search" }]);
+      expect(plan.endpoints).toEqual([
+        { _tag: "internal", port: 9200, protocol: "http", name: "search", primary: true },
+      ]);
     });
 
     test(`${label} includes single-node and security-disabled env defaults for local dev`, async () => {
@@ -137,19 +139,25 @@ describe("opensearch ServiceType", () => {
     });
   }
 
-  test("opensearch:2 and opensearch alias resolve to the same canonical service plan", async () => {
+  test("opensearch aliases preserve declaration identity with otherwise identical canonical plans", async () => {
     const primary = await planOpenSearchService(opensearch2ServiceType, { type: "opensearch:2" });
     const alias = await planOpenSearchService(opensearchServiceType, { type: "opensearch" });
 
     expect(primary.type).toBe("opensearch");
     expect(alias.type).toBe("opensearch");
-    expect(alias).toEqual(primary);
+    const { serviceTypeId: primaryId, ...primaryFacts } = primary;
+    const { serviceTypeId: aliasId, ...aliasFacts } = alias;
+    expect(primaryId).toBe("opensearch:2");
+    expect(aliasId).toBe("opensearch");
+    expect(aliasFacts).toEqual(primaryFacts);
   });
 
   test("uses the authored service name for the endpoint", async () => {
     const plan = await planOpenSearchService(opensearchServiceType, { type: "opensearch" }, "indexer");
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "http", name: "indexer" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9200, protocol: "http", name: "indexer", primary: true },
+    ]);
   });
 
   test("service description documents Apache 2.0 licensing compared to Elasticsearch", () => {

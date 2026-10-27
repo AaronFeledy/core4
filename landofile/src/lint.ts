@@ -1,159 +1,212 @@
-import { dirname } from "node:path";
-import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
-import { decodeLandofileLayer, mergeValues } from "@lando/sdk/landofile";
-import { type ConfigLintResult, type ConfigLintViolation, LandofileShape } from "@lando/sdk/schema";
-import { Effect, Result } from "effect";
-import { materializeLandofileLayer } from "./compile.ts";
-import { type ComposeRejectionMatch, analyzeComposeRejections } from "./compose/rejections.ts";
-import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
-import { appNameOf, rejectionViolation, violationsFor } from "./lint-violations.ts";
-import type { TemplateEngineInputs } from "./ports.ts";
+import { basename, dirname } from "node:path";
+import { canonicalJson } from "@lando/sdk/digest";
+import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
-  type LandofileCompilationStages,
-  compileLandofileRootLayers,
-  compilePreparedLayer,
-} from "./root-compile.ts";
-import { prepareLandofileSource, readFileContent, resolveLandofileSourceExpressions } from "./source.ts";
-import { landofileValidationError } from "./validation.ts";
+  type ConfigLintResult,
+  type ConfigLintViolation,
+  LandofileAuthoringFragmentNative,
+  type LandofileShape,
+  type LoadScopedLandofile,
+  type ValidationIssue,
+} from "@lando/sdk/schema";
+import { Effect, Result, Schema } from "effect";
+import { analyzeComposeRejections } from "./compose/rejections.ts";
+import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
+import { healthcheckWarnings } from "./lint-healthcheck.ts";
+import { routerBindWarnings } from "./lint-router.ts";
+import { attributeLintIssue, sourceCoordinates } from "./lint-source.ts";
+import { appNameOf, rejectionViolation, violationsFromSchema } from "./lint-violations.ts";
+import { composePreparedLayers } from "./pipeline/compose.ts";
+import { finalizeLandofile } from "./pipeline/finalize.ts";
+import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
+import type { LandofileRuntimeInputs, TemplateEngineInputs } from "./ports.ts";
+import { acquireLandofileRootLayers } from "./root-compile.ts";
+import { findDiscoveredLandofilePath } from "./service.ts";
+import { prepareLandofileValue } from "./source.ts";
 
-export { routeViolations } from "./lint-violations.ts";
+import { getLandofileValueSource } from "./validation.ts";
+
+export const mergeLintFindings = (
+  findings: ReadonlyArray<ConfigLintViolation>,
+): ReadonlyArray<ConfigLintViolation> => {
+  const merged = new Map<string, ConfigLintViolation>();
+  for (const { scopes, ...finding } of findings) {
+    const key = canonicalJson(finding);
+    const previous = merged.get(key);
+    const combined = new Set([...(previous?.scopes ?? []), ...(scopes ?? [])]);
+    merged.set(key, {
+      ...finding,
+      ...(previous?.scopes === undefined && scopes === undefined
+        ? {}
+        : { scopes: (["fragment", "effective"] as const).filter((scope) => combined.has(scope)) }),
+    });
+  }
+  return [...merged.values()];
+};
+
+export const attributeEffectiveLintIssue = (
+  landofile: LandofileShape,
+  issue: ValidationIssue & { readonly rule: string; readonly severity?: "error" | "warning" },
+): ConfigLintViolation => {
+  const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
+  return attributeLintIssue(
+    { ...issue, severity: issue.severity ?? "error", ...(source === undefined ? {} : { source }) },
+    "effective",
+    getSourceDocuments(landofile),
+  );
+};
 
 export interface LintLandofileOptions {
   readonly cwd?: string;
   readonly templates?: TemplateEngineInputs;
 }
+export interface LandofileLintSnapshot {
+  readonly result: ConfigLintResult;
+  readonly landofilePath: string;
+  readonly resolved?: LoadScopedLandofile;
+}
 
-const singleViolationResult = (
-  file: string,
-  message: string,
-  details: {
-    readonly line?: number | undefined;
-    readonly column?: number | undefined;
-    readonly suggestion?: string | undefined;
-  } = {},
-): ConfigLintResult => ({
-  app: "",
-  file,
-  valid: false,
-  violations: [
-    {
-      path: [],
-      message,
-      ...(details.line === undefined ? {} : { line: details.line }),
-      ...(details.column === undefined ? {} : { column: details.column }),
-      ...(details.suggestion === undefined ? {} : { suggestion: details.suggestion }),
-    },
-  ],
-});
-
-export const lintLandofile = Effect.fn("Landofile.lint")(function* (
-  options: LintLandofileOptions = {},
-): Effect.fn.Return<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError> {
-  const cwd = options.cwd ?? process.cwd();
-  const discovery = yield* Effect.tryPromise({
-    try: () => findLandofilePath(cwd),
-    catch: (cause) => cause,
-  }).pipe(Effect.result);
-  if (Result.isFailure(discovery)) {
-    if (discovery.failure instanceof LandofileFormConflictError) return yield* Effect.fail(discovery.failure);
-    return singleViolationResult(
-      cwd,
-      discovery.failure instanceof Error ? discovery.failure.message : "Failed to discover Landofile.",
-    );
-  }
-  const filePath = discovery.success;
-  if (filePath === undefined)
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: `No ${LANDOFILE_NAME} or ${LANDOFILE_TS_NAME} found. Searched from ${cwd} upward.`,
-        cwd,
-      }),
-    );
-  const sources = new Map<string, unknown>();
-  const rejections = new Map<string, readonly ComposeRejectionMatch[]>();
-  const stages: LandofileCompilationStages = {
-    readContent: readFileContent,
-    prepare: Effect.fnUntraced(function* (file, context, inputs) {
-      const source = yield* prepareLandofileSource(file, context, inputs).pipe(
-        Effect.flatMap(resolveLandofileSourceExpressions),
-      );
-      sources.set(file, source.value);
-      rejections.set(file, analyzeComposeRejections(source.value));
-      return source;
-    }),
-    compile: (prepared, scope) =>
-      compilePreparedLayer(
-        prepared,
-        scope,
-        Effect.fnUntraced(function* (file, value, loadScope) {
-          const materialized = yield* materializeLandofileLayer(file, value, loadScope);
-          return yield* decodeLandofileLayer(file, materialized).pipe(
-            Effect.catchTag("LandofileValidationError", (error) =>
-              Effect.fail(
-                error.message.startsWith("Invalid Landofile layer.")
-                  ? landofileValidationError(file, [
-                      ...(rejections.get(file) ?? []).map(rejectionViolation),
-                      ...violationsFor(materialized, rejections.get(file) ?? []),
-                    ])
-                  : error,
-              ),
-            ),
-          );
-        }),
-      ),
-  };
-  const result = yield* compileLandofileRootLayers(
-    dirname(filePath),
-    filePath,
-    options.templates === undefined ? undefined : { templates: options.templates },
-    stages,
-  ).pipe(Effect.result);
-  if (Result.isFailure(result)) {
-    const error = result.failure;
-    if (error._tag === "LandofileFormConflictError") return yield* Effect.fail(error);
-    if (error._tag === "LandofileValidationError")
-      return {
-        app: appNameOf(sources.get(error.file)),
-        file: error.file,
-        valid: false,
-        violations: error.issues,
-      };
-    return singleViolationResult(
-      "filePath" in error
-        ? error.filePath
-        : "conflictingLayer" in error
-          ? error.conflictingLayer
-          : "sourceFile" in error
-            ? error.sourceFile
-            : filePath,
-      error.message,
-      {
-        line: "line" in error ? error.line : undefined,
-        column: "column" in error ? error.column : undefined,
-        suggestion: "remediation" in error ? error.remediation : undefined,
-      },
-    );
-  }
-  const decodedLayers = result.success.compiled;
-  const parsed = decodedLayers.reduce<unknown>(
-    (merged, { landofile }) => mergeValues(LandofileShape, merged, landofile),
-    {},
-  );
-  const rejected = [...rejections.values()].flat();
-  const violations: ConfigLintViolation[] = [];
-  const keys = new Set<string>();
-  const candidates = [
-    ...rejected.map(rejectionViolation),
-    ...violationsFor(parsed, rejected),
-    ...decodedLayers.flatMap(({ layer, landofile }) =>
-      violationsFor(mergeValues(LandofileShape, {}, landofile), rejections.get(layer.filePath) ?? []),
-    ),
+const fragmentIssues = (source: SourceDocument): readonly ConfigLintViolation[] => {
+  const decoded = Schema.decodeUnknownResult(LandofileAuthoringFragmentNative)(source.document, {
+    onExcessProperty: "error",
+    errors: "all",
+  });
+  if (Result.isSuccess(decoded)) return [];
+  const rejections = analyzeComposeRejections(source.document);
+  const issues = [
+    ...rejections.map(rejectionViolation),
+    ...violationsFromSchema(decoded.failure.issue, source.document, rejections),
   ];
-  for (const violation of candidates) {
-    const key = JSON.stringify(violation);
-    if (keys.has(key)) continue;
-    keys.add(key);
-    violations.push(violation);
+  return issues.map((issue) =>
+    attributeLintIssue(
+      { ...issue, source: { file: source.file, layer: source.layer, path: issue.path } },
+      "fragment",
+      [source],
+    ),
+  );
+};
+
+export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(function* (
+  options: LintLandofileOptions = {},
+  inputs?: LandofileRuntimeInputs,
+): Effect.fn.Return<LandofileLintSnapshot, LandofileNotFoundError | LandofileFormConflictError> {
+  const templates = options.templates ?? inputs?.templates;
+  const { filePath: file } = yield* findDiscoveredLandofilePath(options.cwd);
+  let documents: readonly SourceDocument[] = [];
+  let scope: "fragment" | "effective" = "fragment";
+  const violations: ConfigLintViolation[] = [];
+  const finalized = yield* Effect.gen(function* () {
+    const acquired = yield* acquireLandofileRootLayers(
+      dirname(file),
+      templates === undefined ? inputs : { ...inputs, templates },
+    );
+    documents = acquired.sources.map(({ source, layer }) => ({
+      file: source.file,
+      form: source.form,
+      layer: layer.layer,
+      document: source.value,
+      content: source.content,
+      digest: source.digest,
+    }));
+    violations.push(...documents.flatMap(fragmentIssues));
+    scope = "effective";
+    const prepared = yield* Effect.forEach(acquired.sources, ({ source, layer }) =>
+      prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
+    );
+    const merged = yield* composePreparedLayers(prepared, acquired.runtime, inputs);
+    const roots = new Set(documents.map((document) => document.file));
+    const retained = getSourceDocuments(merged);
+    violations.push(...retained.filter((document) => !roots.has(document.file)).flatMap(fragmentIssues));
+    documents = retained;
+    violations.push(...healthcheckWarnings(merged, documents), ...routerBindWarnings(merged, documents));
+    const effective = yield* finalizeLandofile(file, merged, {
+      appRoot: dirname(file),
+      pendingSites: acquired.runtime.pendingSites,
+      loadPolicy: acquired.runtime.policy,
+      logger: acquired.runtime.logger,
+      ...(templates?.context?.env === undefined ? {} : { env: templates.context.env }),
+    }).pipe(Effect.result);
+    const knownDocuments = new Set(documents);
+    const finalizedDocuments = getSourceDocuments(merged);
+    violations.push(
+      ...finalizedDocuments.filter((document) => !knownDocuments.has(document)).flatMap(fragmentIssues),
+    );
+    documents = finalizedDocuments;
+    if (Result.isFailure(effective)) return yield* Effect.fail(effective.failure);
+    return effective.success;
+  }).pipe(Effect.result);
+  if (Result.isFailure(finalized)) {
+    const error = finalized.failure;
+    if (error._tag === "LandofileFormConflictError") return yield* Effect.fail(error);
+    // A rejected Compose key already has a field-level finding; a pathless copy only repeats it.
+    const reportedRejection =
+      error._tag === "ComposeKeyRejectedError" &&
+      violations.some((violation) => violation.rule === "landofile.compose-rejection");
+    if (error._tag === "LandofileValidationError")
+      violations.push(...error.issues.map((issue) => attributeLintIssue(issue, "effective", documents)));
+    else if (!reportedRejection) {
+      const path =
+        error._tag === "LandofileIncludeError"
+          ? (error.path ?? [])
+          : error._tag === "ConfigExpressionError"
+            ? error.path
+                .split(".")
+                .filter(Boolean)
+                .map((key) => (/^\d+$/.test(key) ? Number(key) : key))
+            : [];
+      let errorFile = file;
+      if (error._tag === "LandofileIncludeError" && error.file !== undefined) {
+        errorFile = error.file;
+      } else if ("filePath" in error) {
+        errorFile = error.filePath;
+      } else if ("sourceFile" in error) {
+        errorFile = error.sourceFile;
+      }
+      const retained = documents.find((document) => document.file === errorFile);
+      const layer =
+        (error._tag === "LandofileIncludeError" ? error.layer : undefined) ??
+        retained?.layer ??
+        LANDOFILE_LAYER_POSITIONS.find((position) => basename(errorFile).startsWith(`${position.basename}.`))
+          ?.layer ??
+        "canonical";
+      violations.push({
+        rule: "landofile.load",
+        severity: "error",
+        path,
+        scopes: [scope],
+        source: { file: errorFile, layer, path },
+        message: error.message,
+        ...(error._tag === "LandofileParseError"
+          ? {
+              ...(error.line === undefined ? {} : { line: error.line }),
+              ...(error.column === undefined ? {} : { column: error.column }),
+            }
+          : retained === undefined || path.length === 0
+            ? {}
+            : sourceCoordinates(retained, path)),
+        ...("remediation" in error && error.remediation !== undefined
+          ? { suggestion: error.remediation }
+          : {}),
+      });
+    }
   }
-  return { app: appNameOf(parsed), file: filePath, valid: violations.length === 0, violations };
+  const unique = mergeLintFindings(violations);
+  const app = Result.isSuccess(finalized)
+    ? (finalized.success.document.name ?? "")
+    : (documents.map((source) => appNameOf(source.document)).find((name) => name !== "") ?? "");
+  const primarySource = unique[0]?.source;
+  const primary = primarySource !== undefined && "file" in primarySource ? primarySource.file : file;
+  return {
+    landofilePath: file,
+    result: {
+      app,
+      file: primary,
+      valid: !unique.some((issue) => issue.severity === "error"),
+      violations: unique,
+    },
+    ...(Result.isSuccess(finalized) ? { resolved: finalized.success } : {}),
+  };
 });
+
+export const lintLandofile = (options: LintLandofileOptions = {}, inputs?: LandofileRuntimeInputs) =>
+  lintLandofileSnapshot(options, inputs).pipe(Effect.map(({ result }) => result));

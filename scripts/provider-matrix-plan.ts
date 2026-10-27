@@ -1,3 +1,4 @@
+import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import {
   COMPOSE_KNOBS_TRANSPORT_CHECK,
   MACHINE_LIFECYCLE_ACCEPTANCE_CELLS,
@@ -55,6 +56,12 @@ const bunTest = (path: string, testNamePattern?: string): readonly string[] =>
     ? ["bun", "test", path]
     : ["bun", "test", path, "--test-name-pattern", testNamePattern];
 
+const podmanStorageLifecycleCheck = {
+  id: "storage-lifecycle",
+  label: "Live anonymous and named volume lifetime with exact-ID cleanup",
+  command: bunTest("plugins/provider-lando/test/anonymous-volume-lifecycle.integration.test.ts"),
+} as const satisfies ProviderAcceptanceCheckPlan;
+
 const landoChecks = [
   {
     id: "managed-setup-readiness",
@@ -62,6 +69,7 @@ const landoChecks = [
     command: bunTest("plugins/provider-lando/test/setup-version-gate.test.ts"),
   },
   COMPOSE_KNOBS_TRANSPORT_CHECK,
+  podmanStorageLifecycleCheck,
   {
     id: "sdk-provider-contract",
     label: "SDK provider contract against live Podman socket",
@@ -111,6 +119,7 @@ const landoChecks = [
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];
 
 const podmanChecks = [
+  podmanStorageLifecycleCheck,
   {
     id: "sdk-provider-contract",
     label: "SDK provider contract against live Podman socket",
@@ -127,6 +136,11 @@ const podmanChecks = [
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];
 
 const dockerChecks = [
+  {
+    id: "storage-lifecycle",
+    label: "Live anonymous and named volume lifetime with exact-ID cleanup",
+    command: bunTest("plugins/provider-docker/test/anonymous-volume-lifecycle.integration.test.ts"),
+  },
   {
     id: "sdk-provider-contract",
     label: "SDK provider contract against live Docker Engine socket",
@@ -165,7 +179,7 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
   {
     id: "docker-engine-linux",
     engine: "Docker Engine",
-    runsOn: "ubuntu-24.04",
+    runsOn: LINUX_X64_TEST_RUNNER,
     provider: "docker",
     releaseBlocking: true,
     installPodman6: false,
@@ -200,7 +214,7 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
   {
     id: "lando-podman6-linux",
     engine: "Lando managed Podman 6",
-    runsOn: "ubuntu-24.04",
+    runsOn: LINUX_X64_TEST_RUNNER,
     provider: "lando",
     releaseBlocking: true,
     installPodman6: false,
@@ -211,7 +225,7 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
   {
     id: "podman-podman6-linux",
     engine: "Podman 6",
-    runsOn: "ubuntu-24.04",
+    runsOn: LINUX_X64_TEST_RUNNER,
     provider: "podman",
     releaseBlocking: true,
     installPodman6: true,

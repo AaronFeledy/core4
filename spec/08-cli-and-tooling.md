@@ -1,6 +1,6 @@
 # Lando v4: CLI, Tasks, and Tooling
 
-> **Part 8 of 19** · [Index](./README.md)
+> **Part 8 of 20** · [Index](./README.md)
 > **Read next:** [09 Embedding and Library Use](./09-embedding.md)
 
 This part defines the CLI, tooling, recipe, renderer, interaction, and machine-output contracts. One native command registry and dispatcher own source and compiled operation; command execution crosses into Effect at `run()` and does not return to an imperative command body.
@@ -46,9 +46,9 @@ Canonical ids determine lifecycle names `cli-<canonical-id>-<phase>`, generated 
 | string array | Register each token independently |
 | `{ name, deprecated }` | Register named alias or aliases with a `DeprecationNotice` |
 
-Aliases MUST NOT collide with another top-level alias, a top-level topic, or `help`, `--help`, or `--version`. Conflicts produce `CommandAliasConflictError`: built-ins win; plugin conflicts use §4.3 precedence or fail; tooling conflicts fail unless global config explicitly disables the existing alias.
+Aliases MUST NOT collide with another top-level alias, a top-level topic, or `help`, `--help`, or `--version`. Conflicts produce `CommandAliasConflictError`: built-ins win; plugin conflicts use §4.3 precedence or fail; tooling conflicts fail unless global config explicitly disables the existing alias. Reserved tooling names follow the next paragraph instead.
 
-`global:` is reserved for `meta:global:*` (§20.7.1). `scratch:` and bare `scratch` are reserved for `apps:scratch:*` (§21.10.2). Plugin and tooling claims collide unless app-context `commandAliases.custom:` remaps them.
+`global:` is reserved for `meta:global:*` (§20.7.1). Tooling task names `run`, `scratch`, and `scratch:*` are reserved outright for built-in scratch commands (§21.10.2); lint and planning reject them as `landofile.tooling`. App-context `commandAliases.custom:` remaps apply to plugin claims only, not reserved tooling names.
 
 Global and Landofile `commandAliases:` expose `enabled`, `disabled`, and `custom`; Landofile values win in app context. `enabled: false` removes all aliases in scope. `disabled` removes named aliases. `custom` binds an alias to an existing canonical id after ordinary alias registration. Unknown targets fail with `CommandAliasTargetError`. Overrides never replace the canonical id itself and MAY target built-ins, plugin commands, or same-Landofile tooling tasks.
 
@@ -64,7 +64,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:config:explain` | none | `plugins` | Report recipe provenance; `--format json` |
 | `app:config:migrate` | none | `plugins` | Commit recipe migrations; `--yes`, `--dry-run`, `--format json` |
 | `app:config:translate` | none | `plugins` | Convert with `--from`, `--to`, `--file`, `--write`; or materialize declared entries with `--refresh [<id>]`, optionally `--check` for local read-only drift (§7.4.2). Never plans or contacts a runtime provider. |
-| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes`; `--volumes` adds data volumes, `--purge` adds data volumes and this root's snapshots (§10.11.2), `--purge-caches` adds cache volumes |
+| `app:destroy` | `destroy` | `app` | Destroy resources; confirmation unless `--yes`; `--provider=<id>` targets only that provider's applied state and owned resources; `--volumes` adds data volumes, `--purge` adds data volumes and this root's snapshots (§10.11.2), `--purge-caches` adds cache volumes |
 | `app:exec` | `exec` | `app` | Execute in a service |
 | `app:includes:update` | none | `minimal` | Refresh selected or all `.lando.lock.yml` entries; `--no-network`, `--check` |
 | `app:includes:verify` | none | `minimal` | Verify cached includes; `--format json\|table` |
@@ -102,12 +102,12 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `apps:scratch:start` | `scratch:start`, `scratch` | `scratch` | `--fork` or `--from`; isolation, cwd mount, global-storage, detach controls |
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop selected or foreground scratch and destroy it |
 | `meta:bun` | `bun` | `minimal` | Embedded Bun proxy through `BunSelfRunner` |
-| `meta:config` | `config` | `minimal` | Edit `<userConfRoot>/config.yml` |
+| `meta:config` | `config` | `none` | Read, validate, or repair `<userConfRoot>/config.yml` |
 | `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1) |
-| `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks the index and removes them. Stopped providers are reported unavailable, never started (§10.11.2). |
+| `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks catalog references and eligibility before no-start removal. Stopped providers are reported unavailable during discovery; a runtime stopping after recheck causes failed removal, never startup or repair (§10.11.2). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `minimal` | Edit `<userDataRoot>/global/.lando.yml` and plugin enablement |
-| `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--purge` includes service/app volumes |
+| `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |
 | `meta:global:install` | `global:install` | `global` | Enable `globalServices:`, write `global.config.yml`, regenerate `dist`; does not start |
 | `meta:global:list` | `global:list` | `minimal` | List global services, enablement, source, status |
@@ -134,7 +134,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:recipes:validate` | none | `minimal` | Validate `recipe.yml` |
 | `meta:setup` | `setup` | `provider` | Configure provider, CA, router, shell integration |
 | `meta:shellenv` | `shellenv` | `none` | Print embedded shell snippets |
-| `meta:uninstall` | `uninstall` | `minimal` | Remove recorded Lando-owned files; `--yes`, `--dry-run` |
+| `meta:uninstall` | `uninstall` | `none` | Remove recorded Lando-owned files through a command-owned maintenance runtime that does not require valid global configuration; `--yes`, `--dry-run` |
 | `meta:update` | `update` | `plugins` | Update core and plugins |
 | `meta:version` | `version` | `none` | Print embedded version |
 | `meta:x` | `x` | `minimal` | One-shot package execution through `BunSelfRunner.x` |
@@ -145,7 +145,7 @@ Command-wide rules:
 
 - `app:cache:refresh` performs full app bootstrap and refreshes the plan, tooling graph, and app command index. It MUST NOT contact the provider unless materialization requires a missing managed dependency.
 - `app:info` and `app:rebuild` deduplicate services on first occurrence and validate all names before provider action. `app:info` selects no dependencies. `app:rebuild` selects transitive prerequisites in stable plan order and MUST leave unrelated services and dependents untouched.
-- `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/`; failures return `IncludeLockError` with update remediation.
+- `app:includes:verify` MUST work offline from warm `<userCacheRoot>/includes/` and MUST NOT resolve floating refs or update the lockfile. Missing pins, selector mismatches, content mismatches, and stale entries report `LandofileLockMismatchError` entries with update remediation. An undecodable lockfile fails with `LandofileParseError`; acquisition and fragment-validation failures keep their tagged errors.
 - `app:restart` MUST preserve inner events and publish `pre-restart` and `post-restart` (§3.5, §11.4).
 - `app:exec` and `app:ssh` forward §6.9.1 agent context. `app:open` is `hostProxyAllowed: true`. `meta:mcp`, `meta:bun`, and `meta:x` are not host-proxy or recipe-post-init allowed.
 - For CLI `app:exec`, `app:ssh`, `apps:scratch:run`, `providerExec` tooling, and `.bun.sh` script tasks, piped or redirected stdin MUST be forwarded unchanged and without a PTY, and EOF MUST close the command's stdin in every format. A PTY requires terminal stdin; `app:exec`, `apps:scratch:run`, and tooling also require terminal stdout, while `app:ssh` keeps its PTY when only stdout is redirected. JSON and YAML disable PTYs and keyboard attachment; `apps:scratch:run` and tooling also disable them under the `json` renderer. Otherwise keyboard input attaches for `app:exec --interactive`, `app:ssh` with terminal stdin, and `apps:scratch:run` and tooling with terminal stdin and stdout. Host `.bun.sh` scripts inherit Lando's stdin descriptor for piped and keyboard input, but stdout and stderr MUST still pass through the sink; keyboard mode MUST NOT bypass redaction by inheriting output descriptors. The CLI retires event rendering before keyboard-attached tooling or scripts, and retires scratch acquisition progress before exec (§8.9.2). Human host and container payloads MUST stream incrementally through one sink with byte-exact, value-only redaction (§3.7), including final partial lines, identically for terminal and redirected destinations. Tool body bytes MUST NOT become per-line `task.detail` events. Tool stdout alone goes to stdout; task trees and acquisition narration go to stderr (§8.9.1). Machine formats follow §8.11. Interruption MUST stop the tool or script; interrupted scripts report exit 130. Event, MCP, and library invocations MUST NOT consume process stdin.
@@ -168,15 +168,25 @@ Root TTY help contains **COMMON**, optional **THIS APP**, and **MORE**. Full cat
 |---|---|
 | default / `view` | Read `raw`, `merged`, or default `resolved`; supports `--path` and structured formats |
 | `get` | Read one key path |
-| `set` | Write a typed value with `--type string\|number\|boolean\|json\|yaml` |
+| `set` | Infer the value type by full-tree schema decoding, trying raw text first, then a non-string number, boolean, null, or JSON interpretation; `--type string\|number\|boolean\|json\|yaml` overrides inference |
 | `unset` | Remove a key |
-| `edit` | Open `$VISUAL`/`$EDITOR`; `--target canonical\|local\|user` |
+| `edit` | Open `$VISUAL`/`$EDITOR` for the canonical YAML source |
 | `validate` | Validate merged Landofile (§7.8) |
 | `translate` | `--from`, `--to` default `lando4`, `--file`, `--detect`, `--list`, `--write` |
 | `explain` | Read-only recipe provenance; `--format json` |
 | `migrate` | Ordered migration proposals; `--yes`, `--dry-run`, `--format json` |
 
-Ordinary writes target the canonical Landofile unless `edit --target` selects another editable layer. They validate before atomic §12.3 persistence; failure returns `LandofileWriteValidationError`. Translation and migration use §12.4 transactions. Successful writes invalidate the app-plan cache. Key paths are dot-separated with bracket array indexes. Expressions and `${secret:...}` references are written literally.
+Inspection exposes three stages without a second loader. Raw returns `{ source: "raw", layers: [{ layer, file, form, document }] }` in low-to-high order immediately after acquisition/render/parse or sandboxed TypeScript evaluation. It MUST NOT expand includes, evaluate load helpers, materialize expressions, or validate the effective schema. Merged returns `{ source: "merged", landofile }` after authored composition, including fragments, before recipe/env materialization, defaults, tooling assembly, or the final runtime decode. Resolved remains the default strict canonical `LandofileShape` with existing metadata. Final-schema-invalid documents remain inspectable through raw and merged; acquisition/composition failures still fail their respective stage. Source data uses recursive finite JSON values and the shared directive transport, including literal-envelope collision escaping.
+
+`--path` selects inside the exposed document, never inside the result envelope. Raw selects independently inside each encoded layer document and retains every identity and position; projected raw adds `path` and omits a missing `document`. Raw get returns `{ source: "raw", subcommand: "get", key, value? }`, where `value` is the layer projection array when any layer matches, with missing documents omitted; otherwise `value` is absent. Merged/resolved projections return `{ source, path, value? }`; get returns `{ source, subcommand: "get", key, value? }`. Get uses `key ?? path` and retains the tagged missing-selector failure. Dot/bracket syntax is shared with writes; missing members, malformed selectors, scalar traversal, and out-of-range indexes are missing, not null. Scalars, null, and arrays retain their types. Missing human text is empty; objects/arrays render compact JSON, other values use `String(value)`. Only a full resolved view emits bare canonical YAML. All other YAML output uses the normal success envelope. Result schemas MUST distinguish full views, projections, get, and actual write subcommands without a permissive fallback.
+
+Read-only MCP view/get projections expose and forward `source` and `path`, with optional get `key`, while forcing their read-only subcommand. `lando://app/config` remains resolved. Every view collects literal redaction tokens across all retained sources, including shadowed layers, directive payloads, and authored `KEY=value` arrays, before projection. Inspection MUST NOT resolve secret references or env files just to redact.
+
+Ordinary writes target the canonical YAML Landofile. A private source-replacement operation substitutes candidate bytes before parsing the old target, inserting an absent canonical source between upstream and local. It validates the original candidate as an expression-aware recursively partial native authoring fragment, discards the validation product, then runs the normal effective pipeline with one finalization. Set/unset compare candidate issues with the baseline decode by path plus message. Writes are rejected with `LandofileWriteValidationError` only when they introduce a problem or leave the written key or a descendant invalid; problems already present elsewhere don't block and are reported once as text and envelope warnings with code `LANDO_CONFIG_PREEXISTING_ISSUES`, naming each issue and its fix. Inferred sets choose the first acceptable interpretation; rejected multi-interpretation sets retain `as <interpretation>:` issue labels. Lint owns masked invalid untouched fragments. Set/unset persist the authored next tree, not decoded ASTs or defaults. Edit still requires the whole edited configuration to validate and persists the exact validated buffer, including template directives; set/unset reject templates and canonical TypeScript writes remain unsupported. Dry-run applies the same validation rule without writing. Unchanged unset validates but creates no absent target. Candidate parse/schema failures and blocking effective schema issues return `LandofileWriteValidationError` retaining source attribution; other loader tags remain intact. Persistence is atomic under §12.3. Translation and migration use §12.4 transactions. Key paths are dot-separated with bracket array indexes. Expressions and `${secret:...}` references are written literally.
+
+Lint validates retained root/include fragments in their authoring role and attempts normal effective finalization. Findings carry optional `scopes: ("fragment" | "effective")[]`, ordered fragment then effective without duplicates, and `{ file, layer, path }` source attribution, preserving effective versus authored paths. Coordinates MUST come from retained content. Machine output has one record per defect: findings identical in every field except `scopes` merge by unioning their scopes. Findings differing in source file, layer, authored path, coordinates, effective path, message, suggestion, rule, or severity MUST remain separate; path/message alone MUST NOT determine identity. Text output prints each record's source file, coordinates, layer, scopes, and differing authored path. Lint and planning share one diagnostic set for resolved fields, event names, and reserved tooling names; planning fails once with `LandofileValidationError` listing all issues with their `rule` (§7.8). The private lint snapshot retains the exact successfully load-finalized Landofile and its canonical path, even alongside independent fragment findings; the planner's resolve pass and event validation reuse retained root and include content without reacquiring or rerendering those sources (§7.8), while service resolution may read env files and authorized project inputs.
+
+`set` and `unset` MUST preserve comments and formatting outside the changed value or removed entry through source-offset splices. Every proposed serialization, including dry-run and canonical fallback, MUST parse with the document's own parser and equal the intended authored tree, including merge-directive symbols; decoded defaults MUST NOT be serialized. Unsupported edits MUST fail closed with `LandofileWriteValidationError`, the reason, and a pointer to `lando app:config edit` (or `lando global:config edit` for the global app) or hand editing. Full re-emission is permitted only for a blank file or an original already byte-identical to canonical emission. A failed full-tree decode MUST label issues also present in the original snapshot as already present before the change and direct the user to fix those first; candidate acceptance still requires a successful full decode.
 
 Conversion is preview-only without `--write`, MUST be explicit or unambiguous, and MUST NOT build an `AppPlan` or contact a runtime provider. Declared refresh is the separate §7.4.2 mode: `--refresh [<id>]` materializes and MAY fetch nonsecret remote metadata; `--refresh [<id>] --check` MUST use local state only and MUST NOT write. Conversion selectors and `--write` MUST NOT combine with refresh mode. Translators MAY also load in the bounded lifecycle refresh phase, never discovery or ordinary loading.
 
@@ -190,11 +200,13 @@ All remote commands MUST enforce central effective protection (§10.12.8), indep
 
 #### 8.2.2 The `meta:config` command
 
-`meta:config` mirrors ordinary app-config operations against `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. Writes MUST validate the global schema, including plugin and provider extensions, and persist atomically. `view --source raw` reads only `config.yml`; `resolved` includes overlays and environment overrides. It runs outside app context at `minimal` bootstrap.
+`meta:config` is the repair surface for `<userConfRoot>/config.yml`. `config.d/*.yml` and `LANDO_*` overrides are read-only. It runs outside app context at bootstrap `none`, builds no `ConfigService`, and is exempt from `notify.commands` promotion, so it MUST work when the §7.5 stack does not decode. `--source raw` (`view`, `get`) returns the parsed `config.yml` alone, redacted, even when that file fails validation; unparseable YAML still fails with `ConfigError`. Resolved reads (`view`, `get`, default) decode the full stack and fail with the structured §7.5 `ConfigError`. `validate` decodes the full stack (file, drop-ins, env, host) and fails with that same `ConfigError`; it MUST NOT report config problems as `LandofileWriteValidationError`. `set`, `unset`, and `telemetry off` compare candidate `config.yml` issues, including plugin and provider extensions, with the baseline file decode by path plus message. Writes are rejected with `LandofileWriteValidationError` only when they introduce a problem or leave the written key or a descendant invalid; problems already present elsewhere don't block and are reported once as warnings with code `LANDO_CONFIG_PREEXISTING_ISSUES`, naming each issue and its fix. Inferred sets choose the first acceptable interpretation. Rejected writes leave the file unchanged; accepted writes persist atomically. `edit` still validates the whole edited file. Problems in other layers MUST NOT block the write; once the candidate file is valid they surface as envelope warnings with code `LANDO_CONFIG_OTHER_SOURCE_INVALID` carrying the §7.5 message and remediation, rendered once as a warning line in text mode.
+
+Its `set` and `unset` writes follow the comment/format-preserving and fail-closed contract above, verified with the config.yml parser. Refusals MUST point to `lando config edit` or hand editing.
 
 #### 8.2.3 The `app:shell` command
 
-`app:shell` requires a TTY and otherwise returns `ShellRequiresTtyError`. Host mode uses `ShellRunner` at the app root with resolved `LANDO_*` values and host resolution. Its line evaluator runs on the embedded Bun and removes `BUN_BE_BUN` and `BUN_FEATURE_FLAG_NO_ORPHANS` before a line runs, so `lando` in a line runs as Lando and keeps its detached workers. `--service` uses provider exec with TTY and §6.9.1 agent context. Secrets resolve only when explicitly referenced and MUST NOT be preloaded. History persists at `<userCacheRoot>/shell/<app-id>/history` unless `--no-history`; resolved secrets MUST be redacted before history writes.
+`app:shell` requires a TTY and otherwise returns `ShellRequiresTtyError`. Host mode uses `ShellRunner` at the app root with resolved `LANDO_*` values and host resolution. Its line evaluator runs on the embedded Bun and removes `BUN_BE_BUN` and `BUN_FEATURE_FLAG_NO_ORPHANS` before a line runs, so `lando` in a line runs as Lando and keeps its detached workers. `--service` uses provider exec with TTY and §6.9.1 agent context. Execution resolves secret references only when explicitly referenced and MUST NOT preload them into shell execution state; redaction MAY snapshot store values under §3.7. History persists at `<userCacheRoot>/shell/<app-id>/history` unless `--no-history`; resolved secrets MUST be redacted before history writes.
 
 The command publishes `cli-app:shell-init`, `cli-app:shell-run`, and `cli-app:shell-error`; inner commands publish `pre-shell-exec`/`post-shell-exec` or `pre-provider-exec`/`post-provider-exec` with redacted shapes.
 
@@ -210,7 +222,7 @@ For every verb, the default `BunSelfRunner` MUST prepend a scoped private `lando
 
 #### 8.2.5 The `app:open` command
 
-`app:open` resolves only planned `http` or `https` routes/endpoints from `ServiceInfo`. Default selection is the primary route, preferring HTTPS; `--service`, `--route`, and `--all` refine it. No target returns `OpenTargetUnresolvedError`; scheme violations use `HostProxyOpenUrlSchemeError` semantics. `--print` skips browser launch, and `--format json` returns targets. A headless host prints the URL and exits successfully. Events are `cli-app:open-*` plus `pre-open-url`/`post-open-url`.
+`app:open` resolves only `http` or `https` targets, using the same listener selection as default routes (§6.6): a marked HTTP(S) primary, else the single HTTP(S) listener, never list order, with a named or numeric selector refining it. Hyperlink and open targets are `assigned`, `active`, non-wildcard host connections (§6.10). Default selection prefers the primary route, preferring HTTPS; `--service`, `--route`, and `--all` refine it. No target returns `OpenTargetUnresolvedError`; scheme violations use `HostProxyOpenUrlSchemeError` semantics. `--print` skips browser launch, and `--format json` returns targets. A headless host prints the URL and exits successfully. Events are `cli-app:open-*` plus `pre-open-url`/`post-open-url`.
 
 #### 8.2.6 The `meta:mcp` command
 
@@ -242,6 +254,7 @@ Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends Lando
 | `mcpAllowed` | Generated `mcp-allowlist` membership |
 | `docs`, `acceptance` | Required public documentation and acceptance metadata |
 | `resultSchema` | Required schema for every result; empty result uses an empty struct |
+| `completion` | Optional format-independent policy over the returned value and normalized command input, yielding `CommandCompletion` |
 | `streaming` | Optional `StreamFrame` schema for streaming commands |
 | `run` | Effect program over `CommandInput` and `LandoCommandRequirements` |
 
@@ -256,6 +269,10 @@ Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends Lando
 | `stdout`, `stderr` | Effect sinks of bytes |
 
 The adapter supplies universal format flags and IO bindings.
+
+`CommandCompletion` separates successful Effect execution from successful command completion. Its schema accepts `{ ok: true, exitCode }` with a nonnegative integer exit code, or `{ ok: false, exitCode }` with a positive integer exit code; exit codes are not restricted to a POSIX-only 255 ceiling. An absent policy means success with exit 0. An installed policy MUST return a complete decision and MUST be resolved exactly once after producer scopes and owned output finish, before terminal lifecycle events and result rendering. CLI, MCP, plugin rendering, and event invocation consume that resolved decision rather than evaluating it again or inferring status from arbitrary result properties.
+
+Process-backed commands explicitly classify their typed process exit code: nonzero completion produces `ok: false`, a `LandoCommandError` with command id, exit code, and remediation, and the completed typed value. Successfully produced diagnostic reports MAY remain `ok: true` while returning a nonzero shell code for findings, independently of result format. Actual Effect failures retain their original Cause and do not invoke a completion policy; pure interruption remains cancellation. Completion-policy defects MUST NOT silently default to success.
 
 Read-only and non-destructive commands MAY set `mcpAllowed`; destructive built-ins MUST NOT. A destructive self-allow returns `McpAllowlistConflictError`. Host-proxy lifecycle commands MUST NOT self-allow; denied requests return `HostProxyCommandNotAllowedError`. Missing required registry metadata or `resultSchema` returns `CommandRegistrationError`.
 
@@ -330,7 +347,7 @@ Declared task keys that are not yet executable are listed once, in `@lando/lando
 
 **Positional argument round-trip.** `ArgSpec` positionals are read by declaration index on every surface: the CLI parses argv into named inputs, and MCP and library callers serialize structured input back to argv for the same parser. Serialization and parsing MUST round-trip for every declared shape. A caller that supplies a value for a later positional while an earlier declared positional resolves to nothing describes an interior hole that argv cannot express; both the serializer and the parser MUST fail with `ToolingInputError` naming the task and argument rather than binding the value to the wrong name. Trailing omitted positionals remain valid. The CLI and MCP paths MUST agree on every accepted and rejected shape.
 
-A string task means one `cmd`. `cmd` normalizes to one ordered `cmds` step. `disabled` and `false` disable inherited tasks. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
+`ToolingTaskInput` accepts a `ToolingTaskShape` object, literal `false`, or a non-empty string other than the exact string `disabled`. Literal `false` decodes to `{ disabled: true }`; a command string decodes to `{ cmd: <string> }`. The bare string `disabled` is rejected with remediation to use `false`; object-form `cmd: disabled` remains valid. Shorthands are interpreted after layer composition and replace an inherited task of the same name wholesale. An empty shorthand string is invalid; an object may still contain `cmd: ""`. `cmd` normalizes to one ordered `cmds` step. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
 
 #### 8.5.2 Commands and dependencies
 
@@ -364,21 +381,25 @@ Tooling adds invocation-time scopes `task.name`, `task.subnamespace`, `task.comm
 
 Landofile `events:` accepts the same step types as `cmds` and adds decoded `.event` payload context. Event-triggered tasks execute directly and MUST NOT register router commands. Before load/plan validation, the valid event set MUST contain the reserved app lifecycle names (including `pre-restart` and `post-restart`) and reserved remote hooks `post-pull`, `post-push`, `post-switch`, and `post-code-sync` (§10.12.2), whether or not a remote connector is installed. It is then extended with `pre-<tool>`/`post-<tool>` from fully resolved tooling.
 
-A tooling-derived event name MUST NOT collide with a reserved app or remote hook. A collision MUST fail with `LandofileValidationError` at the tooling declaration, naming the task, reserved event, and rename remediation; it MUST NOT bind one step list to two triggers. Command alias disabling or remapping MUST NOT release an event-name reservation. The four remote hooks are triggered only by the corresponding core remote operation, never by a similarly named tooling task.
+A tooling-derived event name MUST NOT collide with a reserved app or remote hook. A collision is a `landofile.tooling` issue at the tooling declaration, reported by lint and failing planning with `LandofileValidationError`, naming the task, reserved event, and rename remediation; it MUST NOT bind one step list to two triggers. Command alias disabling or remapping MUST NOT release an event-name reservation. The four remote hooks are triggered only by the corresponding core remote operation, never by a similarly named tooling task.
 
 Each `events.<name>` step list replaces its inherited list wholesale across layers; a step's `service` is an execution target, not a merge identity (§7.2).
 
+`stop` and `destroy` tear down the recorded applied plan, which carries no authored steps of its own. Their steps, including the `pre-init`/`post-init` pair that precedes them, are compiled from the current Landofile and `hostEvents` when that Landofile resolves to the recorded app (same kind, id, and canonical root), then run against the applied plan. When the Landofile is missing, cannot be loaded or planned, or resolves to a different app, teardown skips authored steps and continues; it MUST NOT fail because of the Landofile. The notice rules below apply, including to `destroy --root`.
+
 Host-wide steps live in `<userConfRoot>/config.yml` under `hostEvents`, never in `GlobalConfig.events` (delivery policy) and never in the global-app Landofile. Env overlays MUST drop any path whose first segment is `hostEvents`. The ten supported names are pre/post `start`, `stop`, `restart`, `rebuild`, and `destroy`. Restart and rebuild nest the same stop/start (or destroy/start) trees as project events. v1 steps are a string, `{cmd, service?}` (`:host` allowed), or `{command}`; `task`, `defer`, `for`, `env`, `flags`, `args`, `dir`, `user`, and unknown fields fail at load. Container (non-`:host`) steps in `pre-start`, `post-stop`, and `post-destroy` fail at load and MUST name `config.yml hostEvents.<event>[i]`. A `command:` step that resolves to a lifecycle command id also fails at load.
 
-`compileEffectiveEvents` runs host steps first, then project steps. A host step that canonically matches a project step for the same event is dropped (`"x"` matches `{cmd: x}`, an omitted service is the plan primary, and `:host` is part of the key). Missing plan services and exited, stopped, created, dead, or paused containers skip that host step with an info notice; `:host` is never skipped. Other errors fail like project steps. `post-start` and `post-stop` keep warn-only failure. There is no Landofile opt-out. Compiled steps carry `{source, sourceIndex}` so errors and the invocation frame point at `config.yml hostEvents.<event>[i]`. Provenance survives both cached and fresh plan attach. Status is `active`, `skipped`, or `deduped` at plan time.
+`compileEffectiveEvents` runs host steps first, then project steps. A host step that canonically matches a project step for the same event is dropped (`"x"` matches `{cmd: x}`, an omitted service is the plan primary, and `:host` is part of the key). Missing plan services and exited, stopped, created, dead, or paused containers skip that host step with an info notice; `:host` is never skipped. Other errors fail like project steps. `post-start` and `post-stop` keep warn-only failure; the warning carries the step's redacted output tail, not only its label. There is no Landofile opt-out. Compiled steps carry `{source, sourceIndex}` so errors and the invocation frame point at `config.yml hostEvents.<event>[i]`. Status is `active`, `skipped`, or `deduped` at plan time. The compiled steps are a value on the plan (`AppPlan.events`, an `EventsPlan`), never a side table keyed on plan identity, so they survive every plan rewrite (cached-plan reads, mount-realization and volume-adoption spreads) between planning and the event run.
+
+Landofile events come from the current Landofile, never from what was applied. `start`, `restart`, and `rebuild` plan the Landofile and run its steps. `stop` and `destroy` tear down from applied state (§5.3.1) and resolve their project steps from the Landofile at the applied root at command time, so a hook added after `start` runs on the next `stop` or `destroy`; host steps come from the runtime's host-configuration snapshot (§16.5) and are compiled against that Landofile's plan. When that root holds no Landofile (including `destroy --root`), the Landofile fails to load (including a form conflict, §7.1.1), or it names a different app or provider than the applied plan, the operation publishes one notice (`message.info` for a missing Landofile, `message.warn` otherwise) naming the reason, runs the lifecycle without Landofile steps, and still tears down. Loader or planner text in that notice passes through the canonical `secrets` redactor before publication (§3.7). This tolerance covers only hook sourcing: ownership validation and unfinished-accelerated-start recovery (§5.3.1, §10.6.3) stay fail-closed. A library `App` handle is a resolved snapshot (§16.6): its operations run the hooks of the Landofile it was resolved from, and a host that wants edited hooks resolves a new handle. Provider applied-plan records never carry `events`, so no path can run stale hooks. `StopAppResult` and `DestroyAppResult` carry `landofileEvents` (`{ status: "ran" }` or `{ status: "skipped", reason }`) whenever an app whose steps could have run was torn down, so machine consumers never scrape the notice. When a Landofile is present but unusable and `destroy` would remove data (`--volumes`, `--purge`, `--purge-caches`), a `pre-destroy` backup step it may declare cannot run: `--yes` accepts that, an interactive session is asked, and anything else fails with `LandofileEventsSkippedError` before any mutation. A root with no Landofile is not gated.
 
 The in-process re-entry guard and depth-16 limit still apply. Only `:host` child processes started by host steps receive `LANDO_HOST_EVENT=1`; a nested Lando that sees it skips `hostEvents` with a notice. `meta config set` and `meta config unset` MUST reject any `hostEvents` path and tell the user to edit `config.yml` by hand. `meta config view` reports the host configuration and `app config` reports host-step status from the resolved Landofile. `app config explain` remains a non-executing canonical-file recipe report.
 
-Nested event/command invocation MUST reject cycles with a visited stack and bounded depth. A failed pre-step prevents the body; a failed body prevents success post-steps; post-steps preserve order and failure is fatal with redacted output. CLI, MCP, and library paths MUST preserve identical ordering and failure semantics.
+Nested event/command invocation MUST reject cycles with a visited stack and bounded depth. A failed pre-step prevents the body; a failed body prevents success post-steps; post-steps preserve order and failure is fatal with redacted output, except `post-start` and `post-stop`, which warn with that output. CLI, MCP, and library paths MUST preserve identical ordering and failure semantics.
 
 #### 8.5.8 Tooling includes
 
-Tooling imports use `includes:` with `kind: tooling`; `toolingIncludes:` is equivalent sugar. Fragments allow only `tooling:` and nested `toolingIncludes:`. Other Landofile keys and bare nested `includes:` fail with `LandofileIncludeError`. Paths resolve from the declaring file. Included tasks default to `<include-namespace>:<task>`; `flatten` removes that prefix; namespace `aliases` require a non-flattened include. `optional`, `internal`, `excludes`, and `vars` apply at include scope. Local task ids win. Cycles return `ToolingIncludeCycleError`.
+Tooling imports use `includes:` with `kind: tooling`; `toolingIncludes:` is equivalent sugar. Fragments allow only `tooling:` and nested `toolingIncludes:`. Other Landofile keys and bare nested `includes:` fail with `LandofileIncludeError`. Paths resolve from the declaring file. Included tasks default to `<include-namespace>:<task>`; `flatten` removes that prefix; namespace `aliases` require a non-flattened include. `optional`, `internal`, `excludes`, and `vars` apply at include scope. Local task ids win. Cycles fail with `LandofileIncludeError` (`kind: "cycle"`). Like Landofile include failures, tooling include failures carry the declaring entry's authored `path`, `file`, and `layer`; nested failures retain the innermost entry's provenance.
 
 Tooling fragments are local-file only; include-level `checksum`, `dir`, and bulk `topLevelAlias` are unsupported and fail closed. Per-task aliases remain valid.
 
@@ -393,6 +414,8 @@ Top comment front matter validates as `BunShellScriptFrontMatter` and MAY carry 
 Default service is `:host`. Scripts run through `ShellRunner.runScript`; realpaths MUST remain under the app or permitted recipe cache, else `ShellScriptOutsideRootError`. They MUST NOT require host Node.js. Inputs are available through `LANDO_FLAG_<NAME>`, `LANDO_ARG_<NAME>`, and serialized `LANDO_INPUT: CommandInput`. Script checksum participates in freshness. `runScript` runs the file on the embedded Bun (`process.execPath` with `BUN_BE_BUN=1`), and Bun Shell exports that switch and `BUN_FEATURE_FLAG_NO_ORPHANS` to every command. A bare `lando` command in a script MUST run as Lando with neither variable set, so it neither falls into Bun nor reaps a nested `lando start`'s detached workers; it resolves to the `lando` on the script's `PATH`, else the running compiled CLI. Other commands keep both variables so Bun Shell's `bun` fallback still reaches the embedded Bun. A path-qualified call to a Lando binary is outside this guarantee.
 
 ### 8.6 The `ToolingEngine` abstraction
+
+Sessions use this tooling executor under §22.6 admission. Aliases, authoring eligibility, hooks, and IO remain unchanged; §22 adds no command or workflow language.
 
 The Effect service tag `ToolingEngine` has `id`, `canHandle(ToolingSpec)`, `compile(ToolingSpec) -> ToolingProgram | ToolingCompileError`, and `execute(ToolingProgram, CommandInput) -> ExecResult | ToolingExecError` with provider/process/shell requirements.
 
@@ -433,8 +456,7 @@ Tooling failures preserve these `_tag` values:
 |---|---|
 | `ToolingCommandLookupError` | Unknown nested canonical command |
 | `ToolingCommandCycleError` | Direct or indirect recursion |
-| `ToolingIncludeCycleError` | Include recursion |
-| `LandofileIncludeError` | Invalid fragment or include shape |
+| `LandofileIncludeError` | Invalid fragment or include shape, including recursion (`kind: "cycle"`), with declaring-entry `path`, `file`, and `layer` |
 | `BunShellScriptFrontMatterError` | Invalid `.bun.sh` metadata |
 | `BunShellScriptEmptyError` | Empty script task |
 | `ShellScriptOutsideRootError` | Script realpath escapes authorized root |
@@ -502,11 +524,11 @@ Migration snapshot helper names remain the closed pure §7.3.1 set, including sc
 |---|---|
 | bare id | Built-in `recipes/<id>/` |
 | relative or absolute path | Local directory |
-| `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/` |
+| `github:` or `git+https:` | Content-addressed `<userCacheRoot>/recipes/git/<sha>/`; an `@ref` suffix selects a tag, branch, or full commit SHA |
 | `npm:` | `<userCacheRoot>/recipes/npm/` |
 | `registry:` | Reserved for `recipes.lando.dev`; implementation sequenced in the ROADMAP |
 
-Resolution is content-addressed and cached for offline reuse.
+Resolution is content-addressed and cached for offline reuse. A cached full commit SHA is reused without network access; a branch, tag, or default-branch request is fetched again on each resolution and falls back to the cached commit for the same source and ref only where a warning can be shown (`lando init --source=git`) and only when the fetch fails for a reason other than authentication; otherwise the failure stands.
 
 #### 8.8.5 Prompt types
 
@@ -605,7 +627,7 @@ Events are `pre-init-source-auth`, `post-init-source-auth`, `pre-init-source-acq
 
 #### 8.8.14 Programmatic recipes (`recipe.ts`)
 
-`recipe.ts` is mutually exclusive with `recipe.yml`. It default-exports a static `RecipeManifest` or async `RecipeContext -> RecipeManifest`, optionally wrapped by `defineRecipe` from `@lando/core/schema`/`@lando/sdk`; runtime output still decodes through the canonical schema.
+`recipe.ts` is mutually exclusive with `recipe.yml`. It default-exports a static `RecipeManifest` or async `RecipeContext -> RecipeManifest`, optionally wrapped by `defineRecipe` from `@lando/sdk/schema`; runtime output still decodes through the canonical schema. Evaluation uses the host-owned modules in §7.1.1 without a local SDK or Effect install; other bare packages resolve beside the author file.
 
 `ctx.prompt` is the only prompt path and delegates to `InteractionService`; raw init-only secrets remain outside factory data. `ctx.run` may invoke only ids in `runs`, else `RecipeForbiddenCommandError`. `ctx.fetch` permits HTTP GET only to `fetchAllowlist`, else `RecipeForbiddenFetchError`. Top-level side effects, arbitrary shell, plugin/global mutation, and other network access are forbidden. Evaluation is bounded.
 
@@ -675,7 +697,7 @@ Renderers MUST meet §2.1 policy:
 | Table first paint | Headers by first row within 80 ms cold |
 | Spinner | Show after 100 ms without progress; avoid shorter flashes |
 | Completion | Final line within 50 ms of terminal event |
-| Level `none` | Direct native output; `Renderer` is not involved |
+| Level-`none` fast path | Direct native output without `Renderer`; dispatcher-routed `none` commands may use the normal renderer boundary |
 
 The tiny pre-renderer MUST NOT import Effect, OCLIF, renderer services, or plugins and is the only pre-Layer direct-output path. Renderer construction consumes synthetic `paint.banner` state to avoid duplication. Non-TTY output has no spinners; tables MAY buffer, but first-byte budgets remain. All narration, including live regions and every `message.*` contract, MUST use stderr. stdout MUST carry only command results, envelopes, stream frames, and tool payloads. A terminal stdout payload MUST suspend and erase the stderr live frame, write the original payload bytes to stdout, then repaint on stderr. A redirected stdout payload MUST NOT interact with the live frame. Result decoration and table width MUST use stdout TTY state and dimensions. Non-streaming JSON emits one stdout envelope; streaming JSON follows §8.11.3. JSON emits structured stderr events, with a first stderr event inside the meaningful-line budget.
 
@@ -752,7 +774,7 @@ The default TTY renderer MUST emit sanitized OSC 99 frames through the stderr wr
 
 Bundled plugin `@lando/notify-lando` owns policy through `NotifyConfig` at global `notify:` with `enabled` default true, `thresholdMs` default 15000, and bounded additional canonical `commands`. The default eligible family is ordered: `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`. Config ids validate against the cwd-independent global registry, then deduplicate in first-occurrence order. Unknown ids return `ConfigError`.
 
-Only the outer invocation qualifies, at `durationMs >= thresholdMs`, once per run, on success or failure. Nested canonical calls never notify independently. Lower-tier eligible commands promote to bootstrap `commands` except contract-sensitive `meta:doctor`, which remains `none` and cannot notify. The subscriber priority is **900**. `notify.enabled: false`, plugin disablement, non-TTY, or missing capability silences presentation. Container-initiated notification or clipboard relay is a non-goal (§10.10).
+Only the outer invocation qualifies, at `durationMs >= thresholdMs`, once per run, on success or failure. Nested canonical calls never notify independently. Lower-tier eligible commands promote to bootstrap `commands` except `meta:doctor`, `meta:config`, `meta:version`, `meta:shellenv`, and `meta:uninstall`, which keep their safe-mode bootstraps and cannot notify. The subscriber priority is **900**. `notify.enabled: false`, plugin disablement, non-TTY, or missing capability silences presentation. Container-initiated notification or clipboard relay is a non-goal (§10.10).
 
 #### 8.9.8 Interactive log viewer
 
@@ -849,7 +871,7 @@ Every command is agent-consumable without prose parsing. `--renderer` selects pr
 
 #### 8.11.1 The result envelope
 
-Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `FailureRole`, `CommandWarning`, and `CommandResultEnvelope`.
+Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `FailureRole`, `CommandWarning`, `CommandCompletion`, `CommandOutputChunk`, `CommandOutput`, and `CommandResultEnvelope`.
 
 **Advertised formats.** `text`, `json`, and `yaml` are universal and are attached to every command's `--format` flag. `table` and `ndjson` are opt-in render-path values declared through the command's `resultFormats`. Help, the generated command-registry manifest, and the MCP catalog projection MUST show exactly the supported set. A command that does not advertise a value MUST reject it with `RendererSelectionError` rather than silently emit text. Advertisement and implementation MUST agree on every surface. `text` is the default.
 
@@ -860,10 +882,13 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Fa
 | `ok` | Success discriminator |
 | `result` | Optional command `resultSchema` value |
 | `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures with required `role` |
+| `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |
 
 Payloadless commands return an empty result object.
+
+Unsuccessful process completion MUST retain its schema-encoded `result` alongside `error`, with `ok: false`; result-key projection and result-derived redaction tokens apply to that retained value too. CLI output uses its ordinary result renderer rather than presenting an expected nonzero child exit as an internal Lando defect. Effect-native library operations keep their existing typed results and failure channels (§16).
 
 CLI and MCP failure envelopes MUST share one Cause projection. The primary is the first `Fail` reason without a failure role, otherwise the first such `Die`, otherwise the first `Fail`, otherwise the first `Die`, otherwise the squashed Cause. Failure-role annotations take precedence over Cause order, which breaks ties within each category. Every other `Fail` and `Die` reason, in Cause order and excluding interruptions, is an additional error with a `role`: `rollback` (undoing the failed operation's partial work), `cleanup` (best-effort release, teardown, or bookkeeping), or `peer` (a sibling step in the same phase, and the default for unannotated reasons). Roles are reason annotations set only by the engine compensation helpers; error mappings and nested defect conversion MUST preserve every reason and its annotations.
 
@@ -871,11 +896,17 @@ CLI and MCP failure envelopes MUST share one Cause projection. The primary is th
 
 `CommandWarning` carries `code`, `message`, and optional `remediation`. Only a breaking envelope change may change `apiVersion`.
 
-Validation failures carry structured `issues` (`ValidationIssue`: `path` as an array of keys and indexes, `message`, optional `suggestion`) in the envelope's `error`, and MCP results carry the same structure. The text renderer prints one line per issue as `<dotted path>: <message>`, so one run reports every problem in the file.
+Every primary and additional `TaggedErrorJson` MUST carry `_tag`, `message`, and required nonblank `remediation`. Unknown failures and serialization fallbacks MUST also satisfy that schema with a specific diagnostic/reporting action. CLI human reports, JSON/YAML envelopes, and MCP MUST use one field-generic SDK diagnostic projection, not error-tag presentation branches. Human formatters MAY specialize by field name (`issues`, `logTail`, `outputTail`); error-owned fields carry tag-specific human context such as a 1-based event step.
+
+Defects at CLI presentation and MCP command-outcome boundaries MUST normalize to `LandoInternalError`, including routing, bootstrap, command, formatter, and finalizer failures. A defect that is already a tagged error with a message and nonblank remediation keeps its tag and remediation instead; only unexpected values (plain exceptions, strings, untagged objects) become internal errors. A primary defect exits `1`. Normal stdout/stderr MUST NOT contain stack traces, raw Causes, or `Cause.pretty` embedded in an exception message. Redacted pretty Causes go only to the existing opt-in debug diagnostic channel (`--debug`, structured stderr records); `--trace` supplies invocation timings. Remediation MUST name those flags, explain that debug records can be captured from stderr and runtime worker logs live under the reported `logsDir`, and say how to report the problem. The dependency-light entrypoint fallback remains for failures before dispatch or inside terminal emission.
+
+Validation failures carry the collected `issues` (`ValidationIssue`: `path` as an array of keys and indexes, `message`, optional `rule`, optional `suggestion`, optional authored `source: { file, layer, path }`) in the envelope's `error`, and MCP results carry the same structure. The text renderer prints one line per issue as `<dotted path>: <message>`, subject to the stage boundaries in §7.8. A completed lint returns `ok: true` with `ConfigLintResult`, including `valid: false` and its `violations` when configuration errors were found; a failure that prevents that result uses the failure envelope.
 
 #### 8.11.2 The single serialization seam
 
 `encodeCommandResult` is the only JSON result serializer. It schema-encodes success or tagged failure, preserves exit status, wraps the envelope, and passes it through `RedactionService` before output. Per-command render helpers produce only human formats. §13.4 MUST reject any other command-result `JSON.stringify` path.
+
+Outside the command-result boundary, an unrecoverable entrypoint failure MAY emit only a stderr diagnostic, redacted as §10.10.2 describes, and exit non-zero; it MUST NOT emit a partial stdout envelope.
 
 `yaml` is boundary-owned: `--format=yaml` MUST emit the same envelope `--format=json` emits for that command, serialized through the `@lando/sdk/yaml` scalar and mapping-key policy, and parsing that YAML MUST yield the same model the JSON parses to. Redaction, `--json` projection, `--jq`, warning capture, and the closed-pipe policy apply to `yaml` exactly as to `json`; they share the command-result boundary. Every YAML projection MUST round-trip its input model, including strings YAML could reinterpret: the `[redacted]` sentinel, `yes`/`no`/`on`/`off`, numeric-looking strings, `null`/`~`, values containing `: `, and leading `*`, `&`, `%`, `@`. `@lando/sdk/yaml` is the one quoting policy; the CLI emitter and the shared Compose serializer owned by `@lando/container-runtime` consume it rather than re-implementing it.
 
@@ -887,7 +918,9 @@ Live commands MUST treat `StreamFrameSink` as optional (`Effect.serviceOption`).
 
 Streaming specs emit newline-delimited `StreamFrame` values tagged `stdout`, `stderr`, `event`, or terminal `result`. Data frames carry chunks and optional service/source; event frames carry redacted bounded-history events; result frames carry `CommandResultEnvelope`. Human sinks deliver tool bytes through value-only payload redaction (§3.7). JSON data frames MUST first apply the boundary-safe byte value layer, then accumulate complete lines (including `\n`), flush at end of stream or a 64 KiB byte cap, decode with UTF-8 replacement, and apply the full `secrets` profile through `redactString` before encoding. UTF-8 codepoints split at the cap MUST decode incrementally; an incomplete final codepoint becomes a replacement character. Pattern matching is bounded to each line or capped fragment; registered-value matching MUST span fragments. Envelopes keep §8.11.2 redaction unchanged. This is not a second event tap. `--format=ndjson` is that frame sequence, one JSON document per line, and is advertised only by streaming commands: a command with no frame sequence does not advertise `ndjson` rather than inventing one.
 
-Tooling MUST use one sink path. Without a host-provided live sink it MUST install a collecting sink and return stdout and stderr, including for envelope, MCP, library, and event invocations. Live sink delivery MUST NOT also accumulate those channels in the result or replay them at completion. The output is delivered exactly once. Live memory MUST be bounded by chunk size, the registered value set and longest-prefix hold, and the JSON line cap, not total output size.
+Tooling MUST use one sink path. Without a host-provided live sink it MUST install a collecting sink and return stdout and stderr, including for envelope, library, and event invocations. A live sink MUST NOT also accumulate an unbounded copy in those result channels or replay live frames at completion. Human delivery remains byte-exact after value redaction. MCP additionally retains a bounded final text capture (§10.14); that authoritative result evidence is not a second live emission. Live memory MUST be bounded by chunk size, the registered value set and longest-prefix hold, the JSON line cap, and any explicitly bounded capture, not total output size.
+
+Producer frames MUST distinguish continuous `kind: bytes` chunks from complete `kind: record` strings. Byte chunks invent no delimiter or terminal prefix; records contain no terminating delimiter, and machine/captured text adds one LF. Human record presentation MAY add provenance labels. Producers receive an emit-only sink. The invocation owner closes or joins producer scopes, calls its idempotent terminal `finish`, resolves completion, then publishes the terminal lifecycle event and final result. Nested exec/tooling steps MUST NOT finish a supplied parent sink or expose held secret prefixes between sibling steps. Locally created collectors are finished by their local owner. CLI and MCP MUST agree on Unicode, record boundaries, and final-tail behavior without sharing protocol-specific inspection or presentation.
 
 `CommandResultEnvelope`, `CommandWarning`, `CommandResultFormat`, and `StreamFrame` are published from `@lando/sdk`, re-exported by `@lando/core/schema`, and snapshot-governed by §13.2.
 
@@ -901,7 +934,7 @@ Every non-interactive canonical command MUST accept `--format json` and `-j`; in
 
 - Bare `--json` after command resolution lists selectable top-level result keys as a JSON array and does not run the command.
 - Valued `--json` projects comma-separated keys and dot paths into `envelope.result`.
-- Failure envelopes are never projected.
+- A failure's retained `result` MAY be projected; its failure metadata MUST remain intact.
 - Space form consumes a value only when it contains comma or dot.
 - Equals form always supplies a field list.
 - `-j` never consumes the next token.

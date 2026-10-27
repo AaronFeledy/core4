@@ -138,6 +138,7 @@ describe("provider matrix acceptance reporting", () => {
     expect(report.checks.map((check) => check.id)).toEqual([
       "managed-setup-readiness",
       "compose-knobs-transport",
+      "storage-lifecycle",
       "sdk-provider-contract",
       "lando-bring-up",
       "lando-bring-down",
@@ -177,7 +178,11 @@ describe("provider matrix acceptance reporting", () => {
       }>;
     };
     expect(cell.releaseBlocking).toBe(false);
-    expect(cell.checks.map((check) => check.id)).toEqual(["sdk-provider-contract", "exec-umask-mode"]);
+    expect(cell.checks.map((check) => check.id)).toEqual([
+      "storage-lifecycle",
+      "sdk-provider-contract",
+      "exec-umask-mode",
+    ]);
     expect(cell.checks.find((check) => check.id === "exec-umask-mode")).toEqual({
       id: "exec-umask-mode",
       label: "lando exec creates 0644 files",

@@ -10,6 +10,7 @@ import {
   stringArray,
 } from "./model.ts";
 import { normalizeJsonSchema } from "./normalize.ts";
+import { compareUnion } from "./union-classifier.ts";
 
 export type {
   CompatibilityException,
@@ -175,9 +176,23 @@ const compareNode = (
 ): ReadonlyArray<CompatibilityFinding> => {
   if (jsonEquals(before, after)) return [];
 
+  const findings: CompatibilityFinding[] = [];
   for (const keyword of UNSUPPORTED_CONSTRUCTS) {
     if (!jsonEquals(before[keyword], after[keyword])) {
+      const beforeMembers = before[keyword];
+      const afterMembers = after[keyword];
+      if (keyword === "anyOf" && Array.isArray(beforeMembers) && Array.isArray(afterMembers)) {
+        const union = compareUnion(beforeMembers, afterMembers, {
+          ...context,
+          path: childPath(context.path, keyword),
+        });
+        if (union !== undefined) {
+          findings.push(union);
+          continue;
+        }
+      }
       return [
+        ...findings,
         finding(
           "unknown",
           "unsupported-construct",
@@ -189,23 +204,29 @@ const compareNode = (
   }
   if (!jsonEquals(before.$ref, after.$ref)) {
     return [
+      ...findings,
       finding("unknown", "ref-changed", childPath(context.path, "$ref"), "A JSON Schema reference changed."),
     ];
   }
   if (!jsonEquals(before.type, after.type)) {
-    return [finding("breaking", "type-changed", context.path, "The JSON Schema type changed.")];
+    return [...findings, finding("breaking", "type-changed", context.path, "The JSON Schema type changed.")];
   }
   if (!jsonEquals(before.enum, after.enum)) {
     if (Array.isArray(before.enum) && Array.isArray(after.enum)) {
-      return [compareEnum(before.enum, after.enum, context)];
+      return [...findings, compareEnum(before.enum, after.enum, context)];
     }
-    return [finding("breaking", "enum-changed", context.path, "An enum constraint was added or removed.")];
+    return [
+      ...findings,
+      finding("breaking", "enum-changed", context.path, "An enum constraint was added or removed."),
+    ];
   }
   if (!jsonEquals(before.const, after.const)) {
-    return [finding("breaking", "const-changed", context.path, "A constant value constraint changed.")];
+    return [
+      ...findings,
+      finding("breaking", "const-changed", context.path, "A constant value constraint changed."),
+    ];
   }
 
-  const findings: CompatibilityFinding[] = [];
   if (!jsonEquals(before.properties, after.properties) || !jsonEquals(before.required, after.required)) {
     findings.push(...compareProperties(before, after, context));
   }
@@ -249,7 +270,9 @@ export const classifySchemaChange = (
   after: JsonSchema,
   polarity: SchemaPolarity,
 ): ReadonlyArray<CompatibilityFinding> =>
-  compareNode(normalizeJsonSchema(before), normalizeJsonSchema(after), { polarity, path: "$" });
+  jsonEquals(before, after)
+    ? []
+    : compareNode(normalizeJsonSchema(before), normalizeJsonSchema(after), { polarity, path: "$" });
 
 export const acceptCompatibilityExceptions = (
   surface: string,

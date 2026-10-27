@@ -1,6 +1,6 @@
 # Lando v4: Plugin Specification
 
-> **Part 10 of 19** · [Index](./README.md)
+> **Part 10 of 20** · [Index](./README.md)
 > **Read next:** [11 Subsystems](./11-subsystems.md)
 
 A plugin is a Bun-loadable package whose manifest declares its public contribution surface. The pluggable abstractions themselves are cataloged in §4.
@@ -116,13 +116,15 @@ Command ids MUST be canonical and namespaced. `namespace` MUST equal the id pref
 
 There are no legacy autoload directories; every contribution enters through the manifest.
 
+Trusted command/tooling Effects may consume `ExecutionSessionService` through declared SDK requirements (§22), not core or private engine imports. Manifest and trust rules remain unchanged.
+
 Contribution invariants:
 
 - Config translators MUST declare unique identity and input kinds and run only on explicit request or the declared refresh phase (§7.4.2). They MUST decode snapshots or recipe requests into authoring fragments, never emit plans, perform IO, mutate files, contact providers, or install plugins. Duplicate ids fail without a precedence winner. Optional encoders MUST preserve expressions and secret references under §7.4.1 and §7.8.1.
 - Template engines MUST declare identity, extensions, and capabilities. `lando` is reserved. Plugin engines MUST NOT claim Landofile string interpolation; unsafe engines require explicit opt-in and otherwise fail with `TemplateEngineUnsafeRejectedError`. Engines MUST implement the published tag and SHOULD provide the portable helper set.
 - Renderer panels MUST declare valid id, slot, watch set, and contained module. Watch names are limited to the closed event taxonomy. Invisible panels remain unloaded; visible panels run isolated, bounded, and are dropped on load or identity failure as `PluginLoadError` (§8.9.5).
 - Subscribers MUST use exact event selectors or the published command-terminal family, remain in the plugin priority band, default to non-aborting failure behavior, and MAY request only published config projections. Factories load on first matching event, run once, and cache their handler. Invalid shape is `PluginManifestError`; escaping modules fail with `PluginModulePathError`.
-- Service types MUST declare `name`, `base`, and either a resolver module or the published declarative shape. Inheritance is single, bounded, acyclic, and references an earlier type. Landofile tooling overrides type tooling; reserved surviving names fail with `CommandAliasConflictError`. Type tooling MUST NOT claim top-level aliases. Credentials are exposed only when declared.
+- Service types MUST declare `name`, `base`, and either a resolver module or the published declarative shape. Inheritance is single, bounded, acyclic, and references an earlier type. Landofile tooling overrides type tooling; enabled reserved names produce `landofile.tooling` issues in lint and planning, aggregated by planning in `LandofileValidationError` (§7.8). Type tooling MUST NOT claim top-level aliases. Credentials are exposed only when declared.
 - App features MUST declare identity, module, priority, and activation or selectors; no-op entries are rejected. They MUST use published mutators, MUST declare provider-extension access, and MUST be idempotent across replanning.
 - Global services MUST declare identity, module, default enablement, required capabilities, and conflicts. They MUST be pure service-config Effects, MUST NOT consume the active provider or perform network/process IO, and MUST reference a published service type. Listed commands MUST also exist in the same plugin’s `provides.commands`. Capability, collision, conflict, unknown-type, and command-reference failures remain tagged under §20. Plugins SHOULD pair global services with activating app features.
 - Doctor checks MUST use bounded `DoctorCheckContext`, MUST NOT import container-runtime internals, MUST provide remediation or sufficient explanation, MUST redact secrets, and MUST fail in isolation rather than taking down the doctor run. Automatic fixes run only with explicit `--fix` (§10.9).
@@ -146,7 +148,7 @@ The store contract is `id`, `schemes`, `capabilities`, `get`, `has`, `list`, `de
 - An incoming value is registered with the canonical redactor (§3.7) before persistence, before any child process receives it, and before any failure can mention it.
 - `describe(id)` MUST return only nonsecret metadata `{ kind?, expiresAt?, issuer?, scopes? }`, or empty metadata for an existing value without it, using the read error union. `list` MUST return ids only. Metadata MUST NOT be treated as permission evidence (§10.12.3).
 - `LandoPluginContext.secrets` MUST bind each plugin to one namespace. Its reference is `${secret:lando://<namespace>/<id>}`: namespace is `p-` followed by lowercase hexadecimal UTF-8 bytes of the complete canonical plugin id, and id is a nonempty grammar-safe single key segment (§7.3.1). Encoding MUST be injective, including npm `@` and `/`; literal npm ids MUST NOT be inserted into URI segments. No truncation or lossy normalization is permitted.
-- Resolved values are registered with the canonical redactor (§3.7) before the resolving operation emits any event, result, transcript, or failure; consumers that resolve secrets (`resolveServiceEnvironmentSecrets`, `ShellInteractiveSpec.resolveSecret`, start, rebuild, scratch, and global flows) propagate `SecretStoreError` untouched through their tagged result channels.
+- Resolved values, their URI-encoded components, and secret-bearing composites are registered with the canonical redactor (§3.7) before the resolving operation emits any event, result, transcript, or failure; consumers that resolve secrets (`EnvironmentValueResolver` sessions behind start, rebuild, tooling, SQL, scratch, and global flows, and `ShellInteractiveSpec.resolveSecret`) propagate `SecretStoreError` untouched through their tagged result channels.
 
 Bundled stores:
 
@@ -178,6 +180,7 @@ App-declared plugins install only into their app-scoped store, use the same trus
 
 - Manifest validation, source resolution, compatibility, module resolution, and realpath containment precede import.
 - Bundled modules are statically included; external modules use absolute file URLs. Cwd-relative imports and paths escaping the plugin root are forbidden.
+- External entries and contribution modules MUST use the host-owned SDK and Effect instances in §7.1.1, including when a contribution loads before its entry. Plugin-local peer copies MUST NOT override them; other bare packages resolve beside the importing file. Host ownership does not waive manifest compatibility checks.
 - App-scoped plugins load only from their lockfile-selected local copy.
 - The validated plugin-command cache is the sole command-metadata owner. It follows discovery precedence, invalidates on plugin-set or manifest change, and MUST NOT be treated as an executable registry.
 - Duplicate command ids retain the first occurrence in resolved manifest order. Executable plugin command loaders remain lazy and keyed by canonical id.

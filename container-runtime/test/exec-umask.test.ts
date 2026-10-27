@@ -37,7 +37,7 @@ import {
 } from "../src/podman/exec-umask.ts";
 import { exec } from "../src/podman/exec.ts";
 
-const ctx = { providerId: "docker", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "docker", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("exec-umask-app");
 const serviceName = ServiceName.make("web");
@@ -77,7 +77,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: makeService(serviceName), [otherService]: makeService(otherService) },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -121,7 +120,10 @@ const containerNameOf = (path: string): string | undefined => {
 
 const makeScriptedApi = (
   scriptFor: (cmd: ReadonlyArray<string>, container: string) => FakeExecScript,
-  options: { readonly failCreate?: (cmd: ReadonlyArray<string>, container: string) => boolean } = {},
+  options: {
+    readonly failCreate?: (cmd: ReadonlyArray<string>, container: string) => boolean;
+    readonly containerId?: (container: string) => string;
+  } = {},
 ) => {
   const calls: EngineHttpRequest[] = [];
   let nextId = 1;
@@ -132,7 +134,13 @@ const makeScriptedApi = (
         calls.push(input);
         if (input.method === "GET" && input.path.startsWith("/containers/") && input.path.endsWith("/json")) {
           const name = containerNameOf(input.path) ?? "unknown";
-          return { status: 200, body: JSON.stringify({ Id: `cid-${name}`, State: { Running: true } }) };
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Id: options.containerId?.(name) ?? `cid-${name}`,
+              State: { Running: true },
+            }),
+          };
         }
         if (input.method === "POST" && input.path.endsWith("/exec")) {
           const container = containerNameOf(input.path) ?? "unknown";
@@ -221,7 +229,7 @@ describe("wrapExecCommand", () => {
   });
 });
 
-describe("umask wrapper process contract", () => {
+describe.skipIf(process.platform === "win32")("umask wrapper process contract", () => {
   const runWrapped = async (command: ReadonlyArray<string>, signal?: NodeJS.Signals) =>
     await new Promise<{
       readonly exitCode: number | null;
@@ -255,6 +263,12 @@ describe("umask wrapper process contract", () => {
     expect(result.stdout.trim()).toBe(EXEC_UMASK_COMPENSATION);
   });
 
+  test("preserves an explicit umask in the authored shell command", async () => {
+    const result = await runWrapped(["/bin/sh", "-c", "umask 0077; exec cat /proc/self/status"]);
+    expect(result.exitCode).toBe(0);
+    expect(parseProcSelfStatusUmask(result.stdout)).toBe("0077");
+  });
+
   test("forwards argv through the shell without re-quoting", async () => {
     const result = await runWrapped([
       "/bin/sh",
@@ -283,6 +297,91 @@ describe("umask wrapper process contract", () => {
 });
 
 describe("exec umask compensation", () => {
+  test("cancels an in-flight umask probe before starting the user command", async () => {
+    const controller = new AbortController();
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const fake = makeScriptedApi(() => ({}));
+    const api: EngineHttpApi = {
+      ...fake.api,
+      stream: (input) => {
+        fake.api.stream?.(input);
+        markStarted();
+        return Stream.never;
+      },
+    };
+    const pending = runExec(api, { command: ["id"], signal: controller.signal });
+    await started;
+    controller.abort();
+    await pending;
+    expect(createBodies(fake.calls)).toEqual([[...EXEC_UMASK_PROBE_COMMAND]]);
+  });
+  test("does not reuse shell availability or warnings after container recreation", async () => {
+    let generation = 1;
+    const warnings: string[] = [];
+    const fake = makeScriptedApi(
+      (cmd) => {
+        if (isUmaskProbeCommand(cmd)) return { stdout: umaskStatus("0000") };
+        if (isShellProbeCommand(cmd)) return { exitCode: generation === 1 ? 127 : 0 };
+        return { exitCode: 0 };
+      },
+      { containerId: () => `cid-${generation}` },
+    );
+    await runExec(fake.api, { command: ["id"] }, target, (message) => warnings.push(message));
+    generation = 2;
+    await runExec(fake.api, { command: ["id"] }, target, (message) => warnings.push(message));
+    expect(createBodies(fake.calls).filter((cmd) => isShellProbeCommand(cmd))).toHaveLength(2);
+    expect(createBodies(fake.calls).at(-1)).toEqual(wrapExecCommand(["id"]));
+    expect(warnings).toHaveLength(1);
+    expect(peekContainerHasShell(fake.api, "cid-1")).toBe(false);
+    expect(peekContainerHasShell(fake.api, "cid-2")).toBe(true);
+  });
+
+  test("keeps umask and shell caches isolated between engine connections", async () => {
+    const first = makeScriptedApi((cmd) => (isUmaskProbeCommand(cmd) ? { stdout: umaskStatus("0022") } : {}));
+    const second = makeScriptedApi((cmd) =>
+      isUmaskProbeCommand(cmd) ? { stdout: umaskStatus("0000") } : {},
+    );
+    await runExec(first.api, { command: ["id"] });
+    await runExec(second.api, { command: ["id"] });
+    expect(createBodies(first.calls).at(-1)).toEqual(["id"]);
+    expect(createBodies(second.calls).at(-1)).toEqual(wrapExecCommand(["id"]));
+  });
+
+  test("preserves stdin, TTY, environment, cwd, and user when wrapping", async () => {
+    const fake = makeScriptedApi((cmd) => (isUmaskProbeCommand(cmd) ? { stdout: umaskStatus("0000") } : {}));
+    const stdinStream = {
+      async *[Symbol.asyncIterator]() {
+        yield new Uint8Array([65]);
+      },
+    };
+    await Effect.runPromise(
+      exec(
+        plan,
+        { ...target, user: "1000" },
+        {
+          command: ["cat"],
+          stdinStream,
+          tty: true,
+          cwd: "/tmp",
+          env: { EXAMPLE: "two words" },
+        },
+        { api: fake.api, ctx },
+      ),
+    );
+    const create = fake.calls.filter((call) => call.path.endsWith("/exec")).at(-1);
+    expect(create?.body).toMatchObject({
+      Cmd: wrapExecCommand(["cat"]),
+      AttachStdin: true,
+      Tty: true,
+      User: "1000",
+      WorkingDir: "/tmp",
+      Env: ["EXAMPLE=two words"],
+    });
+    expect(fake.calls.filter((call) => call.path.endsWith("/start")).at(-1)?.stdin).toBe(stdinStream);
+  });
   test("wraps the user command when the probed umask is 0000", async () => {
     const fake = makeScriptedApi((cmd) => {
       if (isUmaskProbeCommand(cmd)) return { stdout: umaskStatus("0000"), exitCode: 0 };

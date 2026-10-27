@@ -1,21 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Layer, Option, Stream } from "effect";
 
 import { LandofileEventStepFailedError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { EventService, RuntimeProviderRegistry, ToolingEngine } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runAppEvent, runAppInitEvents } from "../../src/operations/events.ts";
-import { attachEffectiveEvents } from "../../src/planner/effective-events.ts";
+import * as EnvironmentResolver from "../../src/services/environment-value-resolver.ts";
 import { EventCommandExecutor } from "../../src/services/event-command-executor.ts";
+import * as EnvSecretStore from "../../src/services/secret-store.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import { withAuthoredProjectEvents as withProjectEvents } from "./event-plan.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("init-events"),
@@ -25,7 +23,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -42,6 +39,9 @@ const eventRuntime = (
   failures: ReadonlySet<string> = new Set(),
 ) =>
   Layer.mergeAll(
+    EnvironmentResolver.layer.pipe(
+      Layer.provide(Layer.merge(RedactionService.layer, EnvSecretStore.layerWith({ env: {} }))),
+    ),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       EventService,
@@ -57,14 +57,15 @@ const eventRuntime = (
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+        ...makeRedactionService(),
       }),
     ),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
         list: Effect.succeed([ProviderId.make("test")]),
         capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
         select: () => Effect.succeed(TestRuntimeProvider),
@@ -101,7 +102,7 @@ describe("app initialization lifecycle events", () => {
   test("runs pre-init then post-init before the operation-specific pre event", async () => {
     // Given
     const executed: string[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-init": ["pre-init-one", "pre-init-two"],
       "post-init": ["post-init-one"],
       "pre-start": ["pre-start-one"],
@@ -122,7 +123,7 @@ describe("app initialization lifecycle events", () => {
   test("fails closed when a pre-init step fails", async () => {
     // Given
     const executed: string[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), { "pre-init": ["fail-pre-init"] });
+    const plan = withProjectEvents(eventPlan(), { "pre-init": ["fail-pre-init"] });
 
     // When
     const error = await Effect.runPromise(
@@ -140,7 +141,7 @@ describe("app initialization lifecycle events", () => {
     const executed: string[] = [];
     const published: string[] = [];
     const secret = "post-init-secret";
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "post-init": [{ cmd: secret, env: { EVENT_SECRET: secret } }],
     });
 
@@ -153,13 +154,12 @@ describe("app initialization lifecycle events", () => {
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") throw new Error("Expected post-init failure");
     const failure = Cause.findErrorOption(exit.cause);
-    expect(failure).toMatchObject({
-      _tag: "Some",
-      value: {
-        _tag: "LandofileEventStepFailedError",
-        event: "post-init",
-        outputTail: "[redacted]",
-      },
+    expect(Option.isSome(failure)).toBe(true);
+    if (!Option.isSome(failure)) throw new Error("Expected typed post-init failure");
+    expect(failure.value).toMatchObject({
+      _tag: "LandofileEventStepFailedError",
+      event: "post-init",
+      outputTail: "[redacted]",
     });
     expect(JSON.stringify(failure)).not.toContain(secret);
     expect(published).not.toContain("message.warn");
@@ -169,7 +169,7 @@ describe("app initialization lifecycle events", () => {
     // Given
     const executed: string[] = [];
     const published: string[] = [];
-    const plan = attachEffectiveEvents(eventPlan(), {
+    const plan = withProjectEvents(eventPlan(), {
       "pre-init": ["{{ event._tag }}"],
       "post-init": ["{{ event._tag }}"],
     });

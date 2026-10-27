@@ -7,17 +7,20 @@ import { startApp } from "../../src/operations/start.ts";
 import { app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
 
 test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
-  "resume from %s keeps original failure first when lease drain fails",
+  "resume from %s preserves only the original failure without draining sessions",
   async (phase) => {
     const original = new ProviderUnavailableError({
       providerId: "lando",
       operation: "apply",
       message: "apply failed",
+      remediation: "Install or start the `lando` provider and confirm it can perform `apply`.",
     });
     const secondary = new FileSyncStopError({
       engineId: "mutagen",
       sessionRef: "old",
       message: "drain failed",
+      remediation:
+        "Fix the reported file-sync session failure, then retry `lando stop` or terminate the named session in the engine.",
     });
     const harness = await Effect.runPromise(
       recoveryHarness({ phase, harnessOptions: { applyEffect: Effect.fail(original) } }),
@@ -39,11 +42,11 @@ test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
     expect(Exit.isFailure(result)).toBe(true);
     if (Exit.isFailure(result)) {
       const failures = result.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error);
-      expect(failures[0]).toBe(original);
-      expect(failures).toContain(secondary);
+      expect(failures).toEqual([original]);
     }
     const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
     expect(pending?.phase).toBe("apply-intent");
     expect(harness.calls).not.toContain("terminate:old");
+    expect(harness.calls).not.toContain("drain");
   },
 );

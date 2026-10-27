@@ -16,7 +16,6 @@ const start = Schema.decodeUnknownSync(events.PreStartEvent)({
     provider: "lando",
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: { resolvedAt: "2026-05-11T07:30:00Z", source: "/app/.lando.yml", runtime: 4 },

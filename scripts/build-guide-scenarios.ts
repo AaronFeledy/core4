@@ -47,6 +47,7 @@ import {
 } from "../core/src/docs/render/index.ts";
 import { encodeVariantPair, encodeVariantString, variantFileSuffix } from "../core/src/docs/variant.ts";
 import { GuideId, type GuidePlatform } from "../sdk/src/docs/guide-frontmatter.ts";
+import { validationIssuesFromCause } from "../sdk/src/schema/validation-issue.ts";
 
 import {
   GuideFrontmatterValidationError,
@@ -463,7 +464,7 @@ const renderVerify = (
     const command = component.props.command;
     return [
       `    const verifyRun = yield* context.runCli(${quote(interpolate(command, variables))});`,
-      "    expect(verifyRun.exitCode, `stdout:\\n${verifyRun.stdout}\\nstderr:\\n${verifyRun.stderr}`).toBe(0);",
+      `    expect(verifyRun.exitCode, \`stdout:\\n\${verifyRun.stdout}\\nstderr:\\n\${verifyRun.stderr}\`).toBe(${component.props.expectExit ?? 0});`,
       ...(expected === undefined
         ? []
         : [
@@ -624,7 +625,7 @@ export const renderScenarioTest = (
     platformSkip === undefined ? taggedTestName : `${taggedTestName} (${platformSkip})`,
   );
   const skippedE2eTestName = quote(
-    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and a live provider socket via lando setup or LANDO_TEST_PODMAN_SOCKET)`,
+    `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to a live provider socket)`,
   );
   const e2eForcedSkip = usesE2eRuntime && forcedSkip;
   const testNameExpression =
@@ -660,11 +661,7 @@ ${
       : 'import { withScenarioContext } from "@lando/core/testing";'
 }
 
-${
-  usesE2eRuntime
-    ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && hasLiveProviderSocket();'
-    : ""
-}
+${usesE2eRuntime ? 'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1";' : ""}
 
 const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   if (expected === undefined) return actual !== undefined;
@@ -684,7 +681,13 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
 };
 
 ${testFnExpression}(${testNameExpression}, async () => {
-  const exit = await Effect.runPromiseExit(
+${
+  usesE2eRuntime
+    ? `  if (!hasLiveProviderSocket()) throw new Error("LANDO_GUIDE_E2E=1 requires an answering LANDO_TEST_PODMAN_SOCKET; configure the job-owned runtime before running e2e guides.");
+  if (process.env.LANDO_SCENARIO_E2E_BINARY === undefined) throw new Error("LANDO_GUIDE_E2E=1 requires LANDO_SCENARIO_E2E_BINARY.");
+`
+    : ""
+}  const exit = await Effect.runPromiseExit(
     ${contextRunner}({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
         let lastRun: unknown;
@@ -712,7 +715,7 @@ const parseFrontmatter = (sourcePath: string, yaml: string | undefined): Record<
       sourcePath,
       field: "frontmatter",
       rejectedValue: yaml,
-      issues: [String(error)],
+      issues: [{ path: [], message: String(error) }],
       remediation: `Fix the YAML frontmatter in ${sourcePath}.`,
     });
   }
@@ -778,14 +781,9 @@ const decodeOrThrow = <A>(
     sourcePath,
     field: firstField,
     rejectedValue: props[firstField],
-    issues: [String(either.failure)],
+    issues: validationIssuesFromCause(either.failure),
     remediation: `Fix <${component}> prop \`${firstField}\` in ${sourcePath}.`,
   });
-};
-
-const fieldFromParseIssue = (issue: string): string => {
-  const match = /\["([^\"]+)"\]/.exec(issue);
-  return match?.[1] ?? "frontmatter";
 };
 
 const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): GuideFrontmatter => {
@@ -793,14 +791,14 @@ const decodeFrontmatter = (sourcePath: string, input: Record<string, unknown>): 
   const decoded = decodeGuideFrontmatterEither(schemaFrontmatter);
   if (Result.isSuccess(decoded)) return decoded.success;
   if (decoded.failure instanceof NotImplementedError) throw decoded.failure;
-  const issue = String(decoded.failure);
-  const firstField = fieldFromParseIssue(issue);
+  const issues = validationIssuesFromCause(decoded.failure);
+  const firstField = String(issues[0]?.path[0] ?? "frontmatter");
   throw new GuideFrontmatterValidationError({
     message: `Guide frontmatter is invalid at ${sourcePath}.`,
     sourcePath,
     field: firstField,
     rejectedValue: input[firstField],
-    issues: [issue],
+    issues,
     remediation: `Fix guide frontmatter field \`${firstField}\` with rejected value ${JSON.stringify(input[firstField])}.`,
   });
 };
@@ -1089,7 +1087,9 @@ const verifyResultSummary = (props: VerifyProps, variables: ReadonlyMap<string, 
   if (props.file !== undefined)
     return `file ${quote(interpolate(props.file, variables))} matches expectation`;
   if (props.command !== undefined) {
-    return `command ${quote(interpolate(props.command, variables))} succeeds`;
+    return props.expectExit === undefined || props.expectExit === 0
+      ? `command ${quote(interpolate(props.command, variables))} succeeds`
+      : `expected exit ${props.expectExit}`;
   }
   return `error tag ${quote(props.errorTag ?? "")} observed`;
 };

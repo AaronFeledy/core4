@@ -7,7 +7,7 @@ tags: [beta, docs, landofile, naming]
 
 # Name an app
 
-`lando init` accepts lowercase kebab-case names. Spaces and uppercase letters fail validation.
+Choose a lowercase kebab-case name such as `my-app` when running `lando init`. Spaces and uppercase letters fail validation. For a hand-authored app, set `name:` in `.lando.yml`, then run `lando app:config --format=json` from that directory to read the name back.
 
 A hand-authored Landofile can still use a display name that `init` would reject. Lando keeps that display name and derives a safe runtime slug for networks, hostnames, aliases, caches, and provider labels.
 

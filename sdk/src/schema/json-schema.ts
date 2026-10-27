@@ -10,6 +10,11 @@ import {
   GpgAgentConfig,
   SshAgentConfig,
 } from "./agent-forwarding.ts";
+import {
+  LandofileSourceDocument,
+  LandofileSourceProjection,
+  LandofileSourceValue,
+} from "./landofile-source.ts";
 import { LayerMergeRule } from "./layer-merge.ts";
 import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 
@@ -34,7 +39,9 @@ import {
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
+import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
 import {
+  AppPlacementError,
   LandofileExpressionEvalError,
   LandofileExpressionForbiddenError,
   LandofileExpressionParseError,
@@ -42,6 +49,7 @@ import {
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
   RouteInputError,
+  RouteProviderMismatchError,
   SubscriberLevelMismatchError,
 } from "../errors/index.ts";
 import { KeymapConflictError } from "../errors/keymap.ts";
@@ -81,6 +89,7 @@ import {
   PostDatasetFetchEvent,
   PostDatasetSendEvent,
   PostDestroyEvent,
+  PostGlobalDestroyEvent,
   PostGlobalRebuildEvent,
   PostGlobalStartEvent,
   PostGlobalStopEvent,
@@ -92,6 +101,7 @@ import {
   PostPushEvent,
   PostRebuildEvent,
   PostRestartEvent,
+  PostScratchDestroyEvent,
   PostServiceStartEvent,
   PostServiceStopEvent,
   PostStartEvent,
@@ -112,6 +122,7 @@ import {
   PreDatasetFetchEvent,
   PreDatasetSendEvent,
   PreDestroyEvent,
+  PreGlobalDestroyEvent,
   PreGlobalRebuildEvent,
   PreGlobalStartEvent,
   PreGlobalStopEvent,
@@ -123,6 +134,7 @@ import {
   PrePushEvent,
   PreRebuildEvent,
   PreRestartEvent,
+  PreScratchDestroyEvent,
   PreServiceStartEvent,
   PreServiceStopEvent,
   PreStartEvent,
@@ -143,10 +155,27 @@ import {
   TunnelStatusEvent,
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
-import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
+import {
+  AppPlan,
+  CurrentExecutableAppPlan,
+  FileSyncPlan,
+  ServiceHomePlan,
+  ServiceNetworkAttachment,
+  ServicePlan,
+} from "./app-plan.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
+import {
+  CompilationContext,
+  CompiledLandofile,
+  ComposedCompiledLandofile,
+  IdentityScopedLandofile,
+  LoadScopedLandofile,
+  ParsedPendingSite,
+  ServiceScopedLandofile,
+  SourceCompiledLandofile,
+} from "./compiled-landofile.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
 import { GlobalConfigView } from "./config-view.ts";
@@ -162,6 +191,12 @@ import {
   TelemetryConfig,
   TracingConfig,
 } from "./config.ts";
+import {
+  ContainerHelperArch,
+  ContainerHelperArtifact,
+  ContainerHelperDigest,
+  ContainerHelperTarget,
+} from "./container-helper.ts";
 import {
   ArchiveFormat,
   DataEndpoint,
@@ -186,6 +221,7 @@ import {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
+import { DatabaseConnection, ServiceCreds, ServiceCredsDisplay } from "./database-connection.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -199,7 +235,23 @@ import {
   DownloaderCapabilities,
 } from "./downloader.ts";
 import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
-import { BindAddress, InternalEndpoint, PublishedEndpoint } from "./endpoint.ts";
+import { EndpointInvariantIssue, HttpEndpointSelection, LogicalEndpoint } from "./endpoint-selection.ts";
+import {
+  BindAddress,
+  EndpointRef,
+  InternalEndpoint,
+  ObservedPublication,
+  PublicationObservation,
+  PublishedEndpoint,
+} from "./endpoint.ts";
+import {
+  BoundText,
+  BoundTextReference,
+  Environment,
+  EnvironmentValue,
+  SecretRef,
+  SecretReference,
+} from "./environment-value.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncEngineCapabilities,
@@ -237,34 +289,50 @@ import {
   LandofileAuthoringShape,
   LandofileAuthoringShapeWire,
 } from "./landofile-authoring.ts";
+import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
+  AppMountInput,
+  CaInput,
+  CertsInput,
   CommandAliasesShape,
   EndpointInput,
   HealthcheckInput,
   IncludeEntry,
   LandofileShape,
+  MountInput,
   PhpComposerConfig,
   RouteInput,
   RouteObjectInput,
   ServiceConfig,
   ServiceConfigInput,
   ServiceFileConfig,
+  StorageInput,
   ToolingArgShape,
   ToolingDefaultsShape,
   ToolingFlagShape,
   ToolingIncludeShape,
   ToolingStepShape,
+  ToolingTaskInput,
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
 import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
-import { CommandResultEnvelope, CommandResultFormat, CommandWarning, StreamFrame } from "./machine-output.ts";
+import {
+  CommandCompletion,
+  CommandOutput,
+  CommandOutputChunk,
+  CommandResultEnvelope,
+  CommandResultFormat,
+  CommandWarning,
+  StreamFrame,
+} from "./machine-output.ts";
 import { ManagedFile, ManagedFileInfo, ManagedFilePlan, ManagedFileResult } from "./managed-file.ts";
 import { McpCatalog, McpCatalogOptions, McpServeOptions, McpToolDescriptor } from "./mcp.ts";
 import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan, StorageScope } from "./mounts.ts";
 import {
   AppRef,
+  AuthoredNetworkPlan,
   CertificatePlan,
   CheckResult,
   DependencyPlan,
@@ -272,7 +340,6 @@ import {
   HealthcheckPlan,
   HostAliasPlan,
   IsolateMode,
-  NetworkPlan,
   NetworkingPlan,
   PerAppBridgePlan,
   ProviderCapabilities,
@@ -301,6 +368,7 @@ import {
   AppId,
   BootstrapLevel,
   CommandSpec,
+  ContainerUser,
   HostArchitecture,
   HostPlatform,
   HostPlatformFamily,
@@ -314,6 +382,7 @@ import {
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
+import { RouteEvidence } from "./proxy.ts";
 import {
   ProxyApplyResult,
   ProxyAuthority,
@@ -378,8 +447,10 @@ import {
   StyledSpanTone,
 } from "./renderer-panel.ts";
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
+import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
-import { ServiceInfo } from "./service-info.ts";
+import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
+import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import {
   DotnetServiceConfig,
   LocalStackServiceConfig,
@@ -468,6 +539,30 @@ export type PublicSchemaReferencePage = {
 };
 
 const basePublicSchemaRegistry = schemaRegistry({
+  SecretReference,
+  SecretRef,
+  BoundTextReference,
+  BoundText,
+  EnvironmentValue,
+  Environment,
+  ServiceCreds,
+  DatabaseConnection,
+  ServiceCredsDisplay,
+  CurrentExecutableAppPlan,
+  EventStepPlan,
+  EventStepSource,
+  EventStepStatus,
+  EventsPlan,
+  CompilationContext,
+  ParsedPendingSite,
+  SourceCompiledLandofile,
+  ComposedCompiledLandofile,
+  LoadScopedLandofile,
+  IdentityScopedLandofile,
+  ServiceScopedLandofile,
+  CompiledLandofile,
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
   SshAgentConfig,
   GpgAgentConfig,
   AgentSocketKind,
@@ -525,8 +620,17 @@ const basePublicSchemaRegistry = schemaRegistry({
   AppPlan,
   ProviderSetupPlan,
   ServicePlan,
+  ServiceHomePlan,
+  AppMountInput,
   AppMountPlan,
+  MountObservation,
+  ObservedMount,
+  ServiceInfoMount,
+  MountInput,
   MountPlan,
+  StorageInput,
+  CertsInput,
+  CaInput,
   DataStorePlan,
   DataStoreMountPlan,
   StorageScope,
@@ -544,6 +648,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   RouteFilterType,
   RouteFilter,
   RouteInputError,
+  RouteProviderMismatchError,
+  AppPlacementError,
   ProxyConfig,
   RouterConfig,
   ProxyAuthority,
@@ -557,9 +663,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostAliasPlan,
   ServiceDependencyCondition,
   DependencyPlan,
-  NetworkPlan,
   PerAppBridgePlan,
   SharedNetworkMembershipPlan,
+  AuthoredNetworkPlan,
+  ServiceNetworkAttachment,
   NetworkingPlan,
   IsolateMode,
   ProviderCapabilities,
@@ -582,6 +689,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ToolingArgShape,
   ToolingDefaultsShape,
   ToolingStepShape,
+  ToolingTaskInput,
   ToolingTaskShape,
   ToolingIncludeShape,
   IncludeEntry,
@@ -609,6 +717,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   DownloadResult,
   DownloaderCapabilities,
   ArchiveFormat,
+  ContainerHelperArch,
+  ContainerHelperTarget,
+  ContainerHelperDigest,
+  ContainerHelperArtifact,
   DataEndpoint,
   VolumeRef,
   VolumeInfo,
@@ -674,10 +786,22 @@ const basePublicSchemaRegistry = schemaRegistry({
   PluginName,
   PortablePath,
   CommandSpec,
+  ContainerUser,
   PlanMetadata,
   ProviderExtensionConfig,
   HostPlatform,
   ServiceInfo,
+  ServiceInfoLogSource,
+  StartedService,
+  EndpointRef,
+  ObservedPublication,
+  PublicationObservation,
+  EndpointInvariantIssue,
+  HttpEndpointSelection,
+  LogicalEndpoint,
+  ServiceConnection,
+  ServiceState,
+  RouteEvidence,
   EmbeddingPluginPolicy,
   ContributionRef,
   PluginSetupFlagContribution,
@@ -739,6 +863,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   PostGlobalStartEvent,
   PreGlobalStopEvent,
   PostGlobalStopEvent,
+  PreGlobalDestroyEvent,
+  PostGlobalDestroyEvent,
+  PreScratchDestroyEvent,
+  PostScratchDestroyEvent,
   PreGlobalRebuildEvent,
   PostGlobalRebuildEvent,
   PreAppStartEvent,
@@ -827,6 +955,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   FailureRole,
   CommandWarning,
   CommandResultEnvelope,
+  CommandCompletion,
+  CommandOutput,
+  CommandOutputChunk,
   CommandTraceSpan,
   CommandTrace,
   StreamFrame,
@@ -840,6 +971,9 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
     readonly PreRestartEvent: typeof PreRestartEvent;
     readonly PostRestartEvent: typeof PostRestartEvent;
     readonly LandofileShape: typeof LandofileShape;
+    readonly LandofileSourceValue: typeof LandofileSourceValue;
+    readonly LandofileSourceDocument: typeof LandofileSourceDocument;
+    readonly LandofileSourceProjection: typeof LandofileSourceProjection;
     readonly AuthoringExpression: typeof AuthoringExpression;
     readonly AuthoringExpressionExpectedType: typeof AuthoringExpressionExpectedType;
     readonly LandofileAuthoringShape: typeof LandofileAuthoringShape;
@@ -865,6 +999,9 @@ const rawPublicSchemaRegistry: typeof basePublicSchemaRegistry &
   } = {
   LandofileShape,
   PreRestartEvent,
+  LandofileSourceValue,
+  LandofileSourceDocument,
+  LandofileSourceProjection,
   PostRestartEvent,
   AuthoringExpression,
   AuthoringExpressionExpectedType,
@@ -902,6 +1039,30 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   AgentSocketBridgeInput: "App-owned relay session handed to a scoped provider bridge.",
   AgentSocketBridgeResult: "Provider-visible directory or volume containing the requested agent socket.",
   SecretStoreContribution: "Plugin secret store implementation and owned reference schemes.",
+  SecretReference: "Validated raw SecretStore reference identifier.",
+  SecretRef: "Deferred secret reference without resolved secret bytes.",
+  BoundTextReference: "Deferred raw or URI-component reference in flat text.",
+  BoundText: "Flat literal and secret-reference text descriptor.",
+  EnvironmentValue: "Normalized literal or deferred environment value.",
+  Environment: "Single typed environment map.",
+  ServiceCreds: "Credentials with typed deferred passwords.",
+  DatabaseConnection: "Canonical database family, credentials and planned port.",
+  ServiceCredsDisplay: "String-only redacted credential display.",
+  CurrentExecutableAppPlan: "Explicitly current plan required for creation eligibility.",
+  EventStepPlan: "Compiled event step with authored provenance and execution status.",
+  EventStepSource: "Host or project provenance of a compiled event step.",
+  EventStepStatus: "Active, skipped or deduplicated compiled event step status.",
+  EventsPlan: "Effective current Landofile and host event steps, excluded from applied state.",
+  CompilationContext: "Ephemeral app root and captured environment snapshot.",
+  ParsedPendingSite: "Parsed authored expression with stable identity and source attribution.",
+  SourceCompiledLandofile: "Source-stage compilation carrier.",
+  ComposedCompiledLandofile: "Composed-stage compilation carrier.",
+  LoadScopedLandofile: "Load-scoped compilation carrier accepted by the planner.",
+  IdentityScopedLandofile: "Identity-scoped compilation carrier.",
+  ServiceScopedLandofile: "Service-scoped compilation carrier.",
+  CompiledLandofile: "Explicit ephemeral staged compilation carrier.",
+  EnvironmentValueResolutionError: "Environment resolution failed before dispatch.",
+  PlanReplanRequiredError: "Historical plans require replanning before creation.",
   RecipeSourceKind: "Origin class of a recipe producer, keeping bundled and local families distinct.",
   RecipeContentDigest: "SHA-256 over canonical recipe inputs, excluding the digest itself and history.",
   RecipeProducer: "Versioned identity of the recipe that produced generated authoring data.",
@@ -942,6 +1103,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ConfigTranslateOutput: "Validated authoring wire fragment attributed to one target layer.",
   ConfigTranslateRecipeRequestInput: "Recipe identity and answers without filesystem discovery.",
   ConfigTranslateResult: "Target-layer outputs, ordered diagnostics, and deletion intents.",
+  ConfigTranslateExpectation: "Source intent assessed by the host against the final converted configuration.",
   ConfigTranslateSecretReference: "Approved secret reference or init-only sink without raw secret data.",
   ConfigTranslateSourceId: "Core-assigned identity for a document or synthetic recipe source.",
   ConfigTranslateSpan: "Source span used to locate and order translation diagnostics.",
@@ -993,8 +1155,19 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   AppPlan: "Public Lando schema contract for App Plan.",
   ProviderSetupPlan: "Inspectable provider setup plan authorized by core before host mutation.",
   ServicePlan: "Public Lando schema contract for Service Plan.",
+  ServiceHomePlan: "Resolved service home persistence status.",
+  AppMountInput: "Application source mount destination, options, or false to disable it.",
   AppMountPlan: "Public Lando schema contract for App Mount Plan.",
+  MountObservation: "Runtime container mount observation evidence.",
+  ObservedMount: "Provider-neutral observed container mount.",
+  ServiceInfoMount: "User-facing mount observation and storage lifetime.",
+  MountInput: "Service mount as a short source:target string or an expanded bind, tmpfs, or volume object.",
   MountPlan: "Public Lando schema contract for Mount Plan.",
+  StorageInput:
+    "Named data or cache volume as a short target path or an expanded store object with optional scope, kind, and key.",
+  CertsInput:
+    "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key.",
+  CaInput: "Trusted CA certificate as a path string or an import reference for a service security.ca entry.",
   DataStorePlan: "Public Lando schema contract for Data Store Plan.",
   DataStoreMountPlan: "Public Lando schema contract for Data Store Mount Plan.",
   StorageScope: "Public Lando schema contract for Storage Scope.",
@@ -1011,6 +1184,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RouteFilterType: "Supported provider-neutral route filter types.",
   RouteFilter: "Provider-neutral route filter options discriminated by type.",
   RouteInputError: "Invalid authored route with its key path and remediation.",
+  RouteProviderMismatchError: "Routed app provider differs from the host router provider.",
+  AppPlacementError: "App realized on a provider other than the selected provider.",
   RouteObjectInput: "Expanded authored route with optional ordered filters.",
   ProxyCapabilities: "Proxy route features truthfully supported by an implementation.",
   ProxyConfig: "Proxy setup configuration supplied by core.",
@@ -1026,14 +1201,19 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
   ServiceDependencyCondition: "How a service dependency must be satisfied before dependents start.",
   DependencyPlan: "Public Lando schema contract for Dependency Plan.",
-  NetworkPlan: "Public Lando schema contract for Network Plan.",
   PerAppBridgePlan: "Public Lando schema contract for Per App Bridge Plan.",
   SharedNetworkMembershipPlan: "Public Lando schema contract for Shared Network Membership Plan.",
+  AuthoredNetworkPlan:
+    "A top-level Landofile network that services join in addition to the app and shared networks.",
+  ServiceNetworkAttachment: "A service's physical network attachment and DNS aliases.",
   NetworkingPlan: "Public Lando schema contract for Networking Plan.",
   IsolateMode: "Public Lando schema contract for Isolate Mode.",
   ProviderCapabilities: "Public Lando schema contract for Provider Capabilities.",
   CommandAliasesShape: "Per-app top-level command alias policy.",
   LandofileShape: "Public Lando schema contract for Landofile Shape.",
+  LandofileSourceValue: "Recursive authored source JSON and directive transport.",
+  LandofileSourceDocument: "A complete acquired authored layer document.",
+  LandofileSourceProjection: "An acquired layer with an optional selected document value.",
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
@@ -1052,6 +1232,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingArgShape: "Public Lando schema contract for Tooling Arg Shape.",
   ToolingDefaultsShape: "App-wide defaults inherited by Landofile tooling tasks.",
   ToolingStepShape: "Shell command step with tooling task execution overrides.",
+  ToolingTaskInput: "Tooling task object, command string, or false shorthand.",
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
   ToolingIncludeShape: "Public Lando schema contract for Tooling Include Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
@@ -1075,6 +1256,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   DownloadResult: "Public Lando schema contract for Download Result.",
   DownloaderCapabilities: "Public Lando schema contract for Downloader Capabilities.",
   ArchiveFormat: "Public Lando schema contract for Archive Format.",
+  ContainerHelperArch: "Linux architecture of the in-container helper executable.",
+  ContainerHelperTarget: "Container platform the in-container helper is resolved for.",
+  ContainerHelperDigest: "SHA-256 digest identifying a resolved helper executable.",
+  ContainerHelperArtifact: "Resolved in-container helper ready to bind-mount or copy into a container.",
   DataEndpoint: "Public Lando schema contract for Data Endpoint.",
   VolumeRef: "Public Lando schema contract for Volume Ref.",
   VolumeInfo: "Public Lando schema contract for Volume Info.",
@@ -1139,10 +1324,22 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PluginName: "Public Lando schema contract for Plugin Name.",
   PortablePath: "Public Lando schema contract for Portable Path.",
   CommandSpec: "Public Lando schema contract for Command Spec.",
+  ContainerUser: "Container identity as name or uid, optionally with a group or gid.",
   PlanMetadata: "Public Lando schema contract for Plan Metadata.",
   ProviderExtensionConfig: "Public Lando schema contract for Provider Extension Config.",
   HostPlatform: "Public Lando schema contract for Host Platform.",
   ServiceInfo: "Public Lando schema contract for Service Info.",
+  EndpointRef: "Logical network listener identity and aliases.",
+  ObservedPublication: "Actual host publication observed by a runtime provider.",
+  PublicationObservation: "Explicit unknown, absent, or present runtime publication evidence.",
+  EndpointInvariantIssue: "Logical listener alias, primary, or protocol conflict.",
+  HttpEndpointSelection: "Unambiguous HTTP listener selection without order-based fallback.",
+  LogicalEndpoint: "Grouped facets of one logical network listener.",
+  ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
+  ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
+  RouteEvidence: "Read-only configured ingress and live route publication evidence.",
+  ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
+  StartedService: "Service startup result with scoped connection evidence.",
   EmbeddingPluginPolicy: "Public Lando schema contract for Embedding Plugin Policy.",
   ContributionRef: "Public Lando schema contract for Contribution Ref.",
   PluginSetupFlagContribution: "Public Lando schema contract for Plugin Setup Flag Contribution.",
@@ -1206,6 +1403,13 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PostGlobalStartEvent: "Public Lando schema contract for Post Global Start Event.",
   PreGlobalStopEvent: "Public Lando schema contract for Pre Global Stop Event.",
   PostGlobalStopEvent: "Public Lando schema contract for Post Global Stop Event.",
+  PreScratchDestroyEvent: "Scratch destroy bracket opening before standard app stop and destroy.",
+  PostScratchDestroyEvent:
+    "Scratch destroy completed, including registry/root cleanup and explicit retained-artifact status.",
+  PreGlobalDestroyEvent:
+    "Global destroy bracket opened before provider teardown; absent evidence emits no event.",
+  PostGlobalDestroyEvent:
+    "Global destroy completed successfully, including provider teardown and route cleanup.",
   PreGlobalRebuildEvent: "Public Lando schema contract for Pre Global Rebuild Event.",
   PostGlobalRebuildEvent: "Public Lando schema contract for Post Global Rebuild Event.",
   PreAppStartEvent: "Public Lando schema contract for Pre App Start Event.",
@@ -1298,6 +1502,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   FailureRole: "Relationship of an additional failure to the primary operation failure.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
+  CommandCompletion: "Canonical command semantic verdict and shell exit status.",
+  CommandOutput: "Bounded redacted command output tail.",
+  CommandOutputChunk: "Redacted output text with channel and provenance.",
   CommandTraceSpan: "One finished span in a command-invocation timing tree.",
   CommandTrace: "Command-invocation timing tree for machine-output and display.",
   StreamFrame: "Public Lando schema contract for Stream Frame.",
@@ -1430,7 +1637,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "AppPlan.metadata",
   "AppPlan.name",
   "AppPlan.networking",
-  "AppPlan.networks",
   "AppPlan.provider",
   "AppPlan.requires",
   "AppPlan.root",
@@ -1932,9 +2138,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "NetworkCaConfig.trustHost",
   "NetworkConfig.ca",
   "NetworkConfig.proxy",
-  "NetworkPlan.driver",
-  "NetworkPlan.name",
-  "NetworkPlan.shared",
   "NetworkProxyConfig.http",
   "NetworkProxyConfig.https",
   "NetworkProxyConfig.injectIntoServices",
@@ -2108,8 +2311,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PostBuildEvent.serviceName",
   "PostBuildEvent.timestamp",
   "PostDestroyEvent._tag",
-  "PostDestroyEvent.app",
-  "PostDestroyEvent.timestamp",
   "PostGlobalStartEvent._tag",
   "PostGlobalStartEvent.app",
   "PostGlobalStartEvent.cached",
@@ -2223,8 +2424,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PreBuildEvent.serviceName",
   "PreBuildEvent.timestamp",
   "PreDestroyEvent._tag",
-  "PreDestroyEvent.app",
-  "PreDestroyEvent.timestamp",
   "PreDownloadEvent._tag",
   "PreDownloadEvent.callerId",
   "PreDownloadEvent.eventName",
@@ -2411,6 +2610,8 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "RecipeRegistryResponse.resolution",
   "RoutePlan.endpoint",
   "RouteInputError._tag",
+  "RouteProviderMismatchError._tag",
+  "AppPlacementError._tag",
   "RoutePlan.hostname",
   "RoutePlan.pathPrefix",
   "RoutePlan.scheme",
@@ -2457,7 +2658,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfigInput.envFile",
   "ServiceConfigInput.expose",
   "ServiceConfigInput.framework",
-  "ServiceConfigInput.healthcheck",
   "ServiceConfigInput.hostnames",
   "ServiceConfigInput.image",
   "ServiceConfigInput.labels",
@@ -2475,10 +2675,8 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceConfigInput.workingDirectory",
   "ServiceInfo.api",
   "ServiceInfo.app",
-  "ServiceInfo.endpoints",
   "ServiceInfo.primary",
   "ServiceInfo.provider",
-  "ServiceInfo.routes",
   "ServiceInfo.service",
   "ServiceInfo.status",
   "ServiceInfo.type",

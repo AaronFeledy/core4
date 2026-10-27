@@ -246,6 +246,9 @@ ${matrixInclude}
           }
           require_release_absent
 
+      - name: Verify runtime bundle licenses and source links live before publication
+        run: bun run check:runtime-bundle-licenses --live
+
       - name: Publish runtime-v release assets
         if: needs.classify.outputs.state == 'publish_new'
         run: |

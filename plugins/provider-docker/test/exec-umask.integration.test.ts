@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
+import { parseProcSelfStatusUmask } from "@lando/container-runtime/podman/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeDockerApiClient, layer as providerLayer } from "@lando/provider-docker";
@@ -20,7 +21,8 @@ import { RuntimeProvider } from "@lando/sdk/services";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const dockerHost = process.env.LANDO_TEST_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
-const appId = AppId.make("exec-umask-mode");
+const fixtureId = `exec-umask-mode-${crypto.randomUUID()}`;
+const appId = AppId.make(fixtureId);
 const serviceName = ServiceName.make("web");
 const providerId = ProviderId.make("docker");
 const metadata = {
@@ -59,14 +61,14 @@ const service: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Exec Umask Mode",
-  slug: "exec-umask-mode",
-  root: AbsolutePath.make("/tmp/lando-exec-umask-mode"),
+  slug: fixtureId,
+  root: AbsolutePath.make(join(tmpdir(), fixtureId)),
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -80,6 +82,30 @@ describe("docker exec umask mode", () => {
       const provider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(makeProviderLayer())));
       await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
       try {
+        const target = { app: appId, service: serviceName };
+        const raw = await Effect.runPromise(
+          provider.exec(target, {
+            command: ["cat", "/proc/self/status"],
+            raw: true,
+          }),
+        );
+        expect(raw.exitCode).toBe(0);
+        const inherited = parseProcSelfStatusUmask(raw.stdout);
+        expect(inherited).toBeDefined();
+        const effective = await Effect.runPromise(
+          provider.exec(target, {
+            command: ["cat", "/proc/self/status"],
+          }),
+        );
+        expect(effective.exitCode).toBe(0);
+        expect(parseProcSelfStatusUmask(effective.stdout)).toBe(inherited === "0000" ? "0022" : inherited);
+        const authored = await Effect.runPromise(
+          provider.exec(target, {
+            command: ["/bin/sh", "-c", "umask 0077; exec cat /proc/self/status"],
+          }),
+        );
+        expect(authored.exitCode).toBe(0);
+        expect(parseProcSelfStatusUmask(authored.stdout)).toBe("0077");
         const created = await Effect.runPromise(
           provider.exec(
             { app: appId, service: serviceName },

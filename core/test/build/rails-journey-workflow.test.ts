@@ -22,7 +22,8 @@ const LINUX_IDS = ["linux-x64", "linux-arm64"] as const;
 
 const SETUP_FLAGS = "--yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync";
 const JOURNEY = "bun run scripts/rails-journey.ts";
-const SCHEDULE_IF = "if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'";
+const SCHEDULE_IF =
+  "if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')";
 const LINUX_SOURCE_BUILD_MARKERS =
   "uses: actions/setup-go@|go-version: 1.25.6|dtolnay/rust-toolchain@|libcap-dev|libsqlite3-dev|libseccomp-dev|protobuf-compiler|uidmap".split(
     "|",
@@ -70,12 +71,12 @@ describe("rails-journey workflow", () => {
     }
   });
 
-  test("triggers on pull_request, schedule, and workflow_dispatch", async () => {
+  test("triggers only on schedule and workflow_dispatch", async () => {
     // Given / When
     const triggers = findIndentedBlock(await readWorkflow(), "on");
 
     // Then
-    expect(triggers).toContain("pull_request");
+    expect(triggers).not.toContain("pull_request");
     expect(triggers).toContain("schedule");
     expect(triggers).toContain("workflow_dispatch");
   });
@@ -88,12 +89,12 @@ describe("rails-journey workflow", () => {
     expect(workflow).toContain("defaults:\n  run:\n    shell: bash");
   });
 
-  test("runs linux-x64 on ubuntu-24.04 with lando setup, assemble, and a hard journey gate", async () => {
+  test("runs linux-x64 on ubuntu-26.04 with lando setup, assemble, and a hard journey gate", async () => {
     // Given / When
     const linuxX64 = jobBlock(await readWorkflow(), "linux-x64");
 
     // Then
-    expect(linuxX64).toContain("    runs-on: ubuntu-24.04");
+    expect(linuxX64).toContain("    runs-on: ubuntu-26.04");
     expect(linuxX64).toContain(SETUP_FLAGS);
     expect(linuxX64).toContain("--platform linux-x64");
     expect(linuxX64).toContain(JOURNEY);
@@ -141,12 +142,12 @@ describe("rails-journey workflow", () => {
     }
   });
 
-  test("gates darwin and windows cells to schedule or workflow_dispatch", async () => {
+  test("gates every evidence cell to trusted main schedule or workflow_dispatch", async () => {
     // Given / When
     const workflow = await readWorkflow();
 
     // Then
-    for (const id of SCHEDULED_IDS) {
+    for (const id of PLATFORM_IDS) {
       expect(jobBlock(workflow, id)).toContain(SCHEDULE_IF);
     }
   });
@@ -246,24 +247,19 @@ describe("rails-journey workflow", () => {
     }
   });
 
-  test("builds host-proxy shim and log-file helper into dist before the binary", async () => {
+  test("embeds the in-container helper via build-compiled-binary without sidecar builds", async () => {
     // Given: the generated Rails journey workflow.
     const workflow = await readWorkflow();
 
     // When: every cell's compile step is inspected.
-    // Then: local sidecar builds copy into dist/ before build-compiled-binary.ts.
+    // Then: no host-proxy/log-file sidecar builds; the compiled binary embeds the helper.
     for (const id of PLATFORM_IDS) {
       const job = jobBlock(workflow, id);
-      const shim = job.indexOf("build:host-proxy-shim");
-      const helper = job.indexOf("build:log-file-helper");
-      const hostProxyCopy = job.indexOf("core/dist/host-proxy");
-      const logFileCopy = job.indexOf("core/dist/log-file-access");
-      const binary = job.indexOf("scripts/build-compiled-binary.ts");
-      expect(shim).toBeGreaterThan(-1);
-      expect(helper).toBeGreaterThan(shim);
-      expect(hostProxyCopy).toBeGreaterThan(helper);
-      expect(logFileCopy).toBeGreaterThan(hostProxyCopy);
-      expect(binary).toBeGreaterThan(logFileCopy);
+      expect(job).not.toContain("build:host-proxy-shim");
+      expect(job).not.toContain("build:log-file-helper");
+      expect(job).not.toContain("core/dist/host-proxy");
+      expect(job).not.toContain("core/dist/log-file-access");
+      expect(job.indexOf("scripts/build-compiled-binary.ts")).toBeGreaterThan(-1);
     }
   });
 
