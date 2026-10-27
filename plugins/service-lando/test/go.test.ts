@@ -82,11 +82,15 @@ describe("go:1.22 ServiceType", () => {
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
 
-    expect(plan.mounts).toEqual([]);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
@@ -227,3 +231,4 @@ describe("go:1.23 ServiceType", () => {
     );
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

@@ -39,6 +39,7 @@ import {
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { PublicTranscript, Transcript } from "../docs/transcript.ts";
+import { EnvironmentValueResolutionError, PlanReplanRequiredError } from "../errors/environment-value.ts";
 import {
   AppPlacementError,
   LandofileExpressionEvalError,
@@ -154,10 +155,27 @@ import {
   TunnelStatusEvent,
 } from "../events/index.ts";
 import { ExpressionNode, ExpressionTemplate } from "../expressions/ast.ts";
-import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
+import {
+  AppPlan,
+  CurrentExecutableAppPlan,
+  FileSyncPlan,
+  ServiceHomePlan,
+  ServiceNetworkAttachment,
+  ServicePlan,
+} from "./app-plan.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
+import {
+  CompilationContext,
+  CompiledLandofile,
+  ComposedCompiledLandofile,
+  IdentityScopedLandofile,
+  LoadScopedLandofile,
+  ParsedPendingSite,
+  ServiceScopedLandofile,
+  SourceCompiledLandofile,
+} from "./compiled-landofile.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import * as ConfigTranslateSchemas from "./config-translate.ts";
 import { GlobalConfigView } from "./config-view.ts";
@@ -203,6 +221,7 @@ import {
   VolumeSnapshotRef,
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
+import { DatabaseConnection, ServiceCreds, ServiceCredsDisplay } from "./database-connection.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -225,6 +244,14 @@ import {
   PublicationObservation,
   PublishedEndpoint,
 } from "./endpoint.ts";
+import {
+  BoundText,
+  BoundTextReference,
+  Environment,
+  EnvironmentValue,
+  SecretRef,
+  SecretReference,
+} from "./environment-value.ts";
 import { FailureRole } from "./failure-role.ts";
 import {
   FileSyncEngineCapabilities,
@@ -262,6 +289,7 @@ import {
   LandofileAuthoringShape,
   LandofileAuthoringShapeWire,
 } from "./landofile-authoring.ts";
+import { EventStepPlan, EventStepSource, EventStepStatus, EventsPlan } from "./landofile-events.ts";
 import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   AppMountInput,
@@ -285,16 +313,34 @@ import {
   ToolingFlagShape,
   ToolingIncludeShape,
   ToolingStepShape,
+  ToolingTaskInput,
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
 import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
-import { CommandResultEnvelope, CommandResultFormat, CommandWarning, StreamFrame } from "./machine-output.ts";
+import {
+  CommandCompletion,
+  CommandOutput,
+  CommandOutputChunk,
+  CommandResultEnvelope,
+  CommandResultFormat,
+  CommandWarning,
+  StreamFrame,
+} from "./machine-output.ts";
 import { ManagedFile, ManagedFileInfo, ManagedFilePlan, ManagedFileResult } from "./managed-file.ts";
 import { McpCatalog, McpCatalogOptions, McpServeOptions, McpToolDescriptor } from "./mcp.ts";
-import { AppMountPlan, DataStoreMountPlan, DataStorePlan, MountPlan, StorageScope } from "./mounts.ts";
+import {
+  BindMountPlan,
+  DataStorePlan,
+  MountOrigin,
+  MountPlan,
+  StorageScope,
+  TmpfsMountPlan,
+  VolumeMountPlan,
+} from "./mounts.ts";
 import {
   AppRef,
+  AuthoredNetworkPlan,
   CertificatePlan,
   CheckResult,
   DependencyPlan,
@@ -302,7 +348,6 @@ import {
   HealthcheckPlan,
   HostAliasPlan,
   IsolateMode,
-  NetworkPlan,
   NetworkingPlan,
   PerAppBridgePlan,
   ProviderCapabilities,
@@ -413,6 +458,7 @@ import { RouteFilter, RouteFilterType } from "./route-filter.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
+import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import {
   DotnetServiceConfig,
   LocalStackServiceConfig,
@@ -501,6 +547,30 @@ export type PublicSchemaReferencePage = {
 };
 
 const basePublicSchemaRegistry = schemaRegistry({
+  SecretReference,
+  SecretRef,
+  BoundTextReference,
+  BoundText,
+  EnvironmentValue,
+  Environment,
+  ServiceCreds,
+  DatabaseConnection,
+  ServiceCredsDisplay,
+  CurrentExecutableAppPlan,
+  EventStepPlan,
+  EventStepSource,
+  EventStepStatus,
+  EventsPlan,
+  CompilationContext,
+  ParsedPendingSite,
+  SourceCompiledLandofile,
+  ComposedCompiledLandofile,
+  LoadScopedLandofile,
+  IdentityScopedLandofile,
+  ServiceScopedLandofile,
+  CompiledLandofile,
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
   SshAgentConfig,
   GpgAgentConfig,
   AgentSocketKind,
@@ -558,15 +628,21 @@ const basePublicSchemaRegistry = schemaRegistry({
   AppPlan,
   ProviderSetupPlan,
   ServicePlan,
+  ServiceHomePlan,
   AppMountInput,
-  AppMountPlan,
+  MountObservation,
+  ObservedMount,
+  ServiceInfoMount,
   MountInput,
   MountPlan,
+  BindMountPlan,
+  VolumeMountPlan,
+  TmpfsMountPlan,
+  MountOrigin,
   StorageInput,
   CertsInput,
   CaInput,
   DataStorePlan,
-  DataStoreMountPlan,
   StorageScope,
   BindAddress,
   PortNumber,
@@ -597,9 +673,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostAliasPlan,
   ServiceDependencyCondition,
   DependencyPlan,
-  NetworkPlan,
   PerAppBridgePlan,
   SharedNetworkMembershipPlan,
+  AuthoredNetworkPlan,
+  ServiceNetworkAttachment,
   NetworkingPlan,
   IsolateMode,
   ProviderCapabilities,
@@ -622,6 +699,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ToolingArgShape,
   ToolingDefaultsShape,
   ToolingStepShape,
+  ToolingTaskInput,
   ToolingTaskShape,
   ToolingIncludeShape,
   IncludeEntry,
@@ -887,6 +965,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   FailureRole,
   CommandWarning,
   CommandResultEnvelope,
+  CommandCompletion,
+  CommandOutput,
+  CommandOutputChunk,
   CommandTraceSpan,
   CommandTrace,
   StreamFrame,
@@ -968,6 +1049,30 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   AgentSocketBridgeInput: "App-owned relay session handed to a scoped provider bridge.",
   AgentSocketBridgeResult: "Provider-visible directory or volume containing the requested agent socket.",
   SecretStoreContribution: "Plugin secret store implementation and owned reference schemes.",
+  SecretReference: "Validated raw SecretStore reference identifier.",
+  SecretRef: "Deferred secret reference without resolved secret bytes.",
+  BoundTextReference: "Deferred raw or URI-component reference in flat text.",
+  BoundText: "Flat literal and secret-reference text descriptor.",
+  EnvironmentValue: "Normalized literal or deferred environment value.",
+  Environment: "Single typed environment map.",
+  ServiceCreds: "Credentials with typed deferred passwords.",
+  DatabaseConnection: "Canonical database family, credentials and planned port.",
+  ServiceCredsDisplay: "String-only redacted credential display.",
+  CurrentExecutableAppPlan: "Explicitly current plan required for creation eligibility.",
+  EventStepPlan: "Compiled event step with authored provenance and execution status.",
+  EventStepSource: "Host or project provenance of a compiled event step.",
+  EventStepStatus: "Active, skipped or deduplicated compiled event step status.",
+  EventsPlan: "Effective current Landofile and host event steps, excluded from applied state.",
+  CompilationContext: "Ephemeral app root and captured environment snapshot.",
+  ParsedPendingSite: "Parsed authored expression with stable identity and source attribution.",
+  SourceCompiledLandofile: "Source-stage compilation carrier.",
+  ComposedCompiledLandofile: "Composed-stage compilation carrier.",
+  LoadScopedLandofile: "Load-scoped compilation carrier accepted by the planner.",
+  IdentityScopedLandofile: "Identity-scoped compilation carrier.",
+  ServiceScopedLandofile: "Service-scoped compilation carrier.",
+  CompiledLandofile: "Explicit ephemeral staged compilation carrier.",
+  EnvironmentValueResolutionError: "Environment resolution failed before dispatch.",
+  PlanReplanRequiredError: "Historical plans require replanning before creation.",
   RecipeSourceKind: "Origin class of a recipe producer, keeping bundled and local families distinct.",
   RecipeContentDigest: "SHA-256 over canonical recipe inputs, excluding the digest itself and history.",
   RecipeProducer: "Versioned identity of the recipe that produced generated authoring data.",
@@ -1008,6 +1113,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ConfigTranslateOutput: "Validated authoring wire fragment attributed to one target layer.",
   ConfigTranslateRecipeRequestInput: "Recipe identity and answers without filesystem discovery.",
   ConfigTranslateResult: "Target-layer outputs, ordered diagnostics, and deletion intents.",
+  ConfigTranslateExpectation: "Source intent assessed by the host against the final converted configuration.",
   ConfigTranslateSecretReference: "Approved secret reference or init-only sink without raw secret data.",
   ConfigTranslateSourceId: "Core-assigned identity for a document or synthetic recipe source.",
   ConfigTranslateSpan: "Source span used to locate and order translation diagnostics.",
@@ -1059,17 +1165,23 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   AppPlan: "Public Lando schema contract for App Plan.",
   ProviderSetupPlan: "Inspectable provider setup plan authorized by core before host mutation.",
   ServicePlan: "Public Lando schema contract for Service Plan.",
+  ServiceHomePlan: "Resolved service home persistence status.",
   AppMountInput: "Application source mount destination, options, or false to disable it.",
-  AppMountPlan: "Public Lando schema contract for App Mount Plan.",
+  MountObservation: "Runtime container mount observation evidence.",
+  ObservedMount: "Provider-neutral observed container mount.",
+  ServiceInfoMount: "User-facing mount observation and storage lifetime.",
   MountInput: "Service mount as a short source:target string or an expanded bind, tmpfs, or volume object.",
-  MountPlan: "Public Lando schema contract for Mount Plan.",
+  MountPlan: "One planned container mount: a host bind, a named data store, or a tmpfs.",
+  BindMountPlan: "Planned host path bind, including the app-source mount and its excludes.",
+  VolumeMountPlan: "Planned mount of a named data store.",
+  TmpfsMountPlan: "Planned memory-backed filesystem that lives as long as the container.",
+  MountOrigin: "Who declared a planned mount: the Landofile, the service type, core, or an integration.",
   StorageInput:
     "Named data or cache volume as a short target path or an expanded store object with optional scope, kind, and key.",
   CertsInput:
     "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key.",
   CaInput: "Trusted CA certificate as a path string or an import reference for a service security.ca entry.",
   DataStorePlan: "Public Lando schema contract for Data Store Plan.",
-  DataStoreMountPlan: "Public Lando schema contract for Data Store Mount Plan.",
   StorageScope: "Public Lando schema contract for Storage Scope.",
   BindAddress: "Validated host IP address for explicit endpoint publication.",
   PortNumber: "Integer network port in the inclusive range 1 through 65535.",
@@ -1101,9 +1213,11 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
   ServiceDependencyCondition: "How a service dependency must be satisfied before dependents start.",
   DependencyPlan: "Public Lando schema contract for Dependency Plan.",
-  NetworkPlan: "Public Lando schema contract for Network Plan.",
   PerAppBridgePlan: "Public Lando schema contract for Per App Bridge Plan.",
   SharedNetworkMembershipPlan: "Public Lando schema contract for Shared Network Membership Plan.",
+  AuthoredNetworkPlan:
+    "A top-level Landofile network that services join in addition to the app and shared networks.",
+  ServiceNetworkAttachment: "A service's physical network attachment and DNS aliases.",
   NetworkingPlan: "Public Lando schema contract for Networking Plan.",
   IsolateMode: "Public Lando schema contract for Isolate Mode.",
   ProviderCapabilities: "Public Lando schema contract for Provider Capabilities.",
@@ -1130,6 +1244,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingArgShape: "Public Lando schema contract for Tooling Arg Shape.",
   ToolingDefaultsShape: "App-wide defaults inherited by Landofile tooling tasks.",
   ToolingStepShape: "Shell command step with tooling task execution overrides.",
+  ToolingTaskInput: "Tooling task object, command string, or false shorthand.",
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
   ToolingIncludeShape: "Public Lando schema contract for Tooling Include Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
@@ -1399,6 +1514,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   FailureRole: "Relationship of an additional failure to the primary operation failure.",
   CommandWarning: "Public Lando schema contract for Command Warning.",
   CommandResultEnvelope: "Public Lando schema contract for Command Result Envelope.",
+  CommandCompletion: "Canonical command semantic verdict and shell exit status.",
+  CommandOutput: "Bounded redacted command output tail.",
+  CommandOutputChunk: "Redacted output text with channel and provenance.",
   CommandTraceSpan: "One finished span in a command-invocation timing tree.",
   CommandTrace: "Command-invocation timing tree for machine-output and display.",
   StreamFrame: "Public Lando schema contract for Stream Frame.",
@@ -1519,19 +1637,12 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ArtifactManifestEntry.sha256",
   "ArtifactManifestEntry.sizeBytes",
   "ArtifactManifestEntry.url",
-  "AppMountPlan.excludes",
-  "AppMountPlan.includes",
-  "AppMountPlan.readOnly",
-  "AppMountPlan.realization",
-  "AppMountPlan.source",
-  "AppMountPlan.target",
   "AppPlan.extensions",
   "AppPlan.fileSync",
   "AppPlan.id",
   "AppPlan.metadata",
   "AppPlan.name",
   "AppPlan.networking",
-  "AppPlan.networks",
   "AppPlan.provider",
   "AppPlan.requires",
   "AppPlan.root",
@@ -1814,10 +1925,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "VolumeSnapshotSpec.snapshotId",
   "VolumeSnapshotSpec.volume",
   "ConfigLintViolation.suggestion",
-  "DataStoreMountPlan.readOnly",
-  "DataStoreMountPlan.store",
-  "DataStoreMountPlan.subpath",
-  "DataStoreMountPlan.target",
   "DataStorePlan.driver",
   "DataStorePlan.driverOpts",
   "DataStorePlan.key",
@@ -2022,20 +2129,11 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "MessageWarnEvent._tag",
   "MessageWarnEvent.body",
   "MessageWarnEvent.timestamp",
-  "MountPlan.readOnly",
-  "MountPlan.createHostPath",
-  "MountPlan.realization",
-  "MountPlan.source",
-  "MountPlan.target",
-  "MountPlan.type",
   "NetworkCaConfig.certs",
   "NetworkCaConfig.injectIntoServices",
   "NetworkCaConfig.trustHost",
   "NetworkConfig.ca",
   "NetworkConfig.proxy",
-  "NetworkPlan.driver",
-  "NetworkPlan.name",
-  "NetworkPlan.shared",
   "NetworkProxyConfig.http",
   "NetworkProxyConfig.https",
   "NetworkProxyConfig.injectIntoServices",
@@ -2578,7 +2676,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServiceInfo.service",
   "ServiceInfo.status",
   "ServiceInfo.type",
-  "ServicePlan.appMount",
   "ServicePlan.artifact",
   "ServicePlan.certs",
   "ServicePlan.command",
@@ -2591,12 +2688,10 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ServicePlan.hostAliases",
   "ServicePlan.logSources",
   "ServicePlan.metadata",
-  "ServicePlan.mounts",
   "ServicePlan.name",
   "ServicePlan.primary",
   "ServicePlan.provider",
   "ServicePlan.routes",
-  "ServicePlan.storage",
   "ServicePlan.type",
   "ServicePlan.user",
   "ServicePlan.workingDirectory",

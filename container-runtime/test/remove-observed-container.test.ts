@@ -14,7 +14,7 @@ import {
   volumeClassFromLabels,
 } from "../src/volume-classes.ts";
 
-const ctx = { providerId: "podman", remediation: "Repair podman and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Repair podman and retry.", env: {} } as const;
 
 const observed = (
   overrides: Partial<Omit<ServiceRuntimeInfo, "containerId">> & { readonly withoutContainer?: true } = {},
@@ -57,7 +57,7 @@ describe("removeObservedContainer", () => {
     expect(removed).toBe(true);
     expect(calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       "POST /containers/abc123/stop",
-      "DELETE /containers/abc123?force=true",
+      "DELETE /containers/abc123?force=true&v=true",
     ]);
   });
 
@@ -75,6 +75,19 @@ describe("removeObservedContainer", () => {
 
     expect(await Effect.runPromise(removeObservedContainer(observed(), { api, ctx }))).toBe(false);
     expect(calls).toHaveLength(1);
+  });
+
+  test("reports absence when the container disappears between stop and removal", async () => {
+    // Given
+    const { api, calls } = recordingApi([
+      { status: 204, body: "" },
+      { status: 404, body: "" },
+    ]);
+    // When
+    const removed = await Effect.runPromise(removeObservedContainer(observed(), { api, ctx }));
+    // Then
+    expect(removed).toBe(false);
+    expect(calls[1]).toEqual({ method: "DELETE", path: "/containers/abc123?force=true&v=true" });
   });
 
   test("never calls the engine for an observation with no container id", async () => {

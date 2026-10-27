@@ -1,11 +1,7 @@
 import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { collectPlanConnections } from "@lando/engine/operations/connection-collector";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { buildCommandResultEnvelope, failureOutcomeFromCause } from "@lando/sdk/command-result";
 import {
   AbsolutePath,
@@ -54,7 +50,6 @@ export const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan =
           primary: true,
           environment: {},
           mounts: [],
-          storage: [],
           routes: [],
           endpoints: [{ _tag: "internal", protocol: "http", port: 80, name: "http", primary: true }],
           dependsOn: [],
@@ -65,7 +60,6 @@ export const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan =
       ]),
     ),
     routes,
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -94,15 +88,7 @@ export const recordingEventLayer = () => {
 
 export const silentEventLayer = () => recordingEventLayer().layer;
 
-export const redactionLayer = () =>
-  Layer.succeed(
-    RedactionService,
-    RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: () => Effect.succeed(() => []),
-      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-    }),
-  );
+export const redactionLayer = () => Layer.succeed(RedactionService, makeRedactionService());
 
 const observedProvider: RuntimeProviderShape = {
   ...TestRuntimeProvider,
@@ -168,8 +154,8 @@ export const commandServices = (
   );
 
 export const hostSideEnvelope = (plan: AppPlan, options: OpenAppOptions) => {
-  const redactor = createStandaloneRedactor("secrets", { sourceEnv: process.env });
   const program = Effect.gen(function* () {
+    const redactor = yield* (yield* RedactionService).forProfile("secrets");
     const outcome = yield* Effect.exit(
       Effect.gen(function* () {
         const connections = yield* collectPlanConnections(plan);

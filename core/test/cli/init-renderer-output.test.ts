@@ -8,7 +8,6 @@ import { Effect, Layer } from "effect";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
-import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, Renderer } from "@lando/sdk/services";
 
 import { makeInitOutput } from "../../src/cli/commands/init-output.ts";
@@ -16,14 +15,14 @@ import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { runPostInit } from "../../src/recipes/post-init/runtime.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
-const redaction = Layer.succeed(
+const redaction = Layer.effect(
   RedactionService,
-  RedactionService.of({
-    registerValues: () => Effect.void,
-    payloadValues: () => Effect.succeed(() => ["private-token"]),
-    forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["private-token"] })),
+  Effect.gen(function* () {
+    const service = yield* RedactionService;
+    yield* service.registerValues(["private-token"]);
+    return service;
   }),
-);
+).pipe(Layer.provide(RedactionService.layer));
 
 const withTemp = async (run: (root: string) => Promise<void>) => {
   const root = await mkdtemp(join(tmpdir(), "lando-init-output-"));

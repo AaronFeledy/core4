@@ -34,7 +34,7 @@ const destroyConfirmation = (
   ];
   const list = items.length === 1 ? items[0] : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
   const subject = root === undefined ? `this app's ${list}` : `the ${list} left by ${root}`;
-  return `Delete ${subject}?${deletes.volumes ? "" : " Data volumes are kept."}`;
+  return `Delete ${subject}?${deletes.volumes ? "" : " Named data volumes are kept."}`;
 };
 
 export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (input: unknown) {
@@ -66,7 +66,7 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   resultSchema: DestroyAppResultSchema,
   id: "app:destroy",
   helpGroup: "common",
-  summary: "Destroy the current Lando app (preserves volumes unless --purge or --volumes).",
+  summary: "Destroy the current Lando app (preserves named volumes unless --purge or --volumes).",
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",

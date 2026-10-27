@@ -26,6 +26,17 @@ export const clientConnectionUrls = (input: {
   readonly port: number;
 }): { readonly url: string; readonly alternateUrls: readonly string[] } => {
   const uri = (protocol: string) => connectionUrl({ ...input, protocol });
+  const connection = input.service.connection;
+  if (
+    input.protocol === "tcp" &&
+    input.endpoint.transport === "tcp" &&
+    connection?.family === "postgres" &&
+    connection.port === input.endpoint.port
+  ) {
+    const user = encodeURIComponent(connection.creds.user);
+    const database = encodeURIComponent(connection.creds.database);
+    return { url: `${uri("postgresql").replace("://", `://${user}@`)}/${database}`, alternateUrls: [] };
+  }
   const tcpPorts = input.service.endpoints.flatMap((endpoint) =>
     endpoint.protocol === "tcp" ? [endpoint.port] : [],
   );
@@ -38,11 +49,6 @@ export const clientConnectionUrls = (input: {
     (input.endpoint.primary || (!markedPrimary && new Set(tcpPorts).size === 1));
   if (family) {
     switch (input.service.type.split(":")[0]) {
-      case "postgres": {
-        const user = encodeURIComponent(input.service.environment.POSTGRES_USER ?? "lando");
-        const database = encodeURIComponent(input.service.environment.POSTGRES_DB ?? "postgres");
-        return { url: `${uri("postgresql").replace("://", `://${user}@`)}/${database}`, alternateUrls: [] };
-      }
       case "memcached":
         return { url: uri("memcached"), alternateUrls: [] };
       case "valkey":

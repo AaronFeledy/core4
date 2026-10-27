@@ -33,7 +33,6 @@ const servicePlanFixture: typeof ServicePlan.Encoded = {
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 80, protocol: "http", name: "web" }],
   routes: [],
   dependsOn: [],
@@ -54,7 +53,6 @@ const globalPlanFixture: typeof AppPlan.Encoded = {
   provider: "lando",
   services: { traefik: servicePlanFixture },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {

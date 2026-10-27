@@ -17,6 +17,7 @@ import type {
   ContainerHelperAssets,
   DataMover,
   Downloader,
+  EnvironmentValueResolver,
   EventService,
   FileSyncEngine,
   FileSystem,
@@ -121,6 +122,7 @@ type MinimalRuntimeServices =
   | PrivateFileAccessService
   | RedactionService
   | SecretStore
+  | EnvironmentValueResolver
   | StateStore
   | HttpClient.HttpClient
   | Downloader
@@ -268,6 +270,8 @@ export function makeLandoRuntime(options: unknown, snapshot?: GlobalConfigSnapsh
           message:
             "Bundled plugin discovery requires importing @lando/core/bundled-plugins before constructing the runtime.",
           stage: "plugins",
+          remediation:
+            "Import `@lando/core/bundled-plugins` before constructing the runtime (or use the CLI entrypoint that loads bundled plugins).",
         }),
       ),
     );

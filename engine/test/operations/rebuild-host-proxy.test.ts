@@ -60,7 +60,7 @@ test("selected rebuild overlays the running host-proxy session and requests adop
           plan: selected,
           root: selected.root,
           app: { kind: "user", id: selected.id, root: selected.root },
-          landofile: { name: selected.name, services: {} },
+          landofile: literalTestLandofile({ name: selected.name, services: {} }),
         },
       ).pipe(Effect.provide(harness.layer)),
     );
@@ -235,7 +235,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
             plan: selected,
             root: selected.root,
             app,
-            landofile: { name: selected.name, services: {} },
+            landofile: literalTestLandofile({ name: selected.name, services: {} }),
           },
         ).pipe(Effect.provide(harness.layer)),
       );
@@ -281,3 +281,4 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
     }
   },
 );
+import { literalTestLandofile } from "../compiled-landofile.ts";

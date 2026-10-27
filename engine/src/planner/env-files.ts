@@ -104,7 +104,7 @@ export const loadServiceEnvFiles = (input: {
   readonly fileSystem: Context.Service.Shape<typeof FileSystem> | undefined;
 }): Effect.Effect<
   {
-    readonly environment: Readonly<Record<string, string>> | undefined;
+    readonly environment: import("@lando/sdk/schema").Environment | undefined;
     readonly inputs: LoadedEnvFiles["inputs"];
   },
   LandofileValidationError

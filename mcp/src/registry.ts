@@ -9,6 +9,7 @@
  * compiled CLI into scope.
  */
 import { McpToolInputError } from "@lando/sdk/errors";
+import type { CommandCompletion } from "@lando/sdk/schema";
 
 import type { Effect, Schema } from "effect";
 import { Predicate } from "effect";
@@ -25,8 +26,8 @@ export interface McpCommandSpec {
   readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly streamFrames?: (result: unknown) => ReadonlyArray<McpProgressFrame>;
   readonly redactionTokens?: (result: unknown) => ReadonlyArray<string>;
-  readonly successExitCode?: {
-    bivarianceHack(result: unknown, input?: unknown): number | undefined;
+  readonly completion?: {
+    bivarianceHack(result: unknown, input: unknown): CommandCompletion;
   }["bivarianceHack"];
 }
 

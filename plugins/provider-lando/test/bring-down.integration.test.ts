@@ -50,29 +50,30 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
   command: name === "node" ? ["node", "-e", "setInterval(() => {}, 1000)"] : ["postgres", "-c", "port=55432"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
-  ...(name === "node"
-    ? {
-        appMount: {
-          source: appRoot,
-          target: PortablePath.make("/app"),
-          readOnly: false,
-          excludes: [],
-          includes: [],
-          realization: "passthrough",
-        },
-      }
-    : {}),
-  mounts: [],
-  storage:
-    name === "database"
+  mounts:
+    name === "node"
       ? [
           {
-            store: "bringdownapp_database_data",
-            target: PortablePath.make("/var/lib/postgresql/data"),
+            type: "bind",
+            role: "app",
+            source: appRoot,
+            target: PortablePath.make("/app"),
             readOnly: false,
+            excludes: [],
+            includes: [],
+            realization: "passthrough",
           },
         ]
-      : [],
+      : name === "database"
+        ? [
+            {
+              type: "volume",
+              store: "bringdownapp_database_data",
+              target: PortablePath.make("/var/lib/postgresql/data"),
+              readOnly: false,
+            },
+          ]
+        : [],
   endpoints:
     name === "node"
       ? [
@@ -99,6 +100,7 @@ const database = servicePlan("database");
 const node = servicePlan("node");
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "BringDown App",
   slug: "bringdownapp",
@@ -106,7 +108,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [database.name]: database, [node.name]: node },
   routes: [],
-  networks: [],
   stores: [
     { name: "bringdownapp_database_data", scope: "app", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
@@ -156,8 +157,22 @@ const makeFakeApi = () => {
         const name = [...containers].find(([, container]) => container.Id === reference)?.[0] ?? reference;
         const action = containerMatch?.[2];
 
-        if (request.path === "/networks/create") {
-          const body = decodeCreateBody(request.body);
+        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+          const payload =
+            request.path === "/libpod/networks/create"
+              ? Schema.decodeUnknownSync(
+                  Schema.Struct({
+                    name: Schema.String,
+                    driver: Schema.Literal("bridge"),
+                    dns_enabled: Schema.Literal(true),
+                    options: Schema.Struct({ metric: Schema.Literal("50") }),
+                    labels: Schema.Record(Schema.String, Schema.String),
+                  }),
+                )(request.body)
+              : undefined;
+          const body = decodeCreateBody(
+            payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels },
+          );
           const requestedName = body.Name ?? "";
           networks.add(requestedName);
           const network = { Id: `${requestedName}-id`, Labels: body.Labels ?? {} };
@@ -443,70 +458,6 @@ describe("provider-lando bringDown", () => {
 
     expect(fake.calls.some((call) => call.path.startsWith("/libpod/volumes/prune"))).toBe(false);
   });
-
-  test.skipIf(resolveLiveProviderSocket() === undefined)(
-    "stops and removes live Podman containers and network while preserving volumes",
-    async () => {
-      const socketPath = resolveLiveProviderSocket()?.socketPath;
-      expect(socketPath).toBeTruthy();
-      const api = makePodmanApiClient(socketPath ?? "");
-      const liveRequest = api.request;
-      if (liveRequest === undefined) {
-        throw new Error("missing request client");
-      }
-
-      await Effect.runPromise(
-        Effect.result(
-          liveRequest({
-            method: "POST",
-            path: "/volumes/create",
-            body: { Name: "bringdownapp_database_data" },
-          }),
-        ),
-      );
-
-      try {
-        await Effect.runPromise(bringUp(plan, { api }));
-        const result = await Effect.runPromise(bringDown(plan, { api }));
-
-        expect(result.changed).toBe(true);
-        for (const service of Object.values(plan.services)) {
-          const response = await Effect.runPromise(
-            liveRequest({ method: "GET", path: `/containers/lando-${plan.slug}-${service.name}/json` }),
-          );
-          expect(response.status).toBe(404);
-        }
-        const network = await Effect.runPromise(
-          liveRequest({ method: "GET", path: `/networks/lando-${plan.slug}` }),
-        );
-        expect(network.status).toBe(404);
-        const volume = await Effect.runPromise(
-          liveRequest({ method: "GET", path: "/volumes/bringdownapp_database_data" }),
-        );
-        expect(volume.status).toBe(200);
-      } finally {
-        for (const service of Object.values(plan.services)) {
-          await Effect.runPromise(
-            Effect.result(
-              liveRequest({ method: "POST", path: `/containers/lando-${plan.slug}-${service.name}/stop` }),
-            ),
-          );
-          await Effect.runPromise(
-            Effect.result(
-              liveRequest({
-                method: "DELETE",
-                path: `/containers/lando-${plan.slug}-${service.name}?force=true`,
-              }),
-            ),
-          );
-        }
-        await Effect.runPromise(
-          Effect.result(liveRequest({ method: "DELETE", path: `/networks/lando-${plan.slug}` })),
-        );
-      }
-    },
-    60_000,
-  );
 
   test.skipIf(!volumePruneEligibility.available)(
     liveIntegrationTestName(

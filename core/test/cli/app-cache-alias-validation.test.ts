@@ -82,7 +82,6 @@ const withRefreshFixture = async <T>(
       provider: providerId,
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {
@@ -95,8 +94,11 @@ const withRefreshFixture = async <T>(
     landofile.tooling,
   );
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, root)) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       PluginRegistry,
       PluginRegistry.of({
@@ -285,3 +287,4 @@ test("app cache refresh accepts built-in and compiled tooling alias targets", as
     },
   );
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

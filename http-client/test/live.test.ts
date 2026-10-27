@@ -13,7 +13,7 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ProviderId } from "@lando/sdk/schema";
-import { ConfigService, EventService, type LandoEvent, SecretStore } from "@lando/sdk/services";
+import { ConfigService, EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { RequestPolicy, type RequestPolicyShape, layer, layerWith } from "../src/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../src/network-trust.ts";
@@ -355,6 +355,7 @@ describe("HttpClient network trust", () => {
           direct: (requestUrl, init) =>
             fetchImpl(requestUrl, {
               ...init,
+              body: init.body ?? null,
               ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
             }),
         }),
@@ -371,7 +372,7 @@ describe("HttpClient network trust", () => {
       caPems: [CA_PEM],
       trustHost: true,
     });
-    expect(capture.init()?.proxy).toBe("http://proxy:3128");
+    expect(capture.init()?.proxy).toEqual({ url: "http://proxy:3128", respectNoProxy: false });
     expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
   });
 
@@ -382,7 +383,7 @@ describe("HttpClient network trust", () => {
       caPems: [CA_PEM],
       trustHost: true,
     });
-    expect(capture.init()?.proxy).toBeUndefined();
+    expect(capture.init()?.proxy).toBe(false);
     expect(capture.init()?.tls).toEqual({ ca: [CA_PEM] });
   });
 
@@ -423,12 +424,17 @@ describe("HttpClient network trust", () => {
     const envCaPem = "-----BEGIN CERTIFICATE-----\nFROMENV\n-----END CERTIFICATE-----";
     await writeFile(caPath, envCaPem);
 
-    stashEnv("HTTP_PROXY", "http://env-proxy:8080");
+    stashEnv("HTTPS_PROXY", "http://env-proxy:8080");
     stashEnv("LANDO_NETWORK_CA_CERTS", JSON.stringify([caPath]));
 
     const configLayer = Layer.effect(
       ConfigService,
-      Effect.fail(new ConfigError({ message: "global config unavailable" })),
+      Effect.fail(
+        new ConfigError({
+          message: "global config unavailable",
+          remediation: "Provide a ConfigService for the live HTTP fixture.",
+        }),
+      ),
     );
 
     const capture = captureFetch();
@@ -485,7 +491,7 @@ describe("HttpClient network trust", () => {
     );
 
     await Effect.runPromise(program);
-    expect(capture.init()?.proxy).toBe("http://config-proxy:3128");
+    expect(capture.init()?.proxy).toEqual({ url: "http://config-proxy:3128", respectNoProxy: false });
     expect(capture.init()?.tls).toEqual({ ca: [fromConfig] });
   });
 
@@ -504,7 +510,7 @@ describe("HttpClient network trust", () => {
     // When HTTP executes using only its retained layer services.
     await run(getCollect("https://example.com/retained"), clientLayer);
     // Then no ambient proxy reaches the transport.
-    expect(capture.init()?.proxy).toBeUndefined();
+    expect(capture.init()?.proxy).toBe(false);
   });
 
   test("fails before fetch when a configured CA path is unreadable", async () => {
@@ -835,16 +841,12 @@ describe("HttpClient egress span redaction", () => {
       },
     });
     const serve = (() => Promise.resolve(new Response("ok", { status: 200 }))) as unknown as typeof fetch;
-    const store = SecretStore.of({
-      id: "review-store",
-      list: Effect.succeed(["path-token"]),
-      get: () => Effect.succeed(secret),
-      has: () => Effect.succeed(true),
-    });
+    const redaction = makeRedactionService();
+    await Effect.runPromise(redaction.registerValues([secret]));
     await Effect.runPromise(
       getCollect(url).pipe(
         Effect.provide(layerWith({ fetch: serve })),
-        Effect.provideService(RedactionService, RedactionService.of(makeRedactionService(store))),
+        Effect.provideService(RedactionService, redaction),
         Effect.provideService(Tracer.Tracer, tracer),
       ),
     );

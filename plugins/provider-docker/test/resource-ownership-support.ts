@@ -38,6 +38,7 @@ const fixtureAt = (directory: string) => {
   );
   const store = makeResourceOwnershipStore("docker", state);
   const plan: AppPlan = {
+    valueModel: 1,
     id: AppId.make("owned"),
     slug: "owned",
     name: "owned",
@@ -45,7 +46,6 @@ const fixtureAt = (directory: string) => {
     identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
     provider: ProviderId.make("docker"),
     services: {},
-    networks: [],
     stores: [],
     routes: [],
     fileSync: [],
@@ -69,7 +69,7 @@ const fixtureAt = (directory: string) => {
   const cleanup = makeOwnedResourcesCleanup({
     store,
     api,
-    ctx: { providerId: "docker", remediation: "Retry cleanup." },
+    ctx: { providerId: "docker", remediation: "Retry cleanup.", env: {} },
   });
   const path = join(stateRoot, "resource-ownership", `${plan.identity?.ownerKey}.json`);
   const network = (appId = plan.id) => ({
@@ -109,7 +109,6 @@ export const webFor = (plan: AppPlan): AppPlan => ({
       command: [],
       environment: { PRIVATE: "never-persist-this" },
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],

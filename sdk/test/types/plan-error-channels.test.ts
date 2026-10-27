@@ -29,7 +29,6 @@ import type {
   GlobalAutoStartError,
   GpgAgentTransportError,
   GpgAgentUnavailableError,
-  HomePathCapabilityError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   Lando3LandofileDetected,
@@ -111,7 +110,6 @@ type LegacyAppPlannerChannel =
   | CapabilityError
   | NotImplementedError
   | PublicationUnsupportedError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | ConfigExpressionError;
 
@@ -131,6 +129,7 @@ type LegacyBuildAppChannel =
   | ProviderUnavailableError;
 
 type LegacyDiscoverChannel =
+  | ConfigExpressionError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | LandofileNotFoundError
@@ -180,7 +179,6 @@ type LegacyStartAppError =
   | NotImplementedError
   | CapabilityError
   | ConfigExpressionError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | GlobalAutoStartError
@@ -236,7 +234,6 @@ type LegacyStopAppError =
   | NotImplementedError
   | CapabilityError
   | ConfigExpressionError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
@@ -269,7 +266,6 @@ type LegacyInfoAppError =
   | NotImplementedError
   | CapabilityError
   | ConfigExpressionError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError
@@ -287,7 +283,6 @@ type LegacyExecAppError =
   | AppIdReservedError
   | ComposeKeyRejectedError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | LandofileNotFoundError
@@ -322,7 +317,6 @@ type LegacyToolingError =
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | ComposeKeyRejectedError
@@ -369,7 +363,6 @@ type LegacyLogsAppError =
   | NotImplementedError
   | CapabilityError
   | ConfigExpressionError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | LandoCommandError

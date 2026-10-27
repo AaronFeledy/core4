@@ -2,11 +2,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { FileSyncEngine } from "@lando/core/services";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { makeRedactionService } from "@lando/redaction/service";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
 import {
@@ -134,20 +134,13 @@ describe("file-sync setup step", () => {
 });
 
 describe("setup readiness recorder", () => {
-  beforeEach(() => {
-    resetRegisteredRedactionValuesForTesting();
-  });
-
-  afterEach(() => {
-    resetRegisteredRedactionValuesForTesting();
-  });
-
   test("masks registered exact values in persisted failure evidence and remediation", async () => {
     // Given
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-registered-redaction-"));
     try {
-      const recorder = makeSetupReadinessRecorder(userDataRoot, "podman");
-      Effect.runSync(registerRedactionValues(["readiness-canary-1252"]));
+      const redaction = makeRedactionService();
+      const recorder = makeSetupReadinessRecorder(userDataRoot, "podman", redaction);
+      Effect.runSync(redaction.registerValues(["readiness-canary-1252"]));
       // When
       await Effect.runPromise(
         recorder.recordFailure("provider", new Error("connection rejected readiness-canary-1252")),

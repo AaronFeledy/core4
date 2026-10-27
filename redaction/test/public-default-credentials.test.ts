@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import {
@@ -6,11 +6,7 @@ import {
   collectSecretEnvValues,
   createStandaloneRedactor,
   makeRedactionService,
-  registerRedactionValues,
-  resetRegisteredRedactionValuesForTesting,
 } from "../src/service.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 test.each([
   { MARIADB_USER: "magento", MARIADB_PASSWORD: "magento", MARIADB_DATABASE: "shop" },
@@ -62,10 +58,13 @@ test("preserves package names in payload output with public credential values", 
 });
 
 test("explicit registration still masks a public credential value", async () => {
-  const redactor = createStandaloneRedactor("secrets", {
-    sourceEnv: { MYSQL_USER: "magento", MYSQL_PASSWORD: "magento" },
-  });
-  await Effect.runPromise(registerRedactionValues(["magento"]));
+  const service = makeRedactionService();
+  const redactor = await Effect.runPromise(
+    service.forProfile("secrets", {
+      sourceEnv: { MYSQL_USER: "magento", MYSQL_PASSWORD: "magento" },
+    }),
+  );
+  await Effect.runPromise(service.registerValues(["magento"]));
   expect(redactor.redactString("echo magento")).toBe("echo [redacted]");
 });
 
@@ -97,11 +96,12 @@ test("keeps ordinary Lando output visible when source environment uses published
   expect(redacted).toBe(output);
 });
 
-test("masks a published default when explicitly registered after standalone construction", async () => {
+test("masks a published default when explicitly registered after service redactor construction", async () => {
   // Given
-  const redactor = createStandaloneRedactor("secrets");
+  const service = makeRedactionService();
+  const redactor = await Effect.runPromise(service.forProfile("secrets"));
   // When
-  await Effect.runPromise(registerRedactionValues(["lando"]));
+  await Effect.runPromise(service.registerValues(["lando"]));
   // Then
   expect(redactor.redactString("hello lando world")).toBe("hello [redacted] world");
 });
@@ -118,14 +118,10 @@ test.each(["redactionTokens", "authoritativeTokens"] as const)(
   },
 );
 
-test("masks published defaults retrieved from a secret store", async () => {
+test("masks explicitly resolved published defaults", async () => {
   // Given
-  const service = makeRedactionService({
-    id: "defaults",
-    list: Effect.succeed(["password"]),
-    get: () => Effect.succeed("lando"),
-    has: () => Effect.succeed(true),
-  });
+  const service = makeRedactionService();
+  await Effect.runPromise(service.registerValues(["lando"]));
   // When
   const redactor = await Effect.runPromise(service.forProfile("secrets"));
   // Then

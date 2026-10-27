@@ -1,13 +1,13 @@
-import { GlobalAppError, type ServiceNotReadyError } from "@lando/sdk/errors";
+import { GlobalAppError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { ApplyOptions, RuntimeProviderShape } from "@lando/sdk/services";
+import { type ApplyOptions, EnvironmentValueResolver, type RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Result } from "effect";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
-import { resolveServiceEnvironmentSecrets } from "../services/secret-environment.ts";
-import { waitForServiceReadiness } from "./service-readiness.ts";
 
-const serviceGroups = (services: ReadonlyArray<ServicePlan>): ReadonlyArray<ReadonlyArray<ServicePlan>> => {
+export const serviceGroups = (
+  services: ReadonlyArray<ServicePlan>,
+): ReadonlyArray<ReadonlyArray<ServicePlan>> => {
   const byName = new Map(services.map((service) => [service.name, service]));
   const remaining = new Set(services.map((service) => service.name));
   const groups: Array<ReadonlyArray<ServicePlan>> = [];
@@ -41,6 +41,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
   },
   build: (plan: AppPlan) => Effect.Effect<AppPlan, E, R>,
 ) {
+  const session = yield* (yield* EnvironmentValueResolver).openSession();
   let recordedPlan = plan;
   const outcomes = yield* Effect.forEach(
     serviceGroups(apply.services),
@@ -59,11 +60,10 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               ...plan,
               services: { ...recordedPlan.services, ...builtPlan.services },
             };
-            const serviceEnvironment = yield* resolveServiceEnvironmentSecrets(builtPlan);
             yield* Effect.scoped(
               apply.provider.apply(builtPlan, {
                 ...apply.options,
-                serviceEnvironment,
+                resolveServiceEnvironment: (service) => session.resolveEnvironment(service.environment),
                 onVolumeCreated: yield* volumeCreationRecorder(apply.provider, builtPlan),
                 ...(apply.options.reconcile === true ? { recordedPlan } : {}),
                 completionPlan: plan,
@@ -83,7 +83,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
   );
   const services = Object.values(recordedPlan.services).filter((service) => startedNames.has(service.name));
   return { builtPlan: recordedPlan, services, failures };
-});
+}, Effect.scoped);
 
 export const globalServiceGroupError = <E>(
   operation: "start" | "rebuild",
@@ -108,45 +108,3 @@ export const globalServiceGroupError = <E>(
     cause: firstFailure.error,
   });
 };
-
-export const waitForGlobalServiceGroups = Effect.fn("GlobalServices.readiness")(function* <E>(
-  provider: RuntimeProviderShape,
-  outcome: {
-    readonly builtPlan: AppPlan;
-    readonly services: ReadonlyArray<ServicePlan>;
-    readonly failures: ReadonlyArray<{ readonly names: ReadonlyArray<string>; readonly error: E }>;
-  },
-  signal?: AbortSignal,
-) {
-  const groups = yield* Effect.forEach(
-    serviceGroups(outcome.services),
-    (services) =>
-      Effect.map(
-        Effect.result(
-          waitForServiceReadiness({
-            provider,
-            plan: outcome.builtPlan,
-            services: services.map((service) => service.name),
-            ...(signal === undefined ? {} : { signal }),
-          }),
-        ),
-        (result) => ({ services, result }),
-      ),
-    { concurrency: "unbounded" },
-  );
-  const failures: Array<{ readonly names: ReadonlyArray<string>; readonly error: E | ServiceNotReadyError }> =
-    [...outcome.failures];
-  for (const group of groups) {
-    if (Result.isFailure(group.result))
-      failures.push({
-        names: group.services.map((service) => String(service.name)),
-        error: group.result.failure,
-      });
-  }
-  return {
-    builtPlan: outcome.builtPlan,
-    services: groups.flatMap((group) => (Result.isSuccess(group.result) ? group.services : [])),
-    ready: groups.flatMap((group) => (Result.isSuccess(group.result) ? group.result.success : [])),
-    failures,
-  };
-});

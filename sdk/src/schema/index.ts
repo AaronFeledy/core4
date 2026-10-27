@@ -1,5 +1,10 @@
 export * from "./agent-forwarding.ts";
 export * from "./app-plan.ts";
+export * from "./image-reference.ts";
+export * from "./service-probe.ts";
+export * from "./environment-value.ts";
+export * from "./compiled-landofile.ts";
+export * from "./database-connection.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export * from "./config-translate.ts";
@@ -147,6 +152,7 @@ export * from "./keymap.ts";
 export * from "./keymap-conflict.ts";
 export * from "./subscriber.ts";
 export * from "./service-info.ts";
+export * from "./service-mount.ts";
 export * from "./service-connection.ts";
 export * from "./service-dependency.ts";
 export * from "./services/index.ts";
@@ -162,3 +168,4 @@ export {
   getLayerMergeRule,
 } from "./layer-merge.ts";
 export * from "./resource-ownership.ts";
+export * from "./applied-state.ts";

@@ -891,7 +891,11 @@ describe("meta:doctor host-proxy transport reachability", () => {
             apiVersion: "v4",
             command: "app:open",
             ok: false,
-            error: { _tag: "LandoCommandError", message: "No routes matched." },
+            error: {
+              _tag: "LandoCommandError",
+              message: "No routes matched.",
+              remediation: "Configure a route for the app before opening it.",
+            },
             warnings: [],
             deprecations: [],
           }),
@@ -972,7 +976,11 @@ describe("meta:doctor host-proxy transport reachability", () => {
             apiVersion: "v4",
             command: "app:open",
             ok: false,
-            error: { _tag: "LandoCommandError", message: "No routes matched." },
+            error: {
+              _tag: "LandoCommandError",
+              message: "No routes matched.",
+              remediation: "Configure a route for the app before opening it.",
+            },
             warnings: [],
             deprecations: [],
           }),
@@ -1393,6 +1401,8 @@ describe("meta:doctor host-proxy transport reachability", () => {
             operation: "exec",
             service: target.service,
             message: "service is unavailable",
+            remediation:
+              "Confirm the target service is running and the exec command is valid inside that container, then retry.",
           }),
         );
       },

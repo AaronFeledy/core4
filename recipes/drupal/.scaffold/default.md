@@ -41,14 +41,14 @@ lando init --recipe drupal --name=my-drupal-app --yes \
   --answer=drupal=10
 ```
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For day-to-day tooling and database hosts, see [Run the Drupal recipe](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/).
 
 ## 1. scaffold
 
 ```bash
-lando init --recipe drupal --name=my-drupal-nginx --yes
+lando init --recipe drupal --name=my-drupal-app --yes
 ```
 
 ## 2. start

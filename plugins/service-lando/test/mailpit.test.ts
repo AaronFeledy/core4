@@ -69,6 +69,7 @@ describe("mailpit ServiceType", () => {
       { _tag: "internal", port: 8025, protocol: "http", name: "ui" },
     ]);
     expect(plan.environment).toMatchObject({ MP_SMTP_BIND_ADDR: "0.0.0.0:2525" });
+    expect(plan.healthcheck?.command).toEqual(["/mailpit", "readyz"]);
   });
 
   test("preserves authored routes", async () => {

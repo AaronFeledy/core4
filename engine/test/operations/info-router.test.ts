@@ -80,7 +80,8 @@ test("round trips actual info without redundant fields or runtime leakage", asyn
     },
   });
   const encoded = result.services.map((row) => Schema.encodeSync(ServiceInfo)(row));
-  expect(result.services).toEqual(encoded);
+  const decoded = encoded.map((row) => Schema.decodeUnknownSync(ServiceInfo)(row));
+  expect(result.services).toEqual(decoded);
   expect(Object.keys(result.services[0] ?? {}).sort()).toEqual([
     "api",
     "app",
@@ -136,10 +137,20 @@ test.each([
   ["valkey", "valkey://[::1]:49152", ["redis://[::1]:49152"]],
   ["valkey:8", "valkey://[::1]:49152", ["redis://[::1]:49152"]],
 ] as const)("preserves %s client URIs only for its declared listener", async (type, url, alternateUrls) => {
+  const { connection: _connection, nonSqlCreds: _nonSqlCreds, ...serviceBase } = web;
   const service: ServicePlan = {
-    ...web,
+    ...serviceBase,
     type,
-    environment: { POSTGRES_USER: "db@user", POSTGRES_DB: "app/db", POSTGRES_PASSWORD: "canary" },
+    environment: { POSTGRES_USER: "wrong-user", POSTGRES_DB: "wrong-db", POSTGRES_PASSWORD: "canary" },
+    ...(type.startsWith("postgres")
+      ? {
+          connection: {
+            family: "postgres" as const,
+            port: 15432,
+            creds: { user: "db@user", database: "app/db", password: "canary" },
+          },
+        }
+      : {}),
     endpoints: [
       { _tag: "published", protocol: "tcp", port: 15432, primary: true, publication: { bindAddress: "::1" } },
       { _tag: "internal", protocol: "tcp", port: 9000 },

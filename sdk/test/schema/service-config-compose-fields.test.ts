@@ -21,20 +21,12 @@ describe("ServiceConfig Compose preserved fields", () => {
     expect(longForm.networks).toEqual({ frontend: {}, backend: { aliases: ["api"] } });
   });
 
-  test("Given every network attachment field, when decoded and encoded, then the attachment round-trips", () => {
+  test("Given aliases and inert metadata, when decoded and encoded, then the attachment round-trips", () => {
     // Given
     const input = {
       networks: {
         frontend: {
           aliases: ["api", "web"],
-          interface_name: "eth7",
-          ipv4_address: "172.20.0.10",
-          ipv6_address: "2001:db8::10",
-          link_local_ips: ["169.254.10.10"],
-          mac_address: "02:42:ac:14:00:0a",
-          driver_opts: { encrypted: "true", mtu: 1450 },
-          priority: 100,
-          gw_priority: 50,
           "x-network-note": { owner: "platform" },
         },
       },

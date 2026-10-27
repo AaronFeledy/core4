@@ -29,7 +29,6 @@ const service = (
   artifact: { kind: "ref", ref: "alpine:3.22" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: options.dependsOn,
@@ -51,6 +50,7 @@ const healthyDb = service("db", {
 });
 
 const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Bring Up Order App",
   slug: "bring-up-order-app",
@@ -58,7 +58,6 @@ const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   networking: { perAppBridge: { name: "lando-bring-up-order-app", driver: "bridge" } },
   stores: [],
   fileSync: [],
@@ -211,7 +210,7 @@ describe("provider-docker bringUp dependency order", () => {
     await apply(plan, fake.api, undefined, true);
 
     // Then
-    const removed = fake.requests.indexOf(`DELETE /containers/${originalId}?force=true`);
+    const removed = fake.requests.indexOf(`DELETE /containers/${originalId}?force=true&v=true`);
     const created = fake.requests.indexOf(`POST /containers/create?name=${name}`);
     expect(removed).toBeGreaterThan(-1);
     expect(created).toBeGreaterThan(removed);
@@ -394,7 +393,9 @@ describe("provider-docker bringUp dependency order", () => {
     if (webIdAfter === undefined) throw new TypeError("expected recreated B id");
     expect(fake.ids.get(apiName)).toBe(apiId);
     expect(webIdAfter).not.toBe(webId);
-    expect(retryRequests.some((request) => request === `DELETE /containers/${webId}?force=true`)).toBe(true);
+    expect(retryRequests.some((request) => request === `DELETE /containers/${webId}?force=true&v=true`)).toBe(
+      true,
+    );
     expect(
       retryRequests.some((request) => request.startsWith("DELETE /containers/") && request.includes(apiId)),
     ).toBe(false);

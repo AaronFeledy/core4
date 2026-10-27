@@ -4,7 +4,7 @@ import { Effect, Predicate } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { EndpointPlan, NetworkingPlan } from "@lando/sdk/schema";
+import type { EndpointPlan, NetworkingPlan, ServiceNetworkAttachment } from "@lando/sdk/schema";
 
 import {
   type PublishedContainerReceipt,
@@ -40,7 +40,7 @@ export const WINDOWS_COMPAT_NETWORK_LIST_PATH = "/networks" as const;
 
 export const supportsWindowsPublishedRecovery = (input: {
   readonly networking: NetworkingPlan | undefined;
-  readonly networks?: unknown;
+  readonly attachments: ReadonlyArray<ServiceNetworkAttachment>;
   readonly endpoints: ReadonlyArray<EndpointPlan>;
 }): boolean => {
   // Internal facets of a published listener describe the same physical port, not an unpublished one.
@@ -54,8 +54,7 @@ export const supportsWindowsPublishedRecovery = (input: {
     published.every(
       (endpoint) => endpoint.protocol !== "udp" && endpoint.publication.bindAddress === "127.0.0.1",
     ) &&
-    (input.networks === undefined ||
-      (Predicate.isObject(input.networks) && Object.keys(input.networks).length <= 1))
+    input.attachments.length <= 1
   );
 };
 export const publishedFactsFromCompatResponses = (input: {

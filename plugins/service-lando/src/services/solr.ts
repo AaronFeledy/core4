@@ -11,9 +11,9 @@ import type {
 import { ServiceConfigIssue, commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import { resolveBindSource } from "./_volume-helpers.ts";
+import { isAppRelativeSource, resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "solr:9";
 const VERSIONS = ["9"] as const;
@@ -62,6 +62,7 @@ const rejectUnsafeCores = (
     serviceType,
     message: coreNameRejection(core),
     issues: [{ path: ["cores", index], message: coreNameRejection(core), suggestion: CORE_NAME_REMEDIATION }],
+    remediation: CORE_NAME_REMEDIATION,
   });
 };
 
@@ -110,11 +111,11 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
     ctx.addMount({
       type: "bind",
       source: resolveBindSource(configDir, ctx.appRoot),
+      ...(isAppRelativeSource(configDir) ? { relativeTo: "app" as const } : {}),
       target: SOLR_CONFIG_TARGET,
       readOnly: true,
     });
   }
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(
     commandHealthcheck(["bash", "-c", `curl -sf http://localhost:${port}/solr/admin/info/system`], 60, {
       intervalSeconds: 15,
@@ -129,12 +130,17 @@ export const solrServiceFeature: ServiceFeatureDefinition = {
   id: SOLR_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+    ),
   apply: serviceFeatureApply(SOLR_FEATURE_ID, "solr service feature failed to apply", applySolrFeature),
 };
 
 const IDENTITY: ServiceImageIdentity = {
   defaultUser: "solr",
-  homes: { solr: "/var/solr", root: "/root" },
+  homes: { solr: "/home/solr", root: "/root" },
+  preparedHomes: ["solr"],
 };
 
 const resolveSolr =

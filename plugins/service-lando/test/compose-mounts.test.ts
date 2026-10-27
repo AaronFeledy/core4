@@ -47,6 +47,8 @@ test("resolves an authored relative bind mount into the Compose service plan", a
     {
       type: "bind",
       source: "/srv/apps/myapp/proxy-traefik/dynamic",
+      origin: "authored",
+      relativeTo: "app",
       target: PortablePath.make("/etc/traefik/dynamic"),
       readOnly: false,
       realization: "passthrough",
@@ -84,6 +86,7 @@ test("accepts a Windows drive-letter bind mount short syntax", async () => {
     {
       type: "bind",
       source: "C:\\host\\dynamic",
+      origin: "authored",
       target: PortablePath.make("/etc/traefik/dynamic"),
       readOnly: true,
       realization: "passthrough",
@@ -121,6 +124,7 @@ test("accepts a forward-slash Windows drive-letter bind mount short syntax", asy
     {
       type: "bind",
       source: "C:/host/dynamic",
+      origin: "authored",
       target: PortablePath.make("/etc/traefik/dynamic"),
       readOnly: false,
       realization: "passthrough",

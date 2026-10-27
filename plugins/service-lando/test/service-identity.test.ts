@@ -15,16 +15,13 @@ describe("bundled service image identity", () => {
     expect(missing.map(([id]) => id)).toEqual([]);
   });
 
-  it("declares a home when the default user principal is selected", () => {
-    for (const [id, serviceType] of catalog) {
-      // When
+  it("omits the default home only for Varnish images whose user has no home", () => {
+    const withoutHome = catalog.filter(([, serviceType]) => {
       const identity = serviceType.identity;
-      const principal = identity?.defaultUser.split(":")[0];
-
-      // Then
-      expect(principal, id).toBeDefined();
-      expect(Object.hasOwn(identity?.homes ?? {}, principal ?? ""), id).toBe(true);
-    }
+      const principal = identity?.defaultUser.split(":")[0] ?? "";
+      return !Object.hasOwn(identity?.homes ?? {}, principal);
+    });
+    expect(withoutHome.map(([id]) => id).sort()).toEqual(["varnish", "varnish:7"]);
   });
 
   it("uses absolute paths when declaring user homes", () => {

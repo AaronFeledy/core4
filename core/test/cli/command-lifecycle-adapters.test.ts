@@ -181,7 +181,7 @@ describe("CLI lifecycle adapters", () => {
       "meta:uninstall",
     ];
 
-    expect(ids.filter((id) => landoSpecForId(id)?.successExitCode === undefined)).toEqual([]);
+    expect(ids.filter((id) => landoSpecForId(id)?.completion === undefined)).toEqual([]);
   });
 
   test("result-driven plugin commands publish and apply their nonzero lifecycle exit code", async () => {
@@ -202,7 +202,8 @@ describe("CLI lifecycle adapters", () => {
         query: () => Effect.succeed([]),
       });
       const spec = landoSpecForId(id);
-      if (spec?.successExitCode === undefined) throw new Error(`${id} lacks successExitCode`);
+      const completion = spec?.completion;
+      if (completion === undefined || spec === undefined) throw new Error(`${id} lacks completion`);
 
       // When
       await runWithRendererHandling(Effect.succeed({ exitCode: 17 }), {
@@ -213,13 +214,13 @@ describe("CLI lifecycle adapters", () => {
         resultSchema: spec.resultSchema,
         io: createBufferedRendererIO(),
         render: () => undefined,
-        successExitCode: spec.successExitCode,
+        completion: (value) => completion(value, {}),
         setExitCode: (code) => exitCodes.push(code),
         formatError: ({ error }) => String(error),
       });
 
       // Then
-      expect(events.at(-1)).toMatchObject({ _tag: `cli-${id}-run`, exitCode: 17 });
+      expect(events.at(-1)).toMatchObject({ _tag: `cli-${id}-error`, exitCode: 17 });
       expect(exitCodes).toEqual([17]);
     }
   });

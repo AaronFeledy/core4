@@ -14,7 +14,11 @@ export const collectExecStream = Effect.fnUntraced(function* <E, R>(
 ): Effect.fn.Return<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }, E, R> {
   const output = Option.match(sink, {
     onNone: createCollectingStreamFrameSink,
-    onSome: (provided) => ({ sink: provided, result: () => ({ stdout: "", stderr: "" }) }),
+    onSome: (provided) => ({
+      sink: provided,
+      finish: () => Effect.void,
+      result: () => ({ stdout: "", stderr: "" }),
+    }),
   });
   let exitCode = 0;
   yield* stream.pipe(
@@ -26,9 +30,10 @@ export const collectExecStream = Effect.fnUntraced(function* <E, R>(
       // Live frames keep the provider bytes so a redirected archive stays intact.
       return chunk.chunk.length === 0
         ? Effect.void
-        : output.sink.emit({ _tag: chunk.kind, chunk: chunk.chunk, raw: true });
+        : output.sink.emit({ _tag: chunk.kind, chunk: chunk.chunk, kind: "bytes" });
     }),
-    Effect.ensuring(output.sink.flush === undefined ? Effect.void : output.sink.flush()),
+    Effect.scoped,
+    Effect.ensuring(output.finish()),
   );
   return {
     exitCode,

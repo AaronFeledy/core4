@@ -82,7 +82,7 @@ const inventoryNotice = Effect.fnUntraced(function* (plan: AppPlan) {
         unverified.push(service);
     }
   }
-  return `Start did not complete. Resources were left in place. Running: ${listed(running)}; created/stopped: ${listed(stopped)}; unverified: ${listed(unverified)}. Agent forwarding/file sync remain active where established. Inspect \`lando info\` and \`lando logs\`; fix the reported error, then run \`lando start\`. Run \`lando stop\` to shut down or \`lando destroy\` to remove resources; volumes require \`--volumes\`.`;
+  return `Start did not complete. Resources were left in place. Running: ${listed(running)}; created/stopped: ${listed(stopped)}; unverified: ${listed(unverified)}. Agent forwarding/file sync remain active where established. Inspect \`lando info\` and \`lando logs\`; fix the reported error, then run \`lando start\`. Run \`lando stop\` to shut down or \`lando destroy\` to remove resources; named volumes require \`--volumes\`.`;
 });
 
 /**

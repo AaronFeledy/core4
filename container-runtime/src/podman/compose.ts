@@ -13,21 +13,21 @@ import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   type AppPlan,
   type ServicePlan,
-  fileSyncVolumeName,
-  landoServiceNetworkAliases,
+  landoServiceNetworkAttachments,
   landoSharedNetworkName,
-  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 import { quoteYamlScalar, yamlMappingKeyText } from "@lando/sdk/yaml";
 
-import { bindSourceForComposeConfig, composeConfigMounts } from "../compose-configs.ts";
 import type { ProviderErrorContext } from "../engine-api.ts";
+import { previewEnvironmentValue } from "../environment-values.ts";
+import { prepareFileModeMounts } from "../file-mode-mounts.ts";
 import { type HostAliasMap, serviceHostAliases, writeHostAliases } from "../host-aliases.ts";
-import { requiresLongMountSyntax } from "../mount-syntax.ts";
 import { physicalListenerPorts, physicalPublications } from "../physical-publications.ts";
-import { commonContainerLabels, composeConfigBindStrings, mountSuffix } from "../plan.ts";
+import { commonContainerLabels } from "../plan.ts";
 import { volumeOwnershipLabels } from "../volume-ownership.ts";
+import { composeHealthcheck } from "./compose-healthcheck.ts";
+import { type ComposeVolumeEntry, serviceComposeMounts } from "./compose-mounts.ts";
 import { podmanNetworkNames } from "./networks.ts";
 
 export interface EmitComposeOptions {
@@ -44,32 +44,6 @@ interface DependsOnEntry {
   readonly condition: string;
   readonly required: boolean;
 }
-
-interface ComposeBindVolume {
-  readonly type: "bind";
-  readonly source: string;
-  readonly target: string;
-  readonly read_only: boolean;
-  readonly bind?: { readonly create_host_path: false };
-}
-
-interface ComposeStorageVolume {
-  readonly type: "volume";
-  readonly source: string;
-  readonly target: string;
-  readonly read_only: boolean;
-  readonly volume?: { readonly subpath: string };
-}
-
-type ComposeVolumeEntry =
-  | string
-  | ComposeBindVolume
-  | ComposeStorageVolume
-  | {
-      readonly type: "tmpfs";
-      readonly target: string;
-      readonly read_only: boolean;
-    };
 
 interface ComposeService {
   readonly image: string;
@@ -115,96 +89,14 @@ const serviceImage = (ctx: ProviderErrorContext, service: ServicePlan) => {
   });
 };
 
-const volumeSpec = (mount: ComposeBindVolume | ComposeStorageVolume): ComposeVolumeEntry =>
-  requiresLongMountSyntax(mount.target)
-    ? mount
-    : `${mount.source}:${mount.target}${mountSuffix(mount.read_only)}`;
-
-const serviceVolumes = (
+const serviceMountLists = (
   ctx: ProviderErrorContext,
   plan: AppPlan,
   service: ServicePlan,
-): ReadonlyArray<ComposeVolumeEntry> => {
-  const appMount =
-    service.appMount === undefined
-      ? []
-      : [
-          volumeSpec({
-            type: service.appMount.realization === "accelerated" ? "volume" : "bind",
-            source:
-              service.appMount.realization === "accelerated"
-                ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-                : service.appMount.source,
-            target: service.appMount.target,
-            read_only: service.appMount.readOnly,
-          }),
-        ];
-  const mounts = service.mounts.flatMap((mount, index): ReadonlyArray<ComposeVolumeEntry> => {
-    if (mount.type === "tmpfs") {
-      return requiresLongMountSyntax(mount.target)
-        ? [{ type: "tmpfs", target: mount.target, read_only: mount.readOnly }]
-        : [];
-    }
-
-    if (mount.type === "bind" && sameAppMountTarget(service.appMount, mount)) return [];
-
-    if (mount.source === undefined) {
-      throw composeError(ctx, "Compose bind and volume mounts require a source.", {
-        service: service.name,
-        mount,
-      });
-    }
-
-    if (mount.type === "bind" && mount.realization === "passthrough" && mount.createHostPath === false) {
-      return [
-        {
-          type: "bind",
-          source: mount.source,
-          target: mount.target,
-          read_only: mount.readOnly,
-          bind: { create_host_path: false },
-        },
-      ];
-    }
-
-    return [
-      volumeSpec({
-        type: mount.type === "volume" || mount.realization === "accelerated" ? "volume" : "bind",
-        source:
-          mount.type === "bind" && mount.realization === "accelerated"
-            ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-            : mount.source,
-        target: mount.target,
-        read_only: mount.readOnly,
-      }),
-    ];
+): { readonly volumes: ReadonlyArray<ComposeVolumeEntry>; readonly tmpfs: ReadonlyArray<string> } =>
+  serviceComposeMounts(plan, service, (message, details) => {
+    throw composeError(ctx, message, details);
   });
-  const storage = service.storage.map(
-    (storeMount): ComposeVolumeEntry =>
-      storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
-        ? `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`
-        : {
-            type: "volume",
-            source: storeMount.store,
-            target: storeMount.target,
-            read_only: storeMount.readOnly,
-            ...(storeMount.subpath === undefined ? {} : { volume: { subpath: storeMount.subpath } }),
-          },
-  );
-
-  const configs = composeConfigMounts(plan, service).flatMap(
-    (mount): ReadonlyArray<ComposeBindVolume> =>
-      requiresLongMountSyntax(mount.target)
-        ? [{ type: "bind", source: bindSourceForComposeConfig(mount), target: mount.target, read_only: true }]
-        : [],
-  );
-  return [...appMount, ...mounts, ...storage, ...composeConfigBindStrings(plan, service), ...configs];
-};
-
-const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>
-  service.mounts.flatMap((mount) =>
-    mount.type === "tmpfs" && !requiresLongMountSyntax(mount.target) ? [mount.target] : [],
-  );
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
   physicalPublications(service.endpoints).map((endpoint) => {
@@ -253,37 +145,44 @@ const toComposeDocument = (ctx: ProviderErrorContext, plan: AppPlan): ComposeDoc
   const networkNames = podmanNetworkNames(plan);
   const sharedName = landoSharedNetworkName(plan);
   const services = Object.fromEntries(
-    Object.entries(plan.services).map(([name, service]) => [
-      name,
-      removeEmpty({
-        image: serviceImage(ctx, service),
-        ports: servicePorts(service),
-        expose: serviceExpose(service),
-        environment: service.environment,
-        extra_hosts: serviceHostAliases(service, (message, details) => {
-          throw composeError(ctx, message, details);
-        }),
-        volumes: serviceVolumes(ctx, plan, service),
-        tmpfs: serviceTmpfs(service),
-        depends_on: serviceDependsOn(service),
-        labels: commonContainerLabels(plan, service),
-        networks: Object.fromEntries(
-          networkNames.map((networkName) => {
-            const aliases =
-              networkName === sharedName ? landoServiceNetworkAliases(plan, service) : [service.name];
-            return [networkName, aliases.length > 0 ? { aliases } : {}];
+    Object.entries(plan.services).map(([name, service]) => {
+      const mounts = serviceMountLists(ctx, plan, service);
+      return [
+        name,
+        removeEmpty({
+          image: serviceImage(ctx, service),
+          ports: servicePorts(service),
+          expose: serviceExpose(service),
+          environment: Object.fromEntries(
+            Object.entries(service.environment).map(([key, value]) => [key, previewEnvironmentValue(value)]),
+          ),
+          extra_hosts: serviceHostAliases(service, (message, details) => {
+            throw composeError(ctx, message, details);
           }),
-        ),
-      }),
-    ]),
+          volumes: mounts.volumes,
+          tmpfs: mounts.tmpfs,
+          depends_on: serviceDependsOn(service),
+          labels: commonContainerLabels(plan, service),
+          networks: Object.fromEntries(
+            landoServiceNetworkAttachments(plan, service).map(({ name, aliases }) => [
+              name,
+              aliases.length > 0 ? { aliases } : {},
+            ]),
+          ),
+        }),
+      ];
+    }),
   );
   const networks = Object.fromEntries(
     networkNames.map((name) => {
       if (name === sharedName) {
         return [name, { external: true, name }];
       }
-      const planned = plan.networks.find((network) => network.name === name && network.shared === false);
-      return [name, { driver: planned?.driver ?? "bridge" }];
+      const authored = plan.networking?.authoredNetworks?.find((network) => network.name === name);
+      if (authored !== undefined) {
+        return [name, authored.external ? { external: true, name } : { driver: authored.driver ?? "bridge" }];
+      }
+      return [name, { driver: plan.networking?.perAppBridge?.driver ?? "bridge" }];
     }),
   );
   const volumes = Object.fromEntries([
@@ -346,6 +245,21 @@ const writeVolumeList = (
           lines.push("        volume:", `          subpath: ${quoteYamlScalar(entry.volume.subpath)}`);
         break;
       case "tmpfs":
+        if (entry.tmpfs !== undefined) {
+          lines.push("        tmpfs:");
+          if (entry.tmpfs.size !== undefined) {
+            lines.push(
+              `          size: ${
+                typeof entry.tmpfs.size === "number"
+                  ? String(entry.tmpfs.size)
+                  : quoteYamlScalar(entry.tmpfs.size)
+              }`,
+            );
+          }
+          if (entry.tmpfs.mode !== undefined) {
+            lines.push(`          mode: ${String(entry.tmpfs.mode)}`);
+          }
+        }
         break;
       default: {
         const unreachable: never = entry;
@@ -373,6 +287,8 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
 
   for (const [serviceName, service] of Object.entries(document.services)) {
     lines.push(`  ${yamlMappingKeyText(serviceName)}:`, `    image: ${quoteYamlScalar(service.image)}`);
+    const plannedService = Object.values(plan.services).find((candidate) => candidate.name === serviceName);
+    if (plannedService !== undefined) lines.push(...composeHealthcheck(plan, plannedService));
 
     if (service.ports !== undefined) {
       lines.push("    ports:");
@@ -472,11 +388,12 @@ export const emitCompose = Effect.fn("RuntimeProvider.emitCompose")(
     const fileSystem = yield* FileSystem;
     const appRoot = pathJoin(options.userDataRoot, "apps", String(plan.id));
     const outputPath = composePath(plan, options);
+    const prepared = yield* prepareFileModeMounts(plan, options.ctx, options.userDataRoot);
     // Wrap synchronous renderCompose in Effect.try so that any throw from
     // serviceImage/serviceVolumes surfaces as a typed ProviderInternalError
     // failure (not an unhandled defect bypassing the mapError handler below).
     const content = yield* Effect.try({
-      try: () => renderCompose(plan, options.ctx),
+      try: () => renderCompose(prepared, options.ctx),
       catch: (e) =>
         e instanceof ProviderInternalError
           ? e

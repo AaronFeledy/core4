@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -33,7 +33,7 @@ const metadata = {
 
 export const planWith = (
   stepsByService: Readonly<Record<string, ReadonlyArray<unknown>>>,
-  overridesByService: Readonly<Record<string, Partial<ServicePlan>>> = {},
+  overridesByService: Readonly<Record<string, Omit<Partial<ServicePlan>, "connection" | "nonSqlCreds">>> = {},
 ): AppPlan => ({
   id: AppId.make("app-build-runner"),
   name: "App build runner",
@@ -53,7 +53,6 @@ export const planWith = (
           artifact: { kind: "ref" as const, ref: `test/${rawName}:latest` },
           environment: {},
           mounts: [],
-          storage: [],
           endpoints: [],
           routes: [],
           dependsOn: [],
@@ -66,7 +65,6 @@ export const planWith = (
     }),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -89,7 +87,7 @@ export const makeLayer = (provider: RuntimeProviderShape) => {
   const redaction = Layer.succeed(
     RedactionService,
     RedactionService.of({
-      registerValues: registerRedactionValues,
+      ...makeRedactionService(),
       payloadValues: () => Effect.succeed(() => []),
       forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
     }),

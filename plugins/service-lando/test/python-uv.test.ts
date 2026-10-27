@@ -5,6 +5,7 @@ import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 
 import { services } from "../src/index.ts";
 
@@ -31,7 +32,10 @@ const planPython = async (overrides: Readonly<Record<string, unknown>> = {}) => 
   });
   const plan = await Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan(landofile, { ...TestRuntimeProvider.capabilities, artifactBuild: true }),
+      planner.plan(compileTestLandofile(landofile), {
+        ...TestRuntimeProvider.capabilities,
+        artifactBuild: true,
+      }),
     ).pipe(
       Effect.provide(AppPlannerLayer.layer),
       Effect.provide(Layer.merge(services, PluginRegistryLayer.layer)),

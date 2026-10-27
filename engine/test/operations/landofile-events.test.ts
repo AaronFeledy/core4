@@ -10,14 +10,12 @@ import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sd
 import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { resolveLandofileEventPlan } from "../../src/operations/landofile-events.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
+import { currentTestPlan } from "../current-plan.ts";
 
 let root: AbsolutePath;
 
@@ -37,7 +35,6 @@ const plan = (overrides: Partial<AppPlan> = {}): AppPlan => ({
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-22T00:00:00Z"), source: ".lando.yml", runtime: 4 },
@@ -55,14 +52,7 @@ const appliedTarget = ({ events: _events, ...applied }: AppPlan): ResolvedAppTar
 
 const desiredSteps = { "pre-stop": ["echo from-landofile"] };
 
-const redactionLayer = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  }),
-);
+const redactionLayer = Layer.succeed(RedactionService, makeRedactionService());
 
 const runtime = (input: {
   readonly desired?: AppPlan;
@@ -102,14 +92,16 @@ const runtime = (input: {
       LandofileService.of({
         discover:
           input.loadFailure === undefined
-            ? Effect.succeed({ name: "hooked", services: {}, events: desiredSteps })
+            ? Effect.succeed(
+                literalTestLandofile({ name: "hooked", services: {}, events: desiredSteps }, root),
+              )
             : Effect.fail(input.loadFailure),
       }),
     ),
     Layer.succeed(
       AppPlanner,
       AppPlanner.of({
-        plan: () => Effect.succeed(input.desired ?? withProjectEvents(plan(), desiredSteps)),
+        plan: () => Effect.succeed(currentTestPlan(input.desired ?? withProjectEvents(plan(), desiredSteps))),
       }),
     ),
   );
@@ -127,7 +119,7 @@ describe("resolveLandofileEventPlan", () => {
       plan: desired,
       root,
       app: { kind: "user", id: desired.id, root },
-      landofile: { name: "hooked", services: {} },
+      landofile: literalTestLandofile({ name: "hooked", services: {} }, root),
     };
     const published: LandoEvent[] = [];
 
@@ -208,6 +200,7 @@ describe("resolveLandofileEventPlan", () => {
       filePath: join(root, ".lando.yml"),
       line: 3,
       column: 1,
+      remediation: `Correct the YAML syntax in ${join(root, ".lando.yml")} at line 3.`,
     });
 
     // When
@@ -243,7 +236,6 @@ describe("resolveLandofileEventPlan", () => {
             artifact: { kind: "ref", ref: "postgres:16" },
             environment: { DB_PASSWORD: "hunter2-secret" },
             mounts: [],
-            storage: [],
             endpoints: [],
             routes: [],
             dependsOn: [],
@@ -263,6 +255,7 @@ describe("resolveLandofileEventPlan", () => {
       filePath: join(root, ".lando.yml"),
       line: 1,
       column: 1,
+      remediation: `Correct the Landofile expression in ${join(root, ".lando.yml")}.`,
     });
 
     // When

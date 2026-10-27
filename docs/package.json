@@ -13,7 +13,7 @@
   "type": "module",
   "private": true,
   "engines": {
-    "bun": ">=1.4.2"
+    "bun": ">=1.4.3"
   },
   "scripts": {
     "dev": "astro dev",
@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
-    "@astrojs/markdown-remark": "7.2.4",
+    "@astrojs/markdown-remark": "7.3.4",
     "@astrojs/mdx": "8.1.0",
     "@astrojs/starlight": "0.41.7",
     "@lando/core": "workspace:*",
@@ -34,8 +34,15 @@
     "github-slugger": "2.0.0",
     "htmlparser2": "12.0.0",
     "linkinator": "8.1.0",
+    "remark-frontmatter": "5.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-mdx": "3.1.1",
+    "remark-parse": "11.0.0",
+    "remark-stringify": "11.0.0",
     "tinyglobby": "0.2.17",
     "typescript": "^5.9.0",
+    "unified": "11.0.5",
+    "vfile": "6.0.3",
     "yaml": "2.9.0"
   }
 }

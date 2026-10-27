@@ -36,7 +36,6 @@ test.each(["applied", "orphans", "owned", "absent"] as const)(
       provider: providerId,
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {

@@ -197,7 +197,14 @@ const failingWrites = (state: PluginStateStore): PluginStateStore => ({
     state.open(spec).pipe(
       Effect.map((bucket) => ({
         ...bucket,
-        modify: () => Effect.fail(new StateStoreError({ reason: "io", operation: "modify" })),
+        modify: () =>
+          Effect.fail(
+            new StateStoreError({
+              reason: "io",
+              operation: "modify",
+              remediation: "Injected modify failure for resource-ownership fixture.",
+            }),
+          ),
       })),
     ),
 });

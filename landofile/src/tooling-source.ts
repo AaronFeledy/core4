@@ -9,7 +9,7 @@ import {
   causeMessage,
 } from "@lando/sdk/errors";
 import { type ValueOrigins, isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
-import { type LandofileLayer, type LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
+import { type LandofileLayer, type LandofileShape, ToolingTaskInput } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import { rejectComposeKeys } from "./compose/rejections.ts";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
@@ -33,6 +33,7 @@ import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
 import { validationErrorFromCause } from "./validation.ts";
 
 export type ToolingIncludeError =
+  | import("@lando/sdk/errors").ConfigExpressionError
   | ComposeKeyRejectedError
   | LandofileIncludeError
   | LandofileParseError
@@ -57,7 +58,7 @@ export interface ToolingSourceContext {
 }
 const MISSING_REMEDIATION = "Create the tooling fragment, fix its path, or mark the include optional: true.";
 const ToolingWire = Schema.Struct({
-  tooling: Schema.optionalKey(Schema.Record(Schema.String, Schema.toEncoded(ToolingTaskShape))),
+  tooling: Schema.optionalKey(Schema.Record(Schema.String, Schema.toEncoded(ToolingTaskInput))),
 });
 const readFragmentText = (filePath: string, source: string): Effect.Effect<string, LandofileIncludeError> =>
   Effect.tryPromise({
@@ -137,6 +138,7 @@ export const loadFragment = (
           layer: context.layer ?? "canonical",
         },
         policy: context.loadPolicy,
+        pendingSites: context.loadScope.pendingSites,
       }).pipe(
         Effect.map((resolved) => ({
           ...resolved,

@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { type SshAgentTransportError, SshAgentUnavailableError } from "@lando/sdk/errors";
-import { MessageWarnEvent } from "@lando/sdk/events";
+import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
   type AppId,
   type AppPlan,
@@ -19,6 +19,7 @@ import { startDetachedAgentRelayWorker } from "../subsystems/ssh-agent/detached-
 import {
   type HostAgentDiscoveryOptions,
   discoverHostSshAgent,
+  hostSshAgentSourceLabel,
 } from "../subsystems/ssh-agent/host-agent-discovery.ts";
 import {
   sshAgentEligibleServices,
@@ -139,6 +140,17 @@ export const resolveSshAgentUpstream = Effect.fnUntraced(function* (
         ...(input.probeTimeoutMs === undefined ? {} : { probeTimeoutMs: input.probeTimeoutMs }),
         gpgTimeoutMs: input.gpgTimeoutMs ?? 5_000,
       });
+      if (discovered.danglingEnvSocket !== undefined) {
+        const events = yield* EventService;
+        yield* events
+          .publish(
+            MessageInfoEvent.make({
+              body: `SSH_AUTH_SOCK points at a socket that no longer exists; using the ${hostSshAgentSourceLabel(discovered.upstream.source)} agent instead.`,
+              timestamp: DateTime.nowUnsafe(),
+            }),
+          )
+          .pipe(Effect.catch(() => Effect.void));
+      }
       return discovered.upstream;
     }
     default:
@@ -262,6 +274,6 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
   );
   const session = yield* acquire;
   return yield* options.use(
-    session === undefined ? stripSshAgentOverlay(plan) : withSshAgentOverlay(plan, session),
+    session === undefined ? stripSshAgentOverlay(plan) : yield* withSshAgentOverlay(plan, session),
   );
 });

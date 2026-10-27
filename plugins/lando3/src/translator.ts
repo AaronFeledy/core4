@@ -1,4 +1,4 @@
-import { LandofileAuthoringFragment, LandofileAuthoringFragmentNative } from "@lando/sdk/schema";
+import { LandofileAuthoringFragment, LandofileAuthoringFragmentNative, ServiceName } from "@lando/sdk/schema";
 /**
  * The `lando3` config translator.
  *
@@ -223,7 +223,12 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           Effect.map((fragment) => ({ layerId: entry.layerId, fragment })),
           Effect.mapError(
             (cause) =>
-              new ConfigTranslateError({ message: "Invalid established Landofile fragment.", cause }),
+              new ConfigTranslateError({
+                message: "Invalid established Landofile fragment.",
+                cause,
+                remediation:
+                  "Repair the established v4 Landofile fragment so it validates, then retry conversion.",
+              }),
           ),
         ),
       );
@@ -313,7 +318,26 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
         (sourceId) => ranks.get(sourceId) ?? 0,
       );
 
-      return { outputs, diagnostics, deletions };
+      const outputServices = new Set(
+        outputs.flatMap(({ fragment }) =>
+          isPlainRecord(fragment) && isPlainRecord(fragment.services) ? Object.keys(fragment.services) : [],
+        ),
+      );
+      const legacy = mergedToPlain(merged);
+      const authoredServices = isPlainRecord(legacy) && isPlainRecord(legacy.services) ? legacy.services : {};
+      const recipeSource = occurrencesAt(merged, ["recipe"]).at(-1)?.sourceId ?? fallback;
+      const expectations = [
+        ...authored.expectations,
+        ...[...recipeServiceWires.keys()]
+          .filter((name) => !Object.hasOwn(authoredServices, name))
+          .map((name) => ({
+            _tag: "PersistedHome" as const,
+            sourceId: recipeSource,
+            keyPath: ["recipe"],
+            service: ServiceName.make(name),
+          })),
+      ].filter(({ service }) => outputServices.has(service));
+      return { outputs, diagnostics, deletions, expectations };
     }),
   };
 };

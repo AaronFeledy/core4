@@ -118,6 +118,7 @@ const TIMED_PULL_POLICY_PATTERN = /^every_(?:[0-9]+[wdhms])+$/;
 const TimedPullPolicy = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(TIMED_PULL_POLICY_PATTERN, {
+      expected: "every_<interval> such as every_12h",
       toJsonSchema: () => ({ pattern: TIMED_PULL_POLICY_PATTERN.source }),
     }),
   ),
@@ -126,6 +127,9 @@ const TimedPullPolicy = Schema.String.pipe(
 export const ComposePullPolicyField = Schema.Union([
   Schema.Literals(["always", "never", "build", "if_not_present", "missing", "refresh", "daily", "weekly"]),
   TimedPullPolicy,
-]);
+]).annotate({
+  message:
+    "Expected always, never, build, if_not_present, missing, refresh, daily, weekly, or every_<interval> such as every_12h",
+});
 
 export const ComposeBooleanOrStringField = Schema.Union([Schema.Boolean, Schema.String]);

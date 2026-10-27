@@ -43,6 +43,8 @@ const transcriptError = (providerId: string, path: AbsolutePath, cause: unknown)
     operation: "buildTranscript",
     message: `Unable to write build transcript ${path}.`,
     cause,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 export const openBuildTranscript = (

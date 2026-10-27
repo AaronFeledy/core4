@@ -52,6 +52,8 @@ test.each([
                     providerId: id,
                     operation: "removeVolume",
                     message: "Observed volume generation is already absent",
+                    remediation:
+                      "Inspect provider volume state and retry the `removeVolume` volume operation.",
                   }),
                 );
           }),
@@ -101,7 +103,12 @@ test.each([{ fails: false }, { fails: true }])(
     // Given
     const remaining = new Set(["docker", "podman"]);
     const events: string[] = [];
-    const failure = new VolumeOperationError({ providerId: "podman", operation: "test", message: "refused" });
+    const failure = new VolumeOperationError({
+      providerId: "podman",
+      operation: "test",
+      message: "refused",
+      remediation: "Inspect provider volume state and retry the `test` volume operation.",
+    });
     const providers = ["docker", "podman"].map(
       (id) =>
         fixture({

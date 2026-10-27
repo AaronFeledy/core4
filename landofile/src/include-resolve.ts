@@ -15,6 +15,7 @@ import { resolveTree } from "./include-tree.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { foldAuthoredOverlays } from "./pipeline/fold.ts";
+import { prepareLandofileValue } from "./source.ts";
 import { validationErrorFromCause } from "./validation.ts";
 import { getVersionConstraintEntries, rememberVersionConstraintEntries } from "./version-constraint.ts";
 
@@ -38,6 +39,7 @@ const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
     );
   const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
   const ctx: ResolveContext = {
+    pendingSites: options.pendingSites,
     loadScope: options.loadScope,
     appRoot: options.appRoot,
     sourceRoot: options.appRoot,
@@ -78,8 +80,19 @@ export const resolveLandofileIncludeLayers = Effect.fnUntraced(function* (
 export const resolveLandofileIncludes = Effect.fnUntraced(function* (
   options: ResolveLandofileIncludesOptions,
 ) {
-  const provenance = yield* resolveIncludes(options);
   const file = options.sourcePath ?? join(options.appRoot, ".lando.yml");
+  const pendingSites = options.pendingSites ?? options.loadScope?.pendingSites ?? [];
+  const prepared = yield* prepareLandofileValue({
+    file,
+    value: options.landofile,
+    context: {
+      appRoot: options.appRoot,
+      layer: options.layer ?? "canonical",
+      pendingSites,
+      policy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
+    },
+  });
+  const provenance = yield* resolveIncludes({ ...options, pendingSites, landofile: prepared.value });
   const document = copyLandofileProvenance(
     provenance,
     foldAuthoredOverlays(getIncludeOverlays(provenance), {
@@ -89,8 +102,9 @@ export const resolveLandofileIncludes = Effect.fnUntraced(function* (
     }),
   );
   return yield* finalizeLandofile(file, document, {
+    pendingSites,
     appRoot: options.appRoot,
-    ...(options.loadScope === undefined ? {} : { scope: options.loadScope }),
+    ...(options.loadScope === undefined ? {} : { scope: { ...options.loadScope, pendingSites } }),
     ...(options.loadPolicy === undefined ? {} : { loadPolicy: options.loadPolicy }),
     ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
   });

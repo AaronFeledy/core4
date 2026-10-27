@@ -9,6 +9,7 @@
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { currentTestPlan } from "../_support/value-contracts.ts";
 
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -67,7 +68,6 @@ const cacheService: ServicePlan = {
   command: [],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [{ _tag: "internal", port: 6379, protocol: "tcp", name: "redis" }],
   routes: [],
   dependsOn: [],
@@ -85,18 +85,22 @@ const planWithFileSync = (root: string): AppPlan => ({
   services: {
     [cacheService.name]: {
       ...cacheService,
-      appMount: {
-        source: AbsolutePath.make(root),
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "accelerated",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          source: AbsolutePath.make(root),
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          role: "app",
+          excludes: [],
+          includes: [],
+          mountKey: "app-mount",
+        },
+      ],
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [
     {
@@ -415,7 +419,7 @@ describe("@lando/core App-handle library contract", () => {
                 Layer.succeed(RouterService, RouterService.of(TestRouterService)),
                 Layer.succeed(
                   AppPlanner,
-                  AppPlanner.of({ plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                  AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                 ),
                 Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
               ],

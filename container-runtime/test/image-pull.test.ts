@@ -25,10 +25,12 @@ import { ContainerTransportError } from "../src/transport.ts";
 const dockerCtx = {
   providerId: "docker",
   remediation: "Run `lando doctor --provider=docker` and retry.",
+  env: {},
 } as const;
 const landoCtx = {
   providerId: "lando",
   remediation: "Run `lando doctor` and retry.",
+  env: {},
 } as const;
 const encoder = new TextEncoder();
 const bytes = (text: string): Uint8Array => encoder.encode(text);
@@ -107,6 +109,15 @@ const runStreamPull = async (
 };
 
 describe.each(dialects)("%s image pull dialect", (_name, dialect) => {
+  test("returns the pulled ref when the stream client has no request transport", async () => {
+    const reference = "alpine:3.20";
+    const api: EngineHttpApi = {
+      stream: () => Stream.fromIterable([bytes('{"status":"Pull complete"}\n')]),
+    };
+    const result = await Effect.runPromise(pullImage(api, reference, { ctx: dockerCtx, dialect }));
+    expect(result).toEqual({ ref: reference });
+  });
+
   test.each(["missing", "never", "always"] as const)(
     "reports the requested digest among multiple RepoDigests for %s",
     async (policy) => {
@@ -699,12 +710,13 @@ describe("pull failure handling", () => {
         path: "/images/create?fromImage=registry.internal%2Fteam%2Fimg&tag=1.0",
         status: 401,
       },
+      remediation: "Install or start the `docker` provider and confirm it can perform `docker-api`.",
     });
 
     // When
     const failure = await Effect.runPromise(
       pullImage({ stream: () => Stream.fail(transportError) }, "registry.internal/team/img:1.0", {
-        ctx: { providerId: "docker", remediation: "docker remediation" },
+        ctx: { providerId: "docker", remediation: "docker remediation", env: {} },
         dialect: dockerPullDialect,
       }).pipe(Effect.flip),
     );
@@ -730,6 +742,7 @@ describe("pull failure handling", () => {
       operation: "podman-api",
       message: "Container runtime stream request failed with HTTP 500.",
       cause,
+      remediation: "Install or start the `lando` provider and confirm it can perform `podman-api`.",
     });
 
     // When
@@ -773,7 +786,7 @@ describe("pull failure handling", () => {
 
   test("reports the supplied podman provider context", async () => {
     // Given
-    const podmanCtx = { providerId: "podman", remediation: "Repair Podman and retry." } as const;
+    const podmanCtx = { providerId: "podman", remediation: "Repair Podman and retry.", env: {} } as const;
 
     // When
     const failure = await Effect.runPromise(

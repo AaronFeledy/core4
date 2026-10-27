@@ -762,7 +762,6 @@
     "container-runtime/test/image-build-phase.test.ts": 1,
     "core/test/build/alpha-install-docs.test.ts": 1,
     "core/test/build/paths-package-decision.test.ts": 1,
-    "core/test/build/php-base-workflow.test.ts": 1,
     "core/test/cli/bun-self-runner.test.ts": 1,
     "core/test/cli/command-spec-contract.test.ts": 1,
     "core/test/cli/commands/open-resolve.test.ts": 1,

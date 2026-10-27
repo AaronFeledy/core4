@@ -1,9 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import {
-  RedactionService,
-  makeRedactionService,
-  resetRegisteredRedactionValuesForTesting,
-} from "@lando/redaction/service";
+import { describe, expect, test } from "bun:test";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { override, reset } from "@lando/sdk/landofile";
 import { AppPlan, ServiceName } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -15,8 +11,6 @@ import {
   collectAuthoredRedactionTokens,
   collectLandofileRedactionTokens,
 } from "../../src/services/app-plan-redaction.ts";
-
-afterEach(resetRegisteredRedactionValuesForTesting);
 
 test("authored collection separates env maps, sensitive leaves and non-secret metadata", () => {
   const document = {
@@ -92,7 +86,6 @@ test.each([collectLandofileRedactionTokens, collectAppPlanRedactionTokens])(
 );
 
 test("retained invocations read current containers again instead of caching registration", async () => {
-  resetRegisteredRedactionValuesForTesting();
   const plan = Schema.decodeUnknownSync(AppPlan)({
     id: "retained-output",
     name: "retained-output",
@@ -101,18 +94,12 @@ test("retained invocations read current containers again instead of caching regi
     provider: "test",
     services: {},
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: { resolvedAt: "2026-10-21T00:00:00Z", source: "test", runtime: 4 },
     extensions: {},
   });
-  const redaction = makeRedactionService({
-    id: "empty",
-    list: Effect.succeed([]),
-    get: () => Effect.die("No store resolution expected"),
-    has: () => Effect.succeed(false),
-  });
+  const redaction = makeRedactionService();
   let reads = 0;
   const provider = {
     ...TestRuntimeProvider,

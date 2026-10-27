@@ -12,8 +12,10 @@ import { MessageWarnEvent } from "@lando/sdk/events";
 import { runProbe } from "@lando/sdk/probe";
 import { EventService } from "@lando/sdk/services";
 
-import { type AcquisitionDecision, LOOPBACK_HOST, probeForward } from "./port-acquisition.ts";
+import { readAcquisitionState } from "./port-acquisition-state.ts";
+import { type AcquisitionDecision, probeForward } from "./port-acquisition.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
+import { advertisedRouterBindAddress, routerProbeHost } from "./router-bind-address.ts";
 import type { AuthorityPorts } from "./routing.ts";
 
 const TRAEFIK_PROXY_ID = "traefik";
@@ -69,11 +71,17 @@ export const publishFallbackWarn = Effect.fnUntraced(function* (
 });
 
 export const assertAdvertisedForward = Effect.fn("TraefikRouter.assertAdvertisedForward")(function* (
-  dependencies: Pick<TraefikProxyDependencies, "probeForward" | "events">,
+  dependencies: Pick<TraefikProxyDependencies, "probeForward" | "events"> &
+    Partial<Pick<TraefikProxyDependencies, "fileSystem" | "paths">>,
   advertised: AuthorityPorts,
   context: "setup" | "revalidation" = "setup",
 ) {
   const probe = dependencies.probeForward ?? probeForward;
+  const state =
+    dependencies.fileSystem === undefined || dependencies.paths === undefined
+      ? undefined
+      : yield* readAcquisitionState(dependencies.fileSystem, dependencies.paths);
+  const host = routerProbeHost(advertisedRouterBindAddress(state ?? {}));
   const readiness = yield* runProbe(
     {
       id: "proxy-traefik-advertised-forward",
@@ -84,20 +92,20 @@ export const assertAdvertisedForward = Effect.fn("TraefikRouter.assertAdvertised
     },
     Effect.all(
       [
-        Effect.suspend(() => probe(LOOPBACK_HOST, advertised.http, "http")),
-        Effect.suspend(() => probe(LOOPBACK_HOST, advertised.https, "https")),
+        Effect.suspend(() => probe(host, advertised.http, "http")),
+        Effect.suspend(() => probe(host, advertised.https, "https")),
       ],
       { concurrency: "unbounded" },
     ).pipe(Effect.map(([http, https]) => http.kind === "success" && https.kind === "success")),
   );
-  if (readiness.outcome === "green") return;
+  if (readiness.outcome === "green") return true;
   const remediation =
     context === "revalidation"
       ? "Read Traefik's startup log with `lando global:logs --service=traefik --tail=100` and check the published ports with `lando global:info`."
       : "Run `lando doctor`, then `lando global:restart`.";
   const fromContext = yield* Effect.serviceOption(EventService);
   const events = dependencies.events ?? (fromContext._tag === "Some" ? fromContext.value : undefined);
-  if (events === undefined) return;
+  if (events === undefined) return false;
   yield* events
     .publish(
       MessageWarnEvent.make({
@@ -107,4 +115,5 @@ export const assertAdvertisedForward = Effect.fn("TraefikRouter.assertAdvertised
       }),
     )
     .pipe(Effect.catch(() => Effect.void));
+  return false;
 });

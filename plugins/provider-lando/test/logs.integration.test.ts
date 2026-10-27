@@ -37,16 +37,18 @@ const node: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: ["node", "-e", "console.log('lando logs ready'); setInterval(() => {}, 1000)"],
   environment: {},
-  appMount: {
-    source: appRoot,
-    target: PortablePath.make("/app"),
-    readOnly: false,
-    excludes: [],
-    includes: [],
-    realization: "passthrough",
-  },
-  mounts: [],
-  storage: [],
+  mounts: [
+    {
+      type: "bind",
+      role: "app",
+      source: appRoot,
+      target: PortablePath.make("/app"),
+      readOnly: false,
+      excludes: [],
+      includes: [],
+      realization: "passthrough",
+    },
+  ],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -56,6 +58,7 @@ const node: ServicePlan = {
 };
 
 const plan: AppPlan = {
+  valueModel: 1,
   id: appId,
   name: "Logs App",
   slug: "logsapp",
@@ -63,7 +66,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [node.name]: node },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,

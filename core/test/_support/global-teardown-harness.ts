@@ -46,7 +46,6 @@ export const globalPlanAt = (root: AbsolutePath): AppPlan => ({
       artifact: { kind: "ref", ref: "ssh-agent:test" },
       environment: {},
       mounts: [],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -60,7 +59,6 @@ export const globalPlanAt = (root: AbsolutePath): AppPlan => ({
     },
   },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"), source: "applied-state", runtime: 4 },
@@ -148,6 +146,7 @@ export const globalTeardownHarness = async (
               message: "remove failed",
               providerId: "lando",
               operation: "removeObservedService",
+              remediation: "Remove failed",
             }),
           );
         removed.push(service);
@@ -203,7 +202,14 @@ export const globalTeardownHarness = async (
           Effect.gen(function* () {
             calls.push("removeRoutes");
             if (input.routeFailure)
-              return yield* Effect.fail(new ProxyError({ proxyId: "test", message: "route removal failed" }));
+              return yield* Effect.fail(
+                new ProxyError({
+                  proxyId: "test",
+                  message: "route removal failed",
+                  remediation:
+                    "Install or repair the `test` router plugin and ensure `defaultRouterService` points at an installed id.",
+                }),
+              );
           }),
       }),
     ),

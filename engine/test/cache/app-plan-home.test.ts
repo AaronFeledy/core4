@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type CurrentExecutableAppPlan, ProviderId } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
 import { deriveAppPlanCacheKey, readCachedAppPlan, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
@@ -19,7 +19,8 @@ for (const hostHome of ["/home/first", "/home/second"]) {
       planningRuntime: "fixed",
       hostHome: "/home/first",
     };
-    const plan: AppPlan = {
+    const plan: CurrentExecutableAppPlan = {
+      valueModel: 1,
       id: AppId.make("home-key"),
       name: "home-key",
       slug: "home-key",
@@ -27,7 +28,6 @@ for (const hostHome of ["/home/first", "/home/second"]) {
       provider: ProviderId.make("lando"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       extensions: {},

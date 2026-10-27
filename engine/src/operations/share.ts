@@ -1,3 +1,4 @@
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { Effect, Schema, type Scope } from "effect";
 
 import type { AppPlanResolutionError, ShareAppError } from "@lando/sdk/app";
@@ -109,7 +110,7 @@ const resolvePlan = Effect.fnUntraced(function* (
   const landofileService = yield* LandofileService;
   const registry = yield* RuntimeProviderRegistry;
   const planner = yield* AppPlanner;
-  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
+  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? (yield* discoveryCwd()));
   const capabilities = yield* registry.capabilities;
   return yield* planner.plan(landofile, capabilities);
 });

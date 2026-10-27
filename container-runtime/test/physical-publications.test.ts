@@ -43,7 +43,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "nginx:alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [publication],
   routes: [],
   dependsOn: [],
@@ -59,7 +58,6 @@ const plan: AppPlan = {
   provider: service.provider,
   services: { [service.name]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -82,7 +80,7 @@ test("emits one Compose binding when aliases describe one physical publication",
   const compose = Bun.YAML.parse(
     renderCompose(
       { ...plan, services: { [service.name]: desired } },
-      { providerId: "podman", remediation: "Retry." },
+      { providerId: "podman", remediation: "Retry.", env: {} },
     ),
   );
   // Then

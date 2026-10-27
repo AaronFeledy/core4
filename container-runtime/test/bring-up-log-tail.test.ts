@@ -19,7 +19,7 @@ import { bringUp } from "../src/podman/bring-up.ts";
 import { StartFailureLogRedactor } from "../src/redact.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("bring-up-log-tail-app");
 const slug = "bring-up-log-tail-app";
 const webName = ServiceName.make("web");
@@ -34,7 +34,7 @@ const textEncoder = new TextEncoder();
 const servicePlan = (
   name: ServicePlan["name"],
   primary: boolean,
-  overrides: Partial<ServicePlan> = {},
+  overrides: Partial<Omit<ServicePlan, "nonSqlCreds">> = {},
 ): ServicePlan => ({
   name,
   type: "generic",
@@ -43,7 +43,6 @@ const servicePlan = (
   artifact: { kind: "ref", ref: "debian:12.11-slim" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -54,6 +53,7 @@ const servicePlan = (
 });
 
 const standalonePlan = (): AppPlan => ({
+  valueModel: 1,
   id: appId,
   name: "Bring Up Log Tail App",
   slug,
@@ -61,7 +61,6 @@ const standalonePlan = (): AppPlan => ({
   provider: providerId,
   services: { [webName]: servicePlan(webName, true) },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -83,13 +82,13 @@ const dependentPlan = (): AppPlan => {
   });
   return {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Log Tail App",
     slug,
     root: AbsolutePath.make("/tmp/bring-up-log-tail-app"),
     provider: providerId,
     services: { [web.name]: web, [db.name]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -182,6 +181,8 @@ const makeApi = (options: {
             providerId: "podman",
             operation: "logs",
             message: "logs unavailable",
+            remediation:
+              "Re-run the command after checking `podman` logs for the `logs` failure; if it persists, report the error with that operation name.",
           }),
         );
       }

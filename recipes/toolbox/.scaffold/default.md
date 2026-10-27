@@ -29,12 +29,12 @@ lando exec toolbox -- cat /etc/os-release
 lando exec toolbox -- apt-get update
 ```
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 ## 1. scaffold
 
 ```bash
-lando init --recipe toolbox --name=my-toolbox-stack --yes
+lando init --recipe toolbox --name=my-toolbox --yes
 ```
 
 ## 2. start

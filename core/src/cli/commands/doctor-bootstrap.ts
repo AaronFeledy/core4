@@ -16,14 +16,17 @@ import { recordConfigWarning } from "@lando/engine/config/config-warnings";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import * as LandoConfigService from "@lando/engine/services/config";
+import * as StateStore from "@lando/state-store/service";
 import { type DoctorOptions, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
+import { HostDnsResolver } from "./doctor-host-dns";
+import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
-import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems";
+import { subsystemDoctor } from "./doctor-subsystems";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
@@ -126,11 +129,35 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
     solutions: [BOOTSTRAP_REMEDIATION],
   });
   const context = built.value;
+  const resolver = yield* Effect.serviceOption(HostDnsResolver);
+  const dnsLayer = Option.isSome(resolver)
+    ? Layer.succeed(HostDnsResolver, resolver.value)
+    : HostDnsResolver.layer;
+  const reportContext: Context.Context<never> =
+    context ?? (yield* Layer.build(StateStore.layer).pipe(Effect.provide(config.value)));
+  const skipped =
+    context === undefined
+      ? [
+          "provider",
+          "router",
+          "ssh",
+          "healthcheck",
+          "scanner",
+          "certificate-authority",
+          "missing-app-roots",
+          "orphaned-volume-snapshots",
+          ...(options.app ? ["app-config"] : []),
+          ...(options.deprecations ? ["deprecations"] : []),
+        ].map((section) => ({
+          section,
+          status: "skipped" as const,
+          reason: "Requires the provider runtime; see the provider-bootstrap self check.",
+        }))
+      : undefined;
 
   const report = yield* collectDoctorReport({
     options,
-    appConfig:
-      context === undefined ? Effect.succeed(undefined) : appConfigForReport().pipe(Effect.provide(context)),
+    ...(context === undefined ? {} : { appConfig: appConfigForReport().pipe(Effect.provide(context)) }),
     certs:
       context === undefined
         ? Effect.succeed(UNRESOLVED_CERTS_STATUS)
@@ -141,18 +168,15 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
       context === undefined
         ? Effect.succeed({ entries: [] })
         : doctorDeprecations().pipe(Effect.provide(context)),
-    ...(context === undefined
-      ? {}
-      : {
-          // First provide in the pipe wins: selected Traefik/SSH overlay the
-          // unavailable stubs in DefaultSubsystemDoctorLayer.
-          subsystems: (subsystemOptions) =>
-            subsystemDoctor(subsystemOptions).pipe(
-              Effect.provide(context),
-              Effect.provide(DefaultSubsystemDoctorLayer),
-            ),
-        }),
+    subsystems: (subsystemOptions) =>
+      (context === undefined
+        ? buildHostProxyCheck(undefined, options.fix === true).pipe(
+            Effect.map((check) => ({ checks: [check] })),
+          )
+        : subsystemDoctor(subsystemOptions).pipe(Effect.provide(context))
+      ).pipe(Effect.provide(dnsLayer)),
     ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
-  }).pipe(Effect.provide(context ?? Context.empty()), Effect.provide(config.value));
+    ...(skipped === undefined ? {} : { skipped }),
+  }).pipe(Effect.provide(reportContext), Effect.provide(config.value));
   return { ...report, globalConfig: { status: "pass" } };
 }, Effect.scoped);

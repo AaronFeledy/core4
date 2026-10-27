@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Stream } from "effect";
+import { Effect, Schema, Stream } from "effect";
 
-import { PortablePath, type ToolingTaskShape } from "@lando/sdk/schema";
+import { PortablePath, ToolingTaskInput, type ToolingTaskShape } from "@lando/sdk/schema";
 
 import { compileToolingInvocations, validateToolingArguments } from "../../src/operations/tooling-compile.ts";
 
@@ -223,18 +223,24 @@ describe("compileToolingInvocations", () => {
     ]);
   });
 
-  test("fails rather than throws when a task is disabled", () => {
-    // Given
-    const task = { cmd: "echo ok", disabled: true };
+  test.each([false, { cmd: "echo ok", disabled: true }])(
+    "fails rather than throws when a task is disabled with %j",
+    (input) => {
+      // Given
+      const task = Schema.decodeUnknownSync(ToolingTaskInput)(input);
 
-    // When
-    const result = Effect.runSync(
-      compileToolingInvocations({ name: "off", lookupKey: "off", task, source }).pipe(Effect.result),
-    );
+      // When
+      const result = Effect.runSync(
+        compileToolingInvocations({ name: "off", lookupKey: "off", task, source }).pipe(Effect.result),
+      );
 
-    // Then
-    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingDisabledError", tool: "off" } });
-  });
+      // Then
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ToolingDisabledError", tool: "off" },
+      });
+    },
+  );
 
   test("fails rather than throws when a task defines no steps", () => {
     // When

@@ -1,6 +1,11 @@
 import { isLegacyTagged, isPlainRecord, mergeLandofiles, mergeValues } from "@lando/sdk/landofile";
 import { ServiceConfig } from "@lando/sdk/schema";
-import type { ConfigTranslateDiagnostic, ConfigTranslateSourceId, LandofileLayer } from "@lando/sdk/schema";
+import type {
+  ConfigTranslateDiagnostic,
+  ConfigTranslateExpectation,
+  ConfigTranslateSourceId,
+  LandofileLayer,
+} from "@lando/sdk/schema";
 import { lowerBuildHooks } from "./build-hooks.ts";
 import { CATALOG, resolveCatalogType } from "./catalog.ts";
 import { lowerComposeFields } from "./compose-fields.ts";
@@ -40,6 +45,7 @@ export interface LoweredServicePrefix {
 export interface LoweredServices {
   readonly prefixes: ReadonlyArray<LoweredServicePrefix>;
   readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
+  readonly expectations: ReadonlyArray<ConfigTranslateExpectation>;
 }
 
 const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringContext): LoweringPatch => {
@@ -165,6 +171,7 @@ export const lowerServiceViews = (
 ): LoweredServices => {
   const prefixes: LoweredServicePrefix[] = [];
   const diagnostics: ConfigTranslateDiagnostic[] = [];
+  const expectations = new Map<string, ConfigTranslateExpectation>();
   for (const view of folded) {
     const doc = mergedToPlain(view.merged);
     const fallbackSourceId = view.sourceIds.at(-1);
@@ -215,6 +222,8 @@ export const lowerServiceViews = (
       }
       const lowered = withHomeIntent(lowerService(service, ctx), service, ctx);
       diagnostics.push(...lowered.diagnostics);
+      expectations.delete(serviceName);
+      for (const expectation of lowered.expectations ?? []) expectations.set(serviceName, expectation);
       if (lowered.blocked === true) continue;
       let patch = lowered.patch;
       if (
@@ -264,5 +273,5 @@ export const lowerServiceViews = (
       },
     });
   }
-  return { prefixes, diagnostics: dedupeDiagnostics(diagnostics) };
+  return { prefixes, diagnostics: dedupeDiagnostics(diagnostics), expectations: [...expectations.values()] };
 };

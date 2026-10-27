@@ -82,6 +82,7 @@ export const withAgentRelayWorkerLock = <A, E>(
     {
       path: recordPath(app, options),
       label: "agent-relay-worker",
+      paths: options.paths,
       privateFileAccess: options.privateFileAccess,
     },
     body,

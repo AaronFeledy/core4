@@ -8,9 +8,11 @@ import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabil
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { RouteHostname, RoutePathPrefix } from "./hostname.ts";
-import { AbsolutePath, CommandSpec, PortNumber, ServiceName } from "./primitives.ts";
+import { AbsolutePath, PortNumber, ServiceName } from "./primitives.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
+
+export { HealthcheckPlan } from "./healthcheck-plan.ts";
 
 const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/u;
 
@@ -87,28 +89,6 @@ export const RoutePlan = Schema.Struct({
   }).annotateKey({ description: "Planner-resolved service endpoint consumed by the route provider." }),
 });
 export type RoutePlan = typeof RoutePlan.Type;
-
-/**
- * Healthcheck — provider-realized health probe.
- */
-export const HealthcheckPlan = Schema.Struct({
-  kind: Schema.Literals(["command", "http", "tcp", "none"]),
-  /** Command to run inside the container (kind = `command`). */
-  command: Schema.optionalKey(CommandSpec),
-  /** URL (kind = `http`). */
-  url: Schema.optionalKey(Schema.String),
-  /** Port (kind = `tcp`). */
-  port: Schema.optionalKey(Schema.Number),
-  /** Interval, seconds. */
-  intervalSeconds: Schema.Number,
-  /** Per-attempt timeout, seconds. */
-  timeoutSeconds: Schema.Number,
-  /** Maximum attempts after the start period (at least one); first success is healthy. */
-  retries: Schema.Number,
-  /** Probing starts immediately; failures during this grace period do not count against retries, seconds. */
-  startPeriodSeconds: Schema.optionalKey(Schema.Number),
-});
-export type HealthcheckPlan = typeof HealthcheckPlan.Type;
 
 export const ScannerConfig = Schema.Union([
   Schema.Literal(false),
@@ -211,19 +191,6 @@ export const DependencyPlan = Schema.Struct({
 export type DependencyPlan = typeof DependencyPlan.Type;
 
 /**
- * Network plan — provider-realized network.
- */
-export const NetworkPlan = Schema.Struct({
-  /** Network name. */
-  name: Schema.String,
-  /** Whether this network is shared across apps. */
-  shared: Schema.Boolean,
-  /** Driver (provider-specific). */
-  driver: Schema.optionalKey(Schema.String),
-});
-export type NetworkPlan = typeof NetworkPlan.Type;
-
-/**
  * Per-app bridge network — the isolated network every service in an app joins
  * so intra-app service-name DNS (`<service>`) resolves.
  */
@@ -232,6 +199,13 @@ export const PerAppBridgePlan = Schema.Struct({
   name: Schema.String,
   /** Driver (provider-specific; defaults to a bridge driver). */
   driver: Schema.optionalKey(Schema.String),
+  /**
+   * Extra per-service DNS aliases on this network, from a service's
+   * `networks.default.aliases`. Every service also keeps its service name.
+   */
+  aliases: Schema.optionalKey(Schema.Record(ServiceName, Schema.Array(Schema.String))).annotate({
+    description: "Extra per-service DNS aliases on the per-app bridge from networks.default.aliases.",
+  }),
 });
 export type PerAppBridgePlan = typeof PerAppBridgePlan.Type;
 
@@ -256,6 +230,35 @@ export const SharedNetworkMembershipPlan = Schema.Struct({
 export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Type;
 
 /**
+ * A top-level Landofile network that at least one service joins, in addition
+ * to the per-app bridge and shared network every service keeps.
+ *
+ * An external network already exists outside Lando: Lando joins it but never
+ * creates, labels, or removes it. Any other authored network is private to the
+ * app: Lando creates it with app ownership labels under a Lando-generated name
+ * and removes it with the app.
+ */
+export const AuthoredNetworkPlan = Schema.Struct({
+  key: Schema.String.annotate({ description: "Key under the Landofile's top-level networks: mapping." }),
+  name: Schema.String.annotate({ description: "Provider-visible network name." }),
+  external: Schema.Boolean.annotate({
+    description: "Whether the network exists outside Lando; Lando joins it but never creates or removes it.",
+  }),
+  driver: Schema.optionalKey(Schema.String).annotate({
+    description: "Driver for a network Lando creates; absent for external networks.",
+  }),
+  members: Schema.Record(
+    ServiceName,
+    Schema.Struct({
+      aliases: Schema.Array(Schema.String).annotate({
+        description: "DNS aliases: <service>.<slug>.internal, then authored aliases.",
+      }),
+    }),
+  ).annotate({ description: "Services that join this network, keyed by service name." }),
+});
+export type AuthoredNetworkPlan = typeof AuthoredNetworkPlan.Type;
+
+/**
  * Networking plan — the per-app networking *intent*. Core defines the intent;
  * the `RuntimeProvider` realizes it: a nullable per-app bridge network plus
  * optional membership in the provider-owned shared cross-app network.
@@ -269,6 +272,10 @@ export const NetworkingPlan = Schema.Struct({
   perAppBridge: Schema.NullOr(PerAppBridgePlan),
   /** Shared cross-app network membership, present when the app joins it. */
   sharedNetworkMembership: Schema.optionalKey(SharedNetworkMembershipPlan),
+  authoredNetworks: Schema.optionalKey(Schema.Array(AuthoredNetworkPlan)).annotate({
+    description:
+      "Top-level Landofile networks that services join in addition to the app and shared networks.",
+  }),
 });
 export type NetworkingPlan = typeof NetworkingPlan.Type;
 
@@ -345,6 +352,10 @@ export const ProviderCapabilities = Schema.Struct({
   serviceHealth: Schema.Literals(["native", "lando", "none"]),
   hostReachability: Schema.Literals(["native", "emulated", "none"]),
   sharedCrossAppNetwork: Schema.Boolean,
+  authoredNetworks: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Whether the provider realizes authored network attachments and aliases; omission means unsupported.",
+  }),
   persistentStorage: Schema.Boolean,
   bindMounts: Schema.Boolean,
   bindMountPerformance: Schema.Literals(["native", "slow", "none"]),

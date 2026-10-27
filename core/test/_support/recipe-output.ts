@@ -1,6 +1,6 @@
 import { plugin } from "@lando/lando4";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import type { RecipeOptionValue } from "@lando/sdk/schema";
+import type { RecipeDecomposeResult, RecipeOptionValue } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { lookupRecipeDecomposer } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
@@ -16,7 +16,7 @@ export const bundledManifest = (recipeId: string) => {
 export const decomposeBuiltinRecipe = (
   recipeId: string,
   options: Readonly<Record<string, RecipeOptionValue>> = {},
-) => {
+): RecipeDecomposeResult => {
   const factory = lookupRecipeDecomposer(recipeId);
   if (factory === undefined) throw new Error(`Missing decomposer ${recipeId}`);
   const decomposer = factory({ redactor: createStandaloneRedactor("secrets") });

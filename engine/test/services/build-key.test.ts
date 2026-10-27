@@ -19,14 +19,13 @@ const provider = (input: Partial<Pick<RuntimeProviderShape, "id" | "version" | "
   platform: input.platform ?? "linux",
 });
 
-const service = (input: Partial<ServicePlan> = {}): ServicePlan => ({
+const service = (input: Omit<Partial<ServicePlan>, "connection" | "nonSqlCreds"> = {}): ServicePlan => ({
   name: ServiceName.make("web"),
   type: "node",
   provider: providerId,
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -47,6 +46,8 @@ describe("buildKeyForService", () => {
   test("invalidates when app mount includes change", async () => {
     // Given the same service and native app mount with different include policy.
     const appMount = {
+      type: "bind" as const,
+      role: "app" as const,
       source: AbsolutePath.make("/workspace/app"),
       target: PortablePath.make("/app"),
       readOnly: false,
@@ -55,8 +56,8 @@ describe("buildKeyForService", () => {
       includes: [],
     };
     // When deriving the service build keys.
-    const before = await key(service({ appMount }));
-    const after = await key(service({ appMount: { ...appMount, includes: [".git"] } }));
+    const before = await key(service({ mounts: [appMount] }));
+    const after = await key(service({ mounts: [{ ...appMount, includes: [".git"] }] }));
     // Then policy changes invalidate the cached service artifact.
     expect(after).not.toBe(before);
   });
@@ -200,6 +201,17 @@ describe("buildKeyForService", () => {
     expect(await key(base, provider({ id: "other" }))).not.toBe(await key(base));
     expect(await key(base, provider({ version: "2.0.0" }))).not.toBe(await key(base));
     expect(await key(base, provider({ platform: "darwin" }))).not.toBe(await key(base));
+    expect(
+      await key({
+        ...base,
+        artifact: { kind: "ref", ref: "php:8.2-apache-bookworm", digest: "sha256:first" },
+      }),
+    ).not.toBe(
+      await key({
+        ...base,
+        artifact: { kind: "ref", ref: "php:8.2-apache-bookworm", digest: "sha256:second" },
+      }),
+    );
     expect(await key({ ...base, environment: { NODE_ENV: "development" } })).not.toBe(await key(base));
     expect(
       await key({ ...base, environment: { ...base.environment, LANDO_APP_ROOT: "/tmp/scratch-b" } }),

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -47,7 +47,6 @@ const service = (name: string, milliseconds: number): ServicePlan => ({
   artifact: { kind: "ref" as const, ref: `test/${name}:latest` },
   environment: name === "node" ? { DB_PASSWORD: "bare-db-password", APP_REGION: "us-east-1" } : {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -71,7 +70,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: Object.fromEntries(services.map((entry) => [entry.name, entry])),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -113,7 +111,7 @@ const makeLayer = (provider: RuntimeProviderShape) => {
   const redaction = Layer.succeed(
     RedactionService,
     RedactionService.of({
-      registerValues: registerRedactionValues,
+      ...makeRedactionService(),
       payloadValues: (options) => Effect.succeed(() => ["topsecret", ...(options?.redactionTokens ?? [])]),
       forProfile: (profile, options) =>
         Effect.succeed(
@@ -296,6 +294,8 @@ describe("BuildOrchestrator artifact phase", () => {
       providerId,
       operation: "buildArtifact",
       message: "synthetic artifact failure",
+      remediation:
+        "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
     });
     const provider = {
       ...TestRuntimeProvider,

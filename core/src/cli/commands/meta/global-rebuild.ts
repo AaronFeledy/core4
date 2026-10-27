@@ -1,12 +1,8 @@
-import { DateTime, Effect, Result, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
+import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
-import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
-import {
-  applyGlobalServiceGroups,
-  globalServiceGroupError,
-  waitForGlobalServiceGroups,
-} from "@lando/engine/operations/global-service-groups";
+import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import type {
   GlobalAppError,
   GlobalDistConflictError,
@@ -72,6 +68,8 @@ export type GlobalRebuildError =
   | SecretReferenceInvalidError;
 
 export type GlobalRebuildServices =
+  | import("@lando/sdk/services").StateStore
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
   | BuildOrchestrator
   | EventService
@@ -136,25 +134,20 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(function* (
         },
         (plan) => builder.build(plan, { refresh: true }),
       );
-      const outcome = yield* waitForGlobalServiceGroups(provider, applied, options.signal);
-      const partialError = globalServiceGroupError("rebuild", outcome);
       const router = yield* RouterService;
-      const startedNames = new Set(outcome.services.map((service) => service.name));
-      const failedNames = new Set(outcome.failures.flatMap((failure) => failure.names));
-      const publish = publishGlobalRoutes(router, provider, outcome.builtPlan, {
-        started: startedNames,
-        failed: failedNames,
-      });
-      const publication = yield* Effect.result(publish);
-      if (partialError !== undefined) {
-        if (applied.services.length > 0) yield* Effect.result(router.revalidateStartup);
-        return yield* Effect.fail(partialError);
-      }
+      const outcome = yield* completeStartup({
+        policy: "global-groups",
+        operation: "rebuild",
+        provider,
+        router,
+        outcome: applied,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      }).pipe(
+        Effect.tapError(() =>
+          applied.services.length > 0 ? Effect.asVoid(Effect.result(router.revalidateStartup)) : Effect.void,
+        ),
+      );
       const { builtPlan } = outcome;
-      if (Result.isFailure(publication)) {
-        yield* Effect.result(router.revalidateStartup);
-        return yield* Effect.fail(publication.failure);
-      }
       // Re-observe the router before the post event: a rebuild that leaves the
       // router's startup observation broken has not finished rebuilding.
       yield* router.revalidateStartup;

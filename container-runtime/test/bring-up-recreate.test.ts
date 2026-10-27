@@ -16,7 +16,7 @@ import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("recreate-ports");
 const serviceName = ServiceName.make("web");
 const metadata = {
@@ -35,7 +35,6 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     artifact: { kind: "ref", ref: "nginx:1.27-alpine" },
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [
       {
         _tag: "published",
@@ -52,6 +51,7 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     extensions: {},
   };
   return {
+    valueModel: 1,
     id: appId,
     name: "Recreate Ports",
     slug: "recreate-ports",
@@ -59,7 +59,6 @@ const planWithHostPort = (hostPort: number): AppPlan => {
     provider: providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     networking: { perAppBridge: { name: "recreate-ports-network", driver: "bridge" } },
     stores: [],
     fileSync: [],
@@ -151,7 +150,10 @@ const makeFakeApi = (input: {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           return { status: input.networkExists === true ? 200 : 404, body: "{}" };
         }
-        if (request.method === "POST" && request.path === "/networks/create") {
+        if (
+          request.method === "POST" &&
+          ["/networks/create", "/libpod/networks/create"].includes(request.path)
+        ) {
           return { status: 201, body: "{}" };
         }
         if (request.method === "GET" && action === "json") {
@@ -215,7 +217,7 @@ const createCalls = (calls: ReadonlyArray<EngineHttpRequest>): ReadonlyArray<Eng
   calls.filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"));
 
 test.each([false, true])(
-  "host-proxy session rotation recreates containers without deleting volumes (changed=%s)",
+  "host-proxy session rotation cleans anonymous volumes and preserves named mounts (changed=%s)",
   async (changed) => {
     const base = planWithHostPort(18080);
     const original = base.services[serviceName];
@@ -227,6 +229,12 @@ test.each([false, true])(
         LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
       },
       mounts: [
+        {
+          type: "volume" as const,
+          store: "retained-data",
+          target: PortablePath.make("/data"),
+          readOnly: false,
+        },
         {
           type: "bind" as const,
           source: "/home/user/session/host-proxy.sock",
@@ -258,7 +266,15 @@ test.each([false, true])(
     expect(deletes).toHaveLength(changed ? 1 : 0);
     for (const call of deletes) {
       expect(call.path).toStartWith("/containers/");
-      expect(call.path).not.toMatch(/[?&]v=(true|1)/);
+      expect(call.path).toBe(`/containers/${containerName}?force=true&v=true`);
+    }
+    expect(fake.calls.filter((call) => call.method === "DELETE" && call.path.startsWith("/volumes"))).toEqual(
+      [],
+    );
+    if (changed) {
+      expect(createCalls(fake.calls)[0]?.body).toMatchObject({
+        HostConfig: { Binds: expect.arrayContaining(["retained-data:/data"]) },
+      });
     }
   },
 );
@@ -274,9 +290,9 @@ describe("Podman publish-port recreate", () => {
       fake.calls
         .filter((call) => call.path.endsWith("/stop") || call.method === "DELETE")
         .map((call) => call.path),
-    ).toEqual(["/containers/observed-owned-id/stop", "/containers/observed-owned-id?force=true"]);
+    ).toEqual(["/containers/observed-owned-id/stop", "/containers/observed-owned-id?force=true&v=true"]);
   });
-  test("migrates a missing create-config label once without deleting volumes", async () => {
+  test("migrates a missing create-config label once without deleting named volumes", async () => {
     // Given an existing container from before create-config labels.
     const plan = planWithHostPort(38080);
     const fake = makeFakeApi({
@@ -294,7 +310,7 @@ describe("Podman publish-port recreate", () => {
     expect(result.changed).toBe(false);
     expect(createCalls(fake.calls)).toHaveLength(1);
     expect(fake.calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
-      `/containers/${containerName}?force=true`,
+      `/containers/${containerName}?force=true&v=true`,
     ]);
   });
 
@@ -305,14 +321,19 @@ describe("Podman publish-port recreate", () => {
     if (service === undefined) throw new Error("Test service is missing.");
     const plan: AppPlan = {
       ...base,
-      services: { [serviceName]: { ...service, environment: { PASSWORD: "${secret:db/password}" } } },
+      services: {
+        [serviceName]: {
+          ...service,
+          environment: { PASSWORD: { _tag: "SecretRef", reference: "PASSWORD" } },
+        },
+      },
     };
     const fake = makeFakeApi({ deleteStatus: 204, containerExists: false });
     await Effect.runPromise(
       bringUp(plan, {
         api: fake.api,
         ctx,
-        serviceEnvironment: { [serviceName]: { PASSWORD: "resolved-before" } },
+        resolveServiceEnvironment: () => Effect.succeed({ PASSWORD: "resolved-before" }),
       }),
     );
     // When the resolved bytes change without a desired reference change.
@@ -320,7 +341,7 @@ describe("Podman publish-port recreate", () => {
       bringUp(plan, {
         api: fake.api,
         ctx,
-        serviceEnvironment: { [serviceName]: { PASSWORD: "resolved-after" } },
+        resolveServiceEnvironment: () => Effect.succeed({ PASSWORD: "resolved-after" }),
       }),
     );
     // Then actual create received the secret, but its label contains only the desired opaque digest.
@@ -329,7 +350,7 @@ describe("Podman publish-port recreate", () => {
     expect(createCalls(fake.calls)[0]?.body).toMatchObject({
       Env: ["PASSWORD=resolved-before"],
       Labels: {
-        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v1:[a-f0-9]{64}$/u),
+        [CREATE_CONFIG_LABEL]: expect.stringMatching(/^v3:[a-f0-9]{64}$/u),
       },
     });
     expect(createCalls(fake.calls)[0]?.body).toHaveProperty(
@@ -449,15 +470,24 @@ describe("Podman publish-port recreate", () => {
           mounts:
             type === undefined
               ? []
-              : [
-                  {
-                    type,
-                    ...(source === undefined ? {} : { source }),
-                    target,
-                    readOnly: true,
-                    realization: "passthrough" as const,
-                  },
-                ],
+              : type === "volume"
+                ? [
+                    {
+                      type: "volume" as const,
+                      store: source ?? "",
+                      target,
+                      readOnly: true,
+                    },
+                  ]
+                : [
+                    {
+                      type: "bind" as const,
+                      source: source ?? "",
+                      target,
+                      readOnly: true,
+                      realization: "passthrough" as const,
+                    },
+                  ],
         },
       },
     };
@@ -496,7 +526,7 @@ describe("Podman publish-port recreate", () => {
       services: {
         [serviceName]: {
           ...service,
-          storage: [{ store: "lando-ssh-agent", target, readOnly: false }],
+          mounts: [{ type: "volume" as const, store: "lando-ssh-agent", target, readOnly: false }],
         },
       },
     };
@@ -532,11 +562,11 @@ describe("Podman publish-port recreate", () => {
       services: {
         [serviceName]: {
           ...service,
-          storage: [{ store: "lando-ssh-agent", target, readOnly: false }],
           mounts:
             source === undefined
-              ? []
+              ? [{ type: "volume" as const, store: "lando-ssh-agent", target, readOnly: false }]
               : [
+                  { type: "volume" as const, store: "lando-ssh-agent", target, readOnly: false },
                   {
                     type: "bind" as const,
                     source,

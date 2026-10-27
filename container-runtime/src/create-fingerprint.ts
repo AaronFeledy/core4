@@ -6,22 +6,69 @@ import {
   SSH_AGENT_SOCKET_NAME,
   type ServicePlan,
   isCoreServiceEnvKey,
-  landoServiceNetworkAliases,
-  landoSharedNetworkName,
+  landoServiceNetworkAttachments,
 } from "@lando/sdk/schema";
-import { composeConfigMounts } from "./compose-configs.ts";
+import { acceleratedMountVolume } from "./container-mounts.ts";
+import { ContainerPlanError } from "./container-plan-error.ts";
+import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import { fileModeMountIdentity } from "./file-mode-mounts.ts";
 import {
-  ContainerPlanError,
-  containerHealthcheck,
-  normalizeCommand,
-  normalizeEntrypoint,
-} from "./create-values.ts";
-import { AGENT_SESSION_LABEL, HOST_PROXY_SESSION_LABEL } from "./labels.ts";
+  AGENT_SESSION_LABEL,
+  GPG_AGENT_OVERLAY_LABEL,
+  HOST_PROXY_SESSION_LABEL,
+  SSH_AGENT_OVERLAY_LABEL,
+  containerIntegrationLabels,
+} from "./labels.ts";
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 import { realizePodmanComposeKnobs } from "./podman/compose-knobs.ts";
-import { podmanNetworkNames } from "./podman/networks.ts";
+import { compileServiceProbe } from "./service-probe.ts";
 
 export const CREATE_CONFIG_LABEL = "dev.lando.create-config";
+
+const CREATE_ARTIFACT_IDENTITY = "@lando/container-runtime/create-artifact";
+
+const artifactInputIdentity = (service: ServicePlan): string => {
+  const features = service.extensions["@lando/core/service-features"];
+  const steps =
+    typeof features === "object" && features !== null && "buildSteps" in features
+      ? features.buildSteps
+      : undefined;
+  return sha256Hex(
+    canonicalJson({
+      artifact: service.artifact,
+      buildSteps: Array.isArray(steps)
+        ? steps.filter(
+            (step: unknown) =>
+              typeof step !== "object" || step === null || !("phase" in step) || step.phase !== "app",
+          )
+        : [],
+    }),
+  );
+};
+
+const createArtifactIdentity = (service: ServicePlan): string => {
+  const identity = artifactInputIdentity(service);
+  const retained = service.extensions[CREATE_ARTIFACT_IDENTITY];
+  return typeof retained === "object" &&
+    retained !== null &&
+    "source" in retained &&
+    typeof retained.source === "string" &&
+    "realized" in retained &&
+    retained.realized === identity
+    ? retained.source
+    : identity;
+};
+
+export const retainCreateArtifactIdentity = (source: ServicePlan, realized: ServicePlan): ServicePlan => ({
+  ...realized,
+  extensions: {
+    ...realized.extensions,
+    [CREATE_ARTIFACT_IDENTITY]: {
+      source: createArtifactIdentity(source),
+      realized: artifactInputIdentity(realized),
+    },
+  },
+});
 
 const agentEnvironment: Readonly<Record<string, string>> = {
   SSH_AUTH_SOCK: `${AGENT_SOCKET_CONTAINER_DIR.ssh}/${SSH_AGENT_SOCKET_NAME}`,
@@ -39,13 +86,14 @@ export const createConfigFingerprint = (
       throw new ContainerPlanError(message, details);
     },
   });
-  const artifact = service.artifact;
-  const appMount = service.appMount;
+  const integrationLabels = containerIntegrationLabels(service.environment);
+  const sshAgentActive = integrationLabels[SSH_AGENT_OVERLAY_LABEL] === "true";
+  const gpgAgentActive = integrationLabels[GPG_AGENT_OVERLAY_LABEL] === "true";
   const sessionMountTargets = new Set<string>();
-  if (service.environment.SSH_AUTH_SOCK === agentEnvironment.SSH_AUTH_SOCK) {
+  if (sshAgentActive) {
     sessionMountTargets.add(AGENT_SOCKET_CONTAINER_DIR.ssh);
   }
-  if (service.environment.LANDO_GPG_AGENT_SOCKET === agentEnvironment.LANDO_GPG_AGENT_SOCKET) {
+  if (gpgAgentActive) {
     sessionMountTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
     sessionMountTargets.add("/run/lando/gpg-agent-keys");
   }
@@ -56,7 +104,8 @@ export const createConfigFingerprint = (
     sessionMountTargets.add("/usr/local/bin/open");
   }
   const projection = {
-    artifact: artifact?.kind === "ref" ? { ref: artifact.ref, digest: artifact.digest } : undefined,
+    artifactProvenance: createArtifactIdentity(service),
+    artifact: service.artifact,
     command: normalizeCommand(service.command),
     entrypoint: normalizeEntrypoint(service.entrypoint),
     user: service.user === "" ? undefined : service.user,
@@ -66,40 +115,71 @@ export const createConfigFingerprint = (
         ([key, value]) =>
           key !== "LANDO_HOST_IP" &&
           !(isCoreServiceEnvKey(key) && key.startsWith("LANDO_HOST_PROXY_")) &&
-          agentEnvironment[key] !== value,
+          !(agentEnvironment[key] === value && (key === "SSH_AUTH_SOCK" ? sshAgentActive : gpgAgentActive)),
       ),
     ),
-    appMount:
-      appMount === undefined
-        ? undefined
-        : {
-            source: appMount.source,
-            target: appMount.target,
-            readOnly: appMount.readOnly,
-            realization: appMount.realization,
-          },
-    mounts: service.mounts.filter((mount) => !sessionMountTargets.has(mount.target)),
-    storage: service.storage,
-    configs: composeConfigMounts(plan, service),
+    mounts: service.mounts
+      .filter((mount) => !sessionMountTargets.has(mount.target))
+      .map((mount) => {
+        const common = { type: mount.type, target: mount.target, readOnly: mount.readOnly };
+        switch (mount.type) {
+          case "bind": {
+            const fileIdentity = fileModeMountIdentity(mount);
+            return {
+              ...common,
+              source:
+                mount.realization === "accelerated"
+                  ? acceleratedMountVolume(plan, service, mount)
+                  : (fileIdentity?.source ?? mount.source),
+              fileMode: mount.fileMode,
+              contentDigest: fileIdentity?.digest,
+              realization: mount.realization,
+              createHostPath:
+                mount.realization === "passthrough" && mount.createHostPath === false ? false : undefined,
+            };
+          }
+          case "volume":
+            return { ...common, store: mount.store, subpath: mount.subpath };
+          case "tmpfs":
+            return { ...common, options: mount.options };
+          default:
+            return mount satisfies never;
+        }
+      }),
     labels: Object.fromEntries(
       Object.entries(labels).filter(
         ([key]) =>
-          key !== CREATE_CONFIG_LABEL && key !== AGENT_SESSION_LABEL && key !== HOST_PROXY_SESSION_LABEL,
+          key !== CREATE_CONFIG_LABEL &&
+          key !== AGENT_SESSION_LABEL &&
+          key !== HOST_PROXY_SESSION_LABEL &&
+          key !== SSH_AGENT_OVERLAY_LABEL &&
+          key !== GPG_AGENT_OVERLAY_LABEL,
       ),
     ),
-    healthcheck: containerHealthcheck(service.healthcheck),
+    healthcheck: containerHealthcheck(service.healthcheck, plan, service),
+    readiness:
+      service.readiness === undefined
+        ? undefined
+        : {
+            ...service.readiness,
+            target:
+              service.readiness.target === undefined
+                ? undefined
+                : {
+                    port: service.readiness.target.port,
+                    transport: service.readiness.target.transport,
+                  },
+            command: compileServiceProbe(service.readiness, plan, service),
+          },
     exposedPorts: physicalListenerPorts(service.endpoints),
     publications: physicalPublications(service.endpoints).sort((a, b) =>
       canonicalJson(a).localeCompare(canonicalJson(b)),
     ),
     hostAliases: service.hostAliases,
     networks: Object.fromEntries(
-      podmanNetworkNames(plan).map((name) => [
-        name,
-        name === landoSharedNetworkName(plan) ? landoServiceNetworkAliases(plan, service) : [service.name],
-      ]),
+      landoServiceNetworkAttachments(plan, service).map(({ name, aliases }) => [name, aliases]),
     ),
     knobs,
   };
-  return `v1:${sha256Hex(canonicalJson(projection))}`;
+  return `v3:${sha256Hex(canonicalJson(projection))}`;
 };

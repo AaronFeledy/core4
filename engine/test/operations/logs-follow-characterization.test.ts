@@ -31,7 +31,6 @@ const plan: AppPlan = {
           command: [],
           environment: {},
           mounts: [],
-          storage: [],
           endpoints: [],
           routes: [],
           dependsOn: [],
@@ -43,7 +42,6 @@ const plan: AppPlan = {
     }),
   ),
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -165,8 +163,8 @@ describe("log-follow completion", () => {
         mode === "empty"
           ? []
           : [
-              { _tag: "stdout", chunk: "database ready", service: "database" },
-              { _tag: "stdout", chunk: "web ready", service: "web" },
+              { kind: "record", _tag: "stdout", chunk: "database ready", service: "database" },
+              { kind: "record", _tag: "stdout", chunk: "web ready", service: "web" },
             ],
       );
     });

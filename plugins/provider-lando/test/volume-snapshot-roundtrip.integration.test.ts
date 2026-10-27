@@ -24,7 +24,7 @@ import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-s
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { makePodmanApiClient, layer as providerLayer } from "@lando/provider-lando";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
   AppId,
@@ -85,18 +85,7 @@ const silentEvents = Layer.succeed(
   }),
 );
 
-const passthroughRedaction = Layer.succeed(
-  RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: () =>
-      Effect.succeed({
-        redactString: (input: string) => input,
-        redactValue: (input: unknown) => input,
-      }),
-  }),
-);
+const passthroughRedaction = RedactionService.layer;
 
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
@@ -132,7 +121,6 @@ const liveFixture = Effect.gen(function* () {
     provider: base.id,
     services: {},
     routes: [],
-    networks: [],
     stores: [{ name: store, scope: "app", kind: "data" }],
     fileSync: [],
     identity: { appRoot, ownerKey: appIdentityKey("owner", appRoot) },
@@ -177,7 +165,7 @@ const liveFixture = Effect.gen(function* () {
       .run({
         image: helper.ref,
         command: ["sh", "-c", "cat > /data/payload"],
-        mounts: [{ store, target: PortablePath.make("/data"), readOnly: false }],
+        mounts: [{ type: "volume", store, target: PortablePath.make("/data"), readOnly: false }],
         stdinStream: stdinOf(text),
         remove: true,
       })
@@ -186,7 +174,7 @@ const liveFixture = Effect.gen(function* () {
     .run({
       image: helper.ref,
       command: ["sh", "-c", "cat /data/payload"],
-      mounts: [{ store, target: PortablePath.make("/data"), readOnly: true }],
+      mounts: [{ type: "volume", store, target: PortablePath.make("/data"), readOnly: true }],
       captureStdout: true,
       remove: true,
     })
@@ -342,7 +330,6 @@ describe("live volume snapshot round trip", () => {
                       silentEvents,
                       passthroughRedaction,
                       Layer.succeed(PathsService, PathsService.of(paths)),
-                      Layer.succeed(RuntimeProvider, fx.provider),
                       Layer.succeed(RuntimeProviderRegistry, {
                         appliedPlansFor: () => Effect.succeed([]),
                         resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -364,18 +351,19 @@ describe("live volume snapshot round trip", () => {
             fx.pulledDigests.length = 0;
 
             // When: a copy-mode snapshot is taken, the volume changes, and the snapshot is restored.
-            const handle = yield* mover.snapshot(volume, { volumeSnapshot: "copy", format: "tar" });
+            const handle = yield* mover
+              .snapshot(volume, { volumeSnapshot: "copy", format: "tar" })
+              .pipe(Effect.provideService(RuntimeProvider, fx.provider));
             yield* Effect.addFinalizer(() =>
-              mover
-                .removeSnapshot(handle)
-                .pipe(
-                  Effect.catch((cause) =>
-                    Effect.logWarning("live DataMover snapshot cleanup failed", { id: handle.id, cause }),
-                  ),
+              mover.removeSnapshot(handle).pipe(
+                Effect.provideService(RuntimeProvider, fx.provider),
+                Effect.catch((cause) =>
+                  Effect.logWarning("live DataMover snapshot cleanup failed", { id: handle.id, cause }),
                 ),
+              ),
             );
             yield* fx.write("dm-mutated");
-            yield* mover.restore(handle, volume);
+            yield* mover.restore(handle, volume).pipe(Effect.provideService(RuntimeProvider, fx.provider));
 
             // Then: the original bytes are restored from the host archive.
             expect(yield* fx.read).toBe("dm-original");

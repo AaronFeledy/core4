@@ -36,12 +36,7 @@ test("resolves ${secret:op://Vault/Item Name/field} with spaces", async () => {
 
 test("registers shell secrets before returning to a retained redactor", async () => {
   // Given
-  const redaction = makeRedactionService({
-    id: "empty",
-    get: () => Effect.succeed(""),
-    has: () => Effect.succeed(false),
-    list: Effect.succeed([]),
-  });
+  const redaction = makeRedactionService();
   const redactor = await Effect.runPromise(redaction.forProfile("secrets"));
   const input: AsyncIterable<ShellReplInput> = (async function* () {
     yield { _tag: "line", line: "printf '%s' ${secret:op://Vault/Item/field}" };

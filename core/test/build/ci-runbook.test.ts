@@ -122,8 +122,12 @@ describe("ci runbook", () => {
     );
     expect(runbook).toContain("## Provider matrix");
     expect(runbook).toContain(
-      "runs weekly, on manual dispatch, and automatically after the runtime-bundle publisher",
+      "runs weekly, on manual dispatch, on pull request when provider-matrix or Docker exec paths change",
     );
+    expect(runbook).toContain("automatically after the runtime-bundle publisher");
+    expect(runbook).toContain("provider-contracts-docker-latest");
+    expect(runbook).toContain("regenerates derived sources before acceptance");
+    expect(runbook).toContain("asserts that `exec-umask-mode` passed");
     expect(runbook).toContain("release-blocking cells fail the workflow when they fail or skip");
     expect(runbook).toContain("Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack");
     expect(runbook).toContain("provider-matrix-diagnostics-<cell>");
@@ -171,16 +175,16 @@ describe("ci runbook", () => {
       readText(bunVersionPath),
     ]);
 
-    expect(JSON.parse(rootPackage).engines.bun).toBe(">=1.4.2");
-    expect(JSON.parse(corePackage).engines.bun).toBe(">=1.4.2");
-    expect(bunVersion.trim()).toBe("1.4.2");
+    expect(JSON.parse(rootPackage).engines.bun).toBe(">=1.4.3");
+    expect(JSON.parse(corePackage).engines.bun).toBe(">=1.4.3");
+    expect(bunVersion.trim()).toBe("1.4.3");
 
     for (const surface of [runbook, betaDecisions]) {
-      expect(surface).toContain(">=1.4.2");
+      expect(surface).toContain(">=1.4.3");
       expect(surface).toContain("--bytecode");
     }
 
-    expect(repository).toContain("current minimum is Bun 1.4.2");
+    expect(repository).toContain("current minimum is Bun 1.4.3");
     expect(repository).toContain("bytecode for all six release targets");
     expect(repository).toContain("./decisions.md#bun-floor-decision");
 

@@ -11,7 +11,7 @@ import type {
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "getmeili/meilisearch:v1.11";
@@ -49,7 +49,6 @@ const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `curl -sf http://localhost:${port}/health`], 30));
 
   applyAuthoredProcessFields(ctx);
@@ -59,6 +58,10 @@ export const meilisearchServiceFeature: ServiceFeatureDefinition = {
   id: MEILISEARCH_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+    ),
   apply: serviceFeatureApply(
     MEILISEARCH_FEATURE_ID,
     "meilisearch service feature failed to apply",

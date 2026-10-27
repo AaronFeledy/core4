@@ -6,7 +6,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "redis:7";
@@ -26,6 +26,7 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const port = service.port ?? DEFAULT_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
+  if (service.password !== undefined) ctx.addEnv("REDISCLI_AUTH", service.password);
   const command = [
     ...(service.persist === false ? EPHEMERAL_COMMAND : DEFAULT_COMMAND),
     ...(service.port === undefined ? [] : ["--port", String(port)]),
@@ -43,7 +44,6 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
       readOnly: false,
     });
   ctx.setHealthcheck(commandHealthcheck(["redis-cli", "-p", String(port), "ping"], 15));
-  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };
@@ -52,6 +52,10 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
   id: REDIS_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "tcp" }),
+    ),
   apply: (ctx) => {
     const startupOverride =
       ctx.normalizedConfig.command !== undefined
@@ -70,6 +74,8 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
         new ServiceFeatureError({
           message: `Redis authored ${startupOverride} cannot be combined with ${managedOption}; remove the startup override or the managed Redis option.`,
           feature: REDIS_FEATURE_ID,
+          remediation:
+            "Remove the Redis startup override or the managed Redis option so they are not combined, then re-run.",
         }),
       );
     return serviceFeatureApply(
@@ -93,6 +99,7 @@ export const redisServiceType: ServiceType = {
     const auth = password === undefined ? {} : { REDISCLI_AUTH: password };
     return Effect.succeed({
       base: "lando",
+      ...(password === undefined ? {} : { nonSqlCreds: { user: "default", password, database: "0" } }),
       normalizedConfig: {
         ...input.service,
         type: "redis",

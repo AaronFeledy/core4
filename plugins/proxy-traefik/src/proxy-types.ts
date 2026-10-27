@@ -1,5 +1,5 @@
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import type { PortNumber, ServiceName, StartedService } from "@lando/sdk/schema";
+import type { PortNumber, PublicationObservation, ServiceName, StartedService } from "@lando/sdk/schema";
 import type { Context, Effect } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
 
@@ -92,6 +92,7 @@ export type TraefikLogObservation = {
 };
 
 export interface TraefikProxyDependencies {
+  readonly readTraefikPublications?: () => Effect.Effect<PublicationObservation, unknown>;
   readonly httpClient?: HttpClient.HttpClient;
   readonly readTraefikLogs?: () => Effect.Effect<TraefikLogObservation, unknown>;
   readonly redactDiagnostic?: (text: string) => string;

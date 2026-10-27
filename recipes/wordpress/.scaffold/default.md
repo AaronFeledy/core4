@@ -22,7 +22,7 @@ lando info
 
 `lando start` prints the app URL. `lando info` repeats it.
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For the install steps and database hosts, see [Run the WordPress recipe](/guides/recipes/wordpress-workflow/).
 

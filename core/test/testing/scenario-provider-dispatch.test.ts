@@ -1,12 +1,63 @@
 import { expect, test } from "bun:test";
-import { symlink } from "node:fs/promises";
+import { mkdir, symlink } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { withScenarioContext } from "@lando/core/testing";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 import { makeScenarioProvider } from "../../src/testing/scenario-provider.ts";
+
+const planAt = (id: string, appRoot: AbsolutePath): AppPlan => ({
+  id: AppId.make(id),
+  name: id,
+  slug: id,
+  root: appRoot,
+  identity: { appRoot, ownerKey: `${id}-owner` },
+  provider: ProviderId.make("test"),
+  services: {},
+  routes: [],
+  stores: [],
+  fileSync: [],
+  metadata: {
+    resolvedAt: DateTime.makeUnsafe("2026-09-16T00:00:00.000Z"),
+    source: "scenario-provider-dispatch.test",
+    runtime: 4,
+  },
+  extensions: {},
+});
+
+test.each([
+  ["solr", "/home/solr"],
+  ["elasticsearch", "/usr/share/elasticsearch"],
+] as const)("remembers the %s fixture's prepared-home plan", async (guideId, homeTarget) => {
+  await Effect.runPromise(
+    withScenarioContext({ guideId, scenarioId: "prepared-home-plan" }, (context) =>
+      Effect.gen(function* () {
+        // Given: a real guide fixture requiring a prepared catalog home.
+        const root = yield* context.fixtures.use(`${guideId}-demo`);
+        const provider = makeScenarioProvider();
+
+        // When: the scenario provider plans and remembers the fixture.
+        yield* Effect.tryPromise(() => provider.remember(root));
+
+        // Then: applied-state observation retains the home and its ownership build intent.
+        const registry = yield* RuntimeProviderRegistry.pipe(Effect.provide(provider.layer));
+        const applied = yield* registry.resolveAppliedPlan(AbsolutePath.make(root));
+        const search = applied?.services[ServiceName.make("search")];
+        expect(search?.home).toMatchObject({ state: "persisted", target: homeTarget, user: guideId });
+        expect(search?.extensions["@lando/core/service-features"]).toMatchObject({
+          buildSteps: expect.arrayContaining([
+            expect.objectContaining({ id: "lando.storage:own-data-trees", phase: "build", user: "root" }),
+          ]),
+        });
+        const selected = yield* registry.select(applied);
+        expect(yield* registry.capabilities).toBe(selected.capabilities);
+        expect(selected.capabilities).toBe(provider.provider.capabilities);
+      }),
+    ),
+  );
+});
 
 test("uses the test runtime provider for exec when a guide uses the scenario harness", async () => {
   const result = await Effect.runPromise(
@@ -49,6 +100,48 @@ test("observes the scenario's applied plan after its desired Landofile becomes i
   expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, result: { app: "exec-demo" } });
 });
 
+test("resolves the applied plan when later commands use a symlink alias of the root", async () => {
+  await Effect.runPromise(
+    withScenarioContext({ guideId: "exec", scenarioId: "alias-applied-plan" }, (context) =>
+      Effect.gen(function* () {
+        // Given: applied state stored under the planner's canonical root.
+        const root = yield* context.fixtures.use("exec-demo");
+        const alias = join(context.testDir, "linked-app");
+        yield* Effect.tryPromise(() => symlink(root, alias, "dir"));
+        const provider = makeScenarioProvider();
+        yield* Effect.tryPromise(() => provider.remember(root));
+
+        // When: a later command resolves applied state through the alias path.
+        const planned = yield* Effect.gen(function* () {
+          const registry = yield* RuntimeProviderRegistry;
+          return yield* registry.resolveAppliedPlan(AbsolutePath.make(alias));
+        }).pipe(Effect.provide(provider.layer));
+
+        // Then: the alias still finds the realization, the way production ancestor matching does.
+        expect(planned?.root).toBeDefined();
+        expect(planned?.id).toBe(AppId.make("exec-demo"));
+      }),
+    ),
+  );
+});
+
+test("prefers the longest matching applied plan the way production ancestor matching does", async () => {
+  const provider = makeScenarioProvider();
+  const parent = planAt("parent-app", AbsolutePath.make("/tmp/scenario-parent"));
+  const child = planAt("child-app", AbsolutePath.make("/tmp/scenario-parent/child"));
+  await Effect.runPromise(Effect.scoped(provider.provider.apply(parent, { reconcile: false })));
+  await Effect.runPromise(Effect.scoped(provider.provider.apply(child, { reconcile: false })));
+
+  const planned = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      return yield* registry.resolveAppliedPlan(AbsolutePath.make("/tmp/scenario-parent/child/nested"));
+    }).pipe(Effect.provide(provider.layer)),
+  );
+
+  expect(planned?.id).toBe(AppId.make("child-app"));
+});
+
 test("forgets the applied plan when destroy uses a symlink to its root", async () => {
   await Effect.runPromise(
     withScenarioContext({ guideId: "exec", scenarioId: "symlink-destroy" }, (context) =>
@@ -58,6 +151,7 @@ test("forgets the applied plan when destroy uses a symlink to its root", async (
         const alias = join(context.testDir, "linked-app");
         yield* Effect.tryPromise(() => symlink(root, alias, "dir"));
         const provider = makeScenarioProvider();
+        yield* Effect.tryPromise(() => provider.remember(alias));
         yield* Effect.tryPromise(() => provider.remember(root));
 
         // When: destroy removes applied state through the alias.
@@ -70,6 +164,51 @@ test("forgets the applied plan when destroy uses a symlink to its root", async (
             applied: registry.resolveAppliedPlan(AbsolutePath.make(root)),
             teardown: registry.resolveTeardownEvidence(AbsolutePath.make(root)),
             placement: registry.appliedPlansFor(AbsolutePath.make(root)),
+          });
+        }).pipe(Effect.provide(provider.layer));
+        expect(evidence).toEqual({ applied: undefined, teardown: { kind: "absent" }, placement: [] });
+      }),
+    ),
+  );
+});
+
+test("keeps teardown, placement, and forget exact when observation finds an ancestor", async () => {
+  const provider = makeScenarioProvider();
+  const parent = planAt("parent-app", AbsolutePath.make("/tmp/scenario-exact"));
+  const nested = AbsolutePath.make("/tmp/scenario-exact/nested");
+  await Effect.runPromise(Effect.scoped(provider.provider.apply(parent, { reconcile: false })));
+  const evidence = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      return yield* Effect.all({
+        applied: registry.resolveAppliedPlan(nested),
+        teardown: registry.resolveTeardownEvidence(nested),
+        placement: registry.appliedPlansFor(nested),
+      });
+    }).pipe(Effect.provide(provider.layer)),
+  );
+  expect(evidence).toEqual({ applied: parent, teardown: { kind: "absent" }, placement: [] });
+  expect(await provider.forget(nested)).toBe(false);
+  expect(await Effect.runPromise(provider.provider.appliedPlans ?? Effect.succeed([]))).toEqual([parent]);
+});
+
+test("does not inherit a lexical ancestor when a symlink leads outside its app", async () => {
+  await Effect.runPromise(
+    withScenarioContext({ guideId: "exec", scenarioId: "redirected-symlink" }, (context) =>
+      Effect.gen(function* () {
+        const root = yield* context.fixtures.use("exec-demo");
+        const outside = join(context.testDir, "outside");
+        const alias = join(root, "linked-outside");
+        yield* Effect.tryPromise(() => mkdir(outside));
+        yield* Effect.tryPromise(() => symlink(outside, alias, "dir"));
+        const provider = makeScenarioProvider();
+        yield* Effect.tryPromise(() => provider.remember(root));
+        const evidence = yield* Effect.gen(function* () {
+          const registry = yield* RuntimeProviderRegistry;
+          return yield* Effect.all({
+            applied: registry.resolveAppliedPlan(AbsolutePath.make(alias)),
+            teardown: registry.resolveTeardownEvidence(AbsolutePath.make(alias)),
+            placement: registry.appliedPlansFor(AbsolutePath.make(alias)),
           });
         }).pipe(Effect.provide(provider.layer));
         expect(evidence).toEqual({ applied: undefined, teardown: { kind: "absent" }, placement: [] });
