@@ -31,7 +31,7 @@ import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 const providerId = ProviderId.make("lando");
 
 const capabilities: ProviderCapabilities = {
-  artifactBuild: false,
+  artifactBuild: true,
   artifactPull: false,
   buildSecrets: false,
   buildSsh: false,

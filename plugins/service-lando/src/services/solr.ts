@@ -139,7 +139,8 @@ export const solrServiceFeature: ServiceFeatureDefinition = {
 
 const IDENTITY: ServiceImageIdentity = {
   defaultUser: "solr",
-  homes: { solr: "/var/solr", root: "/root" },
+  homes: { solr: "/home/solr", root: "/root" },
+  preparedHomes: ["solr"],
 };
 
 const resolveSolr =
