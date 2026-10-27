@@ -160,6 +160,9 @@ ${codegenStep}
 
       - name: Test native process signal handling
         run: bun test core/test/cli/process-signals.test.ts
+
+      - name: Test exec umask behavior
+        run: bun test container-runtime/test/exec-umask.test.ts
 `;
 };
 

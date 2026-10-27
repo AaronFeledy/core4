@@ -6,6 +6,7 @@ import type { EngineHttpApi } from "../src/engine-api.ts";
 import { engineApiFailure } from "../src/engine-errors.ts";
 import { exec } from "../src/podman/exec.ts";
 import { makeSocketHttpClient, socketHttpConnection } from "../src/transport.ts";
+import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
 
 test("preserves stdout and exit zero when the attach socket resets in the response tick", async () => {
   // Given
@@ -83,6 +84,7 @@ test("preserves stdout and exit zero when the attach socket resets in the respon
         engineApiFailure(ctx, "podman-api", input, cause),
       ),
   };
+  installNonCompensatingExecUmask(api);
   const stdinStream = {
     async *[Symbol.asyncIterator]() {
       yield new Uint8Array([1]);

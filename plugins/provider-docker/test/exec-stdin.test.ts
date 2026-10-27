@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
@@ -82,6 +83,7 @@ const makeFakeApi = () => {
       return Stream.empty;
     },
   };
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
