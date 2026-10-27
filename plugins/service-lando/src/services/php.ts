@@ -17,6 +17,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
+import { phpBaselineBuildStep } from "./php-baseline.ts";
 import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
 import {
@@ -57,6 +58,13 @@ export {
 } from "./php-prerequisites.ts";
 
 export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
+
+export {
+  PHP_BASELINE_INI_PATH,
+  PHP_BASELINE_STEP_ID,
+  PHP_SECURITY_BASELINE,
+  renderPhpBaselineIni,
+} from "./php-baseline.ts";
 
 export { PHP_FPM_LOG_SOURCES } from "./php-via.ts";
 
@@ -163,6 +171,8 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const xdebug = resolvePhpXdebug(service.xdebug);
   const composerRelease = resolvePhpComposer(service.composer);
   if (!customImage) {
+    const baseline = phpBaselineBuildStep();
+    if (baseline !== undefined) ctx.addBuildStep(baseline);
     for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
     if (service.framework === "wordpress") {
       ctx.addBuildStep(PHP_WP_CLI_STEP);

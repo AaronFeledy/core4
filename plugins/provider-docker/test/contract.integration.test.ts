@@ -5,6 +5,7 @@ import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Stream } from "effect";
 
@@ -521,6 +522,7 @@ const makeFakeApi = () => {
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -791,6 +793,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -997,6 +1000,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls, running, existing, volumes, volumeLabels, containerIds, retentionHooks };
 };
 
@@ -1328,6 +1332,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/lando-myapp-web/start",
       "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
+      "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web/exec",
       "POST /exec/lando-myapp-web-exec/start",
       "GET /exec/lando-myapp-web-exec/json",
@@ -1422,12 +1427,17 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("interrupts provider exec streams when the abort signal fires", async () => {
     const fake = makeFakeApi();
     const controller = new AbortController();
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
     const baseStream = fake.api.stream;
     (fake.api as { stream: NonNullable<DockerApiClient["stream"]> }).stream = (
       request: DockerHttpRequest,
     ) => {
-      if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
+      if (request.path === "/exec/lando-myapp-web-exec/start") {
         fake.calls.push(request);
+        markStarted();
         return Stream.never;
       }
       return baseStream?.(request) ?? Stream.empty;
@@ -1447,7 +1457,7 @@ describe("provider-docker RuntimeProvider contract", () => {
               { command: ["sh", "-l"], stdin: "inherit", tty: true, signal: controller.signal },
             )
             .pipe(Stream.runCollect, Effect.forkChild);
-          yield* Effect.sleep("10 millis");
+          yield* Effect.promise(() => started).pipe(Effect.timeout("2 seconds"));
           controller.abort();
           return yield* Fiber.join(fiber);
         }),
@@ -1861,6 +1871,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
+      "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web/exec",

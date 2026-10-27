@@ -450,11 +450,15 @@ Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman servi
 
 ## Provider matrix
 
-The `provider-matrix` workflow runs weekly, on manual dispatch, and automatically after the runtime-bundle publisher successfully repins the committed runtime-bundle manifest on `main`. The publisher dispatch uses the GitHub Actions API (`gh workflow run provider-matrix.yml --ref main`) because its manifest-repin push is made with `github.token` and therefore does not recursively fire `push:` triggers.
+The `provider-matrix` workflow runs weekly, on manual dispatch, on pull request when provider-matrix or Docker exec paths change, and automatically after the runtime-bundle publisher successfully repins the committed runtime-bundle manifest on `main`. The publisher dispatch uses the GitHub Actions API (`gh workflow run provider-matrix.yml --ref main`) because its manifest-repin push uses `github.token` and does not trigger another `push:` workflow.
+
+Pull requests build the container helper and run `provider-contracts-docker-latest`, not the full matrix. That job selects the `docker-engine-linux-latest` cell to test exec file permissions against the current Docker Engine. The job-level `if` filters by event name, not `matrix.cell`, because GitHub evaluates it before expanding the matrix.
 
 Cells cover Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack surfaces, plus the Lando-managed Podman 6 runtime. Native machine lifecycle cells separately cover managed Lando and system Podman machines on macOS and Windows. The matrix is structured provider acceptance, not advisory contract-only coverage. Each cell writes a JSON report with a `passed`, `failed`, or `skipped` outcome; release-blocking cells fail the workflow when they fail or skip. Advisory desktop-only cells still emit a `::notice` skip on GitHub-hosted runners so maintainers can mirror them on prepared self-hosted runners.
 
 The native machine cells are advisory because GitHub-hosted macOS and Windows runners do not provide a dependable nested-virtualization contract. Prepared runners opt in with `LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE=1` or `LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE=1`; `LANDO_TEST_PODMAN_COMMAND` may select the prepared Podman binary. Missing opt-in, unsupported hosts, and absent Podman tooling produce structured skips. Once opted in with tooling present, start/stop/restart/destroy failures are recorded as failed cells, never passes. The Docker Engine, Lando-managed Linux, and system Podman 6 Linux cells remain release-blocking.
+
+Every cell regenerates derived sources before acceptance so plugin tests can import generated bundled modules. The `docker-engine-linux-latest` cell runs on `ubuntu-26.04` and installs unpinned `docker-ce` from Docker's apt repository. It then asserts that `exec-umask-mode` passed: a missing, skipped, or failed check fails the job even though the cell is not marked release-blocking. Keep this cell out of required status checks until it has a record of passing on `main`.
 
 Release-blocking installable cells run the relevant provider contract suite plus live acceptance checks for setup readiness, app bring-up/bring-down, exec, logs, inspect/health, image resolution, and volume cleanup:
 
