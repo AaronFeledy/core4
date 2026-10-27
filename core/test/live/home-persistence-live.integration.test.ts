@@ -2,13 +2,16 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { engineInfoArchitecture } from "@lando/container-runtime/capabilities";
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { AppInfoResultSchema } from "@lando/engine/operations/info";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
 import { makeLandoPaths } from "@lando/paths";
-import { makePodmanApiClient } from "@lando/provider-podman";
+import { mvpProviderCapabilities } from "@lando/provider-lando";
+import { makePodmanApiClient, podmanCapabilitiesForPlatform } from "@lando/provider-podman";
 import { Effect, Schema } from "effect";
 import { decodeInfoCliEnvelope } from "./convergence-cli.ts";
+import { selectCatalogHomes } from "./home-persistence-fixture.ts";
 
 const socket = resolveLiveProviderSocket();
 const providerId = process.env.LANDO_CONFIG__default_provider_id ?? "podman";
@@ -33,30 +36,40 @@ test.skipIf(socket === undefined)(
       expect(socket.socketPath, "The opted-in socket must match the configured managed runtime").toBe(
         makeLandoPaths().providerSocketPath,
       );
+    const api = makePodmanApiClient(socket.socketPath);
+    const providerArch = engineInfoArchitecture(await Effect.runPromise(api.info)) ?? "unknown";
     const root = await mkdtemp(join(tmpdir(), "lando-home-persistence-live-"));
     const nonce = crypto.randomUUID().slice(0, 8);
     const name = `home-live-${nonce}`;
     // Unique service names also namespace derived image tags for exact, race-safe cleanup.
     const php = `php-${nonce}`;
     const node = `node-${nonce}`;
-    const catalogHomes = (
-      [
-        ["mssql", "mssql", "/home/mssql"],
-        ["mssql:2019", "mssql", "/home/mssql"],
-        ["mssql:2022", "mssql", "/home/mssql"],
-        ["solr", "solr", "/home/solr"],
-        ["solr:9", "solr", "/home/solr"],
-        ["varnish", "root", "/root"],
-        ["varnish:6", "root", "/root"],
-        ["varnish:7", "root", "/root"],
-      ] as const
-    ).map(([type, user, target], index) => ({ type, user, target, service: `catalog-${index}-${nonce}` }));
+    const platform =
+      process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : "linux";
+    const capabilities =
+      providerId === "lando"
+        ? mvpProviderCapabilities(platform, process.arch)
+        : podmanCapabilitiesForPlatform(platform);
+    // Match the host facts and declared capabilities used by the production architecture guard.
+    const selectedHomes = selectCatalogHomes(process.arch, capabilities, providerArch);
+    if (selectedHomes.excluded.length > 0)
+      console.info("HOME_PERSISTENCE_EXCLUDED", {
+        arch: process.arch,
+        providerArch,
+        provider: providerId,
+        types: selectedHomes.excluded.map(([type]) => type),
+      });
+    const catalogHomes = selectedHomes.supported.map(([type, user, target], index) => ({
+      type,
+      user,
+      target,
+      service: `catalog-${index}-${nonce}`,
+    }));
     const persistedHomes = [
       { service: php, user: "www-data", target: "/var/www" },
       { service: node, user: "node", target: "/home/node" },
       ...catalogHomes,
     ];
-    const api = makePodmanApiClient(socket.socketPath);
     const request = api.request;
     if (request === undefined) throw new Error("Podman HTTP API is required");
     const call = (input: EngineHttpRequest) =>

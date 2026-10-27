@@ -139,8 +139,8 @@ services:
     <Step name="plan">
       <Run command="lando app:cache:refresh" />
       <Run command="lando info --format=json" />
-      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zzz-custom\\.ini\",\\s*\"source\":\\s*\"[^\"]*/config/custom-php\\.ini\",\\s*\"readOnly\":\\s*true" } }} />
-      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\",\\s*\"source\":\\s*\"[^\"]*/config/custom-mariadb\\.cnf\",\\s*\"readOnly\":\\s*true" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/usr/local/etc/php/conf\\.d/zzz-custom\\.ini\",\\s*\"source\":\\s*\"[^\"]*(?:/|\\\\\\\\)bind-mounted-config(?:/|\\\\\\\\)config(?:/|\\\\\\\\)custom-php\\.ini\",\\s*\"readOnly\":\\s*true" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/etc/mysql/conf\\.d/zzz-custom\\.cnf\",\\s*\"source\":\\s*\"[^\"]*(?:/|\\\\\\\\)bind-mounted-config(?:/|\\\\\\\\)config(?:/|\\\\\\\\)custom-mariadb\\.cnf\",\\s*\"readOnly\":\\s*true" } }} />
     </Step>
   </Scenario>
 

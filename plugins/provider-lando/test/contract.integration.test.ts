@@ -135,7 +135,9 @@ const archiveFile = (name: string, payload: Uint8Array): Uint8Array | undefined 
   return output;
 };
 
-const createBodyBinds = (body: unknown): ReadonlyArray<string> => {
+type FakeBind = { readonly source: string; readonly target: string };
+
+const createBodyBinds = (body: unknown): ReadonlyArray<FakeBind> => {
   const parsed =
     typeof body === "string"
       ? (() => {
@@ -150,19 +152,35 @@ const createBodyBinds = (body: unknown): ReadonlyArray<string> => {
   const hostConfig = Reflect.get(parsed, "HostConfig");
   if (typeof hostConfig !== "object" || hostConfig === null) return [];
   const binds = Reflect.get(hostConfig, "Binds");
-  return Array.isArray(binds) ? binds.filter((bind): bind is string => typeof bind === "string") : [];
-};
-
-const archiveForBindTarget = (binds: ReadonlyArray<string>, archivePath: string): Uint8Array | undefined => {
-  for (const bind of binds) {
+  const result: FakeBind[] = [];
+  for (const bind of Array.isArray(binds) ? binds : []) {
+    if (typeof bind !== "string") continue;
     const withoutOptions = bind.endsWith(":ro") || bind.endsWith(":rw") ? bind.slice(0, -3) : bind;
     const separator = withoutOptions.lastIndexOf(":");
-    if (separator < 0) continue;
-    const host = withoutOptions.slice(0, separator);
-    const target = withoutOptions.slice(separator + 1);
+    if (separator >= 0)
+      result.push({
+        source: withoutOptions.slice(0, separator),
+        target: withoutOptions.slice(separator + 1),
+      });
+  }
+  const mounts = Reflect.get(hostConfig, "Mounts");
+  for (const mount of Array.isArray(mounts) ? mounts : []) {
+    if (typeof mount !== "object" || mount === null || Reflect.get(mount, "Type") !== "bind") continue;
+    const source = Reflect.get(mount, "Source");
+    const target = Reflect.get(mount, "Target");
+    if (typeof source === "string" && typeof target === "string") result.push({ source, target });
+  }
+  return result;
+};
+
+const archiveForBindTarget = (
+  binds: ReadonlyArray<FakeBind>,
+  archivePath: string,
+): Uint8Array | undefined => {
+  for (const { source, target } of binds) {
     if (target !== archivePath) continue;
     try {
-      const payload = readFileSync(host);
+      const payload = readFileSync(source);
       const name = target.slice(target.lastIndexOf("/") + 1) || target;
       return archiveFile(name, payload);
     } catch {
@@ -207,7 +225,7 @@ const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
   const execs = new Map<string, number>();
-  const containerBinds = new Map<string, ReadonlyArray<string>>();
+  const containerBinds = new Map<string, ReadonlyArray<FakeBind>>();
   const calls: EngineHttpRequest[] = [];
   const pulledImages = new Set<string>();
 
@@ -757,6 +775,38 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
 };
 
 describe("provider-lando RuntimeProvider contract", () => {
+  test("fake archives resolve both bind forms and exclude volumes and unrelated targets", () => {
+    const source = import.meta.filename;
+    const binds = createBodyBinds(
+      JSON.stringify({
+        HostConfig: {
+          Binds: [`${source}:/etc/short.ini:ro`, "C:\\config\\php.ini:/etc/windows.ini:ro"],
+          Mounts: [
+            {
+              Type: "bind",
+              Source: source,
+              Target: "/etc/strict.ini",
+              ReadOnly: true,
+              BindOptions: { CreateMountpoint: false },
+            },
+            { Type: "volume", Source: source, Target: "/etc/volume.ini" },
+          ],
+        },
+      }),
+    );
+    expect(binds).toEqual([
+      { source, target: "/etc/short.ini" },
+      { source: "C:\\config\\php.ini", target: "/etc/windows.ini" },
+      { source, target: "/etc/strict.ini" },
+    ]);
+    for (const filename of ["short.ini", "strict.ini"])
+      expect(archiveForBindTarget(binds, `/etc/${filename}`)).toEqual(
+        archiveFile(filename, readFileSync(source)),
+      );
+    expect(archiveForBindTarget(binds, "/etc/volume.ini")).toBeUndefined();
+    expect(archiveForBindTarget(binds, "/elsewhere/strict.ini")).toBeUndefined();
+  });
+
   test("passes the SDK provider contract suite", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
