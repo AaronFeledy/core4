@@ -8,7 +8,6 @@ services:
   web:
     type: compose
     image: traefik/whoami:v1.10
-    home: false
     networks:
       backend: {}
       shared:
@@ -16,5 +15,4 @@ services:
   cache:
     type: compose
     image: valkey/valkey:8-alpine
-    home: false
     networks: [backend]

@@ -197,8 +197,6 @@ lando exec app -- /app/.venv/bin/gunicorn --bind 0.0.0.0:5000 app:app
 
 ## Pin an image
 
-For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
-
 Slim is the default. Use the full image when wheels need build tools. A custom `image:` or a Dockerfile selected by `build.context` owns its toolchain, including `uv`; Lando only installs `uv` for the stock `python:3.12-slim` image:
 
 ```yaml

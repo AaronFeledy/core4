@@ -7,7 +7,7 @@ import type { ServiceType } from "@lando/sdk/services";
 
 import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
-import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
+import { APACHE_DEFAULT_SITE_BUILD_STEP_ID, hasCustomPhpImage } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
@@ -49,6 +49,25 @@ const composePhpPlan = (serviceType: ServiceType, raw: unknown, appRoot = APP_RO
     metadata,
     featureOverrides,
   });
+
+test.each([
+  "php:8.3-apache-bookworm",
+  "docker.io/library/php:8.3-apache-bookworm",
+  "index.docker.io/php:8.3-apache-bookworm",
+  "registry-1.docker.io/library/php:8.3-apache-bookworm",
+])("recognizes official PHP alias %s as catalog-owned", (image) => {
+  const service = decodeService({ type: "php:8.3", image });
+  expect(hasCustomPhpImage(service)).toBe(false);
+});
+
+test.each([
+  "ghcr.io/library/php:8.3-apache-bookworm",
+  "localhost/php:8.3-apache-bookworm",
+  "php:8.3-apache-bookworm@sha256:abc",
+])("retains custom PHP identity for %s", (image) => {
+  const service = decodeService({ type: "php:8.3", image });
+  expect(hasCustomPhpImage(service)).toBe(true);
+});
 
 interface PlannedBuildStep {
   readonly id?: string;

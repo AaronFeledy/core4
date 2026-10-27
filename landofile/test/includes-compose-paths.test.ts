@@ -165,7 +165,6 @@ test("rebases override payloads at every path-bearing mapping level without revi
     services: override({
       mail: override({
         type: "compose",
-        home: false,
         appMount: false,
         volumes: override([
           "./mailstack/data:/data",

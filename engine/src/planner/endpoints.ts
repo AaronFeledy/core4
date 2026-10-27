@@ -4,7 +4,6 @@ import { type Context, Effect, Predicate, Schema } from "effect";
 import {
   type CapabilityError,
   DataTreeOwnershipCapabilityError,
-  HomePathCapabilityError,
   LandofileValidationError,
   type PublicationUnsupportedError,
   type RouteInputError,
@@ -77,7 +76,6 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   FinalizedServices,
   | LandofileValidationError
   | CapabilityError
-  | HomePathCapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
   | RouteInputError
@@ -162,6 +160,31 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     );
     const storageOwnership = (draft.storageOwnership ?? []).filter((tree) => volumeTargets.has(tree.target));
     const redirectSteps = redirectLogSourceBuildSteps({ logSources, base: draft.base });
+    const shadowResult = yield* deriveMountOverlays({
+      context,
+      servicePlan: preparedMounts,
+      fileSystem: input.fileSystem,
+    });
+    shadowHostChecks.push(...shadowResult.shadowHostChecks);
+    const planWithShadows = shadowResult.servicePlan;
+    const appMount = serviceAppMount(planWithShadows);
+    let gitDirectories: GitHostCheck["directories"] = null;
+    if (bindRealization(input.providerCapabilities) === "passthrough" && appMount !== undefined) {
+      const gitPath = `${appMount.source}/.git`;
+      gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
+      gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
+    }
+    const homePlan = applyServiceHome({
+      servicePlan: {
+        ...planWithShadows,
+        mounts: [...planWithShadows.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
+      },
+      serviceName: name,
+      appSlug: input.appSlug,
+      appRoot: input.appRoot,
+      intent: homeIntent,
+    });
+    if (homePlan instanceof LandofileValidationError) return yield* Effect.fail(homePlan);
     // Data-tree ownership resolves here, where the composed `draft.user` and
     // the service type's image identity are both final. The step it produces
     // prepares the tree during the image build, so the planned user owns the
@@ -177,7 +200,26 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     if (ownedTrees instanceof DataTreeOwnershipCapabilityError) {
       return yield* Effect.fail(ownedTrees);
     }
-    const ownershipStep = dataTreeOwnershipStep(ownedTrees);
+    const ownershipTrees = [...ownedTrees];
+    const home = homePlan.home;
+    if (
+      home?.state === "persisted" &&
+      home.user !== undefined &&
+      !homeIntent.customImage &&
+      homeIntent.identity?.preparedHomes?.includes(home.user)
+    ) {
+      const preparedHome = resolveDataTreeOwnership({
+        serviceName: name,
+        serviceType: homeIntent.serviceType,
+        identity: homeIntent.identity,
+        hasCustomImage: false,
+        trees: [{ target: home.target, seededOwners: [] }],
+        plannedUser: home.user,
+      });
+      if (preparedHome instanceof DataTreeOwnershipCapabilityError) return yield* Effect.fail(preparedHome);
+      ownershipTrees.push(...preparedHome);
+    }
+    const ownershipStep = dataTreeOwnershipStep(ownershipTrees);
     const draftForPlan = {
       ...draft,
       storageOwnership,
@@ -193,7 +235,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     const planned = applyHostReachability(
       {
         ...servicePlanFromDraft({ ...draftForPlan, endpoints }, [], input.metadata, extensionsForPlan),
-        mounts: preparedMounts.mounts,
+        mounts: homePlan.mounts,
+        home: homePlan.home,
       },
       input.providerCapabilities.hostReachability,
     );
@@ -207,49 +250,17 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       authoredArtifact === undefined ? servicePlan : { ...servicePlan, artifact: authoredArtifact };
     for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
       name,
-      artifactBuild: withArtifact.artifact?.kind === "build",
+      artifactBuild: withArtifact.artifact?.kind === "build" || ownershipStep !== undefined,
     }))
       yield* Effect.fail(error);
 
-    const realization = bindRealization(input.providerCapabilities);
-    const shadowResult = yield* deriveMountOverlays({
-      context,
-      servicePlan: withArtifact,
-      fileSystem: input.fileSystem,
-    });
-    shadowHostChecks.push(...shadowResult.shadowHostChecks);
-    const planWithShadows = shadowResult.servicePlan;
-    const appMount = serviceAppMount(planWithShadows);
-
-    let gitDirectories: GitHostCheck["directories"] = null;
-    if (realization === "passthrough" && appMount !== undefined) {
-      const gitPath = `${appMount.source}/.git`;
-      gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
-      gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
-    }
-    const withHome = applyServiceHome({
-      servicePlan: {
-        ...planWithShadows,
-        mounts: [...planWithShadows.mounts, ...worktreeGitMounts(planWithShadows, gitDirectories)],
-      },
-      serviceName: name,
-      appSlug: input.appSlug,
-      appRoot: input.appRoot,
-      intent: homeIntent,
-    });
-    if (withHome instanceof HomePathCapabilityError) {
-      return yield* Effect.fail(withHome);
-    }
-    if (withHome instanceof LandofileValidationError) {
-      return yield* Effect.fail(withHome);
-    }
     for (const error of serviceResourceCapabilityErrors(input.provider, input.providerCapabilities, {
       name,
-      bindMounts: withHome.mounts.some((mount) => mount.type === "bind"),
-      persistentStorage: withHome.mounts.some((mount) => mount.type === "volume"),
+      bindMounts: withArtifact.mounts.some((mount) => mount.type === "bind"),
+      persistentStorage: withArtifact.mounts.some((mount) => mount.type === "volume"),
     }))
       yield* Effect.fail(error);
-    const servicePlanWithHome = realizeServiceMounts(withHome, input.providerCapabilities);
+    const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities);
 
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {

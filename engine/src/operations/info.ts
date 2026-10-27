@@ -99,6 +99,7 @@ const toServiceInfo = (
     provider: String(service.provider),
     primary: service.primary,
     status,
+    ...(service.home === undefined ? {} : { home: service.home }),
     connections,
     ...(logSources.length === 0 ? {} : { logSources }),
     ...(creds === undefined ? {} : { creds }),

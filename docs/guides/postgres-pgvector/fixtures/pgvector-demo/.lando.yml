@@ -3,7 +3,6 @@ services:
   db:
     type: postgres:18
     image: pgvector/pgvector:pg18
-    home: false
   app:
     type: "python:3.12"
     primary: true

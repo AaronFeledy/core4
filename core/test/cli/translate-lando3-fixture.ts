@@ -1,6 +1,7 @@
 import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { layerWith as pluginRegistryLayer } from "@lando/engine/plugins/registry";
 import { makeConfigTranslators } from "@lando/lando3";
 import { configTranslators } from "@lando/lando4";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -13,6 +14,9 @@ import {
 import { lampDecomposer } from "../../src/recipes/builtin/lamp/decomposer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
+
+// The bundled service catalog the CLI supplies through its plugin bootstrap.
+const bundledCatalog = pluginRegistryLayer({ user: false, app: false });
 
 export const originals = {
   ".lando.yml": "name: commit-test\nrecipe: lamp\nconfig: {php: '8.3'}\n",
@@ -59,7 +63,7 @@ export const withFixture = async (
             translators,
             privateFileAccess: ownerOnlyFileAccess,
             ...options,
-          }),
+          }).pipe(Effect.provide(bundledCatalog)),
       }),
     );
   } finally {

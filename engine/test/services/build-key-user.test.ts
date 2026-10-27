@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
+import { homeStoreName } from "../../src/planner/home.ts";
 
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -76,7 +77,7 @@ describe("build step user identity", () => {
         mounts: [
           {
             type: "volume",
-            store: "lando-app-web-home",
+            store: homeStoreName("app", "web", "root"),
             target: PortablePath.make("/root"),
             readOnly: false,
           },
@@ -143,7 +144,7 @@ describe("appBuildKeyForStep user identity", () => {
         mounts: [
           {
             type: "volume",
-            store: "lando-app-web-home",
+            store: homeStoreName("app", "web", "root"),
             target: PortablePath.make("/root"),
             readOnly: false,
           },

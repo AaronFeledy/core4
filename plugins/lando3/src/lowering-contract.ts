@@ -1,4 +1,4 @@
-import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import type { ConfigTranslateDiagnostic, ConfigTranslateExpectation } from "@lando/sdk/schema";
 import type { Lando3Path, LegacyOccurrence } from "./contract.ts";
 
 export type V4Wire = Readonly<Record<string, unknown>>;
@@ -20,6 +20,7 @@ export interface LoweringPatch {
   readonly companions?: Readonly<Record<string, V4Wire>>;
   readonly topLevel?: V4Wire;
   readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
+  readonly expectations?: ReadonlyArray<ConfigTranslateExpectation>;
   readonly blocked?: true;
 }
 

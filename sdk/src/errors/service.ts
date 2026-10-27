@@ -115,22 +115,6 @@ export type AppFeatureError =
   | PhpMyAdminHostsCredsError;
 
 /**
- * Raised before any provider action when a service asks for a persistent home
- * but the planner cannot know where that home is. Carries the service and the
- * two ways to resolve it.
- */
-export class HomePathCapabilityError extends Schema.TaggedError<HomePathCapabilityError>()(
-  "HomePathCapabilityError",
-  {
-    message: Schema.String,
-    service: Schema.String,
-    serviceType: Schema.String,
-    user: Schema.optional(Schema.String),
-    remediation: Remediation,
-  },
-) {}
-
-/**
  * Raised before any provider action when a service mounts a data tree its
  * planned user has to write to and the planner cannot make that user own it.
  * Carries the mounted target and the Landofile option that has to change.

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { serviceAppMount } from "@lando/sdk/schema";
+import { ServiceName, serviceAppMount } from "@lando/sdk/schema";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
@@ -12,6 +12,35 @@ import * as FileSystem from "../../src/services/file-system.ts";
 import { loadLandofileLayers } from "../../src/services/landofile-live.ts";
 import * as Planner from "../../src/services/planner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+
+test("a catalog type override does not grant identity to a Compose include's custom image", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-compose-home-"));
+  try {
+    await writeFile(join(root, "compose.yaml"), "services:\n  web:\n    image: example/custom-node:22\n");
+    await writeFile(
+      join(root, ".lando.yml"),
+      "name: include-home\ninclude: [compose.yaml]\nservices:\n  web:\n    type: node:22\n",
+    );
+    const plan = await Effect.runPromise(
+      Effect.gen(function* () {
+        const compiled = yield* loadLandofileLayers(root, join(root, ".lando.yml"));
+        return yield* (yield* AppPlanner).plan(compiled, TestRuntimeProvider.capabilities);
+      }).pipe(
+        Effect.provide(Planner.layer),
+        Effect.provide(PluginRegistry.layer),
+        Effect.provide(FileSystem.layer),
+        Effect.provide(makeTestStateStore().layer),
+      ),
+    );
+    expect(plan.services[ServiceName.make("web")]?.home).toEqual({
+      state: "unknown",
+      reason: "custom-image",
+    });
+    expect(plan.stores).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test.each([
   "include: [mailstack/compose.yaml]",

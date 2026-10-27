@@ -86,17 +86,14 @@ services:
   web:
     type: nginx
     user: nginx
-    home: false
     port: 8080
 ```
 
-`home: false` is there because Lando persists the planned user's home directory and only knows where `root`'s home is on this image. Use `home.path:` instead when you want that directory to survive a rebuild. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
+Lando plans no home store for the `nginx` account, whose home on this image is its cache directory; set `home.path:` when you want a directory to survive a rebuild. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
 
 If you set your own `command:` or `entrypoint:`, your startup owns nginx's configuration. Lando does not generate a launcher or remove the image's default site.
 
 ## Pin a version
-
-For a custom `image:`, also set `home: false` on that service, or supply `home.path` for a home directory you know exists in the image. Without either, planning fails because Lando cannot infer the custom image's home. See [service home configuration](./home-and-host.mdx).
 
 Set `image:` when `nginx:1.26-alpine` isn't the version you want:
 
