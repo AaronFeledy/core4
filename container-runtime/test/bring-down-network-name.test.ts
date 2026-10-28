@@ -123,6 +123,7 @@ test("Podman bring-down removes the private network named in the realized plan",
     slug: "site",
     root: "/app",
     provider: "lando",
+    extensions: {},
     services: {},
     networking: {
       perAppBridge: { name: "lando-vm-aabbccddeeff-112233445566", driver: "bridge" },
