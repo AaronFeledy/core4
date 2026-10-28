@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { compileRecipeSource } from "@lando/sdk/recipes";
 import {
   LandofileAuthoringShape,
   LandofileShape,
@@ -366,18 +367,32 @@ test("skips non-Landofile fixture files only when a reason is listed", () => {
   console.info(`Landofile parity skipped: ${skipped.length}`);
 });
 
-test("bundled recipe manifests agree with RecipeManifest", async () => {
-  // Given bundled recipe.yml files. Empty YAML maps parse as null, so a manifest may be rejected.
-  const paths = [
-    ...new Bun.Glob("recipes/**/recipe.yml").scanSync({ cwd: fileURLToPath(root), dot: true }),
-  ].sort();
-  expect(paths.length).toBeGreaterThan(0);
-  for (const id of paths) {
-    const input = Bun.YAML.parse(await Bun.file(new URL(id, root)).text());
+test("compiled recipe manifests agree with RecipeManifest", async () => {
+  // Given the public compiler's derived manifest and invalid wire variants.
+  const manifest = Result.getOrThrow(
+    compileRecipeSource(
+      {
+        id: "parity",
+        title: "Parity",
+        description: "Compiled recipe contract fixture",
+        version: "1.0.0",
+        options: { enabled: { type: { kind: "boolean" }, default: false, prompt: {} } },
+        config: { runtime: 4 },
+      },
+      { sourceKind: "bundled", packageName: "@lando/recipe-parity", assets: [] },
+    ),
+  );
+  const fixtures = [
+    { id: "compiled", input: manifest, accepted: true },
+    { id: "invalid-title", input: { ...manifest, title: 7 }, accepted: false },
+    { id: "excess-property", input: { ...manifest, unexpected: true }, accepted: false },
+  ];
+  for (const { id, input, accepted } of fixtures) {
+    // When both public schema interfaces validate the same value.
     const decoded = Schema.decodeUnknownResult(RecipeManifest)(input, parseOptions);
     const standard = await RecipeManifestStandardSchema["~standard"].validate(input);
-    const accepted = Result.isSuccess(decoded);
     // Then the Standard Schema view agrees on accept/reject and on every issue path and message.
+    expect(Result.isSuccess(decoded), id).toBe(accepted);
     expect(standard.issues === undefined, id).toBe(accepted);
     expect(issueDetails(standard.issues ?? []), id).toEqual(decoderIssues(decoded));
   }
