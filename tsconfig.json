@@ -81,6 +81,9 @@
       "path": "./plugins/sql"
     },
     {
+      "path": "./plugins/github-actions"
+    },
+    {
       "path": "./plugins/lando4"
     },
     {

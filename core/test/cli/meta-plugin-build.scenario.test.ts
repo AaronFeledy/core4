@@ -132,6 +132,15 @@ describe("meta:plugin:build command", () => {
         "bun",
         "--format",
         "esm",
+        "--splitting",
+        "--external",
+        "@lando/sdk",
+        "--external",
+        "@lando/sdk/*",
+        "--external",
+        "effect",
+        "--external",
+        "effect/*",
       ],
       ["/opt/bun", "x", "tsc", "--project", ".lando-plugin-build.tsconfig.json"],
     ]);
@@ -220,6 +229,7 @@ describe("meta:plugin:build command", () => {
     expect(declarationConfig).toEqual({
       extends: "./tsconfig.json",
       compilerOptions: {
+        composite: false,
         declaration: true,
         emitDeclarationOnly: true,
         outDir: "./dist",
