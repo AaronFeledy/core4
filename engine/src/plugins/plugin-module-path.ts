@@ -76,5 +76,5 @@ export const resolvePluginModulePath = async (
     );
   }
 
-  return resolved;
+  return realResolved;
 };

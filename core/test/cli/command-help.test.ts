@@ -4,6 +4,7 @@ import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.t
 import { renderCommandHelp, renderToolingHelp } from "../../src/cli/cli-help.ts";
 import { commandStructureExample } from "../../src/cli/compiled-argv.ts";
 import { shouldStyleHelp } from "../../src/cli/help-style.ts";
+import { Flags } from "../../src/cli/spec/metadata.ts";
 
 const requireBuiltIn = (token: string) => {
   const entry = resolveBuiltInCommand(token);
@@ -31,6 +32,45 @@ const flagRows = (text: string): ReadonlyArray<string> =>
     .filter((line) => line.startsWith("--"));
 
 describe("renderCommandHelp", () => {
+  test("renders value syntax, aliases, descriptions, and descriptionless choices from flag metadata", () => {
+    const help = renderCommandHelp({
+      spec: {
+        id: "app:example",
+        summary: "Example command.",
+        flags: {
+          enabled: Flags.boolean({ char: "e", description: "Enable processing." }),
+          count: Flags.integer({ description: "Number of results." }),
+          target: Flags.string({ char: "t", description: "Target name." }),
+          mode: Flags.string({ options: ["local", "remote"] }),
+          label: Flags.string({ multiple: true, description: "Repeat for each label." }),
+        },
+      },
+      status: { kind: "implemented" },
+    });
+
+    expect(flagRows(help)).toEqual([
+      "--count <integer> Number of results.",
+      "--enabled, -e Enable processing.",
+      "--label <value> Repeat for each label.",
+      "--mode <value> (local, remote)",
+      "--target, -t <value> Target name.",
+    ]);
+    expect(help).toContain("--json [fields]");
+    expect(help).not.toContain("--json <value>");
+  });
+
+  test("advertises the registered logs flag types and aliases", () => {
+    const help = renderCommandHelp(requireBuiltIn("logs"));
+    const rows = flagRows(help);
+
+    expect(rows).toContain("--follow, -f Stream new log lines until interrupted.");
+    expect(rows).toContain("--service, -s <value> Filter logs to a single planned service.");
+    expect(rows).toContain("--tail <integer> Show last N lines per service.");
+    expect(rows).toContain(
+      "--since <value> Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp.",
+    );
+  });
+
   test("omits the $ prefix from USAGE when rendering start", () => {
     // Given the registered start command
     const entry = requireBuiltIn("start");
