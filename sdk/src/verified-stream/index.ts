@@ -52,6 +52,24 @@ const removeIfPresent = (path: string): Promise<void> =>
     .then(() => undefined)
     .catch(() => undefined);
 
+const sizeMismatch = (sizeBytes: number, expectedSizeBytes: number): VerifiedStreamError =>
+  new VerifiedStreamError({
+    reason: "size",
+    message: `Downloaded size ${sizeBytes} does not match expected ${expectedSizeBytes}.`,
+    expectedSizeBytes,
+    actualSizeBytes: sizeBytes,
+  });
+
+const invalidExpectedSize = (expectedSizeBytes: number | undefined): VerifiedStreamError | undefined =>
+  expectedSizeBytes !== undefined && (!Number.isSafeInteger(expectedSizeBytes) || expectedSizeBytes < 0)
+    ? new VerifiedStreamError({
+        reason: "size",
+        message: "Expected download size must be a nonnegative safe integer.",
+        expectedSizeBytes,
+        actualSizeBytes: 0,
+      })
+    : undefined;
+
 const verify = (
   sha256: string,
   sizeBytes: number,
@@ -59,12 +77,7 @@ const verify = (
   expectedSizeBytes: number | undefined,
 ): VerifiedStreamError | undefined => {
   if (expectedSizeBytes !== undefined && sizeBytes !== expectedSizeBytes) {
-    return new VerifiedStreamError({
-      reason: "size",
-      message: `Downloaded size ${sizeBytes} does not match expected ${expectedSizeBytes}.`,
-      expectedSizeBytes,
-      actualSizeBytes: sizeBytes,
-    });
+    return sizeMismatch(sizeBytes, expectedSizeBytes);
   }
   if (expectedSha256 !== undefined && sha256 !== expectedSha256) {
     return new VerifiedStreamError({
@@ -85,6 +98,8 @@ const verify = (
 export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(function* <E, R>(
   params: PersistVerifiedStreamParams<E, R>,
 ): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> {
+  const invalidSize = invalidExpectedSize(params.expectedSizeBytes);
+  if (invalidSize !== undefined) return yield* Effect.fail(invalidSize);
   const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
   const committed = yield* Ref.make(false);
 
@@ -119,14 +134,21 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
   const size = yield* Ref.make(0);
 
   yield* Stream.runForEach(params.body, (chunk) =>
-    Effect.tryPromise({
-      try: async () => {
-        await handle.write(chunk);
-        hash.update(chunk);
-      },
-      catch: (cause) =>
-        new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
-    }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
+    Effect.gen(function* () {
+      const nextSize = (yield* Ref.get(size)) + chunk.length;
+      if (params.expectedSizeBytes !== undefined && nextSize > params.expectedSizeBytes) {
+        return yield* Effect.fail(sizeMismatch(nextSize, params.expectedSizeBytes));
+      }
+      yield* Effect.tryPromise({
+        try: async () => {
+          await handle.write(chunk);
+          hash.update(chunk);
+        },
+        catch: (cause) =>
+          new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
+      });
+      yield* Ref.set(size, nextSize);
+    }),
   );
 
   const sizeBytes = yield* Ref.get(size);
@@ -169,13 +191,20 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
 export const collectVerifiedStream = Effect.fn("VerifiedStream.collect")(function* <E, R>(
   params: CollectVerifiedStreamParams<E, R>,
 ): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, R> {
+  const invalidSize = invalidExpectedSize(params.expectedSizeBytes);
+  if (invalidSize !== undefined) return yield* Effect.fail(invalidSize);
   const hash = createHash("sha256");
   const size = yield* Ref.make(0);
 
   yield* Stream.runForEach(params.body, (chunk) =>
-    Effect.sync(() => {
+    Effect.gen(function* () {
+      const nextSize = (yield* Ref.get(size)) + chunk.length;
+      if (params.expectedSizeBytes !== undefined && nextSize > params.expectedSizeBytes) {
+        return yield* Effect.fail(sizeMismatch(nextSize, params.expectedSizeBytes));
+      }
       hash.update(chunk);
-    }).pipe(Effect.andThen(Ref.update(size, (n) => n + chunk.length))),
+      yield* Ref.set(size, nextSize);
+    }),
   );
 
   const sizeBytes = yield* Ref.get(size);
