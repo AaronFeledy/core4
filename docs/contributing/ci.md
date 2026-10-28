@@ -42,6 +42,7 @@ Complete these mandatory per-PR requirements, with a row for each platform where
 - [ ] Portable static gates, compiled builds, relocated-binary smoke, and scenario guides pass for `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `windows-x64`, and `windows-arm64`.
 - [ ] Scenario and recipe suites pass on every per-PR platform.
 - [ ] Linux x64 unit tests, e2e smoke, and gating performance suites pass. Performance evidence includes startup and first-paint budgets plus compiled renderer whole-process exit duration, piped and under a PTY; the TTY median must not exceed the piped median by more than 150 ms.
+- [ ] Separately measured Linux x64 compiled tooling against an actual running app meets the end-to-end budgets of < 600 ms cold and < 250 ms hot, including provider exec. Record the command, app, provider, binary identity, cold/hot timings, and provider request counts. A host-only tooling benchmark pass does not satisfy this row.
 - [ ] Tests, TypeScript typecheck, Biome/lint, codegen pure drift, schema compatibility, schema/docs generation, and docs build pass. Pure drift success does not establish semantic gate success.
 - [ ] Provider, plugin-abstraction, library API, machine-output, deprecation, redaction, managed-file, coexistence, scenario, recipe, and executable-guide contracts pass.
 - [ ] Guide lint, coverage, public transcripts, source-mapper, and guide component-schema gates pass.
@@ -321,6 +322,8 @@ Do not commit profile dumps or `*.metafile.md` artifacts.
 ## Startup and tooling perf budgets
 
 The `perf-budget-linux-x64` job runs for `runtime` and `providers` PRs and broad CI. It runs `bun run bench:opentui-startup -- --binary <binary>` and the tooling hot-path benchmark against the `build-linux-x64` binary artifact. The tracked budgets live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code. `openTuiStartup` keeps the 50 ms startup and first-output p95 budgets for `lando --version`. `ttyRendererOverhead` runs `lando version --renderer=lando` 20 times piped and 20 times under a Bun PTY, then requires the TTY median to stay within 150 ms of the piped median. The explicit renderer flag bypasses the app-free `version` fast path so every sample constructs the default renderer. This catches renderer work that keeps the process alive after output. The tooling gate checks its warm p95 baseline and regression budget separately.
+
+The tooling hot-path benchmark runs a host-only fixture with no provider exec. The CI gate enforces a 25% allowance over its current 900 ms warm p95 baseline; the listed 150 ms warm target is an optimization target, not the pass threshold. Separately measure a compiled tooling command against an actual running app through provider exec. Record same-toolchain cold and hot end-to-end timings (< 600 ms and < 250 ms), the app and provider, binary identity, provider request counts, timing method, and logs in the PR evidence table. A skipped or missing live measurement leaves broader acceptance unmet even when the selected `ci` check passes.
 
 ```bash
 bun run build
