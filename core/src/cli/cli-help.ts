@@ -1,4 +1,4 @@
-import type { CompiledCommand, OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
+import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
 import { type OptInResultFormat, commandResultFormats, formatFlagDefsForCommand } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { bold, cyan, dim } from "./help-style";
@@ -23,8 +23,8 @@ export type CommandHelpSpec = {
   readonly summary: string;
   readonly topLevelAlias?: Parameters<typeof resolveTopLevelAliases>[0]["topLevelAlias"];
   readonly aliases?: Parameters<typeof resolveTopLevelAliases>[0]["aliases"];
-  readonly args?: CompiledCommand["args"];
-  readonly flags?: CompiledCommand["flags"];
+  readonly args?: Readonly<Record<string, OclifArgDefinition>>;
+  readonly flags?: Readonly<Record<string, OclifFlagDefinition>>;
   readonly examples?: ReadonlyArray<string>;
   readonly usage?: string;
   readonly strict?: boolean;
@@ -99,7 +99,9 @@ const typeableFor = (
 
 export const helpFlagToken = (name: string, definition: OclifFlagDefinition): string => {
   const short = definition.char === undefined ? "" : `, -${definition.char}`;
-  return `--${definition.name ?? name}${short}`;
+  const value =
+    definition.type === "boolean" ? "" : definition.valueType === "integer" ? " <integer>" : " <value>";
+  return `--${definition.name ?? name}${short}${value}`;
 };
 
 export const helpArgToken = (name: string, definition: OclifArgDefinition, repeatable: boolean): string => {
@@ -109,7 +111,7 @@ export const helpArgToken = (name: string, definition: OclifArgDefinition, repea
 
 export const renderCommandUsage = (
   name: string,
-  command: { readonly args?: CompiledCommand["args"]; readonly strict?: boolean; readonly usage?: string },
+  command: Pick<CommandHelpSpec, "args" | "strict" | "usage">,
 ): string => {
   if (command.usage !== undefined && command.usage.length > 0) return `${name} ${command.usage}`;
   const definitions = Object.entries(command.args ?? {});
@@ -119,7 +121,7 @@ export const renderCommandUsage = (
 };
 
 export const renderCommandHelpFlags = (command: {
-  readonly flags?: CompiledCommand["flags"];
+  readonly flags?: CommandHelpSpec["flags"];
   readonly resultFormats?: ReadonlyArray<OptInResultFormat>;
 }): ReadonlyArray<string> => {
   const entries = Object.entries(formatFlagDefsForCommand(command))
@@ -129,8 +131,8 @@ export const renderCommandHelpFlags = (command: {
   const lines = ["", "FLAGS"];
   for (const [name, definition] of entries) {
     const options = definition.options === undefined ? "" : ` (${definition.options.join(", ")})`;
-    const description = definition.description === undefined ? "" : ` ${definition.description}${options}`;
-    lines.push(`  ${helpFlagToken(name, definition)}${description}`);
+    const description = definition.description === undefined ? "" : ` ${definition.description}`;
+    lines.push(`  ${helpFlagToken(name, definition)}${description}${options}`);
   }
   return lines;
 };

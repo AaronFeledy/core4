@@ -16,6 +16,7 @@ import { composeKnobsForDialect } from "../src/podman/compose-knobs.ts";
 
 import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
 import { HOST_ALIAS_FIXTURES } from "./host-alias-fixtures.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -76,7 +77,11 @@ const captureCreateRequest = async (
     request: (request) =>
       Effect.sync(() => {
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: 200, body: "{}" };
+          const name = decodeURIComponent(request.path.slice("/networks/".length));
+          return {
+            status: 200,
+            body: JSON.stringify(ownedNetworkInspection(planWithCompose(compose, hostAliases), name)),
+          };
         }
         if (request.method === "GET" && request.path.endsWith("/json")) {
           return createRequest === undefined

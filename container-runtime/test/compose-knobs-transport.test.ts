@@ -18,6 +18,7 @@ import {
 
 import { makePodmanApiClient } from "../src/podman/api-client.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
 interface CreateRequest {
   readonly url: string;
@@ -93,7 +94,8 @@ const withIpcServer = async <A>(action: (fixture: IpcFixture) => Promise<A>): Pr
   const server = createServer(async (request, response) => {
     const url = request.url ?? "";
     if (request.method === "GET" && url.includes("/networks/")) {
-      respond(response, 200, "{}");
+      const name = decodeURIComponent(url.slice(url.indexOf("/networks/") + "/networks/".length));
+      respond(response, 200, JSON.stringify(ownedNetworkInspection(plan, name)));
       return;
     }
     if (request.method === "GET" && url.endsWith("/json")) {

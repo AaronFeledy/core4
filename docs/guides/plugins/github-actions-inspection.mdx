@@ -1,0 +1,400 @@
+---
+id: github-actions-inspection
+provider: test
+platforms: [darwin, linux, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, github-actions]
+---
+
+# Inspect GitHub Actions workflows with Lando
+
+`lando github-actions:list` reads the workflow files under `.github/workflows/`
+in a repository and reports what each one declares: its name, triggers, jobs,
+declared `needs`, runner labels, step kinds, and any file-level problem with a
+line and column. It reads files on your machine and nothing else. It does not
+run a workflow, simulate an event, resolve expressions, fetch a reusable
+workflow, or tell you whether a workflow would run under Lando.
+
+The command comes from the optional `@lando/github-actions` plugin. That plugin
+is not bundled with Lando and is not published to npm yet, so you build its
+artifact from a source checkout and link that artifact.
+
+## Link the plugin from a source checkout
+
+You need two things on the host:
+
+- An installed `lando` binary. Follow [Alpha install and bug reports](../../alpha-install-and-bug-reports.md) if you don't have one.
+- A clone of the Lando repository with dependencies installed and sources generated. Run `bun install` and `bun run codegen` in the clone, as in the [source-build steps](../../alpha-install-and-bug-reports.md#option-2-build-from-source). You don't need to compile Lando from that clone; the installed binary loads the plugin from it.
+
+Bun prepares the checkout and builds the plugin. From the clone's root, run:
+
+```sh
+bun run --filter='@lando/github-actions' build:artifact
+```
+
+The artifact bundles the plugin's private dependencies into lazy-loaded modules;
+Lando supplies the SDK and Effect. After that, the installed `lando` runs the
+plugin without a separate Bun installation. Keep the artifact in place while
+the link exists, and rebuild it after changing the plugin's source.
+
+Link the plugin directory, replacing `/path/to/core4` with your clone:
+
+```sh
+lando meta:plugin:link /path/to/core4/plugins/github-actions/dist
+```
+
+Check that the command is now registered:
+
+```sh
+lando github-actions:list --help
+```
+
+The help text lists `--root` and `--workflow`. If `meta:plugin:link` fails with
+`PluginManifestError`, the checkout is out of date or incomplete; pull the
+latest `main`, rerun `bun install` and the artifact build, and link again. The general
+[link a local plugin](./link-local-plugin.mdx) guide explains where the link is
+written and how to unlink.
+
+## Run lando github-actions:list
+
+Run the command from the repository you want to inspect:
+
+```sh
+cd /path/to/your/repo
+lando github-actions:list
+```
+
+Without flags the command inspects the directory you ran it from. The report
+below is what the plugin prints for a repository containing these two files.
+`ci.yml` is a valid workflow:
+
+```yaml
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bun install
+      - run: bun test
+  lint:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/lint
+```
+
+`broken.yml` has a YAML syntax error on its second line (`on: [` never closes):
+
+```yaml
+name: Broken
+on: [
+jobs:
+  build:
+    runs-on: ubuntu-latest
+```
+
+The plugin's renderer produces this text for those files:
+
+```text
+GitHub Actions (offline): 2 workflows, 2 jobs, 1 with errors
+
+.github/workflows/broken.yml  1 error
+  .github/workflows/broken.yml:3:1  yaml-syntax
+    Correct YAML syntax at the source location, then inspect again.
+
+.github/workflows/ci.yml  Checks  ok
+  on: pull_request, push
+   7 | build  ubuntu-latest  2 scripts, 1 action
+  13 | lint  ubuntu-latest  1 local action
+     |   needs: build
+
+Nothing was executed. Expressions, reusable workflow bodies, matrix expansion,
+and runner compatibility were not evaluated.
+```
+
+A malformed workflow is a finding, not a failure of the command. The command
+exits `0` for a completed inspection, even when every file has a problem. Read
+the per-file errors and the summary to decide what to fix. Reports omit scripts,
+environment values, input values, and raw parser messages. They include workflow
+names, job IDs, runner labels, and paths; review that metadata before sharing.
+
+The same report in a directory with no `.github/workflows/` folder says
+`No workflow files found in .github/workflows` and suggests `--root <directory>`
+if you started outside the repository, still with exit `0`.
+
+## Get the report as JSON
+
+Scripts and agents should ask for the structured result:
+
+```sh
+lando github-actions:list --format=json
+```
+
+The envelope is `{ "ok": true, "result": { ... } }`. The `result` object carries:
+
+| Field | Meaning |
+| --- | --- |
+| `workflows[]` | One row per discovered file, sorted by path. Each row has `source`, `status`, optional `name`, `triggers`, `jobs`, `diagnostics`, and `diagnosticsTruncated`. |
+| `workflows[].status` | `inspected` (parsed with no errors), `failed` (read or parse problem, see `diagnostics`), or `uninspected` (the aggregate read budget ran out before this file). |
+| `workflows[].jobs[]` | `id`, `source`, `kind` (`job` or `reusable-workflow`), `needs`, `runnerLabels`, `runnerAssessment`, `matrix`, and `steps[]` with a `category` each. |
+| `summary` | Counts of `discovered`, `inspected`, `failed`, and `uninspected` files. |
+| `complete` | `true` when `uninspected` is `0`. |
+| `diagnosticsTruncated` | `true` when any file hit the 50-diagnostic cap. |
+| `assessment` | Always `execution-unassessed`. Nothing in the report says a workflow can or cannot run. |
+
+Every `source` is `{ workflow, line?, column? }`. `line` and `column` are
+1-based and are omitted when the plugin could not place the item.
+
+Runner and step facts are observations, not verdicts. `runnerAssessment` is
+`literal` only when every `runs-on` label is a plain string; an expression or
+a `group:`/`labels:` mapping is `unresolved`. A step `category` of
+`unresolved-action` means the `uses:` value contains `${{ }}`. `matrix` is
+either `absent` or `unassessed`; the plugin never expands a strategy.
+
+## Inspect one workflow or another directory
+
+`--workflow` takes one exact repository-relative path under
+`.github/workflows/` ending in `.yml` or `.yaml`. There are no globs, and no
+other inspection options exist:
+
+```sh
+lando github-actions:list --workflow .github/workflows/ci.yml
+```
+
+`--root` points the command at a different repository without changing
+directory:
+
+```sh
+lando github-actions:list --root /path/to/other/repo --format=json
+```
+
+Both flags combine. Flags that pick an event, a job, a secret, or a runtime are
+rejected because the plugin has nothing to run.
+
+## Fix a command that would not start
+
+When the command cannot begin inspection it exits nonzero with a tagged
+`GithubActionsWorkflowError`. In `--format=json` output the error carries
+`_tag`, `reason`, and `remediation`; input problems add an `issue` with the
+offending `path` (`root` or `workflow`) and `rule`. Fix the input named by
+`reason` and run again:
+
+| `reason` | Cause |
+| --- | --- |
+| `invalid-root` | `--root` is not a readable directory. |
+| `invalid-workflow` | `--workflow` is not an exact `.github/workflows/<file>.yml` or `.yaml` path, or contains traversal or control characters. |
+| `workflow-not-found` | The exact `--workflow` path could not be found. |
+| `unsafe-directory` | `.github` or `.github/workflows` is a symlink or not a directory. |
+| `unreadable-directory` | The plugin cannot list `.github/workflows`. |
+| `inventory-limit` | More than 100 workflow files or 1000 directory entries. Pick one file with `--workflow`. |
+| `invalid-options`, `unknown-input`, `root-required` | The options object passed from a program is malformed. The CLI always supplies `root`. |
+
+Anything that goes wrong after the command starts, such as an unreadable or
+oversized file, becomes a diagnostic on that file's row with exit `0`.
+
+## Read file diagnostics
+
+Each diagnostic has a `code`, a `source` position, and a `remediation` sentence.
+The codes are:
+
+| `code` | What happened |
+| --- | --- |
+| `yaml-syntax` | The file is not valid YAML. The position is the first error. |
+| `yaml-alias` | The file uses a YAML anchor alias (`*name`). Aliases are rejected in this first inspection profile; replace them with explicit values. |
+| `yaml-depth` | YAML nesting deeper than 64 levels. |
+| `yaml-nodes` | More than 50,000 YAML nodes, counting mapping pairs. |
+| `workflow-invalid` | Valid YAML, but not a valid GitHub Actions workflow at that position. Up to 50 are reported per file; `diagnosticsTruncated` is `true` past that. |
+| `workflow-required` | A required property is missing; the safe diagnostic path identifies it. |
+| `workflow-duplicate-key` | A mapping declares the same key more than once. |
+| `workflow-unknown-key` | A mapping contains a property not accepted by the Actions schema. |
+| `workflow-type` | A property has the wrong value type. |
+| `parser-failure` | The workflow parser threw. Simplify the file and validate its syntax. |
+| `file-limit` | The file exceeds the 256 KiB read limit. |
+| `aggregate-limit` | The 8 MiB total read budget ran out. This file is `uninspected`; use `--workflow` to inspect it alone. |
+| `unreadable-file` | The plugin lacks read access. |
+| `invalid-encoding` | The file contains invalid UTF-8 bytes. Save it as UTF-8 and inspect again. |
+| `unsafe-file` | The file is a symlink, not a regular file, or changed identity while being read. |
+
+## Limits
+
+The plugin limits admitted input and parsing work. These checks are not hard
+CPU or memory isolation for hostile files:
+
+| Limit | Value |
+| --- | --- |
+| Workflow files per inspection | 100 |
+| Entries in `.github/workflows/` | 1000 |
+| Bytes per file | 256 KiB |
+| Bytes per inspection | 8 MiB |
+| YAML nesting depth | 64 |
+| YAML nodes per file | 50,000 |
+| Diagnostics per file | 50 |
+
+Files past the per-inspection budget stay `uninspected` and `complete` turns
+`false`. Narrow the run with `--workflow` to inspect them individually.
+
+## What inspection does not do
+
+Treat the report as a map of what the files declare, nothing more. The plugin:
+
+- never executes a job, step, or action, and never registers a runner;
+- never evaluates `${{ }}` expressions, expands a `strategy.matrix`, or fetches a reusable workflow body;
+- never reads a Landofile, selects a provider, uses the network, or touches credentials;
+- never states whether a workflow is compatible with Lando or with any runner.
+
+A workflow with no diagnostics is one the parser accepted. It is not a promise
+that the workflow runs anywhere.
+
+## Call the inspection from a program
+
+The same operation that backs the command is exported as `listWorkflows` from
+`@lando/github-actions/operations`. It takes `{ root, workflow? }`, returns the
+report described above as an Effect, and fails with `GithubActionsWorkflowError`
+for the start-up problems listed earlier. The checkout you linked resolves the
+package; there is no npm install step.
+
+<Guide>
+  <Scenario id="inspect-repository" render>
+    <Step name="inspect-two-workflows">
+      <UseFixture name="demo-repo" />
+      <Run
+        runtime="library"
+        code={`const { listWorkflows } = yield* Effect.promise(() => import("@lando/github-actions/operations"));
+const report = yield* listWorkflows({ root: join(context.testDir, "demo-repo") });
+expect(report.summary).toEqual({ discovered: 2, inspected: 1, failed: 1, uninspected: 0 });
+expect(report.complete).toBe(true);
+expect(report.assessment).toBe("execution-unassessed");
+const [broken, checks] = report.workflows;
+expect(broken?.source.workflow).toBe(".github/workflows/broken.yml");
+expect(broken?.status).toBe("failed");
+expect(broken?.diagnostics.map((item) => item.code)).toEqual(["yaml-syntax"]);
+expect(broken?.diagnostics.map((item) => item.source)).toEqual([{ workflow: ".github/workflows/broken.yml", line: 3, column: 1 }]);
+expect(checks?.status).toBe("inspected");
+expect(checks?.name).toBe("Checks");
+expect(checks?.triggers).toEqual(["pull_request", "push"]);
+expect(checks?.jobs.map((job) => job.id)).toEqual(["build", "lint"]);
+expect(checks?.jobs.map((job) => job.needs)).toEqual([[], ["build"]]);
+expect(checks?.jobs.map((job) => job.runnerLabels)).toEqual([["ubuntu-latest"], ["ubuntu-latest"]]);
+expect(checks?.jobs.map((job) => job.runnerAssessment)).toEqual(["literal", "literal"]);
+expect(checks?.jobs.map((job) => job.steps.map((step) => step.category))).toEqual([
+  ["repository-action", "script", "script"],
+  ["local-action"],
+]);
+expect(JSON.stringify(report)).not.toContain("bun install");`}
+        displayCode={`import { Effect } from "effect";
+import { listWorkflows } from "@lando/github-actions/operations";
+
+const report = await Effect.runPromise(listWorkflows({ root: "/path/to/your/repo" }));
+console.log(report.summary);
+for (const workflow of report.workflows) {
+  console.log(workflow.source.workflow, workflow.status, workflow.triggers);
+  for (const item of workflow.diagnostics) {
+    console.log(\`  \${item.source.line}:\${item.source.column} \${item.code}: \${item.remediation}\`);
+  }
+}`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="select-one-workflow" render={false} reason="Regression: the workflow selector narrows discovery to one exact file">
+    <Step name="inspect-only-ci">
+      <UseFixture name="demo-repo" />
+      <Run
+        runtime="library"
+        code={`const { listWorkflows } = yield* Effect.promise(() => import("@lando/github-actions/operations"));
+const root = join(context.testDir, "demo-repo");
+const report = yield* listWorkflows({ root, workflow: ".github/workflows/ci.yml" });
+expect(report.summary).toEqual({ discovered: 1, inspected: 1, failed: 0, uninspected: 0 });
+expect(report.workflows.map((row) => row.source.workflow)).toEqual([".github/workflows/ci.yml"]);
+expect(report.workflows.flatMap((row) => row.jobs.map((job) => job.matrix))).toEqual(["absent", "absent"]);`}
+        displayCode={`const report = await Effect.runPromise(
+  listWorkflows({ root: "/path/to/your/repo", workflow: ".github/workflows/ci.yml" }),
+);`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="empty-repository" render={false} reason="Regression: a repository without workflows succeeds with zero rows">
+    <Step name="inspect-no-workflows">
+      <UseFixture name="no-workflows" />
+      <Run
+        runtime="library"
+        code={`const { listWorkflows } = yield* Effect.promise(() => import("@lando/github-actions/operations"));
+const report = yield* listWorkflows({ root: join(context.testDir, "no-workflows") });
+expect(report.workflows).toEqual([]);
+expect(report.summary).toEqual({ discovered: 0, inspected: 0, failed: 0, uninspected: 0 });
+expect(report.complete).toBe(true);`}
+        displayCode={`const report = await Effect.runPromise(listWorkflows({ root: "/path/to/empty/repo" }));
+console.log(report.summary.discovered); // 0`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="yaml-aliases-rejected" render={false} reason="Regression: anchor aliases are a located yaml-alias diagnostic, not a crash">
+    <Step name="inspect-aliased-workflow">
+      <UseFixture name="yaml-aliases" />
+      <Run
+        runtime="library"
+        code={`const { listWorkflows } = yield* Effect.promise(() => import("@lando/github-actions/operations"));
+const report = yield* listWorkflows({ root: join(context.testDir, "yaml-aliases") });
+expect(report.summary).toEqual({ discovered: 1, inspected: 0, failed: 1, uninspected: 0 });
+const [release] = report.workflows;
+expect(release?.status).toBe("failed");
+expect(release?.jobs).toEqual([]);
+expect(release?.diagnostics.map((item) => item.code)).toEqual(["yaml-alias"]);
+expect(release?.diagnostics.map((item) => item.source)).toEqual([{ workflow: ".github/workflows/release.yml", line: 12, column: 14 }]);
+expect(JSON.stringify(report)).not.toContain("&runner");`}
+        displayCode={`const report = await Effect.runPromise(listWorkflows({ root: "/path/to/your/repo" }));
+const alias = report.workflows.flatMap((w) => w.diagnostics).find((d) => d.code === "yaml-alias");
+console.log(alias?.source, alias?.remediation);`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-bad-selector" render={false} reason="Regression: traversal and missing selectors fail with a tagged error, never a partial report">
+    <Step name="reject-traversal-and-missing-file">
+      <UseFixture name="demo-repo" />
+      <Run
+        runtime="library"
+        code={`const { listWorkflows } = yield* Effect.promise(() => import("@lando/github-actions/operations"));
+const root = join(context.testDir, "demo-repo");
+const traversal = yield* Effect.flip(listWorkflows({ root, workflow: "../ci.yml" }));
+expect(traversal._tag).toBe("GithubActionsWorkflowError");
+expect(traversal.reason).toBe("invalid-workflow");
+expect(traversal.remediation.length).toBeGreaterThan(0);
+expect(JSON.stringify(traversal)).not.toContain("../ci.yml");
+const missing = yield* Effect.flip(listWorkflows({ root, workflow: ".github/workflows/missing.yml" }));
+expect(missing._tag).toBe("GithubActionsWorkflowError");
+expect(missing.reason).toBe("workflow-not-found");
+const badRoot = yield* Effect.flip(listWorkflows({ root: join(root, "does-not-exist") }));
+expect(badRoot.reason).toBe("invalid-root");`}
+        displayCode={`const outcome = await Effect.runPromise(
+  Effect.result(listWorkflows({ root: "/path/to/your/repo", workflow: ".github/workflows/missing.yml" })),
+);
+if (outcome._tag === "Failure") {
+  console.error(outcome.failure.reason, outcome.failure.remediation);
+}`}
+      />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Unlink the plugin
+
+When you no longer want the command:
+
+```sh
+lando meta:plugin:unlink @lando/github-actions
+```
+
+Unlinking removes the symlink only. Your checkout and its workflows are untouched.
+
+## Next
+
+- [Run Lando in GitHub Actions](../install/ci-github-actions.mdx) to run Lando itself inside CI. That is a separate workflow; this plugin does not set it up.
+- [Link a local plugin](./link-local-plugin.mdx) for link state, trust, and unlink details.

@@ -145,6 +145,7 @@ export const sidebar = [
         items: [
           { label: "Add a plugin", slug: "guides/plugins/install-from-npm" },
           { label: "See plugin discovery scopes", slug: "guides/plugins/discovery-scopes" },
+          { label: "Inspect GitHub Actions workflows", slug: "guides/plugins/github-actions-inspection" },
           { label: "Manage plugin trust", slug: "guides/plugins/trust-management" },
           { label: "Scaffold a plugin", slug: "guides/plugins/authoring-new-plugin" },
           { label: "Test and build a plugin", slug: "guides/plugins/test-and-build-plugin" },
