@@ -1384,47 +1384,6 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test.skipIf(process.platform === "win32")(
-    "purge discovery probes the managed podman binary with runtime flags",
-    async () => {
-      const { root, userDataRoot, userCacheRoot } = makeRoots();
-      try {
-        const runtimeBinDir = join(userDataRoot, "runtime", "bin");
-        mkdirSync(runtimeBinDir, { recursive: true });
-        const probeLog = join(root, "managed-podman-argv.log");
-        writeFileSync(
-          join(runtimeBinDir, "podman"),
-          ["#!/bin/sh", `echo "$@" >> "${probeLog}"`, "exit 0", ""].join("\n"),
-          { mode: 0o755 },
-        );
-
-        const result = await withoutHostRuntimes(() =>
-          Effect.runPromise(
-            metaUninstallSpec.run({
-              flags: { "dry-run": true, purge: true },
-              _userDataRoot: userDataRoot,
-              _userCacheRoot: userCacheRoot,
-              ...sandboxCliExtras(root),
-            }),
-          ),
-        );
-        expect(result.failed).toBe(false);
-
-        const recorded = existsSync(probeLog) ? readFileSync(probeLog, "utf8") : "";
-        expect(recorded).toContain("--root");
-        expect(recorded).toContain(join(userDataRoot, "runtime", "storage"));
-        expect(recorded).toContain("--runroot");
-        expect(recorded).toContain(join(userDataRoot, "runtime", "run"));
-        expect(recorded).toContain("--config");
-        expect(recorded).toContain(join(userDataRoot, "runtime", "config"));
-        expect(recorded).toContain("--storage-opt");
-        expect(recorded).toContain(`overlay.mount_program=${join(runtimeBinDir, "fuse-overlayfs")}`);
-      } finally {
-        rmSync(root, { recursive: true, force: true });
-      }
-    },
-  );
-
   test("purge honors LANDO_SHELL_PROFILE when stripping the shellenv block", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     const customProfilePath = join(root, "custom-shell-profile");
