@@ -38,7 +38,7 @@ const requireGit = async (root: string, args: readonly string[]): Promise<string
 };
 
 const relativePath = (root: string, input: string): string => {
-  const absolute = resolve(root, input);
+  const absolute = resolve(root, norm(input));
   const path = norm(relative(root, absolute));
   if (path === ".." || path.startsWith("../") || isAbsolute(path) || path === "") {
     throw new Error(`path must be a file inside the repository: ${input}`);

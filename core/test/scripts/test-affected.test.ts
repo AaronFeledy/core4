@@ -46,6 +46,23 @@ const fixture = async (): Promise<string> => {
   return root;
 };
 
+test("normalizes backslashes before enforcing repository path containment", async () => {
+  const root = await fixture();
+  await expect(
+    selectAffectedTests({
+      root,
+      changed: ["nested\\..\\..\\outside.ts"],
+      eligible: [],
+    }),
+  ).rejects.toThrow("path must be a file inside the repository");
+  const valid = await selectAffectedTests({
+    root,
+    changed: ["pkg\\src\\leaf.ts"],
+    eligible: [],
+  });
+  expect(valid.changed).toEqual(["pkg/src/leaf.ts"]);
+});
+
 test("selects through re-exports, named workspace exports, type imports, and static calls", async () => {
   const root = await fixture();
   await put(root, "pkg/test/a.test.ts", 'import "../src/barrel";\n');
