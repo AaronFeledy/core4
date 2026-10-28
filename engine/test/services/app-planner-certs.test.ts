@@ -65,6 +65,7 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
       ],
       caId: "test",
     });
+    expect(web?.extensions).not.toHaveProperty("@lando/core/certs");
     expect(web?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/web.crt");
     expect(web?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/web.key");
     expect(web?.mounts).toEqual(
@@ -203,6 +204,7 @@ test("honors authored certs: false on type: tomcat", async () => {
     expect(ca.calls.filter((call) => call.op === "issueCert")).toHaveLength(0);
     const appserver = appPlan.services[ServiceName.make("appserver")];
     expect(appserver?.certs).toBeUndefined();
+    expect(appserver?.extensions["@lando/core/certs"]).toBe("none");
     expect(appserver?.environment.LANDO_SERVICE_CERT).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });

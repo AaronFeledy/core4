@@ -54,6 +54,22 @@ const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
 
 const detailList = new Intl.ListFormat("en", { type: "conjunction" });
 
+const planMetadataFields = (service: InfoAppService): NonNullable<SummaryRow["fields"]> =>
+  [
+    ...(service.artifact === undefined
+      ? []
+      : [
+          {
+            label: "artifact",
+            value:
+              service.artifact.kind === "ref"
+                ? `${service.artifact.ref}${service.artifact.digest === undefined ? "" : ` (${service.artifact.digest})`}`
+                : `build${service.artifact.contentHash === undefined ? "" : ` (${service.artifact.contentHash})`}`,
+          },
+        ]),
+    ...(service.user === undefined ? [] : [{ label: "user", value: service.user }]),
+  ].map((field) => ({ ...field, value: escapeDiagnosticText(field.value) }));
+
 /** One pointer to the JSON contract for the details the summary leaves out. */
 const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string => {
   const details = [
@@ -74,6 +90,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
       fields: [
         { label: "type", value: service.type },
         { label: "provider", value: service.provider },
+        ...planMetadataFields(service),
         ...connectionFields(service.connections),
         ...storageFields(service),
         ...homeFields(service),
@@ -185,7 +202,10 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     const homeRows = homeFields(service).map(
       (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
     );
-    return [base, ...plainStorageRows(service), ...homeRows, ...logRows, ...credsRows];
+    const metadataRows = planMetadataFields(service).map(
+      (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
+    );
+    return [base, ...metadataRows, ...plainStorageRows(service), ...homeRows, ...logRows, ...credsRows];
   });
   return [`app\t${result.app}`, "service\tstate\tHost\tApp Network", ...rows, ...extra].join("\n");
 };

@@ -14,6 +14,7 @@ import {
   ServiceInfo,
   type ServicePlan,
   type ServiceState,
+  landoServiceNetworkAttachments,
   serviceAppMount,
 } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
@@ -22,6 +23,7 @@ import {
   type ConfigService,
   LandofileService,
   RuntimeProviderRegistry,
+  type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
@@ -39,6 +41,8 @@ export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/a
 type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
 export const AppInfoServiceSchema = ServiceInfo;
+
+const CertsProvenance = Schema.Literals(["none", "custom"]);
 
 export const AppInfoAgentEnvSchema = Schema.Struct({
   enabled: Schema.Boolean,
@@ -76,6 +80,7 @@ const toServiceInfo = (
   status: ServiceState,
   connections: readonly ServiceConnection[],
   serviceLogSources: boolean,
+  runtimeHealth: ServiceRuntimeInfo["health"],
 ): InfoAppService => {
   const logSources = (service.logSources ?? []).map((source) => {
     const base = { id: String(source.id), path: String(source.path), strategy: source.strategy };
@@ -91,6 +96,51 @@ const toServiceInfo = (
     };
   });
   const creds = credsFromConnection(service.connection);
+  const artifact =
+    service.artifact === undefined
+      ? undefined
+      : service.artifact.kind === "ref"
+        ? {
+            kind: "ref" as const,
+            ref: service.artifact.ref,
+            ...(service.artifact.digest === undefined ? {} : { digest: service.artifact.digest }),
+          }
+        : {
+            kind: "build" as const,
+            ...(service.artifact.contentHash === undefined
+              ? {}
+              : { contentHash: service.artifact.contentHash }),
+          };
+  const hostnames = Array.from(
+    new Set(landoServiceNetworkAttachments(plan, service).flatMap((attachment) => attachment.aliases)),
+  );
+  const healthcheck = service.healthcheck;
+  const certsProvenance = service.extensions["@lando/core/certs"];
+  const certs =
+    service.certs !== undefined
+      ? { state: "generated" as const }
+      : Schema.is(CertsProvenance)(certsProvenance)
+        ? { state: certsProvenance }
+        : undefined;
+  const health =
+    healthcheck === undefined && runtimeHealth === undefined
+      ? undefined
+      : {
+          state: runtimeHealth ?? ("unknown" as const),
+          ...(healthcheck === undefined
+            ? {}
+            : {
+                check: {
+                  kind: healthcheck.kind,
+                  intervalSeconds: healthcheck.intervalSeconds,
+                  timeoutSeconds: healthcheck.timeoutSeconds,
+                  retries: healthcheck.retries,
+                  ...(healthcheck.startPeriodSeconds === undefined
+                    ? {}
+                    : { startPeriodSeconds: healthcheck.startPeriodSeconds }),
+                },
+              }),
+        };
   return {
     app: String(plan.id),
     service: String(service.name),
@@ -99,6 +149,12 @@ const toServiceInfo = (
     provider: String(service.provider),
     primary: service.primary,
     status,
+    ...(artifact === undefined ? {} : { artifact }),
+    ...(service.user === undefined ? {} : { user: service.user }),
+    ...(service.workingDirectory === undefined ? {} : { workingDirectory: service.workingDirectory }),
+    hostnames,
+    ...(certs === undefined ? {} : { certs }),
+    ...(health === undefined ? {} : { health }),
     ...(service.home === undefined ? {} : { home: service.home }),
     connections,
     ...(logSources.length === 0 ? {} : { logSources }),
@@ -125,7 +181,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     const mounts = projectServiceMounts(plan, service, runtime);
     const appMount = serviceAppMount(service);
     return {
-      ...toServiceInfo(plan, service, row.state, row.connections, serviceLogSources),
+      ...toServiceInfo(plan, service, row.state, row.connections, serviceLogSources, runtime?.health),
       ...(mounts === undefined ? {} : { mounts }),
       ...(appMount === undefined ? {} : { appMount }),
     };

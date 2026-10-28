@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import { ServiceHomePlan } from "./app-plan.ts";
+import { PortablePath } from "./primitives.ts";
 
 import { ServiceCredsDisplay } from "./database-connection.ts";
 import { BindMountPlan } from "./mounts.ts";
@@ -38,6 +39,28 @@ export const StartedService = Schema.Struct({
 });
 export type StartedService = typeof StartedService.Type;
 
+const ServiceInfoArtifact = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("ref"),
+    ref: Schema.String,
+    digest: Schema.optionalKey(Schema.String),
+  }),
+  Schema.Struct({ kind: Schema.Literal("build"), contentHash: Schema.optionalKey(Schema.String) }),
+]);
+
+const ServiceInfoHealth = Schema.Struct({
+  check: Schema.optionalKey(
+    Schema.Struct({
+      kind: Schema.Literals(["command", "http", "tcp", "none"]),
+      intervalSeconds: Schema.Number,
+      timeoutSeconds: Schema.Number,
+      retries: Schema.Number,
+      startPeriodSeconds: Schema.optionalKey(Schema.Number),
+    }),
+  ),
+  state: Schema.Literals(["unknown", "starting", "healthy", "unhealthy"]),
+});
+
 export const ServiceInfo = Schema.Struct({
   app: Schema.String,
   service: Schema.String,
@@ -46,6 +69,27 @@ export const ServiceInfo = Schema.Struct({
   provider: Schema.String,
   primary: Schema.Boolean,
   status: ServiceState.annotate({ description: "Latest observed or supervised service state." }),
+  artifact: Schema.optionalKey(ServiceInfoArtifact).annotate({
+    description: "Selected artifact identity without build context, arguments, or inline source.",
+  }),
+  user: Schema.optionalKey(Schema.String).annotate({ description: "Planned container user." }),
+  workingDirectory: Schema.optionalKey(PortablePath).annotate({
+    description: "Planned working directory inside the service.",
+  }),
+  hostnames: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
+    description: "Canonical deduplicated network aliases for this service.",
+  }),
+  certs: Schema.optionalKey(
+    Schema.Struct({ state: Schema.Literals(["none", "generated", "custom"]) }),
+  ).annotate({
+    description: "Planned certificate source, when the plan records it.",
+  }),
+  health: Schema.optionalKey(ServiceInfoHealth).annotate({
+    description: "Safe planned probe settings and provider-reported health state.",
+  }),
+  providerInfo: Schema.optionalKey(Schema.Json).annotate({
+    description: "Reserved JSON-safe provider-specific details, when explicitly supplied.",
+  }),
   ...connectionAddressFields,
   logSources: Schema.optionalKey(Schema.Array(ServiceInfoLogSource)).annotate({
     description: "Declared service log sources and their provider-specific availability.",
