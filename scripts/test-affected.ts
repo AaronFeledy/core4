@@ -72,6 +72,13 @@ export const changedPaths = async (root: string, baseRef: string): Promise<reado
 
 const sourceFiles = async (root: string): Promise<Set<string>> => {
   const files = new Set<string>();
+  // Git supplies source files in any package directory, including bin/ and
+  // package-local tooling. The globs below also include ignored generated
+  // modules that exist on disk after codegen.
+  const listed = await requireGit(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]);
+  for (const path of listed.split("\0")) {
+    if (path && SOURCE.test(path)) files.add(resolve(root, path));
+  }
   const packages = await loadWorkspacePackages(root);
   const directories = new Set([...packages.values()].map((entry) => entry.directory));
   directories.add(resolve(root, "scripts"));

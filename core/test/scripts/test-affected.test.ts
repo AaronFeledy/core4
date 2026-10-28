@@ -71,6 +71,31 @@ test("selects through re-exports, named workspace exports, type imports, and sta
   expect(result.uncertain.some((entry) => entry.includes("computed import/require"))).toBe(true);
 });
 
+test("follows static and dynamic imports through package files outside src and test", async () => {
+  const root = await fixture();
+  await put(root, "pkg/test/a.test.ts", 'import "../bin/bridge";\n');
+  await put(root, "pkg/bin/bridge.ts", 'export * from "../src/leaf";\n');
+  await put(root, "pkg/test/b.test.ts", 'import "../tools/dynamic";\n');
+  await put(root, "pkg/tools/dynamic.ts", 'const target = "../src/leaf"; void import(target);\n');
+  await put(root, "pkg/src/leaf.ts", "export const leaf = 1;\n");
+  const result = await selectAffectedTests({
+    root,
+    changed: ["pkg/src/leaf.ts"],
+    eligible: ["pkg/test/a.test.ts", "pkg/test/b.test.ts"],
+  });
+  expect(result.selected).toEqual(["pkg/test/a.test.ts", "pkg/test/b.test.ts"]);
+  expect(result.witnesses.get("pkg/test/a.test.ts")).toEqual([
+    "pkg/src/leaf.ts",
+    "pkg/bin/bridge.ts",
+    "pkg/test/a.test.ts",
+  ]);
+  expect(result.witnesses.get("pkg/test/b.test.ts")).toEqual([
+    "pkg/src/leaf.ts",
+    "pkg/tools/dynamic.ts",
+    "pkg/test/b.test.ts",
+  ]);
+});
+
 test("recovers removed barrel edges and deleted paths from the base commit", async () => {
   const root = await fixture();
   await put(root, "pkg/test/a.test.ts", 'import "../src/zbarrel";\n');
