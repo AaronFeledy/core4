@@ -77,6 +77,8 @@ export interface ExecutableCommandSpec<
   readonly summary: string;
   readonly namespace: ExecutableCommandNamespace;
   readonly bootstrap: BootstrapLevel;
+  /** Opt this plugin command into the default MCP catalog when its id passes MCP safety checks. */
+  readonly mcpAllowed?: boolean;
   /** The CLI owns `yes` (`--yes`/`-y`). Declare it as a plain `type: "boolean"` flag defaulting to false; any other `yes` declaration fails to load. */
   readonly flags?: Readonly<Record<string, ExecutableCommandFlagSpec>>;
   readonly args?: Readonly<Record<string, ExecutableCommandArgSpec>>;

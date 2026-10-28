@@ -25,6 +25,7 @@ export interface DiscoveredPlugin {
   readonly source: PluginSourceKind;
   readonly manifest: PluginManifest;
   readonly module?: ExternalPluginModule | LandoPluginModule;
+  readonly sourceRevision?: string;
 }
 
 const isAppFeature = (value: unknown): value is AppFeatureDefinition =>
@@ -125,7 +126,10 @@ export const discoverInstalledPlugins = (
     Effect.flatMap((registry) =>
       Effect.forEach(Object.values(registry), (entry) =>
         Effect.tryPromise({
-          try: async () => ({ source, ...(await loadInstalledPlugin(entry.path)) }),
+          try: async () => ({
+            source,
+            ...(await loadInstalledPlugin(entry.path, { refreshable: source === "app" })),
+          }),
           catch: (cause) =>
             cause instanceof PluginManifestError || cause instanceof PluginLoadError
               ? cause

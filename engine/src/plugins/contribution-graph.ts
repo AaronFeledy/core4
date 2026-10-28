@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import { Context, Effect, Layer, Option, Result, Schema, Scope } from "effect";
 
 import { LandoRuntimeBootstrapError, PluginDescriptorMismatchError } from "@lando/sdk/errors";
@@ -23,6 +24,10 @@ import {
 } from "./plugin-discovery.ts";
 
 export type PluginContributionSource = "bundled" | "system" | "user" | "app" | "explicit";
+
+// Bun keeps imported entry dependencies in its process module cache. Reuse
+// app-plugin plans in this process, then replan after restart.
+const appPluginPlanProcessIdentity = randomUUID();
 
 export interface LoadedPluginContribution extends DiscoveredPlugin {
   readonly source: PluginContributionSource;
@@ -55,7 +60,12 @@ export interface PluginContributionGraphShape {
   readonly certificateAuthorities: ReadonlyArray<GraphCertificateAuthorityCandidate>;
   readonly commands: ReadonlyArray<GraphCommandCandidate>;
   readonly hostContext: Context.Context<never>;
+  readonly appPluginSourceRevision?: string;
 }
+
+export class AppPluginSourceRevision extends Context.Service<AppPluginSourceRevision, string>()(
+  "@lando/engine/AppPluginSourceRevision",
+) {}
 
 export class PluginContributionGraph extends Context.Service<
   PluginContributionGraph,
@@ -171,6 +181,45 @@ export const mergeLoadedPluginSources = (
   const disabled = new Set(disable);
   return [...merged.values()].filter((plugin) => !disabled.has(plugin.manifest.name));
 };
+
+/** Resolve app-owned contributions against a retained global graph for one request. */
+export const appContributionGraphForCwd = Effect.fn("PluginContributionGraph.forApp")(function* (
+  base: PluginContributionGraphShape,
+  cwd: string,
+  options: { readonly app: boolean; readonly disable: ReadonlyArray<string> },
+): Effect.fn.Return<PluginContributionGraphShape, LandoRuntimeBootstrapError, Logger> {
+  const logger = yield* Logger;
+  const appRoot = options.app ? yield* findAppRoot(cwd) : undefined;
+  const app =
+    appRoot === undefined ? [] : yield* discoverInstalledPlugins("app", `${appRoot}/.lando/plugins`, logger);
+  const global = base.globalPlugins.filter((plugin) => plugin.source !== "explicit");
+  const explicit = base.globalPlugins.filter((plugin) => plugin.source === "explicit");
+  const plugins = mergeLoadedPluginSources([global, app, explicit], options.disable);
+  const commands = yield* Result.match(pluginCommandCandidates(plugins), {
+    onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
+    onSuccess: Effect.succeed,
+  });
+  return {
+    plugins,
+    globalPlugins: base.globalPlugins,
+    certificateAuthorities: base.certificateAuthorities,
+    commands,
+    hostContext: base.hostContext,
+    ...(app.length === 0
+      ? {}
+      : {
+          appPluginSourceRevision: createHash("sha256")
+            .update(appPluginPlanProcessIdentity)
+            .update(
+              app
+                .map((plugin) => `${plugin.manifest.name}:${plugin.sourceRevision ?? ""}`)
+                .sort()
+                .join("\n"),
+            )
+            .digest("hex"),
+        }),
+  };
+});
 
 const validateResolvedPlugin = (
   input: ResolvedPluginInput,

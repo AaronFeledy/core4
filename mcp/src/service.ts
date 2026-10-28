@@ -1,10 +1,12 @@
 import { RedactionService } from "@lando/redaction/service";
+import { McpToolInputError } from "@lando/sdk/errors";
 import type { McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, type Scope } from "effect";
 import type { Stdio } from "effect/Stdio";
+import { APP_COMMAND_DESCRIPTORS, APP_COMMAND_TOOL_IDS } from "./app-command-tools";
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog";
 import { type MemoryPressureLevel, handleMemoryPressure } from "./memory-pressure";
 import { McpCommandExecutor } from "./port";
@@ -20,6 +22,13 @@ export interface McpRuntimeConfigShape {
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry>;
   readonly defaultAllowlist: ReadonlyArray<string>;
   readonly runtimeLayer: Layer.Layer<unknown> | Layer.Layer<never>;
+  readonly appContextForCwd?: (
+    base: Context.Context<unknown>,
+    cwd: string,
+  ) => Effect.Effect<Context.Context<unknown>, unknown, Scope.Scope>;
+  readonly appCommandEntries?: (
+    context: Context.Context<unknown>,
+  ) => Effect.Effect<ReadonlyArray<McpCommandEntry>, unknown>;
   readonly resources?: ReadonlyArray<McpResourceEntry>;
   readonly version?: string;
 }
@@ -39,6 +48,18 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
     this,
     Effect.gen(function* () {
       const config = yield* McpRuntimeConfig;
+      const reservedCollision = [...config.commandEntries, ...(config.toolingEntries ?? [])].find((entry) =>
+        APP_COMMAND_TOOL_IDS.includes(entry.spec.id as (typeof APP_COMMAND_TOOL_IDS)[number]),
+      );
+      if (reservedCollision !== undefined && config.appCommandEntries !== undefined) {
+        return yield* Effect.fail(
+          new McpToolInputError({
+            message: `MCP app command tool id ${reservedCollision.spec.id} is reserved.`,
+            toolId: reservedCollision.spec.id,
+            remediation: "Rename the conflicting command or tooling task.",
+          }),
+        );
+      }
       const redaction = yield* RedactionService;
       const executor = yield* McpCommandExecutor;
       const events = yield* Effect.serviceOption(EventService);
@@ -48,7 +69,10 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
         : undefined;
       const effective = (options?: McpCatalogOptions) =>
         computeEffectiveAllowlist({
-          defaults: config.defaultAllowlist,
+          defaults:
+            config.appCommandEntries === undefined || config.appContextForCwd === undefined
+              ? config.defaultAllowlist
+              : [...config.defaultAllowlist, ...APP_COMMAND_TOOL_IDS],
           allow:
             options?.tooling === true
               ? [...(options.allow ?? []), ...(config.toolingEntries ?? []).map((entry) => entry.spec.id)]
@@ -62,12 +86,23 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           const key = JSON.stringify(options ?? {});
           const cached = catalogCache.get(key);
           if (cached !== undefined) return cached;
-          const value = buildCatalog({
+          const projected = buildCatalog({
             commandEntries: config.commandEntries,
             toolingEntries: config.toolingEntries,
             effective: effective(options),
             options,
           });
+          const value =
+            config.appCommandEntries === undefined || config.appContextForCwd === undefined
+              ? projected
+              : {
+                  tools: [
+                    ...projected.tools,
+                    ...APP_COMMAND_DESCRIPTORS.filter((descriptor) =>
+                      effective(options).ids.has(descriptor.toolId),
+                    ),
+                  ].sort((left, right) => left.toolId.localeCompare(right.toolId)),
+                };
           catalogCache.set(key, value);
           return value;
         });

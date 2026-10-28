@@ -90,6 +90,42 @@ and `channel` at `order: 1` with `default: stable`, this call fails on `label`:
 The tag, message, and `field` are byte-identical to what the CLI emits for the
 same declaration and input.
 
+## Select an app's plugin commands
+
+The `app:commands:list` tool reads plugin commands from the app selected by
+`appPath`. Use it before calling a plugin command, especially when the MCP
+server serves more than one app. Its result envelope contains the selected
+commands in `result.tools`, including each command's input schema. For example,
+replace `/path/to/app` with a directory inside your app:
+
+```json
+{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"app:commands:list","arguments":{"appPath":"/path/to/app"}}}
+```
+
+Call an id returned by that list through `app:commands:call`. Set `commandId`
+to the plugin command id, and pass its declared flags and arguments by name.
+The result envelope names the plugin command and uses that command's result
+schema. The example id below stands for a command your app's plugin provides:
+
+```json
+{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"app:commands:call","arguments":{"appPath":"/path/to/app","commandId":"example:inspect","flags":{},"args":{}}}}
+```
+
+An app plugin command with `mcpAllowed: true` appears in its app's list by
+default. `mcp.deny` or `--deny` still removes that id. A command without this
+opt-in needs an explicit allow entry known when the server starts. A command
+found only in another app cannot be named in startup `--allow`; its plugin can
+set `mcpAllowed: true` to expose it in that app. The two wrapper tools can also
+be denied. Their presence does not grant access to the command named by
+`commandId`.
+
+The server checks the selected app for each call. Changes to an app's installed
+plugin registry, including a replacement package path, take effect on the next
+call. Restart the MCP server after editing a plugin entry or one of its code
+dependencies at the same path. Bun keeps imported modules loaded for the life
+of the process; app-plugin plans are reused within that process and replanned
+after restart.
+
 ## Read streamed command output
 
 To expose your app's tooling tasks, launch the server with `lando mcp --tooling`.

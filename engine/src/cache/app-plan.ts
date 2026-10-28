@@ -60,6 +60,7 @@ export interface AppPlanCacheKeyInput {
   readonly landofile: LandofileShape;
   readonly providerCapabilities?: ProviderCapabilities;
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
+  readonly appPluginSourceRevision?: string;
   readonly sourceFingerprint?: AppPlanSourceFingerprint;
   readonly planningRuntime?: string;
   readonly hostHome?: string;
@@ -185,6 +186,9 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       ].sort(),
       versionConstraints: input.versionConstraints ?? [],
       pluginManifests: sortedManifests,
+      ...(input.appPluginSourceRevision === undefined
+        ? {}
+        : { appPluginSourceRevision: input.appPluginSourceRevision }),
       config: input.config ?? null,
       serviceInputs: input.serviceInputs ?? input.landofile.services ?? {},
       appFeatureEnv: input.appFeatureEnv ?? {},

@@ -44,6 +44,7 @@ import {
 } from "../cache/command-index-writer.ts";
 import type { CommandIndexEntry } from "../cache/command-index.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
+import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
 
 const discoverScriptsForCwd = Effect.fnUntraced(function* (
   cwd: string,
@@ -96,6 +97,7 @@ export const layerWith = (
       const paths = yield* Effect.serviceOption(PathsService);
       const cacheOptions = paths._tag === "Some" ? { cacheRoot: paths.value.roots.userCacheRoot } : {};
       const pluginRegistryOption = yield* Effect.serviceOption(PluginRegistry);
+      const globalManifestsOption = yield* Effect.serviceOption(GlobalPluginManifests);
       return CommandRegistry.of({
         list: Effect.gen(function* () {
           const cached = yield* readFreshAppCommandCacheForCwd({
@@ -111,9 +113,11 @@ export const layerWith = (
           const landofile = (yield* loadUserLandofile(landofileService)).document;
           const scripts = yield* discoverScriptsForCwd(yield* discoveryCwd());
           const pluginManifests =
-            pluginRegistryOption._tag === "Some"
-              ? yield* pluginRegistryOption.value.list.pipe(Effect.catch(() => Effect.succeed(undefined)))
-              : undefined;
+            globalManifestsOption._tag === "Some"
+              ? yield* globalManifestsOption.value.list.pipe(Effect.catch(() => Effect.succeed(undefined)))
+              : pluginRegistryOption._tag === "Some"
+                ? yield* pluginRegistryOption.value.list.pipe(Effect.catch(() => Effect.succeed(undefined)))
+                : undefined;
           const hasServices = Object.keys(landofile.services ?? {}).length > 0;
           if (hasServices) {
             yield* writePluginCommandCache({

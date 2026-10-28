@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Effect, Fiber, Layer, Queue, Schema, Stdio, Stream } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -6,16 +9,20 @@ import type { McpServeOptions } from "@lando/sdk/schema";
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
-import type { McpCommandEntry } from "@lando/mcp/registry";
+import type { McpCommandEntry, McpToolInput } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "@lando/mcp/stdio-limits";
 import { makeStdioClient } from "@lando/mcp/testing";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { PluginRegistry } from "@lando/sdk/services";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
+import { mcpAppCommandEntries, mcpAppContextForCwd } from "../../src/mcp/mcp-app-context.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const spec = (
   id: string,
@@ -65,10 +72,12 @@ const dispatchAndCollectReplies = Effect.fnUntraced(
   function* ({
     options,
     toolId,
+    input,
   }: {
     readonly config: McpRuntimeConfigShape;
     readonly options: McpServeOptions;
     readonly toolId: string;
+    readonly input?: McpToolInput;
     readonly redactedValues?: ReadonlyArray<string>;
   }) {
     const inmem = yield* makeStdioClient();
@@ -76,7 +85,7 @@ const dispatchAndCollectReplies = Effect.fnUntraced(
     const fiber = yield* service
       .serve(options)
       .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
-    yield* inmem.push({ toolId });
+    yield* inmem.push({ toolId, ...(input === undefined ? {} : { input }) });
     while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
     const replies = yield* inmem.replies;
     yield* inmem.close;
@@ -122,6 +131,147 @@ describe("McpService.catalog", () => {
     );
 
     expect(catalog.tools.map((tool) => tool.toolId)).toEqual(["app:info"]);
+  });
+
+  test("app command wrappers appear in the catalog and respect deny", async () => {
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [],
+      defaultAllowlist: [],
+      runtimeLayer: Layer.empty,
+      appContextForCwd: (base) => Effect.succeed(base),
+      appCommandEntries: () => Effect.succeed([]),
+    };
+    const catalogs = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* McpService;
+        return [yield* service.catalog(), yield* service.catalog({ deny: ["app:commands:call"] })];
+      }).pipe(Effect.provide(serviceLayer(config))),
+    );
+    expect(catalogs[0]?.tools.map((tool) => tool.toolId)).toEqual(["app:commands:call", "app:commands:list"]);
+    expect(catalogs[1]?.tools.map((tool) => tool.toolId)).toEqual(["app:commands:list"]);
+  });
+
+  test("app command calls enforce inner deny, wrapper input, and forbidden self-allow", async () => {
+    const safe = spec("example:safe", () => Effect.succeed({ safe: true }), {
+      mcpAllowed: true,
+      resultSchema: Schema.Unknown,
+    });
+    const configFor = (command: LandoCommandSpec): McpRuntimeConfigShape => ({
+      commandEntries: [],
+      defaultAllowlist: [],
+      runtimeLayer: Layer.empty,
+      appContextForCwd: (base) => Effect.succeed(base),
+      appCommandEntries: () => Effect.succeed([{ spec: command }]),
+    });
+    const call = (config: McpRuntimeConfigShape, options: McpServeOptions, input: McpToolInput) =>
+      Effect.runPromise(
+        dispatchAndCollectReplies({
+          config,
+          options,
+          toolId: "app:commands:call",
+          input,
+        }),
+      );
+    const target = { appPath: "/fixture", commandId: safe.id };
+
+    const denied = await call(configFor(safe), { transport: "stdio", deny: [safe.id] }, target);
+    expect(denied[0]).toMatchObject({ ok: false, error: { _tag: "McpToolNotAllowedError" } });
+
+    const optedOut = await call(configFor({ ...safe, mcpAllowed: false }), { transport: "stdio" }, target);
+    expect(optedOut[0]).toMatchObject({ ok: false, error: { _tag: "McpToolNotAllowedError" } });
+
+    for (const input of [
+      { ...target, flags: 3 },
+      { ...target, args: [] },
+      { ...target, extraneous: true },
+    ]) {
+      const rejected = await call(configFor(safe), { transport: "stdio" }, input as McpToolInput);
+      expect(rejected[0]).toMatchObject({ ok: false, error: { _tag: "McpToolInputError" } });
+    }
+
+    const forbidden = spec("meta:plugin:unsafe", () => Effect.succeed({}), { mcpAllowed: true });
+    const unsafe = await call(
+      configFor(forbidden),
+      { transport: "stdio" },
+      {
+        appPath: "/fixture",
+        commandId: forbidden.id,
+      },
+    );
+    expect(unsafe[0]).toMatchObject({ ok: false, error: { _tag: "McpToolInputError" } });
+  });
+
+  test("an in-flight app command keeps its selected spec while another app changes", async () => {
+    let releaseLeft: () => void = () => {};
+    let signalLeftStarted: () => void = () => {};
+    const leftStarted = new Promise<void>((resolve) => {
+      signalLeftStarted = resolve;
+    });
+    const leftGate = new Promise<void>((resolve) => {
+      releaseLeft = resolve;
+    });
+    let rightLabel = "right-before";
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [],
+      defaultAllowlist: [],
+      runtimeLayer: Layer.empty,
+      appContextForCwd: (base) => Effect.succeed(base),
+      appCommandEntries: (_context) => {
+        const label = rightLabel;
+        const command = spec(
+          "example:held",
+          () =>
+            label === "left"
+              ? Effect.promise(async () => {
+                  signalLeftStarted();
+                  await leftGate;
+                  return { label };
+                })
+              : Effect.succeed({ label }),
+          { mcpAllowed: true, resultSchema: Schema.Unknown },
+        );
+        return Effect.succeed([{ spec: command }]);
+      },
+    };
+
+    try {
+      const replies = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const inmem = yield* makeStdioClient();
+            const service = yield* McpService;
+            const fiber = yield* service
+              .serve({ transport: "stdio", maxConcurrent: 2 })
+              .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
+            rightLabel = "left";
+            const leftId = yield* inmem.push({
+              toolId: "app:commands:call",
+              input: { appPath: "/left", commandId: "example:held" },
+            });
+            yield* Effect.promise(() => leftStarted);
+            rightLabel = "right-after";
+            const rightId = yield* inmem.push({
+              toolId: "app:commands:call",
+              input: { appPath: "/right", commandId: "example:held" },
+            });
+            while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+            releaseLeft();
+            while ((yield* inmem.replies).length < 2) yield* Effect.sleep("10 millis");
+            const observed = yield* inmem.replies;
+            yield* inmem.close;
+            yield* Fiber.join(fiber);
+            return {
+              left: observed.find((reply) => reply.id === leftId),
+              right: observed.find((reply) => reply.id === rightId),
+            };
+          }).pipe(Effect.provide(serviceLayer(config))),
+        ),
+      );
+      expect(replies.left).toMatchObject({ result: { envelope: { result: { label: "left" } } } });
+      expect(replies.right).toMatchObject({ result: { envelope: { result: { label: "right-after" } } } });
+    } finally {
+      releaseLeft();
+    }
   });
 });
 
@@ -550,6 +700,211 @@ describe("McpService.serve", () => {
       ok: true,
       result: { envelope: { ok: true, result: { cwd: "/per-call-root" } } },
     });
+  });
+
+  test("resolves app-local command, service type, and app feature contributions for each appPath", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-mcp-app-contributions-"));
+    const sessionRoot = join(root, "session");
+    const appRoot = (name: string) => join(root, name);
+    const writeApp = async (name: string) => {
+      const app = appRoot(name);
+      const pluginsRoot = join(app, ".lando", "plugins");
+      const packageRoot = join(pluginsRoot, name);
+      const pluginName = `@example/${name}`;
+      const typeId = `example:${name}-type`;
+      const featureId = `example:${name}-feature`;
+      const commandId = "example:shared-command";
+      const extraCommandId = name === "right" ? "example:right-only" : undefined;
+      await mkdir(packageRoot, { recursive: true });
+      await writeFile(join(app, ".lando.yml"), `name: ${name}\n`);
+      await writeFile(
+        join(packageRoot, "package.json"),
+        JSON.stringify({
+          name: pluginName,
+          version: "1.0.0",
+          landoPlugin: {
+            name: pluginName,
+            version: "1.0.0",
+            api: 4,
+            entry: "./entry.mjs",
+            contributes: {
+              commands: extraCommandId === undefined ? [commandId] : [commandId, extraCommandId],
+              serviceTypes: [typeId],
+              appFeatures: [featureId],
+            },
+          },
+        }),
+      );
+      await writeFile(
+        join(packageRoot, "entry.mjs"),
+        [
+          `import { Effect, Schema } from ${JSON.stringify(import.meta.resolve("effect"))};`,
+          `export const commands = new Map([[${JSON.stringify(commandId)}, async () => ({`,
+          `  id: ${JSON.stringify(commandId)}, summary: ${JSON.stringify(name)}, namespace: "example", bootstrap: "plugins", mcpAllowed: true,`,
+          `  flags: { ${name}: { type: "string", required: true } },`,
+          `  resultSchema: Schema.Struct({ ${name}: Schema.String }),`,
+          `  run: (input) => Effect.succeed({ ${name}: input.flags.${name} }),`,
+          "})]]);",
+          ...(extraCommandId === undefined
+            ? []
+            : [
+                `commands.set(${JSON.stringify(extraCommandId)}, async () => ({`,
+                `  id: ${JSON.stringify(extraCommandId)}, summary: "Right only", namespace: "example", bootstrap: "plugins", mcpAllowed: true,`,
+                `  flags: { label: { type: "string", required: true, default: "fallback", parse: (value) => value.toUpperCase() } },`,
+                "  resultSchema: Schema.Struct({ label: Schema.String }),",
+                "  run: (input) => Effect.succeed({ label: input.flags.label }),",
+                `  completion: (_value, input) => ({ ok: input.flags.label === "FALLBACK", exitCode: input.flags.label === "FALLBACK" ? 0 : 1 }),`,
+                "}));",
+              ]),
+          `export const serviceTypes = new Map([[${JSON.stringify(typeId)}, { id: ${JSON.stringify(typeId)}, resolve: () => undefined }]]);`,
+          `export const appFeatures = new Map([[${JSON.stringify(featureId)}, { id: ${JSON.stringify(featureId)}, priority: 0, activatedBy: [], apply: () => undefined }]]);`,
+        ].join("\n"),
+      );
+      await writeFile(
+        join(pluginsRoot, "registry.json"),
+        JSON.stringify({ [pluginName]: { name: pluginName, version: "1.0.0", path: packageRoot } }),
+      );
+      return {
+        app,
+        pluginName,
+        typeId,
+        featureId,
+        commandId,
+        commandIds: extraCommandId === undefined ? [commandId] : [commandId, extraCommandId],
+        extraCommandId,
+      };
+    };
+
+    try {
+      await mkdir(sessionRoot);
+      const left = await writeApp("left");
+      const right = await writeApp("right");
+      const rightOnly = right.extraCommandId;
+      if (rightOnly === undefined) throw new Error("Expected a right-only plugin command.");
+      const command = spec(
+        "app:info",
+        () =>
+          Effect.gen(function* () {
+            const graph = yield* PluginContributionGraph;
+            const registry = yield* PluginRegistry;
+            const appPlugin = graph.plugins.find((plugin) => plugin.source === "app");
+            const typeId = appPlugin?.manifest.contributes?.serviceTypes?.[0];
+            const featureId = appPlugin?.manifest.contributes?.appFeatures?.[0];
+            return {
+              pluginName: appPlugin?.manifest.name,
+              commands: graph.commands
+                .filter((candidate) => candidate.source === "app")
+                .map((candidate) => candidate.id),
+              typeId: typeof typeId === "string" ? (yield* registry.loadServiceType(typeId)).id : undefined,
+              featureId:
+                typeof featureId === "string" ? (yield* registry.loadAppFeature(featureId)).id : undefined,
+            };
+          }),
+        { resultSchema: Schema.Unknown },
+      );
+      const config: McpRuntimeConfigShape = {
+        commandEntries: [{ spec: command }],
+        defaultAllowlist: ["app:info"],
+        appContextForCwd: (base, cwd) => mcpAppContextForCwd(base, cwd, { app: true, disable: [] }),
+        appCommandEntries: mcpAppCommandEntries,
+        runtimeLayer: makeLandoRuntime({
+          bootstrap: "plugins",
+          cwd: sessionRoot,
+          plugins: {
+            policy: "discovery",
+            discovery: { bundled: false, system: false, user: false, app: true },
+          },
+        }).pipe(Layer.orDie) as Layer.Layer<unknown>,
+      };
+      const replies = await Effect.runPromise(
+        Effect.gen(function* () {
+          const inmem = yield* makeStdioClient();
+          const service = yield* McpService;
+          const fiber = yield* service
+            .serve({ transport: "stdio" })
+            .pipe(Effect.provideService(Stdio.Stdio, inmem.stdio), Effect.forkScoped);
+          for (const [index, app] of [left, right, left].entries()) {
+            yield* inmem.push({ toolId: "app:info", input: { appPath: app.app } });
+            while ((yield* inmem.replies).length < index + 1) {
+              yield* Effect.sleep("10 millis");
+            }
+          }
+          yield* inmem.push({ toolId: "app:commands:list", input: { appPath: right.app } });
+          while ((yield* inmem.replies).length < 4) yield* Effect.sleep("10 millis");
+          yield* inmem.push({
+            toolId: "app:commands:call",
+            input: { appPath: left.app, commandId: left.commandId, flags: { left: "A" } },
+          });
+          while ((yield* inmem.replies).length < 5) yield* Effect.sleep("10 millis");
+          yield* inmem.push({
+            toolId: "app:commands:call",
+            input: { appPath: right.app, commandId: right.commandId, flags: { right: "B" } },
+          });
+          while ((yield* inmem.replies).length < 6) yield* Effect.sleep("10 millis");
+          yield* inmem.push({
+            toolId: "app:commands:call",
+            input: { appPath: right.app, commandId: right.commandId, flags: { left: "wrong-app" } },
+          });
+          while ((yield* inmem.replies).length < 7) yield* Effect.sleep("10 millis");
+          yield* inmem.push({
+            toolId: "app:commands:call",
+            input: { appPath: right.app, commandId: rightOnly },
+          });
+          while ((yield* inmem.replies).length < 8) yield* Effect.sleep("10 millis");
+          yield* inmem.push({
+            toolId: "app:commands:call",
+            input: { appPath: left.app, commandId: rightOnly },
+          });
+          while ((yield* inmem.replies).length < 9) yield* Effect.sleep("10 millis");
+          const observed = yield* inmem.replies;
+          yield* inmem.close;
+          yield* Fiber.join(fiber);
+          return observed;
+        }).pipe(Effect.scoped, Effect.provide(serviceLayer(config))),
+      );
+
+      for (const [index, app] of [left, right, left].entries()) {
+        expect(replies[index]).toMatchObject({
+          ok: true,
+          result: {
+            envelope: {
+              ok: true,
+              result: {
+                pluginName: app.pluginName,
+                commands: app.commandIds,
+                typeId: app.typeId,
+                featureId: app.featureId,
+              },
+            },
+          },
+        });
+      }
+      expect(replies[3]).toMatchObject({ ok: true });
+      expect(replies[3]).toMatchObject({
+        result: {
+          envelope: { result: { tools: [{ toolId: right.extraCommandId }, { toolId: right.commandId }] } },
+        },
+      });
+      expect(replies[4]).toMatchObject({
+        ok: true,
+        result: { envelope: { command: left.commandId, result: { left: "A" } } },
+      });
+      expect(replies[5]).toMatchObject({
+        ok: true,
+        result: { envelope: { command: right.commandId, result: { right: "B" } } },
+      });
+      expect(replies[6]).toMatchObject({
+        ok: false,
+        error: { _tag: "McpToolInputError", path: "flags.left" },
+      });
+      expect(replies[7]).toMatchObject({
+        ok: true,
+        result: { envelope: { command: right.extraCommandId, result: { label: "FALLBACK" }, ok: true } },
+      });
+      expect(replies[8]).toMatchObject({ ok: false, error: { _tag: "McpToolNotAllowedError" } });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("caps concurrency at mcp.maxConcurrent", async () => {

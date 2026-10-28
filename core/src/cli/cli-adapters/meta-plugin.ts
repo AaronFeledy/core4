@@ -8,8 +8,10 @@ import { bundledPluginModules } from "@lando/engine/composition";
 import { uninstall } from "@lando/engine/operations/uninstall";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { makeHostMaintenanceRegistryLayer } from "@lando/engine/runtime/host-maintenance";
+import { normalizePluginPolicy } from "@lando/engine/runtime/runtime-options";
 import * as HostPrivilegeService from "@lando/engine/services/privilege";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { mcpAppCommandEntries, mcpAppContextForCwd } from "../../mcp/mcp-app-context";
 import { makeLandoRuntime } from "../../runtime/layer";
 import type { BuiltInCommandCatalog } from "../built-in-command-catalog-service";
 import { shellenvSpec } from "../command-specs/meta/shellenv";
@@ -58,14 +60,26 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSign
     ConfigService | RedactionService | BuiltInCommandCatalog,
     ConfigError | LandoRuntimeBootstrapError
   >;
-  const retainedRuntime = makeLandoRuntime(
-    cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }),
-  ).pipe(Layer.orDie) as Layer.Layer<unknown>;
+  const retainedOptions = cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } });
+  const pluginPolicy = normalizePluginPolicy(retainedOptions.plugins);
+  const retainedRuntime = makeLandoRuntime({
+    ...retainedOptions,
+    plugins: {
+      ...retainedOptions.plugins,
+      discovery: { ...pluginPolicy.discovery, app: false },
+    },
+  }).pipe(Layer.orDie) as Layer.Layer<unknown>;
   return dispatchMcpCommand({
     flags,
     ...(signal === undefined ? {} : { signal }),
     commandRuntime,
     retainedRuntime,
+    appContextForCwd: (base, cwd) =>
+      mcpAppContextForCwd(base, cwd, {
+        app: pluginPolicy.externalImports && pluginPolicy.discovery.app,
+        disable: pluginPolicy.discovery.disable,
+      }),
+    appCommandEntries: mcpAppCommandEntries,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     invocation: getActiveCommandInvocation() ?? {

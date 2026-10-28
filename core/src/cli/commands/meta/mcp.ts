@@ -14,7 +14,7 @@ import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, Layer, Predicate, type Result, Schema } from "effect";
+import { Effect, Layer, Option, Predicate, type Result, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { McpToolInputError, type McpTransportError, type ToolingInputError } from "@lando/sdk/errors";
@@ -26,7 +26,9 @@ import {
   runTooling,
   runToolingRedactionTokens,
 } from "@lando/engine/operations/tooling";
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "@lando/mcp/allowlist";
+import { APP_COMMAND_DESCRIPTORS, APP_COMMAND_TOOL_IDS } from "@lando/mcp/app-command-tools";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
@@ -291,29 +293,46 @@ const resolveOptions = Effect.fnUntraced(function* (
 ): Effect.fn.Return<ResolvedMcpOptions, McpToolInputError, ConfigService> {
   const config = yield* Effect.flatMap(ConfigService, (service) => service.get("mcp"));
   const options = resolveMcpOptions(flags, config);
-  yield* validateMcpAllowlistIds(options, knownIdsOf(registry));
+  const graph = yield* Effect.serviceOption(PluginContributionGraph);
+  const known = new Set([...knownIdsOf(registry), ...APP_COMMAND_TOOL_IDS]);
+  if (Option.isSome(graph)) for (const candidate of graph.value.commands) known.add(candidate.id);
+  yield* validateMcpAllowlistIds(options, known);
   return options;
 });
 
 export const buildMcpRuntimeConfig = (
   registry: McpCommandRegistry,
   runtimeLayer: Layer.Layer<unknown>,
+  appContextForCwd?: McpRuntimeConfigShape["appContextForCwd"],
+  appCommandEntries?: McpRuntimeConfigShape["appCommandEntries"],
 ): McpRuntimeConfigShape => ({
   commandEntries: registry.commandEntries,
   ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
   defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
   runtimeLayer,
+  ...(appContextForCwd === undefined ? {} : { appContextForCwd }),
+  ...(appCommandEntries === undefined ? {} : { appCommandEntries }),
   resources,
 });
 
 export const mcpListResult = Effect.fn("Mcp.list")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
+  includeAppCommands = false,
 ): Effect.fn.Return<McpListResult, McpToolInputError, ConfigService> {
   const options = yield* resolveOptions(registry, flags);
   return buildMcpListResult({
-    defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
-    commandEntries: registry.commandEntries,
+    defaultAllowlist: includeAppCommands
+      ? [...MCP_DEFAULT_ALLOWLIST, ...APP_COMMAND_TOOL_IDS]
+      : MCP_DEFAULT_ALLOWLIST,
+    commandEntries: includeAppCommands
+      ? [
+          ...registry.commandEntries,
+          ...APP_COMMAND_DESCRIPTORS.map((descriptor) => ({
+            spec: { id: descriptor.toolId, summary: descriptor.title },
+          })),
+        ]
+      : registry.commandEntries,
     ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
     allow: options.allow,
     deny: options.deny,
@@ -331,9 +350,11 @@ export const serveMcp = Effect.fn("Mcp.serve")(function* (
   registry: McpCommandRegistry,
   flags: McpCommandFlags,
   runtimeLayer: Layer.Layer<unknown>,
+  appContextForCwd?: McpRuntimeConfigShape["appContextForCwd"],
+  appCommandEntries?: McpRuntimeConfigShape["appCommandEntries"],
 ): Effect.fn.Return<void, McpToolInputError | McpTransportError, ConfigService | RedactionService> {
   const options = yield* resolveOptions(registry, flags);
-  const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer);
+  const runtimeConfig = buildMcpRuntimeConfig(registry, runtimeLayer, appContextForCwd, appCommandEntries);
   const catalogOptions = {
     allow: options.allow,
     deny: options.deny,
@@ -364,6 +385,8 @@ export const dispatchMcpCommand = async (params: {
     ConfigError | LandoRuntimeBootstrapError
   >;
   readonly retainedRuntime: Layer.Layer<unknown>;
+  readonly appContextForCwd?: McpRuntimeConfigShape["appContextForCwd"];
+  readonly appCommandEntries?: McpRuntimeConfigShape["appCommandEntries"];
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
   readonly invocation: CliInvocationSnapshot;
@@ -380,7 +403,7 @@ export const dispatchMcpCommand = async (params: {
         params.flags,
         params.retainedRuntime,
       );
-      return yield* mcpListResult(registry, params.flags);
+      return yield* mcpListResult(registry, params.flags, params.appCommandEntries !== undefined);
     });
     // Lazy on purpose: a static import would pull compiled-session (and its
     // renderer plugin graph) into every consumer of this command module.
@@ -416,7 +439,13 @@ export const dispatchMcpCommand = async (params: {
             params.flags,
             retainedRuntime,
           );
-          yield* serveMcp(registry, params.flags, retainedRuntime);
+          yield* serveMcp(
+            registry,
+            params.flags,
+            retainedRuntime,
+            params.appContextForCwd,
+            params.appCommandEntries,
+          );
         }).pipe(Effect.scoped)
       : Effect.fail(startupError);
   const signal = params.signal;

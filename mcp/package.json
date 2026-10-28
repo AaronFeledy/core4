@@ -20,6 +20,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./allowlist": "./src/allowlist.ts",
+    "./app-command-tools": "./src/app-command-tools.ts",
     "./bounded-json": "./src/bounded-json.ts",
     "./catalog": "./src/catalog.ts",
     "./dispatch": "./src/dispatch.ts",
