@@ -84,7 +84,15 @@ const containerName = (slug: string, service: string) =>
 const makeFakeApi = () => {
   const calls: EngineHttpRequest[] = [];
   const created = new Set<string>();
-  const networks = new Set<string>();
+  const networks = new Map<
+    string,
+    {
+      readonly Id: string;
+      readonly Name: string;
+      readonly Driver: string;
+      readonly Labels?: Readonly<Record<string, string>>;
+    }
+  >();
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -93,14 +101,44 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
-        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+        if (
+          request.method === "POST" &&
+          (request.path === "/networks/create" || request.path === "/libpod/networks/create")
+        ) {
           const body = Schema.decodeUnknownSync(
-            Schema.Union([Schema.Struct({ Name: Schema.String }), Schema.Struct({ name: Schema.String })]),
+            Schema.Union([
+              Schema.Struct({
+                Name: Schema.String,
+                Driver: Schema.String,
+                Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+              }),
+              Schema.Struct({
+                name: Schema.String,
+                driver: Schema.String,
+                labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+              }),
+            ]),
           )(request.body);
-          networks.add("name" in body ? body.name : body.Name);
+          const network =
+            "name" in body
+              ? {
+                  Name: body.name,
+                  Driver: body.driver,
+                  ...(body.labels === undefined ? {} : { Labels: body.labels }),
+                }
+              : body;
+          networks.set(network.Name, { Id: network.Name, ...network });
           return { status: 201, body: "{}" };
         }
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const name = decodeURIComponent(request.path.slice("/networks/".length));
+          const network = networks.get(name);
+          return network === undefined
+            ? { status: 404, body: "" }
+            : { status: 200, body: JSON.stringify(network) };
+        }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+          networks.delete(decodeURIComponent(request.path.slice("/networks/".length)));
           return { status: 204, body: "" };
         }
         if (request.method === "GET" && request.path === "/exec/exec-1/json") {
