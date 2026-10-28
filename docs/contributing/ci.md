@@ -276,6 +276,16 @@ bun run bench:opentui-startup -- --binary core/dist/lando
 bun run bench:tooling-hot-path -- --binary core/dist/lando
 ```
 
+To compare two Linux x64 compiled binaries on the same host, pass the candidate to `--binary` and the reference to `--compare-binary`:
+
+```bash
+bun run bench:opentui-startup -- --binary /path/to/candidate/lando --compare-binary /path/to/reference/lando --json
+```
+
+Replace both example paths with your compiled binaries. The runner starts fresh processes in adjacent alternating pairs: candidate then reference, followed by reference then candidate. `--runs` counts samples **per binary** (20 by default). JSON reports every timed sample in order, each binary's p95, and signed candidate-minus-reference differences. Only the candidate must pass the existing strict 50 ms startup and first-output budgets. The reference's budget status is diagnostic; a reference that fails to run or produces no output invalidates the comparison. The candidate alone runs the TTY overhead gate after startup passes. A failed startup budget skips that TTY phase but still reports all scheduled startup samples.
+
+The JSON identifies each binary by path, byte size, and SHA-256 after timing finishes. It also records the runner's Bun version, host OS, architecture and kernel, and before/after CPU load and available Linux cgroup or pressure readings. Record the Bun compiler version used to build each binary separately; the runner cannot infer that provenance. Processes use isolated Lando roots without warmups or retries. The OS page cache remains unmanaged, so these are not cold-disk measurements. Inspect load and pressure evidence before attributing a difference to code.
+
 ## npm dev package publishing
 
 The generated GitHub release workflow does **not** publish npm. It only publishes unsigned `v4.0.0-dev.N` GitHub prerelease binaries. `scripts/prepare-npm-dev-packages.ts` rewrites checkout versions to `4.0.0-dev.N` and the `dev` tag. Live npm dev package publishing is the manual `scripts/release.ts` orchestrator. That orchestrator uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
