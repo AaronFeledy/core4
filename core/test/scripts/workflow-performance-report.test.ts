@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { WorkflowPerformanceCommandResult } from "../../../scripts/workflow-performance-command.ts";
 import { workflowPerformanceSampleKey } from "../../../scripts/workflow-performance-plan.ts";
 import {
   type WorkflowPerformanceReport,
@@ -69,6 +70,58 @@ const reportWithDiagnostic = (diagnostic: unknown): unknown => {
 };
 
 describe("workflow performance report", () => {
+  test.each([0, 7] as const)(
+    "retains cleanup unmount step and report verdict for exit code %i",
+    async (exitCode) => {
+      const unmount: WorkflowPerformanceCommandResult = {
+        id: "cleanup:unmount",
+        durationMs: 37,
+        exitCode,
+        stdout: "",
+        stderr: "",
+      };
+      const outcome = exitCode === 0 ? "passed" : "failed";
+      const input = report([{ ...sample(0, outcome, 37), steps: [unmount] }]);
+      const root = await mkdtemp(join(tmpdir(), "workflow-performance-unmount-"));
+      const retainedPath = join(root, "report.json");
+
+      try {
+        await writeWorkflowPerformanceReport(input, retainedPath);
+        const retained = decodeWorkflowPerformanceReport(await Bun.file(retainedPath).json());
+
+        expect(retained.lanes[0]?.samples[0]?.steps[0]).toMatchObject({
+          id: "cleanup:unmount",
+          durationMs: 37,
+          exitCode,
+        });
+        expect(evaluateWorkflowPerformanceReport(retained).exitCode).toBe(exitCode === 0 ? 0 : 1);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test("rejects an unknown cleanup step identifier", () => {
+    const unsafe = report([sample(0, "failed", 10)]);
+    const step = unsafe.lanes[0]?.samples[0]?.steps[0];
+    const unknownCleanup = {
+      ...unsafe,
+      lanes: [
+        {
+          ...unsafe.lanes[0],
+          samples: [
+            {
+              ...unsafe.lanes[0]?.samples[0],
+              steps: [{ ...step, id: "cleanup:unknown" }],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(() => decodeWorkflowPerformanceReport(unknownCleanup)).toThrow();
+  });
+
   test.each(["running", "interrupted", "failed"] as const)(
     "fails %s reports even before any lane completes",
     (status) => {
