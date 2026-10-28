@@ -101,6 +101,7 @@
     "codegen:schema-deprecations": "bun run scripts/build-schema-deprecations.ts",
     "codegen:mutagen-versions": "bun run scripts/build-mutagen-versions.ts",
     "codegen:php-msmtp-pins": "bun run scripts/build-php-msmtp-pins.ts",
+    "codegen:github-actions-pins": "bun run scripts/build-github-actions-pins.ts",
     "codegen:tomcat-catalog": "bun run scripts/build-tomcat-catalog.ts",
     "codegen:tomcat-bump-workflow": "bun run scripts/build-tomcat-bump-workflow.ts",
     "update:tomcat": "bun run scripts/update-tomcat.ts",
