@@ -1,7 +1,7 @@
 import { isAbsolute, normalize, parse, resolve, sep } from "node:path";
 import { Effect, Schema } from "effect";
 
-// ==== Private catalog failures contain only fixed, allowlisted diagnostics.
+// Private catalog failures contain only fixed, allowlisted diagnostics.
 const remedies = {
   "invalid-catalog": "Regenerate the reviewed GitHub Actions pin catalog and verify upstream receipts.",
   "unsupported-runtime":
@@ -12,7 +12,7 @@ const remedies = {
   "provider-acceptance-unverified":
     "Complete separate provider and runtime acceptance before admitting a workload.",
   "invalid-download-request":
-    "Choose a catalog artifact, an normalized absolute host destination directory, and explicit offline intent.",
+    "Choose a catalog artifact, a normalized absolute host destination directory, and explicit offline intent.",
   "download-receipt-mismatch":
     "Ask the trusted host downloader to acquire the exact pinned file and return its matching receipt.",
   "offline-artifact-missing":
@@ -45,7 +45,7 @@ export const pinError = (reason: keyof typeof remedies) =>
     remediation: remedies[reason],
   });
 
-// ==== Exact supported identities; availability is independent of workload acceptance.
+// Exact supported identities; availability is independent of workload acceptance.
 export const RUNNER_VERSION = "2.338.1";
 export const RUNNER_SOURCE_COMMIT = "e78522a9a7b01c3bcd7ac0da6e3a9bb6cd513a76";
 export const NODE_SOURCE_COMMITS = {
@@ -100,7 +100,7 @@ export const DownloadOptions = Schema.Struct({
   offline: Schema.Boolean,
 });
 
-// ==== Catalog records describe upstream artifacts and relative archive layout only.
+// Catalog records describe upstream artifacts and relative archive layout only.
 export const ArchivePin = Schema.Struct({
   ...PlatformFields,
   id: ArtifactId,
