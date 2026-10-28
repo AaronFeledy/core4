@@ -26,6 +26,12 @@ export type MaintenanceScenario = {
   readonly mode?: "current" | "changed" | "checks-fail" | "update-fail" | "report-fail";
   readonly pending?: "bump" | "manual-only";
   readonly existingPr?: boolean;
+  readonly ghFailure?: {
+    readonly operation: "list" | "create" | "edit";
+    readonly exitCode: number;
+    readonly stderr: string;
+  };
+  readonly repository?: string;
 };
 
 // Real Git transport, fake GitHub and domain I/O only. No process-global cwd/env changes.
@@ -58,6 +64,9 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
     LOG: log,
     MODE: scenario.mode ?? "changed",
     EXISTING_PR: scenario.existingPr ? "71" : "",
+    GH_FAILURE_OPERATION: scenario.ghFailure?.operation ?? "",
+    GH_FAILURE_EXIT_CODE: String(scenario.ghFailure?.exitCode ?? 0),
+    GH_FAILURE_STDERR: scenario.ghFailure?.stderr ?? "",
     ISSUES: "[]",
     TAGS: scenario.mode === "current" || scenario.pending ? "v2.1.0\nv99.0.0-rc1" : "v2.2.0\nv99.0.0-rc1",
     NEW_PIN: pin("v2.2.0"),
@@ -125,6 +134,10 @@ export const createMaintenanceFixture = async (scenario: MaintenanceScenario) =>
     }
     for (const [name, script] of Object.entries({
       gh: `printf '%s\\n' "gh $* repo=\${GH_REPO:-}" >> "$LOG"
+if [ "$1" = pr ] && [ "$2" = "$GH_FAILURE_OPERATION" ]; then
+  printf '%s' "$GH_FAILURE_STDERR" >&2
+  exit "$GH_FAILURE_EXIT_CODE"
+fi
 case "$1 $2" in
   'api --paginate') printf '%s\\n' "$TAGS" ;;
   'pr list') printf '%s' "$EXISTING_PR" ;;
@@ -170,7 +183,7 @@ esac`,
           Object.entries(scripts.failureEnv).map(([key, value]) => [
             key,
             value
-              .replaceAll("${{ github.repository }}", "fixture/repository")
+              .replaceAll("${{ github.repository }}", scenario.repository ?? "fixture/repository")
               .replaceAll("${{ github.server_url }}", "https://example.invalid")
               .replaceAll("${{ github.run_id }}", "42")
               .replaceAll("${{ github.token }}", "fixture-token"),

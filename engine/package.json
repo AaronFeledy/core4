@@ -127,6 +127,7 @@
     "./plugins/context": "./src/plugins/context.ts",
     "./plugins/context-state": "./src/plugins/context-state.ts",
     "./plugins/contribution-graph": "./src/plugins/contribution-graph.ts",
+    "./plugins/doctor-contributions": "./src/plugins/doctor-contributions.ts",
     "./plugins/file-sync-from-modules": "./src/plugins/file-sync-from-modules.ts",
     "./plugins/global-manifests": "./src/plugins/global-manifests.ts",
     "./plugins/installed-plugin-loader": "./src/plugins/installed-plugin-loader.ts",
