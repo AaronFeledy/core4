@@ -1271,7 +1271,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
     const appliedPlanState = options.appliedPlanState;
     const windowsSyncImage = volumeWitnessImage.ref;
     const windowsSyncTargets =
-      shouldManageRuntime && family === "win32" && appliedPlanState !== undefined && podmanApi !== undefined
+      shouldManageRuntime &&
+      family === "win32" &&
+      appliedPlanState !== undefined &&
+      podmanApi?.request !== undefined
         ? makeWindowsSyncTargetOperations(podmanApi, appliedPlanState, (image) =>
             runtimePullImage(podmanApi, image, {
               ctx: LANDO_CTX,
@@ -1299,7 +1302,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
         displayName: "Lando Runtime Provider",
         version: "0.0.0",
         platform,
-        capabilities: resolvedCapabilities,
+        capabilities: {
+          ...resolvedCapabilities,
+          ...(windowsSyncTargets === undefined ? {} : { fileSyncTargets: "prepared-volume" as const }),
+        },
         isAvailable: Effect.succeed(true),
         appliedPlans:
           options.appliedPlanState === undefined || options.appliedPlanStateDir === undefined

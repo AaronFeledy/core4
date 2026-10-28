@@ -1,4 +1,4 @@
-import { FileSyncStopError } from "@lando/sdk/errors";
+import { FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   type AppPlan,
@@ -11,6 +11,7 @@ import {
 import { type FileSyncEngineShape, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { DateTime, Effect, Layer } from "effect";
+import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import { acceleratedPlan, app } from "./accelerated-start-recovery-support.ts";
 import { makeHarness } from "./start-progress-topology-support.ts";
 
@@ -73,18 +74,47 @@ export type FailurePoint =
   | "prepare"
   | "flush";
 
+export const withEngineId = (plan: AppPlan, engineId: string): AppPlan => ({
+  ...plan,
+  fileSync: plan.fileSync.map((entry) => ({ ...entry, engineId })),
+});
+
+export const ordinaryPlan: AppPlan = {
+  ...oldPlan,
+  services: Object.fromEntries(
+    Object.entries(oldPlan.services).map(([name, service]) => [
+      name,
+      {
+        ...service,
+        mounts: service.mounts.map((mount) => {
+          if (mount.type !== "bind" || mount.realization !== "accelerated") return mount;
+          const { mountKey: _mountKey, realization: _realization, ...bind } = mount;
+          return { ...bind, realization: "passthrough" as const };
+        }),
+      },
+    ]),
+  ),
+  fileSync: [],
+};
+
 export const rotationHarness = Effect.fnUntraced(function* (
   options: {
     readonly desired?: AppPlan;
     readonly failAt?: FailurePoint;
     readonly extraSession?: boolean;
     readonly missingSession?: boolean;
+    readonly fresh?: boolean;
+    readonly unknownApplied?: boolean;
+    /** When set, the injected FileSyncEngine id (defaults to mutagen / applied). */
+    readonly injectedEngineId?: string;
+    /** Optional second engine used only when desired.engineId differs from applied. */
+    readonly alternateEngines?: ReadonlyArray<FileSyncEngineShape>;
   } = {},
 ) {
   const desired = options.desired ?? changedPlan;
   const calls: string[] = [];
   const cleanedPlans: AppPlan[] = [];
-  let applied: AppPlan | undefined = oldPlan;
+  let applied: AppPlan | undefined = options.fresh ? undefined : oldPlan;
   let phase: "absent" | "active" | "drained" | "disposing" | "completed" = "active";
   let failure = options.failAt;
   const trip = (point: FailurePoint) =>
@@ -100,13 +130,16 @@ export const rotationHarness = Effect.fnUntraced(function* (
     status: "running",
     lastUpdatedAt: DateTime.makeUnsafe("2026-01-01"),
   });
-  const sessions = oldPlan.fileSync.map(({ session }) => info(session, `old-${session.service}`));
+  const sessions = options.fresh
+    ? []
+    : oldPlan.fileSync.map(({ session }) => info(session, `old-${session.service}`));
   if (options.extraSession && sessions[0] !== undefined)
     sessions.push(info({ ...sessions[0].spec, mountKey: "foreign" }, "foreign"));
   if (options.missingSession) sessions.pop();
+  const primaryEngineId = options.injectedEngineId ?? "mutagen";
   const engine: FileSyncEngineShape = {
     ...TestFileSyncEngine,
-    id: "mutagen",
+    id: primaryEngineId,
     sessionsPersistAcrossProcesses: true,
     isAvailable: Effect.succeed(true),
     listSessions: (filter) =>
@@ -181,13 +214,17 @@ export const rotationHarness = Effect.fnUntraced(function* (
     ...base,
     inspectAppliedFileSync: () =>
       Effect.sync(() =>
-        applied === undefined
-          ? { status: "missing" as const }
-          : {
-              status: "accelerated" as const,
-              engineId: "mutagen",
-              sessions: applied.fileSync.map(({ session }) => session),
-            },
+        options.unknownApplied
+          ? { status: "unknown" as const }
+          : applied === undefined
+            ? { status: "missing" as const }
+            : applied.fileSync.length === 0
+              ? { status: "ordinary" as const }
+              : {
+                  status: "accelerated" as const,
+                  engineId: applied.fileSync[0]?.engineId ?? primaryEngineId,
+                  sessions: applied.fileSync.map(({ session }) => session),
+                },
       ),
     quiesceForFileSync: ({ plan }: { readonly plan?: AppPlan }) =>
       Effect.gen(function* () {
@@ -228,13 +265,40 @@ export const rotationHarness = Effect.fnUntraced(function* (
         ),
       ),
   };
-  const layer = Layer.merge(
+  const enginesById = new Map<string, FileSyncEngineShape>([
+    [engine.id, engine],
+    ...(options.alternateEngines ?? []).map((entry) => [entry.id, entry] as const),
+  ]);
+  const resolver = FileSyncResolver.of({
+    candidates: [...enginesById.values()].map((entry) => ({
+      id: entry.id,
+      pluginName: "test",
+      source: "test",
+      capabilities: entry.capabilities,
+      supports: { platform: ["linux", "darwin", "win32"] },
+    })),
+    select: () => Effect.succeed(undefined),
+    acquire: (id: string) =>
+      Effect.suspend(() => {
+        const found = enginesById.get(id);
+        if (found !== undefined) return Effect.succeed(found);
+        return Effect.fail(
+          new FileSyncStartError({
+            engineId: id,
+            message: `No file-sync engine is available for "${id}".`,
+            remediation: "Select or restore the planned file-sync engine before retrying.",
+          }),
+        );
+      }),
+  });
+  const layer = Layer.mergeAll(
     harness.layer,
     Layer.succeed(RuntimeProviderRegistry, {
       ...harness.runtimeProviderRegistry,
       select: () => Effect.succeed(provider),
       resolveAppliedPlan: () => Effect.sync(() => applied),
     }),
+    Layer.succeed(FileSyncResolver, resolver),
   );
   return {
     ...harness,

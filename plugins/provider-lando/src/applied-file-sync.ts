@@ -8,38 +8,14 @@ import {
   type AppPlan,
   type FileSyncSessionSpec,
   fileSyncVolumeName,
-  plannedFileSyncSessions,
+  hasStructuralFileSyncCoverage,
 } from "@lando/sdk/schema";
 import type { AppliedFileSyncInspection } from "@lando/sdk/services";
 
 import { inspectAppliedPlan } from "./applied-state.ts";
 
 export const verifiedFileSyncSessions = (plan: AppPlan): ReadonlyArray<FileSyncSessionSpec> | undefined => {
-  const expected = plannedFileSyncSessions(plan);
-  if (expected === undefined || expected.length === 0 || plan.fileSync.length !== expected.length)
-    return undefined;
-  const seen = new Set<string>();
-  for (const { session } of plan.fileSync) {
-    const key = `${session.service}/${session.mountKey}`;
-    const mount = expected.find((candidate) => `${candidate.service}/${candidate.mountKey}` === key);
-    if (
-      mount === undefined ||
-      seen.has(key) ||
-      session.app.kind !== "user" ||
-      session.app.id !== plan.id ||
-      !sameRealpath(session.app.root, plan.root) ||
-      !sameRealpath(session.source, mount.source) ||
-      session.mode !== "two-way-safe" ||
-      session.permissions !== undefined ||
-      session.excludes.length !== mount.excludes.length ||
-      session.excludes.some((exclude, index) => exclude !== mount.excludes[index]) ||
-      session.target._tag !== "volume" ||
-      session.target.name !== mount.volumeName ||
-      session.target.path !== mount.targetPath
-    )
-      return undefined;
-    seen.add(key);
-  }
+  if (!hasStructuralFileSyncCoverage(plan, { pathEquals: sameRealpath })) return undefined;
   return plan.fileSync.map(({ session }) => session);
 };
 
