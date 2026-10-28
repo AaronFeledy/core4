@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ServiceStartError } from "@lando/sdk/errors";
 import { ProviderId } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
-import { redactProviderError } from "../../src/providers/error-redaction.ts";
+import { redactProviderError } from "@lando/redaction/provider-error";
 
 test("provider error redaction keeps a dependency gate's listener observation", () => {
   // Given: a gate failure whose dependency name is also a registered secret.

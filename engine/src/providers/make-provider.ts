@@ -1,5 +1,6 @@
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
 import { planRedactionValues } from "@lando/redaction/plan-values";
+import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   HealthcheckError,
@@ -26,7 +27,6 @@ import {
   validateHealthcheckExecution,
 } from "../subsystems/healthcheck/attempt.ts";
 import { withProviderErrorRedaction } from "./error-policy.ts";
-import { redactProviderError } from "./error-redaction.ts";
 import { withOutputRegistration } from "./output-policy.ts";
 import { registerProviderOutput } from "./output-redaction.ts";
 
