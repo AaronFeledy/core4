@@ -81,7 +81,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `ConfigTranslatorRegistry` | Select plugin-contributed external config translators (§4, §7) |
 | `TemplateEngineRegistry` | Select template engines; the built-in `lando` engine is always registered |
 | `TemplateRenderer` | Render whole files and strings through the selected engine and cache (§7, §12) |
-| `FileSyncEngineRegistry` | Select passthrough or accelerated mount realization (§10.6) |
+| `FileSyncResolver` (engine-private, provider tier) | Resolve metadata and scope-acquire the engine an accelerated app mount selects (§4.3, §10.6); ordinary realizations require no new engine, while reconciliation acquires the recorded previous engine |
 | `ToolingEngine` | Execute compiled tooling programs against a selected target (§8.6) |
 | `RuntimeProviderRegistry` | Discover and select the runtime provider (§5) |
 | `CertificateAuthority` | Issue and trust development certificates (§10.3) |
