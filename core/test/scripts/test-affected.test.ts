@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { affectedTestCommand, changedPaths, selectAffectedTests } from "../../../scripts/test-affected.ts";
+import { collectShardedTestFiles } from "../../../scripts/test-shards.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -62,6 +63,7 @@ test("selects through re-exports, named workspace exports, type imports, and sta
     eligible: ["pkg/test/a.test.ts", "pkg/test/b.test.ts", "pkg/test/other.test.ts"],
   });
   expect(result.selected).toEqual(["pkg/test/a.test.ts", "pkg/test/b.test.ts"]);
+  expect(result.sharedPreloadTests).toEqual([]);
   expect(result.witnesses.get("pkg/test/a.test.ts")).toEqual([
     "lib/src/leaf.ts",
     "lib/src/feature.ts",
@@ -94,6 +96,47 @@ test("follows static and dynamic imports through package files outside src and t
     "pkg/tools/dynamic.ts",
     "pkg/test/b.test.ts",
   ]);
+});
+
+test("selects tests through configured preload imports", async () => {
+  const root = await fixture();
+  await put(root, "bunfig.toml", '[test]\npreload = ["./pkg/preload.ts"]\n');
+  await put(root, "pkg/preload.ts", 'import "./preload-helper";\n');
+  await put(root, "pkg/preload-helper.ts", 'import "./src/leaf";\n');
+  await put(root, "pkg/src/leaf.ts", "export const leaf = 1;\n");
+  await put(root, "pkg/test/a.test.ts", "export {};\n");
+  await put(root, "pkg/test/b.test.ts", "export {};\n");
+  const result = await selectAffectedTests({
+    root,
+    changed: ["pkg/src/leaf.ts"],
+    eligible: ["pkg/test/a.test.ts", "pkg/test/b.test.ts"],
+  });
+  expect(result.selected).toEqual(["pkg/test/a.test.ts", "pkg/test/b.test.ts"]);
+  expect(result.sharedPreloadTests).toEqual(["pkg/test/a.test.ts", "pkg/test/b.test.ts"]);
+  expect(result.witnesses.get("pkg/test/a.test.ts")).toEqual([
+    "pkg/src/leaf.ts",
+    "pkg/preload-helper.ts",
+    "pkg/preload.ts",
+    "pkg/test/a.test.ts",
+  ]);
+});
+
+test("broadly selects when a configured preload cannot be statically resolved", async () => {
+  for (const preload of ['["../outside.ts"]', '["./pkg/preload-${name}.ts"]', "17"]) {
+    const root = await fixture();
+    await put(root, "bunfig.toml", `[test]\npreload = ${preload}\n`);
+    await put(root, "pkg/test/a.test.ts", "export {};\n");
+    await put(root, "pkg/test/b.test.ts", "export {};\n");
+    const result = await selectAffectedTests({
+      root,
+      changed: ["pkg/src/leaf.ts"],
+      eligible: ["pkg/test/a.test.ts", "pkg/test/b.test.ts"],
+    });
+    expect(result.selected).toEqual(["pkg/test/a.test.ts", "pkg/test/b.test.ts"]);
+    expect(result.witnesses.get("pkg/test/a.test.ts")?.[0]).toBe("bunfig.toml");
+    expect(result.broadReason).toContain("preload");
+    expect(result.uncertain.some((entry) => entry.includes("preload"))).toBe(true);
+  }
 });
 
 test("recovers removed barrel edges and deleted paths from the base commit", async () => {
@@ -248,4 +291,16 @@ test("finds the historical fixture and digest regressions", async () => {
     eligible,
   });
   expect(digestResult.selected).toContain("landofile/test/pipeline/golden-corpus.test.ts");
+});
+
+test("selects every canonical eligible test for the repository preload roots", async () => {
+  const eligible = await collectShardedTestFiles();
+  const result = await selectAffectedTests({
+    root: resolve(import.meta.dirname, "../../.."),
+    changed: ["scripts/test-preload-roots.ts"],
+    eligible,
+  });
+  expect(result.selected).toEqual(eligible);
+  expect(result.sharedPreloadTests).toEqual(eligible);
+  expect(result.unmatched).toEqual([]);
 });

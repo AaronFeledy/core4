@@ -100,6 +100,45 @@ const sourceFiles = async (root: string): Promise<Set<string>> => {
   return files;
 };
 
+const configuredPreloads = async (
+  root: string,
+  files: ReadonlySet<string>,
+  packages: Awaited<ReturnType<typeof loadWorkspacePackages>>,
+): Promise<{ roots: readonly string[]; error?: string }> => {
+  const config = Bun.file(resolve(root, "bunfig.toml"));
+  if (!(await config.exists())) return { roots: [] };
+  try {
+    const document: unknown = Bun.TOML.parse(await config.text());
+    if (typeof document !== "object" || document === null || Array.isArray(document))
+      return { roots: [], error: "bunfig.toml is not a table" };
+    const test: unknown = (document as Record<string, unknown>).test;
+    if (test === undefined) return { roots: [] };
+    if (typeof test !== "object" || test === null || Array.isArray(test))
+      return { roots: [], error: "bunfig.toml [test] is not a table" };
+    const configured: unknown = (test as Record<string, unknown>).preload;
+    if (configured === undefined) return { roots: [] };
+    const entries = typeof configured === "string" ? [configured] : configured;
+    if (!Array.isArray(entries) || entries.some((entry) => typeof entry !== "string" || !entry))
+      return { roots: [], error: "bunfig.toml test.preload is not a string or string array" };
+    const roots: string[] = [];
+    for (const entry of entries as string[]) {
+      const base = entry.startsWith(".") ? resolve(root, entry) : resolveWorkspaceSpecifier(entry, packages);
+      if (!base) return { roots: [], error: `unsupported test preload: ${entry}` };
+      try {
+        relativePath(root, base);
+      } catch {
+        return { roots: [], error: `test preload leaves repository: ${entry}` };
+      }
+      const file = resolveFile(base, files);
+      if (!file) return { roots: [], error: `unresolved test preload: ${entry}` };
+      roots.push(file);
+    }
+    return { roots: sorted(new Set(roots)) };
+  } catch {
+    return { roots: [], error: "bunfig.toml could not be parsed" };
+  }
+};
+
 const parseSource = (path: string, text: string): ts.SourceFile =>
   ts.createSourceFile(
     path,
@@ -171,6 +210,7 @@ export interface Selection {
   readonly witnesses: ReadonlyMap<string, readonly string[]>;
   readonly fixtureTests: readonly string[];
   readonly priorTests: readonly string[];
+  readonly sharedPreloadTests: readonly string[];
   readonly unmatched: readonly string[];
   readonly uncertain: readonly string[];
   readonly broadReason?: string;
@@ -185,24 +225,41 @@ export const selectAffectedTests = async (options: {
   const root = resolve(options.root ?? ROOT);
   const changed = sorted(new Set(options.changed.map((path) => relativePath(root, path))));
   const eligible = sorted(options.eligible ?? (await collectShardedTestFiles()));
-  const broadReason = changed.some((path) => CONFIG.test(path))
+  let broadReason = changed.some((path) => CONFIG.test(path))
     ? "configuration or workspace mapping changed"
     : undefined;
   const files = await sourceFiles(root);
   for (const path of changed) if (SOURCE.test(path)) files.add(resolve(root, path));
   const packages = await loadWorkspacePackages(root);
+  const preloads = await configuredPreloads(root, files, packages);
   const reverse = new Map<string, Set<string>>();
-  const parsed = new Map<string, ts.SourceFile>();
+  const fixtureSources = new Map<string, string[]>();
+  const resourcePaths = changed.filter((path) => !SOURCE.test(path) || fixtureApp(path));
   const priorEdges = new Set<string>();
   const uncertain = new Set<string>();
+  if (preloads.error) {
+    broadReason = `test preload configuration uncertain: ${preloads.error}`;
+    uncertain.add(`test preload configuration: ${preloads.error}`);
+  }
   const addEdge = (from: string, to: string): void => {
     const incoming = reverse.get(to) ?? new Set<string>();
     incoming.add(from);
     reverse.set(to, incoming);
   };
+  for (const test of eligible) {
+    for (const preload of preloads.roots) addEdge(resolve(root, test), preload);
+  }
   const scan = (file: string, sourceText: string, prior = false): readonly string[] => {
     const source = parseSource(file, sourceText);
-    if (!prior) parsed.set(file, source);
+    if (!prior && resourcePaths.length > 0) {
+      const literals = scanLiterals(source);
+      for (const path of resourcePaths) {
+        if (!literals.some((literal) => referenceMatches(literal.value, path, file, root))) continue;
+        const sources = fixtureSources.get(path) ?? [];
+        sources.push(file);
+        fixtureSources.set(path, sources);
+      }
+    }
     const targets: string[] = [];
     for (const line of literalDynamic(source))
       uncertain.add(`${norm(relative(root, file))}:${line}: computed import/require`);
@@ -232,7 +289,7 @@ export const selectAffectedTests = async (options: {
     }
     return targets;
   };
-  const pending = eligible.map((path) => resolve(root, path));
+  const pending = [...eligible.map((path) => resolve(root, path)), ...preloads.roots];
   const scanned = new Set<string>();
   for (let index = 0; index < pending.length; index++) {
     const file = pending[index];
@@ -253,20 +310,10 @@ export const selectAffectedTests = async (options: {
   }
 
   const witnesses = new Map<string, readonly string[]>();
-  const fixtureSources = new Map<string, string[]>();
-  for (const [file, source] of parsed) {
-    const literals = scanLiterals(source);
-    for (const path of changed) {
-      if (SOURCE.test(path) && !fixtureApp(path)) continue;
-      if (!literals.some((literal) => referenceMatches(literal.value, path, file, root))) continue;
-      const sources = fixtureSources.get(path) ?? [];
-      sources.push(file);
-      fixtureSources.set(path, sources);
-    }
-  }
   const matched = new Set<string>();
   const fixtureTests = new Set<string>();
   const priorTests = new Set<string>();
+  const sharedPreloadTests = new Set<string>();
   const eligibleSet = new Set(eligible);
   for (const changedPath of changed) {
     const rootPath = resolve(root, changedPath);
@@ -297,15 +344,22 @@ export const selectAffectedTests = async (options: {
           ) {
             priorTests.add(path);
           }
+          if (preloads.roots.includes(witness[witness.length - 2] ?? "")) {
+            sharedPreloadTests.add(path);
+          }
         }
       }
       for (const importer of sorted(reverse.get(node) ?? [])) queue.push([...witness, importer]);
     }
   }
   if (broadReason) {
-    for (const test of eligible) witnesses.set(test, [changed.find((path) => CONFIG.test(path)) ?? "", test]);
+    const trigger = preloads.error
+      ? "bunfig.toml"
+      : (changed.find((path) => CONFIG.test(path)) ?? "bunfig.toml");
+    for (const test of eligible) witnesses.set(test, [trigger, test]);
     fixtureTests.clear();
     priorTests.clear();
+    sharedPreloadTests.clear();
   }
   const unmatched = broadReason ? [] : changed.filter((path) => !matched.has(path));
   return {
@@ -315,6 +369,7 @@ export const selectAffectedTests = async (options: {
     witnesses,
     fixtureTests: sorted(fixtureTests),
     priorTests: sorted(priorTests),
+    sharedPreloadTests: sorted(sharedPreloadTests),
     unmatched,
     uncertain: sorted(uncertain),
     ...(broadReason ? { broadReason } : {}),
@@ -361,7 +416,8 @@ const main = async (): Promise<void> => {
   for (const test of result.selected) {
     const label = result.fixtureTests.includes(test) ? " (fixture reference heuristic)" : "";
     const prior = result.priorTests.includes(test) ? " (includes base edge)" : "";
-    console.log(`  ${test}${label}${prior}: ${result.witnesses.get(test)?.join(" -> ")}`);
+    const preload = result.sharedPreloadTests.includes(test) ? " (shared test preload)" : "";
+    console.log(`  ${test}${label}${prior}${preload}: ${result.witnesses.get(test)?.join(" -> ")}`);
   }
   console.log(`[test-affected] unmatched changed paths=${result.unmatched.length}`);
   for (const path of result.unmatched) console.log(`  unmatched: ${path}`);
