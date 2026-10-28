@@ -32,7 +32,7 @@ import { resolveSecretsRedactor } from "./secrets-redactor";
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
   description:
-    "Lando could not start its provider runtime, so provider diagnostics were skipped. Validate config.yml with `lando config validate`; repair it with `lando config edit`, or check `lando plugin list` for conflicting plugins.",
+    "Lando could not start its provider runtime, so provider diagnostics were skipped. Validate config.yml with `lando config validate`; repair it with `lando config edit`, or remove a conflicting plugin with `lando plugin:remove <name>` and reinstall it with `lando plugin:add <spec>`.",
   command: "lando config validate",
 };
 

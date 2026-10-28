@@ -1,9 +1,12 @@
-import { Effect, Result } from "effect";
+import { Effect, Option, Result } from "effect";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { bundledPluginModules } from "@lando/engine/composition";
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { pluginDoctorCheckIndex } from "@lando/engine/plugins/doctor-contributions";
+import { makePluginCapabilityIndex } from "@lando/engine/plugins/module-set";
 import { resolveProviderSelection } from "@lando/engine/providers/precedence";
 import { interruptOnAbort } from "./doctor-abort";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract";
@@ -69,7 +72,7 @@ import type { DoctorOptions } from "./doctor-options";
 export const doctor = Effect.fn("Doctor.collect")(
   function* (
     options: DoctorOptions = {},
-    modules: ReadonlyArray<LandoPluginModule> = bundledPluginModules(),
+    modules?: ReadonlyArray<LandoPluginModule>,
   ): Effect.fn.Return<DoctorResult, never, ConfigService | PathsService | RuntimeProviderRegistry> {
     const configService = yield* ConfigService;
     const paths = yield* PathsService;
@@ -116,8 +119,20 @@ export const doctor = Effect.fn("Doctor.collect")(
       platform,
       execPath: options.execPath ?? process.execPath,
     });
+    const graph = yield* Effect.serviceOption(PluginContributionGraph);
     const { reports, selfChecks: pluginSelfChecks } = yield* pluginDoctorReports(
-      modules,
+      Effect.suspend(() => {
+        const explicit = modules ?? (Option.isNone(graph) ? bundledPluginModules() : undefined);
+        const index =
+          explicit === undefined
+            ? pluginDoctorCheckIndex(Option.getOrThrow(graph).plugins)
+            : Result.flatMap(makePluginCapabilityIndex(explicit), () =>
+                pluginDoctorCheckIndex(
+                  explicit.map((entry) => ({ source: "explicit", manifest: entry.manifest, entry })),
+                ),
+              );
+        return Result.match(index, { onFailure: Effect.fail, onSuccess: Effect.succeed });
+      }),
       {
         providerId: String(resolution.providerId),
         app: appOutcome.value,
