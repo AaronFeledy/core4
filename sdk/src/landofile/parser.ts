@@ -88,6 +88,7 @@ const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
 const DEFAULT_MAX_DEPTH = 64;
 
 const ANCHOR_PREFIX_PATTERN = new RegExp(`^&${YAML_REFERENCE_NAME_PATTERN.source}\\s+`);
+const ALIAS_PREFIX_PATTERN = new RegExp(`^\\*${YAML_REFERENCE_NAME_PATTERN.source}`);
 
 // A double-quoted key carries the JSON escape subset the emitter writes, so any
 // string key round-trips even when YAML cannot hold it plain.
@@ -189,41 +190,103 @@ const stripComment = (line: string): string => {
   return line.slice(0, offset) + stripYamlLineComment(line.slice(offset));
 };
 
-const splitInlineArray = (value: string): ReadonlyArray<string> => {
+interface FlowTokenContext {
+  readonly closer: "]" | "}";
+  state: "start" | "plain" | "complete";
+}
+
+// Only a token's opening character is structural. Quotes and unmatched closers
+// inside plain scalars remain literal (for example `don't` and `a}`). Return
+// malformed status as data so tag detection can still inspect later entries.
+const splitInlineArray = (
+  value: string,
+): {
+  readonly parts: ReadonlyArray<string>;
+  readonly malformed: boolean;
+  readonly mappingOffset: number | undefined;
+} => {
   const parts: string[] = [];
+  const contexts: FlowTokenContext[] = [{ closer: "]", state: "start" }];
   let start = 0;
-  let depth = 0;
+  let malformed = false;
+  let mappingOffset: number | undefined;
   let quote: "'" | '"' | undefined;
   for (let index = 0; index < value.length; index += 1) {
     const char = value[index];
+    const context = contexts[contexts.length - 1];
+    if (context === undefined || char === undefined) continue;
     if (quote !== undefined) {
-      if (quote === '"' && char === "\\") {
-        index += 1;
-      } else if (char === quote) {
+      if (quote === '"' && char === "\\") index += 1;
+      else if (quote === "'" && char === "'" && value[index + 1] === "'") index += 1;
+      else if (char === quote) {
         quote = undefined;
+        context.state = "complete";
       }
       continue;
     }
-    if (char === "'" || char === '"') {
-      quote = char;
+    if (/\s/.test(char)) continue;
+    const next = value[index + 1];
+    if (
+      context.closer === "]" &&
+      (char === ":" || (char === "?" && context.state === "start")) &&
+      (next === undefined || /[\s,\]}]/.test(next))
+    )
+      mappingOffset ??= index;
+    if (char === ":" && context.closer === "}") {
+      context.state = "start";
       continue;
     }
-    if (char === "[" || char === "{") {
-      depth += 1;
+    if (char === ",") {
+      if (context.state === "start") malformed = true;
+      context.state = "start";
+      if (contexts.length === 1) {
+        parts.push(value.slice(start, index));
+        start = index + 1;
+      }
       continue;
     }
-    if (char === "]" || char === "}") {
-      // A stray closer must not swallow later separators into one item.
-      depth = Math.max(depth - 1, 0);
+    if (char === context.closer) {
+      if (contexts.length === 1) {
+        malformed = true;
+        continue;
+      }
+      contexts.pop();
+      const parent = contexts[contexts.length - 1];
+      if (parent !== undefined) parent.state = "complete";
       continue;
     }
-    if (char === "," && depth === 0) {
-      parts.push(value.slice(start, index));
-      start = index + 1;
+    if (context.state === "start") {
+      const anchor = value.slice(index).match(ANCHOR_PREFIX_PATTERN)?.[0];
+      if (anchor !== undefined) {
+        index += anchor.length - 1;
+        continue;
+      }
+      const alias = value.slice(index).match(ALIAS_PREFIX_PATTERN)?.[0];
+      if (alias !== undefined) {
+        index += alias.length - 1;
+        context.state = "complete";
+        continue;
+      }
+      if (char === "'" || char === '"') {
+        quote = char;
+        continue;
+      }
+      if (char === "[" || char === "{") {
+        contexts.push({ closer: char === "[" ? "]" : "}", state: "start" });
+        continue;
+      }
+      if (char === "]" || char === "}") malformed = true;
+      context.state = "plain";
+    } else if (context.state === "complete") {
+      malformed = true;
+      context.state = "plain";
     }
   }
-  parts.push(value.slice(start));
-  return parts;
+  if (quote !== undefined || contexts.length !== 1) malformed = true;
+  const last = value.slice(start);
+  // A trailing comma is valid YAML and does not manufacture an empty scalar.
+  if (last.trim() !== "" || parts.length === 0) parts.push(last);
+  return { parts, malformed, mappingOffset };
 };
 
 const parseInlineArray = (
@@ -238,8 +301,18 @@ const parseInlineArray = (
   assertDepth(filePath, line, depth, maxDepth);
   const inner = value.slice(1, -1);
   if (inner.trim() === "") return [];
+  const { parts, malformed, mappingOffset } = splitInlineArray(inner);
+  if (mappingOffset !== undefined)
+    throw parseError(
+      filePath,
+      `Flow mappings are not supported in Landofiles at line ${line}. Use an indented block mapping instead.`,
+      line,
+      column + 1 + mappingOffset,
+      flowMappingRemediation(value),
+    );
+  if (malformed) throw parseError(filePath, "Malformed YAML flow collection.", line, column);
   let cursor = 0;
-  return splitInlineArray(inner).map((part) => {
+  return parts.map((part) => {
     const offset = inner.indexOf(part, cursor);
     cursor = offset + part.length + 1;
     return parseScalar(part, filePath, line, column + 1 + offset, depth, maxDepth, references);
@@ -271,6 +344,16 @@ const parseScalar = (
 ): unknown => {
   const trimmed = value.trim();
 
+  if (trimmed.startsWith('"') || trimmed.startsWith("'")) {
+    const { parts, malformed } = splitInlineArray(trimmed);
+    if (malformed || parts.length !== 1)
+      throw parseError(
+        filePath,
+        "Malformed YAML quoted scalar.",
+        line,
+        column + Math.max(value.search(/\S/), 0),
+      );
+  }
   if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) {
     return unescapeDoubleQuotedScalar(trimmed.slice(1, -1));
   }
@@ -311,6 +394,16 @@ const parseScalar = (
   if (trimmed === "true") return true;
   if (trimmed === "false") return false;
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (
+    (trimmed.startsWith("[") && !trimmed.endsWith("]")) ||
+    (trimmed.startsWith("{") && !trimmed.endsWith("}"))
+  )
+    throw parseError(
+      filePath,
+      "Malformed YAML flow collection.",
+      line,
+      column + Math.max(value.search(/\S/), 0),
+    );
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
     const leadingWhitespace = value.search(/\S/);
     return parseInlineArray(
@@ -361,6 +454,15 @@ interface ValuePosition {
   readonly column: number;
 }
 
+const parseMemberPrefix = (value: string, location: ValuePosition) => {
+  const reference = parseYamlReferenceSyntax(value, location);
+  const anchor = reference.kind === "anchor" ? reference : undefined;
+  let raw = anchor?.value ?? value.trim();
+  const tag = raw.match(/^!(override|reset)(?=$|\s)/)?.[1];
+  if (tag !== undefined) raw = raw.slice(tag.length + 1).trim();
+  return { anchor, tag, raw };
+};
+
 // Skip indentation and an optional `&name` prefix so Compose tags after anchors
 // are still matched at the tag token.
 const skipValuePrefix = (value: string): { readonly text: string; readonly offset: number } => {
@@ -394,7 +496,7 @@ const detectTagsInValue = (value: string, position: ValuePosition): ReadonlyArra
   const inner = trimmed.slice(1, -1);
   const occurrences: LandofileTagOccurrence[] = [];
   let cursor = 0;
-  for (const item of splitInlineArray(inner)) {
+  for (const item of splitInlineArray(inner).parts) {
     const itemOffset = inner.indexOf(item, cursor);
     const occurrence = detectLeadingTag(item, {
       line: position.line,
@@ -433,13 +535,17 @@ export const detectLandofileTags: (options: {
             column: sequenceColumn + sequenceEntry.rawKey.length + 1,
           }),
         );
-        if (BLOCK_SCALAR_HEADER.test(sequenceEntry.rawValue.trim())) {
+        const indicator = parseMemberPrefix(sequenceEntry.rawValue, {
+          line: line.line,
+          column: sequenceColumn + sequenceEntry.rawKey.length + 1,
+        }).raw;
+        if (BLOCK_SCALAR_HEADER.test(indicator)) {
           const [, nextIndex] = parseBlockScalar(
             lines,
             file,
             index,
             { ...line, indent: line.indent + 2 },
-            sequenceEntry.rawValue.trim(),
+            indicator,
           );
           index = nextIndex - 1;
         }
@@ -451,15 +557,23 @@ export const detectLandofileTags: (options: {
     }
 
     const entry = splitMappingEntry(line.text, { compactValue: true });
-    if (entry === undefined) continue;
+    if (entry === undefined) {
+      if (line.text.startsWith("["))
+        occurrences.push(...detectTagsInValue(line.text, { line: line.line, column: line.indent + 1 }));
+      continue;
+    }
     occurrences.push(
       ...detectTagsInValue(entry.rawValue, {
         line: line.line,
         column: line.indent + entry.rawKey.length + 2,
       }),
     );
-    if (BLOCK_SCALAR_HEADER.test(entry.rawValue.trim())) {
-      const [, nextIndex] = parseBlockScalar(lines, file, index, line, entry.rawValue.trim());
+    const indicator = parseMemberPrefix(entry.rawValue, {
+      line: line.line,
+      column: line.indent + entry.rawKey.length + 2,
+    }).raw;
+    if (BLOCK_SCALAR_HEADER.test(indicator)) {
+      const [, nextIndex] = parseBlockScalar(lines, file, index, line, indicator);
       index = nextIndex - 1;
     }
   }
@@ -643,9 +757,7 @@ const parseList = (
         index += 1;
         continue;
       }
-      const [anchored, nextIndex] = next.text.startsWith("- ")
-        ? parseList(lines, filePath, index + 1, next.indent, depth + 1, maxDepth, references)
-        : parseMap(lines, filePath, index + 1, next.indent, depth + 1, maxDepth, references);
+      const [anchored, nextIndex] = parseChildNode(lines, filePath, index + 1, depth, maxDepth, references);
       bindYamlAnchor(references, blockAnchor.name, anchored);
       result.push(anchored);
       index = nextIndex;
@@ -749,6 +861,37 @@ const parseListItemMap = (
   return [item, index];
 };
 
+const parseChildNode = (
+  lines: ReadonlyArray<ParsedLine>,
+  filePath: string,
+  index: number,
+  parentDepth: number,
+  maxDepth: number,
+  references: YamlReferenceState,
+  parentKey?: string,
+): readonly [unknown, number] => {
+  const line = lines[index];
+  if (line === undefined) throw parseError(filePath, "Missing child node.");
+  if (line.text.startsWith("[") || line.text.startsWith("{")) {
+    return [
+      parseScalar(
+        line.text,
+        filePath,
+        line.line,
+        line.indent + 1,
+        parentDepth,
+        maxDepth,
+        references,
+        parentKey,
+      ),
+      index + 1,
+    ];
+  }
+  return line.text.startsWith("- ")
+    ? parseList(lines, filePath, index, line.indent, parentDepth + 1, maxDepth, references)
+    : parseMap(lines, filePath, index, line.indent, parentDepth + 1, maxDepth, references);
+};
+
 interface MemberContext {
   readonly lines: ReadonlyArray<ParsedLine>;
   readonly filePath: string;
@@ -764,12 +907,8 @@ const parseMember = (context: MemberContext, entry: MappingEntry): readonly [unk
   const line = lines[index];
   if (line === undefined) throw parseError(filePath, "Missing mapping member.");
   const location = { line: line.line, column: indent + entry.rawKey.length + 2 };
-  const reference = parseYamlReferenceSyntax(entry.rawValue, location);
-  const anchor = reference.kind === "anchor" ? reference : undefined;
+  const { anchor, tag, raw } = parseMemberPrefix(entry.rawValue, location);
   if (anchor !== undefined) reserveYamlAnchor(references, anchor);
-  let raw = anchor?.value ?? entry.rawValue.trim();
-  const tag = raw.match(/^!(override|reset)(?=$|\s)/)?.[1];
-  if (tag !== undefined) raw = raw.slice(tag.length + 1).trim();
   const fail = (message: string): never => {
     throw new LandofileParseErrorClass({
       filePath,
@@ -787,9 +926,7 @@ const parseMember = (context: MemberContext, entry: MappingEntry): readonly [unk
   } else if (raw === "") {
     const next = lines[index + 1];
     if (next !== undefined && next.indent > indent) {
-      [value, nextIndex] = next.text.startsWith("- ")
-        ? parseList(lines, filePath, index + 1, next.indent, depth + 1, maxDepth, references)
-        : parseMap(lines, filePath, index + 1, next.indent, depth + 1, maxDepth, references);
+      [value, nextIndex] = parseChildNode(lines, filePath, index + 1, depth, maxDepth, references, entry.key);
     } else {
       if (tag === "override") fail("!override requires an explicit value or an indented payload.");
       value = {};
