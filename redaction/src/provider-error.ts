@@ -25,6 +25,8 @@ import { ProviderId } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
 
+import { redactProviderDetails } from "./provider-details.ts";
+
 const baseFields = (
   error: Pick<
     ProviderUnavailableError,
@@ -35,7 +37,7 @@ const baseFields = (
   providerId: redactor.redactString(error.providerId),
   operation: redactor.redactString(error.operation),
   message: redactor.redactString(error.message),
-  ...(error.details === undefined ? {} : { details: redactor.redactValue(error.details) }),
+  ...(error.details === undefined ? {} : { details: redactProviderDetails(error.details, redactor) }),
   remediation: redactor.redactString(error.remediation),
   ...(error.cause === undefined ? {} : { cause: error.cause }),
 });
@@ -49,12 +51,14 @@ const setupFields = (
   remediation: redactor.redactString(error.remediation),
 });
 
-// Preserve the narrower error channel on availability probes and contribution callbacks.
+// Preserve narrow error channels when redacting individual canonical classes.
 export function redactProviderError(
   error: ProviderUnavailableError,
   redactor: Redactor,
 ): ProviderUnavailableError;
 export function redactProviderError(error: ProviderConfigError, redactor: Redactor): ProviderConfigError;
+export function redactProviderError(error: ProviderInternalError, redactor: Redactor): ProviderInternalError;
+export function redactProviderError(error: VolumeOperationError, redactor: Redactor): VolumeOperationError;
 export function redactProviderError(error: ProviderError, redactor: Redactor): ProviderError;
 export function redactProviderError(error: ProviderError, redactor: Redactor): ProviderError {
   // Reconstruct, never clone: TaggedError serialization retains its constructor arguments.
@@ -101,8 +105,8 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
       return new ProviderCapabilityError({
         ...baseFields(error, redactor),
         capability: redactor.redactString(error.capability),
-        requiredValue: redactor.redactValue(error.requiredValue),
-        actualValue: redactor.redactValue(error.actualValue),
+        requiredValue: redactProviderDetails(error.requiredValue, redactor),
+        actualValue: redactProviderDetails(error.actualValue, redactor),
       });
     case "ProviderConfigError":
       return new ProviderConfigError(baseFields(error, redactor));

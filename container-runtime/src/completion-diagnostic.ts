@@ -21,8 +21,18 @@ export const boundedDiagnostic = (
   const encoded = encoder.encodeInto(safe, buffer);
   if (encoded.read === safe.length) return decoder.decode(buffer.subarray(0, encoded.written));
   // encodeInto writes only complete UTF-8 codepoints; clipping happens after full-context redaction.
-  const clipped = encoder.encodeInto(safe, buffer.subarray(0, diagnosticLimit - diagnosticMarker.length));
-  return `${decoder.decode(buffer.subarray(0, clipped.written))}${diagnosticMarker}`;
+  const marker = redactCompletionString(diagnosticMarker, redact);
+  const markerBytes = encoder.encode(marker);
+  if (markerBytes.byteLength >= diagnosticLimit) {
+    return REDACTED;
+  }
+  const clipped = encoder.encodeInto(safe, buffer.subarray(0, diagnosticLimit - markerBytes.byteLength));
+  // Clipping can split a generated redaction sentinel. Stabilize it before later boundaries redact again.
+  const complete = redactCompletionString(
+    `${decoder.decode(buffer.subarray(0, clipped.written))}${marker}`,
+    redact,
+  );
+  return encoder.encode(complete).byteLength <= diagnosticLimit ? complete : marker;
 };
 
 export const makeCompletionDiagnosticContext = () => {

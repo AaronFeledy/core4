@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
-import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import { makeRedactionService } from "@lando/redaction/service";
+import { FailureRoleAnnotation, failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-result";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Clock, Context, Deferred, Effect, Exit, Fiber, Stream } from "effect";
@@ -17,7 +18,11 @@ const modes = ["buffered", "streamed"] as const;
 type Outcome = (typeof outcomes)[number];
 type Mode = (typeof modes)[number];
 
-const cases = modes.flatMap((mode) => outcomes.map((outcome) => [mode, outcome] as const));
+const cases = modes.flatMap((mode) =>
+  outcomes.flatMap((outcome) =>
+    ["passthrough", "canonical"].map((redaction) => [mode, outcome, redaction] as const),
+  ),
+);
 
 const recordedPlane = (
   requests: Array<{ method: string; path: string }>,
@@ -27,6 +32,7 @@ const recordedPlane = (
     readonly deleting: Deferred.Deferred<void>;
     readonly teardown: Promise<void>;
   },
+  redactor: Redactor,
 ) => {
   const api: DataPlaneApiClient = {
     request: (request) => {
@@ -57,7 +63,7 @@ const recordedPlane = (
     providerId: "test",
     api,
     capabilities: { volumeSnapshot: "none" },
-    redactor: passthroughRedactor,
+    redactor,
   });
 };
 
@@ -78,8 +84,14 @@ const cleanupErrors = (cause: Cause.Cause<unknown>): ReadonlyArray<unknown> =>
   });
 
 test.each(cases)(
-  "%s %s bounds a DELETE that never finishes",
-  async (mode: Mode, outcome: Outcome) => {
+  "%s %s bounds a DELETE that never finishes with %s redaction",
+  async (mode: Mode, outcome: Outcome, redactionMode: string) => {
+    const canonical = redactionMode === "canonical";
+    const redaction = makeRedactionService();
+    const redactor = canonical
+      ? await Effect.runPromise(redaction.forProfile("secrets"))
+      : passthroughRedactor;
+    await Effect.runPromise(redaction.registerValues(["lando", "test", "truncated"]));
     const requests: Array<{ method: string; path: string }> = [];
     const teardown = Promise.withResolvers<void>();
     const settled = Promise.withResolvers<{
@@ -90,7 +102,12 @@ test.each(cases)(
       Effect.gen(function* () {
         const waiting = yield* Deferred.make<void>();
         const deleting = yield* Deferred.make<void>();
-        const provider = recordedPlane(requests, outcome, { waiting, deleting, teardown: teardown.promise });
+        const provider = recordedPlane(
+          requests,
+          outcome,
+          { waiting, deleting, teardown: teardown.promise },
+          redactor,
+        );
         const work =
           mode === "buffered"
             ? provider.run(spec).pipe(Effect.asVoid)
@@ -136,6 +153,14 @@ test.each(cases)(
       expect(Exit.isFailure(result.exit)).toBe(true);
       if (!Exit.isFailure(result.exit)) return;
       const projected = failureOutcomeFromCause(result.exit.cause);
+      if (canonical) {
+        for (const error of [projected.error, ...projected.additionalErrors.map(({ error }) => error)]) {
+          const diagnostic = taggedErrorJson(error);
+          for (const token of ["lando", "test", "truncated"])
+            expect(JSON.stringify(diagnostic)).not.toContain(token);
+          if (outcome !== "interrupted") expect(diagnostic.remediation).toContain("[redacted]");
+        }
+      }
       expect(cleanupErrors(result.exit.cause)).toEqual([
         expect.objectContaining({
           _tag: "ProviderUnavailableError",
@@ -150,10 +175,9 @@ test.each(cases)(
           return;
         case "failed-body":
           expect(projected.error).toMatchObject({
-            _tag: "VolumeOperationError",
-            operation,
-            message:
-              mode === "buffered" ? "Provider ephemeral run failed." : "Provider ephemeral stream failed.",
+            _tag: "ProviderUnavailableError",
+            operation: "run.start",
+            message: "Provider data-plane API returned HTTP 500.",
           });
           expect(projected.additionalErrors).toEqual([
             {

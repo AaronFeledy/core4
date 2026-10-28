@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
+import { failureOutcomeFromCause, taggedErrorJson } from "@lando/sdk/command-result";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Cause, Deferred, Effect, Exit, Fiber, Option, Stream } from "effect";
 
@@ -6,6 +8,7 @@ import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
+  ProviderInternalError,
   ProviderUnavailableError,
   ServiceCopyError,
   VolumeOperationError,
@@ -566,7 +569,7 @@ describe("provider data plane", () => {
       ]);
       expect(result).toMatchObject({
         _tag: "Failure",
-        failure: { _tag: "VolumeOperationError", cause: { cause: inspectError } },
+        failure: { _tag: "VolumeOperationError", cause: inspectError },
       });
     },
   );
@@ -1615,13 +1618,13 @@ test.each([
   );
   if (!Exit.isFailure(exit)) throw new Error("Expected inspection failure");
   const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
-  expect(error).toBeInstanceOf(VolumeOperationError);
+  expect(error).toBeInstanceOf(ProviderInternalError);
   expect(JSON.stringify(error)).not.toContain(body === "" ? "PRIVATE MALFORMED JSON" : body);
   expect(removed).toBe(true);
 });
 
 test.each(["http", "typed", "defect", "interrupt"] as const)(
-  "sanitizes ephemeral inspection %s failure and closes the container",
+  "preserves ephemeral inspection %s failure and closes the container",
   async (mode) => {
     let removals = 0;
     const api: DataPlaneApiClient = {
@@ -1671,13 +1674,291 @@ test.each(["http", "typed", "defect", "interrupt"] as const)(
     if (mode === "interrupt") {
       expect(Cause.hasInterrupts(exit.cause)).toBe(true);
       expect(Cause.hasFails(exit.cause)).toBe(false);
+    } else if (mode === "defect") {
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+      const reason = exit.cause.reasons.find(Cause.isDieReason);
+      expect(reason?.defect).toMatchObject({ _tag: "TransportDefect", message: "PRIVATE INSPECTION DEFECT" });
+    } else if (mode === "typed") {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(ProviderUnavailableError);
+      expect(error).toMatchObject({
+        operation: "inspect",
+        remediation: "Retry the fixture inspection.",
+        cause: "PRIVATE INSPECTION CAUSE",
+      });
     } else {
       const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
-      expect(error).toBeInstanceOf(VolumeOperationError);
-      if (!(error instanceof VolumeOperationError)) throw new Error("Expected volume inspection error");
+      expect(error).toBeInstanceOf(ProviderUnavailableError);
+      if (!(error instanceof ProviderUnavailableError))
+        throw new Error("Expected unavailable inspection error");
       expect(JSON.stringify(error)).not.toContain("PRIVATE INSPECTION");
-      expect(error.details).toBeUndefined();
+      expect(error.details).toEqual({ status: 500 });
       expect(error.cause).toBeUndefined();
     }
   },
 );
+
+for (const mode of ["run", "runStream"] as const) {
+  test.each([200, 201, 409, 202, 204, 500, 503])(
+    `${mode} classifies ephemeral volume HTTP %s before acquiring container`,
+    async (status) => {
+      const requests: Array<{ method: string; path: string }> = [];
+      const privateBody = "unregistered-volume-body".repeat(50000);
+      const provider = makeProviderDataPlane({
+        providerId: "test",
+        redactor: passthroughRedactor,
+        capabilities: { volumeSnapshot: "none" },
+        api: {
+          request: (input) => {
+            requests.push(input);
+            if (input.path === "/volumes/create") return Effect.succeed({ status, body: privateBody });
+            return Effect.succeed({
+              status: input.method === "DELETE" ? 204 : 201,
+              body: input.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
+            });
+          },
+          stream: () => Stream.empty,
+        },
+      });
+      const work = {
+        image: "fixture",
+        command: ["true"],
+        remove: true,
+        owner: {
+          app: appId,
+          plan: {
+            ...plan,
+            identity: { appRoot: AbsolutePath.make("/canonical/app"), ownerKey: "canonical-app" },
+            stores: [{ name: "data", scope: "app" as const, kind: "data" as const }],
+          },
+        },
+        mounts: [
+          { type: "volume" as const, store: "data", target: PortablePath.make("/data"), readOnly: false },
+        ],
+      };
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          mode === "run"
+            ? provider.run(work).pipe(Effect.asVoid)
+            : provider.runStream(work).pipe(Stream.runDrain),
+        ),
+      );
+      if ([200, 201, 409].includes(status)) {
+        expect(Exit.isSuccess(exit)).toBe(true);
+        expect(requests.filter((r) => r.method === "DELETE")).toHaveLength(1);
+      } else {
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (!Exit.isFailure(exit)) throw new Error("Expected failure");
+        const failures = exit.cause.reasons.filter(Cause.isFailReason);
+        expect(failures[0]?.error).toBeInstanceOf(ProviderUnavailableError);
+        expect(failures[0]?.error).toMatchObject({ operation: "run.volume", details: { status } });
+        expect(JSON.stringify(failures[0]?.error)).not.toContain("unregistered-volume-body");
+        expect(requests).toHaveLength(1);
+      }
+    },
+  );
+}
+
+const volumeMount = {
+  type: "volume" as const,
+  store: "data",
+  target: PortablePath.make("/data"),
+  readOnly: false,
+};
+const volumeRunSpec = {
+  image: "fixture",
+  command: ["true"],
+  remove: true,
+  owner: {
+    app: appId,
+    plan: {
+      ...plan,
+      identity: { appRoot: AbsolutePath.make("/canonical/app"), ownerKey: "canonical-app" },
+      stores: [
+        { name: "data", scope: "app" as const, kind: "data" as const },
+        { name: "other", scope: "app" as const, kind: "data" as const },
+      ],
+    },
+  },
+  mounts: [{ type: "volume" as const, store: "data", target: PortablePath.make("/data"), readOnly: false }],
+};
+for (const mode of ["run", "runStream"] as const) {
+  test.each(["typed", "defect", "interrupt", "partial"] as const)(
+    `${mode} preserves volume ingress %s and never cleans unacquired containers or named stores`,
+    async (phase) => {
+      const original = new ProviderCapabilityError({
+        providerId: "test",
+        operation: "fixture.original",
+        message: "Unavailable",
+        remediation: "Choose supported volume storage",
+        capability: "volume",
+        requiredValue: "named",
+        actualValue: "none",
+        cause: { debug: true },
+      });
+      const defect = { arbitrary: "defect" };
+      const requests: Array<{ method: string; path: string }> = [];
+      const provider = makeProviderDataPlane({
+        providerId: "test",
+        redactor: passthroughRedactor,
+        capabilities: { volumeSnapshot: "none" },
+        api: {
+          request: (input) => {
+            requests.push(input);
+            if (phase === "partial")
+              return Effect.succeed({ status: requests.length === 1 ? 201 : 503, body: "private-body" });
+            if (phase === "typed") return Effect.fail(original);
+            if (phase === "defect") return Effect.die(defect);
+            return Effect.interrupt;
+          },
+        },
+      });
+      const work =
+        phase === "partial"
+          ? {
+              ...volumeRunSpec,
+              mounts: [...volumeRunSpec.mounts, { ...volumeMount, store: "other" }],
+            }
+          : volumeRunSpec;
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          mode === "run"
+            ? provider.run(work).pipe(Effect.asVoid)
+            : provider.runStream(work).pipe(Stream.runDrain),
+        ),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("Expected failure");
+      expect(requests.every((input) => input.path === "/volumes/create" && input.method === "POST")).toBe(
+        true,
+      );
+      expect(requests).toHaveLength(phase === "partial" ? 2 : 1);
+      if (phase === "typed") {
+        const error = exit.cause.reasons.find(Cause.isFailReason)?.error;
+        expect(error).toBeInstanceOf(ProviderCapabilityError);
+        expect(error).toMatchObject({
+          operation: original.operation,
+          remediation: original.remediation,
+          cause: original.cause,
+        });
+      } else if (phase === "defect") expect(exit.cause.reasons.find(Cause.isDieReason)?.defect).toBe(defect);
+      else if (phase === "interrupt") expect(exit.cause.reasons.some(Cause.isInterruptReason)).toBe(true);
+      else
+        expect(exit.cause.reasons.find(Cause.isFailReason)?.error).toBeInstanceOf(ProviderUnavailableError);
+    },
+  );
+
+  test.each(["owner", "plan", "identity", "app", "store"] as const)(
+    `${mode} retains ownership error for missing or mismatched %s`,
+    async (field) => {
+      let requests = 0;
+      const provider = makeProviderDataPlane({
+        providerId: "test",
+        redactor: passthroughRedactor,
+        capabilities: { volumeSnapshot: "none" },
+        api: {
+          request: () => {
+            requests++;
+            return Effect.succeed({ status: 201, body: "{}" });
+          },
+        },
+      });
+      const { identity: _identity, ...withoutIdentity } = volumeRunSpec.owner.plan;
+      const { owner: _owner, ...withoutOwner } = volumeRunSpec;
+      const work = {
+        ...withoutOwner,
+        ...(field === "owner"
+          ? {}
+          : {
+              owner:
+                field === "plan"
+                  ? { app: appId }
+                  : field === "identity"
+                    ? { app: appId, plan: withoutIdentity }
+                    : field === "app"
+                      ? { ...volumeRunSpec.owner, app: AppId.make("different") }
+                      : volumeRunSpec.owner,
+            }),
+        mounts: field === "store" ? [{ ...volumeMount, store: "undeclared" }] : volumeRunSpec.mounts,
+      };
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          mode === "run"
+            ? provider.run(work).pipe(Effect.asVoid)
+            : provider.runStream(work).pipe(Stream.runDrain),
+        ),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("Expected failure");
+      expect(exit.cause.reasons.find(Cause.isFailReason)?.error).toBeInstanceOf(VolumeOperationError);
+      expect(requests).toBe(0);
+    },
+  );
+}
+
+for (const mode of ["run", "runStream"] as const) {
+  test.each([false, true])(
+    `${mode} mounted run safely returns cleanup diagnostics after acquisition (primary=%s)`,
+    async (primary) => {
+      const secret = "mounted-error-secret-key";
+      const service = makeRedactionService();
+      await Effect.runPromise(service.registerValues([secret]));
+      const redactor = await Effect.runPromise(service.forProfile("secrets"));
+      const error = () =>
+        new ProviderUnavailableError({
+          providerId: "test",
+          operation: "fixture.original",
+          message: "Unavailable",
+          remediation: "Run doctor",
+          details: {
+            [secret]: "hidden",
+            safe: { status: 503 },
+            error: Object.assign(new Error(secret), { name: secret }),
+          },
+        });
+      let removals = 0;
+      const provider = makeProviderDataPlane({
+        providerId: "test",
+        redactor,
+        capabilities: { volumeSnapshot: "none" },
+        api: {
+          request: (input) => {
+            if (input.method === "DELETE") {
+              removals++;
+              return Effect.fail(error());
+            }
+            if (primary && input.path.endsWith("/start")) return Effect.fail(error());
+            return Effect.succeed({
+              status: input.path === "/volumes/create" ? 409 : 201,
+              body: input.path.endsWith("/json") ? '{"State":{"ExitCode":0}}' : "{}",
+            });
+          },
+          stream: () => Stream.empty,
+        },
+      });
+      const exit = await Effect.runPromiseExit(
+        Effect.scoped(
+          mode === "run"
+            ? provider.run(volumeRunSpec).pipe(Effect.asVoid)
+            : provider.runStream(volumeRunSpec).pipe(Stream.runDrain),
+        ),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) throw new Error("Expected failure");
+      expect(removals).toBe(1);
+      const outcome = failureOutcomeFromCause(exit.cause);
+      const errors = [outcome.error, ...outcome.additionalErrors.map(({ error }) => error)];
+      expect(errors).toHaveLength(primary ? 2 : 1);
+      for (const failure of errors) {
+        expect(failure).toBeInstanceOf(ProviderUnavailableError);
+        const json = taggedErrorJson(failure);
+        expect(JSON.stringify(json)).not.toContain(secret);
+        expect(json.details).toMatchObject({
+          safe: { status: 503 },
+          error: { name: "[redacted]", message: "[redacted]" },
+        });
+      }
+      if (primary) expect(outcome.additionalErrors[0]?.role).toBe("cleanup");
+    },
+  );
+}
