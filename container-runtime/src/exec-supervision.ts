@@ -62,7 +62,7 @@ export const supervisedExecStream = (
         helperTarget === undefined
       )
         return yield* Effect.fail(failure("helper-unavailable"));
-      if (command.signal?.aborted) return yield* Effect.fail(failure("cancelled-before-start"));
+      if (command.signal?.aborted) return yield* Effect.interrupt;
       const abortBeforeOwnership =
         command.signal === undefined
           ? Effect.never
@@ -408,8 +408,8 @@ export const supervisedExecStream = (
           control("ready"),
           (state) => state.state === "ready" || state.state === "cancelled",
         );
-        if (command.signal?.aborted || ready.state === "cancelled")
-          return yield* Effect.fail(failure("cancelled-before-launch"));
+        if (command.signal?.aborted) return yield* Effect.interrupt;
+        if (ready.state === "cancelled") return yield* Effect.fail(failure("cancelled-before-launch"));
         const watch = yield* startExecWatch(plan, target, {
           api,
           ctx: options.ctx,
@@ -426,7 +426,7 @@ export const supervisedExecStream = (
           Effect.timeout("6 seconds"),
           Effect.mapError((cause) => failure("watch-not-ready", undefined, cause)),
         );
-        if (command.signal?.aborted) return yield* Effect.fail(failure("cancelled-before-launch"));
+        if (command.signal?.aborted) return yield* Effect.interrupt;
         const launched = yield* control("launch");
         if (launched.state !== "running") return yield* Effect.fail(failure("launch-not-confirmed"));
         yield* watch.resumeAfterLaunch;

@@ -320,9 +320,45 @@ describe("non-TTY exec supervision lifecycle", () => {
     controller.abort("SIGINT");
     const { exit, chunks } = await f.run(controller);
     expect(Exit.isFailure(exit)).toBe(true);
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
     expect(f.requests).toHaveLength(0);
     expect(terminalChunks(chunks)).toHaveLength(0);
     expect(f.counts()).toEqual({ primaryStarts: 0, launches: 0 });
+  });
+
+  test.each(["init-start", "ready", "watch-inspect"] as const)(
+    "local abort at completed %s boundary stays a pure interruption",
+    async (stopAt) => {
+      const controller = new AbortController();
+      let intercepted = false;
+      const f = fixture({
+        before: (stage) =>
+          stage === stopAt && !intercepted
+            ? Effect.sync(() => {
+                intercepted = true;
+                controller.abort("SIGTERM");
+              })
+            : Effect.void,
+      });
+      const { exit, chunks } = await f.run(controller);
+      expect(intercepted).toBe(true);
+      expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+      expect(terminalChunks(chunks)).toHaveLength(0);
+      expect(f.events).toContain("cleanup");
+    },
+  );
+
+  test("remote cancelled readiness without local abort remains a provider failure", async () => {
+    const f = fixture({
+      replaceStream: (stage) =>
+        stage === "ready"
+          ? Stream.make(frame(`${JSON.stringify({ ok: true, state: "cancelled", joined: true })}\n`))
+          : undefined,
+    });
+    const { exit, chunks } = await f.run();
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(false);
+    expect(failureText(exit)).toContain("cancelled-before-launch");
+    expect(terminalChunks(chunks)).toHaveLength(0);
   });
 
   test.each([
@@ -354,6 +390,8 @@ describe("non-TTY exec supervision lifecycle", () => {
       expect(terminalChunks(chunks)).toHaveLength(0);
       expect(f.counts().launches).toBe(0);
       expect(f.events).toContain("cancel");
+      if (["ready", "watch-create", "launch"].includes(stopAt))
+        expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
       if (stopAt === "watch") {
         expect(failureText(exit)).toContain("cleanup-unconfirmed");
         expect(f.events).not.toContain("cleanup");

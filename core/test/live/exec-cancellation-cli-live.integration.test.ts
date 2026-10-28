@@ -44,10 +44,13 @@ const inspectExec = async (id: string) => {
   };
 };
 
-for (const variant of variants)
+for (const variant of variants.flatMap((entry) =>
+  (["SIGINT", "SIGTERM"] as const).map((signal) => ({ ...entry, signal })),
+))
   for (const user of ["0:0", "1000:1000"]) {
+    const signal = variant.signal;
     test.skipIf(!enabled || variant.command === undefined)(
-      `${variant.name} piped CLI SIGINT cancels scope with default TERM and joins escaped descendants (${user})`,
+      `${variant.name} piped CLI ${signal} reaches payload and joins escaped descendants (${user})`,
       async () => {
         if (variant.command === undefined) throw new Error("Missing compiled CLI");
         const command = variant.command;
@@ -214,7 +217,7 @@ for (const variant of variants)
             .map((line) => line.split(/\s+/u));
           expect(beforeIdentities).toHaveLength(3);
           const start = performance.now();
-          running.kill("SIGINT"); // Exactly one OS signal, only after the real port is ready.
+          running.kill(signal); // Exactly one OS signal, only after the real port is ready.
           const exitCode = await running.exited;
           const elapsed = performance.now() - start;
           await drains;
@@ -229,9 +232,19 @@ for (const variant of variants)
               expect(frame.envelope.error).toBeDefined();
             }
           }
-          expect(running.signalCode === "SIGINT" || exitCode === 130).toBe(true);
-          expect(await inside(["cat", "/tmp/cli-signal"])).toBe("TERM");
-          expect(await inside(["sh", "-c", "test ! -e /tmp/cli-int && echo absent"])).toBe("absent");
+          expect(running.signalCode === signal || exitCode === (signal === "SIGINT" ? 130 : 143)).toBe(true);
+          const terminal = frames.filter((frame) => frame._tag === "result");
+          expect(terminal).toHaveLength(1);
+          expect(terminal[0]).toMatchObject({
+            envelope: { ok: false, error: { _tag: "CommandInterruptedError", signal } },
+          });
+          expect(stdout + stderr).not.toMatch(
+            /LandoInternalError|All fibers interrupted|--debug|reporting this failure/i,
+          );
+          const marker = signal === "SIGINT" ? "/tmp/cli-int" : "/tmp/cli-signal";
+          const absent = signal === "SIGINT" ? "/tmp/cli-signal" : "/tmp/cli-int";
+          expect(await inside(["cat", marker])).toBe(signal === "SIGINT" ? "INT" : "TERM");
+          expect(await inside(["sh", "-c", `test ! -e ${absent} && echo absent`])).toBe("absent");
           for (const exec of owned) expect((await inspectExec(exec.id)).Running).toBe(false);
           const sentinelAfter = (await inside(["sh", "-c", "cat /proc/$(cat /tmp/cli-sentinel)/stat"])).split(
             /\s+/u,
