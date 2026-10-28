@@ -69,6 +69,15 @@ test("omits the section for embedding results without policy", () => {
   expect(buildInfoSummary(result()).sections.some(({ title }) => title === "project files")).toBe(false);
 });
 
+test("explains unavailable desired policy while retaining the applied summary", () => {
+  const input = info({ applied: ordinary, pendingChange: false });
+  const section = buildInfoSummary(input).sections.find(({ title }) => title === "project files");
+  expect(section?.rows.map(({ label }) => label)).toEqual(["applied"]);
+  expect(renderInfoAppResult(input)).toContain("Desired policy unavailable");
+  expect(renderInfoAppResult(input)).toContain("lando app:cache:refresh");
+  expect(renderInfoAppResult(input)).not.toContain("next start");
+});
+
 test.each([60, 100])("wraps policy details at %i columns and escapes controls", (columns) => {
   const input = info({
     planned: {

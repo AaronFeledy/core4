@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type {
   InfoAppOptions,
@@ -171,7 +171,7 @@ const toServiceInfo = (
 export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
   completionPlan: AppPlan = plan,
-  plannedPolicy: AppPlan | undefined = plan,
+  plannedPolicy: AppPlan | null = plan,
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
@@ -196,7 +196,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   return {
     app: plan.name,
     services,
-    fileSync: projectFileSyncInfo(plannedPolicy, applied),
+    fileSync: projectFileSyncInfo(plannedPolicy ?? undefined, applied),
     ...(hostProxy === undefined ? {} : { hostProxy }),
   };
 });
@@ -222,7 +222,11 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
 
   const observedPlan = yield* observedAppPlan(plan);
   const selectedPlan = yield* selectInfoPlan(observedPlan, options?.services);
-  const desired = observedTarget === undefined ? plan : (target?.plan ?? (yield* planDesiredApp).plan);
+  let desired: AppPlan | null = target?.plan ?? plan;
+  if (observedTarget !== undefined && target === undefined) {
+    const planned = yield* Effect.result(planDesiredApp);
+    desired = Result.match(planned, { onFailure: () => null, onSuccess: ({ plan }) => plan });
+  }
   const result = yield* infoForPlan(selectedPlan, observedPlan, desired);
   if (options?.deep !== true) return result;
   const agentEnv = yield* resolveAgentEnvAudit(landofile?.document.agentEnv, process.env);

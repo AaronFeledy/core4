@@ -90,7 +90,9 @@ lando app:cache:refresh
 lando info --format=json
 ```
 
-Under `result.fileSync`, `planned` describes the desired policy and `applied`, when present, describes the recorded applied plan. `pendingChange: true` means those two policy snapshots differ. If there is no applied evidence, `applied` is absent and `pendingChange` is false; that does not mean the app is running or the desired plan has been applied.
+Under `result.fileSync`, `planned` describes the desired policy and `applied`, when present, describes the recorded applied plan. `pendingChange: true` means both realizations are known and their policy snapshots differ. If there is no applied evidence, `applied` is absent and `pendingChange` is false; that does not mean the app is running or the desired plan has been applied.
+
+If the current configuration or desired provider cannot be planned, `info` still shows available applied state. It omits `planned` and leaves `pendingChange` false rather than claiming the plans match. The terminal summary identifies the missing desired policy; run `lando app:cache:refresh` to see the planning error and its remediation.
 
 Each snapshot has a `mode` and a `reason`, with `engineId` shown once for the app when accelerated. Its `services` list distinguishes accelerated app mounts, ordinary binds, and services with no app mount (`absent`). Reasons include `native-provider`, `service-opt-out`, `global-passthrough`, and `no-compatible-engine`. A mixed app can have an engine selected while an opted-out service stays ordinary.
 

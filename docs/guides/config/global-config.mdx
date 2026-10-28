@@ -115,7 +115,7 @@ lando app:cache:refresh
 lando info --format=json
 ```
 
-Read `result.fileSync.planned` and, when available, `result.fileSync.applied`. `pendingChange` is true when the snapshots differ. The engine appears once at app level; each service reports its mode and reason, exclusion mechanism, and host-backed includes. These are plan facts, not daemon health. Historical reasons can be `unknown`.
+Read `result.fileSync.planned` and, when available, `result.fileSync.applied`. `pendingChange` is true when both realizations are known and their snapshots differ. If desired planning fails, available applied state is still shown, `planned` is absent, and `pendingChange` is false. Run `lando app:cache:refresh` to inspect that planning failure. The engine appears once at app level; each service reports its mode and reason, exclusion mechanism, and host-backed includes. These are plan facts, not daemon health. Historical reasons can be `unknown`.
 
 Changes take effect on the next `lando start`. Existing accelerated apps must first drain through their recorded engine, preserving container-side edits. Missing tools or failed setup, availability, or target preparation after acceleration is planned fail with remediation; they never silently downgrade the app. See [Switch between accelerated and ordinary mounts](../setup/file-sync-mutagen.mdx#switch-between-accelerated-and-ordinary-mounts) before changing an app that already uses sync.
 

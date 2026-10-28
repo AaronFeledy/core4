@@ -87,7 +87,15 @@ export const fileSyncSection = (info: FileSyncInfo | undefined): SummarySection 
   return {
     title: "project files",
     rows,
-    ...(info.pendingChange ? { notes: ["Run `lando start` to apply the planned change safely."] } : {}),
+    ...(info.pendingChange
+      ? { notes: ["Run `lando start` to apply the planned change safely."] }
+      : info.applied !== undefined && info.planned === undefined
+        ? {
+            notes: [
+              "Desired policy unavailable. Run `lando app:cache:refresh` to inspect desired configuration.",
+            ],
+          }
+        : {}),
   };
 };
 
