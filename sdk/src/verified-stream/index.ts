@@ -139,14 +139,25 @@ export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(functio
       if (params.expectedSizeBytes !== undefined && nextSize > params.expectedSizeBytes) {
         return yield* Effect.fail(sizeMismatch(nextSize, params.expectedSizeBytes));
       }
-      yield* Effect.tryPromise({
-        try: async () => {
-          await handle.write(chunk);
-          hash.update(chunk);
-        },
-        catch: (cause) =>
-          new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
-      });
+      let offset = 0;
+      while (offset < chunk.length) {
+        const { bytesWritten } = yield* Effect.tryPromise({
+          try: () => handle.write(chunk.subarray(offset)),
+          catch: (cause) =>
+            new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes.", cause }),
+        });
+        if (
+          !Number.isSafeInteger(bytesWritten) ||
+          bytesWritten <= 0 ||
+          bytesWritten > chunk.length - offset
+        ) {
+          return yield* Effect.fail(
+            new VerifiedStreamError({ reason: "persist", message: "Failed to write artifact bytes." }),
+          );
+        }
+        offset += bytesWritten;
+      }
+      hash.update(chunk);
       yield* Ref.set(size, nextSize);
     }),
   );
