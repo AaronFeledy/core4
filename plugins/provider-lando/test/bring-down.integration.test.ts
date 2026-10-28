@@ -22,6 +22,7 @@ import {
 } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
+import { decodeNetworkCreate } from "./network-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("bringdownapp");
@@ -134,7 +135,12 @@ const makeFakeApi = () => {
   >();
   const networkDetails = new Map<
     string,
-    { readonly Id: string; readonly Labels: Readonly<Record<string, string>> }
+    {
+      readonly Id: string;
+      readonly Name: string;
+      readonly Driver: string;
+      readonly Labels?: Readonly<Record<string, string>>;
+    }
   >();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
   const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
@@ -157,25 +163,11 @@ const makeFakeApi = () => {
         const name = [...containers].find(([, container]) => container.Id === reference)?.[0] ?? reference;
         const action = containerMatch?.[2];
 
-        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
-          const payload =
-            request.path === "/libpod/networks/create"
-              ? Schema.decodeUnknownSync(
-                  Schema.Struct({
-                    name: Schema.String,
-                    driver: Schema.Literal("bridge"),
-                    dns_enabled: Schema.Literal(true),
-                    options: Schema.Struct({ metric: Schema.Literal("50") }),
-                    labels: Schema.Record(Schema.String, Schema.String),
-                  }),
-                )(request.body)
-              : undefined;
-          const body = decodeCreateBody(
-            payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels },
-          );
-          const requestedName = body.Name ?? "";
+        const networkCreate = decodeNetworkCreate(request);
+        if (networkCreate !== undefined) {
+          const requestedName = networkCreate.Name;
           networks.add(requestedName);
-          const network = { Id: `${requestedName}-id`, Labels: body.Labels ?? {} };
+          const network = { Id: `${requestedName}-id`, ...networkCreate };
           networkDetails.set(requestedName, network);
           return { status: 201, body: JSON.stringify(network) };
         }
@@ -187,13 +179,15 @@ const makeFakeApi = () => {
           if (!existed && body.Labels !== undefined) volumeLabels.set(requestedName, body.Labels);
           return { status: existed ? 409 : 201, body: "{}" };
         }
-        if (request.path.startsWith("/networks/")) {
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const reference = decodeURIComponent(request.path.slice("/networks/".length));
           const name = [...networkDetails].find(([, network]) => network.Id === reference)?.[0] ?? reference;
           const network = networkDetails.get(name);
-          if (request.method === "GET") {
-            return { status: network === undefined ? 404 : 200, body: JSON.stringify(network ?? {}) };
-          }
+          return { status: network === undefined ? 404 : 200, body: JSON.stringify(network ?? {}) };
+        }
+        if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const name = [...networkDetails].find(([, network]) => network.Id === reference)?.[0] ?? reference;
           const deleted = networks.delete(name);
           networkDetails.delete(name);
           return { status: deleted ? 204 : 404, body: "" };
