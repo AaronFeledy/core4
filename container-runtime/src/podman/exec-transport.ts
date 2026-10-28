@@ -73,6 +73,8 @@ export interface ExecOptions {
   readonly containerId?: string;
   readonly onExecCreated?: (id: string) => void;
   readonly onExecStarted?: () => void;
+  /** Private control-channel validation; ordinary payload framing stays unchanged. */
+  readonly validateAttach?: { readonly feed: (bytes: Uint8Array) => void; readonly end: () => void };
 }
 
 interface ExecSession {
@@ -87,7 +89,7 @@ const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerN
 
 const execFailure = (
   session: ExecSession,
-  failure: { readonly message: string; readonly details: unknown },
+  failure: { readonly message: string; readonly details: unknown; readonly cause?: unknown },
 ) =>
   new ServiceExecError({
     providerId: session.ctx.providerId,
@@ -95,6 +97,7 @@ const execFailure = (
     service: session.service.name,
     message: failure.message,
     details: redactDetails(failure.details, redactorFor(session.ctx)),
+    ...(failure.cause === undefined ? {} : { cause: failure.cause }),
     remediation:
       "Confirm the target service is running and the exec command is valid inside that container, then retry.",
   });
@@ -500,6 +503,7 @@ export const execStream = (
     ).pipe(
       Stream.flatMap((execId) => {
         const decodeChunk = makeRuntimeAttachDecoder();
+        let controlOutputAt: Ref.Ref<number> | undefined;
         const completionAbort = new AbortController();
         const resizeEvents = command.terminalResize ?? Stream.empty;
         const hasStdin = command.stdin === "inherit" || command.stdinStream !== undefined;
@@ -536,25 +540,46 @@ export const execStream = (
             signalResponseStarted();
           },
         }).pipe(
+          Stream.tap((chunk) =>
+            Effect.gen(function* () {
+              if (options.validateAttach !== undefined && controlOutputAt !== undefined)
+                yield* Ref.set(controlOutputAt, yield* Clock.currentTimeMillis);
+              return yield* Effect.try({
+                try: () => options.validateAttach?.feed(chunk),
+                catch: (cause) =>
+                  execFailure(session, {
+                    message: "Container exec control attachment was invalid.",
+                    details: { stage: "control-attach" },
+                    cause,
+                  }),
+              });
+            }),
+          ),
           Stream.mapError((error) => execStartFailure(session, target, error)),
           command.tty === true
             ? Stream.map((chunk): ExecChunk => ({ kind: "stdout", chunk }))
-            : Stream.flatMap((chunk) =>
-                Stream.fromIterable(
-                  decodeChunk(chunk).flatMap((frame) => {
-                    const previous = pendingDiagnostic;
-                    pendingDiagnostic = undefined;
-                    const output = { kind: frame.stream, chunk: frame.payload };
-                    const text = textDecoder.decode(frame.payload);
-                    // Delay only the daemon's exact attach-copy frame until completion is proven.
-                    if (hasStdin && frame.stream === "stderr" && PODMAN_ATTACH_STDIN_COPY_ERROR.test(text)) {
-                      pendingDiagnostic = { kind: "stderr", chunk: frame.payload };
-                      return previous === undefined ? [] : [previous];
-                    }
-                    return previous === undefined ? [output] : [previous, output];
-                  }),
+            : options.validateAttach !== undefined
+              ? Stream.drain
+              : Stream.flatMap((chunk) =>
+                  Stream.fromIterable(
+                    decodeChunk(chunk).flatMap((frame) => {
+                      const previous = pendingDiagnostic;
+                      pendingDiagnostic = undefined;
+                      const output = { kind: frame.stream, chunk: frame.payload };
+                      const text = textDecoder.decode(frame.payload);
+                      // Delay only the daemon's exact attach-copy frame until completion is proven.
+                      if (
+                        hasStdin &&
+                        frame.stream === "stderr" &&
+                        PODMAN_ATTACH_STDIN_COPY_ERROR.test(text)
+                      ) {
+                        pendingDiagnostic = { kind: "stderr", chunk: frame.payload };
+                        return previous === undefined ? [] : [previous];
+                      }
+                      return previous === undefined ? [output] : [previous, output];
+                    }),
+                  ),
                 ),
-              ),
           Stream.concat(
             Stream.suspend(() => {
               const pending = pendingDiagnostic;
@@ -597,6 +622,7 @@ export const execStream = (
           Effect.gen(function* () {
             const completedExitCode = yield* Ref.make<number | undefined>(undefined);
             const lastOutputAt = yield* Clock.currentTimeMillis.pipe(Effect.flatMap((now) => Ref.make(now)));
+            controlOutputAt = lastOutputAt;
             yield* Effect.gen(function* () {
               // Re-send the size for daemons that ignore it in the start body. Podman
               // accepts resize only after /start returns its response head.
@@ -640,6 +666,19 @@ export const execStream = (
                   )
                 : start;
             return attached.pipe(
+              Stream.concat(
+                Stream.fromEffect(
+                  Effect.try({
+                    try: () => options.validateAttach?.end(),
+                    catch: (cause) =>
+                      execFailure(session, {
+                        message: "Container exec control attachment ended without a complete receipt.",
+                        details: { stage: "control-attach-end" },
+                        cause,
+                      }),
+                  }),
+                ).pipe(Stream.drain),
+              ),
               Stream.concat(
                 Stream.fromEffect(
                   Ref.get(completedExitCode).pipe(

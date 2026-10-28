@@ -60,8 +60,8 @@ export const supervisedExecFixtureOptions = (
     ? { resolveContainerHelper: resolveHelper, helperTarget: { os: "linux", arch: "x64" } }
     : {};
 
-const frame = (value: unknown): Uint8Array => {
-  const payload = new TextEncoder().encode(JSON.stringify(value));
+const frame = (value: unknown, line = false): Uint8Array => {
+  const payload = new TextEncoder().encode(`${JSON.stringify(value)}${line ? "\n" : ""}`);
   const output = new Uint8Array(8 + payload.length);
   output[0] = 1;
   new DataView(output.buffer).setUint32(4, payload.length);
@@ -71,6 +71,7 @@ const frame = (value: unknown): Uint8Array => {
 interface Session {
   main?: string;
   started: boolean;
+  launched: boolean;
   collected: boolean;
   cancelled: boolean;
   readonly collect: Promise<void>;
@@ -96,6 +97,7 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
   const sessions = new Map<string, Session>();
   const controls = new Map<string, readonly string[]>();
   const mains = new Map<string, Session>();
+  const watches = new Map<string, { finished: boolean }>();
   let next = 0;
   const sessionFor = (directory: string): Session => {
     let session = sessions.get(directory);
@@ -104,7 +106,7 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
       const collect = new Promise<void>((resolve) => {
         finish = resolve;
       });
-      session = { started: false, collected: false, cancelled: false, collect, finish };
+      session = { started: false, launched: false, collected: false, cancelled: false, collect, finish };
       sessions.set(directory, session);
     }
     return session;
@@ -159,12 +161,16 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
           }
           const id = `lando-fixture-control-${next++}`;
           controls.set(id, cmd);
+          if (cmd[1] === "exec-control" && cmd[4] === "watch") watches.set(id, { finished: false });
           return { status: 201, body: JSON.stringify({ Id: id }) };
         }
         const controlInspect = /^\/exec\/([^/]+)\/json$/u.exec(input.path);
         const id = controlInspect?.[1] === undefined ? undefined : decodeURIComponent(controlInspect[1]);
         if (id !== undefined && controls.has(id))
-          return { status: 200, body: JSON.stringify({ Running: false, ExitCode: 0 }) };
+          return {
+            status: 200,
+            body: JSON.stringify({ Running: watches.get(id)?.finished === false, ExitCode: 0 }),
+          };
         const response = yield* request(input);
         if (
           input.method === "GET" &&
@@ -214,6 +220,61 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
       const match = /^\/exec\/([^/]+)\/start$/u.exec(input.path);
       const id = match?.[1] === undefined ? undefined : decodeURIComponent(match[1]);
       const cmd = id === undefined ? undefined : controls.get(id);
+      if (cmd?.[1] === "exec-control" && cmd[4] === "watch") {
+        const session = sessionFor(cmd[2] ?? "");
+        const watch = id === undefined ? undefined : watches.get(id);
+        return Stream.fromAsyncIterable(
+          {
+            async *[Symbol.asyncIterator]() {
+              input.onResponseHead?.();
+              let pending = "";
+              let previousSeq = 0;
+              try {
+                for await (const chunk of input.stdin ?? []) {
+                  pending += new TextDecoder().decode(chunk);
+                  for (let newline = pending.indexOf("\n"); newline >= 0; newline = pending.indexOf("\n")) {
+                    const pulse = JSON.parse(pending.slice(0, newline)) as { op?: string; seq?: number };
+                    pending = pending.slice(newline + 1);
+                    if (
+                      pulse.op !== "status" ||
+                      typeof pulse.seq !== "number" ||
+                      !Number.isSafeInteger(pulse.seq) ||
+                      pulse.seq <= previousSeq
+                    )
+                      throw new Error("Unexpected fixture watch pulse.");
+                    previousSeq = pulse.seq;
+                    if (!session.cancelled && !session.launched) {
+                      yield frame(
+                        { ok: true, seq: pulse.seq, state: session.started ? "ready" : "initialized" },
+                        true,
+                      );
+                      continue;
+                    }
+                    const exitCode = await Effect.runPromise(observedExit(session));
+                    yield frame(
+                      session.cancelled
+                        ? { ok: true, seq: pulse.seq, state: "cancelled", joined: true }
+                        : { ok: true, seq: pulse.seq, state: "finished", exitCode, joined: true },
+                      true,
+                    );
+                    return;
+                  }
+                }
+              } finally {
+                if (watch !== undefined) watch.finished = true;
+              }
+            },
+          },
+          (cause) =>
+            new ProviderUnavailableError({
+              providerId: "fixture",
+              operation: "watch",
+              message: "Fixture watcher failed.",
+              remediation: "Check the watch fixture.",
+              cause,
+            }),
+        );
+      }
       if (cmd !== undefined)
         return Stream.fromEffect(
           Effect.gen(function* () {
@@ -227,8 +288,10 @@ export const installSupervisedExecFixture = (api: EngineHttpApi): void => {
                 ok: true,
                 state: session.cancelled ? "cancelled" : session.started ? "ready" : "initialized",
               });
-            if (operation === "launch")
+            if (operation === "launch") {
+              if (!session.cancelled) session.launched = true;
               return frame({ ok: true, state: session.cancelled ? "cancelled" : "running" });
+            }
             if (operation === "cancel") session.cancelled = true;
             const exitCode = yield* observedExit(session);
             if (operation === "collect") {

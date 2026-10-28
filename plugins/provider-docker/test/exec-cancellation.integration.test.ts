@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makeDockerApiClient } from "@lando/provider-docker";
 import {
@@ -11,6 +12,7 @@ import {
   ContainerHelperDigest,
   ProviderId,
   ServiceName,
+  landoNetworkingPlan,
 } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk } from "@lando/sdk/services";
 import { Cause, DateTime, Deferred, Effect, type Exit, Fiber, Stream } from "effect";
@@ -32,7 +34,11 @@ const docker = async (args: readonly string[]) => {
   if (code !== 0) throw new Error(`Disposable Docker fixture failed (${code}): ${err}`);
   return out.trim();
 };
-const fixture = async (user?: string, create = true) => {
+const fixture = async (
+  user?: string,
+  create = true,
+  watchOptions: { readonly endInputAfter?: number } = {},
+) => {
   const name = `cancel-${crypto.randomUUID()}`;
   const id = AppId.make(name);
   const service = ServiceName.make("web");
@@ -49,6 +55,7 @@ const fixture = async (user?: string, create = true) => {
     slug: name,
     root: AbsolutePath.make(`/tmp/${name}`),
     provider: providerId,
+    networking: landoNetworkingPlan({ slug: name, serviceNames: [service], sharedCrossAppNetwork: false }),
     services: {
       [service]: {
         name: service,
@@ -78,10 +85,59 @@ const fixture = async (user?: string, create = true) => {
     await docker(["start", container]);
   }
   try {
+    const api = makeDockerApiClient(host ?? "");
+    const request = api.request;
+    const stream = api.stream;
+    if (request === undefined || stream === undefined) throw new Error("Missing live Docker transport");
+    const requests: EngineHttpRequest[] = [];
+    const watchIds = new Set<string>();
+    const primaryIds = new Set<string>();
+    const watchPulses: number[] = [];
+    const observedApi = {
+      ...api,
+      request: (input: EngineHttpRequest) =>
+        Effect.gen(function* () {
+          requests.push(input);
+          const response = yield* request(input);
+          const cmd = (input.body as { Cmd?: readonly string[] } | undefined)?.Cmd;
+          if (input.method === "POST" && input.path.endsWith("/exec") && response.status === 201) {
+            const id = (JSON.parse(response.body) as { Id: string }).Id;
+            if (cmd?.[1] === "exec-control" && cmd[4] === "watch") watchIds.add(id);
+            if (cmd?.[1] === "exec-supervisor") primaryIds.add(id);
+          }
+          return response;
+        }),
+      stream: (input: EngineHttpRequest) => {
+        const match = /^\/exec\/([^/]+)\/start$/u.exec(input.path);
+        if (
+          match?.[1] === undefined ||
+          !watchIds.has(decodeURIComponent(match[1])) ||
+          input.stdin === undefined
+        )
+          return stream(input);
+        const source = input.stdin;
+        return stream({
+          ...input,
+          stdin: {
+            async *[Symbol.asyncIterator]() {
+              for await (const bytes of source) {
+                watchPulses.push((JSON.parse(new TextDecoder().decode(bytes)) as { seq: number }).seq);
+                yield bytes;
+                if (
+                  watchOptions.endInputAfter !== undefined &&
+                  watchPulses.length >= watchOptions.endInputAfter
+                )
+                  return;
+              }
+            },
+          },
+        });
+      },
+    };
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
-        dockerApi: makeDockerApiClient(host ?? ""),
+        dockerApi: observedApi,
         resolveContainerHelper: (target) =>
           Effect.tryPromise({
             try: async () => {
@@ -107,6 +163,14 @@ const fixture = async (user?: string, create = true) => {
       provider,
       target,
       container,
+      requests,
+      watchPulses,
+      watchIds,
+      primaryIds,
+      inspectExec: (id: string) =>
+        Effect.runPromise(request({ method: "GET", path: `/exec/${encodeURIComponent(id)}/json` })).then(
+          (response) => JSON.parse(response.body) as { Running?: boolean; ExitCode?: number },
+        ),
       close: () =>
         create
           ? docker(["rm", "--force", container])
@@ -178,6 +242,118 @@ describe("Docker supervised non-TTY execution", () => {
     60_000,
   );
 
+  for (const user of [undefined, "1000:1000"]) {
+    test.skipIf(host === undefined)(
+      `one watch sustains a quiet command beyond the lease (${user ?? "root"})`,
+      async () => {
+        const f = await fixture(user);
+        try {
+          const chunks: ExecChunk[] = [];
+          await Effect.runPromise(
+            Effect.scoped(
+              Effect.gen(function* () {
+                const ready = yield* Deferred.make<void>();
+                const fiber = yield* Stream.runForEach(
+                  f.provider.execStream(f.target, {
+                    command: ["sh", "-c", "echo ready; sleep 12; printf done"],
+                  }),
+                  (chunk) =>
+                    Effect.gen(function* () {
+                      chunks.push(chunk);
+                      if (!("exitCode" in chunk) && new TextDecoder().decode(chunk.chunk).includes("ready"))
+                        yield* Deferred.succeed(ready, undefined);
+                    }),
+                ).pipe(Effect.forkScoped);
+                yield* Deferred.await(ready);
+                const before = f.requests.filter(
+                  (input) => input.method === "POST" && input.path.endsWith("/exec"),
+                ).length;
+                const pulseCount = f.watchPulses.length;
+                yield* Effect.sleep("6 seconds");
+                expect(
+                  f.requests.filter((input) => input.method === "POST" && input.path.endsWith("/exec"))
+                    .length,
+                ).toBe(before);
+                expect(f.watchPulses.length - pulseCount).toBeGreaterThanOrEqual(8);
+                yield* Fiber.join(fiber);
+              }),
+            ),
+          );
+          expect(new TextDecoder().decode(new Uint8Array(bytesOf(chunks)))).toBe("ready\ndone");
+          expect(chunks.filter((chunk) => "exitCode" in chunk)).toEqual([{ exitCode: 0 }]);
+          expect(f.watchIds.size).toBe(1);
+          expect(
+            f.requests.filter(
+              (input) => (input.body as { Cmd?: readonly string[] } | undefined)?.Cmd?.[4] === "status",
+            ),
+          ).toHaveLength(0);
+          for (const id of [...f.watchIds, ...f.primaryIds])
+            expect(await f.inspectExec(id)).toMatchObject({ Running: false, ExitCode: 0 });
+        } finally {
+          await f.close();
+        }
+      },
+      40_000,
+    );
+  }
+  test.skipIf(host === undefined)(
+    "a non-root command emits zero payload while watch heartbeats sustain it beyond the lease",
+    async () => {
+      const f = await fixture("1000:1000");
+      try {
+        const result = await Effect.runPromise(f.provider.exec(f.target, { command: ["sleep", "12"] }));
+        expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+        expect(f.watchIds.size).toBe(1);
+        for (const id of [...f.watchIds, ...f.primaryIds])
+          expect(await f.inspectExec(id)).toMatchObject({ Running: false, ExitCode: 0 });
+      } finally {
+        await f.close();
+      }
+    },
+    40_000,
+  );
+  test.skipIf(host === undefined)(
+    "lost watch input is drained and cannot leave the payload or supervisor alive",
+    async () => {
+      const f = await fixture("1000:1000", true, { endInputAfter: 3 });
+      try {
+        const chunks: ExecChunk[] = [];
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(
+            Stream.runForEach(
+              f.provider.execStream(f.target, {
+                command: ["sh", "-c", "echo $$ >/tmp/watch-loss-pid; echo ready; sleep 60"],
+              }),
+              (chunk) =>
+                Effect.sync(() => {
+                  chunks.push(chunk);
+                }),
+            ),
+          ),
+        );
+        expect(exit._tag).toBe("Failure");
+        expect(chunks.some((chunk) => "exitCode" in chunk)).toBe(false);
+        expect(new TextDecoder().decode(new Uint8Array(bytesOf(chunks)))).toBe("ready\n");
+        expect(f.watchPulses).toEqual([1, 2, 3]);
+        expect(f.watchIds.size).toBe(1);
+        expect(f.primaryIds.size).toBe(1);
+        for (const id of f.watchIds)
+          expect(await f.inspectExec(id)).toMatchObject({ Running: false, ExitCode: 0 });
+        for (const id of f.primaryIds) expect((await f.inspectExec(id)).Running).toBe(false);
+        await f.inside(["sh", "-c", "test ! -e /proc/$(cat /tmp/watch-loss-pid)"]);
+        expect(
+          (await f.inside(["ps", "-o", "args"]))
+            .split("\n")
+            .filter(
+              (line) => line.startsWith("/tmp/lando-exec-") && line.includes("lando-container-helper exec-"),
+            ),
+        ).toEqual([]);
+      } finally {
+        await f.close();
+      }
+    },
+    30_000,
+  );
   for (const user of [undefined, "1000:1000"]) {
     test.skipIf(host === undefined)(
       `preserves raw stdin, EOF and nonzero status (${user ?? "root"})`,

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { annotateFailureRole, failureDefectCause } from "@lando/sdk/command-result";
+import { annotateFailureRole, failureDefectCause, mergeFailure } from "@lando/sdk/command-result";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 import type { AppPlan, ContainerHelperTarget } from "@lando/sdk/schema";
@@ -8,6 +8,7 @@ import type { CommandSpec, ExecChunk, ExecTarget, ProviderError } from "@lando/s
 import { type Cause, Deferred, Duration, Effect, Fiber, Queue, Stream } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, ProviderErrorContext } from "./engine-api.ts";
 import { installExecHelper } from "./exec-helper-install.ts";
+import { type OwnedExecWatch, startExecWatch } from "./exec-watch.ts";
 import type { ResolveContainerHelper } from "./log-source-binding.ts";
 import { serviceContainerName } from "./plan.ts";
 import { execStream as transportExecStream } from "./podman/exec-transport.ts";
@@ -238,7 +239,6 @@ export const supervisedExecStream = (
         id: string,
         operation: Effect.Effect<Receipt, ProviderError>,
         done: (receipt: Receipt) => boolean,
-        attempts: number,
       ) =>
         Effect.gen(function* () {
           let observed: Receipt | undefined;
@@ -247,13 +247,13 @@ export const supervisedExecStream = (
             {
               id,
               policy: {
-                maxAttempts: attempts,
+                maxAttempts: 50,
                 delay: Duration.millis(100),
-                ...(attempts === Number.MAX_SAFE_INTEGER ? {} : { timeout: Duration.seconds(6) }),
+                timeout: Duration.seconds(6),
               },
               classify: {
                 success: () => (observed !== undefined && done(observed) ? "green" : "yellow"),
-                failure: () => (id === "supervisor-observation" ? "green" : "yellow"),
+                failure: () => "yellow",
               },
             },
             operation.pipe(
@@ -286,6 +286,7 @@ export const supervisedExecStream = (
           attach: undefined as Fiber.Fiber<void, never> | undefined,
           monitor: undefined as Fiber.Fiber<void, never> | undefined,
           signalWatcher: undefined as Fiber.Fiber<void, never> | undefined,
+          watch: undefined as OwnedExecWatch | undefined,
         }),
         (owned) =>
           Effect.gen(function* () {
@@ -298,17 +299,38 @@ export const supervisedExecStream = (
               Effect.ignore,
               Effect.forkDetach,
             );
+            let watchFailure: Cause.Cause<ProviderError> | undefined;
             const cleanup = Effect.gen(function* () {
               if (!completed) {
-                // Cancellation persists a launch tombstone even when /start is delayed or ambiguous.
-                yield* control("cancel", signalName(command.signal)).pipe(Effect.ignore);
-                const final = yield* poll(
-                  "cleanup-unconfirmed",
-                  control("status"),
-                  (state) =>
-                    state.joined === true && (state.state === "finished" || state.state === "cancelled"),
-                  50,
-                );
+                // Persist the requested signal before permitting a paused watch to renew.
+                if (owned.watch !== undefined) yield* owned.watch.prepareCancel;
+                yield* control("cancel", signalName(command.signal));
+                if (owned.watch !== undefined) yield* owned.watch.resumeAfterCancel;
+                const noWatchStarted = owned.watch === undefined ? true : yield* owned.watch.stopBeforeStart;
+                const observed =
+                  owned.watch === undefined || noWatchStarted
+                    ? undefined
+                    : yield* Effect.exit(
+                        owned.watch.finished.pipe(
+                          Effect.timeout("3 seconds"),
+                          Effect.mapError((cause) =>
+                            failure("watch-observation-unconfirmed", undefined, cause),
+                          ),
+                        ),
+                      );
+                let final: Receipt;
+                if (observed?._tag === "Success") final = observed.value;
+                else {
+                  if (observed?._tag === "Failure") watchFailure = observed.cause;
+                  if (owned.watch !== undefined) yield* owned.watch.stopInput;
+                  // Recovery is finite and used only when observation was absent or failed.
+                  final = yield* poll(
+                    "cleanup-unconfirmed",
+                    control("status"),
+                    (state) =>
+                      state.joined === true && (state.state === "finished" || state.state === "cancelled"),
+                  );
+                }
                 if (final.state === "finished" && final.exitCode === undefined)
                   return yield* Effect.fail(failure("cleanup-status-missing"));
                 if (final.state === "finished") yield* Deferred.succeed(receipt, final);
@@ -318,6 +340,10 @@ export const supervisedExecStream = (
               if (owned.attach !== undefined) yield* Fiber.join(owned.attach);
               if (owned.monitor !== undefined) yield* Fiber.await(owned.monitor);
               if (owned.signalWatcher !== undefined) yield* Fiber.await(owned.signalWatcher);
+              if (owned.watch !== undefined) {
+                yield* owned.watch.stopInput;
+                yield* owned.watch.join;
+              }
               if (owned.attach === undefined) {
                 yield* cleanupSession;
                 return;
@@ -336,12 +362,22 @@ export const supervisedExecStream = (
               owned.attach?.interruptUnsafe();
               owned.monitor?.interruptUnsafe();
               owned.signalWatcher?.interruptUnsafe();
+              owned.watch?.interruptUnsafe();
               drain.interruptUnsafe();
             });
             yield* Queue.shutdown(output);
+            watchFailure ??= owned.watch?.failureCause();
             if (result._tag === "Failure")
               return yield* Effect.failCause(
-                failureDefectCause(annotateFailureRole(result.cause, "cleanup")),
+                failureDefectCause(
+                  watchFailure === undefined
+                    ? annotateFailureRole(result.cause, "cleanup")
+                    : mergeFailure(watchFailure, result.cause, "cleanup"),
+                ),
+              );
+            if (watchFailure !== undefined)
+              return yield* Effect.failCause(
+                failureDefectCause(annotateFailureRole(watchFailure, "cleanup")),
               );
           }),
       );
@@ -371,17 +407,30 @@ export const supervisedExecStream = (
           "supervisor-not-ready",
           control("ready"),
           (state) => state.state === "ready" || state.state === "cancelled",
-          50,
         );
         if (command.signal?.aborted || ready.state === "cancelled")
           return yield* Effect.fail(failure("cancelled-before-launch"));
-        yield* control("launch");
-        const finished = yield* poll(
-          "supervisor-observation",
-          control("status"),
-          (state) => state.state === "finished" && state.joined === true,
-          Number.MAX_SAFE_INTEGER,
+        const watch = yield* startExecWatch(plan, target, {
+          api,
+          ctx: options.ctx,
+          container,
+          helperPath,
+          directory,
+          nonce,
+          inspectExit,
+          acquire: (watch) => {
+            owned.watch = watch;
+          },
+        });
+        yield* watch.ready.pipe(
+          Effect.timeout("6 seconds"),
+          Effect.mapError((cause) => failure("watch-not-ready", undefined, cause)),
         );
+        if (command.signal?.aborted) return yield* Effect.fail(failure("cancelled-before-launch"));
+        const launched = yield* control("launch");
+        if (launched.state !== "running") return yield* Effect.fail(failure("launch-not-confirmed"));
+        yield* watch.resumeAfterLaunch;
+        const finished = yield* watch.finished;
         if (finished.exitCode === undefined) return yield* Effect.fail(failure("root-status-missing"));
         yield* Deferred.succeed(receipt, finished);
         yield* control("collect");

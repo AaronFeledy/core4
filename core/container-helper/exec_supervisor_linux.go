@@ -179,7 +179,7 @@ func runExecControl(args []string, streams helperIO) int {
 	}
 	dir, op := args[0], args[2]
 	switch op {
-	case "ready", "launch", "cancel", "status", "collect":
+	case "ready", "launch", "cancel", "status", "collect", "watch":
 	default:
 		return execEmit(streams.stdout, execFailure("invalid-operation"))
 	}
@@ -189,6 +189,9 @@ func runExecControl(args []string, streams helperIO) int {
 		if op != "cancel" || (signal != "SIGTERM" && signal != "SIGINT") {
 			return execEmit(streams.stdout, execFailure("invalid-signal"))
 		}
+	}
+	if op == "watch" {
+		return runExecWatch(args[0], streams)
 	}
 	if op == "cancel" {
 		if execPrivateDirectory(dir) != nil {
@@ -213,26 +216,39 @@ func runExecControl(args []string, streams helperIO) int {
 			return execEmit(streams.stdout, execReply{OK: true, State: "cancelled", Joined: true})
 		}
 	}
+	return execEmit(streams.stdout, execControlExchange(dir, execRequest{op, signal}))
+}
+
+func execControlExchange(dir string, request execRequest) execReply {
+	return execControlExchangeTimeout(dir, request, 6*time.Second)
+}
+func execControlExchangeTimeout(dir string, request execRequest, timeout time.Duration) execReply {
 	if execCheckPrivateDirectory(dir) != nil {
-		return execEmit(streams.stdout, execFailure("unsafe-session"))
+		return execFailure("unsafe-session")
 	}
-	conn, err := net.DialTimeout("unix", filepath.Join(dir, "control"), time.Second)
+	deadline := time.Now().Add(timeout)
+	dialTimeout := time.Second
+	if timeout < dialTimeout {
+		dialTimeout = timeout
+	}
+	conn, err := net.DialTimeout("unix", filepath.Join(dir, "control"), dialTimeout)
 	if err != nil {
 		if r, ok := execLoad(dir); ok {
-			return execEmit(streams.stdout, r)
+			return r
 		}
-		return execEmit(streams.stdout, execFailure("control-unavailable"))
+		return execFailure("control-unavailable")
 	}
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(6 * time.Second))
-	if json.NewEncoder(conn).Encode(execRequest{op, signal}) != nil {
-		return execEmit(streams.stdout, execFailure("control-write-failed"))
+	conn.SetDeadline(deadline)
+	if json.NewEncoder(conn).Encode(request) != nil {
+		return execFailure("control-write-failed")
 	}
 	var r execReply
 	if json.NewDecoder(io.LimitReader(conn, 4096)).Decode(&r) != nil {
-		return execEmit(streams.stdout, execFailure("control-read-failed"))
+		return execFailure("control-read-failed")
 	}
-	return execEmit(streams.stdout, r)
+	return r
+
 }
 
 // Only this loop calls Wait4. Direct children cannot have their PIDs recycled
