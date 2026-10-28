@@ -9,6 +9,7 @@ import type {
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  FileSyncInfo,
   type LoadScopedLandofile,
   type ServiceConnection,
   ServiceInfo,
@@ -32,6 +33,7 @@ import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
+import { projectFileSyncInfo } from "./info-file-sync.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
@@ -61,6 +63,7 @@ export const AppInfoResultSchema = Schema.Struct({
   services: Schema.Array(AppInfoServiceSchema),
   agentEnv: Schema.optionalKey(AppInfoAgentEnvSchema),
   hostProxy: Schema.optionalKey(AppInfoHostProxySchema),
+  fileSync: Schema.optionalKey(FileSyncInfo),
 });
 
 const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] => {
@@ -168,6 +171,7 @@ const toServiceInfo = (
 export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
   completionPlan: AppPlan = plan,
+  plannedPolicy: AppPlan | undefined = plan,
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
@@ -188,7 +192,13 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   });
 
   const hostProxy = hostProxyPlanExtension(plan);
-  return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
+  const applied = yield* registry.resolveAppliedPlan(completionPlan.identity?.appRoot ?? completionPlan.root);
+  return {
+    app: plan.name,
+    services,
+    fileSync: projectFileSyncInfo(plannedPolicy, applied),
+    ...(hostProxy === undefined ? {} : { hostProxy }),
+  };
 });
 
 export const infoApp = Effect.fn("AppOperation.info")(function* (
@@ -212,7 +222,8 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
 
   const observedPlan = yield* observedAppPlan(plan);
   const selectedPlan = yield* selectInfoPlan(observedPlan, options?.services);
-  const result = yield* infoForPlan(selectedPlan, observedPlan);
+  const desired = observedTarget === undefined ? plan : (target?.plan ?? (yield* planDesiredApp).plan);
+  const result = yield* infoForPlan(selectedPlan, observedPlan, desired);
   if (options?.deep !== true) return result;
   const agentEnv = yield* resolveAgentEnvAudit(landofile?.document.agentEnv, process.env);
   return { ...result, agentEnv };
