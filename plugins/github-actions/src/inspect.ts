@@ -1,18 +1,8 @@
-import {
-  NoOperationTraceWriter,
-  convertWorkflowTemplate,
-  isMapping,
-  isString,
-  parseWorkflow,
-} from "@actions/workflow-parser";
+import { convertWorkflowTemplate, isMapping, isString } from "@actions/workflow-parser";
 import { ErrorPolicy } from "@actions/workflow-parser/model/convert";
-import {
-  TemplateContext,
-  TemplateValidationErrors,
-} from "@actions/workflow-parser/templates/template-context";
-import { getWorkflowSchema } from "@actions/workflow-parser/workflows/workflow-schema";
 import { Effect } from "effect";
 import { diagnostic, limits, location, safeText } from "./diagnostics.ts";
+import { readLanguageTokens } from "./language/parse.ts";
 import { parserDiagnostic } from "./parser-diagnostics.ts";
 import { preflight } from "./preflight.ts";
 import { projectJob, tokenLocation } from "./projection.ts";
@@ -34,12 +24,11 @@ export const inspectWorkflow = Effect.fn("GithubActions.inspectWorkflow")(functi
     try: async (): Promise<InspectedWorkflow> => {
       const guard = preflight(name, content);
       if (guard.status === "rejected") return { ...empty, diagnostics: [guard.diagnostic] };
-      const context = new TemplateContext(
-        new TemplateValidationErrors(limits.errors + 1, 200),
-        getWorkflowSchema(),
-        new NoOperationTraceWriter(),
-      );
-      const parsed = parseWorkflow({ name, content }, context);
+      const parsed = readLanguageTokens(name, content, "workflow", {
+        sourceIndex: guard.index,
+        aliasProvenance: [],
+      });
+      const context = parsed.context;
       const template =
         parsed.value === undefined || context.errors.count > 0
           ? undefined
