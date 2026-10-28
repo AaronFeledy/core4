@@ -19,7 +19,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./service": "./src/service.ts"
+    "./service": "./src/service.ts",
+    "./provider-error": "./src/provider-error.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "redaction"],

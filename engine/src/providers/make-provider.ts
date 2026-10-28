@@ -1,4 +1,5 @@
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
+import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginContext, RuntimeProviderContribution } from "@lando/sdk/plugins";
@@ -15,7 +16,6 @@ import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-s
 import { type Context, Effect, type Option } from "effect";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import { withProviderErrorRedaction } from "./error-policy.ts";
-import { redactProviderError } from "./error-redaction.ts";
 import { withOutputRegistration } from "./output-policy.ts";
 import { registerProviderOutput } from "./output-redaction.ts";
 

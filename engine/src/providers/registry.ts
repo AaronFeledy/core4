@@ -23,6 +23,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
+import { redactProviderError } from "@lando/redaction/provider-error";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { bundledPluginModules } from "../composition.ts";
@@ -35,7 +36,6 @@ import {
   resolveAppliedPlanEvidence,
   resolveTeardownEvidence,
 } from "./applied-state-resolution.ts";
-import { redactProviderError } from "./error-redaction.ts";
 import { hostProviderId } from "./host-provider.ts";
 import { makeProviderFactory } from "./make-provider.ts";
 import { makeAppliedStateProvider } from "./registry-evidence.ts";

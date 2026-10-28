@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
+import { redactProviderError } from "@lando/redaction/provider-error";
 import type { Redactor } from "@lando/sdk/secrets";
 import { boundedDiagnostic, makeCompletionDiagnosticContext } from "./completion-diagnostic.ts";
 import { removeRuntimeContainer } from "./container-removal.ts";
@@ -53,7 +54,6 @@ import { Cause, Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect
 
 import {
   annotateFailureRole,
-  commandFailureCause,
   failureDefectCause,
   mapFailureCause,
   mergeFailure,
@@ -62,6 +62,7 @@ import {
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
+  ProviderInternalError,
   ProviderUnavailableError,
   ServiceCopyError,
   VolumeOperationError,
@@ -285,16 +286,20 @@ const volumeError = (
   details?: unknown,
   cause?: unknown,
   store?: string,
-) =>
-  new VolumeOperationError({
+) => {
+  const error = new VolumeOperationError({
     providerId: options.providerId,
     operation,
     message,
     remediation: "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-    ...(details === undefined ? {} : { details: redactDetails(details, options.redactor) }),
+    ...(details === undefined
+      ? {}
+      : { details: operation.startsWith("run.") ? details : redactDetails(details, options.redactor) }),
     ...(cause === undefined ? {} : { cause }),
     ...(store === undefined ? {} : { store }),
   });
+  return operation.startsWith("run.") ? redactProviderError(error, options.redactor) : error;
+};
 
 const copyError = (
   options: ProviderDataPlaneOptions,
@@ -434,44 +439,74 @@ const legacyVolumeInfoFromEngineVolume = (
 
 const request = (options: ProviderDataPlaneOptions, operation: string, input: DataPlaneHttpRequest) =>
   options.api.request === undefined
-    ? Effect.fail(volumeError(options, operation, "Provider API request client is missing."))
+    ? Effect.fail(missingDataPlaneClient(options, operation, "request"))
     : options.api
         .request(input)
         .pipe(
-          Effect.mapError((cause) =>
-            volumeError(options, operation, "Provider API request failed.", input, cause),
+          Effect.catchCause((cause) =>
+            Effect.failCause(mapFailureCause(cause, (error) => redactProviderError(error, options.redactor))),
           ),
         );
 
 const stream = (options: ProviderDataPlaneOptions, operation: string, input: DataPlaneHttpRequest) =>
   options.api.stream === undefined
-    ? Stream.fail(volumeError(options, operation, "Provider API stream client is missing."))
+    ? Stream.fail(missingDataPlaneClient(options, operation, "stream"))
     : options.api
         .stream(input)
         .pipe(
-          Stream.mapError((cause) =>
-            volumeError(options, operation, "Provider API stream failed.", input, cause),
+          Stream.catchCause((cause) =>
+            Stream.failCause(mapFailureCause(cause, (error) => redactProviderError(error, options.redactor))),
           ),
         );
+
+const missingDataPlaneClient = (
+  options: ProviderDataPlaneOptions,
+  operation: string,
+  client: "request" | "stream",
+) =>
+  redactProviderError(
+    new ProviderUnavailableError({
+      providerId: options.providerId,
+      operation,
+      message: `Provider API ${client} client is missing.`,
+      remediation:
+        "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+    }),
+    options.redactor,
+  );
 
 const ensure2xx = (
   options: ProviderDataPlaneOptions,
   operation: string,
   response: DataPlaneHttpResponse,
   store?: string,
-) =>
+): Effect.Effect<void, ProviderUnavailableError | VolumeOperationError> =>
   response.status >= 200 && response.status < 300
     ? Effect.void
-    : Effect.fail(
-        volumeError(
-          options,
-          operation,
-          `Provider data-plane API returned HTTP ${response.status}.`,
-          response,
-          undefined,
-          store,
-        ),
-      );
+    : operation.startsWith("run.")
+      ? Effect.fail(
+          redactProviderError(
+            new ProviderUnavailableError({
+              providerId: options.providerId,
+              operation,
+              message: `Provider data-plane API returned HTTP ${response.status}.`,
+              details: { status: response.status },
+              remediation:
+                "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+            }),
+            options.redactor,
+          ),
+        )
+      : Effect.fail(
+          volumeError(
+            options,
+            operation,
+            `Provider data-plane API returned HTTP ${response.status}.`,
+            response,
+            undefined,
+            store,
+          ),
+        );
 
 /**
  * Acquire a pinned helper image and prove it is the pinned content before any
@@ -483,31 +518,38 @@ const ensureHelperImage = (
   options: ProviderDataPlaneOptions,
   operation: string,
   helper: PinnedHelperImage,
-  store?: string,
-): Effect.Effect<void, VolumeOperationError> => {
+): Effect.Effect<void, ProviderError> => {
   const pull = options.pullHelperImage;
   const remediation =
     "Check network and registry access, then retry. Lando only runs data-plane helpers from pinned image digests; run `lando doctor` if the problem persists.";
-  const fail = (message: string, details: Readonly<Record<string, unknown>>, cause?: unknown) =>
-    new VolumeOperationError({
-      providerId: options.providerId,
-      operation,
-      message,
-      remediation,
-      details: redactDetails(details, options.redactor),
-      ...(cause === undefined ? {} : { cause }),
-      ...(store === undefined ? {} : { store }),
-    });
+  const fail = (message: string, details: Readonly<Record<string, unknown>>) =>
+    redactProviderError(
+      new ProviderInternalError({
+        providerId: options.providerId,
+        operation,
+        message,
+        remediation,
+        details: redactDetails(details, options.redactor),
+      }),
+      options.redactor,
+    );
   if (pull === undefined) {
     return Effect.fail(
-      fail("Provider cannot acquire the pinned data-plane helper image.", {
-        reference: helper.ref,
-      }),
+      redactProviderError(
+        new ProviderUnavailableError({
+          providerId: options.providerId,
+          operation,
+          message: "Provider cannot acquire the pinned data-plane helper image.",
+          remediation,
+          details: { reference: helper.ref },
+        }),
+        options.redactor,
+      ),
     );
   }
   return pull(helper.ref).pipe(
-    Effect.mapError((cause) =>
-      fail("Pinned data-plane helper image could not be acquired.", { reference: helper.ref }, cause),
+    Effect.catchCause((cause) =>
+      Effect.failCause(mapFailureCause(cause, (error) => redactProviderError(error, options.redactor))),
     ),
     Effect.flatMap((pulled) =>
       pulled.digest === helper.digest
@@ -516,7 +558,6 @@ const ensureHelperImage = (
             fail("Pinned data-plane helper image digest did not match the pin.", {
               reference: helper.ref,
               expectedDigest: helper.digest,
-              ...(pulled.digest === undefined ? {} : { actualDigest: pulled.digest }),
             }),
           ),
     ),
@@ -565,13 +606,16 @@ const ensureEphemeralVolumes = (options: ProviderDataPlaneOptions, spec: Ephemer
         response.status === 200 || response.status === 201 || response.status === 409
           ? Effect.void
           : Effect.fail(
-              volumeError(
-                options,
-                "run.volume",
-                `Provider volume create returned HTTP ${response.status}.`,
-                response,
-                undefined,
-                store.name,
+              redactProviderError(
+                new ProviderUnavailableError({
+                  providerId: options.providerId,
+                  operation: "run.volume",
+                  message: `Provider volume create returned HTTP ${response.status}.`,
+                  details: { status: response.status },
+                  remediation:
+                    "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+                }),
+                options.redactor,
               ),
             ),
       ),
@@ -667,14 +711,20 @@ const ephemeralCompletionFailure = (
   outcome: { readonly exitCode: number; readonly stderr: string },
 ) => {
   const stderrTail = boundedDiagnostic(outcome.stderr, (value) => options.redactor.redactValue(value));
-  return new VolumeOperationError({
-    providerId: options.providerId,
-    operation,
-    message: "Provider ephemeral command completed but container cleanup failed.",
-    remediation: "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-    details:
-      stderrTail === undefined ? { exitCode: outcome.exitCode } : { exitCode: outcome.exitCode, stderrTail },
-  });
+  return redactProviderError(
+    new VolumeOperationError({
+      providerId: options.providerId,
+      operation,
+      message: "Provider ephemeral command completed but container cleanup failed.",
+      remediation:
+        "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+      details:
+        stderrTail === undefined
+          ? { exitCode: outcome.exitCode }
+          : { exitCode: outcome.exitCode, stderrTail },
+    }),
+    options.redactor,
+  );
 };
 
 const completedCommandFailure = (
@@ -708,15 +758,25 @@ const releaseEphemeralContainer = (release: EphemeralRelease) => {
   // deadline can stop it; the finalizer stays masked so parent cancellation
   // still waits for that bounded attempt instead of abandoning cleanup.
   const removal = Effect.interruptible(
-    removeRuntimeContainer(options.api, name, {
-      providerId: options.providerId,
-      operation: `${operation}.remove`,
-      remediation:
-        "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
-      // The retained redactor was built from the host environment, so no env snapshot is needed here.
-      env: {},
-      redactor: options.redactor,
-    }),
+    removeRuntimeContainer(
+      {
+        request: (input) =>
+          request(options, `${operation}.remove`, input).pipe(
+            // Removal only uses the status. Do not promote an engine response body to diagnostics.
+            Effect.map((response) => ({ ...response, body: "" })),
+          ),
+      },
+      name,
+      {
+        providerId: options.providerId,
+        operation: `${operation}.remove`,
+        remediation:
+          "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+        // The retained redactor was built from the host environment, so no env snapshot is needed here.
+        env: {},
+        redactor: options.redactor,
+      },
+    ),
   ).pipe(
     Effect.timeoutOrElse({
       duration: EPHEMERAL_CLEANUP_DEADLINE,
@@ -731,6 +791,9 @@ const releaseEphemeralContainer = (release: EphemeralRelease) => {
           }),
         ),
     }),
+    Effect.catchCause((cause) =>
+      Effect.failCause(mapFailureCause(cause, (error) => redactProviderError(error, options.redactor))),
+    ),
   );
   return removal.pipe(
     Effect.asVoid,
@@ -787,13 +850,15 @@ const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: strin
     Effect.tap((response) => ensure2xx(options, "run.inspect", response, spec.mounts?.[0]?.store)),
     Effect.flatMap((response) =>
       tryParseJson(response.body, () =>
-        volumeError(
-          options,
-          "run.inspect",
-          "Provider returned an invalid ephemeral command inspection.",
-          undefined,
-          undefined,
-          spec.mounts?.[0]?.store,
+        redactProviderError(
+          new ProviderInternalError({
+            providerId: options.providerId,
+            operation: "run.inspect",
+            message: "Provider returned an invalid ephemeral command inspection.",
+            remediation:
+              "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+          }),
+          options.redactor,
         ),
       ),
     ),
@@ -805,30 +870,18 @@ const inspectEphemeralExitCode = (options: ProviderDataPlaneOptions, name: strin
       return typeof exitCode === "number" && Number.isFinite(exitCode) && Number.isInteger(exitCode)
         ? Effect.succeed(exitCode)
         : Effect.fail(
-            volumeError(
-              options,
-              "run.inspect",
-              "Provider did not return a valid ephemeral command exit code.",
-              undefined,
-              undefined,
-              spec.mounts?.[0]?.store,
+            redactProviderError(
+              new ProviderInternalError({
+                providerId: options.providerId,
+                operation: "run.inspect",
+                message: "Provider did not return a valid ephemeral command exit code.",
+                remediation:
+                  "Retry the data-plane operation after checking provider runtime health with `lando doctor`.",
+              }),
+              options.redactor,
             ),
           );
     }),
-    Effect.catchCause((cause) =>
-      Effect.failCause(
-        mapFailureCause(commandFailureCause(cause), () =>
-          volumeError(
-            options,
-            "run.inspect",
-            "Provider could not prove ephemeral command completion.",
-            undefined,
-            undefined,
-            spec.mounts?.[0]?.store,
-          ),
-        ),
-      ),
-    ),
   );
 
 const runBytes = (
@@ -864,20 +917,7 @@ const runBytes = (
           stderr: textDecoder.decode(logs.stderr),
           chunks: logs.chunks,
         };
-      }).pipe(
-        Effect.catch((cause) =>
-          Effect.fail(
-            volumeError(
-              options,
-              "run",
-              "Provider ephemeral run failed.",
-              undefined,
-              cause,
-              spec.mounts?.[0]?.store,
-            ),
-          ),
-        ),
-      ),
+      }),
     (name, exit) =>
       releaseEphemeralContainer({ options, name, remove: spec.remove !== false, exit, operation: "run" }),
   );
@@ -944,18 +984,7 @@ const runByteStream = (
             }),
           );
           return Stream.concat(output, completed);
-        }).pipe(
-          Effect.mapError((cause) =>
-            volumeError(
-              options,
-              "runStream",
-              "Provider ephemeral stream failed.",
-              undefined,
-              cause,
-              spec.mounts?.[0]?.store,
-            ),
-          ),
-        ),
+        }),
       ),
     ),
   );
@@ -1051,7 +1080,7 @@ const snapshotCommitHelper = (options: ProviderDataPlaneOptions, spec: NativeSna
   );
 
 const snapshotVolumeWithCommit = (options: ProviderDataPlaneOptions, spec: NativeSnapshotCommit) =>
-  ensureHelperImage(options, "snapshotVolume", dataHelperImage, spec.store).pipe(
+  ensureHelperImage(options, "snapshotVolume", dataHelperImage).pipe(
     Effect.andThen(() => snapshotCommitHelper(options, spec)),
   );
 
