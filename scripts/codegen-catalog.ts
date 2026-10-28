@@ -20,6 +20,7 @@ export type CodegenCommand = {
 export const CODEGEN_CATALOG = [
   {
     id: "build-guide-scenarios",
+    dependsOn: ["core-service-env-catalog"],
     ownership: "derived",
     script: "build-guide-scenarios.ts",
     workspace: "repo",
