@@ -310,14 +310,19 @@ test("finds the historical fixture and digest regressions", async () => {
   expect(digestResult.selected).toContain("landofile/test/pipeline/golden-corpus.test.ts");
 });
 
-test("selects every canonical eligible test for the repository preload roots", async () => {
-  const eligible = await collectShardedTestFiles();
-  const result = await selectAffectedTests({
-    root: resolve(import.meta.dirname, "../../.."),
-    changed: ["scripts/test-preload-roots.ts"],
-    eligible,
-  });
-  expect(result.selected).toEqual(eligible);
-  expect(result.sharedPreloadTests).toEqual(eligible);
-  expect(result.unmatched).toEqual([]);
-});
+// This walks the entire canonical graph and matches the unit runner's 20-second budget.
+test(
+  "selects every canonical eligible test for the repository preload roots",
+  async () => {
+    const eligible = await collectShardedTestFiles();
+    const result = await selectAffectedTests({
+      root: resolve(import.meta.dirname, "../../.."),
+      changed: ["scripts/test-preload-roots.ts"],
+      eligible,
+    });
+    expect(result.selected).toEqual(eligible);
+    expect(result.sharedPreloadTests).toEqual(eligible);
+    expect(result.unmatched).toEqual([]);
+  },
+  { timeout: 20_000 },
+);
