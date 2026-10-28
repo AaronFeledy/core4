@@ -57,31 +57,38 @@ describe("llms serializer", () => {
 
   test("handles every component form and drops empty or hidden ones", () => {
     const source = [
-      "# Title",
+      "---",
+      "id: all-component-forms",
+      "provider: test",
+      "---",
       "",
-      'Use <Variable name="app" value="my-app" display="demo" /> here.',
+      "# Title",
       "",
       "<Guide>",
       '  <Scenario id="a">',
       '    <Step name="s">',
-      '      <Run command="lando start" />',
-      '      <Run runtime="library" code="x" displayCode="const y = 1;" />',
+      '      <Variable name="app" value="my-app" display="demo" />',
+      '      <Run command="lando start {{app}}" />',
       '      <Verify command="lando info" expect="ok" />',
-      "      <Verify />",
-      '      <Inline code="echo hi" lang="sh" justification="demo" />',
-      '      <Hidden reason="r"><Run command="secret-hidden" /></Hidden>',
-      '      <Skip reason="r"><Run command="secret-skip" /></Skip>',
+      '      <Inline code="echo hi" lang="sh" justification="Illustrative command" />',
       "      <Cleanup />",
       "    </Step>",
+      '    <Hidden reason="Private setup">',
+      '      <Step name="hidden"><Run command="secret-hidden" /></Step>',
+      "    </Hidden>",
+      '    <Skip reason="Pending support">',
+      '      <Step name="skipped"><Run command="secret-skip" /></Step>',
+      "    </Skip>",
       "  </Scenario>",
-      '  <Scenario id="b" render={false}><Step name="t"><Run command="secret-unrendered" /></Step></Scenario>',
+      '  <Scenario id="b"><Step name="t"><Run runtime="library" code="expect(true).toBe(true);" displayCode="const y = 1;" /></Step></Scenario>',
+      '  <Scenario id="c" render={false} reason="Internal regression"><Step name="u"><Run command="secret-unrendered" /></Step></Scenario>',
       "</Guide>",
     ].join("\n");
 
     const out = serializeDocsPage(source, { file: "/x/guide.mdx" });
 
-    expect(out).toContain("Use `demo` here.");
-    expect(out).toContain("```sh\nlando start\n```");
+    expect(out).toContain("`demo`");
+    expect(out).toContain("```sh\nlando start demo\n```");
     expect(out).toContain("```ts\nconst y = 1;\n```");
     expect(out).toContain('expect: command `lando info` `expect="ok"`');
     expect(out).toContain("```sh\necho hi\n```");
@@ -114,7 +121,7 @@ describe("llms serializer", () => {
     ]) {
       expect(verify(JSON.stringify(value))).toBe(`expect: command \`c\` \`expect=${JSON.stringify(value)}\``);
     }
-    expect(() => verify("{ stdout: makeMatcher() }")).toThrow("Unsupported static prop expect");
+    expect(() => verify("{ stdout: makeMatcher() }")).toThrow("Unsupported literal prop <Verify>.expect");
   });
 
   test("fails loudly on a Run without a command", () => {
@@ -145,33 +152,32 @@ describe("llms serializer", () => {
   });
 
   test("uses visible scenario and tab variables without leaking across scopes", () => {
-    const source = `<Guide>
-<Scenario id="a">
-<Run command="echo {{app}}" />
-<Step name="a"><Variable name="app" value="runtime" display="public-a" /></Step>
-<Tabs><Tab name="one"><Variable name="app" value="one" /><Run command="echo {{app}}" /></Tab>
-<Tab name="two"><Variable name="app" value="two" /><Verify command="echo {{app}}" expect="{{app}}" /></Tab></Tabs>
-<Run command="echo {{app}}" />
-</Scenario>
-<Scenario id="b"><Variable name="app" value="public-b" /><Run command="echo {{app}}" /></Scenario>
+    const source = `---
+id: scoped-bindings
+provider: test
+tabs: [one, two]
+---
+
+<Guide>
+<Scenario id="a"><Tabs>
+<Tab name="one"><Step name="one"><Variable name="app" value="runtime-one" display="public-one" /><Run command="echo {{app}}" /></Step></Tab>
+<Tab name="two"><Step name="two"><Variable name="app" value="runtime-two" display="public-two" /><Verify command="echo {{app}}" expect="{{app}}" /></Step></Tab>
+</Tabs></Scenario>
+<Scenario id="b"><Step name="other"><Variable name="app" value="runtime-b" display="public-b" /><Run command="echo {{app}}" /></Step></Scenario>
 </Guide>`;
     const out = serializeDocsPage(source, { file: "/x/v.mdx" });
-    expect(out.match(/echo public-a/g)).toHaveLength(2);
-    expect(out).toContain("echo one");
-    expect(out).toContain('expect: command `echo two` `expect="{{app}}"`');
+    expect(out).toContain("echo public-one");
+    expect(out).toContain('expect: command `echo public-two` `expect="{{app}}"`');
     expect(out).toContain("echo public-b");
-    expect(out).not.toContain("runtime");
+    expect(out).not.toContain("runtime-");
     expect(out).not.toContain("echo {{app}}");
-    for (const hidden of [
-      '<Hidden><Variable name="private" value="excluded" /></Hidden>',
-      '<Scenario id="hidden" render={false}><Variable name="private" value="excluded" /></Scenario>',
-    ]) {
+    for (const hidden of [false, true]) {
       expect(() =>
         serializeDocsPage(
-          `${hidden}\n\n<Scenario id="public"><Run command="echo {{private}}" /></Scenario>`,
+          `---\nid: hidden-reference\nprovider: test\n---\n\n<Guide>\n${hidden ? '<Scenario id="hidden" render={false} reason="Internal regression"><Step name="binding"><Variable name="private" value="excluded" /><Run command="echo {{private}}" /></Step></Scenario>' : '<Scenario id="public"><Hidden reason="Private setup"><Step name="binding"><Variable name="private" value="excluded" /><Run command="echo {{private}}" /></Step></Hidden><Step name="action"><Run command="echo {{private}}" /></Step></Scenario>'}\n${hidden ? '<Scenario id="public"><Step name="action"><Run command="echo {{private}}" /></Step></Scenario>' : ""}\n</Guide>`,
           { file: "/x/v.mdx" },
         ),
-      ).toThrow("Unresolved public variable private");
+      ).toThrow(hidden ? "guide.variable.missing" : "guide.variable.hidden-reference");
     }
   });
 
@@ -204,7 +210,7 @@ describe("llms serializer", () => {
       expect(out).toContain("```ts\nconst shown = '{{token}}';\n```");
     }
     const out = serializeDocsPage(
-      '<Variable name="token" value="runtime" display="public" />\n\n<Verify file="{{token}}.txt" expect="{{token}}" />',
+      '---\nid: literal-target\nprovider: test\n---\n\n<Guide><Scenario id="reader"><Step name="target"><Variable name="token" value="runtime" display="public" /><Verify file="{{token}}.txt" expect="{{token}}" /></Step></Scenario></Guide>',
       { file: "/x/target.mdx" },
     );
     expect(out).toContain('expect: file `public.txt` `expect="{{token}}"`');
