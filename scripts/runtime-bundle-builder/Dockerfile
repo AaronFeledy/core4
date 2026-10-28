@@ -18,10 +18,19 @@ COPY --from=go /usr/local/go /usr/local/go
 COPY --from=rust /usr/local/rustup /usr/local/rustup
 COPY --from=rust /usr/local/cargo /usr/local/cargo
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
-ENV PATH=/usr/local/go/bin:/usr/local/cargo/bin:$PATH \
-    RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
-    RUSTUP_TOOLCHAIN=stable GOTOOLCHAIN=local TZ=UTC LANG=C.UTF-8
-RUN test "$(go env GOVERSION)" = go1.25.6 \
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo \
+    GOTOOLCHAIN=local TZ=UTC LANG=C.UTF-8
+RUN --network=none case "$TARGETARCH" in \
+      amd64) RUST_TRIPLE=x86_64-unknown-linux-gnu ;; \
+      arm64) RUST_TRIPLE=aarch64-unknown-linux-gnu ;; \
+      *) echo "Unsupported Rust target architecture: $TARGETARCH" >&2; exit 1 ;; \
+    esac \
+    && RUST_TOOLCHAIN="$RUSTUP_HOME/toolchains/1.88.0-$RUST_TRIPLE" \
+    && test -x "$RUST_TOOLCHAIN/bin/rustc" \
+    && test -x "$RUST_TOOLCHAIN/bin/cargo" \
+    && ln -s "$RUST_TOOLCHAIN" /usr/local/rust-toolchain
+ENV PATH=/usr/local/go/bin:/usr/local/rust-toolchain/bin:$PATH
+RUN --network=none test "$(go env GOVERSION)" = go1.25.6 \
     && test "$(rustc --version | cut -d ' ' -f2)" = 1.88.0 \
     && test "$(cargo --version | cut -d ' ' -f2)" = 1.88.0 \
     && test "$(bun --version)" = 1.4.3
