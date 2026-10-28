@@ -91,6 +91,7 @@ const expectedCatalogRows = [
     ["core-service-env-catalog"],
   ],
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
+  ["github-actions-pins", "committed-pin", "build-github-actions-pins.ts", "repo"],
   ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
@@ -310,7 +311,12 @@ describe("codegen catalog", () => {
 
   test("classifies ownership and references unique existing scripts", async () => {
     // Given
-    const expectedCommittedPins = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"];
+    const expectedCommittedPins = [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "github-actions-pins",
+    ];
     const expectedCommittedWorkflows = [
       "ci-workflow",
       "nightly-workflow",
@@ -336,11 +342,11 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(37);
+    expect(catalog).toHaveLength(38);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
-    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(3);
+    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(13);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(21);
     expect(

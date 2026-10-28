@@ -73,6 +73,12 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "github-actions-pins",
+    ownership: "committed-pin",
+    script: "build-github-actions-pins.ts",
+    workspace: "repo",
+  },
+  {
     id: "tomcat-catalog",
     ownership: "derived",
     script: "build-tomcat-catalog.ts",

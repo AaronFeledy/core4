@@ -9,6 +9,7 @@ export const CATALOG_OUTPUT_PATHS = [
   "plugins/file-sync-mutagen/mutagen-versions.json",
   "plugins/file-sync-mutagen/docker-cli-versions.json",
   "plugins/service-lando/src/services/php-msmtp-pins.json",
+  "plugins/github-actions/src/pins.json",
   "plugins/service-lando/tomcat/pins.json",
   "plugins/service-lando/tomcat/server-*.xml",
   "recipes/*/.scaffold/*",
