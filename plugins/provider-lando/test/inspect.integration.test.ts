@@ -19,6 +19,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { decodeNetworkCreate } from "./network-fixture.ts";
 import { makeProviderLayer } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("lando");
@@ -96,6 +97,7 @@ const plan: AppPlan = {
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
+  const networks = new Map<string, { readonly Id: string }>();
   const calls: EngineHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -117,8 +119,16 @@ const makeFakeApi = () => {
             }),
           };
         }
-        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
+        const networkCreate = decodeNetworkCreate(request);
+        if (networkCreate !== undefined) {
+          networks.set(networkCreate.Name, { Id: `${networkCreate.Name}-id`, ...networkCreate });
           return { status: 201, body: "{}" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const name = [...networks].find(([, network]) => network.Id === reference)?.[0] ?? reference;
+          const network = networks.get(name);
+          return { status: network === undefined ? 404 : 200, body: JSON.stringify(network ?? {}) };
         }
         if (request.method === "GET" && action === "json") {
           if (!existing.has(name)) {
