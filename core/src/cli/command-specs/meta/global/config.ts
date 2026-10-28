@@ -5,9 +5,9 @@ import {
   type GlobalConfigOptions,
   type GlobalConfigResult,
   GlobalConfigResultSchema,
-  globalConfig,
   renderGlobalConfigResult,
 } from "../../../commands/meta/global-config";
+import { runGlobalConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { formatFlag, specFlagsOf } from "../../../spec/input-coercion";
 import {
@@ -37,7 +37,7 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   description: "Read or write the host-level global Lando app Landofile stack.",
   namespace: "meta",
   topLevelAlias: "global:config",
-  bootstrap: "global",
+  bootstrap: "plugins",
   strict: false,
   args: {
     subcommand: Args.string({
@@ -54,7 +54,7 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
     editor: editorFlag,
     "dry-run": dryRunFlag,
   },
-  run: (input) => globalConfig(globalConfigOptionsFromInput(input)),
+  run: (input) => runGlobalConfig(globalConfigOptionsFromInput(input)),
   render: (result, input) =>
     renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
 };

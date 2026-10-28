@@ -40,6 +40,55 @@ for (const domain of ["tomcat", "compose"] as const) {
         expect(commands).toContain("--title bump compose-go vendored schema to v2.2.0");
     });
 
+    test("stops after a rejected PR list without creating, editing, or dispatching", async () => {
+      // Given
+      const stderr = "GraphQL: Resource not accessible by integration (repository.pullRequests)\n";
+      await using fixture = await createMaintenanceFixture({
+        domain,
+        ghFailure: { operation: "list", exitCode: 31, stderr },
+      });
+      // When
+      const result = await fixture.proposal(render());
+      // Then
+      expect(result.exitCode, result.stderr).toBe(31);
+      expect(result.stderr).toContain(stderr);
+      const commands = await fixture.commands();
+      expect(commands).toContain(`gh pr list --state open --head ${fixture.branch}`);
+      expect(commands).not.toContain("gh pr create");
+      expect(commands).not.toContain("gh pr edit");
+      expect(commands).not.toContain("gh workflow");
+    });
+
+    for (const operation of ["create", "edit"] as const) {
+      test(`preserves the pushed candidate and diagnostic after a rejected PR ${operation}`, async () => {
+        // Given
+        const stderr =
+          operation === "create"
+            ? "GraphQL: GitHub Actions is not permitted to create or approve pull requests (createPullRequest)\n"
+            : "GraphQL: Resource not accessible by integration (updatePullRequest)\n";
+        const exitCode = operation === "create" ? 32 : 33;
+        await using fixture = await createMaintenanceFixture({
+          domain,
+          existingPr: operation === "edit",
+          ghFailure: { operation, exitCode, stderr },
+        });
+        // When
+        const result = await fixture.proposal(render());
+        // Then
+        expect(result.exitCode, result.stderr).toBe(exitCode);
+        expect(result.stderr).toContain(stderr);
+        const candidate = await fixture.git("rev-parse", "HEAD");
+        expect(await fixture.git("ls-remote", "--heads", "origin", fixture.branch)).toBe(
+          `${candidate}\trefs/heads/${fixture.branch}`,
+        );
+        expect(await fixture.git("diff", "--name-only", "main", candidate)).toBe(fixture.owned);
+        const commands = await fixture.commands();
+        expect(commands).toContain(`gh pr ${operation}`);
+        expect(commands).not.toContain(`gh pr ${operation === "create" ? "edit" : "create"}`);
+        expect(commands).not.toContain("gh workflow");
+      });
+    }
+
     test("reconciles pending updates without losing manual commits when no newer candidate exists", async () => {
       // Given
       await using fixture = await createMaintenanceFixture({ domain, pending: "bump", existingPr: true });
@@ -126,6 +175,21 @@ for (const domain of ["tomcat", "compose"] as const) {
         expect(commands).toContain("https://example.invalid/fixture/repository/actions/runs/42");
       });
     }
+
+    test("scopes failure reporting to the workflow's fork repository", async () => {
+      // Given
+      const repository = "fork-owner/core4";
+      await using fixture = await createMaintenanceFixture({ domain, repository });
+      // When
+      const result = await fixture.failure(render());
+      // Then
+      expect(result.exitCode, result.stderr).toBe(0);
+      const commands = await fixture.commands();
+      expect(commands).toContain("gh issue list --state open --limit 100 --json number,title --jq");
+      expect(commands).toContain(`repo=${repository}`);
+      expect(commands).toContain(`https://example.invalid/${repository}/actions/runs/42`);
+      expect(commands).not.toContain("fixture/repository");
+    });
   });
 }
 

@@ -4,12 +4,14 @@ import { LandofileService, ManagedFileTransactionGuard, StateStore } from "@land
 import { Cause, Effect, Layer } from "effect";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { compileLandofileFile } from "./file-compile.ts";
+import { createIncludeResolutionSession } from "./include-session.ts";
 import { presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { type LandofileLoadContext, ensureConsistentRoot } from "./load-context.ts";
-import { mergeLandofileRootLayers } from "./merge-validate.ts";
+import { finalizeLandofileRootLayers, mergeLandofileRootLayers } from "./merge-validate.ts";
 import { discoverForOperation, discoveryCwd } from "./operation-discovery.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
+import { evaluateLandofileRootLayers } from "./root-compile.ts";
 
 export { LandofileService } from "@lando/sdk/services";
 export { validateLandofileReplacement } from "./replacement.ts";
@@ -72,10 +74,13 @@ export const loadLandofileLayers = Effect.fn("Landofile.loadLayers")(mergeLandof
 
 const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(
   function* (inputs: LandofileRuntimeInputs) {
-    yield* ensureConsistentRoot(yield* discoveryCwd(), inputs);
+    const cwd = yield* discoveryCwd();
+    yield* ensureConsistentRoot(cwd, inputs);
     const discovered = yield* findDiscoveredLandofilePath();
-    yield* ensureConsistentRoot(discovered.appRoot, inputs);
-    return yield* loadLandofileLayers(discovered.appRoot, discovered.filePath, inputs);
+    if (discovered.appRoot !== cwd) yield* ensureConsistentRoot(discovered.appRoot, inputs);
+    const session = yield* createIncludeResolutionSession({ appRoot: discovered.appRoot, ...inputs });
+    const evaluated = yield* evaluateLandofileRootLayers(discovered.appRoot, { session, inputs });
+    return yield* finalizeLandofileRootLayers(evaluated, discovered.filePath, inputs);
   },
   Effect.catchCause((cause) => {
     const failure = Cause.findErrorOption(cause);

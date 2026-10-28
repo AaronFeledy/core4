@@ -4,6 +4,7 @@ import { Effect, Result } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
+import { bringDown } from "../src/podman/bring-down.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { field, networkApi, networkPlan } from "./authored-network-fixture.ts";
 
@@ -14,6 +15,157 @@ const endpoints = {
   "lando-networks_private": { Aliases: ["web.networks.internal", "private-web"] },
   "sibling net": { Aliases: ["web.networks.internal", "public-web"] },
 };
+const scratchPlan: AppPlan = {
+  ...networkPlan,
+  extensions: { "@lando/core/scratch": { id: networkPlan.id } },
+};
+
+test.each([libpodLifecycleDialect, dockerLifecycleDialect])(
+  "$engine creates scratch bridge and authored networks with complete proof, then removes observed IDs",
+  async (dialect) => {
+    const privateNames = ["lando-networks", "lando-networks_private"];
+    const fake = networkApi({
+      inspect: (name) => (privateNames.includes(name) ? { status: 404, body: "" } : undefined),
+    });
+    await Effect.runPromise(bringUp(scratchPlan, { api: fake.api, ctx, dialect }));
+    const creates = fake.requests.filter(
+      (request) =>
+        request.method === "POST" && ["/networks/create", "/libpod/networks/create"].includes(request.path),
+    );
+    expect(creates).toHaveLength(2);
+    const labels = networkOwnershipLabels(scratchPlan);
+    for (const create of creates) {
+      const body = create.body as Record<string, unknown>;
+      expect(body.Labels ?? body.labels).toEqual(labels);
+    }
+    const removals: EngineHttpRequest[] = [];
+    const api = {
+      request: (request: EngineHttpRequest) =>
+        Effect.sync(() => {
+          removals.push(request);
+          if (request.method === "GET" && request.path.startsWith("/networks/")) {
+            const name = decodeURIComponent(request.path.slice("/networks/".length));
+            return privateNames.includes(name)
+              ? { status: 200, body: JSON.stringify({ Id: `id-${name}`, Name: name, Labels: labels }) }
+              : { status: 404, body: "" };
+          }
+          return { status: request.method === "GET" ? 404 : 204, body: "" };
+        }),
+    };
+    await Effect.runPromise(bringDown(scratchPlan, { api, ctx }));
+    expect(
+      removals.filter((request) => request.method === "DELETE" && request.path.startsWith("/networks/")),
+    ).toEqual(privateNames.map((name) => ({ method: "DELETE", path: `/networks/id-${name}` })));
+  },
+);
+
+test.each([libpodLifecycleDialect, dockerLifecycleDialect])(
+  "$engine reuses only complete scratch bridge and authored proof",
+  async (dialect) => {
+    const labels = networkOwnershipLabels(scratchPlan);
+    const fake = networkApi({
+      inspect: (name) =>
+        name === "lando-networks" || name === "lando-networks_private"
+          ? {
+              status: 200,
+              body: JSON.stringify({
+                Id: `id-${name}`,
+                Name: name,
+                Driver: name === "lando-networks_private" ? "macvlan" : "bridge",
+                Labels: labels,
+              }),
+            }
+          : undefined,
+    });
+    await Effect.runPromise(bringUp(scratchPlan, { api: fake.api, ctx, dialect }));
+    expect(fake.requests.filter((request) => request.path.endsWith("/networks/create"))).toEqual([]);
+  },
+);
+
+test.each([false, true])(
+  "bringUp rejects unowned private bridge before container mutation (scratch=%s)",
+  async (scratch) => {
+    const selected = scratch ? scratchPlan : networkPlan;
+    const fake = networkApi({
+      inspect: (name) =>
+        name === "lando-networks"
+          ? {
+              status: 200,
+              body: JSON.stringify({ Id: "foreign-bridge", Name: name, Driver: "bridge", Labels: {} }),
+            }
+          : undefined,
+    });
+    const result = await Effect.runPromise(bringUp(selected, { api: fake.api, ctx }).pipe(Effect.result));
+    expect(Result.isFailure(result)).toBe(true);
+    expect(fake.requests.every((request) => request.method === "GET")).toBe(true);
+    expect(fake.requests.filter((request) => request.path.startsWith("/networks/"))).toEqual([
+      { method: "GET", path: "/networks/sibling%20net" },
+      { method: "GET", path: "/networks/lando-networks" },
+    ]);
+  },
+);
+
+test.each([false, true])("bringUp rechecks a racing private bridge once (scratch=%s)", async (scratch) => {
+  const selected = scratch ? scratchPlan : networkPlan;
+  const labels = networkOwnershipLabels(selected);
+  let bridgeInspections = 0;
+  const fake = networkApi({
+    conflict: true,
+    inspect: (name) => {
+      if (name === "lando-networks")
+        return bridgeInspections++ === 0
+          ? { status: 404, body: "" }
+          : {
+              status: 200,
+              body: JSON.stringify({ Id: "raced-bridge", Name: name, Driver: "bridge", Labels: labels }),
+            };
+      if (name === "lando-networks_private")
+        return {
+          status: 200,
+          body: JSON.stringify({ Id: "authored-id", Name: name, Driver: "macvlan", Labels: labels }),
+        };
+      return undefined;
+    },
+  });
+  await Effect.runPromise(bringUp(selected, { api: fake.api, ctx }));
+  expect(bridgeInspections).toBe(2);
+  expect(fake.requests.filter((request) => request.path === "/libpod/networks/create")).toHaveLength(1);
+});
+
+test.each([
+  ["lando-networks", "old-four"],
+  ["lando-networks", "empty"],
+  ["lando-networks", "wrong-id"],
+  ["lando-networks_private", "old-four"],
+  ["lando-networks_private", "empty"],
+  ["lando-networks_private", "wrong-id"],
+] as const)("scratch bringDown refuses %s with %s proof", async (target, damage) => {
+  const labels = networkOwnershipLabels(scratchPlan);
+  const observedLabels =
+    damage === "old-four"
+      ? networkOwnershipLabels(networkPlan)
+      : damage === "empty"
+        ? {}
+        : { ...labels, "dev.lando.scratch-id": "other" };
+  const requests: EngineHttpRequest[] = [];
+  const api = {
+    request: (request: EngineHttpRequest) =>
+      Effect.sync(() => {
+        requests.push(request);
+        if (request.method === "GET" && request.path === `/networks/${target}`)
+          return {
+            status: 200,
+            body: JSON.stringify({ Id: "unproven-id", Name: target, Labels: observedLabels }),
+          };
+        return { status: request.method === "GET" ? 404 : 204, body: "" };
+      }),
+  };
+  const result = await Effect.runPromise(bringDown(scratchPlan, { api, ctx }).pipe(Effect.result));
+  expect(Result.isFailure(result)).toBe(true);
+  expect(
+    requests.some((request) => request.method === "DELETE" && request.path.startsWith("/networks/")),
+  ).toBe(false);
+});
 
 test("leaves existing app bridges untouched", async () => {
   // Given
@@ -144,6 +296,23 @@ test.each([
   expect(fake.requests).toEqual([{ method: "GET", path: "/networks/sibling%20net" }]);
 });
 
+test.each([
+  { observed: { Name: "sibling net", Id: null }, allowed: true },
+  { observed: { Name: "sibling net", ID: 123 }, allowed: true },
+  { observed: { Name: "different-name", Id: null }, allowed: false },
+])(
+  "external preflight ignores opaque native IDs but requires exact name: %j",
+  async ({ observed, allowed }) => {
+    const fake = networkApi({
+      inspect: (name) =>
+        name === "sibling net" ? { status: 200, body: JSON.stringify(observed) } : undefined,
+    });
+    const result = await Effect.runPromise(bringUp(networkPlan, { api: fake.api, ctx }).pipe(Effect.result));
+    expect(Result.isSuccess(result)).toBe(allowed);
+    if (!allowed) expect(fake.requests).toEqual([{ method: "GET", path: "/networks/sibling%20net" }]);
+  },
+);
+
 test("creates a missing owned network with planned driver and ownership labels, never creates external", async () => {
   // Given
   const fake = networkApi({
@@ -162,19 +331,28 @@ test("creates a missing owned network with planned driver and ownership labels, 
 
 test.each([
   {
+    Id: "conflicting-authored",
     Name: "lando-networks_private",
     Driver: "macvlan",
     Labels: { foreign: "owner" },
     remediation: "set `external: true` and `name: lando-networks_private` under networks.private",
   },
-  { Name: "lando-networks_private", Driver: "macvlan", Labels: {}, remediation: "Remove or rename" },
   {
+    Id: "conflicting-authored",
+    Name: "lando-networks_private",
+    Driver: "macvlan",
+    Labels: {},
+    remediation: "Remove or rename",
+  },
+  {
+    Id: "conflicting-authored",
     Name: "lando-networks_private",
     Driver: "bridge",
     Labels: networkOwnershipLabels(networkPlan),
     remediation: "lando destroy",
   },
   {
+    Id: "conflicting-authored",
     Name: "different-name",
     Driver: "macvlan",
     Labels: networkOwnershipLabels(networkPlan),
@@ -209,6 +387,7 @@ test.each([false, true])("verifies ownership again after a create conflict (fore
       return {
         status: 200,
         body: JSON.stringify({
+          Id: "raced-authored-network",
           Name: name,
           Driver: "macvlan",
           Labels: foreign ? {} : networkOwnershipLabels(networkPlan),

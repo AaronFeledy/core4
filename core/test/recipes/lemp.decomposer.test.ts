@@ -1,16 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
-import { lempDecomposer } from "../../src/recipes/builtin/lemp/decomposer.ts";
-import { lempRecipeYaml } from "../../src/recipes/builtin/lemp/manifest.ts";
-import { lempProducer, lempSnapshot } from "../../src/recipes/builtin/lemp/snapshot.ts";
+import { Effect, Result } from "effect";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: lempDecomposer,
+  producer: lempProducer,
+  snapshot: lempSnapshot,
+  manifest,
+} = bundledRecipe("lemp");
 
 const validInput: RecipeDecomposeInput = {
   producer: lempProducer,
@@ -127,13 +126,9 @@ describe("lemp decomposition", () => {
 
   test("publishes exactly the declared file and post-init inventory", () => {
     // Given the published recipe YAML.
-    const raw = Bun.YAML.parse(lempRecipeYaml);
     // When decoded through the public manifest contract.
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(raw);
     // Then only the Landofile and the existing message are declared.
-    expect<unknown>(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect<unknown>(manifest.files).toEqual([]);
     expect<unknown>(manifest.postInit).toEqual([
       { type: "message", text: "Run 'lando start' inside the new app directory to bring the LEMP stack up." },
     ]);
@@ -142,16 +137,13 @@ describe("lemp decomposition", () => {
       php: { kind: "enum", values: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] },
     });
     expect(manifest.snapshot?.defaults).toEqual({ php: "8.4" });
-    expect(lempRecipeYaml).toContain("default: '8.4'");
-    expect(lempRecipeYaml).toContain("value: '8.1'");
-    expect(lempRecipeYaml).toContain("value: '8.6'");
+    expect(manifest.prompts?.find(({ name }) => name === "php")?.default).toBe("8.4");
   });
 
-  test("publishes a self-consistent migratable snapshot", () => {
+  test("publishes a self-consistent migratable snapshot", async () => {
     // Given the schema-decoded published snapshot.
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(lempRecipeYaml));
     // When its canonical content identity is recomputed.
-    const digest = computeRecipeContentDigest(recipeContentDigestProjection(manifest));
+    const digest = await recompiledBundledDigest(manifest);
     // Then identity and migratability agree with the manifest.
     expect<unknown>(digest).toBe(manifest.snapshot?.identity.contentDigest);
     expect(manifest.snapshot?.identity.recipeId).toBe(manifest.id);

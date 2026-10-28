@@ -8,13 +8,20 @@ tags: [beta, docs, recipes, fetch, allowlist]
 
 # Declare which URLs a recipe may fetch
 
-Put `fetchAllowlist` in `recipe.yml`. `ctx.fetch` may contact only those URL globs.
+Put `fetchAllowlist` in `recipe.yml` next to the required `config` block to declare URL globs and validate the recipe. The current recipe factory context supplies `cwd` and `env`, not `ctx.fetch`. This declaration does not enable HTTP requests or sandbox trusted `recipe.ts` code.
 
 ```yaml
 id: fetch-allowlist
 title: Fetch allowlist
 description: Recipe that may fetch from one API host.
 version: 0.1.0
+config:
+  runtime: 4
+  services:
+    api:
+      type: lando
+      image: busybox:1.37
+      command: sleep infinity
 fetchAllowlist:
   - https://api.example.com/**
   - https://registry.lando.dev/recipes/*
@@ -22,13 +29,11 @@ fetchAllowlist:
 
 `*` matches one path segment. `**` matches across segments. `https://api.example.com/**` matches any path on that host. `https://registry.lando.dev/recipes/*` matches one segment after `recipes/`, not a deeper path.
 
-A URL that misses every glob throws `RecipeFetchNotAllowedError` before the platform fetch runs. Redirects are checked the same way, including a relative `Location` resolved against the current URL.
+The example declares a policy; the validation command below does not contact either host. A successful validation is not evidence that a recipe fetch helper is available or that a request is allowed.
 
 ## Leave `fetchAllowlist` off
 
-`ctx.fetch` still runs. Lando warns once per URL that you have not declared the hosts the recipe contacts. Add the list when you want that warning gone, or when you want anything else to fail closed.
-
-When an allowlist is present, redirects must match it too. Omitting the list permits requests with warnings; declaring it rejects requests outside the list.
+`fetchAllowlist` is optional. Omitting it does not change the current factory context or grant network access through Lando. Only run local TypeScript recipes you trust; see [Write a programmatic recipe](./programmatic-recipe.mdx) for the evaluation boundary.
 
 ## Check the manifest
 

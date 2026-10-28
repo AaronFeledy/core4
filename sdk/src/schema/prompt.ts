@@ -39,13 +39,42 @@ export const PromptChoice = Schema.Union([
 ]);
 export type PromptChoice = typeof PromptChoice.Type;
 
-/** Prompt validation — per-type validator keys. */
-export const PromptValidate = Schema.Struct({
+const scalarValidationFields = {
   pattern: Schema.optionalKey(Schema.String),
-  message: Schema.optionalKey(Schema.String),
+  minLength: Schema.optionalKey(Schema.Number.annotate({ description: "Minimum string length." })),
+  maxLength: Schema.optionalKey(Schema.Number.annotate({ description: "Maximum string length." })),
   min: Schema.optionalKey(Schema.Number),
   max: Schema.optionalKey(Schema.Number),
+  integer: Schema.optionalKey(Schema.Boolean.annotate({ description: "Require an integer number." })),
+};
+
+/** Prompt validation — per-type validator keys. */
+export const PromptValidate = Schema.Struct({
+  ...scalarValidationFields,
+  optional: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Allow omission from a prompt batch when unanswered; interactive blank omits only without a default.",
+    }),
+  ),
+  message: Schema.optionalKey(Schema.String),
   exists: Schema.optionalKey(Schema.Boolean),
+  valueType: Schema.optionalKey(
+    Schema.Literals(["string", "number", "boolean", "choice", "array"]).annotate({
+      description:
+        "Typed value semantics independent of the presentation control; omission preserves legacy coercion.",
+    }),
+  ),
+  minItems: Schema.optionalKey(Schema.Number.annotate({ description: "Minimum array element count." })),
+  maxItems: Schema.optionalKey(Schema.Number.annotate({ description: "Maximum array element count." })),
+  items: Schema.optionalKey(
+    Schema.Struct({
+      ...scalarValidationFields,
+      valueType: Schema.Literals(["string", "number", "boolean"]).annotate({
+        description: "Scalar array element type.",
+      }),
+    }).annotate({ description: "Element coercion and constraints for arrays without enumerated choices." }),
+  ),
 });
 export type PromptValidate = typeof PromptValidate.Type;
 
@@ -63,7 +92,7 @@ export const PromptSpec = Schema.Struct({
   name: Schema.String,
   type: PromptType,
   message: Schema.String,
-  default: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
+  default: Schema.optionalKey(PromptAnswer),
   validate: Schema.optionalKey(PromptValidate),
   choices: Schema.optionalKey(Schema.Array(PromptChoice)),
   choicesFrom: Schema.optionalKey(ChoicesFrom),

@@ -59,7 +59,8 @@ export const readPinnedFragment = async (
       remediation: "Include each remote fragment at one version.",
     });
   ctx.walk.selectors.set(sourceId, version);
-  const locked = ctx.lockEntries.get(sourceId);
+  const proposed = ctx.mode === "pin" ? ctx.stagedLocks.get(sourceId) : undefined;
+  const locked = proposed ?? ctx.lockEntries.get(sourceId);
   const mismatch = (expected: string, actual: string, observed: "requested" | "found" = "requested") =>
     new LandofileLockMismatchError({
       message: `Landofile include lock mismatch for ${sourceId}: locked ${expected}, ${observed} ${actual}.`,

@@ -1,23 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { astroDecomposer } from "../../src/recipes/builtin/astro/decomposer.ts";
-import { astroRecipeSource, astroRecipeYaml } from "../../src/recipes/builtin/astro/manifest.ts";
-import {
-  ASTRO_CONTENT_DIGEST,
-  astroDefaults,
-  astroProducer,
-  astroSnapshot,
-} from "../../src/recipes/builtin/astro/snapshot.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: astroDecomposer,
+  defaults: astroDefaults,
+  producer: astroProducer,
+  snapshot: astroSnapshot,
+  contentDigest: ASTRO_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("astro");
 
 const defaults = { ...astroDefaults };
 const alternatives = { node: "22", database: "postgres" };
@@ -34,10 +29,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: astroRecipeSource, content: astroRecipeYaml })),
-);
 
 describe("astro decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -105,7 +96,7 @@ describe("astro decomposition", () => {
 
   test("tolerates the app-name answer the translator forwards alongside declared options", () => {
     const result = decompose({ ...defaults, name: "probe" });
-    expect(result.provenance.options).toEqual({ ...defaults, name: "probe" });
+    expect(result.provenance.options).toEqual(defaults);
     expect(authoringOf({ ...defaults, name: "probe" })).toEqual(authoringOf(defaults));
   });
 
@@ -127,19 +118,15 @@ describe("astro decomposition", () => {
   });
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(ASTRO_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(ASTRO_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(astroSnapshot);
-    expect(astroSnapshot.identity.contentDigest).toBe(
-      "sha256:21ce77c9cfc6e2fca11be251ad29107346b07d2404817c5eaab596d54f933636",
-    );
+    expect(astroSnapshot.identity.contentDigest).toBe(ASTRO_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });
 

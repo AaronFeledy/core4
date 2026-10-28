@@ -9,14 +9,15 @@ import {
   resolveAppConfigFile,
   writeAppConfigFile,
 } from "../config-write/app-config-file.ts";
-import { editorFailedError, noEditorError, runSetVerb, runUnsetVerb } from "../config-write/verbs.ts";
+import type { EditorRunner } from "../config-write/editor.ts";
+import { assertConfigReadable } from "../config-write/readiness.ts";
+import { runEditVerb, runSetVerb, runUnsetVerb } from "../config-write/verbs.ts";
 import {
   type ValueType,
   emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "../config-write/write-core.ts";
 import { loadLandofileLayers, validateLandofileReplacement } from "../services/landofile-live.ts";
-import type { EditorRunner } from "./config.ts";
 
 export interface AppConfigWriteOptions {
   readonly key?: string;
@@ -36,12 +37,25 @@ const missingKey = (verb: string) =>
     remediation: `Usage: \`lando app config ${verb} <key.path>${verb === "set" ? " <value>" : ""}\`.`,
   });
 
-const mutationIo = Effect.fnUntraced(function* (options: AppConfigWriteOptions, verb: "set" | "unset") {
+const mutationIo = Effect.fnUntraced(function* (
+  options: AppConfigWriteOptions,
+  verb: "set" | "unset" | "edit",
+) {
   const { appRoot, inputPath } = yield* resolveAppConfigFile(options.cwd, verb);
+  const validateText = (content: string) =>
+    validateLandofileReplacement({ appRoot, targetFile: inputPath, content }).pipe(
+      Effect.map((): Result.Result<undefined, readonly ValidationIssue[]> => Result.succeed(undefined)),
+      Effect.catchTag("LandofileWriteValidationError", (error) => Effect.succeed(Result.fail(error.issues))),
+    );
   return {
+    appRoot,
     file: inputPath,
     dryRun: options.dryRun === true,
-    readText: readMutableAppConfigFile(inputPath, verb),
+    readText: assertConfigReadable(appRoot).pipe(
+      Effect.andThen(
+        verb === "edit" ? readAppConfigFile(inputPath) : readMutableAppConfigFile(inputPath, verb),
+      ),
+    ),
     editCommand: "lando app:config edit",
     parse: (content: string) =>
       parseLandofile({ file: inputPath, content, cwd: appRoot }).pipe(
@@ -59,15 +73,8 @@ const mutationIo = Effect.fnUntraced(function* (options: AppConfigWriteOptions, 
     // A rejected candidate is a validation result; discovery, I/O, and sibling-layer
     // parse failures stay fatal so inference never mistakes them for a wrong type.
     decode: (next: unknown) =>
-      Effect.fromResult(emitConfigYaml({ file: inputPath, value: next })).pipe(
-        Effect.flatMap((content) =>
-          validateLandofileReplacement({ appRoot, targetFile: inputPath, content }),
-        ),
-        Effect.map((): Result.Result<undefined, readonly ValidationIssue[]> => Result.succeed(undefined)),
-        Effect.catchTag("LandofileWriteValidationError", (error) =>
-          Effect.succeed(Result.fail(error.issues)),
-        ),
-      ),
+      Effect.fromResult(emitConfigYaml({ file: inputPath, value: next })).pipe(Effect.flatMap(validateText)),
+    validateText,
     writeText: writeAppConfigFile,
   };
 });
@@ -85,7 +92,7 @@ export const appConfigSet = Effect.fn("AppConfig.set")(function* (options: AppCo
     key,
     value,
     filePath: io.file,
-    changed: true as const,
+    changed: outcome.changed,
     dryRun: outcome.dryRun,
   };
 });
@@ -115,31 +122,14 @@ export const appConfigValidate = Effect.fn("AppConfig.validate")(function* (opti
 });
 
 export const appConfigEdit = Effect.fn("AppConfig.edit")(function* (options: AppConfigWriteOptions) {
-  const { appRoot, inputPath } = yield* resolveAppConfigFile(options.cwd, "edit");
-  const content = yield* readAppConfigFile(inputPath);
+  const io = yield* mutationIo(options, "edit");
   const runner = options.editorRunner;
-  if (runner === undefined) return yield* Effect.fail(noEditorError(inputPath));
-  const edited = yield* Effect.promise(() => runner({ name: "lando-config", content, cwd: appRoot }));
-  switch (edited.kind) {
-    case "no-editor":
-      return yield* Effect.fail(noEditorError(inputPath));
-    case "failed":
-      return yield* Effect.fail(
-        editorFailedError(
-          inputPath,
-          edited.reason,
-          "Resolve the editor error and retry. The file was left unchanged.",
-        ),
-      );
-    case "edited":
-      yield* validateLandofileReplacement({ appRoot, targetFile: inputPath, content: edited.content });
-      if (options.dryRun !== true) yield* writeAppConfigFile(inputPath, edited.content);
-      return {
-        subcommand: "edit" as const,
-        filePath: inputPath,
-        changed: true as const,
-        valid: true as const,
-        dryRun: options.dryRun === true,
-      };
-  }
+  const outcome = yield* runEditVerb({
+    ...io,
+    openEditor:
+      runner === undefined
+        ? undefined
+        : (content) => Effect.promise(() => runner({ name: "lando-config", content, cwd: io.appRoot })),
+  });
+  return { subcommand: "edit" as const, filePath: io.file, ...outcome };
 });

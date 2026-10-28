@@ -3,36 +3,30 @@ import { plugin } from "@lando/lando4";
 import { parseLandofile } from "@lando/landofile/parser";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { renderCompiledRecipeSnapshot } from "@lando/sdk/recipes";
-import { AbsolutePath, RecipeManifest, ServiceName } from "@lando/sdk/schema";
-import { Effect, Result, Schema } from "effect";
-import { drupalDecomposer } from "../../src/recipes/builtin/drupal/decomposer.ts";
-import { drupalRecipeYaml } from "../../src/recipes/builtin/drupal/manifest.ts";
+import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
+import { Effect, Result } from "effect";
 import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
-import { laravelDecomposer } from "../../src/recipes/builtin/laravel/decomposer.ts";
-import { laravelRecipeYaml } from "../../src/recipes/builtin/laravel/manifest.ts";
-import { wordpressDecomposer } from "../../src/recipes/builtin/wordpress/decomposer.ts";
-import { wordpressRecipeYaml } from "../../src/recipes/builtin/wordpress/manifest.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { decomposer: drupalDecomposer } = bundledRecipe("drupal");
+const { decomposer: laravelDecomposer } = bundledRecipe("laravel");
+const { decomposer: wordpressDecomposer } = bundledRecipe("wordpress");
 import { previewRecipeLandofile } from "../../src/recipes/init-pipeline.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 
 test.each([
   {
     id: "wordpress",
-    yaml: wordpressRecipeYaml,
     decomposer: wordpressDecomposer,
     options: { php: "8.1", redis: true },
     site: "services.appserver.type",
   },
   {
     id: "laravel",
-    yaml: laravelRecipeYaml,
     decomposer: laravelDecomposer,
     options: { php: "8.1", database: "postgres:16", composer: "2", webroot: "public", worker: true },
     site: "services.worker.type",
   },
   {
     id: "drupal",
-    yaml: drupalRecipeYaml,
     decomposer: drupalDecomposer,
     options: {
       drupal: "10",
@@ -46,13 +40,9 @@ test.each([
   },
 ])(
   "retains authored intent after $id preview source is reloaded",
-  async ({ id, yaml, decomposer, options, site }) => {
+  async ({ id, decomposer, options, site }) => {
     // Given
-    const manifest = await Effect.runPromise(
-      parseRecipeYaml({ source: `${id}/recipe.yml`, content: yaml }).pipe(
-        Effect.flatMap(Schema.decodeUnknownEffect(RecipeManifest)),
-      ),
-    );
+    const { manifest } = bundledRecipe(id);
     const encoder = plugin.configTranslators?.get("lando4");
     if (encoder === undefined) throw new Error("Missing lando4 encoder");
     const root = `/tmp/bundled-source-${id}`;

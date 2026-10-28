@@ -121,8 +121,8 @@ describe("build-guide-scenarios MDX walker", () => {
 
     const multi = first[1];
     expect(multi?.scenarios.map((scenario) => [scenario.id, scenario.render])).toEqual([
-      ["hidden-regression", false],
       ["reader-path", true],
+      ["hidden-regression", false],
     ]);
   });
 
@@ -192,7 +192,7 @@ describe("build-guide-scenarios MDX walker", () => {
       expect(firstContent).toContain("}, 60000);");
       expect(firstContent).toContain("// @display: appName = Node/Postgres");
       expect(firstContent).toContain(
-        'context.vars.set("appName", { value: "node-postgres", display: "Node/Postgres" });',
+        'context.vars.set("appName", { value: "version", display: "Node/Postgres" });',
       );
       expect(firstContent).toContain(
         'yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));',
@@ -208,12 +208,12 @@ describe("build-guide-scenarios MDX walker", () => {
       expect(hiddenContent).toStartWith(
         "// @generated\n// @source: docs/guides/multi-scenario/multi.mdx:13\n// @scenario: hidden-regression\n// @render: false\n// @variant:",
       );
-      expect(hiddenContent).toContain('const verifyRun = yield* context.runCli("status");');
+      expect(hiddenContent).toContain('context.events.find((event) => event._tag === "post-init")');
       const readerContent = await Bun.file(
         join(root, "test/scenarios/generated/guides/multi-guide/reader-path.test.ts"),
       ).text();
       expect(readerContent).not.toContain("// @render: false");
-      expect(readerContent).toContain("const failureForErrorTag = lastFailure ?? lastRun;");
+      expect(readerContent).toContain("const actual = errorTagFromRun(lastRun);");
     } finally {
       await rm(root, { force: true, recursive: true });
     }

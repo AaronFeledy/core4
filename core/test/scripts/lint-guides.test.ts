@@ -52,7 +52,9 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("duplicate-scenario");
 
     expect(diagnostics).toEqual([
-      'core/test/lint/guides/duplicate-scenario.mdx:12:3: guide.scenario.duplicate-id: Duplicate <Scenario id="reader-path">.',
+      expect.stringContaining(
+        "core/test/lint/guides/duplicate-scenario.mdx:12:1: guide.scenario.duplicate-id:",
+      ),
     ]);
   });
 
@@ -132,7 +134,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("duplicate-step");
 
     expect(diagnostics).toEqual([
-      'core/test/lint/guides/duplicate-step.mdx:11:5: guide.step.duplicate-name: Duplicate <Step name="run">.',
+      expect.stringContaining("core/test/lint/guides/duplicate-step.mdx:11:1: guide.step.duplicate-name:"),
     ]);
   });
 
@@ -164,7 +166,9 @@ describe("lint:guides", () => {
     ).diagnostics.map(formatGuideLintDiagnostic);
 
     expect(diagnostics).toEqual([
-      'core/test/lint/guides/duplicate-hidden-step.mdx:14:5: guide.step.duplicate-name: Duplicate <Step name="run">.',
+      expect.stringContaining(
+        "core/test/lint/guides/duplicate-hidden-step.mdx:14:1: guide.step.duplicate-name:",
+      ),
     ]);
   });
 
@@ -204,7 +208,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("tabs-missing-axis");
 
     expect(diagnostics).toEqual([
-      "core/test/lint/guides/tabs-missing-axis.mdx:8:5: guide.tabs.missing-axis: <Tabs> requires a `tabs:` or `axes:` axis declaration in frontmatter.",
+      expect.stringContaining("core/test/lint/guides/tabs-missing-axis.mdx:8:1: guide.tabs.missing-axis:"),
     ]);
   });
 
@@ -212,7 +216,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("tabs-unknown-value");
 
     expect(diagnostics).toEqual([
-      'core/test/lint/guides/tabs-unknown-value.mdx:10:7: guide.tabs.missing-axis: <Tab name="windows"> is not a declared `tabs:` value.',
+      expect.stringContaining("core/test/lint/guides/tabs-unknown-value.mdx:10:1: guide.tabs.unknown-value:"),
     ]);
   });
 
@@ -220,7 +224,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("tabs-duplicate");
 
     expect(diagnostics).toEqual([
-      'core/test/lint/guides/tabs-duplicate.mdx:15:7: guide.tabs.duplicate-id: Duplicate <Tab name="linux"> within a <Tabs> block.',
+      expect.stringContaining("core/test/lint/guides/tabs-duplicate.mdx:15:1: guide.tabs.duplicate-id:"),
     ]);
   });
 
@@ -230,19 +234,19 @@ describe("lint:guides", () => {
 
   test("reports <Tabs> without an `axis` when multiple axes are declared", async () => {
     expect(await lintFixture("axes-missing-prop")).toEqual([
-      "core/test/lint/guides/axes-missing-prop.mdx:11:5: guide.tabs.missing-axis: <Tabs> requires an `axis` attribute because this guide declares multiple axes.",
+      expect.stringContaining("core/test/lint/guides/axes-missing-prop.mdx:11:1: guide.tabs.missing-axis:"),
     ]);
   });
 
   test("reports <Tabs axis> referencing an undeclared axis", async () => {
     expect(await lintFixture("axes-unknown-axis")).toEqual([
-      'core/test/lint/guides/axes-unknown-axis.mdx:10:5: guide.tabs.unknown-axis: <Tabs axis="arch"> is not a declared `axes:` axis.',
+      expect.stringContaining("core/test/lint/guides/axes-unknown-axis.mdx:10:1: guide.tabs.unknown-axis:"),
     ]);
   });
 
   test("reports <Tab> names that are not a declared axis value", async () => {
     expect(await lintFixture("axes-unknown-value")).toEqual([
-      'core/test/lint/guides/axes-unknown-value.mdx:11:7: guide.tabs.missing-axis: <Tab name="windows"> is not a declared `os` axis value.',
+      expect.stringContaining("core/test/lint/guides/axes-unknown-value.mdx:11:1: guide.tabs.unknown-value:"),
     ]);
   });
 
@@ -677,7 +681,7 @@ describe("lint:guides", () => {
       '  <Scenario id="reader-path">',
       '    <Step name="run">',
       '      <Variable name="secret" value="hunter2" />',
-      '      <Run command="version" />',
+      '      <Run command="version {{secret}}" />',
       "    </Step>",
       "  </Scenario>",
       "</Guide>",
@@ -899,13 +903,12 @@ describe("lint:guides", () => {
       "",
     ].join("\n");
 
-    expect(lintGuideContent(sourcePath, content).diagnostics).toEqual([]);
+    expect(lintGuideContent(sourcePath, content).diagnostics).toMatchObject([
+      { code: "guide.runtime.mixed", scenario: "reader-path", line: 13 },
+    ]);
     const diagnostics = lintGuideTranscripts(sourcePath, content).diagnostics;
 
     expect(diagnostics.length).toBeGreaterThan(0);
-    expect(diagnostics.some((diagnostic) => diagnostic.code === "guide.transcript.source-map")).toBe(true);
-    expect(diagnostics.map(formatGuideLintDiagnostic)[0]).toContain(
-      "Could not generate scenario block: Guide core/test/lint/guides/transcript-mixed-runtime.mdx scenario transcript-mixed-runtime:reader-path mixes cli/shell and library <Run> steps; mixed runtime scenarios are not supported.",
-    );
+    expect(diagnostics).toMatchObject([{ code: "guide.runtime.mixed", scenario: "reader-path", line: 13 }]);
   });
 });

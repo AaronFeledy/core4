@@ -142,29 +142,48 @@ describe("lando init — answers and prompting", () => {
   test("a zero-option recipe rejects an undeclared answer", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(
-        ["init", "--recipe=node-ts", "--no-interactive", "--answer=name=zero-options", "--answer=node=22"],
+        [
+          "init",
+          "--recipe=node-ts",
+          "--no-interactive",
+          "--format=json",
+          "--answer=name=zero-options",
+          "--answer=node=22",
+        ],
         dir,
       );
       expect(result.exitCode).toBe(1);
-      expect(flatten(result.stderr)).toContain("Recipe initialization blocked at translate");
+      const envelope = JSON.parse(result.stdout) as {
+        readonly ok: boolean;
+        readonly error?: { readonly _tag?: string; readonly stage?: string };
+      };
+      expect(envelope).toMatchObject({
+        ok: false,
+        error: { _tag: "RecipeInitBlockedError", stage: "validate" },
+      });
       expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(false);
     });
   });
 
-  test("a recipe with declared options preserves an intentional extra answer", async () => {
+  test("a recipe with declared options rejects an undeclared extra answer", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(
         [
           "init",
           "--recipe=lamp",
           "--no-interactive",
+          "--format=json",
           "--answer=name=extended-options",
           "--answer=metadata=kept",
         ],
         dir,
       );
-      expect(result.exitCode).toBe(0);
-      expect(await Bun.file(join(dir, ".lando.yml")).text()).toMatch(/metadata:\s+kept/);
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: false,
+        error: { _tag: "RecipeInitBlockedError", stage: "validate" },
+      });
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(false);
     });
   });
 

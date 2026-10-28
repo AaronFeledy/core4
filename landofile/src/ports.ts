@@ -57,3 +57,5 @@ export interface LandofileRuntimeInputs {
   readonly ports: LandofileRuntimePorts;
   readonly templates: TemplateEngineInputs;
 }
+
+export type LandofileEvaluationInputs = Pick<LandofileRuntimeInputs, "ports" | "templates">;

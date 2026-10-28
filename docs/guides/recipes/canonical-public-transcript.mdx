@@ -12,12 +12,12 @@ This page is a contributor fixture, not a user how-to. It exercises three transc
 
 It is kept off the user sidebar on purpose. Do not treat the frames below as something you paste into an app tutorial.
 
-`--yes` on `lando init` is consent. The recipe is bundled `node-postgres`, so file rendering is implemented.
+`--yes` on `lando init` is consent. The recipe is bundled `node-postgres`; a local or remote `recipe.yml` renders through the same compiler.
 
 <Guide>
   <Scenario id="public-transcript-docs-render" render>
     <Step name="scaffold-recipe">
-      <Variable name="appName" value="canonical-guide" display="Canonical guide recipe app" />
+      <Variable name="appName" value="canonical-guide" display="my-canonical-app" />
       <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
     </Step>
     <Step name="validate-config">
@@ -90,7 +90,7 @@ The same recipe scaffold starts, prints lando info, then destroys. This is an e2
 
 <Scenario id="provider-e2e-smoke" layer="e2e" tags={["@smoke"]} render>
     <Step name="scaffold-real-provider-app">
-      <Variable name="appName" value="canonical-guide-e2e" display="Canonical guide e2e app" />
+      <Variable name="appName" value="canonical-guide-e2e" display="my-canonical-e2e-app" />
       <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
     </Step>
     <Step name="start-real-provider-app">

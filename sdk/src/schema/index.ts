@@ -144,6 +144,8 @@ export * from "./recipe-decompose.ts";
 export * from "./recipe-identity.ts";
 export * from "./recipe-provenance.ts";
 export * from "./recipe-snapshot.ts";
+export * from "./recipe-source.ts";
+export { RecipeSourceCompileError } from "./recipe-source-error.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./renderer-capabilities.ts";

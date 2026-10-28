@@ -116,7 +116,6 @@ export const renderCompiledRecipeSnapshot = (
         return Result.succeed(undefined);
       case "Conditional":
         for (const [key, child] of [
-          ["test", node.test],
           ["consequent", node.consequent],
           ["alternate", node.alternate],
         ] as const) {
@@ -125,13 +124,7 @@ export const renderCompiledRecipeSnapshot = (
         }
         return Result.succeed(undefined);
       case "Call":
-        for (const [index, child] of node.args.entries()) {
-          const result = compile(child, path, [...sourcePath, "args", index]);
-          if (Result.isFailure(result)) return result;
-        }
-        return Result.succeed(undefined);
       case "Access":
-        return compile(node.target, path, [...sourcePath, "target"]);
       case "Path":
         return Result.succeed(undefined);
       default:

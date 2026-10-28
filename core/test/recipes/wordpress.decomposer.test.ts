@@ -1,21 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { wordpressDecomposer } from "../../src/recipes/builtin/wordpress/decomposer.ts";
-import { wordpressRecipeYaml } from "../../src/recipes/builtin/wordpress/manifest.ts";
-import {
-  WORDPRESS_CONTENT_DIGEST,
-  wordpressProducer,
-  wordpressSnapshot,
-} from "../../src/recipes/builtin/wordpress/snapshot.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: wordpressDecomposer,
+  producer: wordpressProducer,
+  snapshot: wordpressSnapshot,
+  contentDigest: WORDPRESS_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("wordpress");
 
 const validInput: RecipeDecomposeInput = {
   producer: wordpressProducer,
@@ -66,7 +62,7 @@ describe("wordpress decomposition", () => {
             primary: true,
             framework: "wordpress",
             port: 80,
-            dependsOn: options.redis ? ["database", "cache"] : ["database"],
+            dependsOn: options.redis ? [{ service: "database" }, { service: "cache" }] : ["database"],
             routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
           },
           database: { type: "mariadb" },
@@ -97,24 +93,18 @@ describe("wordpress decomposition", () => {
 
   test("publishes the exact inventory when the manifest is decoded", () => {
     // Given / When
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(wordpressRecipeYaml));
     // Then
-    expect<unknown>(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect<unknown>(manifest.files).toEqual([]);
     expect<unknown>(manifest.postInit).toEqual([
       { type: "message", text: "Run 'lando start' inside the new app directory to bring WordPress up." },
     ]);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot when the manifest is decoded", () => {
+  test("publishes a self-consistent migratable snapshot when the manifest is decoded", async () => {
     // Given / When
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(wordpressRecipeYaml));
     // Then
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(
-      WORDPRESS_CONTENT_DIGEST,
-    );
+    expect(await recompiledBundledDigest(manifest)).toBe(WORDPRESS_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(wordpressSnapshot);
     expect(wordpressSnapshot.identity.contentDigest).toBe(WORDPRESS_CONTENT_DIGEST);
     expect(wordpressSnapshot.identity.recipeId).toBe(manifest.id);
@@ -125,9 +115,7 @@ describe("wordpress decomposition", () => {
       redis: { kind: "boolean" },
     });
     expect(wordpressSnapshot.defaults).toEqual({ php: "8.4", redis: false });
-    expect(wordpressRecipeYaml).toContain("default: '8.4'");
-    expect(wordpressRecipeYaml).toContain("value: '8.1'");
-    expect(wordpressRecipeYaml).toContain("value: '8.6'");
+    expect(manifest.prompts?.find(({ name }) => name === "php")?.default).toBe("8.4");
   });
 
   test.each([...cases])("renders the same snapshot when options are %j", (options) => {

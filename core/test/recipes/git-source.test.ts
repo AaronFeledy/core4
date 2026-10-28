@@ -20,15 +20,8 @@ const VALID_RECIPE = `id: remote-recipe
 title: Remote Recipe
 description: A git sourced recipe.
 version: 0.1.0
-prompts:
-  - name: name
-    type: text
-    message: App name
-    default: git-app
-files:
-  - src: templates/.lando.yml.tmpl
-    dest: .lando.yml
-    template: true
+config:
+  runtime: 4
 `;
 
 const withTempRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -315,7 +308,7 @@ describe("resolveGitRecipeSource", () => {
 });
 
 describe("initApp git source boundary", () => {
-  test("git recipes reach manifest parsing and prompt defaults before the existing non-bundled render limitation", async () => {
+  test("invalid git config fails before writing and reports the published source path", async () => {
     await withTempRoot(async (dir) => {
       let caught: unknown;
       try {
@@ -325,15 +318,21 @@ describe("initApp git source boundary", () => {
           source: "git",
           url: "https://example.test/recipes.git",
           userDataRoot: join(dir, "data"),
-          gitRecipeCloner: makeCloner({ manifest: VALID_RECIPE }),
+          gitRecipeCloner: makeCloner({
+            manifest: VALID_RECIPE.replace("config:\n  runtime: 4", "config: invalid"),
+          }),
+          destination: join(dir, "app"),
           nonInteractive: true,
         });
       } catch (error) {
         caught = error;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain("Recipe file rendering");
-      expect((caught as Error).message).toContain("https://example.test/recipes.git");
+      expect(caught).toMatchObject({
+        _tag: "RecipeManifestValidationError",
+        source: expect.stringContaining("recipe.yml"),
+      });
+      expect(await Bun.file(join(dir, "app", ".lando.yml")).exists()).toBe(false);
     });
   });
 });

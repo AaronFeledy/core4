@@ -291,7 +291,7 @@ describe("drupal-journey workflow", () => {
   test("exports LANDO_USER roots from RUNNER_TEMP via GITHUB_ENV after checkout", async () => {
     // Given / When
     const linuxX64 = jobBlock(await readWorkflow(), "linux-x64");
-    const checkout = linuxX64.indexOf("actions/checkout@v5");
+    const checkout = linuxX64.indexOf("actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1");
     const isolate = linuxX64.indexOf("Isolate Lando roots");
 
     // Then: job-level env cannot use the runner context; roots are exported from a step.

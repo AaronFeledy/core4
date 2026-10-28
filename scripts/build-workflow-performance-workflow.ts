@@ -39,7 +39,7 @@ const ciPlatformFor = (id: string): CiPlatform => {
 };
 
 const renderSourceBuildPrerequisites = (): string => `      - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v5.5.0
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 
@@ -58,7 +58,7 @@ const renderJob = (cell: PlatformReadinessCell): string => {
     runs-on: ${cell.runsOn}
     timeout-minutes: 360
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

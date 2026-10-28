@@ -12,12 +12,19 @@ import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 
 import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
-import { drupalCmsDecomposer } from "../../src/recipes/builtin/drupal-cms/decomposer.ts";
 import { DRUPAL_CMS_PHP_INI_TARGET } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
-import { drupalCmsDefaults, drupalCmsProducer } from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
-import { drupalDecomposer } from "../../src/recipes/builtin/drupal/decomposer.ts";
 import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
-import { drupalDefaults, drupalProducer } from "../../src/recipes/builtin/drupal/snapshot.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: drupalDecomposer,
+  defaults: drupalDefaults,
+  producer: drupalProducer,
+} = bundledRecipe("drupal");
+const {
+  decomposer: drupalCmsDecomposer,
+  defaults: drupalCmsDefaults,
+  producer: drupalCmsProducer,
+} = bundledRecipe("drupal-cms");
 
 const loadTranslator = (): Effect.Effect<ConfigTranslatorShape> => {
   const loader = configTranslators.get(LANDO4_TRANSLATOR_ID);
@@ -71,7 +78,9 @@ describe("the decomposed drupal Landofile on the native load path", () => {
       const tooling = landofile.document.tooling as Record<string, Record<string, unknown>>;
       const services = landofile.document.services as Record<string, Record<string, unknown>>;
       const routes = services.appserver?.routes as ReadonlyArray<Record<string, unknown>>;
-      expect(tooling["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand(drupalDefaults.drupal));
+      const drupalVersion = drupalDefaults.drupal;
+      if (typeof drupalVersion !== "string") throw new TypeError("Expected a Drupal version default");
+      expect(tooling["drupal-scaffold"]?.cmd).toBe(drupalScaffoldCommand(drupalVersion));
       expect(services.appserver?.type).toBe(`php:${drupalDefaults.php}`);
       expect(services.appserver?.webroot).toBe(drupalDefaults.webroot);
       expect(services.database?.type).toBe(drupalDefaults.database);

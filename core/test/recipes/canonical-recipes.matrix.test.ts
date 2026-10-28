@@ -11,7 +11,6 @@ import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
-import { parseRecipe } from "../../src/recipes/manifest/service.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
@@ -201,10 +200,10 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
     test(`bundled recipe ${recipeId}: parse + render + discover + plan`, async () => {
       const answers = buildAnswers(answersEntry);
 
-      const manifest = await Effect.runPromise(parseRecipe(recipe.source, recipe.manifestYaml));
+      const manifest = recipe.manifest;
       expect(manifest.id, `[${recipeId}] manifest.id mismatch`).toBe(recipeId);
       const manifestFiles = manifest.files ?? [];
-      expect(manifestFiles.length, `[${recipeId}] manifest.files must be non-empty`).toBeGreaterThan(0);
+      expect(manifestFiles.some(({ dest }) => dest === ".lando.yml")).toBe(false);
 
       expect(BUILTIN_RECIPE_DECOMPOSERS.has(recipeId), `[${recipeId}] missing registered decomposer`).toBe(
         true,

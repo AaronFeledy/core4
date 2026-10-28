@@ -50,7 +50,7 @@ lando npm install
 ## 1. scaffold
 
 ```bash
-lando init --recipe astro --name=my-astro-postgres --yes
+lando init --recipe astro --name=my-astro --yes
 ```
 
 ## 2. start

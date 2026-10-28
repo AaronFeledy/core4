@@ -73,7 +73,7 @@ jobs:
       group: dev-prerelease-\${{ github.run_number }}
       cancel-in-progress: false
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
         with:
           ref: \${{ github.event.workflow_run.head_sha }}
 

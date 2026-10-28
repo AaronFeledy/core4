@@ -48,7 +48,7 @@ For day-to-day tooling and database hosts, see [Run the Drupal recipe](https://a
 ## 1. scaffold
 
 ```bash
-lando init --recipe drupal --name=my-drupal-nginx --yes
+lando init --recipe drupal --name=my-drupal-app --yes
 ```
 
 ## 2. start

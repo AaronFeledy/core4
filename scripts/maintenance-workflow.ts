@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout}
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -82,7 +82,8 @@ ${indentScript(policy.proposal.checkAndReport)}
             git commit -m "$TITLE" --only -- ${paths}
           fi
           git push origin "HEAD:$BRANCH"
-          if [ -z "$(gh pr list --state open --head "$BRANCH" --json number --jq '.[].number')" ]; then
+          PR_NUMBER="$(gh pr list --state open --head "$BRANCH" --json number --jq '.[].number')"
+          if [ -z "$PR_NUMBER" ]; then
             gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
           else
             gh pr edit "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"

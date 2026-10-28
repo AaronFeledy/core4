@@ -139,6 +139,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
   "@lando/ca-mkcert": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/file-sync-mutagen": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
   "@lando/notify-lando": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
+  "@lando/github-actions": { dependencies: ["@lando/sdk"], devDependencies: [] },
   "@lando/sql": {
     dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/redaction"],
     // Recovery retention tests compose the real snapshot store without a live container runtime.

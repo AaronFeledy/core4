@@ -35,11 +35,17 @@ const Before = Schema.Union([
 ]);
 export const Stage = Schema.Struct({ path: Schema.String, dev: Schema.String, ino: Schema.String });
 export type Stage = typeof Stage.Type;
+export const DirectoryPolicy = Schema.Struct({
+  path: Schema.String,
+  action: Schema.Literal("create-if-absent"),
+});
+export type DirectoryPolicy = typeof DirectoryPolicy.Type;
 export const Entry = Schema.Struct({
   path: Schema.String,
   before: Before,
   after: FileState,
   stage: Schema.optionalKey(Stage),
+  publication: Schema.optionalKey(Schema.Literals(["replace", "create"])),
 });
 export type Entry = typeof Entry.Type;
 export const Journal = Schema.Struct({
@@ -47,6 +53,7 @@ export const Journal = Schema.Struct({
   root: Schema.String,
   state: Schema.Literals(["prepared", "committing", "committed", "blocked"]),
   entries: Schema.Array(Entry),
+  directoryPolicy: Schema.optionalKey(Schema.Array(DirectoryPolicy)),
 });
 export type Journal = typeof Journal.Type;
 const transitions = {
@@ -79,13 +86,14 @@ export const openJournal = Effect.fnUntraced(function* (
     .open({
       root: { path: Schema.decodeUnknownSync(AbsolutePath)(dir) },
       key: "transaction.json",
-      version: 1,
+      version: 2,
       schema: Journal,
       mode: 0o600,
       lock: "none",
       onCorrupt: "fail",
-      onVersionMismatch: () => {
-        throw transactionError("journal", "inspect");
+      onVersionMismatch: (payload, fromVersion) => {
+        if (fromVersion !== 1) throw transactionError("journal", "inspect");
+        return Schema.decodeUnknownSync(Journal)(payload);
       },
     })
     .pipe(Effect.mapError(() => transactionError("journal", "inspect")));

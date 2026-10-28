@@ -6,6 +6,7 @@ import { dirname, extname, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/catalog.generated.ts";
+import { removeAcceptanceRoot, withAcceptanceCleanup } from "./fixtures/opentui-acceptance-cleanup.ts";
 
 const binaryPath = process.env.LANDO_OPENTUI_ACCEPTANCE_BINARY;
 const releaseTarget = process.env.LANDO_RELEASE_TARGET;
@@ -69,6 +70,7 @@ const normalizeTiming = (text: string): string =>
   text
     .replace(/\(\d+(?:\.\d+)?(?:ms|s)\)/g, "(<elapsed>)")
     .replace(/"durationMs":\s*\d+(?:\.\d+)?/g, '"durationMs":0')
+    .replace(/("receipt":\s*\{\s*"id":\s*")[0-9a-f-]+"/g, '$1<transaction-id>"')
     // Recipe notices are renderer events; independent runs retain different clock instants.
     .replace(/"timestamp":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"/g, '"timestamp":"<timestamp>"');
 
@@ -108,9 +110,9 @@ const expectNonLoadingDispatches = async (
 ): Promise<void> => {
   for (const args of [["--version"], ["--help"], ["init"], ["init", "--renderer=json"]]) {
     const dest = await mkdtemp(resolve(cwd, "dispatch-"));
-    try {
+    await withAcceptanceCleanup([dest], async () => {
       const normal = await runNonTty(command, dest, args, env);
-      await rm(dest, { recursive: true, force: true });
+      await removeAcceptanceRoot(dest);
       await mkdir(dest);
       const withoutOpenTui = await runNonTty(command, dest, args, {
         ...env,
@@ -118,9 +120,7 @@ const expectNonLoadingDispatches = async (
       });
       expect(normalizeRunElapsedTiming(normal)).toEqual(normalizeRunElapsedTiming(withoutOpenTui));
       expect(`${normal.stdout}${normal.stderr}`).not.toContain("╭");
-    } finally {
-      await rm(dest, { recursive: true, force: true });
-    }
+    });
   }
 };
 
@@ -164,26 +164,6 @@ const closeSpawnStdin = async (proc: { readonly stdin: { end(): unknown } }): Pr
     await proc.stdin.end();
   } catch {
     // Already closed when the child exited or was taskkilled.
-  }
-};
-
-const removeRelocatedBinaryRoot = async (root: string): Promise<void> => {
-  // Bun 1.4 on Windows reports EPERM (not only EACCES/EBUSY) while the compiled
-  // image is still mapped after spawn exit. Retry until the handle drops.
-  const retryableCodes = new Set(["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"]);
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    try {
-      await rm(root, { recursive: true, force: true });
-      return;
-    } catch (cause) {
-      const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
-      if (process.platform !== "win32" || typeof code !== "string" || !retryableCodes.has(code)) throw cause;
-      if (attempt === 19) {
-        console.warn(`Unable to remove relocated Windows acceptance binary after retries: ${String(cause)}`);
-        return;
-      }
-      await Bun.sleep(250);
-    }
   }
 };
 
@@ -278,10 +258,10 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
     const binaryRoot = await mkdtemp(resolve(tmpdir(), `lando-opentui-binary-${target}-`));
     const relocatedBinary = resolve(binaryRoot, process.platform === "win32" ? "lando.exe" : "lando");
     const appRoot = resolve(root, "app");
-    await copyFile(sourceBinary, relocatedBinary);
-    await mkdir(appRoot);
     const baseEnv = cleanEnv(root);
-    try {
+    await withAcceptanceCleanup([root, binaryRoot], async () => {
+      await copyFile(sourceBinary, relocatedBinary);
+      await mkdir(appRoot);
       const bypassTrace = resolve(root, "bypass.jsonl");
       await expectNonLoadingDispatches([relocatedBinary], appRoot, probeEnv(baseEnv, bypassTrace));
       expect(await readProbe(bypassTrace)).toEqual([]);
@@ -324,18 +304,12 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
       );
       expect(degraded).toContain("(value or index):");
       expect(await readProbe(failureTrace)).toEqual([{ phase: "attempt", specifier: "@opentui/core" }]);
-    } finally {
-      try {
-        await rm(root, { recursive: true, force: true });
-      } finally {
-        await removeRelocatedBinaryRoot(binaryRoot);
-      }
-    }
+    });
   }, 120_000);
 });
 
 describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acceptance", () => {
-  test("plain and json match the explicit line-mode baseline apart from elapsed timing and timestamps", async () => {
+  test("plain and json match the explicit line-mode baseline apart from per-run metadata", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "lando-opentui-source-"));
     const appRoot = resolve(root, "app");
     await mkdir(appRoot);

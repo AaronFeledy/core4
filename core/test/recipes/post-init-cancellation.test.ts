@@ -1,9 +1,8 @@
 import { expect, spyOn, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
-import { plugin } from "@lando/lando4";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Exit, Stream } from "effect";
 import { initApp } from "../../src/cli/commands/init";
@@ -13,11 +12,17 @@ import * as postInitRuntime from "../../src/recipes/post-init/runtime";
 import { createDefaultChoicesCommandRunner } from "../../src/recipes/prompts/choices-command";
 import { defaultChoicesCommandSpawner } from "../../src/recipes/prompts/choices-command";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
-import { isolatedInitDecomposer, isolatedInitManifest } from "./fixtures/isolated-init-recipe";
+import { prepareTestSource, testSource } from "./fixtures/prepared-source";
 
 test("initApp cancellation kills and reaps its post-init child", async () => {
   // Given a real init pipeline whose post-init action runs a harmless child
   const root = await mkdtemp(join(tmpdir(), "lando-init-abort-"));
+  const source = join(root, "cancellation");
+  await mkdir(source);
+  await Bun.write(
+    join(source, "recipe.yml"),
+    "id: cancellation\ntitle: Cancellation\ndescription: Cancellation fixture\nversion: 1.0.0\nconfig:\n  runtime: 4\npostInit:\n  - type: message\n    text: Ready\n",
+  );
   const controller = new AbortController();
   const ready = Promise.withResolvers<number>();
   const finished = Promise.withResolvers<void>();
@@ -51,7 +56,7 @@ test("initApp cancellation kills and reaps its post-init child", async () => {
     cwd: root,
     destination: join(root, "app"),
     userDataRoot: join(root, "data"),
-    recipe: "empty",
+    recipe: source,
     name: "test",
     full: false,
     nonInteractive: true,
@@ -100,18 +105,15 @@ test("cancellation through post-init kills and reaps the live runner child", asy
       return new Response("ready");
     },
   });
-  const loader = plugin.configTranslators?.get("lando4");
-  if (loader === undefined) throw new Error("Missing translator fixture");
   const program = runBoundPostInit({
     request: {
-      appRoot: process.cwd(),
+      prepared: await prepareTestSource(
+        { ...testSource, postInit: [{ type: "bun", verb: "install" }] },
+        process.cwd(),
+        process.cwd(),
+      ),
       privateFileAccess: ownerOnlyFileAccess,
       journalRoot: () => process.cwd(),
-      appName: "test",
-      answers: {},
-      manifest: { ...isolatedInitManifest, postInit: [{ type: "bun", verb: "install" }] },
-      decomposer: isolatedInitDecomposer,
-      encoder: await loader(),
       runPostInit: async (bound) => {
         if (bound.spawner === undefined) throw new Error("Missing real process adapter");
         try {
@@ -170,18 +172,15 @@ test("interrupts the nested runner when post-init is cancelled", async () => {
   const started = Promise.withResolvers<void>();
   const released = Promise.withResolvers<void>();
   const controller = new AbortController();
-  const loader = plugin.configTranslators?.get("lando4");
-  if (loader === undefined) throw new Error("Missing translator fixture");
   const program = runBoundPostInit({
     request: {
-      appRoot: process.cwd(),
+      prepared: await prepareTestSource(
+        { ...testSource, postInit: [{ type: "command", cmd: "app:config:translate" }] },
+        process.cwd(),
+        process.cwd(),
+      ),
       privateFileAccess: ownerOnlyFileAccess,
       journalRoot: () => process.cwd(),
-      manifest: { ...isolatedInitManifest, postInit: [{ type: "command", cmd: "app:config:translate" }] },
-      appName: "test",
-      answers: {},
-      decomposer: isolatedInitDecomposer,
-      encoder: await loader(),
     },
     redact: (value) => value,
     postFailure: (failedAction) =>

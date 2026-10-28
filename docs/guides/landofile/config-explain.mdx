@@ -18,12 +18,25 @@ Run that from an app directory. Lando reads the Landofile, compares the recorded
 
 ## Read the report
 
-For a Landofile that `lando init --recipe=lamp` produced with `php` set to `8.2` and the `webroot` expression replaced by a literal, the report (after the `Landofile:` path line) reads:
+Create a LAMP app with `php` set to `8.2`, then take one site over by replacing the `webroot` expression with the literal it would have produced:
+
+```sh
+lando init --recipe lamp --name=explain-demo --yes --answer=php=8.2
+cd explain-demo
+```
+
+In `.lando.yml`, change `webroot: "{{ recipe.webroot }}"` under `services.appserver` to `webroot: .` and save. Then run the report:
+
+```sh
+lando app:config:explain
+```
+
+After the `Landofile:` path line it reads:
 
 ```text
 Recipe: lamp 0.1.0
 Producer: bundled @lando/recipe-lamp
-Digest: sha256:82c9c3a5c8f8ae44b1be5bd8a68ddfc0bdda51833a8f50ecd7660e6457cb6406
+Digest: sha256:fcb18bfc51fc6dd6a69150f928e9105050b0795adda33341269df78eb07559a2
 Comparison: matched against snapshot 0.1.0
 
 composer: "2"
@@ -35,10 +48,6 @@ database: "mariadb:11.4"
   default: "mariadb:11.4"
   status: accepted-by-value
   references: services.database.type = {{ recipe.database }}
-
-name: "explain-demo"
-  status: chosen-by-value
-  references: none
 
 php: "8.2"
   default: "8.4"
@@ -52,11 +61,13 @@ webroot: "."
   taken over: services.appserver.webroot was {{ recipe.webroot }}, now "."
 ```
 
+The `Digest:` line is the content digest `lando init` recorded from the installed recipe, so yours changes whenever the bundled recipe does. The comparison is `matched` because that recorded digest still equals what the installed recipe publishes at `0.1.0`.
+
 Each option gets a `status`, its `references` (the sites that still hold the generated `{{ recipe.<name> }}` expression), and any `taken over` sites.
 
 ### Status is a value comparison, not a mind reader
 
-`accepted-by-value` means the recorded value equals the recipe default at the recorded version. `chosen-by-value` means it differs. That's all. Lando doesn't know whether you typed `8.2` at the prompt or accepted a default that later changed; it only compares values. `name` shows `chosen-by-value` with no `default` line because `lando init` records it while the recipe publishes no default for it.
+`accepted-by-value` means the recorded value equals the recipe default at the recorded version. `chosen-by-value` means it differs. That's all. Lando doesn't know whether you typed `8.2` at the prompt or accepted a default that later changed; it only compares values. The app `name` is not a recipe option, so it never appears in the report.
 
 ### A site is managed only while the whole expression survives
 
@@ -106,13 +117,16 @@ No defaults, no statuses, just the `{{ recipe.* }}` sites that exist in the file
 
 <Guide>
   <Scenario id="managed" render>
+    <Step name="scaffold-managed">
+      <Run command="lando init --recipe lamp --name=explain-demo --yes --answer=php=8.2" />
+    </Step>
     <Step name="explain-managed">
-      <UseFixture name="managed-lamp" />
       <Run command="lando app:config:explain" />
       <Run command="lando app:config:explain --format=json" />
       <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"status\":\\s*\"matched\"" } }} />
-      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"chosen-by-value\"" } }} />
-      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"services\\.appserver\\.webroot\"" } }} />
+      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"php\",\\s*\"value\":\\s*\"8\\.2\",\\s*\"default\":\\s*\"8\\.4\",\\s*\"status\":\\s*\"chosen-by-value\"" } }} />
+      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"webroot\",\\s*\"value\":\\s*\"[.]\",\\s*\"default\":\\s*\"[.]\",\\s*\"status\":\\s*\"accepted-by-value\"" } }} />
+      <Verify command="lando app:config:explain --format=json" expect={{ stdout: { regex: "\"path\":\\s*\"services\\.appserver\\.webroot\",\\s*\"expression\":\\s*\"[^\"]*recipe\\.webroot" } }} />
     </Step>
     <Step name="managed-cleanup">
       <Cleanup />

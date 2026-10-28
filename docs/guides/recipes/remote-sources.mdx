@@ -6,21 +6,182 @@ timeout: 60000
 tags: [beta, docs, recipes, git]
 ---
 
-# Init from a remote recipe source
+# Write a recipe and init from a remote source
 
-The git source supports cloning and parsing a recipe, but this alpha path does not yet write its application files. Use a bundled recipe when you need a working initialization path. To inspect remote-source behavior, replace `<git-url>` below with the recipe repository URL; `--yes` accepts the remaining prompts.
+A recipe is a `recipe.yml` with metadata and an ordinary Landofile-shaped `config`. Lando compiles it into the app's `.lando.yml` and derives every digest and producer identity itself; you never write a snapshot, an expression tree, or a hash. The same file initializes from a local directory and from git, a tarball, npm, or the registry:
 
 ```sh
 lando init --source=git --url=<git-url> --yes
 ```
 
-Alpha still cannot write files for that recipe. After the clone and parse, init throws that file rendering is not implemented yet and that only bundled built-in recipes are supported. Use a bundled recipe id when you need a Landofile on disk.
+Replace `<git-url>` with the repository URL. `--yes` accepts the remaining prompts. A remote tree is read as YAML only: `recipe.ts` is never evaluated from a clone, download, or package, so publish `recipe.yml` for anything you install remotely. See [Init from a remote recipe](../cli/init-from-remote.mdx) for the flags each source takes.
 
-Use the commands below to understand source validation and caching, not as a complete app-creation walkthrough.
+Three steps get a recipe from an idea to a running app: write it, validate it, init from it.
+
+## Write recipe.yml
+
+Save these three files in a directory named `tool-runner`. The directory basename must equal `id`.
+
+`recipe.yml` declares one BusyBox service and two auxiliary files:
+
+```yaml
+id: tool-runner
+title: Tool Runner
+description: One disposable BusyBox service for running one-off commands.
+version: 1.0.0
+config:
+  runtime: 4
+  services:
+    tools:
+      type: lando
+      image: busybox:1.37
+      command: sleep infinity
+files:
+  - src: README.tmpl
+    dest: README.md
+    template: true
+  - src: banner.txt
+    dest: banner.txt
+```
+
+`README.tmpl`:
+
+```text
+# {{ app.name }}
+
+Run `lando start`, then `lando exec tools -- busybox --help`.
+```
+
+`banner.txt`:
+
+```text
+Static files are copied byte for byte, so {{ app.name }} stays literal here.
+```
+
+`config` is the Landofile Lando writes, minus `name:` and the `recipe:` provenance block it adds. `lando init` asks for the app name itself, so a recipe never declares a `name` option. `files` lists files next to `recipe.yml`: a static file is copied byte for byte, and a `template: true` file is decoded as strict UTF-8 with only `{{ app.name }}` replaced. Lando computes each file's digest at init time, so edit `README.tmpl` freely.
+
+The recipe parser is restricted to block YAML: use block mappings and block sequences, never inline `{ ... }` or `[ ... ]`. Leave `options:` out when the recipe has none.
+
+## Validate before you push
+
+From the parent directory:
+
+```sh
+lando meta recipes validate ./tool-runner --format=json
+```
+
+`readiness` is `ready` and `preview.landofile` shows the `.lando.yml` prepared with default option answers, an app name derived from the current directory, and the current directory as the destination. `preview.outputs` lists every prepared file's destination, mode, byte count, and digest. Inspection and init share the same preparation, but init with a different name, answers, or destination produces a different preview. Validation is read-only: it creates no directories and contacts no provider. `lando meta recipes describe ./tool-runner` reports the same fields with the recipe metadata.
+
+`historyEligible` is `true` for this YAML recipe because every resolved source is declarative and can produce inert declarative history without evaluating recipe code. It does not promise external published versions or installed migration edges. A local YAML recipe that inherits from any evaluated `recipe.ts` reports `false`; remote trees and their ancestry remain YAML-only.
+
+A `recipe.yml` without `config:`, or whose `config` isn't a valid Landofile shape, fails with `RecipeManifestValidationError`. Init runs the same compilation first, so an invalid recipe fails before anything is written.
+
+## Init from a local directory
+
+A local directory goes through the same compilation as a remote one, so test a recipe before publishing it. With the three files saved in `tool-runner/`:
+
+```sh
+lando init --recipe=./tool-runner --name=demo-app --yes
+```
+
+Init creates `demo-app/` in the current directory with `.lando.yml`, `README.md`, and `banner.txt`. Verify from inside the new app directory with `lando app:config --format=json`.
+
+<Guide>
+  <Scenario id="init-from-local-snapshot-recipe" render>
+    <Step name="validate-before-init">
+      <UseFixture name="yaml-recipe" />
+      <Run command="lando meta recipes validate ./tool-runner --format=json" />
+      <Verify command="lando meta recipes validate ./tool-runner --format=json" expect={{ stdout: { regex: "\"readiness\":\\s*\"ready\"" } }} />
+      <Verify command="lando meta recipes validate ./tool-runner --format=json" expect={{ stdout: { regex: "\"historyEligible\":\\s*true" } }} />
+    </Step>
+    <Step name="init-from-directory">
+      <Run command="lando init --recipe=./tool-runner --name=demo-app --yes" />
+      <Verify file="yaml-recipe/demo-app/.lando.yml" expect={{ regex: "name: demo-app" }} />
+      <Verify file="yaml-recipe/demo-app/README.md" expect={{ regex: "^# demo-app" }} />
+      <Verify file="yaml-recipe/demo-app/banner.txt" expect={{ regex: "\\{\\{ app\\.name \\}\\} stays literal" }} />
+    </Step>
+    <Step name="read-generated-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"lando\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"busybox:1\\.37\"" } }} />
+    </Step>
+    <Step name="cleanup-generated-app">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="init-with-typed-option" render>
+    <Step name="init-with-worker">
+      <UseFixture name="worker-recipe" />
+      <Run command="lando init --recipe=./tool-runner-worker --name=worker-app --answer worker=true --yes" />
+      <Verify file="worker-recipe/worker-app/.lando.yml" expect={{ regex: "name: worker-app" }} />
+      <Verify file="worker-recipe/worker-app/.lando.yml" expect={{ regex: "worker:" }} />
+    </Step>
+    <Step name="read-worker-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{" } }} />
+    </Step>
+    <Step name="cleanup-worker-app">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="validate-rejects-missing-config" render>
+    <Step name="recipe-without-config">
+      <UseFixture name="broken-recipe" />
+      <Run command="lando meta recipes validate ./broken --format=json" expectExit={1} />
+      <Verify errorTag="RecipeManifestValidationError" expect={{ regex: "config" }} />
+    </Step>
+  </Scenario>
+
+  <Scenario id="git-without-url" render>
+    <Step name="missing-url">
+      <Run command="lando init --source=git --yes --no-interactive" expectExit={1} />
+      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --url" }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+`README.md` came from `README.tmpl` with `{{ app.name }}` replaced. `banner.txt` is static, so its `{{ app.name }}` text is still there. `.lando.yml` is your `config` plus `name:` and a `recipe:` block recording the chosen options and the producer identity Lando computed from the recipe content.
+
+## Add a typed option
+
+Declare each option once under `options:` with a closed `type`, an optional typed `default`, and an optional `prompt`. Lando derives the init question from the type. An option without a default is required, and `lando init --no-interactive` fails for it with `InteractionRequiredError` instead of writing anything. Put conditional config under `variants:`; each `when` is an expression over `options` that Lando evaluates at init time.
+
+```yaml
+id: tool-runner-worker
+title: Tool Runner with optional worker
+description: One BusyBox service plus an optional worker service.
+version: 1.0.0
+options:
+  worker:
+    type:
+      kind: boolean
+    default: false
+    prompt:
+      message: Add a worker service?
+config:
+  runtime: 4
+  services:
+    tools:
+      type: lando
+      image: busybox:1.37
+      command: sleep infinity
+variants:
+  - when: "{{ options.worker }}"
+    config:
+      services:
+        worker:
+          type: lando
+          image: busybox:1.37
+          command: sleep infinity
+```
+
+Answer it on the command line with `--answer worker=true`, or let `--yes` take the default. Option types are `string`, `number`, `boolean`, `enum`, `array`, and `optional`; reference a chosen value inside `config` as `{{ recipe.<option> }}`.
 
 ## Fail fast before a clone
 
-The git source without a url exits `1` with `RecipeSourceError` kind `missing-url`.
+The git source without a url exits `1` with `RecipeSourceError` kind `missing-url`:
 
 ```sh
 lando init --source=git --yes --no-interactive
@@ -44,17 +205,6 @@ Lando fetches exactly that ref, shallow and without tags, and caches the files u
 
 Interactive git prompts are off (`GIT_TERMINAL_PROMPT=0`). Auth failures fail fast as `RecipeSourceError` kind `auth`. A ref that isn't a valid tag, branch, or full commit SHA fails before Lando runs git.
 
-Other source kinds parse the same way and hit the same file-rendering stop. They are not a finished init path either.
-
-<Guide>
-  <Scenario id="git-without-url" render>
-    <Step name="missing-url">
-      <Run command="lando init --source=git --yes --no-interactive" expectExit={1} />
-      <Verify errorTag="RecipeSourceError" expect={{ regex: "requires --url" }} />
-    </Step>
-  </Scenario>
-</Guide>
-
 ## Next
 
-See [Init from a remote recipe](../cli/init-from-remote.mdx) for the remaining flag names. Use a bundled recipe when you want `lando init` to write files.
+See [Extend a bundled recipe](./extending-recipes.mdx) to build on `lamp` instead of starting from scratch, [Write a programmatic recipe](./programmatic-recipe.mdx) for the same recipe as `recipe.ts`, and [Init from a remote recipe](../cli/init-from-remote.mdx) for the tarball, npm, and registry flags.

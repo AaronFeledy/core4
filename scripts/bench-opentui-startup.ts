@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { arch, loadavg, platform, release, tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 
@@ -13,6 +15,7 @@ const DEFAULT_BINARY = resolve(REPO_ROOT, "core/dist/lando");
 
 type Options = {
   readonly binary: string;
+  readonly compareBinary?: string;
   readonly baselinePath: string;
   readonly runs?: number;
   readonly startupBudgetMs?: number;
@@ -24,6 +27,7 @@ type RunTiming = {
   readonly startupMs: number;
   readonly firstOutputMs: number;
 };
+type Role = "candidate" | "reference";
 
 type Summary = {
   readonly platform: "linux-x64";
@@ -31,14 +35,89 @@ type Summary = {
   readonly runs: number;
   readonly startupP95Ms: number;
   readonly firstOutputP95Ms: number;
+  readonly startupWithinBudget: boolean;
+  readonly firstOutputWithinBudget: boolean;
   readonly startupBudgetMs: number;
   readonly firstOutputBudgetMs: number;
+  readonly samples: ReadonlyArray<
+    RunTiming & { readonly pair: number; readonly role: Role; readonly order: number }
+  >;
+  readonly reference?: {
+    readonly startupP95Ms: number;
+    readonly firstOutputP95Ms: number;
+    readonly startupWithinBudget: boolean;
+    readonly firstOutputWithinBudget: boolean;
+  };
+  readonly pairs?: ReadonlyArray<{
+    readonly pair: number;
+    readonly order: ReadonlyArray<Role>;
+    readonly candidateMinusReferenceMs: RunTiming;
+  }>;
+  readonly candidateMinusReferenceP95Ms?: RunTiming;
+  readonly evidence: {
+    readonly runnerBunVersion: string;
+    readonly host: { readonly os: string; readonly arch: string; readonly kernel: string };
+    readonly cpuBefore: CpuSnapshot;
+    readonly cpuAfter: CpuSnapshot;
+    readonly candidate: BinaryIdentity;
+    readonly reference?: BinaryIdentity;
+    readonly cacheNote: string;
+  };
+};
+
+type ObservedFile = { readonly value: string | null; readonly unavailableReason: string | null };
+type CpuSnapshot = {
+  readonly loadAverage: ReadonlyArray<number>;
+  readonly cgroupCpuStat: ObservedFile;
+  readonly cgroupCpuMax: ObservedFile;
+  readonly cpuPressure: ObservedFile;
+};
+type BinaryIdentity = { readonly path: string; readonly bytes: number; readonly sha256: string };
+
+const observedFile = async (path: string): Promise<ObservedFile> => {
+  try {
+    return { value: (await readFile(path, "utf8")).trim(), unavailableReason: null };
+  } catch (error) {
+    return {
+      value: null,
+      unavailableReason: `${path}: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+};
+
+const cpuSnapshot = async (): Promise<CpuSnapshot> => ({
+  loadAverage: loadavg(),
+  cgroupCpuStat: await observedFile("/sys/fs/cgroup/cpu.stat"),
+  cgroupCpuMax: await observedFile("/sys/fs/cgroup/cpu.max"),
+  cpuPressure: await observedFile("/proc/pressure/cpu"),
+});
+
+const identifyBinary = async (path: string): Promise<BinaryIdentity> => {
+  const digest = createHash("sha256");
+  for await (const chunk of createReadStream(path)) digest.update(chunk);
+  return { path, bytes: (await stat(path)).size, sha256: digest.digest("hex") };
+};
+
+export const summarizeStartup = (
+  timings: ReadonlyArray<RunTiming>,
+  startupBudgetMs: number,
+  firstOutputBudgetMs: number,
+) => {
+  const startupP95Ms = percentile95(timings.map((timing) => timing.startupMs));
+  const firstOutputP95Ms = percentile95(timings.map((timing) => timing.firstOutputMs));
+  return {
+    startupP95Ms,
+    firstOutputP95Ms,
+    startupWithinBudget: startupP95Ms < startupBudgetMs,
+    firstOutputWithinBudget: firstOutputP95Ms < firstOutputBudgetMs,
+  };
 };
 
 const usage = `Usage: bun run scripts/bench-opentui-startup.ts [options]
 
 Options:
   --binary <path>                  Linux x64 compiled binary (default: core/dist/lando)
+  --compare-binary <path>          Reference binary for alternating paired samples
   --baseline <path>                Baseline JSON path (default: scripts/bench-baselines.json)
   --runs <n>                       Process samples (default: baseline runs)
   --startup-budget-ms <n>          End-to-end p95 budget (default: baseline startupBudgetMs)
@@ -60,6 +139,7 @@ const positiveInteger = (value: string, label: string): number => {
 
 export const parseArgs = (argv: ReadonlyArray<string>): Options => {
   let binary = DEFAULT_BINARY;
+  let compareBinary: string | undefined;
   let baselinePath = DEFAULT_BASELINE;
   let runs: number | undefined;
   let startupBudgetMs: number | undefined;
@@ -80,6 +160,7 @@ export const parseArgs = (argv: ReadonlyArray<string>): Options => {
       process.stdout.write(usage);
       process.exit(0);
     } else if (arg === "--binary") binary = resolve(value());
+    else if (arg === "--compare-binary") compareBinary = resolve(value());
     else if (arg === "--baseline") baselinePath = resolve(value());
     else if (arg === "--runs") runs = positiveInteger(value(), arg);
     else if (arg === "--startup-budget-ms") startupBudgetMs = positiveNumber(value(), arg);
@@ -90,6 +171,7 @@ export const parseArgs = (argv: ReadonlyArray<string>): Options => {
 
   return {
     binary,
+    ...(compareBinary === undefined ? {} : { compareBinary }),
     baselinePath,
     ...(runs === undefined ? {} : { runs }),
     ...(startupBudgetMs === undefined ? {} : { startupBudgetMs }),
@@ -135,32 +217,89 @@ const measureOne = async (input: {
   return { startupMs: performance.now() - start, firstOutputMs };
 };
 
-export const runBenchmark = async (options: Options, baseline: Baseline): Promise<Summary> => {
+export const runBenchmark = async (
+  options: Options,
+  baseline: Baseline,
+): Promise<Omit<Summary, "evidence">> => {
   const sandbox = await mkdtemp(resolve(tmpdir(), "lando-opentui-startup-"));
   try {
     const runs = options.runs ?? baseline.runs;
     const startupBudgetMs = options.startupBudgetMs ?? baseline.startupBudgetMs;
     const firstOutputBudgetMs = options.firstOutputBudgetMs ?? baseline.firstOutputBudgetMs;
-    const env = {
+    const timings: Record<Role, RunTiming[]> = { candidate: [], reference: [] };
+    const samples: Array<RunTiming & { pair: number; role: Role; order: number }> = [];
+    const pairs: Array<{ pair: number; order: ReadonlyArray<Role>; candidateMinusReferenceMs: RunTiming }> =
+      [];
+    const envFor = (role: Role) => ({
       ...process.env,
-      LANDO_USER_CONF_ROOT: resolve(sandbox, "config"),
-      LANDO_USER_DATA_ROOT: resolve(sandbox, "data"),
-      LANDO_USER_CACHE_ROOT: resolve(sandbox, "cache"),
+      LANDO_USER_CONF_ROOT: resolve(sandbox, role, "config"),
+      LANDO_USER_DATA_ROOT: resolve(sandbox, role, "data"),
+      LANDO_USER_CACHE_ROOT: resolve(sandbox, role, "cache"),
+    });
+    await mkdir(resolve(sandbox, "candidate"));
+    if (options.compareBinary !== undefined) await mkdir(resolve(sandbox, "reference"));
+    const envs = { candidate: envFor("candidate"), reference: envFor("reference") };
+    const recordSample = async (role: Role, pair: number, order: number): Promise<void> => {
+      const binary = role === "candidate" ? options.binary : options.compareBinary;
+      if (binary === undefined) throw new Error("Reference binary was not provided");
+      try {
+        const timing = await measureOne({ binary, command: baseline.command, cwd: sandbox, env: envs[role] });
+        timings[role].push(timing);
+        samples.push({ pair, role, order, ...timing });
+      } catch (error) {
+        throw new Error(
+          `${role} binary ${binary}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     };
-    const timings: RunTiming[] = [];
     for (let index = 0; index < runs; index += 1) {
-      timings.push(
-        await measureOne({ binary: options.binary, command: baseline.command, cwd: sandbox, env }),
-      );
+      if (options.compareBinary === undefined) {
+        await recordSample("candidate", index + 1, 1);
+        continue;
+      }
+      const order: readonly [Role, Role] =
+        index % 2 === 0 ? ["candidate", "reference"] : ["reference", "candidate"];
+      await recordSample(order[0], index + 1, 1);
+      await recordSample(order[1], index + 1, 2);
+      const candidate = timings.candidate.at(-1);
+      const reference = timings.reference.at(-1);
+      if (candidate === undefined || reference === undefined)
+        throw new Error("Incomplete startup sample pair");
+      pairs.push({
+        pair: index + 1,
+        order,
+        candidateMinusReferenceMs: {
+          startupMs: candidate.startupMs - reference.startupMs,
+          firstOutputMs: candidate.firstOutputMs - reference.firstOutputMs,
+        },
+      });
     }
+    const candidate = summarizeStartup(timings.candidate, startupBudgetMs, firstOutputBudgetMs);
+    const reference =
+      options.compareBinary === undefined
+        ? undefined
+        : summarizeStartup(timings.reference, startupBudgetMs, firstOutputBudgetMs);
     return {
       platform: baseline.platform,
       command: baseline.command,
       runs,
-      startupP95Ms: percentile95(timings.map((timing) => timing.startupMs)),
-      firstOutputP95Ms: percentile95(timings.map((timing) => timing.firstOutputMs)),
+      startupP95Ms: candidate.startupP95Ms,
+      firstOutputP95Ms: candidate.firstOutputP95Ms,
+      startupWithinBudget: candidate.startupWithinBudget,
+      firstOutputWithinBudget: candidate.firstOutputWithinBudget,
       startupBudgetMs,
       firstOutputBudgetMs,
+      samples,
+      ...(reference === undefined
+        ? {}
+        : {
+            reference,
+            pairs,
+            candidateMinusReferenceP95Ms: {
+              startupMs: candidate.startupP95Ms - reference.startupP95Ms,
+              firstOutputMs: candidate.firstOutputP95Ms - reference.firstOutputP95Ms,
+            },
+          }),
     };
   } finally {
     await rm(sandbox, { recursive: true, force: true });
@@ -169,40 +308,63 @@ export const runBenchmark = async (options: Options, baseline: Baseline): Promis
 
 const formatMs = (value: number): string =>
   `${Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1)}ms`;
+const formatSignedMs = (value: number): string => `${value >= 0 ? "+" : ""}${formatMs(value)}`;
 
-const formatSummary = (summary: Summary): string =>
+const formatSummary = (summary: Summary, passed = true): string =>
   [
-    "OpenTUI startup benchmark passed",
+    `OpenTUI startup benchmark ${passed ? "passed" : "failed"}`,
     `platform: ${summary.platform}`,
     `command: ${summary.command.join(" ")}`,
     `samples: ${summary.runs}`,
     `startup p95 ${formatMs(summary.startupP95Ms)} (budget ${formatMs(summary.startupBudgetMs)})`,
     `first output p95 ${formatMs(summary.firstOutputP95Ms)} (budget ${formatMs(summary.firstOutputBudgetMs)})`,
+    ...(summary.reference === undefined
+      ? []
+      : [
+          `reference startup p95 ${formatMs(summary.reference.startupP95Ms)} (${summary.reference.startupWithinBudget ? "within" : "over"} budget); first output p95 ${formatMs(summary.reference.firstOutputP95Ms)} (${summary.reference.firstOutputWithinBudget ? "within" : "over"} budget; diagnostic)`,
+          `candidate - reference p95: startup ${formatSignedMs(summary.startupP95Ms - summary.reference.startupP95Ms)}; first output ${formatSignedMs(summary.firstOutputP95Ms - summary.reference.firstOutputP95Ms)}`,
+        ]),
   ].join("\n");
 
 const main = async (): Promise<void> => {
   const options = parseArgs(Bun.argv.slice(2));
   const baseline = await readBaseline(options.baselinePath);
   const ttyBaseline = await readTtyOverheadBaseline(options.baselinePath);
-  const summary = await runBenchmark(options, baseline);
-  const startupPassed = summary.startupP95Ms < summary.startupBudgetMs;
-  const firstOutputPassed = summary.firstOutputP95Ms < summary.firstOutputBudgetMs;
-  if (!startupPassed || !firstOutputPassed) {
+  const cpuBefore = await cpuSnapshot();
+  const measurements = await runBenchmark(options, baseline);
+  // Read binary bytes only after all scheduled timed children (including TTY, when run).
+  const withEvidence = async (): Promise<Summary> => ({
+    ...measurements,
+    evidence: {
+      runnerBunVersion: Bun.version,
+      host: { os: platform(), arch: arch(), kernel: release() },
+      cpuBefore,
+      cpuAfter: await cpuSnapshot(),
+      candidate: await identifyBinary(options.binary),
+      ...(options.compareBinary === undefined
+        ? {}
+        : { reference: await identifyBinary(options.compareBinary) }),
+      cacheNote:
+        "Fresh child process per sample; isolated Lando roots. No warmups or retries. OS page cache is unmanaged; this is not a cold-disk measurement.",
+    },
+  });
+  if (!measurements.startupWithinBudget || !measurements.firstOutputWithinBudget) {
+    const summary = await withEvidence();
     if (options.json) process.stderr.write(`${JSON.stringify({ ok: false, ...summary })}\n`);
-    else {
-      process.stderr.write(
-        `OpenTUI startup benchmark failed: startup p95 ${formatMs(summary.startupP95Ms)} (budget ${formatMs(summary.startupBudgetMs)}); first output p95 ${formatMs(summary.firstOutputP95Ms)} (budget ${formatMs(summary.firstOutputBudgetMs)})\n`,
-      );
-    }
+    else process.stderr.write(`${formatSummary(summary, false)}\n`);
     process.exitCode = 1;
     return;
   }
   const ttyRendererOverhead = await runTtyOverheadBenchmark(options, ttyBaseline);
+  const summary = await withEvidence();
   const overheadLine = `median TTY ${formatMs(ttyRendererOverhead.ttyMedianMs)} - piped ${formatMs(ttyRendererOverhead.pipedMedianMs)} = ${formatMs(ttyRendererOverhead.overheadMs)} (budget ${formatMs(ttyRendererOverhead.overheadBudgetMs)})`;
   if (!ttyRendererOverhead.ok) {
     if (options.json)
       process.stderr.write(`${JSON.stringify({ ok: false, ...summary, ttyRendererOverhead })}\n`);
-    else process.stderr.write(`TTY renderer overhead benchmark failed: ${overheadLine}\n`);
+    else
+      process.stderr.write(
+        `${formatSummary(summary)}\nTTY renderer overhead benchmark failed: ${overheadLine}\n`,
+      );
     process.exitCode = 1;
     return;
   }

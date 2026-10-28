@@ -11,6 +11,7 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
+import { createIncludeResolutionSession } from "./include-session.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { healthcheckWarnings } from "./lint-healthcheck.ts";
 import { routerBindWarnings } from "./lint-router.ts";
@@ -20,7 +21,7 @@ import { composePreparedLayers } from "./pipeline/compose.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs, TemplateEngineInputs } from "./ports.ts";
-import { acquireLandofileRootLayers } from "./root-compile.ts";
+import { inspectLandofileRootLayers } from "./root-compile.ts";
 import { findDiscoveredLandofilePath } from "./service.ts";
 import { prepareLandofileValue } from "./source.ts";
 
@@ -99,7 +100,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
   let scope: "fragment" | "effective" = "fragment";
   const violations: ConfigLintViolation[] = [];
   const finalized = yield* Effect.gen(function* () {
-    const acquired = yield* acquireLandofileRootLayers(
+    const acquired = yield* inspectLandofileRootLayers(
       dirname(file),
       templates === undefined ? inputs : { ...inputs, templates },
     );
@@ -116,7 +117,11 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     const prepared = yield* Effect.forEach(acquired.sources, ({ source, layer }) =>
       prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
     );
-    const merged = yield* composePreparedLayers(prepared, acquired.runtime, inputs);
+    const session = yield* createIncludeResolutionSession({ appRoot: dirname(file), ...inputs });
+    const merged = yield* composePreparedLayers(prepared, acquired.runtime, {
+      session,
+      ...(inputs === undefined ? {} : { inputs }),
+    });
     const roots = new Set(documents.map((document) => document.file));
     const retained = getSourceDocuments(merged);
     violations.push(...retained.filter((document) => !roots.has(document.file)).flatMap(fragmentIssues));

@@ -1,5 +1,65 @@
 [
   {
+    "surface": "command:apps:init",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release init result evolution: successful initialization retains appName, directory, nonsecret answers, postInit, skippedScaffold and optional agentSkills, and adds the prepared preview and durable create-transaction receipt. Focused init/publication tests and compiled source-matrix evidence verify result encoding and exact published bytes. No compatibility shim is needed before v4 ships."
+  },
+  {
+    "surface": "schema:PromptSpec",
+    "changeKind": "unsupported-construct",
+    "path": "$.default.anyOf",
+    "justification": "Reviewed additive recipe-source contract: prompt defaults now accept scalar arrays already supported by prompt answers, so a single typed source default also reaches multiselect presentation without a second default table. Existing scalar defaults remain valid. Source option and prompt tests cover typed false and array defaults."
+  },
+  {
+    "surface": "schema:RecipeManifest",
+    "changeKind": "unsupported-construct",
+    "path": "$.prompts.items.default.anyOf",
+    "justification": "Reviewed additive recipe-source contract: derived manifest prompts carry the source option's typed scalar-array default, matching the generalized prompt answer vocabulary. Existing scalar/default-free historical manifests remain valid; secret defaults remain forbidden."
+  },
+  {
+    "surface": "schema:RecipeOptionType",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed additive recipe-source contract: enum descriptors accept string, number and boolean members, including false. Existing string enums retain their wire shape and behavior. Strict matching, typed defaults, false preservation and unknown-answer rejection are exercised by source-options tests."
+  },
+  {
+    "surface": "schema:RecipeSnapshot",
+    "changeKind": "unsupported-keyword",
+    "path": "$.optionTypes.additionalProperties",
+    "justification": "Reviewed additive recipe-source contract: embedded enum option descriptors now admit scalar number/boolean members as well as existing strings. Snapshot identity, template, defaults, assets and historical decoding remain unchanged."
+  },
+  {
+    "surface": "schema:RecipeMigration",
+    "changeKind": "unsupported-keyword",
+    "path": "$.fromSnapshot.optionTypes.additionalProperties",
+    "justification": "Reviewed additive recipe-source contract: historical migration source snapshots reuse the scalar-enum option descriptor widening; all existing string-enum snapshots remain readable and no author-source fallback is introduced."
+  },
+  {
+    "surface": "schema:RecipeMigration",
+    "changeKind": "unsupported-keyword",
+    "path": "$.toSnapshot.optionTypes.additionalProperties",
+    "justification": "Reviewed additive recipe-source contract: migration destination snapshots reuse the scalar-enum descriptor widening. Existing historical snapshot/provenance fields and decoding are retained; source compiler tests cover false-valued enums."
+  },
+  {
+    "surface": "schema:RecipeManifest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.snapshot.optionTypes.additionalProperties",
+    "justification": "Reviewed additive recipe-source contract: derived manifests embed snapshots whose enum options admit typed scalar false and numbers. Previously accepted string enum descriptors and all historical snapshot fields are retained."
+  },
+  {
+    "surface": "schema:RecipeManifest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.migrations.items.fromSnapshot.optionTypes.additionalProperties",
+    "justification": "Reviewed additive recipe-source contract: embedded migration source snapshots inherit the shared scalar-enum widening. There is no historical wire field removal or legacy author format fallback."
+  },
+  {
+    "surface": "schema:RecipeManifest",
+    "changeKind": "unsupported-keyword",
+    "path": "$.migrations.items.toSnapshot.optionTypes.additionalProperties",
+    "justification": "Reviewed additive recipe-source contract: embedded migration destination snapshots inherit the shared scalar-enum widening. Existing string enums decode unchanged, and source option tests exercise typed false defaults."
+  },
+  {
     "surface": "schema:CommandResultEnvelope",
     "changeKind": "property-required",
     "path": "$.error.remediation",

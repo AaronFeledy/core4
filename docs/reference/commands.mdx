@@ -106,6 +106,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 
 ## `lando app:config:explain`
@@ -585,7 +586,7 @@ Flags:
 | `--path` | Subdirectory within a remote recipe source. |
 | `--recipe` | Recipe to apply. |
 | `--registry-url` | Override the recipe registry base URL (for --source=registry). |
-| `--source` | Init source id (cwd, git, tarball, npm, registry, template). |
+| `--source` | Remote recipe source (git, tarball, npm, registry). |
 | `--url` | Remote recipe source URL (for --source=git/tarball); git accepts @ref (tag, branch, or full commit SHA). |
 | `--yes, -y` | Accept every prompt's default without asking. |
 
@@ -830,6 +831,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 
 ## `lando meta:global:config:set`

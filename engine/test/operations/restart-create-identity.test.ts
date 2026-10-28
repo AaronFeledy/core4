@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
+import { networkOwnershipLabels } from "@lando/container-runtime/native-ownership";
 import { commonContainerLabels } from "@lando/container-runtime/plan";
 import { bringUp } from "@lando/container-runtime/podman/bring-up";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
+import { ServiceName, landoAppNetworkName, landoSharedNetworkName } from "@lando/sdk/schema";
 import { BuildOrchestrator, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -35,11 +36,31 @@ const runRestart = (service: ServicePlan, recorded = applied, driftAtStop = fals
   const inspections: (AppPlan | undefined)[] = [];
   let running = true;
   let labels = commonContainerLabels(applied, realized);
+  const privateNetworkName = landoAppNetworkName(applied);
+  const sharedNetworkName = landoSharedNetworkName(applied);
+  if (privateNetworkName === undefined || sharedNetworkName === undefined)
+    throw new TypeError("Restart fixture requires private and shared network names.");
   const api: EngineHttpApi = {
     request: (request) =>
       Effect.sync(() => {
         requests.push(request);
-        if (request.path.startsWith("/networks/")) return { status: 200, body: "{}" };
+        if (
+          request.method === "GET" &&
+          request.path === `/networks/${encodeURIComponent(privateNetworkName)}`
+        )
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Id: "retained-private-network",
+              Name: privateNetworkName,
+              Driver: "bridge",
+              Labels: networkOwnershipLabels(applied),
+            }),
+          };
+        if (request.method === "GET" && request.path === `/networks/${encodeURIComponent(sharedNetworkName)}`)
+          return { status: 200, body: "{}" };
+        if (request.path.startsWith("/networks/") || request.path.startsWith("/libpod/networks/"))
+          throw new Error(`Unexpected network request: ${request.method} ${request.path}`);
         if (request.method === "GET" && request.path.endsWith("/json")) {
           return {
             status: 200,

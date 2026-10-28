@@ -1,27 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { backdropDecomposer } from "../../src/recipes/builtin/backdrop/decomposer.ts";
-import { backdropRecipeYaml } from "../../src/recipes/builtin/backdrop/manifest.ts";
-import {
-  BACKDROP_CONTENT_DIGEST,
-  BACKDROP_SETTINGS_VALUE,
-  backdropDefaults,
-  backdropProducer,
-  backdropSnapshot,
-} from "../../src/recipes/builtin/backdrop/snapshot.ts";
+import { backdropSettings } from "../../src/recipes/builtin/backdrop/settings.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: backdropDecomposer,
+  defaults: backdropDefaults,
+  producer: backdropProducer,
+  snapshot: backdropSnapshot,
+  contentDigest: BACKDROP_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("backdrop");
+const BACKDROP_SETTINGS_VALUE = backdropSettings("{{ app.name }}");
 
 const defaults = { ...backdropDefaults };
 const alternatives = { php: "8.2", database: "mysql:8.0", composer: "2.7.7", webroot: "/app/public" };
-const composerDisabled = { ...defaults, composer: "false" };
+const composerDisabled = { ...defaults, composer: false };
 const validInput: RecipeDecomposeInput = { producer: backdropProducer, options: defaults, secrets: {} };
 const decomposer = backdropDecomposer({ redactor: createStandaloneRedactor("secrets") });
 
@@ -36,8 +33,6 @@ const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(backdropRecipeYaml));
 
 describe("backdrop decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -106,14 +101,15 @@ describe("backdrop decomposition", () => {
       services: { appserver: { composer: unknown } };
       tooling: Record<string, unknown>;
     };
-    expect(authoring.services.appserver.composer).toBe(false);
-    expect(Object.keys(authoring.tooling)).toEqual(["bee", "php"]);
+    expect(authoring.services.appserver.composer).toBe("{{ recipe.composer }}");
+    expect(decompose(composerDisabled).provenance.options.composer).toBe(false);
+    expect(Object.keys(authoring.tooling).sort()).toEqual(["bee", "php"]);
   });
 
   test.each([
     { options: { ...defaults, php: 83 }, path: "options.php" },
     { options: { ...defaults, database: "postgres:16" }, path: "options.database" },
-    { options: { ...defaults, composer: false }, path: "options.composer" },
+    { options: { ...defaults, composer: "false" }, path: "options.composer" },
     { options: { ...defaults, webroot: "unsafe path" }, path: "options.webroot" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
@@ -130,15 +126,13 @@ describe("backdrop decomposition", () => {
   });
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
-    expect(manifest.postInit).toHaveLength(1);
+    expect(manifest.files).toEqual([]);
+    expect(manifest.postInit).toHaveLength(2);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(BACKDROP_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(BACKDROP_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(backdropSnapshot);
     expect(backdropSnapshot.identity.contentDigest).toBe(BACKDROP_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");

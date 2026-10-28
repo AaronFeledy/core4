@@ -4,9 +4,9 @@ import { Args } from "../../../spec/metadata";
 import {
   type GlobalConfigResult,
   GlobalConfigResultSchema,
-  globalConfig,
   renderGlobalConfigResult,
 } from "../../../commands/meta/global-config";
+import { runGlobalConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { dryRunFlag, editorFlag, typeFlag } from "../../config-flags";
 import { globalConfigFormatFromInput, globalConfigOptionsFromInput } from "./config";
@@ -23,9 +23,9 @@ const makeSpec = (
   description: summary,
   namespace: "meta",
   topLevelAlias: `global:config:${subcommand}`,
-  bootstrap: "global",
+  bootstrap: "plugins",
   ...metadata,
-  run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand }),
+  run: (input) => runGlobalConfig({ ...globalConfigOptionsFromInput(input), subcommand }),
   render: (result, input) =>
     renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
 });
@@ -46,7 +46,7 @@ export const metaGlobalConfigUnsetSpec = makeSpec("unset", "Remove a key from th
 });
 
 export const metaGlobalConfigEditSpec = makeSpec("edit", "Edit the global app's Landofile in $EDITOR.", {
-  flags: { editor: editorFlag },
+  flags: { editor: editorFlag, "dry-run": dryRunFlag },
 });
 
 export const metaGlobalConfigValidateSpec = makeSpec(

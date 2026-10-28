@@ -14,6 +14,7 @@ import {
 import { type ChoicesCommandRunner, createDefaultChoicesCommandRunner } from "../prompts/choices-command";
 import { defaultRunWarning, evaluateRunPermission, runNotAllowedError } from "../run-allowlist";
 import { shouldRunPostInitAction } from "./authorization";
+import { resolveCreateTemplate } from "./create-template.ts";
 
 export interface PostInitIO {
   readonly out: (line: string) => void | Promise<void>;
@@ -188,30 +189,6 @@ const spawnBun = async (
   }
 };
 
-const ANSWER_REFERENCE_PATTERN = /\$\{answers\.([A-Za-z0-9_-]+)\}/gu;
-
-const substituteAnswers = (
-  template: string,
-  index: number,
-  verb: string,
-  options: RunPostInitOptions,
-): string =>
-  template.replace(ANSWER_REFERENCE_PATTERN, (_match, name: string) => {
-    const value = options.answers[name];
-    if (value === undefined || value === null || typeof value === "object") {
-      throw new RecipePostInitError({
-        message: `postInit[${index}] (bun ${verb}): template references unknown answer "${name}".`,
-        recipe: options.recipeId,
-        actionIndex: index,
-        actionType: "bun",
-        actionVerb: verb,
-        kind: "invalid-argv",
-        remediation: `Declare a prompt named "${name}" (or pass --answer ${name}=<value>) before the bun ${verb} action runs.`,
-      });
-    }
-    return String(value);
-  });
-
 const resolveCreateDest = async (
   rawDest: string,
   destination: string,
@@ -342,20 +319,7 @@ const runBun = async (
       return;
     }
     case "create": {
-      const template = substituteAnswers(action.template, index, action.verb, options);
-      const trimmedTemplate = template.trim();
-      if (trimmedTemplate === "" || trimmedTemplate.startsWith("-")) {
-        throw new RecipePostInitError({
-          message: `postInit[${index}] (bun create): template "${template}" is invalid; it must not be empty or begin with "-".`,
-          recipe: options.recipeId,
-          actionIndex: index,
-          actionType: "bun",
-          actionVerb: "create",
-          kind: "invalid-argv",
-          remediation:
-            "Ensure the `template:` value (after answer substitution) is a package or template name, not empty or a flag.",
-        });
-      }
+      const template = resolveCreateTemplate(action.template, index, options);
       const dest =
         action.dest === undefined
           ? undefined

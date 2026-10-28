@@ -9,9 +9,14 @@ import {
 } from "./include-context.ts";
 import { ownVersionConstraintEntries } from "./include-fragment.ts";
 import { getIncludeOverlays, includeAcquisitionView } from "./include-layer-overlays.ts";
-import { parseLockEntries, writeLockfileIfNeeded } from "./include-lockfile.ts";
+import {
+  type IncludeResolutionSession,
+  createIncludeResolutionSession,
+  publishIncludeProposals,
+} from "./include-session.ts";
 import { hasResolvableIncludes } from "./include-source.ts";
 import { resolveTree } from "./include-tree.ts";
+import { ensureConsistentRoot } from "./load-context.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { foldAuthoredOverlays } from "./pipeline/fold.ts";
@@ -20,7 +25,8 @@ import { validationErrorFromCause } from "./validation.ts";
 import { getVersionConstraintEntries, rememberVersionConstraintEntries } from "./version-constraint.ts";
 
 const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
-  options: ResolveLandofileIncludesOptions,
+  options: Omit<ResolveLandofileIncludesOptions, "stateStore" | "lockfilePath">,
+  session: IncludeResolutionSession,
 ) {
   const file = options.sourcePath ?? join(options.appRoot, ".lando.yml");
   const acquisition = yield* Effect.try({
@@ -37,7 +43,6 @@ const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
       ),
       options.appRoot,
     );
-  const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
   const ctx: ResolveContext = {
     pendingSites: options.pendingSites,
     loadScope: options.loadScope,
@@ -45,17 +50,16 @@ const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
     sourceRoot: options.appRoot,
     userOwned: false,
     cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
-    lockfilePath,
+    lockfilePath: session.lockfilePath,
     deps: options.deps ?? {},
     maxDepth: options.maxDepth ?? 8,
     mode: "pin",
-    lockEntries: yield* parseLockEntries(options.stateStore, options.appRoot, lockfilePath),
-    stagedLocks: new Map(),
-    walk: { selectors: new Map(), issues: new Map(), complete: true },
+    lockEntries: yield* session.existingPins,
+    stagedLocks: session.selectedPins,
+    walk: { selectors: session.selectors, issues: new Map(), complete: true },
     noNetwork: false,
     loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
     ...(options.ports === undefined ? {} : { ports: options.ports }),
-    stateStore: options.stateStore,
     ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
   };
   const resolved = yield* resolveTree(
@@ -67,19 +71,21 @@ const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
     options.layer ?? "canonical",
     options.order ?? 3,
   );
-  yield* writeLockfileIfNeeded(ctx);
   return rememberLandofileAppRoot(resolved, options.appRoot);
 });
 
 export const resolveLandofileIncludeLayers = Effect.fnUntraced(function* (
-  options: ResolveLandofileIncludesOptions,
+  options: Omit<ResolveLandofileIncludesOptions, "stateStore" | "lockfilePath">,
+  session: IncludeResolutionSession,
 ) {
-  const provenance = yield* resolveIncludes(options);
+  const provenance = yield* resolveIncludes(options, session);
   return { provenance, overlays: getIncludeOverlays(provenance) };
 });
 export const resolveLandofileIncludes = Effect.fnUntraced(function* (
   options: ResolveLandofileIncludesOptions,
 ) {
+  yield* ensureConsistentRoot(options.appRoot);
+  const session = yield* createIncludeResolutionSession(options);
   const file = options.sourcePath ?? join(options.appRoot, ".lando.yml");
   const pendingSites = options.pendingSites ?? options.loadScope?.pendingSites ?? [];
   const prepared = yield* prepareLandofileValue({
@@ -92,7 +98,7 @@ export const resolveLandofileIncludes = Effect.fnUntraced(function* (
       policy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
     },
   });
-  const provenance = yield* resolveIncludes({ ...options, pendingSites, landofile: prepared.value });
+  const provenance = yield* resolveIncludes({ ...options, pendingSites, landofile: prepared.value }, session);
   const document = copyLandofileProvenance(
     provenance,
     foldAuthoredOverlays(getIncludeOverlays(provenance), {
@@ -101,11 +107,13 @@ export const resolveLandofileIncludes = Effect.fnUntraced(function* (
       path: [],
     }),
   );
-  return yield* finalizeLandofile(file, document, {
+  const compiled = yield* finalizeLandofile(file, document, {
     pendingSites,
     appRoot: options.appRoot,
     ...(options.loadScope === undefined ? {} : { scope: { ...options.loadScope, pendingSites } }),
     ...(options.loadPolicy === undefined ? {} : { loadPolicy: options.loadPolicy }),
     ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
   });
+  yield* publishIncludeProposals(session, options.stateStore);
+  return compiled;
 });

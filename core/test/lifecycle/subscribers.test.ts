@@ -103,21 +103,22 @@ describe("subscriber runtime", () => {
       ]),
     ]);
 
-    // When: registration closes against the complete canonical taxonomy.
-    const index = await Effect.runPromise(closure.close(canonicalSubscriberCommandIds([])));
+    // When: registration closes against built-in metadata, without an app catalog.
+    const index = await Effect.runPromise(closure.close({ builtIns: canonicalSubscriberCommandIds([]) }));
 
-    // Then: exact validation and family expansion both accept the canonical command lifecycle events.
-    expect(index.get("cli-meta:version-run")?.map((subscriber) => subscriber.entry.id)).toEqual([
+    // Then: the exact built-in selector and the symbolic terminal family both match run/error, never init.
+    expect(index.forEvent("cli-meta:version-run").map((subscriber) => subscriber.entry.id)).toEqual([
       "terminal",
       "version",
     ]);
-    expect(index.get("cli-meta:version-error")?.map((subscriber) => subscriber.entry.id)).toEqual([
+    expect(index.forEvent("cli-meta:version-error").map((subscriber) => subscriber.entry.id)).toEqual([
       "terminal",
     ]);
+    expect(index.forEvent("cli-meta:version-init")).toEqual([]);
   });
 
-  test("expands terminal selectors only when registration closes", async () => {
-    // Given: a family subscriber parsed before the complete command registry exists.
+  test("keeps terminal selectors symbolic until a real run or error event", async () => {
+    // Given: a family subscriber parsed before any app command catalog exists.
     const closure = makeSubscriberRegistrationClosure([
       manifest([
         {
@@ -128,18 +129,20 @@ describe("subscriber runtime", () => {
       ]),
     ]);
 
-    // When: registration closes with the complete canonical command registry.
+    // When: registration closes without listing app commands.
     const before = closure.current();
-    const index = await Effect.runPromise(closure.close(["app:start", "plugin:command"]));
+    const index = await Effect.runPromise(closure.close({ builtIns: ["meta:version"] }));
 
-    // Then: no partial index was visible and run/error (never init) are indexed.
+    // Then: no partial index was visible, and run/error match seen and unseen command ids.
     expect(before).toBeUndefined();
-    expect([...index.keys()]).toEqual([
-      "cli-app:start-run",
-      "cli-app:start-error",
-      "cli-plugin:command-run",
-      "cli-plugin:command-error",
+    expect(index.forEvent("cli-meta:version-run").map((subscriber) => subscriber.entry.id)).toEqual([
+      "terminal",
     ]);
+    expect(index.forEvent("cli-app:newly-seen-error").map((subscriber) => subscriber.entry.id)).toEqual([
+      "terminal",
+    ]);
+    expect(index.forEvent("cli-app:newly-seen-init")).toEqual([]);
+    expect(index.forEvent("cli-APP:newly-seen-run")).toEqual([]);
     expect(closure.current()).toBe(index);
   });
 
@@ -153,11 +156,11 @@ describe("subscriber runtime", () => {
       ]),
     ]);
 
-    // When: the index is closed.
-    const index = await Effect.runPromise(closure.close(["app:start"]));
+    // When: the index is closed without an app catalog.
+    const index = await Effect.runPromise(closure.close());
 
     // Then: lower priority runs first and equal priorities retain declaration order.
-    expect(index.get("cli-app:start-run")?.map((subscriber) => subscriber.entry.id)).toEqual([
+    expect(index.forEvent("cli-app:start-run").map((subscriber) => subscriber.entry.id)).toEqual([
       "first",
       "second",
       "third",
@@ -178,11 +181,11 @@ describe("subscriber runtime", () => {
       ]),
     ]);
 
-    // When: selector expansion closes against the final command ordering.
-    const index = await Effect.runPromise(closure.close(["app:start"]));
+    // When: registration closes with both selectors unbound to an app catalog.
+    const index = await Effect.runPromise(closure.close());
 
     // Then: each subscriber/event pair occurs once and declaration order remains stable.
-    expect(index.get("cli-app:start-run")?.map((subscriber) => subscriber.entry.id)).toEqual([
+    expect(index.forEvent("cli-app:start-run").map((subscriber) => subscriber.entry.id)).toEqual([
       "overlap",
       "next",
     ]);
@@ -197,11 +200,17 @@ describe("subscriber runtime", () => {
     const closure = makeSubscriberRegistrationClosure([bootstrapManifest("app", covered)]);
 
     // When: subscriber registration closes.
-    const exit = await Effect.runPromiseExit(closure.close([]));
+    const exit = await Effect.runPromiseExit(closure.close());
 
     // Then: every covered event is indexed atomically.
     expect(Exit.isSuccess(exit)).toBe(true);
-    if (Exit.isSuccess(exit)) expect([...exit.value.keys()]).toEqual(covered);
+    if (Exit.isSuccess(exit)) {
+      for (const [index, event] of covered.entries()) {
+        expect(exit.value.forEvent(event).map((subscriber) => subscriber.entry.id)).toEqual([
+          `bootstrap-${index}`,
+        ]);
+      }
+    }
     expect(closure.current()).toEqual(Exit.isSuccess(exit) ? exit.value : undefined);
   });
 
@@ -214,11 +223,14 @@ describe("subscriber runtime", () => {
     const closure = makeSubscriberRegistrationClosure([bootstrapManifest("tooling", covered)]);
 
     // When: subscriber registration closes.
-    const exit = await Effect.runPromiseExit(closure.close([]));
+    const exit = await Effect.runPromiseExit(closure.close());
 
     // Then: tooling registration does not require provider or app paths.
     expect(Exit.isSuccess(exit)).toBe(true);
-    if (Exit.isSuccess(exit)) expect([...exit.value.keys()]).toEqual(covered);
+    if (Exit.isSuccess(exit)) {
+      for (const event of covered) expect(exit.value.forEvent(event)).toHaveLength(1);
+      expect(exit.value.forEvent("pre-bootstrap-provider")).toEqual([]);
+    }
   });
 
   for (const event of ["pre-bootstrap-tooling", "post-bootstrap-tooling"] as const) {
@@ -229,7 +241,7 @@ describe("subscriber runtime", () => {
       ]);
 
       // When: subscriber registration closes.
-      const exit = await Effect.runPromiseExit(closure.close([]));
+      const exit = await Effect.runPromiseExit(closure.close());
 
       // Then: the concrete tagged failure is complete and no partial index is published.
       expect(Exit.isFailure(exit)).toBe(true);
@@ -262,7 +274,7 @@ describe("subscriber runtime", () => {
       ]);
 
       // When: subscriber registration closes.
-      const exit = await Effect.runPromiseExit(closure.close([]));
+      const exit = await Effect.runPromiseExit(closure.close());
 
       // Then: mismatch rejection leaves the registration closure unpublished.
       expect(Exit.isFailure(exit)).toBe(true);
@@ -303,15 +315,22 @@ describe("subscriber runtime", () => {
     });
     const closure = makeSubscriberRegistrationClosure([plugin]);
 
-    // When: registration closes over one canonical command.
-    const index = await Effect.runPromise(closure.close(["app:start"]));
+    // When: registration closes without expanding the family.
+    const index = await Effect.runPromise(closure.close());
 
-    // Then: the family adds no init or bootstrap event entries.
-    expect([...index.keys()]).toEqual(["cli-app:start-run", "cli-app:start-error"]);
+    // Then: the family matches run and error only, including a command id absent at registration.
+    expect(index.forEvent("cli-app:start-run").map((subscriber) => subscriber.entry.id)).toEqual([
+      "terminal",
+    ]);
+    expect(index.forEvent("cli-app:newly-seen-error").map((subscriber) => subscriber.entry.id)).toEqual([
+      "terminal",
+    ]);
+    expect(index.forEvent("cli-app:start-init")).toEqual([]);
+    expect(index.forEvent("pre-bootstrap-tooling")).toEqual([]);
   });
 
-  test("rejects an unknown exact CLI lifecycle selector", async () => {
-    // Given: an exact lifecycle selector whose command is absent from the closed registry.
+  test("rejects an unknown app command when an authoritative catalog is provided", async () => {
+    // Given: an exact app selector absent from the supplied app catalog.
     const closure = makeSubscriberRegistrationClosure([
       manifest([
         {
@@ -322,8 +341,8 @@ describe("subscriber runtime", () => {
       ]),
     ]);
 
-    // When: registration closes against the canonical command set.
-    const exit = await Effect.runPromiseExit(closure.close(["app:start"]));
+    // When: registration closes against an authoritative app catalog that omits the target.
+    const exit = await Effect.runPromiseExit(closure.close({ appCommandIds: ["app:start"] }));
 
     // Then: strict membership validation rejects the selector without publishing an index.
     expect(Exit.isFailure(exit)).toBe(true);
@@ -348,7 +367,7 @@ describe("subscriber runtime", () => {
     ]);
 
     // When: registration attempts to close.
-    const exit = await Effect.runPromiseExit(closure.close(["app:start"]));
+    const exit = await Effect.runPromiseExit(closure.close());
 
     // Then: the tagged manifest failure identifies the subscriber and no index becomes visible.
     expect(Exit.isFailure(exit)).toBe(true);

@@ -41,6 +41,8 @@ Every script opens with a front-matter block. It sits on the first lines of the 
 
 That is the whole list. Landofile tooling keys such as `aliases`, `flags`, or `args` refuse with `NotImplementedError` and name the field. Any other unknown key, or a file with no block, refuses with `BunShellScriptFrontMatterError`. An empty file refuses with `BunShellScriptEmptyError`.
 
+Missing or malformed front matter makes `lando app:cache:refresh` fail before it writes the command cache. Fix the reported script and refresh again.
+
 ## Refresh when the shape changes
 
 The first run in a fresh clone needs one `lando app:cache:refresh`. `lando start` and `lando rebuild` refresh it too. After that:
@@ -304,11 +306,10 @@ lando stamp abc1234
     </Step>
   </Scenario>
 
-  <Scenario id="missing-front-matter" render={false} reason="Regression coverage: a script without a front-matter block refuses with a tagged error">
-    <Step name="run-missing-front-matter">
+  <Scenario id="missing-front-matter" render={false} reason="Regression coverage: cache refresh refuses scripts without a front-matter block">
+    <Step name="refresh-missing-front-matter">
       <UseFixture name="missing-front-matter" />
-      <Run command="lando app:cache:refresh" />
-      <Run command="lando hello --format=json" expectExit={1} />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
       <Verify errorTag="BunShellScriptFrontMatterError" expect={{ regex: "missing the front-matter block" }} />
     </Step>
     <Step name="cleanup-missing-front-matter">

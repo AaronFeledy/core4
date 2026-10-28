@@ -141,6 +141,7 @@ test.each([
       Layer.succeed(
         ManagedFileTransactionGuard,
         ManagedFileTransactionGuard.of({
+          assertReadable: () => Effect.void,
           ensureConsistent: () => Effect.void,
           pending: () => Effect.succeed(null),
         }),

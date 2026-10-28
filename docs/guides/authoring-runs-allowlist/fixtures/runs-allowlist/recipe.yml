@@ -1,7 +1,13 @@
 id: runs-allowlist
 title: Runs allowlist
-description: Recipe that may run git and composer.
+description: Recipe that permits the prettier tool.
 version: 0.1.0
+config:
+  runtime: 4
+  services:
+    tools:
+      type: lando
+      image: busybox:1.37
+      command: sleep infinity
 runs:
-  - git
-  - composer
+  - prettier

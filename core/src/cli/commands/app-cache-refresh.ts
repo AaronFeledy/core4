@@ -8,6 +8,7 @@ import type {
   CommandAliasTargetError,
   LandoCommandError,
   PluginManifestError,
+  SubscriberLevelMismatchError,
 } from "@lando/sdk/errors";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import {
@@ -26,10 +27,14 @@ import {
   writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
 } from "@lando/engine/cache/command-index-writer";
+import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
-import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
-import { findAppRoot } from "@lando/landofile/discovery";
+import {
+  type BunShellScriptDiscoveryError,
+  discoverBunShellScripts,
+} from "@lando/landofile/bun-sh-discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
+import { BUILT_IN_COMMAND_IDS } from "../generated/command-ids";
 
 export interface AppCacheRefreshOptions {
   readonly cwd?: string;
@@ -55,6 +60,8 @@ type AppCacheRefreshError =
   | ProviderError
   | ToolingCompileError
   | PluginManifestError
+  | SubscriberLevelMismatchError
+  | BunShellScriptDiscoveryError
   | CommandAliasConflictError
   | CommandAliasTargetError
   | CacheError
@@ -64,16 +71,6 @@ type AppCacheRefreshServices = AppPlanner | LandofileService | PluginRegistry | 
 
 export const renderAppCacheRefreshResult = (result: AppCacheRefreshResult): string =>
   `refreshed: ${result.app} (${result.commandsCompiled} command${result.commandsCompiled === 1 ? "" : "s"})`;
-
-const discoverScripts = Effect.fnUntraced(function* (
-  cwd: string,
-): Effect.fn.Return<ReadonlyArray<DiscoveredBunShellScript>, never> {
-  const appRoot = yield* findAppRoot(cwd);
-  if (appRoot === undefined) return [] as ReadonlyArray<DiscoveredBunShellScript>;
-  return yield* discoverBunShellScripts({ appRoot }).pipe(
-    Effect.catch(() => Effect.succeed([] as ReadonlyArray<DiscoveredBunShellScript>)),
-  );
-});
 
 export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   options: AppCacheRefreshOptions = {},
@@ -88,7 +85,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const plan = yield* planner.plan(landofile, capabilities);
 
   const cwd = options.cwd ?? (yield* discoveryCwd());
-  const scripts = yield* discoverScripts(cwd);
+  const scripts = yield* discoverBunShellScripts({ appRoot: plan.root });
   const entries = yield* Effect.try({
     try: () => compileAppCommands(landofile.document, scripts, effectiveToolingForPlan(plan)),
     catch: (cause) => {
@@ -103,6 +100,12 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   );
   if (aliasError !== undefined) yield* Effect.fail(aliasError);
 
+  const manifests = yield* pluginRegistry.list;
+  yield* makeSubscriberRegistrationClosure(manifests).close({
+    builtIns: BUILT_IN_COMMAND_IDS,
+    appCommandIds: entries.map((entry) => entry.id),
+  });
+
   const appCachePath = yield* writeAppCommandCacheStrict({
     landofile: landofile.document,
     entries,
@@ -110,7 +113,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   });
   const pluginCachePath = yield* writePluginCommandCacheStrict({
-    manifests: yield* pluginRegistry.list,
+    manifests,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   });
 

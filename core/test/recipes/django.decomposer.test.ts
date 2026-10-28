@@ -1,24 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { mergeLandofiles } from "@lando/sdk/landofile";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { djangoDecomposer } from "../../src/recipes/builtin/django/decomposer.ts";
-import { djangoRecipeSource, djangoRecipeYaml } from "../../src/recipes/builtin/django/manifest.ts";
-import {
-  DJANGO_CONTENT_DIGEST,
-  djangoDefaults,
-  djangoProducer,
-  djangoSnapshot,
-} from "../../src/recipes/builtin/django/snapshot.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: djangoDecomposer,
+  defaults: djangoDefaults,
+  producer: djangoProducer,
+  snapshot: djangoSnapshot,
+  contentDigest: DJANGO_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("django");
 
 const defaults = { ...djangoDefaults };
 const withWorker = { celery: true };
@@ -34,10 +29,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: djangoRecipeSource, content: djangoRecipeYaml })),
-);
 
 describe("django decomposition", () => {
   test("preserves authored settings on web and worker when a local layer overrides the scaffold", () => {
@@ -153,14 +144,13 @@ describe("django decomposition", () => {
 
   test("tolerates the app-name answer the translator forwards alongside declared options", () => {
     const result = decompose({ ...defaults, name: "probe" });
-    expect(result.provenance.options).toEqual({ ...defaults, name: "probe" });
+    expect(result.provenance.options).toEqual(defaults);
     expect(authoringOf({ ...defaults, name: "probe" })).toEqual(authoringOf(defaults));
   });
 
   test.each([
     { options: { celery: "true" }, path: "options.celery" },
     { options: { celery: 1 }, path: "options.celery" },
-    { options: {}, path: "options.celery" },
   ])("rejects a typed option failure when input is %j", ({ options, path }) => {
     const failure = Effect.runSync(
       Effect.result(decomposer.decompose({ producer: djangoProducer, options, secrets: {} })),
@@ -174,15 +164,13 @@ describe("django decomposition", () => {
   });
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(DJANGO_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(DJANGO_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(djangoSnapshot);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

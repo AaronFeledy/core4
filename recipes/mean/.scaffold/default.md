@@ -41,7 +41,7 @@ lando node --version
 ## 1. scaffold
 
 ```bash
-lando init --recipe mean --name=my-mean-redis --yes
+lando init --recipe mean --name=my-mean-app --yes
 ```
 
 ## 2. start

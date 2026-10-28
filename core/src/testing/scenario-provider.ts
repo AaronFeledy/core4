@@ -42,6 +42,7 @@ export const makeScenarioProvider = () => {
   const unindexPlan = (plan: AppPlan) => plans.delete(AbsolutePath.make(planAppRoot(plan)));
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
+    capabilities: { ...TestRuntimeProvider.capabilities, artifactBuild: true },
     appliedPlans: Effect.sync(() => [...plans.values()]),
     apply: (plan, options) =>
       TestRuntimeProvider.apply(plan, options).pipe(Effect.tap(() => Effect.sync(() => indexPlan(plan)))),

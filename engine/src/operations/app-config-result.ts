@@ -85,7 +85,7 @@ export const AppConfigResultSchema = Schema.Union([
     subcommand: Schema.Literal("set"),
     key: Schema.String,
     value: LandofileSourceValue,
-    changed: Schema.Literal(true),
+    changed: Schema.Boolean,
   }),
   Schema.Struct({
     ...write,
@@ -96,7 +96,7 @@ export const AppConfigResultSchema = Schema.Union([
   Schema.Struct({
     ...write,
     subcommand: Schema.Literal("edit"),
-    changed: Schema.Literal(true),
+    changed: Schema.Boolean,
     valid: Schema.Literal(true),
   }),
   Schema.Struct({

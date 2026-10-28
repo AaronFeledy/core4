@@ -1,6 +1,7 @@
 import { lstat } from "node:fs/promises";
 import { relative } from "node:path";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { classifyCreate } from "./transaction-create.ts";
 import { transactionError } from "./transaction-error.ts";
 import { sameState, snapshot, statMaybe, targetPath, verifyBackup } from "./transaction-fs.ts";
 import type { Entry, Journal } from "./transaction-journal.ts";
@@ -11,7 +12,7 @@ import type { Entry, Journal } from "./transaction-journal.ts";
  * but crashed before the intended output mode replaced the stage's owner-only
  * mode.
  */
-export type Disposition = "pending" | "applied" | "applied-needs-mode";
+export type Disposition = "pending" | "applied" | "applied-needs-mode" | "linked";
 
 export interface Classified {
   readonly entry: Entry;
@@ -32,6 +33,14 @@ const validatePlan = (journal: Journal): void => {
     if (sameState(entry.before, entry.after)) throw transactionError("journal", "recover", entry.path);
     if (entry.after.present === (entry.stage === undefined))
       throw transactionError("journal", "recover", entry.path);
+    if (entry.publication === "create") {
+      if (entry.before.present || !entry.after.present || entry.stage === undefined) {
+        throw transactionError("journal", "recover", entry.path);
+      }
+      if (!Number.isInteger(entry.after.mode) || entry.after.mode < 0 || entry.after.mode > 0o777) {
+        throw transactionError("journal", "recover", entry.path);
+      }
+    }
   }
 };
 
@@ -93,6 +102,7 @@ const classifyEntry = async (
   entry: Entry,
   privateFileAccess: PrivateFileAccess,
 ): Promise<Disposition> => {
+  if (entry.publication === "create") return classifyCreate(root, entry, privateFileAccess);
   const path = await targetPath(root, entry.path);
   const current = (await snapshot(path)).state;
   await verifyBackup(root, entry, privateFileAccess);
