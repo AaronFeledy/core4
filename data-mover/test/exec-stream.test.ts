@@ -30,7 +30,7 @@ describe("execStdoutStream", () => {
       upstream ? Stream.fail("raw provider failure PRIVATE DATABASE PAYLOAD") : Stream.make({ exitCode: 7 }),
     );
     const exit = await Effect.runPromiseExit(
-      execStdoutStream(source, failedExit, { PGPASSWORD: "lando" }).pipe(Stream.runDrain),
+      execStdoutStream(source, failedExit, ["lando"]).pipe(Stream.runDrain),
     );
     if (!Exit.isFailure(exit)) throw new Error("expected failure");
     const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));

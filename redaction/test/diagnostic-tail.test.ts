@@ -7,7 +7,7 @@ const bytes = (value: string) => new TextEncoder().encode(value);
 
 test("redacts split UTF-8 and exact tokens before retaining a diagnostic tail", async () => {
   const tail = await Effect.runPromise(
-    makeDiagnosticTail({ PGPASSWORD: "sëcret-token", MYSQL_PWD: "lando", SQLCMDPASSWORD: "x" }),
+    makeDiagnosticTail({ authoritativeTokens: ["sëcret-token", "lando", "x"] }),
   );
   const input = bytes("é failure sëcret-token lando\npassword=private-value\nlast line");
   for (const byte of input) tail.write(new Uint8Array([byte]));
@@ -20,13 +20,13 @@ test("redacts split UTF-8 and exact tokens before retaining a diagnostic tail", 
 });
 
 test("suppresses a short authoritative secret rather than publishing its line", async () => {
-  const tail = await Effect.runPromise(makeDiagnosticTail({ SQLCMDPASSWORD: "x" }));
+  const tail = await Effect.runPromise(makeDiagnosticTail({ authoritativeTokens: ["x"] }));
   tail.write(bytes("context x\nclean\n"));
   expect(tail.finish()).not.toContain("context x");
 });
 
 test("bounds retained output and drops oversized unfinished lines", async () => {
-  const tail = await Effect.runPromise(makeDiagnosticTail({ TOKEN: "boundary-secret" }));
+  const tail = await Effect.runPromise(makeDiagnosticTail({ authoritativeTokens: ["boundary-secret"] }));
   tail.write(bytes("old diagnostic\n".repeat(2000)));
   tail.write(bytes(`${"z".repeat(100000)}boundary-secret`));
   const result = tail.finish() ?? "";
@@ -46,7 +46,7 @@ test("keeps concurrent collectors independent and recovers after an oversized li
 
 test("redacts URI passwords and tokens before a UTF-8 tail boundary is cut", async () => {
   const tail = await Effect.runPromise(
-    makeDiagnosticTail({ MONGO_URI: "mongodb://user:lando@localhost/app" }),
+    makeDiagnosticTail({ authoritativeTokens: ["mongodb://user:lando@localhost/app", "lando"] }),
   );
   tail.write(bytes(`failed lando\n${"é".repeat(4080)}\n`));
   const result = tail.finish() ?? "";
@@ -62,7 +62,7 @@ test("isolates factory collectors while resolving the live redactor only once", 
   const results = await Effect.runPromise(
     Effect.gen(function* () {
       const service = yield* RedactionService;
-      const createTail = yield* makeDiagnosticTailFactory({ MYSQL_PWD: "command-secret" }).pipe(
+      const createTail = yield* makeDiagnosticTailFactory({ authoritativeTokens: ["command-secret"] }).pipe(
         Effect.provideService(RedactionService, {
           ...service,
           forProfile: (profile, options) =>
@@ -97,4 +97,29 @@ test("isolates factory collectors while resolving the live redactor only once", 
   expect(results).toEqual(["first [redacted]", "second [redacted]", "third [redacted] [redacted]"]);
   expect(profiles).toBe(1);
   expect(payloads).toBe(1);
+});
+
+test("reuses filtered exact tokens until the live source identity changes", async () => {
+  let enumerations = 0;
+  const tokens = {
+    *[Symbol.iterator]() {
+      enumerations += 1;
+      yield "cache-secret";
+    },
+  };
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const service = yield* RedactionService;
+      const tail = yield* makeDiagnosticTail({ authoritativeTokens: ["cache-secret"] }).pipe(
+        Effect.provideService(RedactionService, {
+          ...service,
+          payloadValues: () => Effect.succeed(() => tokens),
+        }),
+      );
+      for (const byte of bytes("small cache-secret chunks\n")) tail.write(new Uint8Array([byte]));
+      return tail.finish();
+    }).pipe(Effect.provide(RedactionService.layer), Effect.scoped),
+  );
+  expect(result).toBe("small [redacted] chunks\n");
+  expect(enumerations).toBe(1);
 });

@@ -1,10 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { PortNumber } from "@lando/sdk/schema";
 import type { RuntimeProvider } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 import { providerSqlExec } from "../src/dispatch.ts";
 import { executeDbCommand } from "../src/execute.ts";
-import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { cleanupSqlTestDeps, makeSqlTestDeps, sqlResult } from "./support/fakes.ts";
 import { sourcePlan } from "./support/source-plan.ts";
 import { valueResolver } from "./support/value-resolver.ts";
 
@@ -27,18 +27,20 @@ test("provider receives concrete CommandSpec credentials and the unchanged appli
     observedVersion: "17.1",
   });
   const applied = sourcePlan(harness.root, "postgres:17");
-  type ExecArgs = Parameters<RuntimeProvider["Service"]["exec"]>;
+  type ExecArgs = Parameters<RuntimeProvider["Service"]["execStream"]>;
   const calls: Array<{ readonly target: ExecArgs[0]; readonly spec: ExecArgs[1] }> = [];
-  const provider: Pick<RuntimeProvider["Service"], "exec"> = {
-    exec: (target, spec) =>
-      Effect.sync(() => {
-        calls.push({ target, spec });
-        return {
-          exitCode: 0,
-          stdout: spec.command.includes("SHOW server_version") ? "17.1" : "0",
-          stderr: "",
-        };
-      }),
+  const provider: Pick<RuntimeProvider["Service"], "execStream"> = {
+    execStream: (target, spec) =>
+      Stream.unwrap(
+        Effect.sync(() => {
+          calls.push({ target, spec });
+          return sqlResult({
+            exitCode: 0,
+            stdout: spec.command.includes("SHOW server_version") ? "17.1" : "0",
+            stderr: "",
+          });
+        }),
+      ),
   };
   const values = valueResolver({ DATABASE: "resolved-only-at-dispatch" });
   await Effect.runPromise(
