@@ -15,7 +15,7 @@ import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
-import { SqlEnvironmentSession, registerSqlCredentials } from "./environment.ts";
+import { SqlEnvironmentSession, protectSqlEnvironment } from "./environment.ts";
 import { countCommand } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
@@ -39,53 +39,52 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   input: DbCommandInput,
 ) {
   yield* validateExportCompressionLevel(input);
-  const session = yield* rawDeps.environmentResolver.openSession();
+  const rawSession = yield* rawDeps.environmentResolver.openSession();
   const redaction = yield* RedactionService;
+  const resolved = resolveSqlTarget(rawDeps.plan, input.service);
+  if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
+  const target = resolved.success;
+  const owner = sqlPlanIdentity(rawDeps.plan);
+  const service = rawDeps.plan.services[target.name];
+  if (service === undefined) {
+    return yield* Effect.fail(
+      new SqlServiceNotFoundError({
+        message: `No SQL service named ${target.name}.`,
+        service: target.name,
+        available: [],
+        remediation: "Add a mysql, mariadb, postgres, mongodb, or mssql service.",
+      }),
+    );
+  }
+  const connection = yield* currentAppliedDatabaseConnection(service, {
+    app: rawDeps.plan.id,
+    providerId: rawDeps.providerId,
+  });
+  const creds = resolveSqlCreds(connection);
+  const env = credsEnv(target.family, creds);
+  const selectedCredentials =
+    target.family === "mssql"
+      ? [creds.rootPassword ?? creds.password]
+      : [
+          creds.password,
+          ...((target.family === "mysql" || target.family === "mariadb") &&
+          input.action === "reset" &&
+          creds.rootPassword !== undefined
+            ? [creds.rootPassword]
+            : []),
+        ];
+  const protectedEnvironment = yield* protectSqlEnvironment(rawSession, selectedCredentials, env);
+  const session = protectedEnvironment.session;
   const exec: SqlExec = (service, command, env) =>
     Stream.unwrap(
       Effect.gen(function* () {
+        yield* protectedEnvironment.register;
         const concrete = env === undefined ? undefined : yield* session.resolveEnvironment(env);
         return rawDeps.exec(service, command, concrete);
       }),
     );
   const deps = { ...rawDeps, exec };
   return yield* Effect.gen(function* () {
-    const resolved = resolveSqlTarget(deps.plan, input.service);
-    if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
-    const target = resolved.success;
-    const owner = sqlPlanIdentity(deps.plan);
-    const service = deps.plan.services[target.name];
-    if (service === undefined) {
-      return yield* Effect.fail(
-        new SqlServiceNotFoundError({
-          message: `No SQL service named ${target.name}.`,
-          service: target.name,
-          available: [],
-          remediation: "Add a mysql, mariadb, postgres, mongodb, or mssql service.",
-        }),
-      );
-    }
-    const connection = yield* currentAppliedDatabaseConnection(service, {
-      app: deps.plan.id,
-      providerId: deps.providerId,
-    });
-    const creds = resolveSqlCreds(connection);
-    const env = credsEnv(target.family, creds);
-    const selectedCredentials =
-      target.family === "mssql"
-        ? [creds.rootPassword ?? creds.password]
-        : [
-            creds.password,
-            ...((target.family === "mysql" || target.family === "mariadb") &&
-            input.action === "reset" &&
-            creds.rootPassword !== undefined
-              ? [creds.rootPassword]
-              : []),
-          ];
-    const tokens =
-      input.action === "snapshots" || input.action === "prune"
-        ? secretTokens(creds)
-        : yield* registerSqlCredentials(selectedCredentials, env);
     const waitForDatabase = waitForSqlDatabase(deps.exec, {
       service: target.name,
       command: countCommand(target.family, creds),
@@ -395,7 +394,12 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       service: target.name,
       family: target.family,
       steps,
-      redactionTokens: [...tokens, ...(seedSource?.redactionTokens ?? [])],
+      redactionTokens: [
+        ...(action === "snapshots" || action === "prune"
+          ? secretTokens(creds)
+          : protectedEnvironment.tokens()),
+        ...(seedSource?.redactionTokens ?? []),
+      ],
       ...(action === "import" || action === "export" ? { file } : {}),
       ...(snapshotId === undefined ? {} : { snapshotId }),
       ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),

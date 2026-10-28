@@ -51,3 +51,31 @@ export const registerSqlCredentials = Effect.fn("Sql.registerCredentials")(funct
   yield* redaction.registerValues(tokens);
   return tokens;
 });
+
+/** Classify target credentials only when SQL first resolves an execution environment. */
+export const protectSqlEnvironment = Effect.fn("Sql.protectEnvironment")(function* (
+  session: EnvironmentValueResolverSession,
+  selected: ReadonlyArray<EnvironmentValue>,
+  env: Environment,
+) {
+  const redaction = yield* RedactionService;
+  let tokens: ReadonlyArray<string> = [];
+  const register = yield* registerSqlCredentials(selected, env).pipe(
+    Effect.provideService(SqlEnvironmentSession, session),
+    Effect.provideService(RedactionService, redaction),
+    Effect.tap((registered) =>
+      Effect.sync(() => {
+        tokens = registered;
+      }),
+    ),
+    Effect.cached,
+  );
+  return {
+    register,
+    tokens: () => tokens,
+    session: {
+      resolveEnvironment: (environment: Environment) =>
+        register.pipe(Effect.andThen(session.resolveEnvironment(environment))),
+    } satisfies EnvironmentValueResolverSession,
+  };
+});
