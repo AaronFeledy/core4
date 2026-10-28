@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -145,32 +145,35 @@ describe("Downloader layer", () => {
     });
   });
 
-  test("S2 cache hit: verified existing destination short-circuits with zero network", async () => {
-    await withTempDir(async (dir) => {
-      const payload = bytes("already on disk");
-      await writeFile(join(dir, "cached.bin"), payload);
-      const url = "https://example.test/cached.bin";
-      const fake = makeFakeHttpClient({
-        bodies: { [url]: { kind: "bytes", data: bytes("SHOULD NOT FETCH") } },
+  for (const offline of [false, true]) {
+    test(`S2 cache hit: verified existing destination short-circuits with zero network (offline: ${offline})`, async () => {
+      await withTempDir(async (dir) => {
+        const payload = bytes("already on disk");
+        await writeFile(join(dir, "cached.bin"), payload);
+        const url = "https://example.test/cached.bin";
+        const fake = makeFakeHttpClient({
+          bodies: { [url]: { kind: "bytes", data: bytes("SHOULD NOT FETCH") } },
+        });
+
+        const result = expectRight(
+          await download(
+            {
+              url,
+              destination: { kind: "file", directory: dir, filename: "cached.bin" },
+              expectedSha256: sha256Hex(payload),
+              offline,
+            },
+            fake.layer,
+          ),
+        );
+
+        expect(result.fromCache).toBe(true);
+        expect(result.sha256).toBe(sha256Hex(payload));
+        expect(result.sizeBytes).toBe(payload.length);
+        expect(fake.calls.length).toBe(0);
       });
-
-      const result = expectRight(
-        await download(
-          {
-            url,
-            destination: { kind: "file", directory: dir, filename: "cached.bin" },
-            expectedSha256: sha256Hex(payload),
-          },
-          fake.layer,
-        ),
-      );
-
-      expect(result.fromCache).toBe(true);
-      expect(result.sha256).toBe(sha256Hex(payload));
-      expect(result.sizeBytes).toBe(payload.length);
-      expect(fake.calls.length).toBe(0);
     });
-  });
+  }
 
   test("S3 offline cache miss: fails before opening a connection", async () => {
     await withTempDir(async (dir) => {
@@ -193,6 +196,40 @@ describe("Downloader layer", () => {
       expect(fake.calls.length).toBe(0);
     });
   });
+
+  for (const offline of [true, false]) {
+    test(`matching symlink destination is a cache miss (offline: ${offline})`, async () => {
+      await withTempDir(async (dir) => {
+        const payload = bytes("verified target bytes");
+        const victim = join(dir, "victim.bin");
+        const target = join(dir, "cached.bin");
+        await writeFile(victim, payload);
+        await symlink(victim, target);
+        const url = "https://example.test/cached.bin";
+        const fake = makeFakeHttpClient({ bodies: { [url]: { kind: "bytes", data: payload } } });
+        const result = await download(
+          {
+            url,
+            destination: { kind: "file", directory: dir, filename: "cached.bin" },
+            expectedSha256: sha256Hex(payload),
+            expectedSizeBytes: payload.length,
+            offline,
+          },
+          fake.layer,
+        );
+        if (offline) {
+          expect(expectLeft(result)._tag).toBe("DownloadOfflineError");
+          expect(fake.calls).toHaveLength(0);
+          expect((await lstat(target)).isSymbolicLink()).toBe(true);
+        } else {
+          expect(expectRight(result).fromCache).toBe(false);
+          expect(fake.calls).toHaveLength(1);
+          expect((await lstat(target)).isFile()).toBe(true);
+        }
+        expect(await readFile(victim)).toEqual(Buffer.from(payload));
+      });
+    });
+  }
 
   test("S4 scheme gating: http rejected, file gated, allowed file flows through", async () => {
     await withTempDir(async (dir) => {
@@ -285,6 +322,49 @@ describe("Downloader layer", () => {
       expect((await readdir(dir)).filter((e) => e.includes(".tmp-"))).toEqual([]);
     });
   });
+
+  for (const kind of ["file", "memory"] as const) {
+    test(`size overflow cancels the ${kind} response stream`, async () => {
+      await withTempDir(async (dir) => {
+        let pulls = 0;
+        let cancellations = 0;
+        const client = HttpClient.make((request) =>
+          Effect.sync(() =>
+            HttpClientResponse.fromWeb(
+              request,
+              new Response(
+                new ReadableStream<Uint8Array>(
+                  {
+                    pull(controller) {
+                      pulls += 1;
+                      controller.enqueue(bytes("ab"));
+                      if (pulls === 3) controller.close();
+                    },
+                    cancel() {
+                      cancellations += 1;
+                    },
+                  },
+                  { highWaterMark: 0 },
+                ),
+              ),
+            ),
+          ),
+        );
+        const result = await download(
+          {
+            url: "https://example.test/oversized.bin",
+            destination: kind === "file" ? { kind, directory: dir, filename: "artifact.bin" } : { kind },
+            expectedSizeBytes: 3,
+          },
+          Layer.succeed(HttpClient.HttpClient, client),
+        );
+        expect(expectLeft(result)._tag).toBe("DownloadSizeMismatchError");
+        expect(pulls).toBe(2);
+        expect(cancellations).toBe(1);
+        expect(await readdir(dir)).toEqual([]);
+      });
+    });
+  }
 
   test("S7 fetch/body failure: DownloadFetchError, no temp", async () => {
     await withTempDir(async (dir) => {

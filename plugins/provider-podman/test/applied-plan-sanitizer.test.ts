@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { makeAppliedPlanCache } from "@lando/container-runtime/applied-plan-cache";
 import { makeAppliedPlanStore } from "@lando/container-runtime/applied-state";
 import type { EngineHttpRequest } from "@lando/container-runtime/engine-api";
+import { networkOwnershipLabels } from "@lando/container-runtime/native-ownership";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import * as AppPlanSanitizerLayer from "@lando/engine/subsystems/host-proxy/plan-sanitizer-live";
 import { hostProxyRunLandoFeature } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -175,7 +176,18 @@ const makePodmanApi = (): PodmanApiClient => {
           body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: ["img@sha256:test"] }),
         };
       }
-      if (input.method === "GET" && input.path.startsWith("/networks/")) return { status: 200, body: "{}" };
+      if (input.method === "GET" && input.path.startsWith("/networks/")) {
+        const name = decodeURIComponent(input.path.slice("/networks/".length));
+        return {
+          status: 200,
+          body: JSON.stringify({
+            Id: `owned-${name}`,
+            Name: name,
+            Driver: "bridge",
+            Labels: networkOwnershipLabels(basePlan),
+          }),
+        };
+      }
       const container = input.path.match(/^\/containers\/([^/?]+)(?:\/json|\/start)?$/u)?.[1];
       if (input.method === "GET" && input.path.endsWith("/json") && container !== undefined) {
         return containers.has(decodeURIComponent(container))

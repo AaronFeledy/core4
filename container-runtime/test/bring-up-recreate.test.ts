@@ -14,6 +14,7 @@ import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -148,7 +149,13 @@ const makeFakeApi = (input: {
         const name = containerMatch === null ? "" : decodeURIComponent(containerMatch[1] ?? "");
         const action = containerMatch?.[2];
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: input.networkExists === true ? 200 : 404, body: "{}" };
+          const networkName = decodeURIComponent(request.path.slice("/networks/".length));
+          return input.networkExists === true
+            ? {
+                status: 200,
+                body: JSON.stringify(ownedNetworkInspection(original, networkName)),
+              }
+            : { status: 404, body: "{}" };
         }
         if (
           request.method === "POST" &&

@@ -57,15 +57,16 @@ export const renderScenarioTest = (
     ...(usesE2eRuntime ? ["// @layer: e2e"] : []),
     ...(effectivePlatforms === undefined ? [] : [`// @platforms: ${effectivePlatforms.join(",")}`]),
     ...(variant?.skip === undefined ? [] : [`// @variant-skip: ${variant.skip.reason}`]),
+    ...(resolved.skipOnly ? [`// @skip: ${resolved.skipReason}`] : []),
   ];
   const variantAnnotations = annotationLines.length === 0 ? "" : `\n${annotationLines.join("\n")}`;
   const skips =
-    variant?.skip === undefined
+    variant?.skip === undefined && !resolved.skipOnly
       ? resolved.skips
           .map((skip) => `// @skip: ${skip.reason}\ntest.skip(${JSON.stringify(skip.stepName)}, () => {});`)
           .join("\n")
       : "";
-  const forcedSkip = variant?.skip !== undefined || platformSkip !== undefined;
+  const forcedSkip = variant?.skip !== undefined || platformSkip !== undefined || resolved.skipOnly;
   const label =
     variant === undefined || variant.pairs.length === 0
       ? ""
@@ -75,7 +76,11 @@ export const renderScenarioTest = (
           .join(" ")})`;
   const taggedTestName = `${effectiveTags.length === 0 ? "" : `${effectiveTags.join(" ")} `}${guide.frontmatter.id}:${scenario.id}${label}${usesE2eRuntime ? " [e2e]" : ""}`;
   const runnableTestName = JSON.stringify(
-    platformSkip === undefined ? taggedTestName : `${taggedTestName} (${platformSkip})`,
+    platformSkip !== undefined
+      ? `${taggedTestName} (${platformSkip})`
+      : resolved.skipOnly
+        ? `${taggedTestName} (skipped: ${resolved.skipReason})`
+        : taggedTestName,
   );
   const skippedE2eTestName = JSON.stringify(
     `${taggedTestName} (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to a live provider socket)`,
@@ -168,6 +173,7 @@ ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? 
     ),
   );
   if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
+  expect.hasAssertions();
 }, ${guide.frontmatter.timeout});
 ${skips === "" ? "" : `\n${skips}\n`}`;
 };

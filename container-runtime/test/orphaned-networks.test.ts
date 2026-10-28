@@ -22,11 +22,15 @@ const fixture = (
     readonly inspectStatus?: number;
     readonly body?: string;
     readonly observed?: object;
+    readonly scratch?: boolean;
   } = {},
 ) => {
   const calls: EngineHttpRequest[] = [];
   const retired: OwnedResource[] = [];
   const owner = planAppIdentity(previous);
+  const source = options.scratch
+    ? { ...previous, extensions: { "@lando/core/scratch": { id: previous.id } } }
+    : previous;
   const resource: OwnedResource = {
     ...owner,
     appId: previous.id,
@@ -34,6 +38,7 @@ const fixture = (
     kind: "network",
     role: "authored",
     nativeName: "lando-networks_private",
+    ...(options.scratch ? { scratchId: previous.id } : {}),
     identityDigest: "test",
   };
   return {
@@ -53,7 +58,7 @@ const fixture = (
                     options.observed ?? {
                       Id: "verified/id",
                       Name: resource.nativeName,
-                      Labels: networkOwnershipLabels(previous),
+                      Labels: networkOwnershipLabels(source),
                     },
                   ),
                 }
@@ -77,6 +82,36 @@ const fixture = (
     },
   };
 };
+
+test.each([false, true])(
+  "orphan scratch authored network requires full proof (old-four=%s)",
+  async (oldFour) => {
+    const scratchPrevious = { ...previous, extensions: { "@lando/core/scratch": { id: previous.id } } };
+    const scratchCurrent = { ...current, extensions: scratchPrevious.extensions };
+    const fake = fixture({
+      scratch: true,
+      ...(oldFour
+        ? {
+            observed: {
+              Id: "verified/id",
+              Name: "lando-networks_private",
+              Labels: networkOwnershipLabels(previous),
+            },
+          }
+        : {}),
+    });
+    const result = await Effect.runPromise(
+      removeOrphanedNetworks(scratchCurrent, scratchPrevious, fake.options).pipe(Effect.result),
+    );
+    expect(Result.isFailure(result)).toBe(oldFour);
+    expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual(
+      oldFour
+        ? ["GET /networks/lando-networks_private"]
+        : ["GET /networks/lando-networks_private", "DELETE /networks/verified%2Fid"],
+    );
+    expect(fake.retired).toEqual(oldFour ? [] : [fake.resource]);
+  },
+);
 
 test.each([204, 404])(
   "removes only the orphan authored network by verified id and retires it (HTTP %s)",
