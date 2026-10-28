@@ -114,6 +114,8 @@ export interface McpToolInput {
   readonly args?: Record<string, unknown>;
   /** Optional app path used for per-call app resolution; not part of the derived schema. */
   readonly appPath?: string;
+  /** MCP-only app command call target; canonical command tools reject this key. */
+  readonly commandId?: string;
 }
 
 const scalarTypeMatches = (view: McpInputMemberView, value: unknown): boolean => {

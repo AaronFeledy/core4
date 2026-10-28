@@ -321,6 +321,20 @@ describe("mcpRegistryWithToolingEntries", () => {
 });
 
 describe("mcpListResult", () => {
+  test("lists MCP app command wrappers and honors a wrapper deny", async () => {
+    const result = await Effect.runPromise(
+      mcpListResult(registry, { deny: ["app:commands:call"] }, true).pipe(
+        Effect.provide(configLayer(undefined)),
+      ),
+    );
+    expect(result.tools).toContainEqual({
+      id: "app:commands:list",
+      summary: "List app plugin commands",
+      source: "default",
+    });
+    expect(result.tools.map((tool) => tool.id)).not.toContain("app:commands:call");
+  });
+
   test("projects the effective catalog with per-tool source of allowance", async () => {
     const result = await Effect.runPromise(
       mcpListResult(registry, { allow: ["app:config:get"] }).pipe(Effect.provide(configLayer(undefined))),

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -19,14 +20,48 @@ export interface ExternalPluginModule {
   readonly [key: string]: unknown;
 }
 
+// Bun caches native file imports by path for the life of the process. Share
+// first acquisition, including its source digest, across concurrent callers.
+const nativeEntryModules = new Map<
+  string,
+  Promise<{ readonly module: ExternalPluginModule; readonly sourceRevision: string }>
+>();
+
 const loadExternalPluginEntry = async (
   packageRoot: string,
   manifest: PluginManifest,
-): Promise<ExternalPluginModule | undefined> => {
-  if (manifest.entry === undefined) return undefined;
+  refreshable: boolean,
+): Promise<{ readonly module?: ExternalPluginModule; readonly sourceRevision?: string }> => {
+  if (manifest.entry === undefined) {
+    return refreshable
+      ? {
+          sourceRevision: createHash("sha256")
+            .update(packageRoot)
+            .update(JSON.stringify(manifest))
+            .digest("hex"),
+        }
+      : {};
+  }
   const entryPath = await resolvePluginModulePath(packageRoot, String(manifest.name), manifest.entry);
   try {
-    return (await importAuthorModule(pathToFileURL(entryPath).href)) as ExternalPluginModule;
+    let loaded = nativeEntryModules.get(entryPath);
+    if (loaded === undefined) {
+      loaded = (async () => {
+        const sourceRevision = createHash("sha256")
+          .update(entryPath)
+          .update(await readFile(entryPath))
+          .digest("hex");
+        const module = (await importAuthorModule(pathToFileURL(entryPath).href)) as ExternalPluginModule;
+        return { module, sourceRevision };
+      })();
+      nativeEntryModules.set(entryPath, loaded);
+      const acquired = loaded;
+      void acquired.catch(() => {
+        if (nativeEntryModules.get(entryPath) === acquired) nativeEntryModules.delete(entryPath);
+      });
+    }
+    const { module, sourceRevision } = await loaded;
+    return refreshable ? { module, sourceRevision } : { module };
   } catch (cause) {
     throw pluginLoadError(
       String(manifest.name),
@@ -278,9 +313,14 @@ export const loadInstalledPluginManifest = async (packageRootInput: string): Pro
 
 export const loadInstalledPlugin = async (
   packageRootInput: string,
-): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
+  options: { readonly refreshable?: boolean } = {},
+): Promise<{
+  readonly manifest: PluginManifest;
+  readonly module?: ExternalPluginModule;
+  readonly sourceRevision?: string;
+}> => {
   const packageRoot = packageRootPath(packageRootInput);
   const manifest = await loadInstalledPluginManifest(packageRoot);
-  const module = await loadExternalPluginEntry(packageRoot, manifest);
-  return { manifest, ...(module === undefined ? {} : { module }) };
+  const loaded = await loadExternalPluginEntry(packageRoot, manifest, options.refreshable === true);
+  return { manifest, ...loaded };
 };

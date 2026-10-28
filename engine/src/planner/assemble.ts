@@ -91,6 +91,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
   authoredLandofile: LoadScopedLandofile,
   providerCapabilities: ProviderCapabilities,
   knownAppRoot?: string,
+  appPluginSourceRevision?: string,
 ): Effect.fn.Return<CurrentExecutableAppPlan, AppPlannerError> {
   const {
     landofile,
@@ -286,6 +287,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     landofile: { ...cacheLandofile, provider },
     providerCapabilities,
     pluginManifests: manifests,
+    ...(appPluginSourceRevision === undefined ? {} : { appPluginSourceRevision }),
     appFeatureEnv: preparedApp.environment.bindings,
     config: AppDefaults.cacheInput(routerEnabled, globalConfig?.scanner, {
       ...appDefaults,

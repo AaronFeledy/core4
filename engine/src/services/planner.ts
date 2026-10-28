@@ -22,6 +22,7 @@ import { DEFAULT_APP_MOUNT_EXCLUDES, mergeDefaultExcludes } from "../planner/fil
 import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import { AppPluginSourceRevision } from "../plugins/contribution-graph.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 export {
@@ -44,6 +45,7 @@ export const layer = Layer.effect(
     const pathsService = yield* Effect.serviceOption(PathsService);
     const processRunner = yield* Effect.serviceOption(ProcessRunner);
     const certificateAuthorityResolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
+    const appPluginRevision = yield* Effect.serviceOption(AppPluginSourceRevision);
     return AppPlanner.of({
       plan: Effect.fn("AppPlanner.plan")(function* (landofile, providerCapabilities) {
         const identity = yield* resolveAppIdentity(
@@ -60,6 +62,7 @@ export const layer = Layer.effect(
           landofile,
           providerCapabilities,
           identity.appRoot,
+          Option.getOrUndefined(appPluginRevision),
         );
         const identified = { ...plan, root: identity.appRoot, identity };
         return yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
