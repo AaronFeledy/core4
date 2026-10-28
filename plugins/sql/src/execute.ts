@@ -1,26 +1,21 @@
-import { DateTime, Effect, absurd } from "effect";
+import { RedactionService } from "@lando/redaction/service";
+import { DateTime, Effect, Stream, absurd, flow } from "effect";
 
 // allow: SIZE_OK — This command dispatcher keeps confirmation, recovery, and result publication in one ordered action state machine; family policy, readiness, seeding, and compatibility are separate modules.
 
 import { SqlRecoveryOperationError, SqlSeedSourceError, SqlServiceNotFoundError } from "@lando/sdk/errors";
-import type {
-  DataTransferResult,
-  Environment,
-  PrunePolicy,
-  SnapshotId,
-  SnapshotInfo,
-} from "@lando/sdk/schema";
+import type { DataTransferResult, PrunePolicy, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 import { snapshotHandle } from "@lando/sdk/schema";
 
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
-import { hostFile, parseCount, secretTokens, validateExportCompressionLevel } from "./command-input.ts";
+import { hostFile, parseCount, validateExportCompressionLevel } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
-import { SqlEnvironmentSession } from "./environment.ts";
+import { SqlEnvironmentSession, registerSqlCredentials } from "./environment.ts";
 import { countCommand } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
@@ -37,20 +32,21 @@ export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.t
 
 export { dbCommandRedactionTokens, dbInputFromCommand } from "./command-input.ts";
 
+const withSqlRedaction = flow(Effect.provide(RedactionService.layer), Effect.scoped);
+
 export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   rawDeps: SqlCommandDeps,
   input: DbCommandInput,
 ) {
   yield* validateExportCompressionLevel(input);
   const session = yield* rawDeps.environmentResolver.openSession();
-  const exec: SqlExec = Effect.fn("Sql.exec")(function* (
-    service: string,
-    command: ReadonlyArray<string>,
-    env?: Environment,
-  ) {
-    const concrete = env === undefined ? undefined : yield* session.resolveEnvironment(env);
-    return yield* rawDeps.exec(service, command, concrete);
-  });
+  const exec: SqlExec = (service, command, env) =>
+    Stream.unwrap(
+      Effect.gen(function* () {
+        const concrete = env === undefined ? undefined : yield* session.resolveEnvironment(env);
+        return rawDeps.exec(service, command, concrete);
+      }),
+    );
   const deps = { ...rawDeps, exec };
   return yield* Effect.gen(function* () {
     const resolved = resolveSqlTarget(deps.plan, input.service);
@@ -68,14 +64,13 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         }),
       );
     }
-    const authored = deps.landofile.services?.[target.name];
     const connection = yield* currentAppliedDatabaseConnection(service, {
       app: deps.plan.id,
       providerId: deps.providerId,
     });
     const creds = resolveSqlCreds(connection);
-    const tokens = secretTokens(creds, authored);
     const env = credsEnv(target.family, creds);
+    const tokens = yield* registerSqlCredentials(creds, env);
     const waitForDatabase = waitForSqlDatabase(deps.exec, {
       service: target.name,
       command: countCommand(target.family, creds),
@@ -396,4 +391,4 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       ...(transfer?.sizeBytes === undefined ? {} : { sizeBytes: transfer.sizeBytes }),
     };
   }).pipe(Effect.provideService(SqlEnvironmentSession, session));
-}, Effect.scoped);
+}, withSqlRedaction);

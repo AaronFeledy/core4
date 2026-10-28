@@ -716,7 +716,8 @@ const streamFromProvider = (
                 mounts: [{ type: "volume", store: endpoint.store, target: helperTarget, readOnly: true }],
                 remove: true,
               }),
-              (exitCode, stderrTail) => serviceCommandFailure("runStream", exitCode, stderrTail),
+              (exitCode, stderrTail, evidence) =>
+                serviceCommandFailure("runStream", exitCode, stderrTail, evidence),
             ),
           ),
           Effect.mapError((cause) =>
@@ -744,8 +745,8 @@ const streamFromProvider = (
           { app: endpoint.app, service: endpoint.service },
           providerCommandSpec(endpoint.command, endpoint.env),
         ),
-        (exitCode, stderrTail) => serviceCommandFailure("execStream", exitCode, stderrTail),
-        endpoint.env,
+        (exitCode, stderrTail, evidence) =>
+          serviceCommandFailure("execStream", exitCode, stderrTail, evidence),
       );
     case "stream":
       return Stream.fail(
@@ -881,7 +882,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         );
         const helperImage = yield* resolveDataHelperImage(provider);
         yield* checkedTransferCommand(
-          provider.run({
+          provider.runStream({
             owner: { app: target.app },
             image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
@@ -950,7 +951,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       );
       const stdinStream = Bun.file(staged.path).stream();
       yield* checkedTransferCommand(
-        provider.exec(
+        provider.execStream(
           { app: target.app, service: target.service },
           {
             ...providerCommandSpec(target.command, target.env),
@@ -958,7 +959,6 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
           },
         ),
         "exec",
-        target.env,
       );
       return {
         accelerated: true,

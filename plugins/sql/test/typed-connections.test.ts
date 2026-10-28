@@ -3,7 +3,7 @@ import { SecretStoreUnavailableError } from "@lando/sdk/errors";
 import { type DatabaseConnection, PortNumber, ServiceName, encodeUriComponent } from "@lando/sdk/schema";
 import { Cause, Effect, Exit, Option } from "effect";
 import { executeDbCommand } from "../src/execute.ts";
-import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { cleanupSqlTestDeps, makeSqlTestDeps, sqlResult } from "./support/fakes.ts";
 import { sourcePlan } from "./support/source-plan.ts";
 import { valueResolver } from "./support/value-resolver.ts";
 
@@ -90,7 +90,7 @@ test("shares one scoped memo across count, version, readiness retries and import
       commands.push({ command, ...(env === undefined ? {} : { env }) });
       if (initialCount && command.some((argument) => argument.includes("COUNT(*)"))) {
         initialCount = false;
-        return Effect.succeed({ exitCode: 0, stdout: "0", stderr: "" });
+        return sqlResult({ exitCode: 0, stdout: "0", stderr: "" });
       }
       return harness.deps.exec(service, command, env);
     },
@@ -162,7 +162,7 @@ test("preserves typed Mongo URI encoding until concrete command dispatch", async
   expect(endpoint.env?.MONGO_URI).toBe(
     `mongodb://a%40b:${encodeUriComponent(raw)}@127.0.0.1:5544/db%20name?authSource=admin`,
   );
-  expect(values.environments[0]?.MONGO_URI).toEqual({
+  expect(values.environments.find((environment) => environment.MONGO_URI !== undefined)?.MONGO_URI).toEqual({
     _tag: "BoundText",
     parts: [
       "mongodb://a%40b:",

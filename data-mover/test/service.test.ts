@@ -662,18 +662,18 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              exec: (_target, command) =>
-                Effect.promise(async () => {
-                  observedEnv = command.env;
-                  observedCommand = command.command;
-                  observedStdinMode = command.stdin;
-                  for await (const chunk of command.stdinStream ?? []) observedStdin += text(chunk);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+              exec: () => Effect.die("buffered exec must not be used"),
               execStream: (_target, command) => {
                 observedEnv = command.env;
                 observedCommand = command.command;
-                return Stream.fromIterable(execStreamChunks);
+                if (command.stdinStream === undefined) return Stream.fromIterable(execStreamChunks);
+                return Stream.fromEffect(
+                  Effect.promise(async () => {
+                    observedStdinMode = command.stdin;
+                    for await (const chunk of command.stdinStream ?? []) observedStdin += text(chunk);
+                    return { exitCode: 0 };
+                  }),
+                );
               },
             }),
           ),
@@ -690,20 +690,24 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("transfers serviceCmd source into a serviceCmd target", async () => {
+  test("transfers binary serviceCmd payload bytes unchanged into a serviceCmd target", async () => {
     await withTempDir(async (_dir) => {
       // Given: a dump command streams bytes and a restore command consumes stdin.
       let dumpCommand: ReadonlyArray<string> | undefined;
       let restoreCommand: ReadonlyArray<string> | undefined;
-      let restoreStdin = "";
-      const dumpChunks: ExecChunk[] = [{ kind: "stdout", chunk: bytes("pipe-payload") }, { exitCode: 0 }];
+      const restoreChunks: Uint8Array[] = [];
+      const payload = new Uint8Array([0, 255, 195, 169, 0, ...bytes("secret-token password=payload\né界")]);
+      const dumpChunks: ExecChunk[] = [
+        ...Array.from(payload, (byte): ExecChunk => ({ kind: "stdout", chunk: new Uint8Array([byte]) })),
+        { exitCode: 0 },
+      ];
 
       // When: DataMover pipes serviceCmd -> serviceCmd.
-      await Effect.runPromise(
+      const transfer = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
-            yield* dataMover.transfer({
+            return yield* dataMover.transfer({
               from: { _tag: "serviceCmd", app, service, command: ["export-db"] },
               to: { _tag: "serviceCmd", app, service, command: ["import-db"] },
               overwrite: true,
@@ -713,15 +717,19 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              exec: (_target, command) =>
-                Effect.promise(async () => {
-                  restoreCommand = command.command;
-                  for await (const chunk of command.stdinStream ?? []) restoreStdin += text(chunk);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+              exec: () => Effect.die("buffered exec must not be used"),
               execStream: (_target, command) => {
-                dumpCommand = command.command;
-                return Stream.fromIterable(dumpChunks);
+                if (command.stdinStream === undefined) {
+                  dumpCommand = command.command;
+                  return Stream.fromIterable(dumpChunks);
+                }
+                return Stream.fromEffect(
+                  Effect.promise(async () => {
+                    restoreCommand = command.command;
+                    for await (const chunk of command.stdinStream ?? []) restoreChunks.push(chunk);
+                    return { exitCode: 0 };
+                  }),
+                );
               },
             }),
           ),
@@ -732,7 +740,9 @@ describe("BunDataMover.layer", () => {
       // Then: dump streamed and restore received the same payload off argv.
       expect(dumpCommand).toEqual(["export-db"]);
       expect(restoreCommand).toEqual(["import-db"]);
-      expect(restoreStdin).toBe("pipe-payload");
+      expect(new Uint8Array(Buffer.concat(restoreChunks))).toEqual(payload);
+      expect(transfer.digest).toBe(sha256(payload));
+      expect(transfer.sizeBytes).toBe(payload.byteLength);
     });
   });
 
@@ -758,11 +768,13 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              exec: (_target, command) =>
-                Effect.promise(async () => {
-                  for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+              execStream: (_target, command) =>
+                Stream.fromEffect(
+                  Effect.promise(async () => {
+                    for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
+                    return { exitCode: 0 };
+                  }),
+                ),
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -799,11 +811,13 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              run: (command) =>
-                Effect.promise(async () => {
-                  for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+              runStream: (command) =>
+                Stream.fromEffect(
+                  Effect.promise(async () => {
+                    for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
+                    return { exitCode: 0 };
+                  }),
+                ),
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -845,7 +859,10 @@ describe("BunDataMover.layer", () => {
               RuntimeProvider.of({
                 ...TestRuntimeProvider,
                 pullArtifact: verifyingPullArtifact,
-                run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.andThen(Effect.never)),
+                runStream: () =>
+                  Stream.fromEffect(
+                    Deferred.succeed(helperStarted, undefined).pipe(Effect.andThen(Effect.never)),
+                  ),
               }),
             ),
             captureEvents().layer,
@@ -916,11 +933,13 @@ describe("BunDataMover.layer", () => {
             Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
-                run: (spec) =>
-                  Effect.sync(() => {
-                    runCalls += 1;
-                    return TestRuntimeProvider.run(spec);
-                  }).pipe(Effect.flatten),
+                runStream: (spec) =>
+                  Stream.unwrap(
+                    Effect.sync(() => {
+                      runCalls += 1;
+                      return TestRuntimeProvider.runStream(spec);
+                    }),
+                  ),
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -966,11 +985,13 @@ describe("BunDataMover.layer", () => {
             Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
-                exec: () =>
-                  Effect.sync(() => {
-                    execCalls += 1;
-                    return { exitCode: 0, stdout: "", stderr: "" };
-                  }),
+                execStream: () =>
+                  Stream.fromEffect(
+                    Effect.sync(() => {
+                      execCalls += 1;
+                      return { exitCode: 0 };
+                    }),
+                  ),
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -3328,9 +3349,9 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                     ...spec,
                   }).pipe(Effect.map((image) => ({ ...image, providerId: ProviderId.make("test") })));
                 },
-                run: (spec) => {
+                runStream: (spec) => {
                   ranImage = spec.image;
-                  return TestRuntimeProvider.run(spec);
+                  return TestRuntimeProvider.runStream(spec);
                 },
               }),
             ),
@@ -3377,9 +3398,9 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                       "Install or start the `test` provider and confirm it can perform `pullArtifact`.",
                   });
                 }).pipe(Effect.flatMap((error) => Effect.fail(error))),
-              run: (spec) => {
+              runStream: (spec) => {
                 ranImage = spec.image;
-                return TestRuntimeProvider.run(spec);
+                return TestRuntimeProvider.runStream(spec);
               },
             }),
           ),
@@ -3415,9 +3436,9 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                   ref: spec.ref,
                   digest: `sha256:${"f".repeat(64)}`,
                 }),
-              run: (spec) => {
+              runStream: (spec) => {
                 runCalls += 1;
-                return TestRuntimeProvider.run(spec);
+                return TestRuntimeProvider.runStream(spec);
               },
             }),
           ),
@@ -3449,9 +3470,9 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
             providerLayer({
               capabilities: volumeCaps,
               pullArtifact: (spec) => Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref }),
-              run: (spec) => {
+              runStream: (spec) => {
                 runCalls += 1;
-                return TestRuntimeProvider.run(spec);
+                return TestRuntimeProvider.runStream(spec);
               },
             }),
           ),

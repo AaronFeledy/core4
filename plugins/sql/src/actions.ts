@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, type Scope, type Stream } from "effect";
 
 import type { VolumeNotFoundError } from "@lando/sdk/errors";
 import {
@@ -18,7 +18,7 @@ import {
   type SnapshotRestoreOptions,
   type VolumeRef,
 } from "@lando/sdk/schema";
-import type { ExecResult } from "@lando/sdk/services";
+import type { ExecChunk } from "@lando/sdk/services";
 import { checkedSqlExecution } from "./checked-execution.ts";
 
 import type { DumpCompression } from "./compression.ts";
@@ -39,7 +39,7 @@ export type SqlExec = (
   service: string,
   command: ReadonlyArray<string>,
   env?: Environment,
-) => Effect.Effect<ExecResult, unknown>;
+) => Stream.Stream<ExecChunk, unknown, Scope.Scope>;
 
 export type SqlMover = {
   readonly transfer: (spec: DataTransferSpec) => Effect.Effect<DataTransferResult, unknown>;
@@ -94,8 +94,16 @@ export const runExport = Effect.fn("Sql.export")(function* (
         const backup = mssqlBackupCommand(input.creds.database, input.creds.port);
         return yield* Effect.gen(function* () {
           const prepare = mssqlPrepareBackupCommand(input.creds.database);
-          yield* checkedSqlExecution(exec(input.service, prepare, input.env), { ...input, command: prepare });
-          yield* checkedSqlExecution(exec(input.service, backup, input.env), { ...input, command: backup });
+          yield* checkedSqlExecution(exec(input.service, prepare, input.env), {
+            ...input,
+            command: prepare,
+            stdout: "discard",
+          });
+          yield* checkedSqlExecution(exec(input.service, backup, input.env), {
+            ...input,
+            command: backup,
+            stdout: "discard",
+          });
           return yield* mover.transfer({
             from: {
               _tag: "servicePath",
@@ -154,7 +162,11 @@ export const runImport = Effect.fn("Sql.import")(function* (
         const bak = mssqlBackupServicePath(input.creds.database);
         return yield* Effect.gen(function* () {
           const prepare = mssqlPrepareBackupCommand(input.creds.database);
-          yield* checkedSqlExecution(exec(input.service, prepare, input.env), { ...input, command: prepare });
+          yield* checkedSqlExecution(exec(input.service, prepare, input.env), {
+            ...input,
+            command: prepare,
+            stdout: "discard",
+          });
           const transfer = yield* mover.transfer({
             from: { _tag: "hostPath", path, trusted: true },
             to: {
@@ -167,7 +179,11 @@ export const runImport = Effect.fn("Sql.import")(function* (
             ...(digest === undefined ? {} : { expectedDigest: digest }),
           });
           const restore = mssqlRestoreCommand(input.creds.database, input.creds.port);
-          yield* checkedSqlExecution(exec(input.service, restore, input.env), { ...input, command: restore });
+          yield* checkedSqlExecution(exec(input.service, restore, input.env), {
+            ...input,
+            command: restore,
+            stdout: "discard",
+          });
           return transfer;
         });
       }
@@ -197,5 +213,10 @@ export const runReset = Effect.fn("Sql.reset")(function* (
   const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
   const command = resetCommand(family, usesMysqlRoot ? { ...creds, user: "root" } : creds);
   const resetEnv = usesMysqlRoot ? { ...env, MYSQL_PWD: creds.rootPassword } : env;
-  yield* checkedSqlExecution(exec(service, command, resetEnv), { service, command, env: resetEnv });
+  yield* checkedSqlExecution(exec(service, command, resetEnv), {
+    service,
+    command,
+    env: resetEnv,
+    stdout: "discard",
+  });
 });

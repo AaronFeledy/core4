@@ -6,6 +6,7 @@ import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container
 import {
   ArtifactTransferError,
   ProviderCapabilityError,
+  ProviderUnavailableError,
   ServiceCopyError,
   VolumeOperationError,
 } from "@lando/sdk/errors";
@@ -1579,3 +1580,104 @@ describe("provider data plane", () => {
     expect(uploadChunks).toBeGreaterThan(1);
   });
 });
+
+test.each([
+  "",
+  "{}",
+  '{"State":{}}',
+  '{"State":{"ExitCode":"0"}}',
+  '{"State":{"ExitCode":0.5}}',
+  '{"State":{"ExitCode":null}}',
+  "PRIVATE MALFORMED JSON",
+])("fails closed for invalid ephemeral exit inspection: %s", async (body) => {
+  let removed = false;
+  const api: DataPlaneApiClient = {
+    request: (request) => {
+      if (request.method === "DELETE") removed = true;
+      return Effect.succeed(
+        request.path.endsWith("/json")
+          ? { status: 200, body }
+          : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+      );
+    },
+    stream: () => Stream.empty,
+  };
+  const provider = makeProviderDataPlane({
+    providerId: "test",
+    api,
+    capabilities: { volumeSnapshot: "none" },
+    redactor: passthroughRedactor,
+  });
+  const exit = await Effect.runPromiseExit(
+    Effect.scoped(
+      provider.runStream({ image: "alpine:3.20", command: ["true"], remove: true }).pipe(Stream.runDrain),
+    ),
+  );
+  if (!Exit.isFailure(exit)) throw new Error("Expected inspection failure");
+  const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+  expect(error).toBeInstanceOf(VolumeOperationError);
+  expect(JSON.stringify(error)).not.toContain(body === "" ? "PRIVATE MALFORMED JSON" : body);
+  expect(removed).toBe(true);
+});
+
+test.each(["http", "typed", "defect", "interrupt"] as const)(
+  "sanitizes ephemeral inspection %s failure and closes the container",
+  async (mode) => {
+    let removals = 0;
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        if (request.method === "DELETE") removals += 1;
+        if (request.path.endsWith("/json")) {
+          switch (mode) {
+            case "http":
+              return Effect.succeed({ status: 500, body: "PRIVATE INSPECTION RESPONSE" });
+            case "typed":
+              return Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: "test",
+                  operation: "inspect",
+                  message: "PRIVATE INSPECTION CAUSE",
+                  cause: "PRIVATE INSPECTION CAUSE",
+                  remediation: "Retry the fixture inspection.",
+                }),
+              );
+            case "defect":
+              return Effect.die({
+                _tag: "TransportDefect",
+                message: "PRIVATE INSPECTION DEFECT",
+                cause: "PRIVATE INSPECTION DEFECT",
+              });
+            case "interrupt":
+              return Effect.interrupt;
+          }
+        }
+        return Effect.succeed({ status: request.method === "DELETE" ? 204 : 201, body: "{}" });
+      },
+      stream: () => Stream.empty,
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
+    });
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(
+        provider.runStream({ image: "alpine:3.20", command: ["true"], remove: true }).pipe(Stream.runDrain),
+      ),
+    );
+    if (!Exit.isFailure(exit)) throw new Error("Expected failed inspection");
+    expect(removals).toBe(1);
+    if (mode === "interrupt") {
+      expect(Cause.hasInterrupts(exit.cause)).toBe(true);
+      expect(Cause.hasFails(exit.cause)).toBe(false);
+    } else {
+      const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
+      expect(error).toBeInstanceOf(VolumeOperationError);
+      if (!(error instanceof VolumeOperationError)) throw new Error("Expected volume inspection error");
+      expect(JSON.stringify(error)).not.toContain("PRIVATE INSPECTION");
+      expect(error.details).toBeUndefined();
+      expect(error.cause).toBeUndefined();
+    }
+  },
+);
