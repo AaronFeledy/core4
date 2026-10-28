@@ -18,6 +18,8 @@ import { serviceContainerName } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { StartFailureLogRedactor } from "../src/redact.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
+import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -198,11 +200,13 @@ const makeApi = (options: {
       return Stream.fromIterable(options.logsFor?.[name] ?? []);
     },
   };
+  installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, requests };
 };
 
 const flipBringUp = (plan: AppPlan, api: PodmanApiClient) =>
-  Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
+  Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }).pipe(Effect.flip));
 
 const expectServiceStartError = (error: unknown): ServiceStartError => {
   expect(error).toBeInstanceOf(ServiceStartError);
@@ -298,7 +302,9 @@ describe("bringUp start-failure log tail", () => {
 
     const error = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(bringUp(plan, { api, ctx }).pipe(Effect.flip));
+        const fiber = yield* Effect.forkChild(
+          bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }).pipe(Effect.flip),
+        );
         yield* TestClock.adjust(Duration.seconds(5));
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(TestClock.layer())),
@@ -415,7 +421,7 @@ describe("bringUp start-failure log tail", () => {
     });
 
     const error = await Effect.runPromise(
-      bringUp(plan, { api, ctx }).pipe(
+      bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }).pipe(
         Effect.provideService(StartFailureLogRedactor, createRedactor("secrets", { values: [secret] })),
         Effect.flip,
       ),
@@ -453,7 +459,10 @@ describe("bringUp start-failure log tail", () => {
     };
 
     const error = await Effect.runPromise(
-      bringUp(plan, { api, ctx }).pipe(Effect.provideService(StartFailureLogRedactor, redactor), Effect.flip),
+      bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }).pipe(
+        Effect.provideService(StartFailureLogRedactor, redactor),
+        Effect.flip,
+      ),
     );
 
     expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web", operation: "bringUp.start" });
@@ -471,7 +480,9 @@ describe("bringUp start-failure log tail", () => {
     });
 
     const exit = await Effect.runPromise(
-      bringUp(plan, { api, ctx, signal: controller.signal }).pipe(Effect.exit),
+      bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api), signal: controller.signal }).pipe(
+        Effect.exit,
+      ),
     );
 
     expect(Exit.hasInterrupts(exit)).toBe(true);
@@ -492,7 +503,9 @@ describe("bringUp start-failure log tail", () => {
 
     const exit = await Effect.runPromise(
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(bringUp(plan, { api, ctx }));
+        const fiber = yield* Effect.forkChild(
+          bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }),
+        );
         yield* Deferred.await(started);
         yield* Fiber.interrupt(fiber);
         return yield* Fiber.await(fiber);

@@ -758,9 +758,20 @@ const assembleRuntimeProvider = (
             dialect: libpodWaitDialect,
             ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
           }),
-        exec: (plan, target, command) => exec(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
+        exec: (plan, target, command) =>
+          exec(plan, target, command, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            resolveContainerHelper: options.resolveContainerHelper,
+            helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+          }),
         execStream: (plan, target, command) =>
-          execStream(plan, target, command, { api: podmanApi, ctx: PODMAN_CTX }),
+          execStream(plan, target, command, {
+            api: podmanApi,
+            ctx: PODMAN_CTX,
+            resolveContainerHelper: options.resolveContainerHelper,
+            helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+          }),
         inspect: (plan, target) => inspect(plan, target, { api: podmanApi, ctx: PODMAN_CTX }),
       },
     });
@@ -818,6 +829,8 @@ const assembleRuntimeProvider = (
         return yield* bringUp(plan, {
           api: podmanApi,
           ctx: PODMAN_CTX,
+          resolveContainerHelper: options.resolveContainerHelper,
+          helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
           ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),
           platform,
           daemonUrl: socketPath,

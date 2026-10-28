@@ -7,6 +7,10 @@ import { DateTime, Effect } from "effect";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { exec as runtimeExec } from "@lando/container-runtime/podman/exec";
 import { parseProcSelfStatusUmask } from "@lando/container-runtime/podman/exec-umask";
+import {
+  containerHelperTestOptions,
+  resolveBuiltContainerHelperForTest,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeDockerApiClient, layer as providerLayer } from "@lando/provider-docker";
@@ -64,6 +68,7 @@ const metadata = {
 const makeProviderLayer = () =>
   providerLayer({
     platform: "linux",
+    resolveContainerHelper: resolveBuiltContainerHelperForTest,
     dockerApi: makeDockerApiClient(dockerHost ?? ""),
     appliedPlanState: makePluginStateStore(
       makeTestStateStore().service,
@@ -158,12 +163,15 @@ describe("docker exec umask mode", () => {
       ) =>
         Effect.runPromise(
           Effect.scoped(
-            runtimeExec(
-              scopedPlan,
-              { app: appId, service: name, ...(user === undefined ? {} : { user }) },
-              { command, ...(raw ? { raw: true } : {}) },
-              { api, ctx },
-            ),
+            Effect.gen(function* () {
+              const helperOptions = yield* containerHelperTestOptions(api);
+              return yield* runtimeExec(
+                scopedPlan,
+                { app: appId, service: name, ...(user === undefined ? {} : { user }) },
+                { command, ...(raw ? { raw: true } : {}) },
+                { api, ctx, ...helperOptions },
+              );
+            }),
           ),
         );
       try {

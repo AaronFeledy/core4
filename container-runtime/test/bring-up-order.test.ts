@@ -13,6 +13,8 @@ import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
+import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
+import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
 
 const providerId = ProviderId.make("lando");
 const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
@@ -189,16 +191,29 @@ const makePodmanApi = (
       return Stream.empty;
     },
   };
-  return { api, requests, ids, failedStartNames };
+  installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
+  const execCommands: ReadonlyArray<string>[] = [];
+  const supervisedRequest = api.request;
+  if (supervisedRequest === undefined) throw new TypeError("Expected request transport");
+  Object.assign(api, {
+    request: (input: EngineHttpRequest) => {
+      const body = input.body as { readonly Cmd?: ReadonlyArray<string> } | undefined;
+      if (input.method === "POST" && input.path.endsWith("/exec") && body?.Cmd !== undefined)
+        execCommands.push(body.Cmd);
+      return supervisedRequest(input);
+    },
+  });
+  return { api, requests, ids, failedStartNames, execCommands };
 };
 
 test("starts a service_healthy dependency and probes it before starting the dependent", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);
-  const { api, requests } = makePodmanApi(0);
+  const { api, requests, execCommands } = makePodmanApi(0);
 
   // When
-  await Effect.runPromise(bringUp(plan, { api, ctx }));
+  await Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }));
 
   // Then
   const dbStart = requests.indexOf("POST /containers/lando-bring-up-order-app-db/start");
@@ -207,6 +222,22 @@ test("starts a service_healthy dependency and probes it before starting the depe
   expect(dbStart).toBeGreaterThanOrEqual(0);
   expect(dbExec).toBeGreaterThan(dbStart);
   expect(webStart).toBeGreaterThan(dbExec);
+  const supervisor = execCommands.find((command) => command[1] === "exec-supervisor");
+  expect(supervisor?.[0]).toStartWith("/tmp/lando-exec-");
+  expect(supervisor?.slice(4)).toEqual(["--", "pg_isready"]);
+  expect(execCommands.some((command) => command[0] === "pg_isready")).toBe(false);
+});
+
+test("rejects an authored health command when supervision assets are unavailable", async () => {
+  const plan = planWithDependency(dependentNames.web, true);
+  const { api, requests, execCommands } = makePodmanApi(0);
+
+  const error = await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
+
+  expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
+  expect(error.message).toContain("db:healthy");
+  expect(execCommands.some((command) => command.includes("pg_isready"))).toBe(false);
+  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-web/start");
 });
 
 test("selected apply accepts a fast exit-0 job identified by the full completion plan", async () => {
@@ -249,7 +280,9 @@ test("selected apply accepts a fast exit-0 job identified by the full completion
         }),
       ),
   };
-  const result = await Effect.runPromise(bringUp(selected, { api, ctx, completionPlan: full }));
+  const result = await Effect.runPromise(
+    bringUp(selected, { api, ctx, ...supervisedExecFixtureOptions(api), completionPlan: full }),
+  );
   expect(result.changed).toBe(true);
   expect(fake.requests.some((path) => path.endsWith("/stop"))).toBe(false);
 });
@@ -279,7 +312,7 @@ test("apply retains a supervised worker that exits before the immediate running 
         }),
       ),
   };
-  const result = await Effect.runPromise(bringUp(plan, { api, ctx }));
+  const result = await Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }));
   expect(result.changed).toBe(true);
   expect(fake.requests.some((path) => path.endsWith("/stop"))).toBe(false);
 });
@@ -292,7 +325,9 @@ test("retains a pre-existing stopped container when a required gate fails", asyn
   const dbId = ids.get(db);
 
   // When
-  await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
+  await Effect.runPromise(
+    bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }).pipe(Effect.flip),
+  );
 
   // Then: no compensation stop/delete; native identity stays put for retry.
   expect(ids.get(db)).toBe(dbId);
@@ -306,7 +341,9 @@ test("fails with ServiceStartError naming the unmet gate and retains started con
   const { api, requests } = makePodmanApi(1);
 
   // When
-  const error = await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
+  const error = await Effect.runPromise(
+    bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }).pipe(Effect.flip),
+  );
 
   // Then
   expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
@@ -323,7 +360,7 @@ test("succeeds without rolling back when only an optional gate fails", async () 
   const { api, requests } = makePodmanApi(1);
 
   // When
-  const result = await Effect.runPromise(bringUp(plan, { api, ctx }));
+  const result = await Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }));
 
   // Then
   expect(result.changed).toBe(true);
@@ -342,7 +379,7 @@ test("optional start failure retains the failed dependency and preserves unrelat
   const { api, requests, ids } = makePodmanApi(0, [], [db]);
 
   // When
-  await Effect.runPromise(bringUp(plan, { api, ctx }));
+  await Effect.runPromise(bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api) }));
 
   // Then: optional failure is tolerated; nothing is compensated away.
   expect(requests).toContain(`POST /containers/${apiName}/start`);
@@ -362,7 +399,9 @@ test("interrupts an aborted optional dependency instead of starting its dependen
   controller.abort();
 
   // When
-  const exit = await Effect.runPromiseExit(bringUp(plan, { api, ctx, signal: controller.signal }));
+  const exit = await Effect.runPromiseExit(
+    bringUp(plan, { api, ctx, ...supervisedExecFixtureOptions(api), signal: controller.signal }),
+  );
 
   // Then
   expect(Exit.isFailure(exit)).toBe(true);
@@ -392,7 +431,9 @@ test("unchanged container ID across failed B then retry", async () => {
   const apiName = "lando-bring-up-order-app-api";
   const webName = "lando-bring-up-order-app-web";
   const fake = makePodmanApi(0, [], [webName]);
-  await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.flip));
+  await Effect.runPromise(
+    bringUp(plan, { api: fake.api, ctx, ...supervisedExecFixtureOptions(fake.api) }).pipe(Effect.flip),
+  );
   const apiIdAfterFail = fake.ids.get(apiName);
   const webIdAfterFail = fake.ids.get(webName);
   if (apiIdAfterFail === undefined || webIdAfterFail === undefined) {
@@ -404,7 +445,9 @@ test("unchanged container ID across failed B then retry", async () => {
   // When: clear the injected start fault and retry on the same daemon state.
   fake.failedStartNames.delete(webName);
   const requestsBeforeRetry = fake.requests.length;
-  await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile: false }));
+  await Effect.runPromise(
+    bringUp(plan, { api: fake.api, ctx, ...supervisedExecFixtureOptions(fake.api), reconcile: false }),
+  );
   const retryRequests = fake.requests.slice(requestsBeforeRetry);
 
   // Then: A and B keep their generation-unique identities; neither is recreated.
@@ -436,7 +479,9 @@ test("corrected config recreates ONLY B", async () => {
   const apiName = "lando-bring-up-order-app-api";
   const webName = "lando-bring-up-order-app-web";
   const fake = makePodmanApi(0, [], [webName]);
-  await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.flip));
+  await Effect.runPromise(
+    bringUp(plan, { api: fake.api, ctx, ...supervisedExecFixtureOptions(fake.api) }).pipe(Effect.flip),
+  );
   const apiId = fake.ids.get(apiName);
   const webId = fake.ids.get(webName);
   if (apiId === undefined || webId === undefined) {
@@ -451,7 +496,9 @@ test("corrected config recreates ONLY B", async () => {
   };
   fake.failedStartNames.delete(webName);
   const requestsBeforeRetry = fake.requests.length;
-  await Effect.runPromise(bringUp(corrected, { api: fake.api, ctx, reconcile: false }));
+  await Effect.runPromise(
+    bringUp(corrected, { api: fake.api, ctx, ...supervisedExecFixtureOptions(fake.api), reconcile: false }),
+  );
   const retryRequests = fake.requests.slice(requestsBeforeRetry);
 
   // Then: only B is stopped/removed/recreated; A identity is unchanged.
@@ -501,7 +548,10 @@ test("a filtered apply leaves an unselected container's real ID untouched", asyn
   const dbId = ids.get(dbContainer);
 
   await Effect.runPromise(
-    bringUp({ ...fullPlan, services: { [web.name]: web } }, { api, ctx, reconcile: false }),
+    bringUp(
+      { ...fullPlan, services: { [web.name]: web } },
+      { api, ctx, ...supervisedExecFixtureOptions(api), reconcile: false },
+    ),
   );
 
   expect(dbId).toBe(`id-${dbContainer}-original`);

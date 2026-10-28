@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
+import {
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
@@ -70,6 +74,8 @@ const makeFakeApi = () => {
     request: (input) =>
       Effect.sync((): DockerHttpResponse => {
         calls.push(input);
+        if (input.method === "GET" && input.path === `/containers/${containerName}/json`)
+          return { status: 200, body: JSON.stringify({ Id: containerName }) };
         if (input.method === "POST" && input.path === createPath) {
           return { status: 201, body: JSON.stringify({ Id: "exec-1" }) };
         }
@@ -84,6 +90,7 @@ const makeFakeApi = () => {
     },
   };
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -99,7 +106,12 @@ const runExec = async (api: DockerApiClient, command: CommandSpec, user?: string
   );
   await Effect.runPromise(persistAppliedPlan(appliedPlanState, plan));
   const provider = await Effect.runPromise(
-    makeRuntimeProvider({ platform: "linux", dockerApi: api, appliedPlanState }),
+    makeRuntimeProvider({
+      platform: "linux",
+      dockerApi: api,
+      appliedPlanState,
+      ...supervisedExecFixtureOptions(api),
+    }),
   );
   return Effect.runPromise(
     provider.exec({ app: appId, service: serviceName, ...(user === undefined ? {} : { user }) }, command),

@@ -6,6 +6,10 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import {
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { bringUp, exec } from "@lando/provider-lando";
 import {
@@ -125,7 +129,7 @@ const makeFakeApi = () => {
           }
           return {
             status: 200,
-            body: JSON.stringify({ State: { Running: true, Status: "running" } }),
+            body: JSON.stringify({ Id: name, State: { Running: true, Status: "running" } }),
           };
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create")) {
@@ -152,6 +156,7 @@ const makeFakeApi = () => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -161,7 +166,7 @@ describe("provider-lando exec env contract", () => {
     const plan = buildPlan(servicePlan);
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { api: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ...supervisedExecFixtureOptions(fake.api) }));
 
     const createCall = fake.calls.find(
       (call) =>
@@ -195,7 +200,7 @@ describe("provider-lando exec env contract", () => {
     const plan = buildPlan(servicePlan);
     const fake = makeFakeApi();
 
-    await Effect.runPromise(bringUp(plan, { api: fake.api }));
+    await Effect.runPromise(bringUp(plan, { api: fake.api, ...supervisedExecFixtureOptions(fake.api) }));
 
     const commandEnv: Record<string, string> = {
       LANDO_PLUGIN_TOOLING_VAR: "ok",
@@ -207,7 +212,7 @@ describe("provider-lando exec env contract", () => {
         plan,
         { app: plan.id, service: servicePlan.name },
         { command: ["printenv", "LANDO_PLUGIN_TOOLING_VAR"], env: commandEnv },
-        { api: fake.api },
+        { api: fake.api, ...supervisedExecFixtureOptions(fake.api) },
       ),
     );
 

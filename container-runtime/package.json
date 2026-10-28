@@ -72,6 +72,7 @@
     "./podman/exec": "./src/podman/exec.ts",
     "./podman/exec-umask": "./src/podman/exec-umask.ts",
     "./testing/exec-umask": "./test/support/exec-umask.ts",
+    "./testing/exec-supervision": "./test/support/exec-supervision.ts",
     "./podman/logs": "./src/podman/logs.ts",
     "./podman/machine-ssh-bridge": "./src/podman/machine-ssh-bridge.ts",
     "./podman/container-events": "./src/podman/container-events.ts",

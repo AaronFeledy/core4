@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { serviceContainerName } from "@lando/container-runtime/plan";
+import {
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { DateTime, Duration, Effect, Stream } from "effect";
 
@@ -103,14 +108,19 @@ const makeFakePodmanApi = (
   events: string[],
   pingSuccessesBeforeEnsureFailure = 1,
   launchesBeforePingSuccess = 1,
+  preexistingContainer?: string,
 ): PodmanApiClient => {
   let pingCalls = 0;
   const existing = new Set<string>();
   const running = new Set<string>();
+  if (preexistingContainer !== undefined) {
+    existing.add(preexistingContainer);
+    running.add(preexistingContainer);
+  }
   const networks = new Map<string, { readonly Id: string }>();
   const volumes = new Set<string>();
 
-  return {
+  const api: PodmanApiClient = {
     info: Effect.sync(() => {
       events.push("api.info");
       return { version: { Version: "6.0.2" } };
@@ -167,7 +177,7 @@ const makeFakePodmanApi = (
         }
         if (request.method === "GET" && action === "json") {
           if (!existing.has(name)) return { status: 404, body: "{}" };
-          return { status: 200, body: JSON.stringify({ State: { Running: running.has(name) } }) };
+          return { status: 200, body: JSON.stringify({ Id: name, State: { Running: running.has(name) } }) };
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create")) {
           const createdName = new URL(`http://localhost${request.path}`).searchParams.get("name") ?? "";
@@ -191,6 +201,8 @@ const makeFakePodmanApi = (
       return Stream.make(makeFrame("ok\n"));
     },
   };
+  installSupervisedExecFixture(api);
+  return api;
 };
 
 const makeFakeServiceRunner = (events: string[]): PodmanServiceRunner => {
@@ -217,14 +229,22 @@ const withRuntimeProvider = async <A>(
   pingSuccessesBeforeEnsureFailure = 1,
   launchesBeforePingSuccess = 1,
   readinessPolicy: RetryPolicy = fastReadinessPolicy,
+  preexistingContainer?: string,
 ): Promise<A> => {
   const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
   try {
+    const api = makeFakePodmanApi(
+      events,
+      pingSuccessesBeforeEnsureFailure,
+      launchesBeforePingSuccess,
+      preexistingContainer,
+    );
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
-        podmanApi: makeFakePodmanApi(events, pingSuccessesBeforeEnsureFailure, launchesBeforePingSuccess),
+        podmanApi: api,
+        ...supervisedExecFixtureOptions(api),
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         podmanService: makeFakeServiceRunner(events),
         providerSocketPath: join(tempDir, "podman.sock"),
@@ -309,11 +329,18 @@ describe("provider-lando ensureRuntime factory wiring", () => {
 
   test("exec triggers ensureRuntime before exec", async () => {
     const events: string[] = [];
-    await withRuntimeProvider(events, async (provider) => {
-      await Effect.runPromise(
-        provider.exec({ app: appId, service: serviceName, plan }, { command: ["echo", "hi"] }),
-      );
-    });
+    await withRuntimeProvider(
+      events,
+      async (provider) => {
+        await Effect.runPromise(
+          provider.exec({ app: appId, service: serviceName, plan }, { command: ["echo", "hi"] }),
+        );
+      },
+      1,
+      1,
+      fastReadinessPolicy,
+      serviceContainerName(plan, serviceName),
+    );
 
     expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
     expect(events.indexOf("service.launch")).toBeLessThan(
@@ -345,11 +372,13 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const events: string[] = [];
+      const api = makeFakePodmanApi(events);
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
-          podmanApi: makeFakePodmanApi(events),
+          podmanApi: api,
+          ...supervisedExecFixtureOptions(api),
           podmanService: makeFakeServiceRunner(events),
           runtimeBinDir: join(tempDir, "bin"),
           runtimeStorageDir: join(tempDir, "storage"),
@@ -386,11 +415,13 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const events: string[] = [];
+      const api = makeFakePodmanApi(events);
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
-          podmanApi: makeFakePodmanApi(events),
+          podmanApi: api,
+          ...supervisedExecFixtureOptions(api),
           podmanService: makeFakeServiceRunner(events),
           socketPath: join(tempDir, "external-podman.sock"),
           providerSocketPath: join(tempDir, "run", "podman.sock"),

@@ -79,7 +79,7 @@ import {
   makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
-import { exec } from "./exec.ts";
+import { type ExecOptions, exec } from "./exec.ts";
 import { logs } from "./logs.ts";
 
 export { scratchLabelsForPlan } from "../labels.ts";
@@ -127,6 +127,8 @@ export type StartFailureRemediation = (input: {
 export interface BringUpOptions {
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
+  readonly resolveContainerHelper?: ExecOptions["resolveContainerHelper"];
+  readonly helperTarget?: ExecOptions["helperTarget"];
   readonly dialect?: LifecycleDialect;
   readonly ensureImage?: (input: {
     readonly service: ServicePlan;
@@ -1072,7 +1074,12 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         plan,
         { app: plan.id, service: service.name },
         { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
-        { api, ctx: options.ctx },
+        {
+          api,
+          ctx: options.ctx,
+          resolveContainerHelper: options.resolveContainerHelper,
+          helperTarget: options.helperTarget,
+        },
       ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
     waitForExit: (service) =>
       waitForExit(

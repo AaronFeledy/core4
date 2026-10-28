@@ -548,9 +548,20 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
             dialect: dockerWaitDialect,
             ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
           }),
-        exec: (plan, target, command) => exec(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
+        exec: (plan, target, command) =>
+          exec(plan, target, command, {
+            api: dockerApi,
+            ctx: DOCKER_CTX,
+            resolveContainerHelper: options.resolveContainerHelper,
+            helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+          }),
         execStream: (plan, target, command) =>
-          execStream(plan, target, command, { api: dockerApi, ctx: DOCKER_CTX }),
+          execStream(plan, target, command, {
+            api: dockerApi,
+            ctx: DOCKER_CTX,
+            resolveContainerHelper: options.resolveContainerHelper,
+            helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+          }),
         inspect: (plan, target) => inspect(plan, target, { api: dockerApi, ctx: DOCKER_CTX }),
       },
     });
@@ -629,6 +640,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
         return yield* bringUp(plan, {
           api: dockerApi,
           ctx: DOCKER_CTX,
+          resolveContainerHelper: options.resolveContainerHelper,
+          helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
           dialect: dockerLifecycleDialect,
           ensureImage: dockerEnsureImage(dockerApi),
           retryCreateOnMissingImage: true,

@@ -1036,13 +1036,23 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             ? windowsStdinOptions === undefined
               ? Effect.fail(missingWindowsStdinRunner(target))
               : windowsStdinExec(plan, target, command, windowsStdinOptions)
-            : runtimeExec(plan, target, command, { ...apiOptions, ctx: LANDO_CTX }),
+            : runtimeExec(plan, target, command, {
+                ...apiOptions,
+                ctx: LANDO_CTX,
+                resolveContainerHelper: options.resolveContainerHelper,
+                helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+              }),
         execStream: (plan, target, command) =>
           shouldUseWindowsStdinCli(command)
             ? windowsStdinOptions === undefined
               ? Stream.fail(missingWindowsStdinRunner(target))
               : windowsStdinExecStream(plan, target, command, windowsStdinOptions)
-            : runtimeExecStream(plan, target, command, { ...apiOptions, ctx: LANDO_CTX }),
+            : runtimeExecStream(plan, target, command, {
+                ...apiOptions,
+                ctx: LANDO_CTX,
+                resolveContainerHelper: options.resolveContainerHelper,
+                helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
+              }),
         inspect: Effect.fnUntraced(function* (plan, target) {
           const physical = yield* physicalNetworkPlan(plan);
           const runtime = yield* runtimeInspect(plan, target, { ...apiOptions, ctx: LANDO_CTX });
@@ -1645,6 +1655,8 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                     }),
                   }),
               ctx: LANDO_CTX,
+              resolveContainerHelper: options.resolveContainerHelper,
+              helperTarget: resolvedCapabilities.hostProxy?.containerTargets[0],
               startFailureRemediation: makeLandoStartFailureRemediation(platform),
               platform,
               ...(socketPath === undefined ? {} : { daemonUrl: socketPath }),

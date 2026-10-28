@@ -36,6 +36,14 @@ func dispatch(argv0 string, args []string, streams helperIO) int {
 	}
 	if len(args) > 0 {
 		switch args[0] {
+		case "exec-cleanup":
+			return runExecCleanup(args[1:], streams)
+		case "exec-init":
+			return runExecInit(args[1:], streams)
+		case "exec-supervisor":
+			return runExecSupervisor(args[1:], streams)
+		case "exec-control":
+			return runExecControl(args[1:], streams)
 		case "log-file":
 			if err := runLogFile(streams.stdin, streams.stdout); err != nil {
 				fmt.Fprintln(streams.stderr, err)
