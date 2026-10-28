@@ -63,6 +63,7 @@ const writeDeclarationTsconfig = async (
   const config = {
     ...(hasBaseTsconfig ? { extends: "./tsconfig.json" } : {}),
     compilerOptions: {
+      composite: false,
       declaration: true,
       emitDeclarationOnly: true,
       outDir: "./dist",
@@ -133,6 +134,15 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
     "bun",
     "--format",
     "esm",
+    "--splitting",
+    "--external",
+    "@lando/sdk",
+    "--external",
+    "@lando/sdk/*",
+    "--external",
+    "effect",
+    "--external",
+    "effect/*",
   ];
   const declarationArgv = ["x", "tsc", "--project", declarationTsconfigName];
   yield* publishOptionalEvent({
