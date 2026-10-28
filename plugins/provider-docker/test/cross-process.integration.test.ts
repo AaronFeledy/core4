@@ -91,7 +91,12 @@ const makeFakeApi = () => {
   const labels = new Map<string, Readonly<Record<string, string>>>();
   const networks = new Map<
     string,
-    { readonly Id: string; readonly Name: string; readonly Labels: Readonly<Record<string, string>> }
+    {
+      readonly Id: string;
+      readonly Name: string;
+      readonly Driver: string;
+      readonly Labels: Readonly<Record<string, string>>;
+    }
   >();
   const resolveContainer = (ref: string) =>
     [...existing].find((name) => name === ref || `id-${name}` === ref) ?? ref;
@@ -102,10 +107,16 @@ const makeFakeApi = () => {
       const created = Schema.decodeUnknownSync(
         Schema.Struct({
           Name: Schema.String,
+          Driver: Schema.String,
           Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
         }),
       )(body);
-      const network = { Id: `id-${created.Name}`, Name: created.Name, Labels: created.Labels ?? {} };
+      const network = {
+        Id: `id-${created.Name}`,
+        Name: created.Name,
+        Driver: created.Driver,
+        Labels: created.Labels ?? {},
+      };
       networks.set(created.Name, network);
       return { status: 201, body: JSON.stringify({ Id: network.Id }) };
     }
