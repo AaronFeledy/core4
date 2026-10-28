@@ -135,9 +135,24 @@ const reExportEntryPoints = [
   },
 ] as const;
 
+/** Tooling-only compiler entry points consumed by guide generators and the docs site. */
+const toolingEntryPoints = [
+  {
+    specifier: "@lando/core/docs/guide-compiler",
+    exportKey: "./docs/guide-compiler",
+    target: "./src/docs/guide-compiler/index.ts",
+    assertSymbol: (mod: Record<string, unknown>) => {
+      expect(mod.parseGuideScenarioAst).toBeFunction();
+      expect(mod.projectGuidePresentation).toBeFunction();
+      expect(mod.propsOf).toBeFunction();
+      expect(mod.processor).toBeDefined();
+    },
+  },
+] as const;
+
 const publishedEntryPoints = [...publicEntryPoints, ...documentedAuxiliaryEntryPoints] as const;
 
-const resolveEntryPoints = [...publishedEntryPoints, ...reExportEntryPoints] as const;
+const resolveEntryPoints = [...publishedEntryPoints, ...reExportEntryPoints, ...toolingEntryPoints] as const;
 
 type EntryPoint = (typeof resolveEntryPoints)[number];
 
