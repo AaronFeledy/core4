@@ -24,6 +24,7 @@ import { yamlRoundTripCorpus, yamlRoundTripRecord } from "@lando/sdk/test";
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
+import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { metaDoctorSpec } from "../../src/cli/command-specs/meta/doctor.ts";
 import { UNRESOLVED_CERTS_STATUS } from "../../src/cli/commands/doctor-certs-status.ts";
@@ -148,6 +149,47 @@ const useDeprecation = Effect.fnUntraced(function* (
 });
 
 describe("meta:doctor combined report", () => {
+  test("doctor keeps multiline lint suggestions attributed in text and narrow or wide TTY reports", async () => {
+    const base = await run({ ...TestRuntimeProvider, id: "lando" });
+    const suggestion = "Rewrite:\nx-demo:\n  a: 日本語\n\n";
+    const report: DoctorReport = {
+      ...base,
+      appConfig: {
+        app: "demo",
+        file: "/app/.lando.yml",
+        valid: false,
+        violations: [
+          {
+            rule: "landofile.load",
+            severity: "error",
+            path: [],
+            message: "Use a block mapping.",
+            suggestion,
+            line: 3,
+            column: 3,
+          },
+        ],
+      },
+    };
+    expect(renderDoctorReport(report)).toContain(
+      "    fix: Rewrite:\n       | x-demo:\n       |   a: 日本語\n       | \n       | ",
+    );
+    for (const columns of [40, 120]) {
+      const text = stripAnsi(
+        renderDoctorReport(report, { mode: "lando", format: "text", isTTY: true, columns }),
+      );
+      expect(text).toContain("fix: Rewrite:");
+      expect(text).toContain("| x-demo:");
+      expect(text).toContain("|   a: 日本語");
+      expect(text.split("\n").filter((line) => line.trimEnd().endsWith("|"))).toHaveLength(2);
+      for (const line of text.split("\n")) expect(displayWidth(line)).toBeLessThanOrEqual(columns);
+    }
+    const event = eventPayloads(renderDoctorReportAsNdjson(report)).find(
+      (payload) => payload.name === "app-config-lint",
+    );
+    expect(event?.violations).toEqual(report.appConfig?.violations);
+  });
+
   test.each([false, true])("renders canonical env warnings alongside errors=%s", async (withError) => {
     const base = await run({ ...TestRuntimeProvider, id: "lando" });
     const report: DoctorReport = {

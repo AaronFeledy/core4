@@ -25,6 +25,67 @@ test("bridge inventory identity keeps its historical digest without a role", asy
   });
 });
 
+test("failed scratch apply inventory cleans bridge and authored networks by observed IDs", async () => {
+  await withInventory(async ({ store, plan, root, observations, cleanup, calls, network }) => {
+    const scratch = {
+      ...plan,
+      extensions: { "@lando/core/scratch": { id: plan.id } },
+      networking: landoNetworkingPlan({
+        slug: plan.slug,
+        serviceNames: ["web"],
+        sharedCrossAppNetwork: false,
+        authoredNetworks: [{ key: "extra", external: false, members: { web: [] } }],
+      }),
+    };
+    await Effect.runPromise(store.prepare(scratch));
+    const resources = (await Effect.runPromise(store.load(root)))?.resources;
+    expect(resources?.map((item) => item.nativeName)).toEqual(["lando-owned", "lando-owned_extra"]);
+    expect(resources?.map((item) => (item.kind === "network" ? item.scratchId : undefined))).toEqual([
+      plan.id,
+      plan.id,
+    ]);
+    const labels = { ...network().Labels, "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": plan.id };
+    for (const name of ["lando-owned", "lando-owned_extra"])
+      observations.set(`/networks/${name}`, { Id: `observed-${name}`, Name: name, Labels: labels });
+    expect((await Effect.runPromise(cleanup(root, { volumes: false }))).networksRemoved).toBe(2);
+    expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual([
+      "/networks/observed-lando-owned",
+      "/networks/observed-lando-owned_extra",
+    ]);
+    expect(await Effect.runPromise(store.summary(root))).toBeUndefined();
+  });
+});
+
+test.each(["old-four", "wrong-id", "empty"] as const)(
+  "scratch inventory refuses %s network evidence before mutation",
+  async (damage) => {
+    await withInventory(async ({ store, plan, root, observations, cleanup, calls, network }) => {
+      const scratch = { ...plan, extensions: { "@lando/core/scratch": { id: plan.id } } };
+      await Effect.runPromise(store.prepare(scratch));
+      const labels =
+        damage === "empty"
+          ? {}
+          : damage === "old-four"
+            ? network().Labels
+            : {
+                ...network().Labels,
+                "dev.lando.scratch": "TRUE",
+                "dev.lando.scratch-id": "other",
+              };
+      observations.set("/networks/lando-owned", {
+        Id: "observed-network",
+        Name: "lando-owned",
+        Labels: labels,
+      });
+      expect(
+        Result.isFailure(await Effect.runPromise(cleanup(root, { volumes: false }).pipe(Effect.result))),
+      ).toBe(true);
+      expect(calls.some((call) => call.method === "DELETE")).toBe(false);
+      expect((await Effect.runPromise(store.load(root)))?.resources).toHaveLength(1);
+    });
+  },
+);
+
 test.each([{ Labels: {} }, { Labels: null }, {}])(
   "inventory cleanup refuses unlabeled authored networks: %j",
   async (legacy) => {

@@ -8,7 +8,14 @@ import {
 } from "@lando/sdk/schema";
 import { Effect, Option, Schema } from "effect";
 import type { EngineHttpRequest, EngineHttpResponse, ProviderErrorContext } from "./engine-api.ts";
-import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
+import {
+  APP_LABEL,
+  APP_ROOT_LABEL,
+  SCRATCH_ID_LABEL,
+  SCRATCH_LABEL,
+  SERVICE_LABEL,
+  scratchLabelsForPlan,
+} from "./labels.ts";
 import { isOwnershipRoot } from "./ownership-root.ts";
 
 const Labels = Schema.Record(Schema.String, Schema.String);
@@ -60,6 +67,10 @@ export const coherentPrivateNetworkOwnership = (
   const appId = labels[APP_LABEL];
   const appRoot = labels[APP_ROOT_LABEL];
   if (!appId || !appRoot || !isOwnershipRoot(appRoot)) return false;
+  const scratch = labels[SCRATCH_LABEL];
+  const scratchId = labels[SCRATCH_ID_LABEL];
+  if ((scratch !== undefined || scratchId !== undefined) && (scratch !== "TRUE" || scratchId !== appId))
+    return false;
   return (
     networkLabelsDecision(
       labels,
@@ -68,6 +79,7 @@ export const coherentPrivateNetworkOwnership = (
         appRoot,
         ownerKey: appIdentityKey("owner", appRoot),
         providerId,
+        ...(scratch === "TRUE" ? { scratchId: appId } : {}),
       }),
     ) === "owned"
   );
@@ -78,11 +90,15 @@ export const privateNetworkLabels = (resource: {
   readonly appRoot: string;
   readonly ownerKey: string;
   readonly providerId: string;
+  readonly scratchId?: string;
 }) => ({
   [APP_LABEL]: resource.appId,
   [APP_ROOT_LABEL]: resource.appRoot,
   "dev.lando.owner": resource.ownerKey,
   "dev.lando.provider": resource.providerId,
+  ...(resource.scratchId === undefined
+    ? {}
+    : { [SCRATCH_LABEL]: "TRUE", [SCRATCH_ID_LABEL]: resource.scratchId }),
 });
 
 export const containerOwnershipLabels = (plan: AppPlan, service: string) => ({
@@ -91,15 +107,23 @@ export const containerOwnershipLabels = (plan: AppPlan, service: string) => ({
   [SERVICE_LABEL]: service,
 });
 
-export const networkOwnershipLabels = (plan: AppPlan) =>
-  privateNetworkLabels({ ...planAppIdentity(plan), appId: plan.id, providerId: plan.provider });
+export const networkOwnershipLabels = (plan: AppPlan) => {
+  const scratchId = scratchLabelsForPlan(plan)[SCRATCH_ID_LABEL];
+  return privateNetworkLabels({
+    ...planAppIdentity(plan),
+    appId: plan.id,
+    providerId: plan.provider,
+    ...(scratchId === undefined ? {} : { scratchId }),
+  });
+};
 
 /** Legacy labels require separate exact-name proof because native lookup also accepts ID prefixes. */
 export const networkLabelsDecision = (
   labels: Readonly<Record<string, string>> | undefined,
   expected: Readonly<Record<string, string>>,
 ): "owned" | "legacy" | "foreign" => {
-  if (labels === undefined || Object.keys(labels).length === 0) return "legacy";
+  if (labels === undefined || Object.keys(labels).length === 0)
+    return SCRATCH_ID_LABEL in expected ? "foreign" : "legacy";
   return Object.keys(labels).length === Object.keys(expected).length &&
     Object.entries(expected).every(([key, value]) => labels[key] === value)
     ? "owned"
