@@ -83,6 +83,24 @@ bun run test:unit
 
 To match the added provider-contract coverage, also run `bun test plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts`.
 
+For a local review of which shard-eligible tests may relate to your changes, run:
+
+```bash
+bun run test:affected
+```
+
+This prints selected test paths, counts, a changed-file-to-test import path for each selection, fixture-reference matches, unmatched changed paths, and uncertain imports. It does not run tests unless you add `--run`. A dry run with zero matches prints `selected=0`; `--run` with zero matches exits nonzero without starting a test process. The default comparison uses the merge base with `origin/main` plus staged, unstaged, and untracked files. Use `--base <ref>` for another comparison or repeat `--file <path>` to inspect explicit repository paths. For example:
+
+```bash
+bun run test:affected --file sdk/src/schema/landofile.ts --file sdk/src/schema/json-schema.ts --run
+```
+
+Even with `--file`, selection walks imports from every shard-eligible test. Its time and memory use depend on the repository graph and the machine.
+
+The selector also follows the test preloads configured in `bunfig.toml` as shared dependencies of every eligible test. A changed preload or one of its static imports can therefore select the full set. If a configured preload cannot be resolved inside the repository, the selector reports the uncertainty and selects the full eligible set.
+
+The selector follows static and statically evaluable imports, re-exports, and `require` calls through workspace exports. It also uses fixture path references as a heuristic, including sibling files in a fixture app directory. Changes to package manifests, TypeScript configuration, Bun configuration, the lockfile, or the Bun version select every shard-eligible test, preserving the shard exclusions. Computed imports, unresolved local modules, runtime file reads, and other generated or configuration effects can leave gaps; import paths through barrels can also select extra tests. Prior import edges are reconstructed only for the changed source paths supplied. If you use `--file` for a deleted module but omit a rewritten importer, that historical edge may be missing. Review the uncertain and unmatched lists before relying on a narrow result. The CI profile still runs its full selected shards.
+
 Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; per-PR workflow drift is covered by `bun run codegen:check` in `static-checks-platform`.
 
 ## Dependency maintenance
