@@ -41,40 +41,21 @@ describe("managed Windows stdin exec", () => {
     ]);
   });
 
-  test("streams stdin to ProcessRunner and preserves stdout, stderr, and exit code", async () => {
-    const received: number[] = [];
-    let receivedEnv: Readonly<Record<string, string>> | undefined;
-    let receivedArgs: ReadonlyArray<string> = [];
+  test("rejects buffered and streamed stdin before spawning an unsupervised command", async () => {
+    let spawned = false;
     const runner = {
-      run: (options: {
-        readonly stdinStream?: AsyncIterable<Uint8Array>;
-        readonly env?: Readonly<Record<string, string>>;
-        readonly args: ReadonlyArray<string>;
-      }) =>
-        Effect.tryPromise({
-          try: async () => {
-            receivedEnv = options.env;
-            receivedArgs = options.args;
-            for await (const chunk of options.stdinStream ?? []) received.push(...chunk);
-            return { stdout: "after EOF", stderr: "warning", exitCode: 37 };
-          },
-          catch: (cause) => cause,
-        }),
-      stream: () => Stream.empty,
-      streamWithExit: (options: { readonly stdinStream?: AsyncIterable<Uint8Array> }) =>
-        Stream.fromEffect(
-          Effect.promise(async () => {
-            for await (const chunk of options.stdinStream ?? []) received.push(...chunk);
-          }),
-        ).pipe(
-          Stream.flatMap(() =>
-            Stream.fromIterable([
-              { kind: "stdout" as const, chunk: new TextEncoder().encode("after EOF") },
-              { kind: "stderr" as const, chunk: new TextEncoder().encode("warning") },
-              { exitCode: 37 },
-            ]),
-          ),
-        ),
+      run: () => {
+        spawned = true;
+        return Effect.die("unexpected spawn");
+      },
+      stream: () => {
+        spawned = true;
+        return Stream.die("unexpected spawn");
+      },
+      streamWithExit: () => {
+        spawned = true;
+        return Stream.die("unexpected spawn");
+      },
     } as unknown as Context.Service.Shape<typeof ProcessRunner>;
     const command = { command: ["cat"], stdinStream: stdinStream(), env: { SQL_PASSWORD: "secret value" } };
     const options = {
@@ -82,22 +63,18 @@ describe("managed Windows stdin exec", () => {
       connectionName: "lando-root",
       processRunner: runner,
     };
-
-    const result = await Effect.runPromise(windowsStdinExec(plan, target, command, options));
-    const chunks = await Effect.runPromise(
-      Stream.runCollect(
-        windowsStdinExecStream(plan, target, { ...command, stdinStream: stdinStream() }, options),
-      ),
+    const expected = {
+      _tag: "ServiceExecError",
+      providerId: "lando",
+      service: "db",
+      message: "Managed Windows stdin execution cannot confirm container command cleanup.",
+    };
+    await expect(Effect.runPromise(windowsStdinExec(plan, target, command, options))).rejects.toMatchObject(
+      expected,
     );
-
-    expect(received).toEqual([65, 66, 67, 65, 66, 67]);
-    expect(receivedEnv).toEqual({ SQL_PASSWORD: "secret value" });
-    expect(receivedArgs.join(" ")).not.toContain("secret value");
-    expect(result).toEqual({ stdout: "after EOF", stderr: "warning", exitCode: 37 });
-    expect([...chunks].map((chunk) => ("exitCode" in chunk ? chunk.exitCode : chunk.kind))).toEqual([
-      "stdout",
-      "stderr",
-      37,
-    ]);
+    await expect(
+      Effect.runPromise(Stream.runCollect(windowsStdinExecStream(plan, target, command, options))),
+    ).rejects.toMatchObject(expected);
+    expect(spawned).toBe(false);
   });
 });

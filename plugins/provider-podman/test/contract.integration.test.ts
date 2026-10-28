@@ -6,6 +6,11 @@ import { join } from "node:path";
 import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 
 import type { EngineHttpRequest, EngineHttpResponse } from "@lando/container-runtime/engine-api";
+import {
+  installSupervisedExecFixture,
+  resolveBuiltContainerHelperForTest,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { resolveLiveProviderSocket } from "@lando/engine/testing/live-provider-socket";
@@ -36,7 +41,9 @@ import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const makeProviderLayer = (options: NonNullable<Parameters<typeof providerLayer>[0]> = {}) =>
   providerLayer({
+    resolveContainerHelper: resolveBuiltContainerHelperForTest,
     ...options,
+    ...supervisedExecFixtureOptions(options.podmanApi),
     appliedPlanState:
       options.appliedPlanState ??
       makePluginStateStore(
@@ -388,6 +395,7 @@ const makeFakeApi = () => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -649,6 +657,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -841,6 +850,7 @@ const makeFakeApiWithHooks = (hooks: FakePodmanApiHooks = {}) => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls, running, existing, volumes, containerIds, retentionHooks };
 };
 

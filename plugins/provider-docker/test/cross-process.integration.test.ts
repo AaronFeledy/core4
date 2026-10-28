@@ -5,6 +5,10 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema, Stream } from "effect";
 
+import {
+  installSupervisedExecFixture,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
@@ -201,6 +205,7 @@ const makeFakeApi = () => {
     },
   };
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -218,6 +223,7 @@ const makeProvider = (stateDir: string, dockerApi: DockerApiClient) =>
     makeRuntimeProvider({
       platform: "linux",
       dockerApi,
+      ...supervisedExecFixtureOptions(dockerApi),
       appliedPlanState: makePluginStateStore(
         makeStateStore({ privateFileAccess: ownerOnlyFileAccess }),
         AbsolutePath.make(stateDir),

@@ -13,6 +13,7 @@ import {
 import type { CommandSpec, ExecTarget } from "@lando/sdk/services";
 
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../src/engine-api.ts";
+import { exec } from "../src/podman/exec-transport.ts";
 import {
   EXEC_UMASK_COMPENSATION,
   EXEC_UMASK_PROBE_COMMAND,
@@ -34,7 +35,6 @@ import {
   shellProbeOutcome,
   wrapExecCommand,
 } from "../src/podman/exec-umask.ts";
-import { exec } from "../src/podman/exec.ts";
 
 const ctx = { providerId: "docker", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const providerId = ProviderId.make("docker");
@@ -389,7 +389,10 @@ describe("exec umask compensation", () => {
     const pending = runExec(api, { command: ["id"], signal: controller.signal });
     await started;
     controller.abort();
-    await pending;
+    await expect(pending).rejects.toMatchObject({
+      _tag: "ServiceExecError",
+      message: "Container exec ended without an observed exit status.",
+    });
     expect(createBodies(fake.calls)).toEqual([[...EXEC_UMASK_PROBE_COMMAND]]);
   });
   test("does not reuse shell availability or warnings after container recreation", async () => {

@@ -1,9 +1,6 @@
-// Windows stdin exec uses the Podman CLI and never enters the shared exec path
-// in container-runtime/src/podman/exec.ts, so it does not receive umask
-// compensation. Read-only internal probes that POST /exec directly (agent-socket
-// readiness and log-file helpers) likewise bypass that path.
+// The managed Windows stdin transport cannot yet carry the private supervisor
+// control protocol. Reject before spawning so interruption cannot orphan a command.
 import { serviceContainerName } from "@lando/container-runtime/plan";
-import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { Effect, Stream } from "effect";
 
 import { ServiceExecError } from "@lando/sdk/errors";
@@ -11,8 +8,6 @@ import type { AppPlan } from "@lando/sdk/schema";
 import type { CommandSpec, ExecChunk, ExecResult, ExecTarget } from "@lando/sdk/services";
 import type { ProcessRunner } from "@lando/sdk/services";
 import type { Context } from "effect";
-
-const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 type Runner = Context.Service.Shape<typeof ProcessRunner>;
 
@@ -36,59 +31,26 @@ export const windowsStdinExecArgs = (
   ...command.command,
 ];
 
+const unsupportedWindowsStdin = (target: ExecTarget) =>
+  new ServiceExecError({
+    providerId: "lando",
+    operation: "exec",
+    service: target.service,
+    message: "Managed Windows stdin execution cannot confirm container command cleanup.",
+    remediation:
+      "Run this command from WSL or a supported terminal until managed Windows stdin supports supervised execution.",
+  });
+
 export const windowsStdinExec = (
-  plan: AppPlan,
+  _plan: AppPlan,
   target: ExecTarget,
-  command: CommandSpec,
-  input: { readonly podmanBin: string; readonly connectionName: string; readonly processRunner: Runner },
-): Effect.Effect<ExecResult, ServiceExecError> =>
-  input.processRunner
-    .run({
-      cmd: input.podmanBin,
-      args: windowsStdinExecArgs(plan, target, command, input.connectionName),
-      ...(command.env === undefined ? {} : { env: command.env }),
-      ...(command.signal === undefined ? {} : { signal: command.signal }),
-      ...(command.stdinStream === undefined ? {} : { stdinStream: command.stdinStream }),
-    })
-    .pipe(
-      Effect.mapError(
-        (cause) =>
-          new ServiceExecError({
-            providerId: "lando",
-            operation: "exec",
-            service: target.service,
-            message: "Managed Windows Podman CLI could not execute the command.",
-            details: redactDetails({ cause }, hostSecretsRedactor()),
-            remediation: `Confirm service ${target.service} is running and the managed Windows Podman CLI can exec into it, then retry.`,
-          }),
-      ),
-    );
+  _command: CommandSpec,
+  _input: { readonly podmanBin: string; readonly connectionName: string; readonly processRunner: Runner },
+): Effect.Effect<ExecResult, ServiceExecError> => Effect.fail(unsupportedWindowsStdin(target));
 
 export const windowsStdinExecStream = (
-  plan: AppPlan,
+  _plan: AppPlan,
   target: ExecTarget,
-  command: CommandSpec,
-  input: { readonly podmanBin: string; readonly connectionName: string; readonly processRunner: Runner },
-): Stream.Stream<ExecChunk, ServiceExecError> =>
-  input.processRunner
-    .streamWithExit({
-      cmd: input.podmanBin,
-      args: windowsStdinExecArgs(plan, target, command, input.connectionName),
-      ...(command.env === undefined ? {} : { env: command.env }),
-      ...(command.signal === undefined ? {} : { signal: command.signal }),
-      ...(command.stdinStream === undefined ? {} : { stdinStream: command.stdinStream }),
-    })
-    .pipe(
-      Stream.map((event): ExecChunk => event),
-      Stream.mapError(
-        (cause) =>
-          new ServiceExecError({
-            providerId: "lando",
-            operation: "exec",
-            service: target.service,
-            message: "Managed Windows Podman CLI could not stream the command.",
-            details: redactDetails({ cause }, hostSecretsRedactor()),
-            remediation: `Confirm service ${target.service} is running and the managed Windows Podman CLI can stream exec into it, then retry.`,
-          }),
-      ),
-    );
+  _command: CommandSpec,
+  _input: { readonly podmanBin: string; readonly connectionName: string; readonly processRunner: Runner },
+): Stream.Stream<ExecChunk, ServiceExecError> => Stream.fail(unsupportedWindowsStdin(target));

@@ -5,6 +5,11 @@ import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  installSupervisedExecFixture,
+  resolveBuiltContainerHelperForTest,
+  supervisedExecFixtureOptions,
+} from "@lando/container-runtime/testing/exec-supervision";
 import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { ServiceCopyError, type ServiceStartError } from "@lando/sdk/errors";
 import { Cause, DateTime, Effect, Exit, Fiber, Option, Schema, Stream } from "effect";
@@ -51,9 +56,19 @@ const testPluginState = () =>
     ownerOnlyFileAccess,
   );
 const makeProviderLayer = (options: NonNullable<Parameters<typeof providerLayer>[0]> = {}) =>
-  providerLayer({ ...options, appliedPlanState: options.appliedPlanState ?? testPluginState() });
+  providerLayer({
+    resolveContainerHelper: resolveBuiltContainerHelperForTest,
+    ...options,
+    ...supervisedExecFixtureOptions(options.dockerApi),
+    appliedPlanState: options.appliedPlanState ?? testPluginState(),
+  });
 const makeRuntimeProvider = (options: Parameters<typeof runtimeProviderFactory>[0]) =>
-  runtimeProviderFactory({ ...options, appliedPlanState: options?.appliedPlanState ?? testPluginState() });
+  runtimeProviderFactory({
+    resolveContainerHelper: resolveBuiltContainerHelperForTest,
+    ...options,
+    ...supervisedExecFixtureOptions(options?.dockerApi),
+    appliedPlanState: options?.appliedPlanState ?? testPluginState(),
+  });
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
@@ -523,6 +538,7 @@ const makeFakeApi = () => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -794,6 +810,7 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls };
 };
 
@@ -1001,6 +1018,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
   };
 
   installNonCompensatingExecUmask(api);
+  installSupervisedExecFixture(api);
   return { api, calls, running, existing, volumes, volumeLabels, containerIds, retentionHooks };
 };
 
@@ -1317,7 +1335,12 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
       { Name: "lando_bridge_network", Driver: "bridge" },
     ]);
-    expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+    // Supervision polls completion; assert the ordered lifecycle independently of poll timing.
+    expect(
+      fake.calls
+        .map((call) => `${call.method} ${call.path}`)
+        .filter((call, index, calls) => !call.startsWith("GET /exec/") || call !== calls[index - 1]),
+    ).toEqual([
       "GET /containers/lando-myapp-web/json",
       "GET /networks/lando-myapp",
       "POST /networks/create",
@@ -1330,6 +1353,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
+      "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
@@ -1858,7 +1882,12 @@ describe("provider-docker RuntimeProvider contract", () => {
         timestamp: DateTime.toDate(DateTime.makeUnsafe("2026-05-17T12:00:00.000Z")),
       })),
     );
-    expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+    // Supervision polls completion; assert the ordered lifecycle independently of poll timing.
+    expect(
+      fake.calls
+        .map((call) => `${call.method} ${call.path}`)
+        .filter((call, index, calls) => !call.startsWith("GET /exec/") || call !== calls[index - 1]),
+    ).toEqual([
       "GET /containers/lando-myapp-web/json",
       "GET /networks/lando-myapp",
       "POST /networks/create",
@@ -1871,6 +1900,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /containers/create?name=lando-myapp-web",
       "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
+      "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
       "GET /containers/lando-myapp-web/json",
