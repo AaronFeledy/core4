@@ -1,9 +1,16 @@
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { DateTime, Effect, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Schema } from "effect";
 
-import { type FileIoError, type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import {
+  annotateFailureRole,
+  commandCompletionFromExitCode,
+  failureDefectCause,
+  mergeFailure,
+  resolveCommandCompletion,
+} from "@lando/sdk/command-result";
+import { FileIoError, type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
@@ -47,7 +54,15 @@ export const PluginBuildResultSchema = Schema.Struct({
   exitCode: Schema.Number,
 });
 
-const declarationTsconfigName = ".lando-plugin-build.tsconfig.json";
+const declarationTsconfigName = () => `.lando-plugin-build.${crypto.randomUUID()}.tsconfig.json`;
+
+const declarationConfigError = (path: string, action: string, cause: unknown): FileIoError =>
+  new FileIoError({
+    message: `Unable to ${action} the temporary plugin declaration config at ${path}.`,
+    path,
+    cause,
+    remediation: `Inspect ${path} and the plugin directory permissions, then retry the build.`,
+  });
 
 const fileExists = async (path: string): Promise<boolean> =>
   stat(path).then(
@@ -55,15 +70,16 @@ const fileExists = async (path: string): Promise<boolean> =>
     () => false,
   );
 
-const writeDeclarationTsconfig = async (
+const declarationTsconfigContents = async (
   pluginRoot: string,
   entries: ReadonlyArray<{ readonly source: string }>,
-) => {
+): Promise<string> => {
   const hasBaseTsconfig = await fileExists(join(pluginRoot, "tsconfig.json"));
   const config = {
     ...(hasBaseTsconfig ? { extends: "./tsconfig.json" } : {}),
     compilerOptions: {
       composite: false,
+      incremental: false,
       declaration: true,
       emitDeclarationOnly: true,
       outDir: "./dist",
@@ -72,7 +88,7 @@ const writeDeclarationTsconfig = async (
     },
     include: entries.map((entry) => entry.source),
   };
-  await writeFile(join(pluginRoot, declarationTsconfigName), `${JSON.stringify(config, null, 2)}\n`);
+  return `${JSON.stringify(config, null, 2)}\n`;
 };
 
 export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
@@ -144,7 +160,6 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
     "--external",
     "effect/*",
   ];
-  const declarationArgv = ["x", "tsc", "--project", declarationTsconfigName];
   yield* publishOptionalEvent({
     _tag: "cli-meta:plugin:build-start",
     pluginName: manifest.name,
@@ -162,16 +177,73 @@ export const pluginBuild = Effect.fn("PluginBuild.build")(function* (
   });
   let declarationExitCode = 0;
   if (build.exitCode === 0) {
-    yield* Effect.promise(() => writeDeclarationTsconfig(pluginRoot, entries));
-    const declarations = yield* bunSelfRun({
-      argv: declarationArgv,
-      cwd: pluginRoot,
-      verb: "build",
-      callerSubsystem,
-      ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
-      ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+    const configContents = yield* Effect.tryPromise({
+      try: () => declarationTsconfigContents(pluginRoot, entries),
+      catch: (cause) => declarationConfigError(join(pluginRoot, "tsconfig.json"), "read", cause),
     });
-    yield* Effect.promise(() => rm(join(pluginRoot, declarationTsconfigName), { force: true }));
+    const configName = declarationTsconfigName();
+    const configPath = join(pluginRoot, configName);
+    const declarations = yield* Effect.acquireUseRelease(
+      Effect.tryPromise({
+        try: async () => ({ file: await open(configPath, "wx", 0o600), path: configPath }),
+        catch: (cause) => declarationConfigError(configPath, "create", cause),
+      }),
+      ({ file }) =>
+        Effect.gen(function* () {
+          yield* Effect.uninterruptible(
+            Effect.gen(function* () {
+              yield* Effect.tryPromise({
+                try: () => file.writeFile(configContents),
+                catch: (cause) => declarationConfigError(configPath, "write", cause),
+              });
+              yield* Effect.tryPromise({
+                try: () => file.close(),
+                catch: (cause) => declarationConfigError(configPath, "close", cause),
+              });
+            }),
+          );
+          return yield* bunSelfRun({
+            argv: ["x", "tsc", "--project", configName],
+            cwd: pluginRoot,
+            verb: "build",
+            callerSubsystem,
+            ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
+            ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+          });
+        }),
+      ({ file, path }, exit) =>
+        Effect.gen(function* () {
+          const closeExit = yield* Effect.exit(
+            Effect.tryPromise({
+              try: () => file.close(),
+              catch: (cause) => declarationConfigError(path, "close", cause),
+            }),
+          );
+          const removeExit = yield* Effect.exit(
+            Effect.tryPromise({
+              try: () => rm(path, { force: true }),
+              catch: (cause) => declarationConfigError(path, "remove", cause),
+            }),
+          );
+          let cleanupCause: Cause.Cause<FileIoError> = Cause.empty;
+          if (Exit.isFailure(closeExit))
+            cleanupCause = mergeFailure(cleanupCause, closeExit.cause, "cleanup");
+          if (Exit.isFailure(removeExit))
+            cleanupCause = mergeFailure(cleanupCause, removeExit.cause, "cleanup");
+          if (cleanupCause.reasons.length === 0) return;
+          if (Exit.isSuccess(exit) && exit.value.exitCode !== 0) {
+            const completion = resolveCommandCompletion("meta:plugin:build", exit.value, (result) =>
+              commandCompletionFromExitCode(result.exitCode),
+            );
+            if (completion._tag === "failure") {
+              return yield* Effect.failCause(
+                failureDefectCause(mergeFailure(Cause.fail(completion.error), cleanupCause, "cleanup")),
+              );
+            }
+          }
+          return yield* Effect.failCause(failureDefectCause(annotateFailureRole(cleanupCause, "cleanup")));
+        }),
+    );
     declarationExitCode = declarations.exitCode;
   }
   const exitCode = build.exitCode === 0 ? declarationExitCode : build.exitCode;
