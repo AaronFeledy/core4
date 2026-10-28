@@ -1,16 +1,17 @@
 import { plugin } from "@lando/lando4";
+import { parseLandofile } from "@lando/landofile/parser";
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import type { RecipeDecomposeResult, RecipeOptionValue } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { lookupRecipeDecomposer } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
 import { previewRecipeLandofile } from "../../src/recipes/init-pipeline.ts";
-import { parseRecipe } from "../../src/recipes/manifest/service.ts";
 
 export const bundledManifest = (recipeId: string) => {
   const recipe = BUNDLED_RECIPES.find(({ id }) => id === recipeId);
   if (recipe === undefined) throw new Error(`Missing bundled recipe ${recipeId}`);
-  return Effect.runSync(parseRecipe(recipe.source, recipe.manifestYaml));
+  return recipe.manifest;
 };
 
 export const decomposeBuiltinRecipe = (
@@ -46,5 +47,16 @@ export const previewBuiltinRecipe = async (
       answers: { ...manifest.snapshot?.defaults, ...answers },
       encoder: await loader(),
     }),
+  );
+};
+
+export const loadBuiltinRecipe = async (id: string, answers: Readonly<Record<string, unknown>> = {}) => {
+  const appRoot = "/tmp/bundled-recipe-behavior";
+  const file = `${appRoot}/.lando.yml`;
+  const preview = await previewBuiltinRecipe(id, "catalog-test", answers);
+  return Effect.runPromise(
+    parseLandofile({ file, cwd: appRoot, content: preview.text }).pipe(
+      Effect.flatMap((value) => loadAuthoredDocuments([{ file, value }], { file, appRoot })),
+    ),
   );
 };

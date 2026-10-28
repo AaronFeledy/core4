@@ -12,7 +12,8 @@ import { flattenRecipe } from "../../src/recipes/manifest/flatten.ts";
 import { readRemoteParent } from "../../src/recipes/manifest/parent-source.ts";
 import { initAppWithOwnerOnlyFileAccess } from "../_support/private-file-access.ts";
 
-const MANIFEST = "id: remote\ntitle: Remote\ndescription: Ref fixture\nversion: 1.0.0\n";
+const MANIFEST =
+  "id: remote\ntitle: Remote\ndescription: Ref fixture\nversion: 1.0.0\nconfig:\n  runtime: 4\n";
 const SHA = "a".repeat(40);
 const withRoot = async (body: (root: string) => Promise<void>): Promise<void> => {
   const root = await mkdtemp(join(tmpdir(), "lando-recipe-refs-"));
@@ -75,6 +76,7 @@ describe("recipe git ref propagation", () => {
       const result = initAppWithOwnerOnlyFileAccess({
         ...options,
         cwd: root,
+        destination: join(root, "app"),
         userDataRoot: root,
         nonInteractive: true,
         gitRecipeCloner: {
@@ -87,7 +89,7 @@ describe("recipe git ref propagation", () => {
       });
 
       // Then
-      await expect(result).rejects.toThrow("Recipe file rendering");
+      expect((await result).directory).toBe(join(root, "app"));
       expect(calls).toHaveLength(1);
       expect(calls[0]).toMatchObject({ url: "https://example.test/repo.git", ref: "v1" });
     });
@@ -113,6 +115,7 @@ describe("recipe git ref propagation", () => {
       // When
       const result = initAppWithOwnerOnlyFileAccess({
         cwd: root,
+        destination: join(root, "app"),
         full: false,
         source: "git",
         url: `${url}@v1`,
@@ -129,7 +132,7 @@ describe("recipe git ref propagation", () => {
       });
 
       // Then
-      await expect(result).rejects.toThrow("Recipe file rendering");
+      expect((await result).directory).toBe(join(root, "app"));
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain(`${url}@v1`);
       expect(warnings[0]).toContain(SHA);
@@ -157,7 +160,14 @@ describe("recipe git ref propagation", () => {
       const flattened = await Effect.runPromise(
         flattenRecipe(
           "test://child",
-          { extends: `git+${url}@v1`, id: "child" },
+          {
+            extends: `git+${url}@v1`,
+            id: "child",
+            title: "Child",
+            description: "Child",
+            version: "1.0.0",
+            config: {},
+          },
           {
             userDataRoot: root,
             onWarn: (warning) => {
@@ -173,7 +183,7 @@ describe("recipe git ref propagation", () => {
       );
 
       // Then
-      expect(flattened.id).toBe("child");
+      expect(flattened.source.id).toBe("child");
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain(`${url}@v1`);
       expect(warnings[0]).toContain(SHA);

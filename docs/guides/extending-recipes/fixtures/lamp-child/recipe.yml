@@ -1,20 +1,25 @@
 id: lamp-child
 title: Lamp Child
-description: Extends lamp with one prompt override and a dropped prompt.
+description: Extends lamp with a narrower PHP choice and one extra file.
 version: 0.1.0
 extends: lamp
-prompts:
-  - name: name
-    drop: true
-  - name: php
-    type: select
-    message: PHP version
+options:
+  php:
+    type:
+      kind: enum
+      values:
+        - "8.2"
+        - "8.3"
     default: "8.2"
-    choices:
-      - value: "8.2"
-      - value: "8.3"
+    prompt:
+      message: PHP version
+config:
+  services:
+    appserver:
+      webroot: web
 files:
   - src: extra.txt
     dest: extra.txt
 postInit:
-  - type: gitInit
+  - type: message
+    text: Run lando start inside the new app directory.

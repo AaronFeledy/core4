@@ -11,7 +11,8 @@ import type { LoadScopedLandofile } from "@lando/sdk/schema";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
-import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const nodeTsRecipe = bundledRecipe("node-ts");
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
@@ -181,9 +182,11 @@ describe("node-ts recipe pipeline", () => {
     }
   });
 
-  test("manifest yaml advertises .lando.yml as the only emitted dest", () => {
-    expect(nodeTsRecipeYaml).toContain("dest: .lando.yml");
-    expect(nodeTsRecipeYaml).not.toContain("dest: .lando.ts");
+  test("authored node-ts config derives the Landofile without declaring auxiliary output", () => {
+    expect(Bun.YAML.parse(nodeTsRecipe.manifestYaml)).toEqual(nodeTsRecipe.authoredSource);
+    expect(nodeTsRecipe.authoredSource.files).toBeUndefined();
+    expect(nodeTsRecipe.manifest.files).toEqual([]);
+    expect(nodeTsRecipe.snapshot.assets).toEqual([]);
   });
 });
 

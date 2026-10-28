@@ -110,17 +110,13 @@ describe("public alpha contract", () => {
 
   test("documents the bundled Rails stack and non-interactive init in its executable recipe", async () => {
     const recipe = await readText(resolve(repoRoot, "recipes/rails/README.mdx"));
-    const manifest = Bun.YAML.parse(await readText(resolve(repoRoot, "recipes/rails/recipe.yml"))) as {
-      id: string;
-      title: string;
-      prompts: Array<{ default?: unknown }>;
-      snapshot: { identity: { sourceKind: string } };
-    };
+    const { BUNDLED_RECIPES } = await import("../../src/recipes/bundled.ts");
+    const manifest = BUNDLED_RECIPES.find(({ id }) => id === "rails")?.manifest;
+    if (manifest === undefined) throw new Error("Missing bundled rails recipe");
     expect(manifest.id).toBe("rails");
     expect(manifest.snapshot.identity.sourceKind).toBe("bundled");
     expect(manifest.title).toBe("Ruby on Rails");
-    expect(manifest.prompts.length).toBeGreaterThan(0);
-    expect(manifest.prompts.every((prompt) => prompt.default !== undefined)).toBe(true);
+    expect(manifest.prompts).toEqual([]);
     expect(recipe).toContain("PostgreSQL");
     expect(recipe).toContain("Redis");
     expect(recipe).toContain("lando rails");
@@ -138,8 +134,8 @@ describe("public alpha contract", () => {
     );
   });
 
-  test("finds the rails builtin stub when the stub manifest is checked", async () => {
-    const exists = await Bun.file(resolve(repoRoot, "core/src/recipes/builtin/rails/manifest.ts")).exists();
+  test("finds the canonical rails author source", async () => {
+    const exists = await Bun.file(resolve(repoRoot, "core/src/recipes/builtin/rails/source.ts")).exists();
     expect(exists).toBe(true);
   });
 

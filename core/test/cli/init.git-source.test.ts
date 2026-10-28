@@ -3,6 +3,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { RecipeManifestValidationError } from "@lando/sdk/errors";
 import { parseInitSourceFlags } from "../../src/cli/commands/init-source.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -87,7 +88,7 @@ describe("lando init git source native CLI dispatch", () => {
     }
   });
 
-  test("initApp resolves a git recipe through manifest parsing before the existing renderer boundary", async () => {
+  test("initApp rejects invalid git config before writing", async () => {
     await withTempCwd(async (dir) => {
       const { initAppWithOwnerOnlyFileAccess: initApp } = await import("../_support/private-file-access.ts");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -108,23 +109,20 @@ describe("lando init git source native CLI dispatch", () => {
                 clonedUrl = url;
                 await Bun.write(
                   join(stagingDir, "recipe.yml"),
-                  "id: git-recipe\ntitle: Git Recipe\ndescription: Parsed before render.\nversion: 0.0.1\nprompts:\n  - name: name\n    type: text\n    message: App name\nfiles:\n  - src: .lando.yml\n    dest: .lando.yml\n",
+                  "id: git-recipe\ntitle: Git Recipe\ndescription: Parsed before render.\nversion: 0.0.1\nconfig: invalid\n",
                 );
                 return { commitSha: "a".repeat(40) };
               },
             },
           });
-          throw new Error("expected initApp to reject file rendering");
+          throw new Error("expected initApp to reject invalid config");
         } catch (error) {
-          expect(error).toBeInstanceOf(Error);
-          const message = (error as Error).message;
-          expect(message).toContain(
-            'Recipe file rendering for "https://example.test/recipe.git" is not supported',
-          );
-          expect(message).not.toMatch(/\bAlpha\b/);
-          expect(message).not.toMatch(/\bBeta\b/);
+          expect(error).toBeInstanceOf(RecipeManifestValidationError);
+          if (!(error instanceof RecipeManifestValidationError)) throw error;
+          expect(error.source).toContain("recipe.yml");
         }
         expect(clonedUrl).toBe("https://example.test/recipe.git");
+        expect(await Bun.file(join(dir, "git-app", ".lando.yml")).exists()).toBe(false);
       } finally {
         if (previousDataRoot === undefined) process.env.LANDO_USER_DATA_ROOT = undefined;
         else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;

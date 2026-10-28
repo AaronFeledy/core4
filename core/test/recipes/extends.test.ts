@@ -1,436 +1,154 @@
-import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { expect, test } from "bun:test";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { Cause, Effect, Exit } from "effect";
+import { join } from "node:path";
+import { compileRecipeSource, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import { Effect, Result } from "effect";
+import { resolveRecipeSource } from "../../src/recipes/resolved-source";
+import { resolveRecipeRef } from "../../src/recipes/source";
 
-import { backdropRecipeSource, backdropRecipeYaml } from "../../src/recipes/builtin/backdrop/manifest.ts";
-import { backdropSnapshot } from "../../src/recipes/builtin/backdrop/snapshot.ts";
-import { joomlaRecipeSource, joomlaRecipeYaml } from "../../src/recipes/builtin/joomla/manifest.ts";
-import { joomlaSnapshot } from "../../src/recipes/builtin/joomla/snapshot.ts";
-import type { GitRecipeCloner } from "../../src/recipes/git-source.ts";
-import { flattenRecipe } from "../../src/recipes/manifest/flatten.ts";
-import { mergeRecipeManifests } from "../../src/recipes/manifest/merge.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
-import { parseRecipe, validateRecipeManifestObject } from "../../src/recipes/manifest/service.ts";
-
-const FIXTURE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "fixtures");
-
-const runParse = async (source: string, content: string) =>
-  Effect.runPromiseExit(parseRecipe(source, content));
-
-const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const failure = Cause.findErrorOption(exit.cause);
-  expect(failure._tag).toBe("Some");
-  if (failure._tag !== "Some") throw new Error("expected tagged failure");
-  return failure.value;
-};
-
-const parseFixture = async (id: string) => {
-  const source = join(FIXTURE_ROOT, id, "recipe.yml");
-  return runParse(source, await Bun.file(source).text());
-};
-
-const flattenThenValidate = (source: string, parsed: unknown, ctx?: Parameters<typeof flattenRecipe>[2]) =>
-  flattenRecipe(source, parsed, ctx).pipe(
-    Effect.flatMap((flat) => validateRecipeManifestObject(source, flat)),
-  );
-
-const hopNames = (error: unknown): ReadonlyArray<string> => {
-  if (error === null || typeof error !== "object" || !("chain" in error) || !Array.isArray(error.chain)) {
-    return [];
-  }
-  return error.chain.map(String);
-};
-
-const PARENT_RECIPE = `id: remote-parent
-title: Remote Parent
-description: A git sourced parent recipe.
-version: 0.1.0
-prompts:
-  - name: from-parent
-    type: text
-    message: Parent prompt
-    default: parent-default
-`;
-
-const CHILD_YAML = `id: remote-child
-title: Remote Child
-description: Extends a git parent.
-version: 0.2.0
-extends: git+https://example.test/parent.git
-prompts:
-  - name: from-child
-    type: text
-    message: Child prompt
-    default: child-default
-`;
-
-const withTempRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-extends-git-")));
+const withRoot = async (run: (root: string) => Promise<void>) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), "recipe-extends-")));
   try {
-    return await run(dir);
+    await run(root);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   }
 };
+const yaml = (id: string, extra = "") =>
+  `id: ${id}\ntitle: ${id}\ndescription: Inheritance\nversion: 1.0.0\nconfig:\n${extra}`;
+const resolve = (root: string, id: string) =>
+  Effect.runPromise(resolveRecipeRef(`./${id}`, { cwd: root }).pipe(Effect.flatMap(resolveRecipeSource)));
 
-const makeCloner = (
-  options: {
-    readonly commitSha?: string;
-    readonly manifest?: string;
-    readonly extraFiles?: ReadonlyArray<{ readonly path: string; readonly contents: string }>;
-    readonly extraSymlinks?: ReadonlyArray<{ readonly path: string; readonly target: string }>;
-    readonly calls?: Array<{ readonly url: string; readonly stagingDir: string }>;
-  } = {},
-): GitRecipeCloner => ({
-  clone: async ({ url, stagingDir }) => {
-    options.calls?.push({ url, stagingDir });
-    await mkdir(stagingDir, { recursive: true });
-    if (options.manifest !== undefined) await writeFile(join(stagingDir, "recipe.yml"), options.manifest);
-    for (const file of options.extraFiles ?? []) {
-      await mkdir(dirname(join(stagingDir, file.path)), { recursive: true });
-      await writeFile(join(stagingDir, file.path), file.contents);
-    }
-    for (const link of options.extraSymlinks ?? []) {
-      await mkdir(dirname(join(stagingDir, link.path)), { recursive: true });
-      await symlink(link.target, join(stagingDir, link.path));
-    }
-    return { commitSha: options.commitSha ?? "a".repeat(40) };
+test.each([false, true])(
+  "composes actual parent config before child variants when enabled is %s",
+  async (enabled) => {
+    await withRoot(async (root) => {
+      await Bun.write(
+        join(root, "parent/recipe.yml"),
+        `id: parent
+title: Parent
+description: Parent
+version: 1.0.0
+tags:
+  - parent-only
+options:
+  enabled:
+    type:
+      kind: boolean
+    default: true
+config:
+  services:
+    web:
+      type: nginx
+      webroot: base
+variants:
+  - when: options.enabled
+    config:
+      services:
+        web:
+          webroot: parent-variant
+`,
+      );
+      await Bun.write(
+        join(root, "child/recipe.yml"),
+        `id: child
+title: Child
+description: Child
+version: 2.0.0
+extends: ../parent
+config:
+  services:
+    web:
+      webroot: child-base
+variants:
+  - when: options.enabled
+    config:
+      x-child: true
+`,
+      );
+      const resolution = await resolve(root, "child");
+      const manifest = Result.getOrThrow(
+        compileRecipeSource(resolution.source, {
+          sourceKind: "local",
+          packageName: "child",
+          assets: [],
+          configLayers: resolution.configLayers,
+        }),
+      );
+      const output = Result.getOrThrow(renderRecipeSnapshot(manifest.snapshot, { enabled }));
+      expect(output).toEqual({
+        services: { web: { type: "nginx", webroot: "child-base" } },
+        ...(enabled ? { "x-child": true } : {}),
+      });
+      expect(manifest.tags).toBeUndefined();
+      expect(manifest.snapshot.identity.recipeId).toBe("child");
+      expect(manifest.version).toBe("2.0.0");
+    });
   },
-});
+);
 
-describe("parseRecipe — recipe composition", () => {
-  test("given a child that extends lamp, when parseRecipe flattens it, then prompts files and postInit merge and extends is gone", async () => {
-    const exit = await parseFixture("extends-lamp-child");
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (!Exit.isSuccess(exit)) return;
-    const manifest = exit.value;
-    expect(manifest.id).toBe("extends-lamp-child");
-    expect(manifest.prompts?.some((prompt) => prompt.name === "name")).toBe(true);
-    expect(manifest.prompts?.find((prompt) => prompt.name === "php")?.default).toBe("8.2");
-    expect(manifest.files?.map((file) => file.dest)).toEqual(
-      expect.arrayContaining([".lando.yml", "extra.txt"]),
-    );
-    expect(manifest.postInit?.map((action) => action.type)).toEqual(
-      expect.arrayContaining(["message", "gitInit"]),
-    );
-    expect("extends" in manifest).toBe(false);
-    expect(manifest.prompts?.some((prompt) => "drop" in prompt)).toBe(false);
-    expect(manifest.files?.some((file) => "drop" in file)).toBe(false);
-    expect(manifest.postInit?.some((action) => "drop" in action)).toBe(false);
-  });
-
-  test("given drop true on a lamp prompt by name, when parseRecipe flattens the child, then that prompt is gone", async () => {
-    const exit = await parseFixture("extends-drop-child");
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (!Exit.isSuccess(exit)) return;
-    expect(exit.value.prompts?.some((prompt) => prompt.name === "name")).toBe(false);
-    expect(exit.value.prompts?.some((prompt) => prompt.name === "php")).toBe(true);
-    expect(exit.value.prompts?.some((prompt) => "drop" in prompt)).toBe(false);
-  });
-
-  test("given a child that omits tags while the parent has tags, when parseRecipe flattens it, then the result has no tags", async () => {
-    const exit = await parseFixture("extends-lamp-child");
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (!Exit.isSuccess(exit)) return;
-    expect(exit.value.tags).toBeUndefined();
-  });
-
-  test("given a three-hop chain A to B to C to D, when parseRecipe flattens the child, then it succeeds", async () => {
-    const exit = await parseFixture("extends-a");
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (!Exit.isSuccess(exit)) return;
-    expect(exit.value.prompts?.map((prompt) => prompt.name)).toEqual(
-      expect.arrayContaining(["from-a", "from-b", "from-c", "from-d"]),
-    );
-    expect("extends" in exit.value).toBe(false);
-  });
-
-  test("given a four-hop chain, when parseRecipe runs, then it fails RecipeExtendsError kind depth naming every hop", async () => {
-    const exit = await parseFixture("extends-e");
-    const error = expectFailure(exit);
-    expect(error).toMatchObject({ _tag: "RecipeExtendsError", kind: "depth" });
-    const hops = hopNames(error);
-    expect(hops.some((hop) => hop.includes("extends-e"))).toBe(true);
-    expect(hops.some((hop) => hop.includes("extends-a"))).toBe(true);
-    expect(hops.some((hop) => hop.includes("extends-b"))).toBe(true);
-    expect(hops.some((hop) => hop.includes("extends-c"))).toBe(true);
-    expect(hops.some((hop) => hop.includes("extends-d"))).toBe(true);
-  });
-
-  test("given a cyclic extends chain, when parseRecipe runs, then it fails RecipeExtendsError kind cycle including the loop", async () => {
-    const exit = await parseFixture("extends-cycle-a");
-    const error = expectFailure(exit);
-    expect(error).toMatchObject({ _tag: "RecipeExtendsError", kind: "cycle" });
-    const hops = hopNames(error);
-    expect(hops.some((hop) => hop.includes("extends-cycle-a"))).toBe(true);
-    expect(hops.some((hop) => hop.includes("extends-cycle-b"))).toBe(true);
-  });
-
-  test("given a missing parent, when parseRecipe runs, then it fails RecipeExtendsError kind parent-not-found", async () => {
-    const yaml = `id: extends-missing
-title: Missing parent
-description: Extends a recipe that does not exist.
-version: 0.0.1
-extends: definitely-not-a-recipe
-`;
-    const exit = await runParse("test://extends-missing", yaml);
-    const error = expectFailure(exit);
-    expect(error).toMatchObject({ _tag: "RecipeExtendsError", kind: "parent-not-found" });
-  });
-
-  test("given a child YAML with extends lamp, when parseRecipe runs, then the result is a valid flattened RecipeManifest", async () => {
-    const exit = await parseFixture("extends-lamp-child");
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (!Exit.isSuccess(exit)) return;
-    expect(exit.value.id).toBe("extends-lamp-child");
-    expect(exit.value.title).toBe("Lamp Child");
-    expect(exit.value.version).toBe("0.2.0");
-    expect("extends" in exit.value).toBe(false);
-  });
-
-  test("given backdrop YAML extends lamp, when parseRecipe flattens it, then id prompts and extends match the lamp child contract", async () => {
-    expect(backdropRecipeYaml).toContain("extends: lamp");
-    const exit = await runParse(backdropRecipeSource, backdropRecipeYaml);
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (!Exit.isSuccess(exit)) return;
-    expect(exit.value.id).toBe("backdrop");
-    expect(exit.value.prompts?.map((prompt) => prompt.name)).toEqual(
-      expect.arrayContaining(["php", "database", "composer", "webroot"]),
-    );
-    expect("extends" in exit.value).toBe(false);
-    expect(exit.value.snapshot).toEqual(backdropSnapshot);
-  });
-
-  test("given joomla YAML extends lamp, when parseRecipe flattens it, then id prompts and extends match the lamp child contract", async () => {
-    expect(joomlaRecipeYaml).toContain("extends: lamp");
-    const exit = await runParse(joomlaRecipeSource, joomlaRecipeYaml);
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (!Exit.isSuccess(exit)) return;
-    expect(exit.value.id).toBe("joomla");
-    expect(exit.value.prompts?.map((prompt) => prompt.name)).toEqual(
-      expect.arrayContaining(["php", "database", "composer", "webroot"]),
-    );
-    expect("extends" in exit.value).toBe(false);
-    expect(exit.value.snapshot).toEqual(joomlaSnapshot);
+test("allows three inheritance hops and retains each ordered source", async () => {
+  await withRoot(async (root) => {
+    for (const [id, parent] of [
+      ["a", "b"],
+      ["b", "c"],
+      ["c", "d"],
+      ["d", ""],
+    ]) {
+      await Bun.write(
+        join(root, `${id}/recipe.yml`),
+        yaml(id ?? "", parent ? `extends: ../${parent}\n` : ""),
+      );
+    }
+    expect((await resolve(root, "a")).sources.map(({ value }) => value.id)).toEqual(["d", "c", "b", "a"]);
   });
 });
 
-describe("mergeRecipeManifests — snapshot ownership", () => {
-  test("keeps the child snapshot and drops the parent snapshot", () => {
-    const childSnapshot = { identity: { recipeId: "child" } };
-    const merged = mergeRecipeManifests(
-      { id: "parent", snapshot: { identity: { recipeId: "parent" } } },
-      { id: "child", snapshot: childSnapshot },
-    );
-    expect(merged.id).toBe("child");
-    expect(merged.snapshot).toEqual(childSnapshot);
-  });
-
-  test("does not inherit a parent snapshot when the child omits one", () => {
-    const merged = mergeRecipeManifests(
-      { id: "parent", snapshot: { identity: { recipeId: "parent" } } },
-      { id: "child" },
-    );
-    expect(merged.id).toBe("child");
-    expect(merged.snapshot).toBeUndefined();
-  });
-
-  test("keeps child migrations without inheriting parent migrations", () => {
-    const childMigrations = [{ id: "edge-1" }];
-    const merged = mergeRecipeManifests(
-      { id: "parent", migrations: [{ id: "parent-edge" }] },
-      { id: "child", migrations: childMigrations },
-    );
-    expect(merged.migrations).toEqual(childMigrations);
+test("rejects four inheritance hops with a complete chain", async () => {
+  await withRoot(async (root) => {
+    for (const [id, parent] of [
+      ["a", "b"],
+      ["b", "c"],
+      ["c", "d"],
+      ["d", "e"],
+      ["e", ""],
+    ]) {
+      await Bun.write(
+        join(root, `${id}/recipe.yml`),
+        yaml(id ?? "", parent ? `extends: ../${parent}\n` : ""),
+      );
+    }
+    await expect(resolve(root, "a")).rejects.toMatchObject({
+      _tag: "RecipeExtendsError",
+      kind: "depth",
+      chain: ["a", "b", "c", "d", "e"].map((id) => join(root, id)),
+    });
   });
 });
 
-describe("flattenRecipe — remote git parent", () => {
-  test("given child YAML extends git+https, when flatten runs twice, then parent merges and refreshes on each load", async () => {
-    await withTempRoot(async (dir) => {
-      const userDataRoot = join(dir, "data");
-      const calls: Array<{ readonly url: string; readonly stagingDir: string }> = [];
-      const gitRecipeCloner = makeCloner({
-        calls,
-        manifest: PARENT_RECIPE,
-        commitSha: "feedface".repeat(5),
-      });
-      const parsed = await Effect.runPromise(
-        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
-      );
-      const ctx = { userDataRoot, gitRecipeCloner };
+test("rejects a cycle before revisiting a source", async () => {
+  await withRoot(async (root) => {
+    await Bun.write(join(root, "a/recipe.yml"), yaml("a", "extends: ../b\n"));
+    await Bun.write(join(root, "b/recipe.yml"), yaml("b", "extends: ../a\n"));
+    await expect(resolve(root, "a")).rejects.toMatchObject({ _tag: "RecipeExtendsError", kind: "cycle" });
+  });
+});
 
-      const first = await Effect.runPromiseExit(flattenThenValidate("test://remote-child", parsed, ctx));
-      expect(Exit.isSuccess(first)).toBe(true);
-      if (!Exit.isSuccess(first)) return;
-      expect(first.value.id).toBe("remote-child");
-      expect(first.value.prompts?.map((prompt) => prompt.name)).toEqual(
-        expect.arrayContaining(["from-parent", "from-child"]),
-      );
-      expect("extends" in first.value).toBe(false);
-      expect(
-        await Bun.file(
-          join(userDataRoot, "recipe-cache", "git", "feedface".repeat(5), "recipe.yml"),
-        ).exists(),
-      ).toBe(true);
-
-      const second = await Effect.runPromiseExit(flattenThenValidate("test://remote-child", parsed, ctx));
-      expect(Exit.isSuccess(second)).toBe(true);
-      if (!Exit.isSuccess(second)) return;
-      expect(second.value.id).toBe("remote-child");
-      expect(calls).toHaveLength(2);
-      expect(calls[0]?.url).toBe("https://example.test/parent.git");
+test("rejects a missing bundled parent", async () => {
+  await withRoot(async (root) => {
+    await Bun.write(join(root, "a/recipe.yml"), yaml("a", "extends: missing-recipe\n"));
+    await expect(resolve(root, "a")).rejects.toMatchObject({
+      _tag: "RecipeExtendsError",
+      kind: "parent-not-found",
     });
   });
+});
 
-  test("given a remote parent that extends a sibling YAML, when flatten runs, then the in-tree YAML merges", async () => {
-    await withTempRoot(async (dir) => {
-      const userDataRoot = join(dir, "data");
-      const gitRecipeCloner = makeCloner({
-        manifest: `id: remote-parent
-title: Remote Parent
-description: Extends a sibling YAML recipe.
-version: 0.1.0
-extends: ./hook
-`,
-        extraFiles: [
-          {
-            path: "hook/recipe.yml",
-            contents: `id: hook
-title: Hook
-description: In-tree YAML parent.
-version: 0.1.0
-prompts:
-  - name: from-hook
-    type: text
-    message: Hook prompt
-    default: hook-default
-`,
-          },
-        ],
-        commitSha: "cafef00d".repeat(5),
-      });
-      const parsed = await Effect.runPromise(
-        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
-      );
-      const exit = await Effect.runPromiseExit(
-        flattenThenValidate("test://remote-child", parsed, { userDataRoot, gitRecipeCloner }),
-      );
-      expect(Exit.isSuccess(exit)).toBe(true);
-      if (!Exit.isSuccess(exit)) return;
-      expect(exit.value.prompts?.map((prompt) => prompt.name)).toEqual(
-        expect.arrayContaining(["from-hook", "from-child"]),
-      );
-    });
-  });
-
-  test("given a remote parent that extends sibling recipe.ts, when flatten runs, then recipe.ts is not executed", async () => {
-    await withTempRoot(async (dir) => {
-      const marker = join(dir, "executed");
-      const userDataRoot = join(dir, "data");
-      const gitRecipeCloner = makeCloner({
-        manifest: `id: remote-parent
-title: Remote Parent
-description: Tries to execute sibling recipe.ts.
-version: 0.1.0
-extends: ./hook
-`,
-        extraFiles: [
-          {
-            path: "hook/recipe.ts",
-            contents: [
-              "export default async () => {",
-              `  await Bun.write(${JSON.stringify(marker)}, "pwned");`,
-              "  return {",
-              '    id: "hook",',
-              '    title: "Hook",',
-              '    description: "Should not run.",',
-              '    version: "0.1.0",',
-              "  };",
-              "};",
-              "",
-            ].join("\n"),
-          },
-        ],
-        commitSha: "deadbeef".repeat(5),
-      });
-      const parsed = await Effect.runPromise(
-        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
-      );
-      const exit = await Effect.runPromiseExit(
-        flattenThenValidate("test://remote-child", parsed, { userDataRoot, gitRecipeCloner }),
-      );
-      const error = expectFailure(exit);
-      expect(error).toMatchObject({ _tag: "RecipeManifestValidationError" });
-      expect(await Bun.file(marker).exists()).toBe(false);
-    });
-  });
-
-  test("given a remote parent that extends a host-absolute path, when flatten runs, then the hop is rejected", async () => {
-    await withTempRoot(async (dir) => {
-      const userDataRoot = join(dir, "data");
-      const gitRecipeCloner = makeCloner({
-        manifest: `id: remote-parent
-title: Remote Parent
-description: Tries to escape the published tree.
-version: 0.1.0
-extends: ~/not-a-recipe
-`,
-        commitSha: "baddcafe".repeat(5),
-      });
-      const parsed = await Effect.runPromise(
-        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
-      );
-      const exit = await Effect.runPromiseExit(
-        flattenThenValidate("test://remote-child", parsed, { userDataRoot, gitRecipeCloner }),
-      );
-      const error = expectFailure(exit);
-      expect(error).toMatchObject({ _tag: "RecipeExtendsError", kind: "parent-not-found" });
-    });
-  });
-
-  test("given a remote parent whose local hop is a symlink out of the cache, when flatten runs, then the hop is rejected", async () => {
-    await withTempRoot(async (dir) => {
-      const outside = join(dir, "outside");
-      await mkdir(outside);
-      await writeFile(
-        join(outside, "recipe.yml"),
-        [
-          "id: escaped",
-          "title: Escaped",
-          "description: Host YAML reached through a symlink.",
-          "version: 0.1.0",
-          "prompts:",
-          "  - name: from-outside",
-          "    type: text",
-          "    message: Should not merge",
-          "",
-        ].join("\n"),
-      );
-      const userDataRoot = join(dir, "data");
-      const gitRecipeCloner = makeCloner({
-        manifest: `id: remote-parent
-title: Remote Parent
-description: Ships a symlink parent hop.
-version: 0.1.0
-extends: ./hook
-`,
-        extraSymlinks: [{ path: "hook", target: outside }],
-        commitSha: "b".repeat(40),
-      });
-      const parsed = await Effect.runPromise(
-        parseRecipeYaml({ source: "test://remote-child", content: CHILD_YAML }),
-      );
-      const exit = await Effect.runPromiseExit(
-        flattenThenValidate("test://remote-child", parsed, { userDataRoot, gitRecipeCloner }),
-      );
-      const error = expectFailure(exit);
-      expect(error).toMatchObject({ _tag: "RecipeExtendsError", kind: "parent-not-found" });
-    });
+test("rejects unsupported authored fields on an ancestor rather than silently stripping them", async () => {
+  await withRoot(async (root) => {
+    await Bun.write(join(root, "a/recipe.yml"), yaml("a", "extends: ../b\n"));
+    await Bun.write(join(root, "b/recipe.yml"), yaml("b", "snapshot:\n"));
+    await expect(resolve(root, "a")).rejects.toMatchObject({ _tag: "RecipeManifestValidationError" });
   });
 });

@@ -8,16 +8,22 @@ tags: [beta, docs, recipes, runs, allowlist]
 
 # Declare which commands a recipe may run
 
-Put `runs` in `recipe.yml` to constrain `ctx.run`, `choicesFrom`, and `postInit` Bun `x` actions. This host-tool policy does not authorize `postInit` `command` actions.
+Put `runs` in `recipe.yml`, next to the required `config` block, to constrain `postInit` Bun `x` actions. List the exact package spec the action requests. This policy does not authorize `postInit` `command` actions. The current recipe factory context has no `ctx.run`, and authored option prompts do not support `choicesFrom`.
 
 ```yaml
 id: runs-allowlist
 title: Runs allowlist
-description: Recipe that may run git and composer.
+description: Recipe that permits the prettier tool.
 version: 0.1.0
+config:
+  runtime: 4
+  services:
+    tools:
+      type: lando
+      image: busybox:1.37
+      command: sleep infinity
 runs:
-  - git
-  - composer
+  - prettier
 ```
 
 When `runs` is present, any other id fails with `RecipeRunNotAllowedError` before a child process starts. The allowlist is exact ids, not globs.
@@ -51,4 +57,4 @@ lando meta recipes validate ./ --format=json
 
 See [Recipe post-init commands](../../reference/recipe-post-init.mdx) for the separate canonical command allowlist and explicit start opt-in. Adding an id to `runs` cannot grant post-init command authority.
 
-See [Declare which URLs a recipe may fetch](./authoring-fetch-allowlist.mdx) for `ctx.fetch`.
+See [Declare which URLs a recipe may fetch](./authoring-fetch-allowlist.mdx) for the reserved fetch policy and current factory limits.

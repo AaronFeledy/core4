@@ -366,7 +366,7 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
       if (outcome._tag === "Failure") {
         expect(outcome.failure._tag).toBe("ScratchAppError");
         expect(outcome.failure.message).toContain('recipe prompt "php"');
-        expect(outcome.failure.message).toContain('Invalid value for prompt "php"');
+        expect(outcome.failure.message).toContain("Invalid answer for recipe option php.");
         expect(outcome.failure.message).not.toContain(
           "Unable to render the recipe into the scratch app root",
         );

@@ -1,17 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
-import { laravelDecomposer } from "../../src/recipes/builtin/laravel/decomposer.ts";
-import { laravelRecipeYaml } from "../../src/recipes/builtin/laravel/manifest.ts";
-import { laravelProducer, laravelSnapshot } from "../../src/recipes/builtin/laravel/snapshot.ts";
+import { Effect, Result } from "effect";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: laravelDecomposer,
+  producer: laravelProducer,
+  snapshot: laravelSnapshot,
+  manifest,
+} = bundledRecipe("laravel");
 
 const defaults = {
   php: "8.4",
@@ -136,12 +135,9 @@ describe("Laravel deterministic decomposition", () => {
     });
   });
 
-  test("publishes a complete, digest-consistent migratable snapshot", () => {
+  test("publishes a complete, digest-consistent migratable snapshot", async () => {
     // Given published YAML; when decoded; then its declarative inventory and identity agree.
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(laravelRecipeYaml));
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toEqual([
       { type: "message", text: "Run 'lando start' inside the new app directory to bring Laravel up." },
     ]);
@@ -155,9 +151,7 @@ describe("Laravel deterministic decomposition", () => {
       webroot: { kind: "string", pattern: "^[A-Za-z0-9._/-]+$" },
       worker: { kind: "boolean" },
     });
-    expect<unknown>(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(
-      laravelProducer.contentDigest,
-    );
+    expect<unknown>(await recompiledBundledDigest(manifest)).toBe(laravelProducer.contentDigest);
     expect(laravelSnapshot.identity.recipeId).toBe(manifest.id);
     expect(laravelSnapshot.identity.manifestVersion).toBe(manifest.version);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");

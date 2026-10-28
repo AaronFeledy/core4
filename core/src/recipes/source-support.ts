@@ -1,7 +1,22 @@
-import { stat } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { realpath, stat } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { RecipeManifestNotFoundError } from "@lando/sdk/errors";
+import type { RecipeTransportEvidence } from "./resolved-source-types";
+import type { ResolvedRecipe } from "./source";
+
+export const recipeTransportEvidence = (resolved: ResolvedRecipe): RecipeTransportEvidence | undefined =>
+  resolved.transport ??
+  (resolved.commitSha !== undefined
+    ? { kind: "git", commit: resolved.commitSha }
+    : resolved.sha256 !== undefined
+      ? { kind: "archive", digest: resolved.sha256 }
+      : undefined);
+
+export const recipePathEscapes = (candidate: string, root: string): boolean => {
+  const local = relative(root, candidate);
+  return isAbsolute(local) || local === ".." || local.startsWith(`..${sep}`);
+};
 
 type RecipePathFailure<Kind extends "subpath-invalid" | "subpath-missing"> = (input: {
   readonly message: string;
@@ -80,5 +95,18 @@ export const resolveRecipeManifest = async (input: {
       source: manifestPath,
     });
   }
-  return { recipeRoot, manifestPath, manifestYaml: await Bun.file(manifestPath).text() };
+  const local = relative(await realpath(publishedDir), await realpath(manifestPath));
+  if (isAbsolute(local) || local === ".." || local.startsWith(`..${sep}`)) {
+    fail({
+      message: `Recipe manifest escapes the published acquisition root: ${manifestPath}.`,
+      source,
+      kind: "subpath-missing",
+      remediation: "Publish recipe.yml inside the acquired tree without an escaping symlink.",
+    });
+  }
+  return {
+    recipeRoot: await realpath(recipeRoot),
+    manifestPath: await realpath(manifestPath),
+    manifestYaml: await Bun.file(manifestPath).text(),
+  };
 };

@@ -418,6 +418,13 @@ import {
   RecipeSnapshotAsset,
 } from "./recipe-snapshot.ts";
 import {
+  RecipeConfigLayer,
+  RecipeSource,
+  RecipeSourceCompileContext,
+  RecipeSourceOption,
+  RecipeSourcePrompt,
+} from "./recipe-source.ts";
+import {
   RecipeChoicesFrom,
   RecipeManifest,
   RecipeRegistryResolution,
@@ -834,6 +841,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   RecipeRegistryResolution,
   RecipeRegistryResponse,
   TemplateRenderContext,
+  RecipeSource,
+  RecipeSourceOption,
+  RecipeSourcePrompt,
+  RecipeConfigLayer,
+  RecipeSourceCompileContext,
   UpdateChannel,
   UpdateManifestPlatform,
   UpdateManifestHttpsUrl,
@@ -1371,6 +1383,13 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   FileSyncPlan: "Public Lando schema contract for File Sync Plan.",
   RecipeChoicesFrom: "Public Lando schema contract for Recipe Choices From.",
   RecipeManifest: "Public Lando schema contract for Recipe Manifest.",
+  RecipeSource: "Recipe author source compiled into runtime metadata and historical snapshots.",
+  RecipeSourceOption:
+    "Typed option declaration with one default and optional presentation or secret disposition.",
+  RecipeSourcePrompt: "Presentation-only metadata for a recipe option question.",
+  RecipeConfigLayer: "One ordered authored recipe config contribution.",
+  RecipeSourceCompileContext:
+    "Portable trusted source coordinates, observed assets and parent content evidence.",
   RecipeRegistryResolution: "Public Lando schema contract for Recipe Registry Resolution.",
   RecipeRegistryResponse: "Public Lando schema contract for Recipe Registry Response.",
   TemplateRenderContext: "Public Lando schema contract for Template Render Context.",

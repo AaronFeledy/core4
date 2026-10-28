@@ -1,178 +1,36 @@
-import { describe, expect, test } from "bun:test";
-import type { ExpressionNode } from "@lando/sdk/expressions";
-import { phpSiteSnapshotBuilders } from "../../src/recipes/builtin/php-site-snapshot.ts";
+import { expect, test } from "bun:test";
+import { ServiceName } from "@lando/sdk/schema";
+import { loadBuiltinRecipe } from "../_support/recipe-output.ts";
 
-// Captured from the unmodified Drupal and Drupal CMS expressions at efb9e76a5.
-const routes = {
-  kind: "ArrayLiteral",
-  elements: [
-    {
-      kind: "ObjectLiteral",
-      entries: [
-        { key: "hostname", value: { kind: "Literal", value: "{{ app.name }}.{{ proxy.defaultDomain }}" } },
-        { key: "scheme", value: { kind: "Literal", value: "both" } },
-      ],
-    },
-  ],
-};
-const mounts: ExpressionNode = {
-  kind: "ArrayLiteral",
-  elements: [
-    {
-      kind: "ObjectLiteral",
-      entries: [
-        { key: "source", value: { kind: "Literal", value: "./.lando/php/drupal-cms.ini" } },
-        {
-          key: "target",
-          value: { kind: "Literal", value: "/usr/local/etc/php/conf.d/50-lando-drupal-cms.ini" },
-        },
-        { key: "readOnly", value: { kind: "Literal", value: true } },
-      ],
-    },
-  ],
-};
-const databaseType = { key: "type", value: { kind: "Literal", value: "{{ recipe.database }}" } } as const;
-const databaseName: ExpressionNode = { kind: "Literal", value: "{{ app.name }}" };
-const apacheEntries = [
-  { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
-  { key: "primary", value: { kind: "Literal", value: true } },
-  { key: "framework", value: { kind: "Literal", value: "drupal" } },
-  { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-  { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
-  { key: "allowOverride", value: { kind: "Literal", value: true } },
-  { key: "port", value: { kind: "Literal", value: 80 } },
-  { key: "dependsOn", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "database" }] } },
-];
-const fpmEntries = [
-  { key: "type", value: { kind: "Literal", value: "php:{{ recipe.php }}" } },
-  { key: "primary", value: { kind: "Literal", value: true } },
-  { key: "framework", value: { kind: "Literal", value: "drupal" } },
-  { key: "via", value: { kind: "Literal", value: "fpm" } },
-  { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-  { key: "composer", value: { kind: "Literal", value: "{{ recipe.composer }}" } },
-  { key: "dependsOn", value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "database" }] } },
-];
-const common = {
-  usesNginx: {
-    kind: "Call",
-    callee: "eq",
-    args: [
-      { kind: "Path", head: "options", segments: [{ type: "prop", name: "webserver" }] },
-      { kind: "Literal", value: "nginx" },
-    ],
-  },
-  primaryRoutes: routes,
-  edgeService: {
-    kind: "ObjectLiteral",
-    entries: [
-      { key: "type", value: { kind: "Literal", value: "nginx" } },
-      { key: "backend", value: { kind: "Literal", value: "appserver" } },
-      { key: "webroot", value: { kind: "Literal", value: "{{ recipe.webroot }}" } },
-      { key: "routes", value: routes },
-    ],
-  },
-};
-const cases = [
-  {
-    id: "drupal",
-    options: { framework: "drupal" },
-    expected: {
-      ...common,
-      databaseService: { kind: "ObjectLiteral", entries: [databaseType] },
-      apacheAppserver: {
-        kind: "ObjectLiteral",
-        entries: [...apacheEntries, { key: "routes", value: routes }],
-      },
-      fpmAppserver: { kind: "ObjectLiteral", entries: fpmEntries },
-    },
-  },
-  {
-    id: "drupal-cms",
-    options: {
+test.each(["drupal", "drupal-cms"])(
+  "%s preserves Apache/FPM variants through shared compilation",
+  async (id) => {
+    const apache = await loadBuiltinRecipe(id, { webserver: "apache" });
+    const fpm = await loadBuiltinRecipe(id, { webserver: "nginx" });
+    const first = apache.document.services?.[ServiceName.make("appserver")];
+    const second = fpm.document.services?.[ServiceName.make("appserver")];
+    expect(first).toMatchObject({
+      type: "php:8.4",
       framework: "drupal",
-      databaseFields: [["database", databaseName]],
-      appserverMounts: () => structuredClone(mounts),
-    },
-    expected: {
-      ...common,
-      databaseService: {
-        kind: "ObjectLiteral",
-        entries: [databaseType, { key: "database", value: databaseName }],
-      },
-      apacheAppserver: {
-        kind: "ObjectLiteral",
-        entries: [...apacheEntries, { key: "mounts", value: mounts }, { key: "routes", value: routes }],
-      },
-      fpmAppserver: { kind: "ObjectLiteral", entries: [...fpmEntries, { key: "mounts", value: mounts }] },
-    },
+      composer: "2",
+      port: 80,
+      allowOverride: true,
+    });
+    expect(second).toMatchObject({ type: "php:8.4", framework: "drupal", composer: "2", via: "fpm" });
+    expect(second?.routes).toBeUndefined();
+    expect(second?.port).toBeUndefined();
+    expect(fpm.document.services?.[ServiceName.make("edge")]).toMatchObject({
+      backend: "appserver",
+      type: "nginx",
+    });
+    if (id === "drupal-cms") {
+      expect(second?.mounts).toEqual(first?.mounts);
+      expect(second?.build?.artifact).toEqual(first?.build?.artifact);
+      expect(second?.mounts).toContainEqual({
+        source: "./.lando/php/drupal-cms.ini",
+        target: "/usr/local/etc/php/conf.d/50-lando-drupal-cms.ini",
+        readOnly: true,
+      });
+    }
   },
-] as const;
-
-describe("PHP site snapshot builders", () => {
-  test.each(["apacheAppserver", "fpmAppserver"] as const)(
-    "%s includes the supplied artifact build expression",
-    (variant) => {
-      // Given an authored artifact build factory.
-      const build: ExpressionNode = {
-        kind: "ObjectLiteral",
-        entries: [
-          {
-            key: "artifact",
-            value: { kind: "ArrayLiteral", elements: [{ kind: "Literal", value: "printf build-test" }] },
-          },
-        ],
-      };
-      const builders = phpSiteSnapshotBuilders({
-        framework: "drupal",
-        appserverBuild: () => structuredClone(build),
-      });
-      // When the selected PHP variant is generated.
-      const actual = builders[variant]();
-      // Then its build value is the caller's expression, not an omitted or substituted default.
-      if (actual.kind !== "ObjectLiteral") throw new TypeError("Expected appserver object expression");
-      expect(actual.entries.find(({ key }) => key === "build")?.value).toEqual(build);
-    },
-  );
-
-  for (const fixture of cases) {
-    const builders = phpSiteSnapshotBuilders(fixture.options);
-    for (const [name, build] of Object.entries(builders)) {
-      test(`${fixture.id} ${name} preserves the baseline expression`, () => {
-        const actual = build();
-        expect(actual).toEqual(Reflect.get(fixture.expected, name));
-      });
-    }
-    test(`${fixture.id} factories allocate disjoint trees across builders and successive calls`, () => {
-      const seen = new Set<object>();
-      const visit = (value: unknown): void => {
-        if (value === null || typeof value !== "object") return;
-        expect(seen.has(value)).toBe(false);
-        seen.add(value);
-        for (const child of Object.values(value)) visit(child);
-      };
-      const nodes = Object.values(builders).flatMap((build) => [build(), build()]);
-      for (const node of nodes) visit(node);
-    });
-  }
-
-  test("database fields copy nested nodes instead of retaining caller references", () => {
-    const nested: ExpressionNode = { kind: "ArrayLiteral", elements: [databaseName] };
-    const builders = phpSiteSnapshotBuilders({ framework: "drupal", databaseFields: [["extra", nested]] });
-    const actual = builders.databaseService();
-    expect(actual).toEqual({
-      kind: "ObjectLiteral",
-      entries: [databaseType, { key: "extra", value: nested }],
-    });
-    expect(actual).not.toBe(builders.databaseService());
-    switch (actual.kind) {
-      case "ObjectLiteral": {
-        const copied = actual.entries.find((entry) => entry.key === "extra")?.value;
-        expect(copied).not.toBe(nested);
-        if (copied?.kind === "ArrayLiteral") expect(copied.elements[0]).not.toBe(databaseName);
-        break;
-      }
-      default:
-        throw new TypeError("Expected database object expression");
-    }
-  });
-});
+);

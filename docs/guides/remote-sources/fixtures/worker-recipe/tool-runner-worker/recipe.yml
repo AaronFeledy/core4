@@ -1,0 +1,26 @@
+id: tool-runner-worker
+title: Tool Runner with optional worker
+description: One BusyBox service plus an optional worker service.
+version: 1.0.0
+options:
+  worker:
+    type:
+      kind: boolean
+    default: false
+    prompt:
+      message: Add a worker service?
+config:
+  runtime: 4
+  services:
+    tools:
+      type: lando
+      image: busybox:1.37
+      command: sleep infinity
+variants:
+  - when: "{{ options.worker }}"
+    config:
+      services:
+        worker:
+          type: lando
+          image: busybox:1.37
+          command: sleep infinity

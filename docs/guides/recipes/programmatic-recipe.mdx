@@ -8,53 +8,161 @@ tags: [beta, docs, recipes, typescript, programmatic]
 
 # Write a programmatic recipe
 
-Ship `recipe.ts` instead of `recipe.yml`. Default-export a `Recipe` object or a factory. Lando loads it during initialization and when another recipe extends it. `lando meta recipes validate` and `lando meta recipes describe` are YAML-only. They resolve `recipe.yml` and never evaluate `recipe.ts`.
+Ship `recipe.ts` instead of `recipe.yml`. Default-export the same recipe shape you'd write in YAML, wrapped in `defineRecipe` for type checking: metadata, an ordinary Landofile-shaped `config`, and optional `options`, `variants`, and `files`. Lando compiles it and derives every digest and producer identity itself; there is no snapshot, expression tree, or hash to author.
 
-A directory ships one or the other, never both. The directory basename must match `id`.
+Lando evaluates `recipe.ts` from a local directory only: `lando init --recipe=./<dir>`, `lando meta recipes validate ./<dir>`, `lando meta recipes describe ./<dir>`, and a local recipe that extends it. Remote sources (git, tarball, npm, registry) read `recipe.yml` only, so publish YAML for anything you install remotely. A directory ships one file or the other, never both, and its basename must match `id`.
 
-```ts
-import { type Recipe, defineRecipe } from "@lando/sdk/schema";
+Only load TypeScript recipes you trust. Even `validate` and `describe` evaluate local recipe code on your host; import checks are not a security sandbox. Use YAML when the recipe only needs declarative configuration.
 
-const recipe: Recipe = {
-  id: "programmatic-recipe",
-  title: "Programmatic Recipe",
-  description: "A recipe authored as TypeScript instead of recipe.yml.",
-  version: "1.0.0",
-  runs: ["composer", "git"],
-  fetchAllowlist: ["https://api.example.com/**"],
-  prompts: [{ name: "name", type: "text", message: "App name?" }],
-  files: [{ src: "lando.yml.hbs", dest: ".lando.yml", template: true }],
-  postInit: [{ type: "message", text: "Done!" }],
-};
+## Write recipe.ts
 
-export default defineRecipe(recipe);
-```
+Save these two files in a directory named `tool-runner-ts`.
 
-`defineRecipe` is an identity helper. It pins the export to `Recipe` or `RecipeFactory`. Import it from `@lando/sdk/schema`, not the `@lando/sdk` root. Lando provides `@lando/sdk` (root and public subpaths except `test` and `docs/components`) and `effect` to `recipe.ts` when it loads the file, so the recipe directory needs no `node_modules` for those imports; any other package must be installed in a `node_modules` reachable from the file.
-
-## Factory export
-
-A default-export function receives `{ cwd, env }` and may be async. `cwd` is the recipe directory. The returned object still has to pass `RecipeManifest`.
+`recipe.ts` declares one BusyBox service and one templated README:
 
 ```ts
 import { defineRecipe } from "@lando/sdk/schema";
 
-export default defineRecipe(async () => ({
+export default defineRecipe({
+  id: "tool-runner-ts",
+  title: "Tool Runner (TypeScript)",
+  description: "One disposable BusyBox service, authored as recipe.ts.",
+  version: "1.0.0",
+  config: {
+    runtime: 4,
+    services: {
+      tools: { type: "lando", image: "busybox:1.37", command: "sleep infinity" },
+    },
+  },
+  files: [{ src: "README.tmpl", dest: "README.md", template: true }],
+});
+```
+
+`README.tmpl`:
+
+```text
+# {{ app.name }}
+
+Run `lando start`, then `lando exec tools -- busybox --help`.
+```
+
+`config` is the Landofile Lando writes, minus `name:` and the `recipe:` provenance block it adds. `lando init` asks for the app name itself, so the recipe declares no `name` option. `files` is optional; a `template: true` file gets only `{{ app.name }}` replaced, and a static file is copied byte for byte. Lando digests each file at init time.
+
+`defineRecipe` is an identity helper that pins the export to `Recipe` or `RecipeFactory`. Import it from `@lando/sdk/schema`, not the `@lando/sdk` root. Lando provides `@lando/sdk` (root and public subpaths except `test` and `docs/components`) and `effect` when it loads the file, so the recipe directory needs no `node_modules` for those imports; any other package must be installed in a `node_modules` reachable from the file.
+
+## Validate before you init
+
+From the parent directory:
+
+```sh
+lando meta recipes validate ./tool-runner-ts --format=json
+```
+
+`readiness` is `ready` and `preview.landofile` shows the `.lando.yml` prepared with default option answers, an app name derived from the current directory, and the current directory as the destination. Inspection and init share the same preparation, but init with a different name, answers, or destination produces a different preview.
+
+`historyEligible` means the resolved sources can produce inert declarative history without evaluating recipe code. It is `false` when the recipe itself or any ancestor evaluated `recipe.ts`, including a YAML child of a TypeScript parent. It is `true` only when every resolved source is declarative; it does not promise external published versions or installed migration edges. Lando never re-evaluates recipe code to reconstruct history.
+
+Both commands fail before anything is written, but the tag tells you where. A module Lando can't evaluate into a recipe, including one with no default export, a TypeScript syntax error, or a disallowed import, fails with `RecipeManifestParseError`. A default export that evaluates but isn't a valid recipe, such as an invalid `config` or an `id` that doesn't match the directory name, fails with `RecipeManifestValidationError`.
+
+## Init from the directory
+
+```sh
+lando init --recipe=./tool-runner-ts --name=demo-app --yes
+```
+
+Init creates `demo-app/` in the current directory with `.lando.yml` and `README.md`. Verify from inside the new app directory with `lando app:config --format=json`.
+
+<Guide>
+  <Scenario id="init-from-recipe-ts" render>
+    <Step name="validate-before-init">
+      <UseFixture name="ts-recipe" />
+      <Run command="lando meta recipes validate ./tool-runner-ts --format=json" />
+      <Verify command="lando meta recipes validate ./tool-runner-ts --format=json" expect={{ stdout: { regex: "\"readiness\":\\s*\"ready\"" } }} />
+      <Verify command="lando meta recipes validate ./tool-runner-ts --format=json" expect={{ stdout: { regex: "\"historyEligible\":\\s*false" } }} />
+    </Step>
+    <Step name="init-from-directory">
+      <Run command="lando init --recipe=./tool-runner-ts --name=demo-app --yes" />
+      <Verify file="ts-recipe/demo-app/.lando.yml" expect={{ regex: "name: demo-app" }} />
+      <Verify file="ts-recipe/demo-app/README.md" expect={{ regex: "^# demo-app" }} />
+    </Step>
+    <Step name="read-generated-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"lando\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"busybox:1\\.37\"" } }} />
+    </Step>
+    <Step name="cleanup-generated-app">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-missing-default-export" render={false} reason="Missing default export is RecipeManifestParseError">
+    <Step name="validate-missing-default-export">
+      <UseFixture name="missing-default-export" />
+      <Run command="lando meta recipes validate ./ --format=json" expectExit={1} />
+      <Verify errorTag="RecipeManifestParseError" expect={{ regex: "missing a default export" }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Typed options and variants
+
+Options and variants take the same shape as in YAML. Declare each option once with a closed `type`, an optional `default`, and an optional `prompt`; put conditional config under `variants` with a `when` expression over `options`:
+
+```ts
+import { defineRecipe } from "@lando/sdk/schema";
+
+export default defineRecipe({
+  id: "tool-runner-worker-ts",
+  title: "Tool Runner with optional worker",
+  description: "One BusyBox service plus an optional worker service.",
+  version: "1.0.0",
+  options: {
+    worker: { type: { kind: "boolean" }, default: false, prompt: { message: "Add a worker service?" } },
+  },
+  config: {
+    runtime: 4,
+    services: {
+      tools: { type: "lando", image: "busybox:1.37", command: "sleep infinity" },
+    },
+  },
+  variants: [
+    {
+      when: "{{ options.worker }}",
+      config: {
+        services: {
+          worker: { type: "lando", image: "busybox:1.37", command: "sleep infinity" },
+        },
+      },
+    },
+  ],
+});
+```
+
+Answer it with `lando init --recipe=./tool-runner-worker-ts --answer worker=true --yes`, or let `--yes` take the default.
+
+## Factory export
+
+A default-export function receives `{ cwd, env }` and may be async. `cwd` is the recipe directory. Return the same recipe object:
+
+```ts
+import { defineRecipe } from "@lando/sdk/schema";
+
+export default defineRecipe(async ({ env }) => ({
   id: "factory-recipe",
   title: "Factory Recipe",
   description: "Built by an async factory.",
   version: "0.1.0",
-  runs: ["git"],
-  prompts: [{ name: "name", type: "text", message: "App name?" }],
-  files: [{ src: "a", dest: ".lando.yml" }],
-  postInit: [{ type: "gitInit" }],
+  config: {
+    runtime: 4,
+    services: {
+      tools: { type: "lando", image: env.TOOL_RUNNER_IMAGE ?? "busybox:1.37", command: "sleep infinity" },
+    },
+  },
 }));
 ```
 
-Bun loads the TypeScript. There is no compile step at recipe-load time. Top-level imports are sandbox-scanned: no host shell-outs, no remote module fetches, no filesystem access outside the recipe directory.
-
-A TypeScript recipe must satisfy the same manifest requirements as a YAML recipe, including a valid `id` that matches its directory.
+Bun executes the TypeScript directly. Lando checks its imports and bounds evaluation time; keep the factory focused on returning recipe data rather than performing side effects. Reading the environment, as this factory does, is allowed, and the producer identity Lando records reflects whichever image it rendered.
 
 ## Next
 
-See [Extend a bundled recipe](./extending-recipes.mdx) when the TypeScript recipe should sit on a parent.
+See [Extend a bundled recipe](./extending-recipes.mdx) when the TypeScript recipe should sit on a parent, and [Write a recipe and init from a remote source](./remote-sources.mdx) for the same recipe as `recipe.yml`.

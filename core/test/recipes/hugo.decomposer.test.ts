@@ -1,26 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { hugoDecomposer } from "../../src/recipes/builtin/hugo/decomposer.ts";
 import { HUGO_BUILD_ARTIFACT } from "../../src/recipes/builtin/hugo/install.ts";
-import { hugoRecipeSource, hugoRecipeYaml } from "../../src/recipes/builtin/hugo/manifest.ts";
 import { HUGO_SCAFFOLD } from "../../src/recipes/builtin/hugo/scaffold.ts";
-import {
-  HUGO_CONTENT_DIGEST,
-  hugoDefaults,
-  hugoProducer,
-  hugoSnapshot,
-} from "../../src/recipes/builtin/hugo/snapshot.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: hugoDecomposer,
+  defaults: hugoDefaults,
+  producer: hugoProducer,
+  snapshot: hugoSnapshot,
+  contentDigest: HUGO_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("hugo");
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 
 const defaults = { ...hugoDefaults };
 const validInput: RecipeDecomposeInput = { producer: hugoProducer, options: defaults, secrets: {} };
@@ -35,10 +30,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: hugoRecipeSource, content: hugoRecipeYaml })),
-);
 
 describe("hugo decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -119,7 +110,6 @@ describe("hugo decomposition", () => {
 
   test("publishes the site scaffold inventory with declared files and postInit", () => {
     expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
       ...Object.keys(HUGO_SCAFFOLD).map((dest) => ({
         src: `assets/${dest}`,
         dest,
@@ -128,16 +118,18 @@ describe("hugo decomposition", () => {
     ]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual(
-      Object.entries(HUGO_SCAFFOLD).map(([dest, content]) => ({
-        dest,
-        digest: recipeAssetDigest(content),
-        template: dest === "hugo.toml",
-      })),
+      Object.entries(HUGO_SCAFFOLD)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([dest, content]) => ({
+          dest,
+          digest: recipeAssetDigest(content),
+          template: dest === "hugo.toml",
+        })),
     );
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(HUGO_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(HUGO_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(hugoSnapshot);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });

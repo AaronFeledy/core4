@@ -1,0 +1,1 @@
+Static files are copied byte for byte, so {{ app.name }} stays literal here.

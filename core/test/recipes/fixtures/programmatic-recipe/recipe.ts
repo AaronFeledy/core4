@@ -7,17 +7,14 @@ const recipe: Recipe = {
   version: "1.0.0",
   runs: ["composer", "npm"],
   fetchAllowlist: ["https://api.example.com/**"],
-  prompts: [
-    { name: "name", type: "text", message: "App name?" },
-    {
-      name: "phpVersion",
-      type: "select",
-      message: "PHP version?",
+  options: {
+    phpVersion: {
+      type: { kind: "enum", values: ["8.2", "8.3"] },
+      prompt: { message: "PHP version?" },
       default: "8.3",
-      choices: ["8.2", "8.3"],
     },
-  ],
-  files: [{ src: "lando.yml.hbs", dest: ".lando.yml", template: true }],
+  },
+  config: { services: { appserver: { type: "php:{{ recipe.phpVersion }}" } } },
   postInit: [
     { type: "bun", verb: "install" },
     { type: "message", text: "Done!" },

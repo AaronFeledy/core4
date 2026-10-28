@@ -11,7 +11,8 @@ import {
   type AppConfigTranslateOptions,
   appConfigTranslate,
 } from "../../src/cli/commands/app-config-translate.ts";
-import { lampDecomposer } from "../../src/recipes/builtin/lamp/decomposer.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { decomposer: lampDecomposer } = bundledRecipe("lamp");
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
 

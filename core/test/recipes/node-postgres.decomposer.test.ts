@@ -1,30 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { nodePostgresDecomposer } from "../../src/recipes/builtin/node-postgres/decomposer.ts";
-import { nodePostgresRecipeYaml } from "../../src/recipes/builtin/node-postgres/manifest.ts";
 import {
   NODE_POSTGRES_PACKAGE_JSON_TEMPLATE,
   NODE_POSTGRES_SERVER_JS,
 } from "../../src/recipes/builtin/node-postgres/scaffold.ts";
-import {
-  NODE_POSTGRES_CONTENT_DIGEST,
-  nodePostgresDefaults,
-  nodePostgresProducer,
-  nodePostgresSnapshot,
-} from "../../src/recipes/builtin/node-postgres/snapshot.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: nodePostgresDecomposer,
+  defaults: nodePostgresDefaults,
+  producer: nodePostgresProducer,
+  snapshot: nodePostgresSnapshot,
+  contentDigest: NODE_POSTGRES_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("node-postgres");
 import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
 import { renderAuxiliaryScaffold } from "../../src/recipes/init-pipeline/files.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
 
 const defaults = { ...nodePostgresDefaults };
 const validInput: RecipeDecomposeInput = { producer: nodePostgresProducer, options: defaults, secrets: {} };
@@ -39,11 +34,6 @@ const authoringOf = (options: RecipeDecomposeInput["options"]) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-// The production recipe parser represents bare mapping keys as empty maps, not YAML nulls.
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: "node-postgres/recipe.yml", content: nodePostgresRecipeYaml })),
-);
 
 describe("node-postgres decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -110,7 +100,6 @@ describe("node-postgres decomposition", () => {
 
   test("publishes the auxiliary inventory with declared files and postInit", () => {
     expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
       { src: "templates/package.json.tmpl", dest: "package.json", template: true },
       { src: "assets/server.js", dest: "server.js", template: false },
     ]);
@@ -131,13 +120,9 @@ describe("node-postgres decomposition", () => {
     );
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(
-      NODE_POSTGRES_CONTENT_DIGEST,
-    );
-    expect(NODE_POSTGRES_CONTENT_DIGEST).toBe(
-      "sha256:61f39ad12c9a28a6ce451bc80947d89fbf7a2fde52d0f756d0645dc45ca0be9b",
-    );
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(NODE_POSTGRES_CONTENT_DIGEST);
+    expect(NODE_POSTGRES_CONTENT_DIGEST).toBe(nodePostgresSnapshot.identity.contentDigest);
     expect(manifest.snapshot).toEqual(nodePostgresSnapshot);
     expect(nodePostgresSnapshot.identity.contentDigest).toBe(NODE_POSTGRES_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");

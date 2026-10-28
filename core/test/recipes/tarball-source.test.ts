@@ -25,15 +25,8 @@ const VALID_RECIPE = `id: remote-recipe
 title: Remote Recipe
 description: A tarball sourced recipe.
 version: 0.1.0
-prompts:
-  - name: name
-    type: text
-    message: App name
-    default: tarball-app
-files:
-  - src: templates/.lando.yml.tmpl
-    dest: .lando.yml
-    template: true
+config:
+  runtime: 4
 `;
 
 const withTempRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -678,7 +671,9 @@ describe("resolveTarballRecipeSource", () => {
 describe("initApp tarball source boundary", () => {
   test("tarball checksum confirmation includes the downloaded SHA-256 guidance", async () => {
     await withTempRoot(async (dir) => {
-      const bytes = await makeTarball({ "recipe.yml": VALID_RECIPE });
+      const bytes = await makeTarball({
+        "recipe.yml": VALID_RECIPE.replace("config:\n  runtime: 4", "config: invalid"),
+      });
       const prompts: Array<string> = [];
       const interaction: InteractionPrompter = {
         promptAll: async () => ({}),
@@ -713,16 +708,18 @@ describe("initApp tarball source boundary", () => {
         caught = error;
       }
 
-      expect(caught).toBeInstanceOf(Error);
+      expect(caught).toMatchObject({ _tag: "RecipeManifestValidationError" });
       expect(prompts).toHaveLength(1);
       expect(prompts[0]).toContain("No --checksum supplied");
       expect(prompts[0]).toContain(sha256(bytes));
     });
   });
 
-  test("tarball recipes reach manifest parsing before the existing non-bundled render limitation", async () => {
+  test("unverified tarball recipes warn before rejecting invalid config without writing", async () => {
     await withTempRoot(async (dir) => {
-      const bytes = await makeTarball({ "recipe.yml": VALID_RECIPE });
+      const bytes = await makeTarball({
+        "recipe.yml": VALID_RECIPE.replace("config:\n  runtime: 4", "config: invalid"),
+      });
       const warnings: Array<string> = [];
       let caught: unknown;
       try {
@@ -733,6 +730,7 @@ describe("initApp tarball source boundary", () => {
           url: "https://example.test/recipe.tar.gz",
           userDataRoot: join(dir, "data"),
           tarballRecipeFetcher: fetcherFor(bytes),
+          destination: join(dir, "app"),
           nonInteractive: true,
           onWarn: (message) => {
             warnings.push(message);
@@ -745,8 +743,11 @@ describe("initApp tarball source boundary", () => {
       expect(warnings[0]).toContain("No --checksum supplied");
       expect(warnings[0]).toContain(sha256(bytes));
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain("Recipe file rendering");
-      expect((caught as Error).message).toContain("https://example.test/recipe.tar.gz");
+      expect(caught).toMatchObject({
+        _tag: "RecipeManifestValidationError",
+        source: expect.stringContaining("recipe.yml"),
+      });
+      expect(await Bun.file(join(dir, "app", ".lando.yml")).exists()).toBe(false);
     });
   });
 

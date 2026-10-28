@@ -1,23 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { drupalDecomposer } from "../../src/recipes/builtin/drupal/decomposer.ts";
-import { drupalRecipeYaml } from "../../src/recipes/builtin/drupal/manifest.ts";
 import { drupalScaffoldCommand } from "../../src/recipes/builtin/drupal/scaffold-command.ts";
-import {
-  DRUPAL_CONTENT_DIGEST,
-  drupalDefaults,
-  drupalProducer,
-  drupalSnapshot,
-} from "../../src/recipes/builtin/drupal/snapshot.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: drupalDecomposer,
+  defaults: drupalDefaults,
+  producer: drupalProducer,
+  snapshot: drupalSnapshot,
+  contentDigest: DRUPAL_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("drupal");
 import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 
 const defaults = { ...drupalDefaults };
@@ -43,8 +39,6 @@ const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(drupalRecipeYaml));
 
 const scaffoldTooling = {
   service: "appserver",
@@ -108,7 +102,7 @@ describe("drupal decomposition", () => {
 
   test("adds the nginx edge service when nondefault options select nginx", () => {
     const authoring = authoringOf(alternatives) as { services: Record<string, unknown> };
-    expect(Object.keys(authoring.services)).toEqual(["appserver", "edge", "database"]);
+    expect(Object.keys(authoring.services).sort()).toEqual(["appserver", "database", "edge"]);
     expect(authoring.services.appserver).toEqual({
       type: "php:{{ recipe.php }}",
       primary: true,
@@ -157,15 +151,13 @@ describe("drupal decomposition", () => {
   });
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(DRUPAL_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(DRUPAL_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(drupalSnapshot);
     expect(drupalSnapshot.identity.contentDigest).toBe(DRUPAL_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");

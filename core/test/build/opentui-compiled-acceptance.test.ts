@@ -70,6 +70,7 @@ const normalizeTiming = (text: string): string =>
   text
     .replace(/\(\d+(?:\.\d+)?(?:ms|s)\)/g, "(<elapsed>)")
     .replace(/"durationMs":\s*\d+(?:\.\d+)?/g, '"durationMs":0')
+    .replace(/("receipt":\s*\{\s*"id":\s*")[0-9a-f-]+"/g, '$1<transaction-id>"')
     // Recipe notices are renderer events; independent runs retain different clock instants.
     .replace(/"timestamp":"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z"/g, '"timestamp":"<timestamp>"');
 
@@ -308,7 +309,7 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
 });
 
 describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acceptance", () => {
-  test("plain and json match the explicit line-mode baseline apart from elapsed timing and timestamps", async () => {
+  test("plain and json match the explicit line-mode baseline apart from per-run metadata", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "lando-opentui-source-"));
     const appRoot = resolve(root, "app");
     await mkdir(appRoot);

@@ -1,24 +1,24 @@
 import { describe, expect, test } from "bun:test";
+import { compiledLandofileSource } from "@lando/landofile/serializer";
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import {
-  computeRecipeContentDigest,
   fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
+  renderCompiledRecipeSnapshot,
   validateSnapshotTemplate,
 } from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { nodeTsDecomposer } from "../../src/recipes/builtin/node-ts/decomposer.ts";
-import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
-import {
-  NODE_TS_CONTENT_DIGEST,
-  nodeTsDefaults,
-  nodeTsProducer,
-  nodeTsSnapshot,
-} from "../../src/recipes/builtin/node-ts/snapshot.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: nodeTsDecomposer,
+  defaults: nodeTsDefaults,
+  producer: nodeTsProducer,
+  snapshot: nodeTsSnapshot,
+  contentDigest: NODE_TS_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("node-ts");
 
 const defaults = { ...nodeTsDefaults };
 const validInput: RecipeDecomposeInput = { producer: nodeTsProducer, options: defaults, secrets: {} };
@@ -33,10 +33,6 @@ const authoringOf = (options: RecipeDecomposeInput["options"]) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: "node-ts/recipe.yml", content: nodeTsRecipeYaml })),
-);
 
 describe("node-ts decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -61,8 +57,8 @@ describe("node-ts decomposition", () => {
       recipe: provenance,
       services: {
         web: {
-          image: "node:{{ default(env.LANDO_NODE_VERSION, '24') }}",
-          environment: { NODE_ENV: "{{ default(env.NODE_ENV, 'development') }}" },
+          image: 'node:{{ default(env.LANDO_NODE_VERSION, "24") }}',
+          environment: { NODE_ENV: '{{ default(env.NODE_ENV, "development") }}' },
           routes: [{ hostname: "{{ app.name }}.{{ proxy.defaultDomain }}", scheme: "both" }],
         },
       },
@@ -113,24 +109,26 @@ describe("node-ts decomposition", () => {
   });
 
   test("publishes the canonical Landofile target used by the init pipeline", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(NODE_TS_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(NODE_TS_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(nodeTsSnapshot);
     expect(nodeTsSnapshot.identity.contentDigest).toBe(NODE_TS_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
-    expect(NODE_TS_CONTENT_DIGEST).toBe(
-      "sha256:23b25b9ec8ffcf2d63430b8c0f8232bcac5beb2a02ac03c9fccd88113cf649d1",
-    );
+    expect(NODE_TS_CONTENT_DIGEST).toBe(nodeTsSnapshot.identity.contentDigest);
   });
 
   test("renders the same authoring data from the snapshot when options are empty", () => {
-    expect(Result.getOrThrow(renderRecipeSnapshot(nodeTsSnapshot, {}))).toEqual(authoringOf(defaults));
+    expect(
+      compiledLandofileSource(
+        Result.getOrThrow(
+          renderCompiledRecipeSnapshot(nodeTsSnapshot, {}, { appRoot: AbsolutePath.make("/"), env: {} }),
+        ),
+      ),
+    ).toEqual(authoringOf(defaults));
   });
 });
