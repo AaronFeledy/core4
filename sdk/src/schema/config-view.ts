@@ -11,6 +11,7 @@ export const GlobalConfigView = Schema.toType(
       "userCacheRoot",
       "systemPluginRoot",
       "defaultProviderId",
+      "defaultFileSyncEngine",
       "defaultRouterService",
       "sshAgent",
       "gpgAgent",

@@ -25,11 +25,19 @@ const registry = Layer.succeed(
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
     appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-    capabilities: Effect.succeed({ ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" }),
+    capabilities: Effect.succeed({
+      ...TestRuntimeProvider.capabilities,
+      bindMountPerformance: "slow",
+      fileSyncTargets: "prepared-volume",
+    }),
     select: () =>
       Effect.succeed({
         ...TestRuntimeProvider,
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow",
+          fileSyncTargets: "prepared-volume",
+        },
       }),
   }),
 );
@@ -203,7 +211,7 @@ describe("doctor installed contributions through runtime discovery", () => {
         const result = await Effect.runPromise(
           Effect.gen(function* () {
             const control = yield* doctor(
-              { env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } },
+              { platform: "win32", env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } },
               bundledPluginModules(),
             );
             expect(control.checks.some((check) => check.name === "file-sync")).toBe(true);

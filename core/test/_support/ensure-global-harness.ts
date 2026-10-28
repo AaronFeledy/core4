@@ -52,7 +52,7 @@ export interface Harness {
     | GlobalAppService
     | PluginRegistry
     | RuntimeProviderRegistry,
-    import("@lando/sdk/errors").ConfigError
+    import("@lando/sdk/errors").ConfigError | import("@lando/sdk/errors").PluginManifestError
   >;
   readonly applyCalls: Array<{
     readonly plan: AppPlan;

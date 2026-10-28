@@ -66,11 +66,13 @@ describe("finalizeServices auto-generated hostnames", () => {
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider,
         providerCapabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
     const service = Schema.decodeUnknownSync(ServicePlan)(result.services.appserver);
@@ -98,11 +100,13 @@ describe("finalizeServices auto-generated hostnames", () => {
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: "lando.test",
         provider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
 
@@ -124,11 +128,13 @@ describe("finalizeServices auto-generated hostnames", () => {
         appId: AppId.make(APP_SLUG),
         appRoot: APP_ROOT,
         appSlug: APP_SLUG,
+        appName: APP_SLUG,
         defaultDomain: DEFAULT_DOMAIN,
         provider: PROVIDER,
         providerCapabilities: TestRuntimeProvider.capabilities,
         metadata,
-        fileSyncEngineId: undefined,
+        selectFileSyncEngine: Effect.succeed(undefined),
+        ordinaryFileSyncReason: "native-provider",
       }),
     );
 

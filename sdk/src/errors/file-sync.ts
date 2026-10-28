@@ -2,6 +2,24 @@ import { Schema } from "effect";
 
 import { FileSyncMode } from "../schema/file-sync.ts";
 
+export class FileSyncSelectionError extends Schema.TaggedError<FileSyncSelectionError>()(
+  "FileSyncSelectionError",
+  {
+    reason: Schema.Literals([
+      "unknown",
+      "missing",
+      "duplicate",
+      "ambiguous-default",
+      "ambiguous",
+      "capabilities",
+    ]),
+    engineId: Schema.optionalKey(Schema.String),
+    candidates: Schema.Array(Schema.String),
+    message: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
 export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()("FileSyncStartError", {
   engineId: Schema.String,
   message: Schema.String,

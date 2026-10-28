@@ -125,7 +125,7 @@ type HarnessLayer = Layer.Layer<
   | RouterService
   | RuntimeProviderRegistry
   | SecretStore,
-  import("@lando/sdk/errors").ConfigError
+  import("@lando/sdk/errors").ConfigError | import("@lando/sdk/errors").PluginManifestError
 >;
 
 interface HarnessOptions {

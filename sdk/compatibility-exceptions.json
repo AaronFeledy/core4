@@ -60,6 +60,108 @@
     "justification": "Reviewed additive recipe-source contract: embedded migration destination snapshots inherit the shared scalar-enum widening. Existing string enums decode unchanged, and source option tests exercise typed false defaults."
   },
   {
+    "surface": "schema:AppMountInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed #1811 additive authoring change: the existing object arm accepts optional boolean accelerate; false/string forms and required target stay unchanged. Strict round-trip and planner regressions cover opt-out without authoring an engine id."
+  },
+  {
+    "surface": "schema:DotnetServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:LocalStackServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MailhogServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MailpitServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MinIOServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MssqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:MysqlServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:PhpMyAdminServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:PhpServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:RabbitMQServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:TomcatServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:VarnishServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.appMount.anyOf",
+    "justification": "Reviewed #1811 additive AppMountInput propagation: optional boolean accelerate is added only to the object arm; existing app-mount forms and target requirements remain unchanged."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "unsupported-construct",
+    "path": "$.fileSyncEngines.items.anyOf",
+    "justification": "Intentional pre-release #1811 breaking change: file-sync contribution ids become descriptors with required capabilities and required supports.platform containing at least one host family. Acceleration universally requires the provider-owned prepared-volume lifecycle; defaultFor is independent preference metadata. Bare ids are rejected and passthrough is reserved policy. Eligibility is verified before runtime mutation; no compatibility adapter is shipped."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "unsupported-construct",
+    "path": "$.contributes.fileSyncEngines.items.anyOf",
+    "justification": "Intentional pre-release #1811 breaking change propagated from PluginContribution: file-sync descriptors require capabilities and nonempty supports.platform, reserve passthrough, and independently declare defaultFor/module. Acceleration universally requires provider-owned prepared-volume targets. Bundled manifests and installed-module validation tests use this eligibility contract rather than preserving unreleased descriptor or shadows-mode shapes. Historical session arrays without an exclusion mode and their exact pattern lists and journal digests remain unchanged."
+  },
+  {
     "surface": "schema:CommandResultEnvelope",
     "changeKind": "property-required",
     "path": "$.error.remediation",

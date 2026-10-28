@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
 
 import { ConfigError } from "@lando/sdk/errors";
 import { LandofileShape, type ProviderCapabilities } from "@lando/sdk/schema";
@@ -8,8 +8,8 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Schema } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
-import { planApp } from "../../src/planner/assemble.ts";
 import * as ConfigLayer from "../../src/services/config.ts";
+import { planApp } from "../plan-app.ts";
 
 const missingPlugin = (id: string) =>
   new PluginLoadError({
@@ -41,14 +41,11 @@ describe("event-set global config load failures", () => {
     const exit = await Effect.runPromiseExit(
       Effect.gen(function* () {
         return yield* planApp(
-          pluginRegistry,
-          undefined,
-          yield* ConfigService,
-          undefined,
-          undefined,
-          undefined,
-          yield* compileTestLandofile(landofile),
-          capabilities,
+          { landofile: yield* compileTestLandofile(landofile), providerCapabilities: capabilities },
+          Layer.mergeAll(
+            Layer.succeed(PluginRegistry, pluginRegistry),
+            Layer.succeed(ConfigService, yield* ConfigService),
+          ),
         );
       }).pipe(Effect.provide(configLayer)),
     );
