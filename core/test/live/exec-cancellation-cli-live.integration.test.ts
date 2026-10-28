@@ -151,9 +151,9 @@ for (const variant of variants.flatMap((entry) =>
             "echo $$ >/tmp/cli-payload",
             "trap 'echo TERM >/tmp/cli-signal' TERM",
             "trap 'echo INT >/tmp/cli-int' INT",
-            'setsid sh -c \'trap "" TERM INT; sh -c "nc -lk -p 31337 -e cat </dev/null >/dev/null 2>&1 &"\'',
+            "setsid sh -c 'trap \"\" TERM INT; sh -c \"$1\"' sh 'nc -lk -p 31337 -e cat </dev/null >/dev/null 2>&1 & echo $! >/tmp/cli-escaped'",
             "while ! nc -z 127.0.0.1 31337; do sleep 0.05; done",
-            "pidof nc >/tmp/cli-escaped; echo CLI_PAYLOAD_READY",
+            "echo CLI_PAYLOAD_READY",
             "while :; do sleep 313; done",
           ].join("; ");
           active = cli(["exec", "--format=json", "--user", user, "web", "--", "sh", "-c", script]);
@@ -208,8 +208,8 @@ for (const variant of variants.flatMap((entry) =>
           expect(owned.every((exec) => exec.Running)).toBe(true);
           const identities = await inside([
             "sh",
-            "-c",
-            "for file in /tmp/cli-payload /tmp/cli-escaped /tmp/cli-sentinel; do pid=$(cat $file); cat /proc/$pid/stat; done",
+            "-ec",
+            'for file in /tmp/cli-payload /tmp/cli-escaped /tmp/cli-sentinel; do pid=$(cat "$file"); case "$pid" in ""|*[!0-9]*) echo "Invalid PID in $file: $pid" >&2; exit 1;; esac; if ! cat "/proc/$pid/stat"; then echo "Missing process recorded in $file: $pid" >&2; exit 1; fi; done',
           ]);
           const beforeIdentities = identities
             .trim()
