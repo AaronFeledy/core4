@@ -18,6 +18,7 @@
       "**/*.tsbuildinfo",
       "bun.lock",
       "vendor/compose/compose-spec.json",
+      "plugins/github-actions/test/fixtures/actions-language",
       "docs/test/fixtures/transcripts/corrupt/invalid-json.json",
       "landofile/test/fixtures/sample.jsonc",
       "landofile/test/fixtures/bad.jsonc"
