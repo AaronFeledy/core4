@@ -86,7 +86,7 @@ const changedLines = (
 
 describe("ci workflow codegen", () => {
   test(
-    "runs guide scenario codegen first and ignores generated guide outputs",
+    "runs guide scenario codegen before schema snapshots",
     async () => {
       const guidePath = resolve(repoRoot, "docs/guides/codegen-smoke.mdx");
       const generatedPath = resolve(repoRoot, "test/scenarios/generated/guides/codegen-smoke/runs.test.ts");

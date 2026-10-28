@@ -1,0 +1,43 @@
+{
+  "name": "@lando/github-actions",
+  "version": "0.0.0",
+  "description": "Optional offline GitHub Actions workflow inspection for Lando.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": { "bun": ">=1.4.3" },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts",
+    "./errors": "./src/errors.ts",
+    "./operations": "./src/operations.ts"
+  },
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
+  "keywords": ["lando", "lando-plugin", "github-actions"],
+  "lando": { "manifest": "./plugin.yaml" },
+  "landoPlugin": {
+    "name": "@lando/github-actions",
+    "version": "0.0.0",
+    "api": 4,
+    "requires": { "@lando/core": "^4.0.0" },
+    "description": "Optional offline GitHub Actions workflow inspection for Lando.",
+    "enabled": true,
+    "entry": "./src/index.ts",
+    "contributes": { "commands": ["github-actions:list"] }
+  },
+  "dependencies": {
+    "@actions/expressions": "0.3.61",
+    "@actions/workflow-parser": "0.3.61",
+    "@lando/sdk": "workspace:*",
+    "effect": "catalog:",
+    "yaml": "2.9.1"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "build:artifact": "bun ../../core/bin/lando.ts meta:plugin:build",
+    "typecheck": "tsc -b",
+    "clean": "rm -rf dist .tsbuildinfo"
+  }
+}

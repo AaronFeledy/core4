@@ -57,6 +57,42 @@ Foreground scratch apps have scoped cleanup; detached scratch apps have their
 own lifecycle. Do not assume every scratch app disappears when a command exits.
 The implementation lives in [`engine/src/scratch-app/`](../../engine/src/scratch-app/).
 
+### Work on the optional GitHub Actions package
+
+[`plugins/github-actions/`](../../plugins/github-actions/) is the optional
+`@lando/github-actions` plugin. It is not bundled with Lando and is not
+published to npm; a user builds and links its artifact from a source checkout, as described in
+[Inspect GitHub Actions workflows with Lando](../guides/plugins/github-actions-inspection.mdx).
+It contributes one command, `github-actions:list`, and exports the public
+inspection operation `listWorkflows` from `@lando/github-actions/operations`,
+with its input and report schemas under `/schema` and its tagged error under
+`/errors`.
+
+Inspection is offline and read-only. It reads bounded workflow files under
+`.github/workflows/`, reports source-located facts and diagnostics, and never
+executes a workflow, evaluates expressions, fetches a reusable workflow, reads a
+Landofile, or uses a provider or the network. Keep that boundary when changing
+the package: reports carry names, identities, positions and declared requirements;
+errors carry safe codes and remediation, never scripts, environment/input values
+or raw upstream messages. Review essential metadata before sharing it. `assessment` stays
+`execution-unassessed`; a clean report is not a compatibility verdict.
+
+After the repository bootstrap, run the package's focused checks from the root:
+
+```sh
+bun test plugins/github-actions/test
+bun run --filter='@lando/github-actions' typecheck
+bun run dev:guides docs/guides/plugins/github-actions-inspection.mdx --once
+```
+
+The guide scenarios call `listWorkflows` directly against fixtures. To exercise
+the linked command, build the distribution with
+`bun run --filter='@lando/github-actions' build:artifact` and set
+`LANDO_ACTIONS_TEST_BINARY` to that binary before running the package tests.
+
+Running Lando commands inside GitHub-hosted CI is a separate, existing workflow;
+follow [Run Lando in GitHub Actions](../guides/install/ci-github-actions.mdx).
+
 ## Work on the CLI or compiled binary
 
 Source and compiled entries share one native dispatcher in `core/src/cli/run.ts`.

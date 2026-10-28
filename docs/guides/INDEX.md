@@ -239,6 +239,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | VS Code integration | `docs/guides/tooling/vscode.mdx` | Shipped |
 | - | - | install and run on WSL | `docs/guides/install/wsl.mdx` | Shipped |
 | - | - | GitHub Actions CI install and drive | `docs/guides/install/ci-github-actions.mdx` | Shipped |
+| - | - | optional `github-actions:list` offline workflow inspection via linked plugin | `docs/guides/plugins/github-actions-inspection.mdx` | Shipped |
 | - | - | external access to app services | `docs/guides/subsystems/external-access.mdx` | Shipped |
 | - | - | Traefik host-port fallback when 80/443 are taken | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | - | - | how services find each other (service keys, .internal, *.lndo.site) | `docs/guides/subsystems/service-dns.mdx` | Shipped |

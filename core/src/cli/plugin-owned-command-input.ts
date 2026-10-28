@@ -1,9 +1,10 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { helpArgToken, helpFlagToken } from "./cli-help";
+import { type CommandHelpEntry, renderCommandHelp } from "./cli-help";
 import { type OclifFlagDefinition, parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
 import { normalizeCliFlagTokens, validateCommandCliFlags } from "./flag-value-validation";
 import { universalFormatFlagDefs } from "./format-flags";
 import { yesFlag } from "./spec/confirmation-flag";
+import type { ArgDefinitions } from "./spec/metadata";
 
 export const pluginFlagDefinitions = (
   spec: Pick<ExecutableCommandSpec, "flags">,
@@ -71,23 +72,25 @@ export const pluginOwnedCommandInputFromArgv = (
 };
 
 export const renderPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): string => {
-  const argEntries = Object.entries(spec.args ?? {});
-  const repeatable = spec.strict === false && argEntries.length === 1;
-  const usageArgs = argEntries.map(([name, definition]) =>
-    helpArgToken(
+  const args: ArgDefinitions = Object.fromEntries(
+    Object.entries(spec.args ?? {}).map(([name, definition]) => [
       name,
-      definition.required === undefined ? {} : { required: definition.required },
-      repeatable,
-    ),
+      {
+        type: "option",
+        ...(definition.required === undefined ? {} : { required: definition.required }),
+        ...(definition.multiple === undefined ? {} : { multiple: definition.multiple }),
+      },
+    ]),
   );
-  const usage = usageArgs.length === 0 ? spec.id : `${spec.id} ${usageArgs.join(" ")}`;
-  const flagEntries = Object.entries(pluginFlagDefinitions(spec)).sort(([left], [right]) =>
-    left.localeCompare(right),
-  );
-  const lines = [spec.summary, "", "USAGE", `  $ lando ${usage}`];
-  if (flagEntries.length > 0) {
-    lines.push("", "FLAGS");
-    for (const [name, definition] of flagEntries) lines.push(`  ${helpFlagToken(name, definition)}`);
-  }
-  return lines.join("\n");
+  const entry: CommandHelpEntry = {
+    spec: {
+      id: spec.id,
+      summary: spec.summary,
+      args,
+      flags: pluginFlagDefinitions(spec),
+      ...(spec.strict === undefined ? {} : { strict: spec.strict }),
+    },
+    status: { kind: "implemented" },
+  };
+  return renderCommandHelp(entry);
 };
