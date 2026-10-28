@@ -34,6 +34,7 @@ import {
   DataEndpointUnsupportedError,
   DataSourceOutsideRootError,
   DataTargetExistsError,
+  DataTransferError,
   ProviderUnavailableError,
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
@@ -50,6 +51,7 @@ import {
   ServiceName,
   type VolumeIdentity,
   appIdentityKey,
+  encodeUriComponent,
   snapshotHandle,
 } from "@lando/sdk/schema";
 import {
@@ -69,6 +71,7 @@ import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
+import { makeDataMoverService } from "../src/service.ts";
 import * as BunDataMover from "./support.ts";
 import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
@@ -3521,5 +3524,70 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
 
       expect(networkPulls).toBe(1);
     });
+  });
+});
+
+test.each([
+  ["source", "PGPASSWORD"],
+  ["source", "CUSTOM_VALUE"],
+  ["target", "PGPASSWORD"],
+  ["target", "CUSTOM_VALUE"],
+  ["source", "CUSTOM_URL"],
+  ["target", "CUSTOM_URL"],
+  ["source", "MONGO_URI"],
+  ["target", "MONGO_URI"],
+] as const)("direct non-SQL transfer masks supplied %s command env value for %s", async (side, key) => {
+  await withTempDir(async (dir) => {
+    const url = key === "CUSTOM_URL" || key === "MONGO_URI";
+    const secret = url ? "p:/?#'!\n☃" : "SYNTHETIC_GENERIC_COMMAND_CREDENTIAL";
+    const encoded = encodeUriComponent(secret);
+    const envValue = url ? `arbitrary://user:${encoded}@host/database` : secret;
+    const payload = new Uint8Array([0, 255, 195, 169, 13, 10]);
+    const received: number[] = [];
+    let destinationCalls = 0;
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stateStore = yield* StateStore;
+        const provider = RuntimeProvider.of({
+          ...TestRuntimeProvider,
+          execStream: (_target, command) => {
+            const isSource = command.command[0] === "dump";
+            if (!isSource) destinationCalls += 1;
+            return Stream.unwrap(
+              Effect.promise(async (): Promise<Stream.Stream<ExecChunk>> => {
+                for await (const chunk of command.stdinStream ?? []) received.push(...chunk);
+                if ((side === "source") === isSource)
+                  return Stream.make(
+                    { kind: "stdout" as const, chunk: isSource ? payload : new Uint8Array() },
+                    { kind: "stderr" as const, chunk: bytes(`command refused ${secret} ${encoded}\n`) },
+                    { exitCode: 7 },
+                  );
+                return Stream.make({ kind: "stdout" as const, chunk: payload }, { exitCode: 0 });
+              }),
+            );
+          },
+        });
+        const mover = makeDataMoverService(
+          Effect.succeed(provider),
+          { redactText: (text) => text, publish: () => Effect.void },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+        );
+        return yield* mover
+          .transfer({
+            from: { _tag: "serviceCmd", app, service, command: ["dump"], env: { [key]: envValue } },
+            to: { _tag: "serviceCmd", app, service, command: ["load"], env: { [key]: envValue } },
+            overwrite: true,
+          })
+          .pipe(Effect.result);
+      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected command failure");
+    expect(result.failure._tag).toBe("DataTransferError");
+    expect(JSON.stringify(result.failure).includes(secret)).toBe(false);
+    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
+    expect(result.failure.stderrTail).toBe("command refused [redacted] [redacted]\n");
+    expect(result.failure.exitCode).toBe(7);
+    expect(destinationCalls).toBe(side === "source" ? 0 : 1);
+    expect(received).toEqual(side === "source" ? [] : [...payload]);
   });
 });

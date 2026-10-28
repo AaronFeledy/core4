@@ -1,9 +1,15 @@
 import { expect, test } from "bun:test";
+import { type DataPlaneApiClient, makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { RedactionService } from "@lando/redaction/service";
-import { annotateFailureRole, failureDefectCause, failureOutcomeFromCause } from "@lando/sdk/command-result";
-import { ProcessTimeoutError } from "@lando/sdk/errors";
+import {
+  FailureRoleAnnotation,
+  annotateFailureRole,
+  failureDefectCause,
+  failureOutcomeFromCause,
+} from "@lando/sdk/command-result";
+import { ProcessTimeoutError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ExecChunk } from "@lando/sdk/services";
-import { Cause, Effect, Exit, Fiber, Stream } from "effect";
+import { Cause, Context, Deferred, Effect, Exit, Fiber, type Scope, Stream } from "effect";
 import {
   CONTROL_STDOUT_LIMIT,
   type CommandOutputFailure,
@@ -235,3 +241,151 @@ test("huge lazy diagnostics retain bounded memory and a single huge chunk is sup
   );
   expect(huge.error).toMatchObject({ stderrTail: "[diagnostic truncated]" });
 });
+
+test.each([1, 2])(
+  "contains failing cleanup in %s nested scopes across take, interrupt, consumer failure and exit",
+  async (depth) => {
+    for (const mode of ["take", "interrupt", "consumer", "natural"] as const) {
+      let closed = 0;
+      const started = await Effect.runPromise(Deferred.make<void>());
+      const sourceAt = (remaining: number): Stream.Stream<ExecChunk, never, Scope.Scope> =>
+        Stream.unwrap(
+          Effect.gen(function* () {
+            yield* Effect.addFinalizer(() =>
+              Effect.sync(() => {
+                closed += 1;
+              }).pipe(
+                Effect.andThen(
+                  Effect.failCause(
+                    failureDefectCause(
+                      annotateFailureRole(
+                        Cause.fail({
+                          _tag: "PrivateCleanup",
+                          message: `SYNTHETIC_PRIVATE_CLEANUP_${remaining}`,
+                          cause: "SYNTHETIC_PRIVATE_CAUSE",
+                        }),
+                        "cleanup",
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            if (remaining > 1) return Stream.scoped(sourceAt(remaining - 1));
+            return Stream.concat(
+              Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(stdout("first")))),
+              mode === "natural" ? Stream.make({ exitCode: 7 }) : Stream.fromEffect(Effect.never),
+            );
+          }),
+        );
+      const source = sourceAt(depth);
+      let nextId = 0;
+      const makeSafe = (evidence: CommandOutputFailure) => ({ ...failure(evidence), id: nextId++ });
+      const consumer = { _tag: "ConsumerFailure", message: "consumer-owned" };
+      const observed = commandOutputStream(source, { failure: makeSafe });
+      const exit: Exit.Exit<unknown, unknown> =
+        mode === "interrupt"
+          ? await Effect.runPromise(
+              Effect.gen(function* () {
+                const fiber = yield* Effect.forkChild(captureCommandOutput(source, { failure: makeSafe }));
+                yield* Deferred.await(started);
+                yield* Fiber.interrupt(fiber);
+                return yield* Fiber.await(fiber);
+              }),
+            )
+          : await Effect.runPromiseExit(
+              mode === "take"
+                ? observed.pipe(Stream.take(1), Stream.runDrain)
+                : mode === "natural"
+                  ? observed.pipe(Stream.runDrain)
+                  : observed.pipe(Stream.runForEach(() => Effect.fail(consumer))),
+            );
+      expect(closed).toBe(depth);
+      if (!Exit.isFailure(exit)) throw new Error("Expected cleanup failure");
+      expect(JSON.stringify(failureOutcomeFromCause(exit.cause)).includes("SYNTHETIC_PRIVATE")).toBe(false);
+      expect(exit.cause.reasons.filter((reason) => !Cause.isInterruptReason(reason))).toHaveLength(
+        depth + (mode === "consumer" || mode === "natural" ? 1 : 0),
+      );
+      if (mode === "interrupt") expect(Cause.hasInterrupts(exit.cause)).toBe(true);
+      if (mode === "consumer") expect(failureOutcomeFromCause(exit.cause).error).toBe(consumer);
+      if (mode === "natural")
+        expect(failureOutcomeFromCause(exit.cause).error).toMatchObject({ reason: "exit", exitCode: 7 });
+      const cleanup = exit.cause.reasons.filter(
+        (reason) =>
+          !Cause.isInterruptReason(reason) &&
+          !(
+            Cause.isFailReason(reason) &&
+            (reason.error === consumer ||
+              (mode === "natural" && reason.error === failureOutcomeFromCause(exit.cause).error))
+          ),
+      );
+      expect(
+        cleanup.every(
+          (reason) =>
+            Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation) === "cleanup",
+        ),
+      ).toBe(true);
+    }
+  },
+);
+
+test.each(["take", "interrupt"] as const)(
+  "sanitizes the actual runStream provider finalizer on %s",
+  async (mode) => {
+    let removed = 0;
+    const started = await Effect.runPromise(Deferred.make<void>());
+    const payload = new Uint8Array([0, 255, 195, 169]);
+    const frame = new Uint8Array(8 + payload.length);
+    frame[0] = 1;
+    new DataView(frame.buffer).setUint32(4, payload.length, false);
+    frame.set(payload, 8);
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        if (request.method === "DELETE") {
+          removed += 1;
+          return Effect.fail(
+            new ProviderUnavailableError({
+              providerId: "test",
+              operation: "remove",
+              message: "SYNTHETIC_PRIVATE_CLEANUP",
+              cause: "SYNTHETIC_PRIVATE_CAUSE",
+              remediation: "Retry fixture.",
+            }),
+          );
+        }
+        return Effect.succeed({ status: 201, body: "{}" });
+      },
+      stream: () =>
+        Stream.concat(
+          Stream.fromEffect(Deferred.succeed(started, undefined).pipe(Effect.as(frame))),
+          Stream.fromEffect(Effect.never),
+        ),
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: { redactString: (text) => text, redactValue: (value) => value },
+    });
+    const source = provider.runStream({ image: "alpine:3.20", command: ["true"], remove: true });
+    const exit: Exit.Exit<unknown, unknown> =
+      mode === "take"
+        ? await Effect.runPromiseExit(
+            commandOutputStream(source, { failure }).pipe(Stream.take(1), Stream.runDrain),
+          )
+        : await Effect.runPromise(
+            Effect.gen(function* () {
+              const fiber = yield* Effect.forkChild(captured(source));
+              yield* Deferred.await(started);
+              yield* Fiber.interrupt(fiber);
+              return yield* Fiber.await(fiber);
+            }),
+          );
+    expect(removed).toBe(1);
+    if (!Exit.isFailure(exit)) throw new Error("Expected sanitized removal failure");
+    const outcome = failureOutcomeFromCause(exit.cause);
+    expect(JSON.stringify(outcome).includes("SYNTHETIC_PRIVATE")).toBe(false);
+    expect(Cause.hasInterrupts(exit.cause)).toBe(mode === "interrupt");
+    expect(exit.cause.reasons.filter((reason) => !Cause.isInterruptReason(reason))).toHaveLength(1);
+  },
+);

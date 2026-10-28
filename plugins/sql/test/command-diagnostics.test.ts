@@ -55,6 +55,7 @@ test("preserves a transfer failure as the primary error after recovery capture",
               message: "Database load failed",
               operation: "exec",
               exitCode: 5,
+              reason: "provider",
               stderrTail: "load failed: [redacted]",
               remediation: "Fix database credentials or the dump file, then retry import.",
             }),
@@ -65,6 +66,7 @@ test("preserves a transfer failure as the primary error after recovery capture",
   );
   if (result._tag !== "Failure") throw new Error("expected failure");
   expect(result.failure).toMatchObject({
+    reason: "provider",
     _tag: "DataTransferError",
     exitCode: 5,
     stderrTail: "load failed: [redacted]",
@@ -154,6 +156,7 @@ test("a failed RESTORE keeps its primary tag and safe diagnostics beside recover
   );
   expect(JSON.parse(encoded).error).toMatchObject({
     _tag: "SqlCommandFailedError",
+    reason: "exit",
     exitCode: 17,
     stderrTail: expect.stringContaining("restore failed"),
     recoverySnapshotId: expect.stringMatching(/^snap-/u),

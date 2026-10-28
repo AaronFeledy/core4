@@ -1,9 +1,15 @@
 import { makeDiagnosticTailFactory } from "@lando/redaction";
-import { commandFailureCause, mapFailureCause, mergeFailure } from "@lando/sdk/command-result";
+import {
+  annotateFailureRole,
+  commandFailureCause,
+  failureDefectCause,
+  mapFailureCause,
+  mergeFailure,
+} from "@lando/sdk/command-result";
 import { ProcessTimeoutError } from "@lando/sdk/errors";
 import type { FailureRole } from "@lando/sdk/schema";
 import type { ExecChunk, ProcessStreamEvent } from "@lando/sdk/services";
-import { Cause, Effect, Result, Stream } from "effect";
+import { Cause, Effect, Exit, Pull, Result, Scope, Stream } from "effect";
 
 export type CommandOutputReason = "exit" | "protocol" | "provider" | "timeout" | "stdout-limit";
 export interface CommandOutputFailure {
@@ -35,11 +41,13 @@ export const commandOutputStream = <E, R, E2>(
         let stdoutBytes = 0;
         let overflow = false;
         const owned = new Set<E2>();
-        const failure = (reason: CommandOutputReason) => {
-          const error = options.failure({ reason, exitCode, stderrTail: tail.finish() });
+        const makeFailure = (evidence: CommandOutputFailure) => {
+          const error = options.failure(evidence);
           owned.add(error);
           return error;
         };
+        const failure = (reason: CommandOutputReason) =>
+          makeFailure({ reason, exitCode, stderrTail: tail.finish() });
         const output = source.pipe(
           Stream.map((event) => {
             if ("exitCode" in event) {
@@ -84,37 +92,81 @@ export const commandOutputStream = <E, R, E2>(
             return reason === undefined ? Effect.void : Effect.fail(failure(reason));
           }),
         ).pipe(Stream.drain);
-        // Close producer resources before sanitizing: finalizers may fail as annotated defects.
-        return Stream.scoped(Stream.concat(output, completed)).pipe(
-          Stream.catchCause((cause) => {
-            let cleanupOnly = true;
-            let mappedFailure = false;
-            const safe = mapFailureCause(commandFailureCause(cause), (error, role) => {
-              mappedFailure = true;
-              if (role !== "cleanup") cleanupOnly = false;
-              if (owned.has(error as E2)) return error as E2;
-              return options.failure({
-                reason: protocol ? "protocol" : error instanceof ProcessTimeoutError ? "timeout" : "provider",
-                exitCode,
-                stderrTail: tail.finish(),
-                role,
-              });
+        const sanitize = (cause: Cause.Cause<unknown>, includeCompletion = true): Cause.Cause<E2> => {
+          let cleanupOnly = true;
+          let mappedFailure = false;
+          const safe = mapFailureCause(commandFailureCause(cause), (error, role) => {
+            mappedFailure = true;
+            if (role !== "cleanup") cleanupOnly = false;
+            if (owned.has(error as E2)) return error as E2;
+            return makeFailure({
+              reason: protocol ? "protocol" : error instanceof ProcessTimeoutError ? "timeout" : "provider",
+              exitCode,
+              stderrTail: tail.finish(),
+              role,
             });
-            // An internal producer scope can fail during close before our EOF check runs.
-            // Preserve the observed command failure as primary beside cleanup-only reasons.
-            const completionReason = protocol
-              ? "protocol"
-              : terminal && exitCode !== undefined && exitCode !== 0
-                ? "exit"
-                : terminal && exitCode === 0 && overflow
-                  ? "stdout-limit"
-                  : undefined;
-            const withCompletion =
-              mappedFailure && cleanupOnly && !Cause.hasInterrupts(cause) && completionReason !== undefined
-                ? mergeFailure(Cause.fail(failure(completionReason)), safe, "cleanup")
-                : safe;
-            return Stream.failCause(withCompletion);
-          }),
+          });
+          // A producer's inner scope can fail before the completion check runs.
+          const completionReason = protocol
+            ? "protocol"
+            : terminal && exitCode !== undefined && exitCode !== 0
+              ? "exit"
+              : terminal && exitCode === 0 && overflow
+                ? "stdout-limit"
+                : undefined;
+          return includeCompletion &&
+            mappedFailure &&
+            cleanupOnly &&
+            !Cause.hasInterrupts(cause) &&
+            completionReason !== undefined
+            ? mergeFailure(Cause.fail(failure(completionReason)), safe, "cleanup")
+            : safe;
+        };
+        const observed = Stream.scoped(Stream.concat(output, completed)).pipe(
+          Stream.catchCause((cause) => Stream.failCause(sanitize(cause))),
+        );
+        // Own producer finalizers in a detached scope. Downstream early completion and
+        // interruption close it through this release callback, inside the sanitizer.
+        return Stream.scoped(
+          Stream.fromPull(
+            Effect.gen(function* () {
+              const scope = yield* Effect.acquireRelease(Scope.make(), (scope, exit) =>
+                Scope.close(scope, exit).pipe(
+                  Effect.catchCause((cause) =>
+                    Effect.failCause(
+                      failureDefectCause(sanitize(annotateFailureRole(cause, "cleanup"), false)),
+                    ),
+                  ),
+                ),
+              );
+              const pull = yield* Stream.toPull(observed).pipe(Scope.provide(scope));
+              return pull.pipe(
+                Effect.catchCause((cause) =>
+                  Effect.gen(function* () {
+                    // Done can coexist with a failure; strip it only after inspecting the whole cause.
+                    const producer = Pull.doneExitFromCause(cause);
+                    const closed = yield* Effect.exit(Scope.close(scope, producer));
+                    if (Exit.isFailure(producer)) {
+                      return yield* Effect.failCause(
+                        sanitize(
+                          Exit.isFailure(closed)
+                            ? mergeFailure(producer.cause, closed.cause, "cleanup")
+                            : producer.cause,
+                          false,
+                        ),
+                      );
+                    }
+                    if (Exit.isFailure(closed)) {
+                      return yield* Effect.failCause(
+                        sanitize(annotateFailureRole(closed.cause, "cleanup"), false),
+                      );
+                    }
+                    return yield* Effect.failCause(cause);
+                  }),
+                ),
+              );
+            }),
+          ),
         );
       },
     ),

@@ -4,9 +4,9 @@ import { Effect, absurd } from "effect";
 import { SqlSeedSourceError, SqlServiceAmbiguousError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
 
+import { secretTokens } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
-import { registerSqlCredentials } from "./environment.ts";
 import { dumpCommand } from "./families.ts";
 import { type SqlTarget, resolveSqlTarget, sqlCandidates } from "./target.ts";
 import { toSqlPlan } from "./views.ts";
@@ -117,7 +117,7 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
   });
   const creds = resolveSqlCreds(connection);
   const env = credsEnv(service.family, creds);
-  const redactionTokens = yield* registerSqlCredentials(creds, env);
+  const redactionTokens = secretTokens({ password: creds.password });
   return {
     endpoint: {
       _tag: "serviceCmd" as const,
@@ -127,6 +127,7 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
       env,
     },
     database: creds.database,
+    credentials: [creds.password],
     redactionTokens,
   };
 });

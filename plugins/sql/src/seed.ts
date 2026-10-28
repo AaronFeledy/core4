@@ -6,6 +6,7 @@ import {
   AppId,
   type DataTransferSpec,
   type Environment,
+  type EnvironmentValue,
   ServiceName,
   type SnapshotInfo,
   type VolumeRef,
@@ -15,7 +16,7 @@ import {
 import { type SqlExec, runImport } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
 import { parseCount } from "./command-input.ts";
-import { resolveSqlEnvironment } from "./environment.ts";
+import { registerSqlCredentials, resolveSqlEnvironment } from "./environment.ts";
 import { countCommand, loadCommand } from "./families.ts";
 import type { SqlRecoveryContext, SqlRecoveryDeps } from "./recovery.ts";
 import { requireSeedCompatibleSnapshot } from "./snapshot-compatibility.ts";
@@ -30,6 +31,8 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
         readonly env: Environment;
       };
       readonly database: string;
+      readonly credentials: ReadonlyArray<EnvironmentValue>;
+      readonly redactionTokens: string[];
     };
     readonly store: VolumeRef;
   },
@@ -75,6 +78,8 @@ export const executeSeed = Effect.fn("Sql.seed")(function* (
       const seeded = Effect.gen(function* () {
         yield* context.verifyVolume;
         if (input.source !== undefined) {
+          const tokens = yield* registerSqlCredentials(input.source.credentials, input.source.endpoint.env);
+          input.source.redactionTokens.push(...tokens);
           return yield* deps.transfer({
             from: { ...input.source.endpoint, env: yield* resolveSqlEnvironment(input.source.endpoint.env) },
             to: {

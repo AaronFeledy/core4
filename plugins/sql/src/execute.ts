@@ -10,7 +10,7 @@ import { snapshotHandle } from "@lando/sdk/schema";
 import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
-import { hostFile, parseCount, validateExportCompressionLevel } from "./command-input.ts";
+import { hostFile, parseCount, secretTokens, validateExportCompressionLevel } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
@@ -40,6 +40,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
 ) {
   yield* validateExportCompressionLevel(input);
   const session = yield* rawDeps.environmentResolver.openSession();
+  const redaction = yield* RedactionService;
   const exec: SqlExec = (service, command, env) =>
     Stream.unwrap(
       Effect.gen(function* () {
@@ -70,7 +71,21 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
     });
     const creds = resolveSqlCreds(connection);
     const env = credsEnv(target.family, creds);
-    const tokens = yield* registerSqlCredentials(creds, env);
+    const selectedCredentials =
+      target.family === "mssql"
+        ? [creds.rootPassword ?? creds.password]
+        : [
+            creds.password,
+            ...((target.family === "mysql" || target.family === "mariadb") &&
+            input.action === "reset" &&
+            creds.rootPassword !== undefined
+              ? [creds.rootPassword]
+              : []),
+          ];
+    const tokens =
+      input.action === "snapshots" || input.action === "prune"
+        ? secretTokens(creds)
+        : yield* registerSqlCredentials(selectedCredentials, env);
     const waitForDatabase = waitForSqlDatabase(deps.exec, {
       service: target.name,
       command: countCommand(target.family, creds),
@@ -350,7 +365,10 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
               store: context.volume,
               ...(restoreSource === undefined ? {} : { snapshot: restoreSource }),
               ...(seedSource === undefined ? {} : { source: seedSource }),
-            }).pipe(Effect.provideService(SqlEnvironmentSession, session)),
+            }).pipe(
+              Effect.provideService(SqlEnvironmentSession, session),
+              Effect.provideService(RedactionService, redaction),
+            ),
         });
         seedStatus = "seeded";
         break;

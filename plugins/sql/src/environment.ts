@@ -5,10 +5,9 @@ import {
   SecretReferenceInvalidError,
   SecretStoreUnavailableError,
 } from "@lando/sdk/errors";
-import { type Environment, encodeUriComponent } from "@lando/sdk/schema";
+import { type Environment, type EnvironmentValue, encodeUriComponent } from "@lando/sdk/schema";
 import type { EnvironmentValueResolverSession } from "@lando/sdk/services";
 import { Context, Effect, Schema } from "effect";
-import type { SqlCreds } from "./creds.ts";
 
 /** Private operation context; the SDK resolver owns memoization and redaction. */
 export class SqlEnvironmentSession extends Context.Service<
@@ -32,19 +31,16 @@ export const resolveSqlEnvironment = Effect.fn("Sql.resolveEnvironment")(functio
 
 /** SQL owns credential classification, including literals and raw values behind references. */
 export const registerSqlCredentials = Effect.fn("Sql.registerCredentials")(function* (
-  creds: SqlCreds,
+  selected: ReadonlyArray<EnvironmentValue>,
   env: Environment,
 ) {
   const redaction = yield* RedactionService;
-  const literals = [creds.password, creds.rootPassword].filter(
-    (value): value is string => typeof value === "string",
-  );
+  const literals = selected.filter((value): value is string => typeof value === "string");
   yield* redaction.registerValues(literals);
   const session = yield* SqlEnvironmentSession;
-  const raw = yield* session.resolveEnvironment({
-    password: creds.password,
-    ...(creds.rootPassword === undefined ? {} : { rootPassword: creds.rootPassword }),
-  });
+  const raw = yield* session.resolveEnvironment(
+    Object.fromEntries(selected.map((value, index) => [`credential${index}`, value])),
+  );
   const credentials = Object.values(raw).flatMap((value) => [
     value,
     ...(value.isWellFormed() ? [encodeUriComponent(value)] : []),
