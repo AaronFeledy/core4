@@ -48,8 +48,13 @@
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
         "@lando/telemetry": "workspace:*",
+        "@types/mdast": "4.0.4",
         "effect": "catalog:",
+        "remark-frontmatter": "5.0.0",
+        "remark-mdx": "3.1.1",
+        "remark-parse": "11.0.0",
         "semver": "^7.8.5",
+        "unified": "11.0.5",
         "uqr": "^0.1.3",
       },
       "devDependencies": {

@@ -121,6 +121,8 @@ test.each([false, true])(
                   return running
                     ? { status: 200, body: '{"Id":"web","State":{"Running":true}}' }
                     : { status: 404, body: "{}" };
+                if (request.method === "GET" && request.path.startsWith("/networks/"))
+                  return { status: 404, body: "" };
                 return { status: 201, body: "{}" };
               }),
           },
@@ -184,7 +186,12 @@ test.each(["fails", "interrupts"] as const)(
                     labels: Schema.Record(Schema.String, Schema.String),
                   }),
                 )(request.body);
-                networks.set(body.name, { Id: body.name, Name: body.name, Labels: body.labels });
+                networks.set(body.name, {
+                  Id: body.name,
+                  Name: body.name,
+                  Driver: body.driver,
+                  Labels: body.labels,
+                });
                 return { status: 201, body: "{}" };
               }
               if (request.path === "/networks/create") {
