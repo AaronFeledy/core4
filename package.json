@@ -44,6 +44,7 @@
     "build": "bun run --filter='*' build",
     "test": "bun run scripts/test-shards.ts",
     "test:unit": "bun --no-orphans test --path-ignore-patterns='**/*.integration.test.ts'",
+    "test:affected": "bun run scripts/test-affected.ts",
     "test:unit:isolation": "bun --no-orphans test core/test/cli/doctor.test.ts core/test/cli/doctor-report.test.ts core/test/cli/doctor-plugin-metadata.test.ts core/test/codegen/guide-scenarios.test.ts core/test/plugins/bundled.test.ts plugins/provider-lando/test/plugin-descriptor.test.ts plugins/provider-lando/test/package.test.ts",
     "test:unit:shard": "bun run scripts/test-shards.ts --run",
     "test:unit:update-timings": "bun run scripts/update-test-timings.ts",
