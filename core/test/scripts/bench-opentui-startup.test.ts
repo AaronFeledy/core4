@@ -1,9 +1,10 @@
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { summarizeStartup } from "../../../scripts/bench-opentui-startup.ts";
 import type { Baseline } from "../../../scripts/bench-startup-baseline.ts";
 import { TTY_OVERHEAD_COMMAND, summarizeTtyOverhead } from "../../../scripts/bench-tty-renderer-overhead.ts";
 
@@ -11,17 +12,25 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const benchScript = resolve(repoRoot, "scripts/bench-opentui-startup.ts");
 const trackedBaseline = resolve(repoRoot, "scripts/bench-baselines.json");
 
-const writeFakeBinary = async (dir: string): Promise<string> => {
-  const path = join(dir, "fake-lando");
+const writeFakeBinary = async (dir: string, name = "fake-lando"): Promise<string> => {
+  const path = join(dir, name);
   await writeFile(
     path,
     `#!/usr/bin/env bash
 set -euo pipefail
+if [[ -n "\${LANDO_FAKE_LOG:-}" ]]; then printf '%s\\n' '${name}' >> "$LANDO_FAKE_LOG"; fi
 if [[ "$*" == "version --renderer=lando" ]] && test -t 1; then sleep "\${LANDO_FAKE_TTY_SECONDS:-0.001}"; fi
 sleep "\${LANDO_FAKE_FIRST_OUTPUT_SECONDS:-0.001}"
 printf 'fake startup output\\n'
 sleep "\${LANDO_FAKE_EXIT_SECONDS:-0.001}"\n`,
   );
+  await chmod(path, 0o755);
+  return path;
+};
+
+const writeScript = async (dir: string, name: string, body: string): Promise<string> => {
+  const path = join(dir, name);
+  await writeFile(path, `#!/usr/bin/env bash\nset -euo pipefail\n${body}\n`);
   await chmod(path, 0o755);
   return path;
 };
@@ -73,6 +82,245 @@ const runBench = async (
 };
 
 describe("bench-opentui-startup", () => {
+  test("uses nearest-rank p95 and rejects an exact 50 ms sample", () => {
+    const samples = Array.from({ length: 20 }, (_, index) => ({
+      startupMs: index + 1,
+      firstOutputMs: index + 1,
+    }));
+    samples[18] = { startupMs: 50, firstOutputMs: 50 };
+    samples[19] = { startupMs: 100, firstOutputMs: 100 };
+    expect(summarizeStartup(samples, 50, 50)).toEqual({
+      startupP95Ms: 50,
+      firstOutputP95Ms: 50,
+      startupWithinBudget: false,
+      firstOutputWithinBudget: false,
+    });
+  });
+
+  for (const [runs, expected] of [
+    [3, ["A", "B", "B", "A", "A", "B"]],
+    [4, ["A", "B", "B", "A", "A", "B", "B", "A"]],
+  ] as const) {
+    test(`runs ${runs} adjacent alternating pairs in actual process order`, async () => {
+      const dir = await mkdtemp(join(tmpdir(), "lando-startup-pairs-"));
+      try {
+        const candidate = await writeFakeBinary(dir, "A");
+        const reference = await writeFakeBinary(dir, "B");
+        const log = join(dir, "invocations.log");
+        const baseline = await writeBaseline(dir, { runs, startupBudgetMs: 1000, firstOutputBudgetMs: 1000 });
+        const result = await runBench(
+          ["--binary", candidate, "--compare-binary", reference, "--baseline", baseline, "--json"],
+          {
+            LANDO_FAKE_LOG: log,
+          },
+        );
+        expect(result.exitCode).toBe(0);
+        expect(
+          (await readFile(log, "utf8"))
+            .trim()
+            .split("\n")
+            .slice(0, runs * 2),
+        ).toEqual([...expected]);
+        const summary = JSON.parse(result.stdout);
+        expect(summary.samples.map((sample: { role: string }) => sample.role)).toEqual(
+          expected.map((name) => (name === "A" ? "candidate" : "reference")),
+        );
+        expect(summary.pairs).toHaveLength(runs);
+        for (const [index, pair] of summary.pairs.entries()) {
+          const pairSamples = summary.samples.slice(index * 2, index * 2 + 2);
+          expect(
+            pairSamples.map((sample: { pair: number; order: number; role: string }) => [
+              sample.pair,
+              sample.order,
+              sample.role,
+            ]),
+          ).toEqual([
+            [index + 1, 1, pair.order[0]],
+            [index + 1, 2, pair.order[1]],
+          ]);
+          const candidateSample = pairSamples.find((sample: { role: string }) => sample.role === "candidate");
+          const referenceSample = pairSamples.find((sample: { role: string }) => sample.role === "reference");
+          expect(pair.candidateMinusReferenceMs).toEqual({
+            startupMs: candidateSample.startupMs - referenceSample.startupMs,
+            firstOutputMs: candidateSample.firstOutputMs - referenceSample.firstOutputMs,
+          });
+        }
+        expect(summary.evidence.candidate).toMatchObject({
+          path: candidate,
+          bytes: expect.any(Number),
+          sha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+        });
+        expect(summary.evidence.reference.path).toBe(reference);
+        expect(summary.evidence.runnerBunVersion).toBe(Bun.version);
+        expect(summary.evidence.host).toMatchObject({
+          os: expect.any(String),
+          arch: expect.any(String),
+          kernel: expect.any(String),
+        });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+
+  test("keeps candidate and reference roles distinct for the same binary", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-startup-same-binary-"));
+    try {
+      const binary = await writeFakeBinary(dir);
+      const baseline = await writeBaseline(dir, {
+        runs: 3,
+        startupBudgetMs: 1000,
+        firstOutputBudgetMs: 1000,
+      });
+      const result = await runBench([
+        "--binary",
+        binary,
+        "--compare-binary",
+        binary,
+        "--baseline",
+        baseline,
+        "--json",
+      ]);
+      expect(result.exitCode).toBe(0);
+      const summary = JSON.parse(result.stdout);
+      expect(summary.samples.filter((sample: { role: string }) => sample.role === "candidate")).toHaveLength(
+        3,
+      );
+      expect(summary.samples.filter((sample: { role: string }) => sample.role === "reference")).toHaveLength(
+        3,
+      );
+      expect(summary.evidence.candidate.sha256).toBe(summary.evidence.reference.sha256);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("retains every pair and reference diagnostic when candidate misses its budget", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-startup-pair-fail-"));
+    try {
+      const candidate = await writeFakeBinary(dir, "A");
+      const reference = await writeFakeBinary(dir, "B");
+      const baseline = await writeBaseline(dir, { runs: 3, startupBudgetMs: 1000, firstOutputBudgetMs: 1 });
+      const result = await runBench(
+        ["--binary", candidate, "--compare-binary", reference, "--baseline", baseline, "--json"],
+        {
+          LANDO_FAKE_FIRST_OUTPUT_SECONDS: "0.030",
+        },
+      );
+      expect(result.exitCode).toBe(1);
+      const summary = JSON.parse(result.stderr);
+      expect(summary.samples).toHaveLength(6);
+      expect(summary.pairs).toHaveLength(3);
+      expect(summary.reference.firstOutputP95Ms).toBeGreaterThan(1);
+      expect(summary.ttyRendererOverhead).toBeUndefined();
+      expect(summary.evidence.candidate.sha256).toMatch(/^[a-f0-9]{64}$/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a slow reference is diagnostic while the candidate remains the gate", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-startup-reference-budget-"));
+    try {
+      const candidate = await writeFakeBinary(dir);
+      const reference = await writeScript(dir, "slow-reference", "sleep 0.200\nprintf 'reference\\n'");
+      const baseline = await writeBaseline(dir, { runs: 2, startupBudgetMs: 100, firstOutputBudgetMs: 100 });
+      const result = await runBench([
+        "--binary",
+        candidate,
+        "--compare-binary",
+        reference,
+        "--baseline",
+        baseline,
+        "--json",
+      ]);
+      expect(result.exitCode).toBe(0);
+      const summary = JSON.parse(result.stdout);
+      expect(summary.reference.startupWithinBudget).toBe(false);
+      expect(summary.reference.firstOutputWithinBudget).toBe(false);
+      expect(summary.candidateMinusReferenceP95Ms.startupMs).toBeLessThan(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports reference execution failure with role and path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-startup-reference-exit-"));
+    try {
+      const candidate = await writeFakeBinary(dir);
+      const reference = await writeScript(dir, "bad-reference", "printf 'failure\\n' >&2\nexit 7");
+      const baseline = await writeBaseline(dir, {
+        runs: 2,
+        startupBudgetMs: 1000,
+        firstOutputBudgetMs: 1000,
+      });
+      const result = await runBench([
+        "--binary",
+        candidate,
+        "--compare-binary",
+        reference,
+        "--baseline",
+        baseline,
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        `reference binary ${reference}: Startup command failed with exit code 7`,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a reference with no output invalidates the comparison", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-startup-reference-no-output-"));
+    try {
+      const candidate = await writeFakeBinary(dir);
+      const reference = await writeScript(dir, "silent-reference", "exit 0");
+      const baseline = await writeBaseline(dir, {
+        runs: 1,
+        startupBudgetMs: 1000,
+        firstOutputBudgetMs: 1000,
+      });
+      const result = await runBench([
+        "--binary",
+        candidate,
+        "--compare-binary",
+        reference,
+        "--baseline",
+        baseline,
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(
+        `reference binary ${reference}: Startup command exited without stdout or stderr output`,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports no output and observes first output before a delayed exit", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-startup-output-"));
+    try {
+      const noOutput = await writeScript(dir, "no-output", "exit 0");
+      const delayedExit = await writeScript(dir, "delayed-exit", "printf 'first\\n'\nsleep 0.200");
+      const baseline = await writeBaseline(dir, {
+        runs: 1,
+        startupBudgetMs: 1000,
+        firstOutputBudgetMs: 1000,
+      });
+      const failed = await runBench(["--binary", noOutput, "--baseline", baseline]);
+      expect(failed.exitCode).toBe(1);
+      expect(failed.stderr).toContain(
+        `candidate binary ${noOutput}: Startup command exited without stdout or stderr output`,
+      );
+      const result = await runBench(["--binary", delayedExit, "--baseline", baseline, "--json"]);
+      expect(result.exitCode).toBe(0);
+      const sample = JSON.parse(result.stdout).samples[0];
+      expect(sample.startupMs - sample.firstOutputMs).toBeGreaterThan(150);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
   test("compares median samples at the inclusive overhead budget and ignores one outlier", () => {
     const samples = { piped: [10, 40, 20, 30], tty: [100, 900, 170, 160] };
     expect(summarizeTtyOverhead({ ...samples, overheadBudgetMs: 150 })).toEqual({
