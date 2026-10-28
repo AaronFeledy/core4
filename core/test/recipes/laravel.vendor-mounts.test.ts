@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
@@ -9,7 +10,7 @@ import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { makeLandoPaths } from "@lando/paths";
 import { LandofileShape, ServiceName, bindSyncIgnores, serviceAppMount } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
 
@@ -34,6 +35,7 @@ test.each([
       Layer.provide(
         Layer.mergeAll(
           PluginRegistryLayer.layer,
+          FileSyncResolver.layerWithEngine(TestFileSyncEngine, { platform: ["linux"] }),
           BunFileSystem.layer,
           Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", home: root, env: {} })),
         ),
@@ -46,6 +48,7 @@ test.each([
         service.plan(compiled, {
           ...TestRuntimeProvider.capabilities,
           bindMountPerformance: slow ? "slow" : "native",
+          fileSyncTargets: "prepared-volume",
         }),
       ).pipe(Effect.provide(planner)),
     );
