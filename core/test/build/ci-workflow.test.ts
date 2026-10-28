@@ -417,8 +417,11 @@ describe("ci workflow", () => {
       refresh.indexOf("Refresh unit-test timings"),
     );
     expect(refresh).toContain("      - name: Upload refreshed timings");
+    expect(refresh).toContain("        if: success()");
+    expect(refresh).not.toContain("        if: always()");
     expect(refresh).toContain("          name: bun-test-timings");
     expect(refresh).toContain("          path: .bun-test-timings.json");
+    expect(refresh).toContain("          include-hidden-files: true");
   });
 
   test("rehearses the distribution flow on Linux x64 without publishing", async () => {

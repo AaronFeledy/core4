@@ -41,6 +41,9 @@ const bunSetupStep = `
       - name: Install dependencies
         run: bun install --frozen-lockfile`;
 
+const regenerateDerivedSourcesStep = `      - name: Regenerate derived sources
+        run: bun run codegen`;
+
 const contractTestStep = (platform: string): string => `
       - name: Run file-sync contract matrix (${platform})
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -59,8 +62,7 @@ ${bunSetupStep}
 
 ${containerHelperDownloadStep}
 
-      - name: Regenerate derived sources
-        run: bun run codegen
+${regenerateDerivedSourcesStep}
 
 ${renderInstallPodman6Step()}
 
@@ -137,6 +139,8 @@ const publishedManifestSetupJob = `
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${isolateLandoRootsStep}
 ${bunSetupStep}
+
+${regenerateDerivedSourcesStep}
 
 ${containerHelperDownloadStep}
 
@@ -224,6 +228,8 @@ const distributionRehearsalJob = `
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
+${regenerateDerivedSourcesStep}
+
 ${containerHelperDownloadStep}
 
       - name: Build command registry manifest
@@ -273,39 +279,48 @@ const renderJob = (job: NightlyJob): string => `
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${isolateLandoRootsStep}
 ${bunSetupStep}
+${regenerateDerivedSourcesStep}
 ${contractTestStep(job.platform)}`;
 
 const nightlyTierUnitTestsJob = `
   nightly-tier-unit-tests-linux-x64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
+${regenerateDerivedSourcesStep}
+
+${containerHelperDownloadStep}
+
       - name: Run nightly-tier unit tests
         run: bun test ${NIGHTLY_TIER_TESTS.join(" ")}`;
 
 const refreshTestTimingsJob = `
   refresh-test-timings-linux-x64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
-      - name: Regenerate derived sources
-        run: bun run codegen
+${regenerateDerivedSourcesStep}
+
+${containerHelperDownloadStep}
 
       - name: Refresh unit-test timings
         run: bun run scripts/update-test-timings.ts
 
       - name: Upload refreshed timings
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v6
         with:
           name: bun-test-timings
           path: ${TEST_TIMINGS_FILE}
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14`;
 
@@ -378,8 +393,7 @@ ${landoRootlessPrereqSteps}
           echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
           echo "::notice title=runtime-bundle-candidate-manifest::$MANIFEST"
 
-      - name: Regenerate derived sources
-        run: bun run codegen
+${regenerateDerivedSourcesStep}
 
       - name: Build Linux arm64 binary
         run: |

@@ -72,6 +72,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run file-sync contract matrix (linux-x64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -98,6 +100,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run file-sync contract matrix (darwin-arm64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -124,6 +128,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run file-sync contract matrix (darwin-x64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -150,6 +156,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run file-sync contract matrix (windows-x64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -376,6 +384,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Download container helper
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -692,6 +703,7 @@ jobs:
           retention-days: 7
 
   nightly-tier-unit-tests-linux-x64:
+    needs: [container-helper]
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
@@ -705,10 +717,24 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Run nightly-tier unit tests
         run: bun test core/test/scripts/codegen-ci.test.ts core/test/build/linux-acceptance-criteria-10-14.test.ts
 
   refresh-test-timings-linux-x64:
+    needs: [container-helper]
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
@@ -725,15 +751,26 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
+      - name: Download container helper
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Refresh unit-test timings
         run: bun run scripts/update-test-timings.ts
 
       - name: Upload refreshed timings
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v6
         with:
           name: bun-test-timings
           path: .bun-test-timings.json
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
@@ -771,6 +808,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Download container helper
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

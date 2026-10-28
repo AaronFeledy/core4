@@ -183,6 +183,7 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("bun run check:runtime-bundle-manifest --live");
       expect(firstWorkflow).toContain("refresh-test-timings-linux-x64:");
       expect(firstWorkflow).toContain("bun run scripts/update-test-timings.ts");
+      expect(firstWorkflow).toContain("include-hidden-files: true");
       expect(firstWorkflow).toContain("mysql-arm-client-linux-arm64:");
       expect(firstWorkflow).toContain("runs-on: ubuntu-24.04-arm");
       expect(firstWorkflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
