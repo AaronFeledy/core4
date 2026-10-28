@@ -80,9 +80,14 @@ const recordNetworkCreate = (
   const body = Schema.decodeUnknownSync(
     Schema.Struct({
       Name: Schema.String,
+      Driver: Schema.String,
       Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
     }),
-  )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
+  )(
+    payload === undefined
+      ? request.body
+      : { Name: payload.name, Driver: payload.driver, Labels: payload.labels },
+  );
   networks.set(body.Name, { Id: body.Name, ...body });
   return { status: 201, body: "{}" };
 };

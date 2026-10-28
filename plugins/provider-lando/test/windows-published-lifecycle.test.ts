@@ -287,6 +287,7 @@ describe("managed Windows published lifecycle", () => {
               status: 200,
               body: JSON.stringify({ Os: "linux", Architecture: "amd64", RepoDigests: ["img@sha256:test"] }),
             };
+          if (request.method === "GET" && path.startsWith("/networks/")) return { status: 404, body: "" };
           if (
             request.method === "POST" &&
             (path === "/networks/create" || path === "/libpod/networks/create")

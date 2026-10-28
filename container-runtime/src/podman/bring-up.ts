@@ -42,7 +42,6 @@ import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
   isSharedNetwork,
-  networkOwnershipLabels,
   verifiedNativeId,
 } from "../native-ownership.ts";
 import {
@@ -67,7 +66,11 @@ import { runServiceStartSchedule } from "../service-start-schedule.ts";
 import { isServiceRestartExpected } from "../supervision.ts";
 import { volumeCreationFact, volumeCreationLabels } from "../volume-creation.ts";
 import { waitForExit } from "../wait-for-exit.ts";
-import { ensureAuthoredNetwork, preflightExternalNetwork } from "./bring-up-networks.ts";
+import {
+  ensureAuthoredNetwork,
+  ensurePrivateNetwork,
+  preflightExternalNetwork,
+} from "./bring-up-networks.ts";
 import {
   bringUpRecreateReasons,
   inspectBindSources,
@@ -364,69 +367,64 @@ const ensureNetwork = (
   plan: AppPlan,
 ): Effect.Effect<void, ProviderError> => {
   const driver =
-    plan.networking?.perAppBridge?.name === name ? plan.networking.perAppBridge.driver : "bridge";
+    (plan.networking?.perAppBridge?.name === name ? plan.networking.perAppBridge.driver : undefined) ??
+    "bridge";
   const preferredBridge =
     (deps.options.dialect ?? libpodLifecycleDialect).engine === "libpod" &&
     landoAppNetworkName(plan) === name &&
     !isSharedNetwork(plan, name);
+  const createFailure = (response: EngineHttpResponse) => {
+    const details = { status: response.status, body: response.body };
+    const message = withApiReason(
+      `provider-${deps.options.ctx.providerId} network create failed with HTTP ${response.status}.`,
+      details,
+      deps.redactor,
+    );
+    return new ProviderUnavailableError({
+      providerId: deps.options.ctx.providerId,
+      operation: "bringUp.network",
+      message,
+      details: redactDetails(details, deps.redactor),
+      remediation:
+        deps.options.startFailureRemediation?.({ operation: "bringUp.network", message, details }) ??
+        deps.remediation,
+    });
+  };
+  const create = (labels?: Readonly<Record<string, string>>) =>
+    creationEligibility(plan).pipe(
+      Effect.andThen(() =>
+        request(deps, {
+          method: "POST",
+          path: preferredBridge ? "/libpod/networks/create" : "/networks/create",
+          body: preferredBridge
+            ? { name, driver, dns_enabled: true, options: { metric: "50" }, labels }
+            : { Name: name, Driver: driver, ...(labels === undefined ? {} : { Labels: labels }) },
+        }),
+      ),
+    );
+  if (!isSharedNetwork(plan, name)) {
+    return ensurePrivateNetwork(
+      (input) => request(deps, input),
+      {
+        plan,
+        name,
+        driver,
+        create,
+        createFailure,
+      },
+      deps.options.ctx,
+    );
+  }
   return request(deps, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
-      if (inspectResponse.status === 200) {
-        return Effect.void;
-      }
-      return creationEligibility(plan)
-        .pipe(
-          Effect.andThen(() =>
-            request(deps, {
-              method: "POST",
-              path: preferredBridge ? "/libpod/networks/create" : "/networks/create",
-              body: preferredBridge
-                ? {
-                    name,
-                    driver,
-                    dns_enabled: true,
-                    options: { metric: "50" },
-                    labels: networkOwnershipLabels(plan),
-                  }
-                : {
-                    Name: name,
-                    Driver: driver,
-                    ...(isSharedNetwork(plan, name)
-                      ? {}
-                      : {
-                          Labels: networkOwnershipLabels(plan),
-                        }),
-                  },
-            }),
-          ),
-        )
-        .pipe(
-          Effect.flatMap((response) => {
-            if (response.status === 201 || response.status === 200 || response.status === 409) {
-              return Effect.void;
-            }
-            const details = { status: response.status, body: response.body };
-            const message = withApiReason(
-              `provider-${deps.options.ctx.providerId} network create failed with HTTP ${response.status}.`,
-              details,
-              deps.redactor,
-            );
-            return Effect.fail(
-              new ProviderUnavailableError({
-                providerId: deps.options.ctx.providerId,
-                operation: "bringUp.network",
-                message,
-                details: redactDetails(details, deps.redactor),
-                remediation:
-                  deps.options.startFailureRemediation?.({
-                    operation: "bringUp.network",
-                    message,
-                    details,
-                  }) ?? deps.remediation,
-              }),
-            );
-          }),
-        );
+      if (inspectResponse.status === 200) return Effect.void;
+      return create().pipe(
+        Effect.flatMap((response) =>
+          response.status === 200 || response.status === 201 || response.status === 409
+            ? Effect.void
+            : Effect.fail(createFailure(response)),
+        ),
+      );
     }),
   );
 };

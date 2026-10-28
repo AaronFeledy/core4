@@ -383,6 +383,7 @@ const makeFakeApi = () => {
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
+              Driver: Schema.String,
               Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
             }),
           )(request.body);
@@ -878,6 +879,7 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
           const body = Schema.decodeUnknownSync(
             Schema.Struct({
               Name: Schema.String,
+              Driver: Schema.String,
               Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
             }),
           )(request.body);

@@ -12,6 +12,7 @@ import {
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 import { installSupervisedExecFixture, supervisedExecFixtureOptions } from "./support/exec-supervision.ts";
 import { installNonCompensatingExecUmask } from "./support/exec-umask.ts";
 
@@ -121,7 +122,13 @@ const makePodmanApi = (
         const containerMatch = request.path.match(/^\/containers\/([^/?]+)/u);
         const name = resolveName(containerMatch?.[1]);
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: 200, body: "{}" };
+          const networkName = decodeURIComponent(request.path.slice("/networks/".length));
+          return {
+            status: 200,
+            body: JSON.stringify(
+              ownedNetworkInspection(planWithDependency(dependentNames.web, true), networkName),
+            ),
+          };
         }
         if (request.method === "GET" && request.path.endsWith("/json") && name !== undefined) {
           return containers.has(name)

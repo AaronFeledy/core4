@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { makeResourceOwnershipStore } from "@lando/container-runtime/provider-assembly";
 import { makeRuntimeProvider } from "@lando/provider-docker";
+import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, landoAppNetworkName, landoNetworkingPlan } from "@lando/sdk/schema";
@@ -23,6 +24,52 @@ test("ownership survives repeated attempts and renamed app identities without st
     expect(inventory?.resources).toHaveLength(4);
     expect(await readFile(path, "utf8")).not.toContain("never-persist-this");
     expect((await stat(path)).mode & 0o777).toBe(0o600);
+  });
+});
+
+test("scratch network proof survives store round trip and replaces an exact old four-label hint", async () => {
+  await withInventory(async ({ store, plan, root, path }) => {
+    const scratch = { ...plan, extensions: { "@lando/core/scratch": { id: plan.id } } };
+    await Effect.runPromise(store.prepare(plan));
+    const old = (await Effect.runPromise(store.load(root)))?.resources.find(
+      (item) => item.kind === "network",
+    );
+    expect(old?.kind === "network" && old.scratchId).toBeUndefined();
+    await Effect.runPromise(store.prepare(scratch, plan));
+    const resources = (await Effect.runPromise(store.load(root)))?.resources;
+    expect(resources).toHaveLength(1);
+    expect(resources?.[0]).toMatchObject({ kind: "network", scratchId: plan.id });
+    expect(resources?.[0]?.identityDigest).not.toBe(old?.identityDigest);
+    await Effect.runPromise(store.prepare(scratch, plan));
+    expect((await Effect.runPromise(store.load(root)))?.resources).toHaveLength(1);
+    const raw = await readFile(path, "utf8");
+    expect(raw).toContain(`"scratchId": "${plan.id}"`);
+    await writeFile(path, raw.replace(`"scratchId": "${plan.id}"`, '"scratchId": "foreign"'));
+    expect(Result.isFailure(await Effect.runPromise(store.load(root).pipe(Effect.result)))).toBe(true);
+    const envelope = JSON.parse(raw) as { data: { resources: Array<Record<string, unknown>> } };
+    const entry = envelope.data.resources[0];
+    if (entry === undefined) throw new TypeError("missing scratch network identity");
+    entry.scratchId = "foreign";
+    const { identityDigest: _digest, ...identity } = entry;
+    entry.identityDigest = sha256Hex(canonicalJson(identity));
+    await writeFile(path, JSON.stringify(envelope));
+    expect(Result.isFailure(await Effect.runPromise(store.load(root).pipe(Effect.result)))).toBe(true);
+  });
+});
+
+test("ordinary final plan cannot downgrade persisted scratch network proof", async () => {
+  await withInventory(async ({ store, plan, root }) => {
+    const scratch = { ...plan, extensions: { "@lando/core/scratch": { id: plan.id } } };
+    await Effect.runPromise(store.prepare(scratch));
+    const ordinaryWithVolume = {
+      ...plan,
+      stores: [{ name: "data", kind: "data" as const, scope: "app" as const }],
+    };
+    const result = await Effect.runPromise(store.prepare(ordinaryWithVolume, scratch).pipe(Effect.result));
+    expect(Result.isFailure(result)).toBe(true);
+    const resources = (await Effect.runPromise(store.load(root)))?.resources;
+    expect(resources).toHaveLength(1);
+    expect(resources?.[0]).toMatchObject({ kind: "network", scratchId: plan.id });
   });
 });
 

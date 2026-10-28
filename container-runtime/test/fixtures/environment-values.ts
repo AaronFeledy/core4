@@ -9,6 +9,7 @@ import {
 import { DateTime, Effect } from "effect";
 import type { EngineHttpApi, EngineHttpRequest, EngineHttpResponse } from "../../src/engine-api.ts";
 import { commonContainerLabels } from "../../src/plan.ts";
+import { ownedNetworkInspection } from "../network-inspection-fixture.ts";
 
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-10-23T00:00:00Z"),
@@ -72,7 +73,10 @@ export const fakeEngine = (existing?: AppPlan, initiallyRunning = true) => {
               }
             : { status: 404, body: "{}" };
         }
-        if (request.path.startsWith("/networks/")) return { status: 200, body: "{}" };
+        if (request.path.startsWith("/networks/")) {
+          const name = decodeURIComponent(request.path.slice("/networks/".length));
+          return { status: 200, body: JSON.stringify(ownedNetworkInspection(plan, name)) };
+        }
         if (request.method === "DELETE") {
           exists = false;
           return { status: 204, body: "" };

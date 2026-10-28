@@ -61,6 +61,7 @@ export const networkApi = (
   const requests: EngineHttpRequest[] = [];
   const containers = new Map<string, unknown>();
   const owned = {
+    Id: "owned-authored-network",
     Name: "lando-networks_private",
     Driver: "macvlan",
     Labels: networkOwnershipLabels(networkPlan),
@@ -83,7 +84,18 @@ export const networkApi = (
           return (
             options.inspect?.(name) ?? {
               status: 200,
-              body: JSON.stringify(name === owned.Name ? owned : { Name: name }),
+              body: JSON.stringify(
+                name === owned.Name
+                  ? owned
+                  : name === "lando-networks"
+                    ? {
+                        Id: "owned-app-bridge",
+                        Name: name,
+                        Driver: "bridge",
+                        Labels: networkOwnershipLabels(networkPlan),
+                      }
+                    : { Name: name },
+              ),
             }
           );
         }
