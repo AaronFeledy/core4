@@ -223,14 +223,22 @@ describe("renderInspection", () => {
     expect(output).toContain("Only the first 50 errors are shown");
     expect(rows).toContain(`${big}  not inspected`);
     expect(rows).toContain("  aggregate-limit");
-    expect(rows.at(-1)).toBe(`  lando github-actions:list --workflow ${big}`);
+    expect(rows.slice(-3)).toEqual([
+      'Next: inspect each workflow marked "not inspected" using the same repository root:',
+      `  lando github-actions:list --root <repository-directory> --workflow ${big}`,
+      "  Replace <repository-directory> with the directory you inspected; quote paths for your shell.",
+    ]);
   });
 
   it("falls back to a marked placeholder when the pending path is not shell-safe", () => {
     const unsafe = ".github/workflows/it's big.yml";
     const output = renderInspection(inspection([uninspected(unsafe, [])]));
     expect(output).toContain(`${unsafe}  not inspected`);
-    expect(output).toContain("  lando github-actions:list --workflow <path>");
+    expect(lines(output).slice(-3)).toEqual([
+      'Next: inspect each workflow marked "not inspected" using the same repository root:',
+      "  lando github-actions:list --root <repository-directory> --workflow <path>",
+      "  Replace <repository-directory> with the directory you inspected; quote paths for your shell.",
+    ]);
     expect(output).not.toContain(`--workflow ${unsafe}`);
     expect(output).not.toContain(`--workflow '${unsafe}'`);
   });

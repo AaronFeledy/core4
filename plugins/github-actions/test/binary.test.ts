@@ -49,7 +49,16 @@ it.skipIf(binary === undefined)(
     expect(link.exitCode).toBe(0);
     const help = await run(["github-actions:list", "--help"]);
     expect(help.exitCode).toBe(0);
-    expect(help.stdout).toContain("--workflow");
+    expect(help.stdout).toContain("\n  lando github-actions:list\n");
+    expect(help.stdout).toContain(
+      "--root <value> Repository directory (defaults to invocation working directory).",
+    );
+    expect(help.stdout).toContain(
+      "--workflow <value> Exact .github/workflows/<filename>.yml or .yaml path; no glob patterns.",
+    );
+    expect(help.stdout).toContain("--json [fields]");
+    expect(help.stdout).not.toContain("\n  --json");
+    expect(help.stdout).not.toContain("$ lando");
     const inspected = await run(["github-actions:list", "--format=json"]);
     expect(inspected.exitCode).toBe(0);
     const result = Schema.decodeUnknownSync(envelope)(JSON.parse(inspected.stdout));

@@ -1,9 +1,10 @@
 import { expect, it } from "bun:test";
-import { chmod, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect, Result } from "effect";
 import { limits } from "../src/diagnostics.ts";
 import { listWorkflows } from "../src/operations.ts";
+import { renderInspection } from "../src/render.ts";
 import { repository, validWorkflow } from "./fixtures.ts";
 
 it("discovers only direct workflow suffixes in deterministic order and preserves malformed rows", async () => {
@@ -137,25 +138,54 @@ it("preserves healthy siblings when a workflow contains invalid UTF-8", async ()
   expect(result.summary).toEqual({ discovered: 2, inspected: 1, failed: 1, uninspected: 0 });
 });
 
-it("reports aggregate exhaustion with accurate uninspected rows", async () => {
-  const content = `${validWorkflow}#${"x".repeat(limits.fileBytes - Buffer.byteLength(validWorkflow) - 1)}`;
+it("recovers aggregate exhaustion in a root with spaces when another has the same workflow path", async () => {
+  const original = validWorkflow.replace("Checks", "Original repository");
+  const content = `${original}#${"x".repeat(limits.fileBytes - Buffer.byteLength(original) - 1)}`;
   await using repo = await repository(
     Object.fromEntries(
       Array.from({ length: 34 }, (_, index) => [`${String(index).padStart(2, "0")}.yml`, content]),
     ),
   );
-  const result = await Effect.runPromise(listWorkflows({ root: repo.root }));
+  const originalRoot = join(repo.root, "repository with spaces");
+  await mkdir(originalRoot);
+  await rename(join(repo.root, ".github"), join(originalRoot, ".github"));
+  await using other = await repository({
+    "32.yml": validWorkflow.replace("Checks", "Different repository"),
+  });
+  const result = await Effect.runPromise(listWorkflows({ root: originalRoot }));
   expect(result.summary).toEqual({ discovered: 34, inspected: 32, failed: 0, uninspected: 2 });
   expect(result.complete).toBe(false);
   expect(result.workflows[32]?.diagnostics[0]?.code).toBe("aggregate-limit");
+  const output = renderInspection(result);
+  const command = output.split("\n").find((line) => line.startsWith("  lando ")) ?? "";
+  expect(command).toBe(
+    "  lando github-actions:list --root <repository-directory> --workflow .github/workflows/32.yml",
+  );
+  expect(output).not.toContain(repo.root);
+  expect(output).not.toContain(other.root);
+  const args = command
+    .trim()
+    .split(" ")
+    .map((arg) => (arg === "<repository-directory>" ? originalRoot : arg));
+  const root = args[args.indexOf("--root") + 1];
+  const workflow = args[args.indexOf("--workflow") + 1];
+  if (root === undefined || workflow === undefined)
+    throw new Error("Recovery command must specify both --root and --workflow.");
+  const retry = await Effect.runPromise(listWorkflows({ root, workflow }));
+  expect(retry.summary).toEqual({ discovered: 1, inspected: 1, failed: 0, uninspected: 0 });
+  expect(retry.workflows[0]?.name).toBe("Original repository");
+  expect(retry.complete).toBe(true);
+  const fromOtherRoot = await Effect.runPromise(listWorkflows({ root: other.root, workflow }));
+  expect(fromOtherRoot.workflows[0]?.name).toBe("Different repository");
 });
 
 it.skipIf(process.getuid?.() === 0)("keeps unreadable files as diagnostic rows", async () => {
   await using repo = await repository({ "denied.yml": validWorkflow, "ok.yml": validWorkflow });
   await chmod(join(repo.root, ".github/workflows/denied.yml"), 0);
   const result = await Effect.runPromise(listWorkflows({ root: repo.root }));
-  expect(result.summary.failed).toBe(1);
-  expect(result.workflows[0]?.diagnostics[0]?.code).toBe("unsafe-file");
+  expect(result.summary).toEqual({ discovered: 2, inspected: 1, failed: 1, uninspected: 0 });
+  expect(result.workflows[0]?.diagnostics[0]?.code).toBe("unreadable-file");
+  expect(result.workflows[1]?.status).toBe("inspected");
   expect(Result.isSuccess(await Effect.runPromise(Effect.result(listWorkflows({ root: repo.root }))))).toBe(
     true,
   );

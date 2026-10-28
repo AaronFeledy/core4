@@ -180,13 +180,11 @@ const nextStep = (result: WorkflowInspection): string[] => {
   if (first === undefined) return [];
   const path = safeText(first.source.workflow);
   return [
-    'Next: inspect each workflow marked "not inspected" on its own:',
-    ...(shellSafe.test(path)
-      ? [`  lando github-actions:list --workflow ${path}`]
-      : [
-          "  lando github-actions:list --workflow <path>",
-          '  (replace <path> with a path marked "not inspected", quoted for your shell)',
-        ]),
+    'Next: inspect each workflow marked "not inspected" using the same repository root:',
+    shellSafe.test(path)
+      ? `  lando github-actions:list --root <repository-directory> --workflow ${path}`
+      : "  lando github-actions:list --root <repository-directory> --workflow <path>",
+    "  Replace <repository-directory> with the directory you inspected; quote paths for your shell.",
   ];
 };
 

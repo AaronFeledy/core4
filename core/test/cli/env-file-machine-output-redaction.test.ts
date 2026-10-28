@@ -5,6 +5,7 @@ import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
 import type { McpCommandEntry } from "@lando/mcp/registry";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { CommandResultOutcome } from "@lando/sdk/command-result";
+import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
 import { appConfigMcpSpecs, appConfigSpec } from "../../src/cli/command-specs/app/config/index.ts";
@@ -47,6 +48,48 @@ const dispatchDeps = (entry: McpCommandEntry): McpDispatchDeps => ({
 });
 
 describe("env_file machine-output redaction", () => {
+  for (const format of ["json", "yaml"] as const) {
+    test(`preserves primitive values in ${format} when invocation secrets match JSON literals`, async () => {
+      const io = createBufferedRendererIO();
+      await runWithRendererHandling(
+        Effect.succeed({
+          enabled: true,
+          disabled: false,
+          empty: null,
+          count: 12345,
+          strings: ["true", "false", "null", "12345"],
+        }),
+        {
+          sourceEnv: {
+            SYNTHETIC_SECRET: "true",
+            SYNTHETIC_PASSWORD: "false",
+            SYNTHETIC_TOKEN: "null",
+            SYNTHETIC_API_KEY: "12345",
+          },
+          runtime: Layer.empty,
+          rendererMode: "plain",
+          resultFormat: format,
+          command: "qa:primitive-redaction",
+          resultSchema: Schema.Unknown,
+          io,
+          formatError: ({ error }) => String(error),
+          setExitCode: () => undefined,
+        },
+      );
+      const parsed = format === "json" ? JSON.parse(io.stdout()) : Bun.YAML.parse(io.stdout());
+      expect(Schema.decodeUnknownSync(CommandResultEnvelope)(parsed)).toMatchObject({
+        ok: true,
+        result: {
+          enabled: true,
+          disabled: false,
+          empty: null,
+          count: 12345,
+          strings: [REDACTED, REDACTED, REDACTED, REDACTED],
+        },
+      });
+    });
+  }
+
   test("retains the invocation environment snapshot when the caller mutates its environment", async () => {
     // Given: a caller-owned environment that will change during execution.
     const secret = "invocation-snapshot-canary";

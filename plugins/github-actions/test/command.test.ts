@@ -1,9 +1,53 @@
 import { expect, it } from "bun:test";
+import { join, resolve } from "node:path";
 import { Renderer } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { spec } from "../src/command.ts";
 import { renderInspection } from "../src/render.ts";
 import { repository, validWorkflow } from "./fixtures.ts";
+
+it("documents plugin flag values and descriptions through source CLI help", async () => {
+  await using repo = await repository({});
+  const env = {
+    ...process.env,
+    NO_COLOR: "1",
+    LANDO_USER_CONF_ROOT: join(repo.root, "conf"),
+    LANDO_USER_DATA_ROOT: join(repo.root, "data"),
+    LANDO_USER_CACHE_ROOT: join(repo.root, "cache"),
+    LANDO_SYSTEM_PLUGIN_ROOT: join(repo.root, "system"),
+  };
+  const run = async (args: readonly string[]) => {
+    const child = Bun.spawn(
+      [process.execPath, resolve(import.meta.dir, "../../../core/bin/lando.ts"), ...args],
+      {
+        cwd: repo.root,
+        env,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { stdout, stderr, exitCode };
+  };
+  const link = await run(["meta:plugin:link", resolve(import.meta.dir, ".."), "--format=json"]);
+  expect(link.exitCode, `${link.stdout}\n${link.stderr}`).toBe(0);
+  const help = await run(["github-actions:list", "--help"]);
+  expect(help.exitCode, help.stderr).toBe(0);
+  expect(help.stdout).toContain("\n  lando github-actions:list\n");
+  expect(help.stdout).toContain(
+    "--root <value> Repository directory (defaults to invocation working directory).",
+  );
+  expect(help.stdout).toContain(
+    "--workflow <value> Exact .github/workflows/<filename>.yml or .yaml path; no glob patterns.",
+  );
+  expect(help.stdout).toContain("--json [fields]");
+  expect(help.stdout).not.toContain("\n  --json");
+  expect(help.stdout).not.toContain("$ lando");
+});
 
 it("returns successful completion when inspection contains negative findings", async () => {
   await using repo = await repository({ "invalid.yml": "on: [" });

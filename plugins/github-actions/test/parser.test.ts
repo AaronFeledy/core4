@@ -2,6 +2,7 @@ import { expect, it } from "bun:test";
 import { Effect, Schema } from "effect";
 import { inspectWorkflow } from "../src/inspect.ts";
 import { listWorkflows } from "../src/operations.ts";
+import { renderInspection } from "../src/render.ts";
 import { WorkflowInspection } from "../src/schema.ts";
 import { repository, validWorkflow } from "./fixtures.ts";
 
@@ -66,6 +67,45 @@ jobs:
   });
   expect(JSON.stringify(result)).not.toContain("PRIVATE");
 });
+
+for (const [label, strategy] of [
+  ["absent strategy", ""],
+  ["empty strategy", "    strategy: {}\n"],
+  ["fail-fast only", "    strategy:\n      fail-fast: false\n"],
+  ["max-parallel only", "    strategy:\n      max-parallel: 2\n"],
+] as const) {
+  it(`reports no matrix for ${label} and omits the rendered job note`, async () => {
+    await using repo = await repository({
+      "ci.yml": validWorkflow.replace("    runs-on:", `${strategy}    runs-on:`),
+    });
+    const result = await Effect.runPromise(listWorkflows({ root: repo.root }));
+    expect(result.workflows[0]?.status).toBe("inspected");
+    expect(result.workflows[0]?.jobs[0]?.matrix).toBe("absent");
+    const row = renderInspection(result)
+      .split("\n")
+      .find((line) => line.includes("| build  "));
+    expect(row).toBe("  4 | build  ubuntu-latest  1 script");
+  });
+}
+
+for (const [label, strategy] of [
+  ["literal matrix", "    strategy:\n      matrix:\n        os: [ubuntu-latest, windows-latest]\n"],
+  ["expression matrix", "    strategy:\n      matrix: ${{ fromJSON(inputs.matrix) }}\n"],
+  ["expression strategy", "    strategy: ${{ fromJSON(inputs.strategy) }}\n"],
+] as const) {
+  it(`keeps ${label} unassessed and renders the matrix job note`, async () => {
+    await using repo = await repository({
+      "ci.yml": validWorkflow.replace("    runs-on:", `${strategy}    runs-on:`),
+    });
+    const result = await Effect.runPromise(listWorkflows({ root: repo.root }));
+    expect(result.workflows[0]?.status).toBe("inspected");
+    expect(result.workflows[0]?.jobs[0]?.matrix).toBe("unassessed");
+    const row = renderInspection(result)
+      .split("\n")
+      .find((line) => line.includes("| build  "));
+    expect(row).toBe("  4 | build  matrix  ubuntu-latest  1 script");
+  });
+}
 
 for (const [label, content, code] of [
   ["syntax", "on: [push\njobs: {}", "yaml-syntax"],

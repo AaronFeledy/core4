@@ -28,7 +28,10 @@ export const projectJob = (name: string, job: WorkflowJob): InspectionJob => {
     id: safeText(job.id.value),
     source: tokenLocation(name, job.id),
     needs: (job.needs ?? []).map((need) => safeText(need.value)),
-    matrix: job.strategy === undefined ? ("absent" as const) : ("unassessed" as const),
+    matrix:
+      job.strategy === undefined || (isMapping(job.strategy) && job.strategy.find("matrix") === undefined)
+        ? ("absent" as const)
+        : ("unassessed" as const),
   };
   if (!isJob(job))
     return {

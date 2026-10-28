@@ -101,7 +101,10 @@ const readFile = Effect.fn("WorkflowAcquisition.read")(function* (
       const handle = yield* Effect.acquireRelease(
         Effect.tryPromise({
           try: () => open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK),
-          catch: () => "unsafe-file" as const,
+          catch: (error) =>
+            error instanceof Error && "code" in error && (error.code === "EACCES" || error.code === "EPERM")
+              ? ("unreadable-file" as const)
+              : ("unsafe-file" as const),
         }),
         (file) => close(() => file.close()),
       );
