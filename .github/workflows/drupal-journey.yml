@@ -102,46 +102,6 @@ jobs:
           mkdir -p dist
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
-
-      - name: Setup Go for Linux Podman source build
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4 # 1.88.0
-
-      - name: Install Linux Podman source-build prerequisites
-        run: |
-          set -euo pipefail
-          UBUNTU_SNAPSHOT=20261019T000000Z
-          printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-          for DELAY in 0 5 15 45; do
-            if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
-            if sudo apt-get update --error-on=any; then break; fi
-            if [ "$DELAY" -eq 45 ]; then
-              echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
-              exit 1
-            fi
-          done
-          PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
-          sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
-          for PACKAGE in "${PACKAGES[@]}"; do
-            INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
-            POLICY="$(apt-cache policy "$PACKAGE")"
-            CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
-            test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
-            if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
-              $1 == "***" && $2 == candidate { candidate_block = 1; next }
-              candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
-              candidate_block { candidate_block = 0 }
-              END { exit found ? 0 : 1 }
-            ' <<< "$POLICY"; then
-              echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
-              exit 1
-            fi
-          done
-
       - name: Assemble current-commit linux-x64 runtime bundle
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
 
@@ -254,46 +214,6 @@ jobs:
           mkdir -p dist
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
-
-      - name: Setup Go for Linux Podman source build
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4 # 1.88.0
-
-      - name: Install Linux Podman source-build prerequisites
-        run: |
-          set -euo pipefail
-          UBUNTU_SNAPSHOT=20261019T000000Z
-          printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
-          for DELAY in 0 5 15 45; do
-            if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
-            if sudo apt-get update --error-on=any; then break; fi
-            if [ "$DELAY" -eq 45 ]; then
-              echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
-              exit 1
-            fi
-          done
-          PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
-          sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
-          for PACKAGE in "${PACKAGES[@]}"; do
-            INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
-            POLICY="$(apt-cache policy "$PACKAGE")"
-            CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
-            test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
-            if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
-              $1 == "***" && $2 == candidate { candidate_block = 1; next }
-              candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
-              candidate_block { candidate_block = 0 }
-              END { exit found ? 0 : 1 }
-            ' <<< "$POLICY"; then
-              echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
-              exit 1
-            fi
-          done
-
       - name: Assemble current-commit linux-arm64 runtime bundle
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
 
@@ -546,7 +466,6 @@ jobs:
           mkdir -p dist
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --version "$VERSION" --minify --sourcemap=external
-
       - name: Assemble current-commit win32-x64 runtime bundle
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
 
@@ -625,7 +544,6 @@ jobs:
           mkdir -p dist
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target bun-windows-arm64 --outfile ./dist/lando-windows-arm64.exe --version "$VERSION" --minify --sourcemap=external
-
       - name: Assemble current-commit win32-arm64 runtime bundle
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-arm64
 

@@ -24,11 +24,6 @@ const SETUP_FLAGS = "--yes --provider=lando --skip-install-ca --skip-shell-integ
 const DOCTOR = "bun run scripts/platform-readiness-doctor.ts";
 const SCHEDULE_IF =
   "if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')";
-const LINUX_SOURCE_BUILD_MARKERS =
-  "uses: actions/setup-go@|go-version: 1.25.6|dtolnay/rust-toolchain@|libcap-dev|libsqlite3-dev|libseccomp-dev|protobuf-compiler|uidmap".split(
-    "|",
-  );
-
 const readWorkflow = async (): Promise<string> => Bun.file(workflowPath).text();
 
 const findIndentedBlock = (source: string, key: string, indent = 0): string => {
@@ -113,20 +108,18 @@ describe("platform-readiness workflow", () => {
     expect(linuxArm64).not.toContain(`${DOCTOR} || true`);
   });
 
-  test("installs Linux source-build prerequisites before linux current-commit assemble", async () => {
-    // Given / When
+  test("assembles Linux bundles in the isolated builder before provider setup", async () => {
     const workflow = await readWorkflow();
-
-    // Then
     for (const id of LINUX_IDS) {
       const job = jobBlock(workflow, id);
-      const installPrereqs = job.indexOf("Install Linux Podman source-build prerequisites");
       const assemble = job.indexOf(`Assemble current-commit ${id} runtime bundle`);
-      expect(installPrereqs).toBeGreaterThan(-1);
-      expect(assemble).toBeGreaterThan(installPrereqs);
-      for (const prerequisite of LINUX_SOURCE_BUILD_MARKERS) {
-        expect(job).toContain(prerequisite);
-      }
+      const setup = job.indexOf("      - name: Setup provider");
+      expect(assemble).toBeGreaterThan(-1);
+      expect(setup).toBeGreaterThan(assemble);
+      expect(job).toContain(`bun run scripts/assemble-runtime-bundle.ts --platform ${id}`);
+      expect(job).not.toContain("Install Linux Podman source-build prerequisites");
+      expect(job).not.toContain("actions/setup-go@");
+      expect(job).not.toContain("dtolnay/rust-toolchain@");
     }
   });
 

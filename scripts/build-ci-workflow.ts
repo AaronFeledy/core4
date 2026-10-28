@@ -19,7 +19,7 @@ import {
 } from "./ci-platforms.ts";
 import {
   RUNTIME_BUNDLE_ACTION_PINS,
-  RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT,
+  linuxRuntimeBundleCacheHashFiles,
 } from "./runtime-bundle-supply-chain.ts";
 import { UNIT_SHARD_COUNT } from "./test-shards.ts";
 
@@ -563,7 +563,7 @@ ${timingStartStep}
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.cache} # v6.1.0
         with:
           path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
-          key: runtime-bundle-linux-x64-\${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
+          key: runtime-bundle-linux-x64-\${{ ${linuxRuntimeBundleCacheHashFiles()} }}-\${{ github.repository }}
 
       - name: Setup Bun
         if: ${linuxRuntimeBundleCacheMiss}
@@ -574,21 +574,6 @@ ${timingStartStep}
       - name: Install dependencies
         if: ${linuxRuntimeBundleCacheMiss}
         run: bun install --frozen-lockfile
-
-      - name: Setup Go for Linux Podman source build
-        if: ${linuxRuntimeBundleCacheMiss}
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        if: ${linuxRuntimeBundleCacheMiss}
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
-
-      - name: Install Linux Podman source-build prerequisites
-        if: ${linuxRuntimeBundleCacheMiss}
-        run: |
-          ${RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
 
       - name: Assemble current-commit Linux x64 runtime bundle
         if: ${linuxRuntimeBundleCacheMiss}

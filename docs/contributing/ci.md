@@ -470,6 +470,53 @@ bun test plugins/provider-podman/test/contract.integration.test.ts
 
 Failures upload `provider-matrix-report-<cell>` JSON and `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The matrix is release-blocking for published runtime-bundle manifest acceptance even though it is not listed as a per-PR branch-protection check for Beta.
 
+## Build a Linux runtime bundle
+
+On Linux x64 or ARM64, use Docker Engine and a Buildx worker native to that host. Choose the matching command below. Use `.bun-version`'s Bun and prepare dependencies from the repository root:
+
+```bash
+bun install --frozen-lockfile
+docker buildx version
+```
+
+For Linux x64 and native amd64 Buildx, run:
+
+```bash
+bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
+tar -tzf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz >/dev/null
+```
+
+For Linux ARM64 and native arm64 Buildx, run:
+
+```bash
+bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64
+tar -tzf dist/cache/runtime-bundle/lando-runtime-linux-arm64.tar.gz >/dev/null
+```
+
+The `tar` check establishes archive readability; live provider acceptance requires separate checks. Assembly uses an on-demand BuildKit build with a small, explicit context. Compilation uses a pinned Noble base, signed Ubuntu snapshot (`20261019T000000Z`), and pinned Go, Rust, and Bun images inside the builder. Host Bun still runs the wrapper; host Go, Rust, and APT source-build prerequisites are unnecessary. Provider acceptance and release publication run separately. No builder image is published.
+
+If assembly reports a Bun pin mismatch, first install and run the Bun version already committed in `.bun-version`. Change `.bun-version`, the Bun image, and its assertion together only as an intentional, reviewed toolchain update. If signed snapshot indexes cannot be reached, inspect the Buildx worker's DNS and HTTPS access, then retry after fixing the cause. Do not disable signature or SHA-256 checks, change a pin only to pass a job, or downgrade host packages. A failed pack leaves an existing destination archive intact.
+
+To update pins, change the base and toolchain image digests and matching version assertions in `scripts/runtime-bundle-builder/Dockerfile`. Set the signed snapshot in `scripts/runtime-bundle-builder/prerequisites.sh` and keep the Noble base older than that snapshot. Coordinate the Bun image and assertion with `.bun-version`. Verify component and license SHA-256 values before updating `plugins/provider-lando/runtime-bundle-sources.json`. `LINUX_RUNTIME_BUNDLE_CACHE_INPUTS` in `scripts/runtime-bundle-supply-chain.ts` lists x64 file inputs; the cache key also names the platform and repository. Regenerate workflows and run `bun run codegen:check` and focused bundle tests on the reviewable tree.
+
+To check native acceptance before merge, push the reviewed branch and authenticate `gh` with workflow dispatch permission. Replace `<reviewbranch>` with that branch:
+
+```bash
+gh workflow run ci.yml --ref <reviewbranch>
+gh workflow run nightly.yml --ref <reviewbranch>
+```
+
+Dispatch only starts the runs. Find each completed `<run-id>`, then inspect its head SHA, result, and job logs against the reviewed commit:
+
+```bash
+gh run list --workflow ci.yml --branch <reviewbranch>
+gh run list --workflow nightly.yml --branch <reviewbranch>
+gh run view <run-id> --json headSha,conclusion,jobs
+gh run view <run-id> --log
+```
+
+CI must actually run `Assemble current-commit Linux x64 runtime bundle` (an Actions cache miss), then pass local-manifest provider setup. A cache miss alone does not prove cold BuildKit layers; inspect builder logs. Nightly's `mysql-arm-client-linux-arm64` job must pass native ARM assembly, manifest install, socket and `ldd` checks, and MySQL client tests. `platform-readiness` is restricted to `main`, so it is not the branch route.
+
 ## Platform readiness
 
 Compile smoke and relocated-binary smoke do not satisfy live `lando setup` or `lando doctor`. Live host readiness is a separate gate.
@@ -478,7 +525,7 @@ The generated workflow is `.github/workflows/platform-readiness.yml`, produced b
 
 `platform-readiness` runs on its schedule and manual dispatch, not on pull requests. Linux x64 uses Ubuntu 26.04; Linux arm64 uses `ubuntu-24.04-arm`. Both use the default provider `lando`.
 
-Linux current-commit assemble uses the same Go, Rust, and Ubuntu snapshot source-build prerequisites as `runtime-bundle`.
+Linux current-commit assemble uses the containerized [source-build prerequisites](#build-a-linux-runtime-bundle) described above.
 
 Current-commit assembly (`scripts/assemble-runtime-bundle.ts`) downloads each pinned component through `fetchOverHttps` in `scripts/runtime-bundle-fetch.ts`. A network failure, a body-read failure, or an HTTP 429/5xx gets four attempts with 250, 500, and 1000 ms delays between them. Any other HTTP failure (404, 403, and so on) fails on the first attempt. After the final transport or body-read failure, the error includes the pinned URL and underlying error message. A SHA-256 mismatch fails closed and is not retried.
 

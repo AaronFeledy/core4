@@ -19,7 +19,6 @@ import {
   LINUX_X64_TEST_RUNNER,
 } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
-import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
 
 const linuxArm64 = CI_PLATFORMS.find((platform) => platform.id === "linux-arm64");
@@ -336,18 +335,6 @@ ${bunSetupStep}
 ${containerHelperDownloadStep}
 
 ${landoRootlessPrereqSteps}
-
-      - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
-        with:
-          go-version: 1.25.6
-
-      - name: Setup Rust for Linux helper source builds
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
-
-      - name: Install Linux Podman source-build prerequisites
-        run: |
-          ${supplyChain.RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
 
       - name: Assemble current-commit linux-arm64 runtime bundle
         run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64

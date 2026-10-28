@@ -353,8 +353,8 @@ describe("ci workflow", () => {
 
     expect(arm).toContain("    runs-on: ubuntu-24.04-arm");
     expect(arm).toContain("    timeout-minutes: 120");
-    expect(arm).toContain("      - name: Setup Go for Linux Podman source build");
-    expect(arm).toContain("      - name: Setup Rust for Linux helper source builds");
+    expect(arm).not.toContain("actions/setup-go@");
+    expect(arm).not.toContain("dtolnay/rust-toolchain@");
     expect(arm).toContain("      - name: Assemble current-commit linux-arm64 runtime bundle");
     expect(arm).toContain("        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
     expect(arm).toContain("      - name: Report current-commit ARM runtime bundle fingerprints");
@@ -1459,8 +1459,11 @@ describe("ci workflow", () => {
       "        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64",
     );
     expect(runtimeBundle).toContain("          name: runtime-bundle-linux-x64-current");
-    expect(runtimeBundle).toContain("      - name: Setup Go for Linux Podman source build");
-    expect(runtimeBundle).toContain("      - name: Setup Rust for Linux helper source builds");
+    expect(runtimeBundle).not.toContain("actions/setup-go@");
+    expect(runtimeBundle).not.toContain("dtolnay/rust-toolchain@");
+    expect(runtimeBundle).toContain("scripts/check-runtime-bundle-manifest.ts");
+    expect(runtimeBundle).toContain("package.json");
+    expect(runtimeBundle).toContain("-${{ github.repository }}");
     expect(providerIntegration).toContain(
       "    needs: [selection, build-linux-x64, runtime-bundle-linux-x64, container-helper]",
     );
