@@ -73,7 +73,7 @@ if (!isCodegenCatalogModule(importedCatalogModule)) {
 const { CODEGEN_CATALOG, groupCodegenWaves, resolveCodegenCommand } = importedCatalogModule;
 const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
-  ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
+  ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo", ["core-service-env-catalog"]],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
   [
     "bundled-plugins",
@@ -378,6 +378,7 @@ describe("codegen catalog", () => {
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
+    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("build-guide-scenarios"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
     expect(waveOf("schema-deprecations")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
