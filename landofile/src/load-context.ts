@@ -15,16 +15,30 @@ export interface LandofileLoadContext {
   readonly logger?: Context.Service.Shape<typeof Logger> | undefined;
 }
 
-export const ensureConsistentRoot = Effect.fnUntraced(function* (
-  appRoot: string,
+const transactionGuard = Effect.fnUntraced(function* (
   inputs?: Pick<LandofileRuntimeInputs, "transactionGuard">,
 ) {
   const option =
     inputs?.transactionGuard === undefined
       ? yield* Effect.serviceOption(ManagedFileTransactionGuard)
       : undefined;
-  const guard = inputs?.transactionGuard ?? (option?._tag === "Some" ? option.value : undefined);
+  return inputs?.transactionGuard ?? (option?._tag === "Some" ? option.value : undefined);
+});
+
+export const ensureConsistentRoot = Effect.fnUntraced(function* (
+  appRoot: string,
+  inputs?: Pick<LandofileRuntimeInputs, "transactionGuard">,
+) {
+  const guard = yield* transactionGuard(inputs);
   if (guard !== undefined) yield* guard.ensureConsistent(appRoot);
+});
+
+export const assertReadableRoot = Effect.fnUntraced(function* (
+  appRoot: string,
+  inputs?: Pick<LandofileRuntimeInputs, "transactionGuard">,
+) {
+  const guard = yield* transactionGuard(inputs);
+  if (guard !== undefined) yield* guard.assertReadable(appRoot);
 });
 
 export const loadContext = Effect.fnUntraced(function* (

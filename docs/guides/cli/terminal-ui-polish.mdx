@@ -40,7 +40,9 @@ Anti-patterns: no undifferentiated rainbow logs, no SaaS-purple gradients, no de
 
 The `@lando/notify-lando` plugin, not core or the renderer, decides when a command completion publishes `notify.desktop`. It ships bundled and enabled by default.
 
-`notify.commands` adds canonical command ids. Entries are ordered, deduplicated, and validated against the cwd-independent global built-in/global-plugin command registry. Landofile-derived tooling and app-local plugin ids fail with `ConfigError` regardless of cwd. Configured `none`, `minimal`, and `plugins` commands acquire subscribers without changing their declared bootstrap metadata.
+`notify.commands` adds canonical command ids. Entries are ordered, deduplicated, and validated against the cwd-independent global built-in/global-plugin command registry. Landofile-derived tooling and app-local plugin ids fail with `ConfigError` regardless of cwd. Eligible configured `none`, `minimal`, and `plugins` commands acquire subscribers without changing their declared bootstrap metadata. Doctor, installation-config repair, version, shellenv, and uninstall retain their safe-mode bootstraps instead.
+
+Subscriber registration uses metadata without discovering an app or loading its Landofile. The terminal-event family matches at dispatch, so it can observe new app command ids in a retained runtime without reinstalling handlers. Exact app-command selectors may remain deferred until an app catalog is available; an explicit command-cache refresh validates them against that catalog. Static unknown selectors still fail registration.
 
 `notify.enabled: false` silences desktop notification policy. Environment overrides `LANDO_NOTIFY_ENABLED`, `LANDO_NOTIFY_THRESHOLD_MS`, and `LANDO_NOTIFY_COMMANDS` map to `notify.enabled`, `notify.thresholdMs`, and the JSON-array `notify.commands` value.
 

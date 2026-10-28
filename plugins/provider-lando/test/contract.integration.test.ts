@@ -26,6 +26,7 @@ import {
   runProviderVolumeCreationContract,
 } from "@lando/sdk/test";
 import { IntelMacUnsupportedError } from "../src/host-support.ts";
+import { decodeNetworkCreate } from "./network-fixture.ts";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 const textEncoder = new TextEncoder();
@@ -57,25 +58,8 @@ const recordNetworkCreate = (
   request: EngineHttpRequest,
   networks: Map<string, object>,
 ): EngineHttpResponse | undefined => {
-  if (request.path !== "/networks/create" && request.path !== "/libpod/networks/create") return undefined;
-  const payload =
-    request.path === "/libpod/networks/create"
-      ? Schema.decodeUnknownSync(
-          Schema.Struct({
-            name: Schema.String,
-            driver: Schema.Literal("bridge"),
-            dns_enabled: Schema.Literal(true),
-            options: Schema.Struct({ metric: Schema.Literal("50") }),
-            labels: Schema.Record(Schema.String, Schema.String),
-          }),
-        )(request.body)
-      : undefined;
-  const body = Schema.decodeUnknownSync(
-    Schema.Struct({
-      Name: Schema.String,
-      Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-    }),
-  )(payload === undefined ? request.body : { Name: payload.name, Labels: payload.labels });
+  const body = decodeNetworkCreate(request);
+  if (body === undefined) return undefined;
   networks.set(body.Name, { Id: body.Name, ...body });
   return { status: 201, body: "{}" };
 };

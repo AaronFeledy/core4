@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import ts from "typescript";
 
-import { ConfigError, NoProviderInstalledError, SshAgentUnavailableError } from "@lando/sdk/errors";
+import {
+  ConfigError,
+  ManagedFileTransactionError,
+  NoProviderInstalledError,
+  SshAgentUnavailableError,
+} from "@lando/sdk/errors";
 import * as sdkServices from "@lando/sdk/services";
 import type { LandofileServiceError } from "@lando/sdk/services";
 
@@ -133,6 +138,12 @@ describe("SDK public-surface snapshot", () => {
   });
   test("matches the structured global config error fields", () => {
     expect(Object.keys(ConfigError.fields).sort()).toEqual(publicSurface.configErrorFields);
+  });
+  test("matches managed-file transaction failure reasons", () => {
+    // Given / When: the public tagged error schema is the wire contract.
+    const reasons: readonly string[] = ManagedFileTransactionError.fields.reason.literals;
+    // Then
+    expect([...reasons]).toEqual(publicSurface.managedFileTransactionErrorReasons);
   });
   test("matches the provider installation diagnostic fields", () => {
     expect(Object.keys(NoProviderInstalledError.fields).sort()).toEqual(

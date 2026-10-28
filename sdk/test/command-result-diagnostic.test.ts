@@ -9,6 +9,7 @@ import {
   ComposeKeyRejectedError,
   LandoInternalError,
   LandofileParseError,
+  ManagedFileTransactionError,
   RecipeSourceError,
 } from "@lando/sdk/errors";
 import { CommandResultEnvelope, TaggedErrorJson } from "@lando/sdk/schema";
@@ -42,6 +43,31 @@ test("projects declared non-enumerable error fields without exposing runtime sou
   expect(projected).not.toHaveProperty("sourceURL");
   expect(projected).not.toHaveProperty("stack");
 });
+
+test.each(["pending-transaction", "blocked"] as const)(
+  "preserves the human explanation for a %s transaction at the diagnostic boundary",
+  (reason) => {
+    // Given an expected transaction refusal, not an unexpected internal failure.
+    const error = new ManagedFileTransactionError({
+      reason,
+      phase: "inspect",
+      path: "/app",
+      cause: "invariant",
+      remediation: "Inspect the previous file update before retrying.",
+    });
+    const message = error.message;
+    // When the error is projected through the accessor-safe wire boundary.
+    const diagnostic = taggedErrorJson(error);
+    // Then its real explanation and actionable context survive projection.
+    expect(diagnostic).toMatchObject({
+      _tag: "ManagedFileTransactionError",
+      message,
+      reason,
+      phase: "inspect",
+      path: "/app",
+    });
+  },
+);
 
 test.each([new Error("failure\n    at hidden-frame"), undefined, 42, "failure"])(
   "unknown failure %j becomes a schema-valid internal diagnostic",

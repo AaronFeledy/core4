@@ -98,7 +98,6 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
     noNetwork,
     loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
     ...(options.ports === undefined ? {} : { ports: options.ports }),
-    stateStore: options.stateStore,
   };
   if (includes.length > 0)
     yield* resolveTree(

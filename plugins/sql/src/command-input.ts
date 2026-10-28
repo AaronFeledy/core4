@@ -1,9 +1,14 @@
 import { isAbsolute, join, relative, resolve } from "node:path";
 
+import { Effect, Match } from "effect";
+
+import { CommandInputValidationError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
 
 import type { EnvironmentValue } from "@lando/sdk/schema";
 import type { DbAction, DbCommandInput } from "./command-types.ts";
+import { compressionFromExportPath } from "./compression.ts";
+
 import type { SqlLandofileService, SqlPlan } from "./views.ts";
 
 export const hostFile = (
@@ -23,6 +28,39 @@ export const parseCount = (stdout: string): number | undefined => {
   if (match === null) return undefined;
   const value = Number(match[0]);
   return Number.isFinite(value) ? value : undefined;
+};
+
+export const validateExportCompressionLevel = (
+  input: DbCommandInput,
+): Effect.Effect<void, CommandInputValidationError> => {
+  if (input.action !== "export" || input.compressionLevel === undefined) return Effect.void;
+  const compression = compressionFromExportPath(input.file ?? "dump.sql.gz");
+  const level = input.compressionLevel;
+  const message = !Number.isSafeInteger(level)
+    ? "--compression-level must be an integer."
+    : Match.value(compression).pipe(
+        Match.when("none", () => "--compression-level cannot be used with an uncompressed export."),
+        Match.when("gzip", () =>
+          level < 0 || level > 9 ? "gzip --compression-level must be between 0 and 9." : undefined,
+        ),
+        Match.when("zstd", () =>
+          level < 1 || level > 22 ? "zstd --compression-level must be between 1 and 22." : undefined,
+        ),
+        Match.exhaustive,
+      );
+  return message === undefined
+    ? Effect.void
+    : Effect.fail(
+        new CommandInputValidationError({
+          message,
+          target: "db:export",
+          field: "compression-level",
+          kind: "flag",
+          reason: "constraint",
+          remediation:
+            "Use an integer from 0-9 with a .gz destination or 1-22 with a .zst destination, or omit --compression-level.",
+        }),
+      );
 };
 
 export const secretTokens = (
@@ -56,6 +94,9 @@ export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInp
   ...(typeof input.flags["from-path"] === "string" ? { fromPath: input.flags["from-path"] } : {}),
   ...(typeof input.flags["from-service"] === "string" ? { fromService: input.flags["from-service"] } : {}),
   ...(typeof input.flags["keep-latest"] === "number" ? { keepLatest: input.flags["keep-latest"] } : {}),
+  ...(action === "export" && typeof input.flags["compression-level"] === "number"
+    ? { compressionLevel: input.flags["compression-level"] }
+    : {}),
   ...(input.flags.preview === true ? { preview: true } : {}),
   ...(input.flags.compression === "gzip" ||
   input.flags.compression === "zstd" ||

@@ -37,7 +37,7 @@ For day-to-day tooling, Apache PHP, and database hosts, see [Run the LAMP recipe
 ## 1. scaffold
 
 ```bash
-lando init --recipe lamp --name=my-lamp-mysql --yes
+lando init --recipe lamp --name=my-lamp-app --yes
 ```
 
 ## 2. start

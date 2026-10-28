@@ -4,9 +4,9 @@ import {
   type AppConfigResult,
   AppConfigResultSchema,
   type AppConfigSubcommand,
-  appConfig,
   renderAppConfigResult,
 } from "../../../commands/app-config";
+import { runAppConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { dryRunFlag, editorFlag, typeFlag } from "../../config-flags";
 import { appConfigOptionsFromInput } from "./";
@@ -21,9 +21,9 @@ const makeSpec = (
   summary,
   namespace: "app",
   topLevelAlias: false,
-  bootstrap: "app",
+  bootstrap: "plugins",
   ...metadata,
-  run: (input) => appConfig({ ...appConfigOptionsFromInput(input), subcommand }),
+  run: (input) => runAppConfig({ ...appConfigOptionsFromInput(input), subcommand }),
   render: (result, input) =>
     renderAppConfigResult(result as AppConfigResult, appConfigOptionsFromInput(input).format ?? "table"),
 });
@@ -40,7 +40,7 @@ export const appConfigUnsetSpec = makeSpec("unset", "Remove a key from the app's
   flags: { "dry-run": dryRunFlag },
 });
 export const appConfigEditSpec = makeSpec("edit", "Edit the app's Landofile in $EDITOR.", {
-  flags: { editor: editorFlag },
+  flags: { editor: editorFlag, "dry-run": dryRunFlag },
 });
 export const appConfigValidateSpec = makeSpec(
   "validate",

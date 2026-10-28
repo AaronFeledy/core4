@@ -12,6 +12,9 @@ import {
 import { type GitRecipeCloner, resolveGitRecipeSource } from "../git-source";
 import { resolveNpmRecipeSource } from "../npm-source";
 import { resolveRegistryRecipeSource } from "../registry-source";
+import type { RecipeTransportEvidence } from "../resolved-source-types";
+import type { ResolvedRecipe } from "../source";
+import { recipeTransportEvidence } from "../source-support";
 import { parseRecipeYaml } from "./parser";
 
 export interface RemoteParentContext {
@@ -23,6 +26,10 @@ export interface RemoteParentContext {
 export interface RawRemoteParent {
   readonly source: string;
   readonly parsed: unknown;
+  readonly acquisitionRoot?: string;
+  readonly content: string;
+  readonly evaluation: "declarative";
+  readonly transport?: RecipeTransportEvidence;
 }
 
 type RemoteScheme = "git" | "github" | "npm" | "registry";
@@ -115,10 +122,7 @@ const gitOptions = (url: string, path: string | undefined, ctx: RemoteParentCont
   ...(ctx.onWarn === undefined ? {} : { onWarn: ctx.onWarn }),
 });
 
-const resolveRemote = async (
-  ref: string,
-  ctx: RemoteParentContext,
-): Promise<{ readonly source: string; readonly manifestYaml: string }> => {
+const resolveRemote = async (ref: string, ctx: RemoteParentContext): Promise<ResolvedRecipe> => {
   const scheme = detectRemoteScheme(ref);
   if (scheme === undefined) throw notFound(ref);
   switch (scheme) {
@@ -178,8 +182,13 @@ export const readRemoteParent = Effect.fn("RecipeManifest.readRemoteParent")(fun
     try: () => resolveRemote(ref, ctx),
     catch: (cause) => mapRemoteError(cause, ref, chain),
   });
+  const transport = recipeTransportEvidence(resolved);
   return {
     source: resolved.source,
     parsed: yield* parseRecipeYaml({ source: resolved.source, content: resolved.manifestYaml }),
+    content: resolved.manifestYaml,
+    evaluation: "declarative",
+    ...(transport === undefined ? {} : { transport }),
+    ...(resolved.acquisitionRoot === undefined ? {} : { acquisitionRoot: resolved.acquisitionRoot }),
   };
 });

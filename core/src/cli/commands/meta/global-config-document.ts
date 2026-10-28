@@ -1,12 +1,15 @@
 import { dirname, join } from "node:path";
-import { Effect, Result } from "effect";
+import { Effect, Predicate, Result } from "effect";
 
 import { writeFileAtomicViaRename } from "@lando/engine/cache/atomic";
+import { assertConfigReadable } from "@lando/engine/config-write/readiness";
 import { emitConfigYaml, writeValidationErrorFromIssues } from "@lando/engine/config-write/write-core";
 import { globalLandofileOverrides } from "@lando/engine/operations/global-plan";
 import { loadLandofileLayers, validateLandofileReplacement } from "@lando/engine/services/landofile-live";
 import { parseLandofile } from "@lando/landofile/parser";
+import { detectTemplateDirective } from "@lando/landofile/template-render";
 import { ConfigError, NotImplementedError } from "@lando/sdk/errors";
+import { validationIssue } from "@lando/sdk/schema";
 
 export const readGlobalText = (filePath: string): Effect.Effect<string, ConfigError> =>
   Effect.tryPromise({
@@ -33,8 +36,15 @@ export const writeGlobalText = (filePath: string, content: string): Effect.Effec
   });
 
 export const parseGlobalTree = Effect.fnUntraced(function* (filePath: string, content: string) {
-  if (content.trim() === "") return { name: "global", runtime: 4 } as Record<string, unknown>;
-  return (yield* parseLandofile({ file: filePath, content, cwd: filePath })) as Record<string, unknown>;
+  if (content.trim() === "") return {};
+  const value = yield* parseLandofile({ file: filePath, content, cwd: dirname(filePath) });
+  if (Predicate.isObject(value) && !Array.isArray(value)) return value;
+  return yield* Effect.fail(
+    writeValidationErrorFromIssues({
+      file: filePath,
+      issues: [validationIssue([], "Expected a Landofile mapping.")],
+    }),
+  );
 });
 
 export const compileGlobalConfigDocument = Effect.fnUntraced(function* (filePath: string, edited?: string) {
@@ -83,3 +93,31 @@ export const decodeGlobalConfigDocument = (filePath: string) => (next: unknown) 
     Effect.map(Result.succeed),
     Effect.catchTag("LandofileWriteValidationError", (error) => Effect.succeed(Result.fail(error.issues))),
   );
+
+export const globalConfigDocument = (file: string, verb: "set" | "unset" | "edit") => ({
+  file,
+  readText: assertConfigReadable(dirname(file)).pipe(
+    Effect.andThen(readGlobalText(file)),
+    Effect.flatMap((content) =>
+      verb !== "edit" && detectTemplateDirective(content) !== undefined
+        ? Effect.fail(
+            new NotImplementedError({
+              message: `\`lando global:config ${verb}\` does not support the templated Landofile at ${file}.`,
+              commandId: "global:config",
+              remediation:
+                "Use `lando global:config edit` to preserve the template directive and authored source.",
+            }),
+          )
+        : Effect.succeed(content),
+    ),
+  ),
+  parse: (text: string) => parseGlobalTree(file, text),
+  editCommand: "lando global:config edit",
+  decode: decodeGlobalConfigDocument(file),
+  validateText: (content: string) =>
+    compileGlobalConfigDocument(file, content).pipe(
+      Effect.map(Result.succeed),
+      Effect.catchTag("LandofileWriteValidationError", (error) => Effect.succeed(Result.fail(error.issues))),
+    ),
+  writeText: writeGlobalText,
+});

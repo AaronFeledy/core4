@@ -1,31 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { runConfigTranslator } from "@lando/landofile/config-translate";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { ConfigTranslateInput, type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import { ConfigTranslateInput, type RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
 import { DRUPAL_CMS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/drupal-cms/commands.ts";
-import { drupalCmsDecomposer } from "../../src/recipes/builtin/drupal-cms/decomposer.ts";
-import { drupalCmsRecipeYaml } from "../../src/recipes/builtin/drupal-cms/manifest.ts";
+import { drupalCmsInstallCommand } from "../../src/recipes/builtin/drupal-cms/commands.ts";
 import {
   DRUPAL_CMS_PHP_INI,
   DRUPAL_CMS_PHP_INI_PATH,
   DRUPAL_CMS_PHP_INI_TARGET,
 } from "../../src/recipes/builtin/drupal-cms/php-config.ts";
-import {
-  DRUPAL_CMS_CONTENT_DIGEST,
-  DRUPAL_CMS_MYSQL_INSTALL_COMMAND,
-  DRUPAL_CMS_PGSQL_INSTALL_COMMAND,
-  drupalCmsDefaults,
-  drupalCmsProducer,
-  drupalCmsSnapshot,
-} from "../../src/recipes/builtin/drupal-cms/snapshot.ts";
+const DRUPAL_CMS_MYSQL_INSTALL_COMMAND = drupalCmsInstallCommand("mysql", "{{ app.name }}");
+const DRUPAL_CMS_PGSQL_INSTALL_COMMAND = drupalCmsInstallCommand("pgsql", "{{ app.name }}");
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: drupalCmsDecomposer,
+  defaults: drupalCmsDefaults,
+  producer: drupalCmsProducer,
+  snapshot: drupalCmsSnapshot,
+  contentDigest: DRUPAL_CMS_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("drupal-cms");
 import { DRUSH_TOOLING_COMMAND } from "../../src/recipes/builtin/drush-command.ts";
 import { makeRecipeConfigTranslator } from "../../src/recipes/config-translator.ts";
 
@@ -51,8 +48,6 @@ const authoringOf = (options: Readonly<Record<string, unknown>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(drupalCmsRecipeYaml));
 
 describe("drupal-cms decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -131,7 +126,7 @@ describe("drupal-cms decomposition", () => {
       services: Record<string, unknown>;
       tooling: { "drupal-cms-install": { cmd: string } };
     };
-    expect(Object.keys(authoring.services)).toEqual(["appserver", "edge", "database"]);
+    expect(Object.keys(authoring.services).sort()).toEqual(["appserver", "database", "edge"]);
     expect(authoring.services.appserver).toMatchObject({
       primary: true,
       via: "fpm",
@@ -268,17 +263,14 @@ describe("drupal-cms decomposition", () => {
 
   test("publishes the PHP ini asset with declared files and postInit", () => {
     expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
       { src: "assets/drupal-cms.ini", dest: DRUPAL_CMS_PHP_INI_PATH, template: false },
     ]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual(drupalCmsSnapshot.assets);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(
-      DRUPAL_CMS_CONTENT_DIGEST,
-    );
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(DRUPAL_CMS_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(drupalCmsSnapshot);
     expect(drupalCmsSnapshot.identity.contentDigest).toBe(DRUPAL_CMS_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");

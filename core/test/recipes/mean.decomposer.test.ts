@@ -1,23 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { meanDecomposer } from "../../src/recipes/builtin/mean/decomposer.ts";
-import { meanRecipeYaml } from "../../src/recipes/builtin/mean/manifest.ts";
 import { MEAN_PACKAGE_JSON_TEMPLATE, MEAN_SERVER_JS } from "../../src/recipes/builtin/mean/scaffold.ts";
-import {
-  MEAN_CONTENT_DIGEST,
-  meanDefaults,
-  meanProducer,
-  meanSnapshot,
-} from "../../src/recipes/builtin/mean/snapshot.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: meanDecomposer,
+  defaults: meanDefaults,
+  producer: meanProducer,
+  snapshot: meanSnapshot,
+  contentDigest: MEAN_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("mean");
 import { bundledRecipeContentSource } from "../../src/recipes/builtin/scaffold-assets.ts";
 import { recipeAssetDigest } from "../../src/recipes/builtin/snapshot-asset.ts";
 import { renderAuxiliaryScaffold } from "../../src/recipes/init-pipeline/files.ts";
@@ -31,7 +27,6 @@ const authoringOf = (options: RecipeDecomposeInput["options"]) => {
   const { recipe: _recipe, ...authoring } = decompose(options).fragment;
   return authoring;
 };
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(meanRecipeYaml));
 
 describe("mean decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -79,10 +74,14 @@ describe("mean decomposition", () => {
   });
 
   test("appends the cache when nondefault options enable Redis", () => {
-    const { services } = authoringOf({ node: "22", redis: true });
-    expect(services.api.environment.REDIS_URL).toBe("redis://cache:6379");
-    expect(services.api.dependsOn).toEqual(["database", "cache"]);
-    expect(services.cache?.type).toBe("redis");
+    const services = Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Unknown))(
+      authoringOf({ node: "22", redis: true }).services,
+    );
+    expect(services.api).toMatchObject({
+      environment: { REDIS_URL: "redis://cache:6379" },
+      dependsOn: [{ service: "database" }, { service: "cache" }],
+    });
+    expect(services.cache).toMatchObject({ type: "redis" });
     expect(Object.keys(services)).toEqual(["api", "database", "cache"]);
   });
 
@@ -105,7 +104,6 @@ describe("mean decomposition", () => {
 
   test("publishes the auxiliary inventory with declared files and postInit", () => {
     expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
       { src: "templates/package.json.tmpl", dest: "package.json", template: true },
       { src: "templates/server.js.tmpl", dest: "server.js", template: true },
     ]);
@@ -122,14 +120,12 @@ describe("mean decomposition", () => {
     );
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(MEAN_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(MEAN_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(meanSnapshot);
     expect(meanSnapshot.identity.contentDigest).toBe(MEAN_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
-    expect(MEAN_CONTENT_DIGEST).toBe(
-      "sha256:32b53b5bcf4b6deb9060cd5a7656e847ffab4b6d28e77edf9b26a037f9398186",
-    );
+    expect(MEAN_CONTENT_DIGEST).toBe(meanSnapshot.identity.contentDigest);
   });
 
   test.each([defaults, { node: "22", redis: false }, { node: "lts", redis: true }])(

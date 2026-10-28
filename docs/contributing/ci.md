@@ -22,15 +22,15 @@ Pull requests select the highest profile needed by their changed paths:
 
 Mixed changes select the highest profile: `docs`, `guides`, `runtime`, then `providers`. An empty comparison selects `runtime`; unavailable comparison history selects `providers`. A Git command failure fails selection. Deleted and renamed paths count too. The path rules live in `scripts/ci-selection.ts`. `bun test --changed` is a local convenience, not the merge gate.
 
-Pushes to `main` and manual `ci` dispatches run broad hosted coverage, including all six binary artifacts required by the release workflow. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when a PR needs the broad hosted checks before merge.
+Pushes to `main`, manual `ci` dispatches, and pull requests changing the root `.bun-version` run broad hosted coverage, including all six binary artifacts required by the release workflow. The toolchain rule applies even when the PR also changes other paths. Nightly and the scheduled evidence workflows own deep live suites and platform journeys. Use manual `ci` dispatch when another PR needs the broad hosted checks before merge.
 
 General Linux tests run on Ubuntu 26.04. Portable Linux x64 binaries still build on Ubuntu 24.04 for their older glibc baseline. The focused install/use/uninstall lifecycle also keeps Ubuntu 24.04 coverage without duplicating the broad test suite.
 
 ## Static checks
 
-CI pins Bun via `.bun-version` at 1.4.2; the Beta 1 floor is `>=1.4.2`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version.
+CI pins Bun via `.bun-version` at 1.4.3; the Beta 1 floor is `>=1.4.3`, matching workspace `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. Workflows read that file rather than embedding a compiler version.
 
-Pull requests run portable static checks once on Linux x64. Broad runs retain the six-platform static matrix. The stable `static-checks` summary feeds the required `ci` check.
+Non-broad pull requests run portable static checks once on Linux x64. Broad runs, including PRs changing the root `.bun-version`, retain the six-platform static matrix. The stable `static-checks` summary feeds the required `ci` check.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -82,6 +82,24 @@ bun run test:unit
 ```
 
 To match the added provider-contract coverage, also run `bun test plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts`.
+
+For a local review of which shard-eligible tests may relate to your changes, run:
+
+```bash
+bun run test:affected
+```
+
+This prints selected test paths, counts, a changed-file-to-test import path for each selection, fixture-reference matches, unmatched changed paths, and uncertain imports. It does not run tests unless you add `--run`. A dry run with zero matches prints `selected=0`; `--run` with zero matches exits nonzero without starting a test process. The default comparison uses the merge base with `origin/main` plus staged, unstaged, and untracked files. Use `--base <ref>` for another comparison or repeat `--file <path>` to inspect explicit repository paths. For example:
+
+```bash
+bun run test:affected --file sdk/src/schema/landofile.ts --file sdk/src/schema/json-schema.ts --run
+```
+
+Even with `--file`, selection walks imports from every shard-eligible test. Its time and memory use depend on the repository graph and the machine.
+
+The selector also follows the test preloads configured in `bunfig.toml` as shared dependencies of every eligible test. A changed preload or one of its static imports can therefore select the full set. If a configured preload cannot be resolved inside the repository, the selector reports the uncertainty and selects the full eligible set.
+
+The selector follows static and statically evaluable imports, re-exports, and `require` calls through workspace exports. It also uses fixture path references as a heuristic, including sibling files in a fixture app directory. Changes to package manifests, TypeScript configuration, Bun configuration, the lockfile, or the Bun version select every shard-eligible test, preserving the shard exclusions. Computed imports, unresolved local modules, runtime file reads, and other generated or configuration effects can leave gaps; import paths through barrels can also select extra tests. Prior import edges are reconstructed only for the changed source paths supplied. If you use `--file` for a deleted module but omit a rewritten importer, that historical edge may be missing. Review the uncertain and unmatched lists before relying on a narrow result. The CI profile still runs its full selected shards.
 
 Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; per-PR workflow drift is covered by `bun run codegen:check` in `static-checks-platform`.
 
@@ -227,7 +245,7 @@ Release-shaped binary jobs install the locked cross-target optional packages wit
 bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
 ```
 
-The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. Bun 1.4.2 includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled for every target, including Windows cross-compilation, and attaches the OpenTUI native-root pruning plugin. The pinned Bun version includes the cross-platform bytecode fix from 1.4.1; do not disable bytecode to work around an older compiler. The wrapper also enables `--disallow-code-generation-from-strings=strict`. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, `windows-x64`, and `windows-arm64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`.
 
 ## Local Bun profiling
 
@@ -257,6 +275,16 @@ bun run build
 bun run bench:opentui-startup -- --binary core/dist/lando
 bun run bench:tooling-hot-path -- --binary core/dist/lando
 ```
+
+To compare two Linux x64 compiled binaries on the same host, pass the candidate to `--binary` and the reference to `--compare-binary`:
+
+```bash
+bun run bench:opentui-startup -- --binary /path/to/candidate/lando --compare-binary /path/to/reference/lando --json
+```
+
+Replace both example paths with your compiled binaries. The runner starts fresh processes in adjacent alternating pairs: candidate then reference, followed by reference then candidate. `--runs` counts samples **per binary** (20 by default). JSON reports every timed sample in order, each binary's p95, and signed candidate-minus-reference differences. Only the candidate must pass the existing strict 50 ms startup and first-output budgets. The reference's budget status is diagnostic; a reference that fails to run or produces no output invalidates the comparison. The candidate alone runs the TTY overhead gate after startup passes. A failed startup budget skips that TTY phase but still reports all scheduled startup samples.
+
+The JSON identifies each binary by path, byte size, and SHA-256 after timing finishes. It also records the runner's Bun version, host OS, architecture and kernel, and before/after CPU load and available Linux cgroup or pressure readings. Record the Bun compiler version used to build each binary separately; the runner cannot infer that provenance. Processes use isolated Lando roots without warmups or retries. The OS page cache remains unmanaged, so these are not cold-disk measurements. Inspect load and pressure evidence before attributing a difference to code.
 
 ## npm dev package publishing
 
@@ -538,7 +566,7 @@ Do not run this purge scenario on a workstation or shared runtime. Isolated Land
 
 ## Alpha platform scope
 
-Public Alpha 1 live evidence is six compile targets, not Linux x64 only. Compile smoke is not an Alpha exit. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Main and manual CI own the broad hosted matrix; PR CI selects its smaller profile. Nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
+Public Alpha 1 live evidence is six compile targets, not Linux x64 only. Compile smoke is not an Alpha exit. Live `lando setup` and `lando doctor` run in `platform-readiness`. The Drupal canonical journey runs in `drupal-journey`. The Rails canonical journey runs in `rails-journey`. Each generated workflow covers all six compile targets. Darwin and Windows cells are fail-closed self-hosted `lando-virt` jobs; a missing runner is an error, not a skip. Main, manual CI, and PRs changing the root `.bun-version` run the broad hosted matrix; other PRs select their smaller path-based profile. Nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns cross-engine acceptance coverage.
 
 ## Docs build
 

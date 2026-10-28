@@ -53,7 +53,7 @@ const providerLandoE2eJob = `
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 
@@ -134,7 +134,7 @@ const publishedManifestSetupJob = `
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 
@@ -221,7 +221,7 @@ const distributionRehearsalJob = `
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
 ${containerHelperDownloadStep}
@@ -270,7 +270,7 @@ const renderJob = (job: NightlyJob): string => `
     runs-on: ${job.runsOn}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 ${contractTestStep(job.platform)}`;
@@ -280,7 +280,7 @@ const nightlyTierUnitTestsJob = `
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
       - name: Run nightly-tier unit tests
@@ -291,7 +291,7 @@ const refreshTestTimingsJob = `
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
       - name: Regenerate derived sources
@@ -314,7 +314,7 @@ const runtimeBundleManifestLiveJob = `
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
       - name: Verify committed runtime-bundle manifest resolves live
@@ -329,7 +329,7 @@ const mysqlArmClientLinuxArm64Job = `
     runs-on: ${linuxArm64.runsOn}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${isolateLandoRootsStep}
 ${bunSetupStep}
 
@@ -338,7 +338,7 @@ ${containerHelperDownloadStep}
 ${landoRootlessPrereqSteps}
 
       - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo}
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 

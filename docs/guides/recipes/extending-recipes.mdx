@@ -8,80 +8,103 @@ tags: [beta, docs, recipes]
 
 # Extend a bundled recipe
 
-Put `extends: lamp` in a child `recipe.yml`, then inspect the flattened result with `lando meta recipes describe ./`.
-
-Define only what differs from the parent. Lando follows the parent chain and merges prompts, files, and `postInit` into one recipe for later commands. Pass `./` or `recipe.yml`. A bare `.` is not a local recipe path.
+Put `extends: lamp` in a child `recipe.yml` and declare only what differs. The child inherits the parent's `options`, `config`, `files`, and `postInit`, and `lando init --recipe=./lamp-child` writes the combined result. You don't copy the parent's Landofile and you don't declare a snapshot.
 
 ## Write the child recipe.yml
 
-The directory basename must match `id`. This child extends the bundled `lamp` recipe, removes the app-name prompt, overrides PHP, and adds one file:
+The directory basename must match `id`. This child narrows the PHP choice, moves the webroot to `web`, and adds one file:
 
 ```yaml
 id: lamp-child
 title: Lamp Child
-description: Extends lamp with one prompt override and a dropped prompt.
+description: Extends lamp with a narrower PHP choice and one extra file.
 version: 0.1.0
 extends: lamp
-prompts:
-  - name: name
-    drop: true
-  - name: php
-    type: select
-    message: PHP version
+options:
+  php:
+    type:
+      kind: enum
+      values:
+        - "8.2"
+        - "8.3"
     default: "8.2"
-    choices:
-      - value: "8.2"
-      - value: "8.3"
+    prompt:
+      message: PHP version
+config:
+  services:
+    appserver:
+      webroot: web
 files:
   - src: extra.txt
     dest: extra.txt
 postInit:
-  - type: gitInit
+  - type: message
+    text: Run lando start inside the new app directory.
 ```
 
-Keep `extra.txt` next to `recipe.yml` so the `files:` entry is real.
+Save `extra.txt` next to `recipe.yml` so the `files:` entry is real. The parent's `database`, `composer`, and `webroot` options come along unchanged.
 
-Merge is name-keyed, not "last array wins":
+How the pieces combine:
 
-- Prompts merge by `name`. A child prompt with the same name replaces the parent. `drop: true` removes that parent prompt.
-- Files merge by `dest`. The child dest wins.
-- `postInit` is parent actions, then child actions.
-- Scalar fields (`title`, `description`, `version`, and the rest) come from the child when set.
+- `options` merge by name. A child option with the same name replaces the parent's declaration. `php: { drop: true }` would remove an inherited option, but only one the parent's `config` no longer references.
+- `config` layers on top of the parent's actual config using the Landofile merge rules, so `services.appserver.webroot: web` replaces the `{{ recipe.webroot }}` value on the appserver `lamp` defines while the rest of that service stays. Parent `variants` apply before the child's base config and variants.
+- `files` merge by `dest`; the child wins. `- dest: <path>` with `drop: true` removes an inherited file. An inherited file is still read from the recipe that declared it, so a bundled parent's file comes from the bundle and `extra.txt` comes from this directory.
+- `postInit` is the parent's actions, then the child's.
+- Scalar metadata (`title`, `description`, `version`, and the rest) comes from the child.
 
-A missing parent or an inheritance cycle produces `RecipeExtendsError`; validation cannot succeed until you fix the parent chain.
+`extends` accepts a bundled id, a relative path to another local recipe, or a remote reference like `github:acme/lando-recipes/drupal@v2.1.0`. A missing parent or an inheritance cycle fails with `RecipeExtendsError`. A `recipe.ts` can be a local parent; a remote parent is always `recipe.yml`.
 
-These commands read `recipe.yml`. There is no `recipe.ts` describe or validate path.
+## Describe the combined recipe
 
-## Describe the flattened recipe
-
-From the child directory:
+From the child directory, pass `./` or `recipe.yml`. A bare `.` is not a local recipe path.
 
 ```sh
 lando meta recipes describe ./ --format=json
 ```
 
-You should see `lamp-child` and the overridden `php` prompt. The dropped `name` prompt is gone.
+You should see `lamp-child` with four prompts: your `php` with two choices, then the inherited `database`, `composer`, and `webroot`. `preview.landofile` is the `.lando.yml` prepared with default option answers, an app name taken from the current directory (`name: lamp-child` here), and the current directory as the destination. It already shows `webroot: web` on the appserver. Inspection and init share the same preparation, so the preview is byte for byte what init would write only for that same name, answers, and destination. The init below passes `--name=demo-app` and writes into `demo-app/`, so its Landofile differs from this preview in `name:`. The destination matters for files too: this directory already contains `extra.txt`, so the preview lists it under `skippedScaffold`, while an empty `demo-app/` receives it.
 
-## Validate the child
+## Validate and init
 
 ```sh
 lando meta recipes validate ./ --format=json
+lando init --recipe=./ --name=demo-app --yes
 ```
 
-`valid` is `true` and `id` is `lamp-child` when the parent resolves.
+`valid` is `true` and `readiness` is `ready`. Init creates `demo-app/` with `.lando.yml` and `extra.txt`. From inside `demo-app/`, `lando app:config --format=json` shows the combined result: `appserver.webroot` is `web`, and the inherited `database` service is `mariadb:11.4`.
 
 <Guide>
   <Scenario id="describe-and-validate-lamp-child" render>
-    <Step name="describe-flattened">
+    <Step name="describe-combined">
       <UseFixture name="lamp-child" />
       <Run command="lando meta recipes describe ./ --format=json" />
-      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "lamp-child" } }} />
+      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "\"id\":\\s*\"lamp-child\"" } }} />
       <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"php\"" } }} />
+      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"database\"" } }} />
+      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "\"landofile\":\\s*\"[^\"]*name: lamp-child" } }} />
+      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "\"landofile\":\\s*\"(?:[^\"]|\\\\\")*webroot: web\\\\n" } }} />
+      <Verify command="lando meta recipes describe ./ --format=json" expect={{ stdout: { regex: "\"skippedScaffold\":\\s*\\[\\s*\"extra\\.txt\"" } }} />
     </Step>
     <Step name="validate-child">
       <Run command="lando meta recipes validate ./ --format=json" />
       <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
-      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "lamp-child" } }} />
+      <Verify command="lando meta recipes validate ./ --format=json" expect={{ stdout: { regex: "\"readiness\":\\s*\"ready\"" } }} />
+    </Step>
+    <Step name="init-child">
+      <Run command="lando init --recipe=./ --name=demo-app --yes" />
+      <Verify file="lamp-child/demo-app/.lando.yml" expect={{ regex: "id: lamp-child" }} />
+      <Verify file="lamp-child/demo-app/.lando.yml" expect={{ regex: "php: \"8\\.2\"" }} />
+      <Verify file="lamp-child/demo-app/.lando.yml" expect={{ regex: "webroot: web" }} />
+      <Verify file="lamp-child/demo-app/.lando.yml" expect={{ regex: "database: mariadb:11\\.4" }} />
+      <Verify file="lamp-child/demo-app/extra.txt" expect={{ regex: "Added by lamp-child" }} />
+    </Step>
+    <Step name="inspect-combined-config">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"webroot\":\\s*\"web\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"database\":\\s*\\{[^}]*\"type\":\\s*\"mariadb:11\\.4\"" } }} />
+    </Step>
+    <Step name="cleanup-generated-app">
+      <Cleanup />
     </Step>
   </Scenario>
 
@@ -94,6 +117,8 @@ lando meta recipes validate ./ --format=json
   </Scenario>
 </Guide>
 
+The generated `.lando.yml` has `lamp`'s appserver, database, and tooling with the webroot moved to `web`, `recipe.id: lamp-child`, and `recipe.options` recording all four answers. The producer identity Lando records for the child is its own; it also carries the parent's content evidence, so a parent upgrade shows up as a change.
+
 ## Next
 
-See [Change a LAMP stack after init](./lamp-stack-variants.mdx) for what `lamp` writes into `.lando.yml`.
+See [Change a LAMP stack after init](./lamp-stack-variants.mdx) for what `lamp` writes into `.lando.yml`, and [Write a recipe and init from a remote source](./remote-sources.mdx) for everything `options`, `config`, and `files` accept.

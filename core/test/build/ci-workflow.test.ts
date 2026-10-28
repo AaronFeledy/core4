@@ -509,6 +509,7 @@ describe("ci workflow", () => {
       "        run: bun test state-store/test/state-store/private-file-access.test.ts",
     );
     expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
+    expect(staticChecksPlatform.match(/^ {8}run: bun run check:types$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        if: matrix.platform == 'linux-x64'");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
@@ -570,7 +571,9 @@ describe("ci workflow", () => {
     // Then
     expect(jobs).toContain("  docs-build:");
     expect(docsBuild).toContain("    runs-on: ubuntu-26.04");
-    expect(docsBuild).toContain("      - uses: actions/checkout@v5");
+    expect(docsBuild).toContain(
+      "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
+    );
     expect(docsBuild).toContain("        uses: oven-sh/setup-bun@v2");
     expect(docsBuild).toContain("          bun-version-file: .bun-version");
     expect(docsBuild).toContain("        run: bun install --frozen-lockfile");
@@ -579,7 +582,9 @@ describe("ci workflow", () => {
     expect(docsBuild).toContain("        run: bun run docs:test");
     expect(docsBuild).toContain("        run: bun run docs:build");
     expect(docsBuild).toContain("        run: test -f docs/dist/reference/schemas/app-plan/index.html");
-    expect(docsBuild).toContain("        uses: actions/upload-pages-artifact@v3");
+    expect(docsBuild).toContain(
+      "        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0",
+    );
     expect(docsBuild).toContain("          path: docs/dist");
     expect(docsBuild).toContain("        if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(docsBuild.indexOf("bun install --frozen-lockfile")).toBeLessThan(
@@ -652,7 +657,9 @@ describe("ci workflow", () => {
     expect(schemaSnapshot).not.toContain("dist/command-schemas");
     expect(schemaSnapshot).not.toContain("docs/reference/schemas");
     expect(schemaSnapshot).toContain('if [[ -n "$schema_changes" ]]; then');
-    expect(schemaSnapshot).toContain(`      - uses: actions/checkout@v5
+    expect(
+      schemaSnapshot,
+    ).toContain(`      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0`);
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
@@ -718,7 +725,9 @@ describe("ci workflow", () => {
     expect(helper).toContain("    needs: [selection, container-helper]");
     expect(helper).toContain("    runs-on: ubuntu-24.04-arm");
     expect(helper).toContain("        run: bun install --frozen-lockfile");
-    expect(helper).toContain("        uses: actions/download-artifact@v7");
+    expect(helper).toContain(
+      "        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2",
+    );
     expect(helper).toContain("          name: container-helper");
     expect(helper).toContain("          path: core/container-helper/dist");
     expect(helper).toContain(

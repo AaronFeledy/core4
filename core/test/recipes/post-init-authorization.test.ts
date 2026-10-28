@@ -118,7 +118,7 @@ for (const start of [undefined, false, "false", true, "true"]) {
       },
     });
     // Then false strings cannot accidentally start services.
-    expect(calls.length).toBe(start === true || start === "true" ? 1 : 0);
+    expect(calls.length).toBe(start === true ? 1 : 0);
   });
 }
 

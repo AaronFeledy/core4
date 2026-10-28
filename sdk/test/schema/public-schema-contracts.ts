@@ -357,6 +357,11 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   RecipeRegistryResolution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   RecipeRegistryResponse: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   TemplateRenderContext: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  RecipeSource: "sdk/test/recipes/source-compiler.test.ts",
+  RecipeSourceOption: "sdk/test/recipes/source-options.test.ts",
+  RecipeSourcePrompt: "sdk/test/recipes/source-options.test.ts",
+  RecipeConfigLayer: "sdk/test/recipes/source-compiler.test.ts",
+  RecipeSourceCompileContext: "sdk/test/recipes/source-compiler.test.ts",
   UpdateChannel: "sdk/test/schema/update-manifest.test.ts",
   UpdateManifestPlatform: "sdk/test/schema/update-manifest.test.ts",
   UpdateManifestHttpsUrl: "sdk/test/schema/update-manifest.test.ts",
@@ -657,6 +662,7 @@ const recipeProvenanceFixture = {
 } as const;
 
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  RecipeSourceCompileContext: { sourceKind: "local", packageName: "example", assets: [] },
   ContainerHelperArch: "x64",
   ContainerHelperTarget: { os: "linux", arch: "arm64" },
   ContainerHelperDigest: "a".repeat(64),

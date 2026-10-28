@@ -143,20 +143,22 @@ The global app owns one route definition. `RouterService` does not expose a read
 
 ### 20.7 CLI surface (`meta:global:*`)
 
-| Canonical id | Alias | Bootstrap | Contract |
-|---|---|---|---|
-| `meta:global:config` | `global:config` | `minimal` | Read or write the canonical global Landofile and enablement map; `set`/`unset` follow the §8.2.1 format-preserving, fail-closed write contract. The generated layer is read-only. |
-| `meta:global:destroy` | `global:destroy` | `global` | Destroy services and resources; requires confirmation unless `--yes`. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--purge` follows §20.9. |
-| `meta:global:info` | `global:info` | `global` | Report service information; supports `--service` and `--format`. |
-| `meta:global:install` | `global:install` | `global` | Enable a plugin's contributions and regenerate without starting. |
-| `meta:global:list` | `global:list` | `minimal` | Report catalog state, source plugin, and declared command ids. JSON is the canonical machine shape. |
-| `meta:global:logs` | `global:logs` | `global` | Stream logs with standard service, follow, tail, and since filters. |
-| `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then publish routes, followed by router revalidation (§20.6.5); referenced artifacts refresh under §6.13.3 and build results follow §6.13.5. |
-| `meta:global:restart` | `global:restart` | `global` | Stop, then start, then router startup revalidation (§20.6.5). |
-| `meta:global:start` | `global:start` | `global` | Start all enabled services or repeated `--service` selections with their dependencies, then publish routes (§20.6.5). |
-| `meta:global:status` | `global:status` | `global` | Report live runtime status. |
-| `meta:global:stop` | `global:stop` | `global` | Stop all running services or repeated `--service` selections. |
-| `meta:global:uninstall` | `global:uninstall` | `global` | Disable a plugin's contributions, regenerate, and stop affected services. |
+Bootstrap levels for these commands are declared once in the §8.1 command registry; this table carries only the per-command contracts.
+
+| Canonical id | Alias | Contract |
+|---|---|---|
+| `meta:global:config` | `global:config` | Read or write the canonical global Landofile and enablement map; `set`, `unset`, and `edit` follow the §8.2.1 shared mutation workflow, including its format-preserving, fail-closed write and no-op rules. The generated layer is read-only. |
+| `meta:global:destroy` | `global:destroy` | Destroy services and resources; requires confirmation unless `--yes`. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--purge` follows §20.9. |
+| `meta:global:info` | `global:info` | Report service information; supports `--service` and `--format`. |
+| `meta:global:install` | `global:install` | Enable a plugin's contributions and regenerate without starting. |
+| `meta:global:list` | `global:list` | Report catalog state, source plugin, and declared command ids. JSON is the canonical machine shape. |
+| `meta:global:logs` | `global:logs` | Stream logs with standard service, follow, tail, and since filters. |
+| `meta:global:rebuild` | `global:rebuild` | Regenerate, destroy, build, apply, then publish routes, followed by router revalidation (§20.6.5); referenced artifacts refresh under §6.13.3 and build results follow §6.13.5. |
+| `meta:global:restart` | `global:restart` | Stop, then start, then router startup revalidation (§20.6.5). |
+| `meta:global:start` | `global:start` | Start all enabled services or repeated `--service` selections with their dependencies, then publish routes (§20.6.5). |
+| `meta:global:status` | `global:status` | Report live runtime status. |
+| `meta:global:stop` | `global:stop` | Stop all running services or repeated `--service` selections. |
+| `meta:global:uninstall` | `global:uninstall` | Disable a plugin's contributions, regenerate, and stop affected services. |
 
 `meta:global:stop` with no selection is the §5.3.1 teardown. `--service`/`-s` is repeatable and stops and removes exactly the observed containers of the named services, with no dependency expansion. It MUST retain applied state, all named volumes, the shared network, and unselected containers and their active routes. With no applied plan and no owned runtime resources it reports `unchanged`, even with selections. When an applied plan exists, unknown or empty service names MUST fail before any mutation. An otherwise valid selected orphan request (orphaned resources, no applied plan) fails closed with `AppResolveError` (§5.3.1). A retry reconciles the selected services' routes even when their containers were already removed, while `servicesStopped` lists only containers actually removed, so an `unchanged` container receipt MAY accompany route reconciliation. Later app starts MAY start a stopped global service again (§20.6.3).
 

@@ -3,6 +3,8 @@ import type { ManagedFileTransactionPendingReport } from "@lando/sdk/services";
 import { acquireAdvisoryLockAt } from "@lando/state-store/lock";
 import { type PrivateFileAccess, PrivateFileAccessError } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
+import { finishLinkedCreate, publishCreate } from "./transaction-create-link.ts";
+import { ensureDirectoryPolicy } from "./transaction-create-path.ts";
 import { type ManagedFileTransactionError, transactionError, transactionIO } from "./transaction-error.ts";
 import { canonicalRoot, finishAppliedMode, mutateEntry, removeRecordedStage } from "./transaction-fs.ts";
 import { type Journal, journalDirectory, openJournal } from "./transaction-journal.ts";
@@ -75,6 +77,9 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
     journal: Journal,
     store: JournalStore,
   ) {
+    if (journal.state === "prepared") yield* store.write({ ...journal, state: "committing" });
+    yield* checkpoint("recovering");
+    yield* transactionIO("recover", () => ensureDirectoryPolicy(root, journal.directoryPolicy, "recover"));
     const classified = yield* transactionIO("recover", async () => {
       try {
         return await preflight(root, journal, options.privateFileAccess);
@@ -85,10 +90,12 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
         throw cause;
       }
     });
-    if (journal.state === "prepared") yield* store.write({ ...journal, state: "committing" });
-    yield* checkpoint("recovering");
     for (const [index, { entry, disposition }] of classified.entries()) {
-      if (disposition === "pending")
+      if (disposition === "pending" && entry.publication === "create")
+        yield* transactionIO("recover", () =>
+          publishCreate({ root, entry, privateFileAccess: options.privateFileAccess, phase: "recover" }),
+        ).pipe(Effect.uninterruptible);
+      else if (disposition === "pending")
         yield* transactionIO("recover", () => mutateEntry(root, entry, options.privateFileAccess)).pipe(
           Effect.uninterruptible,
         );
@@ -96,6 +103,8 @@ export const makeTransactionRecovery = (options: RecoveryOptions) => {
         yield* transactionIO("recover", () => finishAppliedMode(root, entry, options.privateFileAccess)).pipe(
           Effect.uninterruptible,
         );
+      else if (disposition === "linked")
+        yield* transactionIO("recover", () => finishLinkedCreate(root, entry)).pipe(Effect.uninterruptible);
       yield* checkpoint("after-recovery-mutation", index);
     }
     yield* store.write({ ...journal, state: "committed" });

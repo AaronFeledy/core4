@@ -1,0 +1,6 @@
+name: config-set-dry-run
+includes:
+  - ./fragments/web.yml
+services:
+  web:
+    primary: true

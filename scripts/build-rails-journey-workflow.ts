@@ -30,7 +30,7 @@ ${renderCadenceIf(cell.cadence)}    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ${renderRunsOn(cell.runsOn)}
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
 ${isolateRootsStep}
 

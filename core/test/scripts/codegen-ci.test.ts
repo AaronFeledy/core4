@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { delimiter, dirname, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 import * as Schema from "effect/Schema";
@@ -49,7 +49,7 @@ const runCodegen = async (): Promise<string> => {
     cwd: repoRoot,
     env: {
       ...process.env,
-      PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ""}`,
+      PATH: `${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ""}`,
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -86,7 +86,7 @@ const changedLines = (
 
 describe("ci workflow codegen", () => {
   test(
-    "runs guide scenario codegen first and ignores generated guide outputs",
+    "runs guide scenario codegen before schema snapshots",
     async () => {
       const guidePath = resolve(repoRoot, "docs/guides/codegen-smoke.mdx");
       const generatedPath = resolve(repoRoot, "test/scenarios/generated/guides/codegen-smoke/runs.test.ts");
@@ -364,7 +364,7 @@ describe("ci workflow codegen", () => {
       }
 
       const originalPackageJson = await readFile(packageJsonPath, "utf8");
-      const mutatedPackageJson = originalPackageJson.replace('"bun": ">=1.4.2"', '"bun": ">=9.8.7"');
+      const mutatedPackageJson = originalPackageJson.replace(/"bun": ">=\d+\.\d+\.\d+"/u, '"bun": ">=9.8.7"');
       expect(mutatedPackageJson).not.toBe(originalPackageJson);
 
       try {
@@ -416,7 +416,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(`    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0`);
       expect(workflow).toContain("- name: Check schema compatibility");
@@ -614,7 +614,7 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("runtime-bundle-linux-x64:");
       expect(workflow).toContain("id: runtime-bundle-cache");
-      expect(workflow).toContain("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830");
+      expect(workflow).toContain("uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9");
       expect(workflow).toContain("key: runtime-bundle-linux-x64-${{ hashFiles(");
       expect(workflow).toContain("scripts/patches/netavark-v2.0.0-systemd-user-bus.patch");
       expect(workflow).toContain("if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'");

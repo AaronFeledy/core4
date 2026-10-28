@@ -12,9 +12,7 @@ Read the root [repository instructions](../../AGENTS.md) and any package-specifi
 
 ## Build from source
 
-You need Git and Bun. Use the version pinned in [`.bun-version`](../../.bun-version);
-the current minimum is Bun 1.4.2. Node is not a supported host runtime. Use Bun
-for dependency installation, scripts, and tests.
+You need Git and Bun. Use the version pinned in [`.bun-version`](../../.bun-version); the current minimum is Bun 1.4.3. Node is not a supported host runtime. Use Bun for dependency installation, scripts, and tests.
 
 Follow the [source-build steps](../alpha-install-and-bug-reports.md#option-2-build-from-source)
 to clone the repository, install dependencies, and generate sources. Before
@@ -59,6 +57,42 @@ Foreground scratch apps have scoped cleanup; detached scratch apps have their
 own lifecycle. Do not assume every scratch app disappears when a command exits.
 The implementation lives in [`engine/src/scratch-app/`](../../engine/src/scratch-app/).
 
+### Work on the optional GitHub Actions package
+
+[`plugins/github-actions/`](../../plugins/github-actions/) is the optional
+`@lando/github-actions` plugin. It is not bundled with Lando and is not
+published to npm; a user builds and links its artifact from a source checkout, as described in
+[Inspect GitHub Actions workflows with Lando](../guides/plugins/github-actions-inspection.mdx).
+It contributes one command, `github-actions:list`, and exports the public
+inspection operation `listWorkflows` from `@lando/github-actions/operations`,
+with its input and report schemas under `/schema` and its tagged error under
+`/errors`.
+
+Inspection is offline and read-only. It reads bounded workflow files under
+`.github/workflows/`, reports source-located facts and diagnostics, and never
+executes a workflow, evaluates expressions, fetches a reusable workflow, reads a
+Landofile, or uses a provider or the network. Keep that boundary when changing
+the package: reports carry names, identities, positions and declared requirements;
+errors carry safe codes and remediation, never scripts, environment/input values
+or raw upstream messages. Review essential metadata before sharing it. `assessment` stays
+`execution-unassessed`; a clean report is not a compatibility verdict.
+
+After the repository bootstrap, run the package's focused checks from the root:
+
+```sh
+bun test plugins/github-actions/test
+bun run --filter='@lando/github-actions' typecheck
+bun run dev:guides docs/guides/plugins/github-actions-inspection.mdx --once
+```
+
+The guide scenarios call `listWorkflows` directly against fixtures. To exercise
+the linked command, build the distribution with
+`bun run --filter='@lando/github-actions' build:artifact` and set
+`LANDO_ACTIONS_TEST_BINARY` to that binary before running the package tests.
+
+Running Lando commands inside GitHub-hosted CI is a separate, existing workflow;
+follow [Run Lando in GitHub Actions](../guides/install/ci-github-actions.mdx).
+
 ## Work on the CLI or compiled binary
 
 Source and compiled entries share one native dispatcher in `core/src/cli/run.ts`.
@@ -99,11 +133,12 @@ checking guide drift. Use the [CI runbook](./ci.md) to reproduce a specific job,
 including focused tests, guide checks, and provider integration tests.
 
 Executable guides check reader-facing workflows, while integration tests check
-behavior against external systems. Guide fixtures and `provider: test` can model
-operations without starting containers. They do not prove live runtime behavior
-or produce a real transcript of every displayed command. Use real-provider e2e
-scenarios for that evidence. Keep regressions with no documentation purpose in
-tests rather than inventing a guide to hold them.
+behavior against external systems. To write or debug one scenario, follow
+[author an executable guide scenario](./guide-authoring.md). Guide fixtures
+and `provider: test` can model operations without starting containers. They do
+not prove live runtime behavior or produce a real transcript of every displayed
+command. Use real-provider e2e scenarios for that evidence. Keep regressions
+with no documentation purpose in tests rather than inventing a guide to hold them.
 
 ## Keep development and release artifacts distinct
 

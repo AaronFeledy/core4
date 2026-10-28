@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
-import { DateTime, Duration, Effect, Schema, Stream } from "effect";
+import { DateTime, Duration, Effect, Stream } from "effect";
 
 import type { RetryPolicy } from "@lando/sdk/probe";
 
@@ -24,6 +24,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { decodeNetworkCreate } from "./network-fixture.ts";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { runScoped, runScopedExit } from "./scope-helpers.ts";
 
@@ -106,7 +107,7 @@ const makeFakePodmanApi = (
   let pingCalls = 0;
   const existing = new Set<string>();
   const running = new Set<string>();
-  const networks = new Set<string>();
+  const networks = new Map<string, { readonly Id: string }>();
   const volumes = new Set<string>();
 
   return {
@@ -147,12 +148,16 @@ const makeFakePodmanApi = (
             }),
           };
         }
-        if (request.path === "/networks/create" || request.path === "/libpod/networks/create") {
-          const body = Schema.decodeUnknownSync(
-            Schema.Union([Schema.Struct({ Name: Schema.String }), Schema.Struct({ name: Schema.String })]),
-          )(request.body);
-          networks.add("name" in body ? body.name : body.Name);
+        const networkCreate = decodeNetworkCreate(request);
+        if (networkCreate !== undefined) {
+          networks.set(networkCreate.Name, { Id: `${networkCreate.Name}-id`, ...networkCreate });
           return { status: 201, body: "{}" };
+        }
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const name = [...networks].find(([, network]) => network.Id === reference)?.[0] ?? reference;
+          const network = networks.get(name);
+          return { status: network === undefined ? 404 : 200, body: JSON.stringify(network ?? {}) };
         }
         if (request.path === "/volumes/create") {
           const requestedName = (request.body as { Name?: string }).Name ?? "";

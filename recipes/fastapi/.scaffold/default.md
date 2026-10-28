@@ -20,7 +20,7 @@ The named init creates `my-fastapi/`. Change into it before app commands. FastAP
 
 The scaffold writes only `.lando.yml`. It declares a `web` service on `python:3.12` with the `fastapi` framework on port 8000, a `database` service on `postgres`, and a `cache` service on `redis`. The `web` service waits on both.
 
-On startup, the recipe creates `/app/.venv` if it's missing and puts `/app/.venv/bin` first on `PATH`. `lando pip`, `lando uvicorn`, and bare commands inside `web` use it. Installed packages survive restarts, rebuilds, and container recreation because the venv lives on the app mount. Add `.venv/` to `.gitignore` and commit `requirements.txt` for reproducible installs.
+On startup, the recipe runs `python -m venv /app/.venv` if `/app/.venv/bin/pip` is not executable and puts `/app/.venv/bin` first on `PATH`. `lando pip`, `lando uvicorn`, and bare commands inside `web` use it. The venv is a service-owned overlay, not a host directory: restart and a plain `lando destroy` keep it, and `lando destroy --volumes` or `--purge` removes it. An empty overlay makes the next start recreate the venv. Add `.venv/` to `.gitignore` and commit `requirements.txt` for reproducible installs. Use `appMount.includes: [.venv]` if you want the host tree for IDE autocomplete.
 
 The default process keeps `web` alive without serving an app. The recipe creates no application skeleton and never installs dependencies automatically, even when `requirements.txt` exists. Install dependencies first, then serve your app with the generated tooling:
 

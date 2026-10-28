@@ -94,10 +94,6 @@
       }
     },
     {
-      "fixture": "docs/guides/config-explain/fixtures/managed-lamp",
-      "digest": "1b6ee8a107f12fccad545ea906217a41ddbec0788a42aac74d243cb500ac1b99"
-    },
-    {
       "fixture": "docs/guides/config-lint/fixtures/config-lint-demo",
       "digest": "82f1d0d4ea4f12bde02c0959163066e7f20f58cd9b23993ed0522b0061362a91"
     },
@@ -501,10 +497,6 @@
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/includes-app",
       "digest": "37537289e2b2b6e51b4bacbdf1d9a7683a23a4020c1d2e073589213280013a30"
-    },
-    {
-      "fixture": "docs/guides/migrating-recipes/fixtures/managed-lamp",
-      "digest": "d1ec760c78d917e906d28b410071b263da8af6e64c7e0dfe0fcf85a39773a68f"
     },
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/programmatic-app",
@@ -1017,6 +1009,10 @@
       "digest": "22a9ed76520c5ca9f641346c1030d21a800dd5123e47d32f8de2430376ebbeb3"
     },
     {
+      "fixture": "docs/guides/wordpress-multisite/fixtures/wp-network",
+      "digest": "16f8fe7d9fda8f3c9d5078c4f3f07a44221a67c4d44670912f89f8fe940c73c1"
+    },
+    {
       "fixture": "docs/guides/wordpress-vite/fixtures/wordpress-vite",
       "digest": "e255b8a8f88085098cc3f1ab03162cee3441074b5c2cfd55e384e6bdfed690e3"
     },
@@ -1031,6 +1027,10 @@
     {
       "fixture": "docs/guides/xhprof-xhgui/fixtures/xhprof-demo",
       "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
+    },
+    {
+      "fixture": "docs/guides/your-landofile/fixtures/config-set-dry-run",
+      "digest": "712074e6aeccb78777421a3b61be947954c794f9da06d779115d1419585ea4a7"
     },
     {
       "fixture": "docs/guides/your-landofile/fixtures/dual-form-conflict",

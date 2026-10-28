@@ -5,8 +5,9 @@ import { Args, Flags } from "../../spec/metadata";
 import type { InitAppOptions } from "../../commands/init";
 import { resolveInitDestination } from "../../commands/init-destination";
 import { parseInitSourceFlags } from "../../commands/init-source";
+import { InitAppResultSchema } from "../../commands/recipe-init-schemas";
 import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../prompts/answer-flags";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { booleanFlag, specArgsOf, specFlagsOf, stringArrayFlag, stringFlag } from "../../spec/input-coercion";
 
 type InitCommandOptions = Omit<InitAppOptions, "privateFileAccess">;
@@ -14,8 +15,7 @@ type InitCommandOptions = Omit<InitAppOptions, "privateFileAccess">;
 /**
  * `lando apps:init` — interactive scaffolding for new Lando apps.
  *
- * **Interactive only** — not exported as a function from
- * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
+ * Native-only composition; not exported as a function from `@lando/core/cli`.
  */
 
 export interface InitFlags {
@@ -95,7 +95,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
 };
 
 export const initSpec: LandoCommandSpec<never> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: InitAppResultSchema,
   id: "apps:init",
   helpGroup: "common",
   summary: "Generate a new Lando app.",
@@ -108,7 +108,7 @@ export const initSpec: LandoCommandSpec<never> = {
   },
   flags: {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
-    source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, registry, template)." }),
+    source: Flags.string({ description: "Remote recipe source (git, tarball, npm, registry)." }),
     url: Flags.string({
       description:
         "Remote recipe source URL (for --source=git/tarball); git accepts @ref (tag, branch, or full commit SHA).",

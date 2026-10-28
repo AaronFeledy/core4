@@ -55,6 +55,8 @@ const affectsProviders = (path: string): boolean =>
   );
 
 export const selectPaths = (paths: readonly string[]): CiSelection => {
+  if (paths.includes(".bun-version"))
+    return { profile: "runtime", broad: true, reason: "Bun toolchain change" };
   if (paths.length === 0) return { profile: "runtime", broad: false, reason: "empty diff" };
   if (paths.some(affectsProviders))
     return { profile: "providers", broad: false, reason: "provider or CI coverage path" };

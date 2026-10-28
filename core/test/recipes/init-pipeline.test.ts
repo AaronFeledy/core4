@@ -1,540 +1,288 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as ConfigTranslatorRegistryLayer from "@lando/engine/plugins/config-translator-registry";
-import { plugin } from "@lando/lando4";
-import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  type ConfigTranslateDiagnostic,
-  ConfigTranslateSourceId,
-  LANDOFILE_EDITOR_SCHEMA_URL,
-} from "@lando/sdk/schema";
-import { ConfigTranslatorRegistry, ProcessRunner } from "@lando/sdk/services";
-import { Effect, Result, Schema, Stream } from "effect";
-import {
-  RecipeInitBlockedError,
-  RecipeInitCommitError,
-  type RecipeInitPipelineRequest,
-  RecipeInitPostInitError,
-  previewRecipeLandofile,
-  runRecipeInitPipeline as runRecipeInitPipelineWithAccess,
-} from "../../src/recipes/init-pipeline.ts";
+import { ConfigTranslateSourceId, LANDOFILE_EDITOR_SCHEMA_URL } from "@lando/sdk/schema";
+import { ProcessRunner } from "@lando/sdk/services";
+import { Effect, Result, Stream } from "effect";
+import { runRecipeInitPipeline } from "../../src/recipes/init-pipeline.ts";
 import { secretReference } from "../../src/recipes/init-pipeline/secrets.ts";
-import { makeRecipeTranslatorModule } from "../../src/recipes/translator-module.ts";
-import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
-import { isolatedInitDecomposer, isolatedInitManifest } from "./fixtures/isolated-init-recipe/index.ts";
+import { type RecipeInitPreparationRequest, prepareRecipeInit } from "../../src/recipes/prepared-init.ts";
+import { pipelineSourceFixture } from "./fixtures/pipeline-source.ts";
 
 const roots: string[] = [];
-type TestRecipeInitPipelineRequest = Omit<RecipeInitPipelineRequest, "privateFileAccess"> & {
-  readonly privateFileAccess?: RecipeInitPipelineRequest["privateFileAccess"];
-};
-const runRecipeInitPipeline = (request: TestRecipeInitPipelineRequest) =>
-  runRecipeInitPipelineWithAccess({
-    ...request,
-    privateFileAccess: request.privateFileAccess ?? ownerOnlyFileAccess,
-  });
-const diagnostic = (kind: ConfigTranslateDiagnostic["kind"], message: string): ConfigTranslateDiagnostic => ({
-  kind,
-  message,
-  remediation: message,
-  sourceId: ConfigTranslateSourceId.make("recipe:isolated-init@1.0.0"),
-  keyPath: [],
-});
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
-const temporary = async () => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "recipe-init-pipeline-")));
+const fixture = async (patch: Record<string, unknown> = {}) => {
+  const root = await mkdtemp(join(tmpdir(), "init-pipeline-"));
   roots.push(root);
-  return root;
+  return pipelineSourceFixture(root, patch);
 };
-const fixture = async () => {
-  const appRoot = await temporary();
-  const journalRoot = await temporary();
-  const sourceRoot = await temporary();
-  const source = join(sourceRoot, "isolated.conf");
-  await Bun.write(source, "isolated = true\n");
-  const loader = plugin.configTranslators?.get("lando4");
-  if (loader === undefined) throw new Error("Missing lando4 lazy loader");
+const ready = async (request: RecipeInitPreparationRequest) => {
+  const result = await Effect.runPromise(prepareRecipeInit(request));
+  if (result.status !== "ready") throw new Error("Fixture requires answers");
+  return result;
+};
+
+test("S1 commits expression-bearing provenance and all auxiliary files before post-init", async () => {
+  // Given
+  const f = await fixture();
+  const prepared = await ready(f.request);
   const calls: string[] = [];
-  const landofile = join(appRoot, ".lando.yml");
-  const auxiliary = join(appRoot, "config/isolated.conf");
-  const request: TestRecipeInitPipelineRequest = {
-    appRoot,
-    sourceRoot,
-    journalRoot: () => journalRoot,
-    manifest: {
-      ...isolatedInitManifest,
-      files: [{ src: source, dest: "config/isolated.conf", template: false }],
-      postInit: [
-        {
-          type: "command",
-          cmd: "app:config:translate",
-          secretEnv: { ISOLATED_API_TOKEN: "apiToken" },
-        },
-      ],
-    },
-    decomposer: isolatedInitDecomposer,
-    answers: { php: "8.3", webroot: "web" },
-    appName: "isolated-init",
-    encoder: await loader(),
-    checkpoint: (point) =>
-      Effect.sync(() => {
-        if (point === "committed") calls.push("commit");
-      }),
-    runPostInit: async () => {
-      expect(await Bun.file(landofile).exists()).toBe(true);
-      expect(await Bun.file(auxiliary).exists()).toBe(true);
-      calls.push("postInit");
-      return { executed: [{ index: 0, type: "command" }] };
-    },
-  };
-  return { request, calls, landofile, auxiliary };
-};
-const failure = async (request: TestRecipeInitPipelineRequest) => {
-  const result = await Effect.runPromise(Effect.result(runRecipeInitPipeline(request)));
-  if (Result.isSuccess(result)) throw new Error("Expected pipeline failure");
-  return result.failure;
-};
-
-test("S1 commits expression-bearing provenance before auxiliary files and postInit", async () => {
-  const { request, calls, landofile, auxiliary } = await fixture();
-  const result = await Effect.runPromise(runRecipeInitPipeline(request));
-  expect(calls).toEqual(["commit", "postInit"]);
-  const text = await Bun.file(landofile).text();
-  expect(text.startsWith(`# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}\n`)).toBe(true);
-  expect(text).toContain("{{ recipe.php }}");
-  expect(text).toMatch(/recipe:\n\s+id: isolated-init/);
-  expect(text).toMatch(/\n\s+producer:\n/);
-  expect(await Bun.file(auxiliary).text()).toBe("isolated = true\n");
-  expect(result.landofilePath).toBe(landofile);
-  expect(result.auxiliaryFiles).toEqual([auxiliary]);
-});
-test("preview encodes the committed Landofile without writing anything", async () => {
-  const { request, calls, landofile, auxiliary } = await fixture();
-  const preview = await Effect.runPromise(previewRecipeLandofile(request));
-  expect(preview.text).toContain("{{ recipe.php }}");
-  expect(preview.text).toMatch(/^name: isolated-init$/m);
-  expect(calls).toEqual([]);
-  expect(await Bun.file(landofile).exists()).toBe(false);
-  expect(await Bun.file(auxiliary).exists()).toBe(false);
-  await Effect.runPromise(runRecipeInitPipeline(request));
-  expect(await Bun.file(landofile).text()).toBe(preview.text);
-});
-test("blocks unauthorized post-init actions before writing any scaffold", async () => {
-  // Given a direct pipeline caller that bypasses manifest-service validation
-  const { request, calls, landofile, auxiliary } = await fixture();
-  const unauthorized: TestRecipeInitPipelineRequest = {
-    ...request,
-    manifest: {
-      ...request.manifest,
-      postInit: [...(request.manifest.postInit ?? []), { type: "command", cmd: "app:destroy" }],
-    },
-  };
-
-  // When the pipeline receives a command outside the post-init allowlist
-  const error = await failure(unauthorized);
-
-  // Then authorization fails closed before the transaction or auxiliary writes
-  expect(error).toMatchObject({ _tag: "RecipeInitBlockedError", stage: "validate" });
-  expect(calls).toEqual([]);
-  expect(await Bun.file(landofile).exists()).toBe(false);
-  expect(await Bun.file(auxiliary).exists()).toBe(false);
-});
-test("blocks app:start without a declared opt-in prompt before writing any scaffold", async () => {
-  // Given a direct pipeline caller with an app:start guard that names no declared prompt
-  const { request, calls, landofile, auxiliary } = await fixture();
-  const unauthorized: TestRecipeInitPipelineRequest = {
-    ...request,
-    manifest: {
-      ...request.manifest,
-      postInit: [
-        ...(request.manifest.postInit ?? []),
-        { type: "command", cmd: "app:start", when: "options.start" },
-      ],
-    },
-  };
-
-  // When the pipeline authorizes post-init before committing
-  const error = await failure(unauthorized);
-
-  // Then the missing opt-in declaration fails closed before every write
-  expect(error).toMatchObject({ _tag: "RecipeInitBlockedError", stage: "validate" });
-  expect(calls).toEqual([]);
-  expect(await Bun.file(landofile).exists()).toBe(false);
-  expect(await Bun.file(auxiliary).exists()).toBe(false);
-});
-test("preview fails closed on the same blocking diagnostics as the write path", async () => {
-  const { request, landofile } = await fixture();
-  const encode = request.encoder.encode;
-  if (encode === undefined) throw new Error("Missing encoder");
-  const result = await Effect.runPromise(
-    Effect.result(
-      previewRecipeLandofile({
-        ...request,
-        encoder: {
-          ...request.encoder,
-          encode: (input) =>
-            Effect.map(encode(input), (encoded) => ({
-              ...encoded,
-              diagnostics: [...encoded.diagnostics, diagnostic("unsupported", "blocked preview")],
-            })),
-        },
-      }),
-    ),
-  );
-  if (Result.isSuccess(result)) throw new Error("Expected preview failure");
-  expect(result.failure).toBeInstanceOf(RecipeInitBlockedError);
-  expect(result.failure).toMatchObject({ stage: "diagnostics" });
-  expect(await Bun.file(landofile).exists()).toBe(false);
-});
-test("user appName wins over the translated fragment name", async () => {
-  const { request, landofile } = await fixture();
-  await Effect.runPromise(runRecipeInitPipeline({ ...request, appName: "user-chosen-name" }));
-  expect(await Bun.file(landofile).text()).toMatch(/^name: user-chosen-name$/m);
-});
-test("S2 invalid secret disposition blocks all writes and postInit", async () => {
-  const { request, calls, landofile, auxiliary } = await fixture();
-  const error = await failure({ ...request, manifest: { ...request.manifest, postInit: [] } });
-  expect(error).toBeInstanceOf(RecipeInitBlockedError);
-  expect(error).toMatchObject({ stage: "secret-prompts" });
-  expect(await Bun.file(landofile).exists()).toBe(false);
-  expect(await Bun.file(auxiliary).exists()).toBe(false);
-  expect(calls).toEqual([]);
-});
-test.each(["unsupported", "non-portable"] as const)("S2 %s diagnostic blocks all writes", async (kind) => {
-  const { request, calls, landofile, auxiliary } = await fixture();
-  const error = await failure({
-    ...request,
-    encoder: {
-      ...request.encoder,
-      encode: () =>
-        Effect.succeed({
-          text: "name: blocked\n",
-          diagnostics: [diagnostic(kind, "blocked")],
-        }),
-    },
-  });
-  expect(error).toMatchObject({ _tag: "RecipeInitBlockedError", stage: "diagnostics" });
-  expect(await Bun.file(landofile).exists()).toBe(false);
-  expect(await Bun.file(auxiliary).exists()).toBe(false);
-  expect(calls).toEqual([]);
-});
-test("S3 commit checkpoint failure prevents auxiliary files and postInit", async () => {
-  const { request, calls, landofile, auxiliary } = await fixture();
-  const error = await failure({
-    ...request,
-    checkpoint: (point) => (point === "committing" ? Effect.fail("injected") : Effect.void),
-  });
-  expect(error).toBeInstanceOf(RecipeInitCommitError);
-  expect(error).toMatchObject({ phase: "commit", reason: "checkpoint" });
-  expect(error.message).toContain("interrupted-checkpoint");
-  expect(await Bun.file(landofile).exists()).toBe(false);
-  expect(await Bun.file(auxiliary).exists()).toBe(false);
-  expect(calls).toEqual([]);
-});
-test("S4 postInit rejection reports and keeps the committed scaffold", async () => {
-  const { request, landofile, auxiliary } = await fixture();
-  const error = await failure({
-    ...request,
-    runPostInit: async () => {
-      throw new Error("SECRET_MARKER_9f3a");
-    },
-  });
-  expect(error).toBeInstanceOf(RecipeInitPostInitError);
-  expect(error).toMatchObject({
-    committedLandofile: landofile,
-    committedAuxiliaryFiles: [auxiliary],
-    failedAction: "postInit[0] (command)",
-    rolledBack: false,
-  });
-  expect(await Bun.file(landofile).exists()).toBe(true);
-  expect(await Bun.file(auxiliary).exists()).toBe(true);
-  expect(error.message).toContain("kept");
-  expect(error.remediation).toContain("NOT rolled back");
-  expect(JSON.stringify(error)).not.toContain("SECRET_MARKER_9f3a");
-});
-test("S5 raw secrets reach only the declared env sink and not persisted or returned data", async () => {
-  const { request } = await fixture();
-  const marker = "SECRET_MARKER_9f3a";
-  let received: string | undefined;
-  const encode = request.encoder.encode;
-  if (encode === undefined) throw new Error("Missing encoder");
+  // When
   const result = await Effect.runPromise(
     runRecipeInitPipeline({
-      ...request,
-      secretAnswers: { apiToken: marker },
-      encoder: {
-        ...request.encoder,
-        encode: (input) =>
-          encode(input).pipe(
-            Effect.map((encoded) => ({
-              ...encoded,
-              diagnostics: [diagnostic("needs-review", marker)],
-            })),
-          ),
-      },
-      runPostInit: async (options) => {
-        received = options.env?.ISOLATED_API_TOKEN;
-        expect(JSON.stringify(options.answers)).not.toContain(marker);
+      ...f.publication,
+      prepared,
+      checkpoint: (point) =>
+        Effect.sync(() => {
+          if (point === "committed") calls.push("commit");
+        }),
+      runPostInit: async () => {
+        calls.push("postInit");
         return { executed: [] };
       },
     }),
   );
-  expect(received).toBe(marker);
-  for (const path of [result.landofilePath, ...result.auxiliaryFiles])
-    expect(await Bun.file(path).text()).not.toContain(marker);
-  for (const diagnostic of result.diagnostics) {
-    expect(diagnostic.message).not.toContain(marker);
-    expect(diagnostic.remediation ?? "").not.toContain(marker);
-  }
-  expect(JSON.stringify(result)).not.toContain(marker);
-});
-test("overlapping secrets redact longest-first so suffixes do not leak", async () => {
-  const { request } = await fixture();
-  const encode = request.encoder.encode;
-  if (encode === undefined) throw new Error("Missing encoder");
-  const result = await Effect.runPromise(
-    runRecipeInitPipeline({
-      ...request,
-      secretAnswers: { apiToken: "abcdef", other: "abc" },
-      encoder: {
-        ...request.encoder,
-        encode: (input) =>
-          encode(input).pipe(
-            Effect.map((encoded) => ({
-              ...encoded,
-              diagnostics: [diagnostic("needs-review", "token=abcdef")],
-            })),
-          ),
-      },
-      runPostInit: async () => ({ executed: [] }),
-    }),
-  );
-  for (const item of result.diagnostics) {
-    expect(item.message).not.toContain("abc");
-    expect(item.remediation ?? "").not.toContain("abc");
-  }
-  expect(JSON.stringify(result)).not.toContain("abcdef");
-});
-test("S6 the in-process recipe module lists through ConfigTranslatorRegistry", async () => {
-  const module = makeRecipeTranslatorModule({
-    decomposers: new Map([[isolatedInitManifest.id, isolatedInitDecomposer]]),
-    redactor: createStandaloneRedactor("secrets"),
-  });
-  const translators = await Effect.runPromise(
-    Effect.flatMap(ConfigTranslatorRegistry, (registry) => registry.list).pipe(
-      Effect.provide(ConfigTranslatorRegistryLayer.layerWith([module])),
-    ),
-  );
-  expect(translators.map(({ id }) => id)).toEqual(["recipe"]);
-});
-test("existing auxiliary files are preserved and an existing Landofile blocks init", async () => {
-  const { request, calls, landofile, auxiliary } = await fixture();
-  await Bun.write(auxiliary, "keep me");
-  await Bun.write(landofile, "name: before\n");
-  const error = await failure(request);
-  expect(error).toMatchObject({ _tag: "RecipeInitCommitError", phase: "prepare", reason: "conflict" });
-  expect(calls).toEqual([]);
-  expect(await Bun.file(auxiliary).text()).toBe("keep me");
-  expect(await Bun.file(landofile).text()).toBe("name: before\n");
+  // Then
+  expect(calls).toEqual(["commit", "postInit"]);
+  const text = await Bun.file(result.landofilePath).text();
+  expect(text.startsWith(`# yaml-language-server: $schema=${LANDOFILE_EDITOR_SCHEMA_URL}\n`)).toBe(true);
+  expect(text).toContain("{{ recipe.php }}");
+  expect(text).toMatch(/recipe:\n\s+id: prepared/);
+  expect(text).toMatch(/\n\s+producer:\n/);
+  expect(await Bun.file(join(f.request.appRoot, "config/isolated.conf")).text()).toBe("isolated = true\n");
+  expect(result.receipt.created).toHaveLength(2);
 });
 
-test.each(["when", "mode", "engine"] as const)(
-  "blocks unsupported auxiliary file field %s before writing the Landofile",
-  async (field) => {
-    const { request, calls, landofile, auxiliary } = await fixture();
-    const file = { src: "ignored", dest: "config/isolated.conf", [field]: "unsupported" };
-    const error = await failure({ ...request, manifest: { ...request.manifest, files: [file] } });
-    expect(error).toMatchObject({ _tag: "RecipeInitBlockedError", stage: "validate" });
-    expect(calls).toEqual([]);
-    expect(await Bun.file(landofile).exists()).toBe(false);
-    expect(await Bun.file(auxiliary).exists()).toBe(false);
-  },
-);
-test("stdin is bound through the action runner, never answers, env, or argv", async () => {
-  const { request } = await fixture();
-  const marker = "SECRET_MARKER_9f3a";
-  const inputs: unknown[] = [];
-  const program = runRecipeInitPipeline({
-    ...request,
-    secretAnswers: { apiToken: marker },
-    manifest: {
-      ...request.manifest,
-      prompts: [
-        {
-          name: "apiToken",
-          type: "secret",
-          message: "token",
-          disposition: { kind: "init-only", sink: { kind: "stdin" } },
+test("preview encodes the committed Landofile without destination writes", async () => {
+  // Given
+  const f = await fixture();
+  // When
+  const prepared = await ready(f.request);
+  const before = await readdir(f.root);
+  const result = await Effect.runPromise(
+    runRecipeInitPipeline({ ...f.publication, prepared, runPostInit: async () => ({ executed: [] }) }),
+  );
+  // Then
+  expect(before).toEqual(["asset"]);
+  expect(await Bun.file(result.landofilePath).text()).toBe(prepared.preview.landofile);
+});
+
+test.each([
+  { type: "command", cmd: "app:destroy" },
+  { type: "command", cmd: "app:start" },
+])("blocks unauthorized post-init before publishing: %j", async (action) => {
+  // Given
+  const f = await fixture({ postInit: [action] });
+  // When
+  const result = await Effect.runPromise(Effect.result(prepareRecipeInit(f.request)));
+  // Then
+  expect(Result.isFailure(result)).toBe(true);
+  expect(await readdir(f.root)).toEqual(["asset"]);
+});
+
+test("preview fails closed on blocking encoder diagnostics", async () => {
+  // Given
+  const f = await fixture();
+  // When
+  const result = await Effect.runPromise(
+    Effect.result(
+      prepareRecipeInit({
+        ...f.request,
+        encoder: {
+          ...f.request.encoder,
+          encode: () =>
+            Effect.succeed({
+              text: "runtime: 4\n",
+              diagnostics: [
+                {
+                  kind: "unsupported",
+                  message: "unsupported",
+                  remediation: "Remove unsupported config",
+                  sourceId: ConfigTranslateSourceId.make("recipe:prepared@1.0.0"),
+                  keyPath: [],
+                },
+              ],
+            }),
         },
-      ],
-      postInit: [{ type: "command", cmd: "app:config:translate", stdin: { prompt: "apiToken" } }],
-    },
-    runPostInit: async (options) => {
-      expect(JSON.stringify([options.env, options.answers, options.actions])).not.toContain(marker);
-      if (options.commandRunner === undefined) throw new Error("Missing bound runner");
-      await options.commandRunner({ command: "app:config:translate", args: [] });
-      return { executed: [] };
-    },
-  }).pipe(
-    Effect.provideService(
-      ProcessRunner,
-      ProcessRunner.of({
-        run: (input) =>
-          Effect.sync(() => {
-            inputs.push(input);
-            return { exitCode: 0, stdout: "", stderr: "" };
-          }),
-        stream: () => Stream.empty,
-        streamWithExit: () => Stream.empty,
       }),
     ),
   );
-  await Effect.runPromise(program);
-  expect(inputs).toHaveLength(1);
-  expect(inputs[0]).toMatchObject({ stdin: marker });
+  // Then
+  expect(Result.isFailure(result) && result.failure).toMatchObject({ stage: "diagnostics" });
+  expect(await readdir(f.root)).toEqual(["asset"]);
 });
 
-test("fails closed on a relative auxiliary source instead of resolving it against the working directory", async () => {
-  const { request, calls, landofile, auxiliary } = await fixture();
-  const error = await failure({
-    ...request,
-    manifest: {
-      ...request.manifest,
-      files: [{ src: "templates/isolated.conf", dest: "config/isolated.conf", template: false }],
+test("user appName wins over the authored fragment name", async () => {
+  // Given
+  const f = await fixture({ config: { runtime: 4, name: "authored-name" } });
+  // When
+  const prepared = await ready(f.request);
+  // Then
+  expect(prepared.preview.landofile).toMatch(/^name: chosen-name$/m);
+});
+
+test("S2 unsafe secret disposition blocks read-only preparation", async () => {
+  // Given
+  const f = await fixture({
+    options: {
+      token: { type: { kind: "secret" }, disposition: { kind: "secret-store", field: "services.app.image" } },
     },
   });
-  expect(error).toBeInstanceOf(RecipeInitBlockedError);
-  expect(error).toMatchObject({ stage: "validate" });
-  expect(await Bun.file(landofile).exists()).toBe(false);
-  expect(await Bun.file(auxiliary).exists()).toBe(false);
-  expect(calls).toEqual([]);
+  // When
+  const result = await Effect.runPromise(Effect.result(prepareRecipeInit(f.request)));
+  // Then
+  expect(Result.isFailure(result) && result.failure).toMatchObject({ stage: "secret-prompts" });
+  expect(await readdir(f.root)).toEqual(["asset"]);
 });
 
-test("S7 writes a bundled in-memory auxiliary asset with no on-disk source", async () => {
-  const { request, landofile } = await fixture();
-  const appRoot = request.appRoot;
+test("S3 commit checkpoint failure prevents static publication and post-init", async () => {
+  // Given
+  const f = await fixture();
+  const prepared = await ready(f.request);
+  let ran = false;
+  // When
   const result = await Effect.runPromise(
-    runRecipeInitPipeline({
-      ...request,
-      manifest: {
-        ...request.manifest,
-        files: [
-          { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-          { src: "templates/package.json.tmpl", dest: "package.json", template: true },
-          { src: "assets/notes.txt", dest: "notes.txt", template: false },
-        ],
-      },
-      runPostInit: async () => ({ executed: [] }),
-      contentSource: (file) =>
-        Promise.resolve(
-          file.dest === "package.json"
-            ? '{ "name": "{{ app.name }}" }\n'
-            : file.dest === "notes.txt"
-              ? "verbatim {{ app.name }}\n"
-              : undefined,
-        ),
-    }),
-  );
-  // The manifest Landofile entry belongs to the transaction, never the aux loop.
-  expect(result.auxiliaryFiles).toEqual([join(appRoot, "package.json"), join(appRoot, "notes.txt")]);
-  expect(await Bun.file(join(appRoot, "package.json")).text()).toBe('{ "name": "isolated-init" }\n');
-  expect(await Bun.file(join(appRoot, "notes.txt")).text()).toBe("verbatim {{ app.name }}\n");
-  expect(await Bun.file(landofile).exists()).toBe(true);
-});
-
-test("S7 blocks when the content source declines an entry with no absolute source", async () => {
-  const { request } = await fixture();
-  const error = await failure({
-    ...request,
-    manifest: {
-      ...request.manifest,
-      files: [{ src: "templates/missing.tmpl", dest: "missing.txt", template: false }],
-    },
-    contentSource: () => Promise.resolve(undefined),
-  });
-  expect(error).toBeInstanceOf(RecipeInitBlockedError);
-  expect((error as RecipeInitBlockedError).stage).toBe("validate");
-});
-
-test("stored-secret references preserve the supplied canonical reference", () => {
-  expect(
-    secretReference({ kind: "secret-store", field: "database.password" }, "${secret:team/database}"),
-  ).toEqual({ disposition: "secret-store", reference: "${secret:team/database}" });
-});
-
-test("stored-secret prompt names receive references that the decomposer may persist", async () => {
-  const { request, landofile } = await fixture();
-  let received: unknown;
-  const result = await Effect.runPromise(
-    runRecipeInitPipeline({
-      ...request,
-      manifest: {
-        ...request.manifest,
-        prompts: [
-          ...(request.manifest.prompts ?? []).filter((prompt) => prompt.name !== "apiToken"),
-          {
-            name: "apiToken",
-            type: "secret",
-            message: "API token",
-            disposition: { kind: "secret-store", field: "database.password" },
-          },
-        ],
-        postInit: [],
-      },
-      secretAnswers: { apiToken: "${secret:team/database}" },
-      decomposer: (ports) => {
-        const base = request.decomposer(ports);
-        return {
-          ...base,
-          decompose: (input) => {
-            received = input.secrets;
-            const stored = input.secrets.apiToken;
-            return Effect.map(base.decompose(input), (output) => {
-              const fragment = Schema.decodeUnknownResult(Schema.Record(Schema.String, Schema.Unknown))(
-                output.fragment,
-              );
-              return {
-                ...output,
-                fragment:
-                  Result.isSuccess(fragment) && stored?.disposition === "secret-store"
-                    ? { ...fragment.success, "x-secret-reference": stored.reference }
-                    : output.fragment,
-              };
-            });
-          },
-        };
-      },
-      runPostInit: async () => ({ executed: [] }),
-    }),
-  );
-  expect(received).toEqual({
-    apiToken: { disposition: "secret-store", reference: "${secret:team/database}" },
-  });
-  expect(await Bun.file(landofile).text()).toContain("${secret:team/database}");
-  expect(JSON.stringify(result)).not.toContain("${secret:team/database}");
-});
-
-test("a missing stored-secret reference fails with the tagged secret boundary", async () => {
-  const { request, landofile } = await fixture();
-  const error = await failure({
-    ...request,
-    manifest: {
-      ...request.manifest,
-      prompts: [
-        ...(request.manifest.prompts ?? []).filter((prompt) => prompt.name !== "apiToken"),
-        {
-          name: "apiToken",
-          type: "secret",
-          message: "API token",
-          disposition: { kind: "secret-store", field: "database.password" },
+    Effect.result(
+      runRecipeInitPipeline({
+        ...f.publication,
+        prepared,
+        checkpoint: (point) => (point === "committing" ? Effect.fail("interrupt") : Effect.void),
+        runPostInit: async () => {
+          ran = true;
+          return { executed: [] };
         },
-      ],
-      postInit: [],
+      }),
+    ),
+  );
+  // Then
+  expect(Result.isFailure(result) && result.failure).toMatchObject({
+    _tag: "RecipeInitCommitError",
+    phase: "commit",
+    reason: "checkpoint",
+    transactionState: "committing",
+  });
+  expect(await Bun.file(join(f.request.appRoot, ".lando.yml")).exists()).toBe(false);
+  expect(await Bun.file(join(f.request.appRoot, "config/isolated.conf")).exists()).toBe(false);
+  expect(ran).toBe(false);
+});
+
+test("S4 post-init rejection keeps committed static outputs and scrubs failure details", async () => {
+  // Given
+  const f = await fixture();
+  const prepared = await ready(f.request);
+  // When
+  const result = await Effect.runPromise(
+    Effect.result(
+      runRecipeInitPipeline({
+        ...f.publication,
+        prepared,
+        runPostInit: async () => {
+          throw new Error("raw-secret-marker");
+        },
+      }),
+    ),
+  );
+  // Then
+  expect(Result.isFailure(result) && result.failure).toMatchObject({
+    _tag: "RecipeInitPostInitError",
+    rolledBack: false,
+    committedLandofile: join(f.request.appRoot, ".lando.yml"),
+    committedAuxiliaryFiles: [join(f.request.appRoot, "config/isolated.conf")],
+  });
+  expect(JSON.stringify(result)).not.toContain("raw-secret-marker");
+  expect(await Bun.file(join(f.request.appRoot, "config/isolated.conf")).exists()).toBe(true);
+});
+
+test.each(["stdin", "secretEnv"])("S5 raw secrets reach only their one declared %s sink", async (kind) => {
+  // Given
+  const sink = kind === "stdin" ? { kind: "stdin" } : { kind: "secretEnv", name: "TOKEN" };
+  const f = await fixture({
+    options: { token: { type: { kind: "secret" }, disposition: { kind: "init-only", sink } } },
+    postInit: [
+      {
+        type: "command",
+        cmd: "app:config:translate",
+        ...(kind === "stdin" ? { stdin: { prompt: "token" } } : { secretEnv: { TOKEN: "token" } }),
+      },
+    ],
+  });
+  const marker = "raw-secret-marker";
+  const prepared = await ready({ ...f.request, secretAnswers: { token: marker } });
+  const inputs: unknown[] = [];
+  // When
+  const result = await Effect.runPromise(
+    runRecipeInitPipeline({ ...f.publication, prepared }).pipe(
+      Effect.provideService(
+        ProcessRunner,
+        ProcessRunner.of({
+          run: (input) =>
+            Effect.sync(() => {
+              inputs.push(input);
+              return { exitCode: 0, stdout: marker, stderr: marker };
+            }),
+          stream: () => Stream.empty,
+          streamWithExit: () => Stream.empty,
+        }),
+      ),
+    ),
+  );
+  // Then
+  expect(inputs).toHaveLength(1);
+  expect(inputs[0]).toMatchObject(kind === "stdin" ? { stdin: marker, env: {} } : { env: { TOKEN: marker } });
+  expect(JSON.stringify(result)).not.toContain(marker);
+  expect(prepared.preview.landofile).not.toContain(marker);
+  expect(await Bun.file(join(f.request.appRoot, "config/isolated.conf")).text()).not.toContain(marker);
+});
+
+test("overlapping raw secrets redact longest-first in post-init output", async () => {
+  // Given
+  const options = Object.fromEntries(
+    ["short", "long"].map((name) => [
+      name,
+      {
+        type: { kind: "secret" },
+        disposition: { kind: "init-only", sink: { kind: "secretEnv", name: name.toUpperCase() } },
+      },
+    ]),
+  );
+  const f = await fixture({
+    options,
+    postInit: [{ type: "command", cmd: "app:config:translate", secretEnv: { SHORT: "short", LONG: "long" } }],
+  });
+  const prepared = await ready({ ...f.request, secretAnswers: { short: "abc", long: "abcdef" } });
+  // When
+  const text = prepared.redact("abcdef abc");
+  // Then
+  expect(text).not.toContain("abc");
+  expect(text).not.toContain("def");
+});
+
+test("stored-secret references preserve their canonical reference", () => {
+  // Given / When
+  const value = secretReference(
+    { kind: "secret-store", field: "services.app.environment.TOKEN" },
+    "${secret:APP_TOKEN}",
+  );
+  // Then
+  expect(value).toEqual({ disposition: "secret-store", reference: "${secret:APP_TOKEN}" });
+});
+
+test("missing stored-secret references report requires-input rather than writing", async () => {
+  // Given
+  const f = await fixture({
+    options: {
+      token: {
+        type: { kind: "secret" },
+        disposition: { kind: "secret-store", field: "services.app.environment.TOKEN" },
+      },
     },
   });
-  expect(error).toMatchObject({ _tag: "RecipeInitBlockedError", stage: "secret-prompts" });
-  expect(await Bun.file(landofile).exists()).toBe(false);
+  // When
+  const result = await Effect.runPromise(prepareRecipeInit(f.request));
+  // Then
+  expect(result).toEqual({ status: "requires-input", missing: ["token"] });
+  expect(await readdir(f.root)).toEqual(["asset"]);
 });

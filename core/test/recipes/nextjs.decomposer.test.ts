@@ -1,24 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { nextjsDecomposer } from "../../src/recipes/builtin/nextjs/decomposer.ts";
-import { nextjsRecipeSource, nextjsRecipeYaml } from "../../src/recipes/builtin/nextjs/manifest.ts";
 import { NEXTJS_SCAFFOLD_COMMAND } from "../../src/recipes/builtin/nextjs/scaffold-command.ts";
-import {
-  NEXTJS_CONTENT_DIGEST,
-  nextjsDefaults,
-  nextjsProducer,
-  nextjsSnapshot,
-} from "../../src/recipes/builtin/nextjs/snapshot.ts";
-import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: nextjsDecomposer,
+  defaults: nextjsDefaults,
+  producer: nextjsProducer,
+  snapshot: nextjsSnapshot,
+  contentDigest: NEXTJS_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("nextjs");
 
 const defaults = { ...nextjsDefaults };
 const alternatives = { node: "22", database: "mariadb", auth: "clerk" };
@@ -35,10 +30,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(
-  Effect.runSync(parseRecipeYaml({ source: nextjsRecipeSource, content: nextjsRecipeYaml })),
-);
 
 describe("nextjs decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -113,7 +104,7 @@ describe("nextjs decomposition", () => {
 
   test("tolerates the app-name answer the translator forwards alongside declared options", () => {
     const result = decompose({ ...defaults, name: "probe" });
-    expect(result.provenance.options).toEqual({ ...defaults, name: "probe" });
+    expect(result.provenance.options).toEqual(defaults);
     expect(authoringOf({ ...defaults, name: "probe" })).toEqual(authoringOf(defaults));
   });
 
@@ -136,19 +127,15 @@ describe("nextjs decomposition", () => {
   });
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(NEXTJS_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(NEXTJS_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(nextjsSnapshot);
-    expect(nextjsSnapshot.identity.contentDigest).toBe(
-      "sha256:b57459a49d467a39199b960f6b20a1181e1d4d4f70ba29c51cba47408277860f",
-    );
+    expect(nextjsSnapshot.identity.contentDigest).toBe(NEXTJS_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });
 

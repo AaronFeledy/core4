@@ -187,7 +187,7 @@ This object can merge with an object task from a lower config layer. An authored
     </Step>
     <Step name="run-greet-with-bad-target">
       <Run command="lando greet staging --format=json" expectExit={1} />
-      <Verify errorTag="ToolingInputError" expect={{ regex: "staging" }} />
+      <Verify errorTag="ToolingInputError" expect={{ regex: "Argument target must match a declared choice" }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

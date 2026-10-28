@@ -1,0 +1,10 @@
+name: "@lando/github-actions"
+version: "0.0.0"
+api: 4
+requires:
+  "@lando/core": "^4.0.0"
+description: "Optional offline GitHub Actions workflow inspection for Lando."
+enabled: true
+entry: ./src/index.ts
+contributes:
+  commands: ["github-actions:list"]

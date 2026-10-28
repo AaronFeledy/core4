@@ -73,7 +73,7 @@ if (!isCodegenCatalogModule(importedCatalogModule)) {
 const { CODEGEN_CATALOG, groupCodegenWaves, resolveCodegenCommand } = importedCatalogModule;
 const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
-  ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
+  ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo", ["core-service-env-catalog"]],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
   [
     "bundled-plugins",
@@ -91,10 +91,11 @@ const expectedCatalogRows = [
     ["core-service-env-catalog"],
   ],
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
+  ["github-actions-pins", "committed-pin", "build-github-actions-pins.ts", "repo"],
   ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
-  ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
+  ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo", ["core-service-env-catalog"]],
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo", ["core-service-env-catalog"]],
   [
     "setup-plugin-flags",
@@ -310,7 +311,12 @@ describe("codegen catalog", () => {
 
   test("classifies ownership and references unique existing scripts", async () => {
     // Given
-    const expectedCommittedPins = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"];
+    const expectedCommittedPins = [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "github-actions-pins",
+    ];
     const expectedCommittedWorkflows = [
       "ci-workflow",
       "nightly-workflow",
@@ -336,11 +342,11 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(37);
+    expect(catalog).toHaveLength(38);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
-    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(3);
+    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(13);
     expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(21);
     expect(
@@ -378,6 +384,7 @@ describe("codegen catalog", () => {
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
+    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("build-guide-scenarios"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
     expect(waveOf("schema-deprecations")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(

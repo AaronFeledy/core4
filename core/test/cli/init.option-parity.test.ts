@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
-import { PromptValidationError } from "@lando/sdk/errors";
+import { PromptValidationError, RecipePromptValidationError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
@@ -237,11 +237,11 @@ describe("recipe option parity", () => {
         answers: { name: "needs-composer", composer: "false" },
         postInitIO: { out: () => {}, err: () => {} },
       });
-      await expect(promise).rejects.toBeInstanceOf(PromptValidationError);
+      await expect(promise).rejects.toBeInstanceOf(RecipePromptValidationError);
     });
   });
 
-  test("webroot with unsupported characters fails closed with PromptValidationError", async () => {
+  test("webroot with unsupported characters fails closed with RecipePromptValidationError", async () => {
     await withTempCwd(async (dir) => {
       const promise = initApp({
         cwd: dir,
@@ -251,7 +251,7 @@ describe("recipe option parity", () => {
         answers: { name: "bad-webroot", webroot: "unsafe path" },
         postInitIO: { out: () => {}, err: () => {} },
       });
-      await expect(promise).rejects.toBeInstanceOf(PromptValidationError);
+      await expect(promise).rejects.toBeInstanceOf(RecipePromptValidationError);
     });
   });
 
@@ -407,7 +407,7 @@ describe("recipe option parity", () => {
         answers: { name: "needs-composer", composer: "false" },
         postInitIO: { out: () => {}, err: () => {} },
       });
-      await expect(noComposer).rejects.toBeInstanceOf(PromptValidationError);
+      await expect(noComposer).rejects.toBeInstanceOf(RecipePromptValidationError);
     });
     await withTempCwd(async (dir) => {
       const relativeWebroot = initApp({
@@ -418,7 +418,7 @@ describe("recipe option parity", () => {
         answers: { name: "bad-webroot", webroot: "unsafe path" },
         postInitIO: { out: () => {}, err: () => {} },
       });
-      await expect(relativeWebroot).rejects.toBeInstanceOf(PromptValidationError);
+      await expect(relativeWebroot).rejects.toBeInstanceOf(RecipePromptValidationError);
     });
   });
 

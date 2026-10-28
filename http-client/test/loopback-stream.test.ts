@@ -1,0 +1,117 @@
+import { expect, test } from "bun:test";
+import { createServer } from "node:http";
+import { brotliCompressSync, deflateSync, gzipSync } from "node:zlib";
+import { Duration, Effect, Stream } from "effect";
+import * as HttpClient from "effect/http/HttpClient";
+import * as HttpClientRequest from "effect/http/HttpClientRequest";
+import { layer, layerWith } from "../src/live.ts";
+
+test.each([
+  { encoding: "gzip", bytes: gzipSync("decoded-body") },
+  { encoding: "deflate", bytes: deflateSync("decoded-body") },
+  { encoding: "br", bytes: brotliCompressSync("decoded-body") },
+])(
+  "streams $encoding before EOF and destroys the compressed socket on scope close",
+  async ({ encoding, bytes }) => {
+    // Given a compressed chunk on a connection that deliberately never reaches EOF.
+    const closed = Promise.withResolvers<void>();
+    const server = createServer((_request, response) => {
+      response.on("close", () => closed.resolve());
+      response.writeHead(200, { "content-encoding": encoding });
+      response.write(bytes);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("expected TCP listener");
+    try {
+      // When the consumer takes one decoded chunk rather than buffering the body.
+      const chunks = await Effect.runPromise(
+        Effect.gen(function* () {
+          const client = yield* HttpClient.HttpClient;
+          const response = yield* client
+            .get(`http://127.0.0.1:${address.port}/`)
+            .pipe(Effect.timeout(Duration.millis(1000)));
+          return yield* Stream.runCollect(response.stream.pipe(Stream.take(1)));
+        }).pipe(Effect.provide(layerWith())),
+      );
+      await closed.promise;
+      // Then decompression emits before EOF and cancellation closes the source socket.
+      expect(
+        new TextDecoder().decode(new Uint8Array(Array.from(chunks).flatMap((chunk) => [...chunk]))),
+      ).toBe("decoded-body");
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  },
+);
+
+test.each([false, true])(
+  "destroys the loopback fetch socket on scope release with body consumed=%s",
+  async (consume) => {
+    // Given a real endpoint that sends headers and one chunk, but never completes.
+    const closed = Promise.withResolvers<void>();
+    const server = createServer((_request, response) => {
+      response.on("close", () => closed.resolve());
+      response.writeHead(200, { "x-status": "ready" });
+      response.write("first chunk");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("expected TCP listener");
+    try {
+      // When a caller takes only headers or a single chunk, then releases the scope.
+      const response = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const client = yield* HttpClient.HttpClient;
+            const scoped = HttpClient.withScope(client);
+            const response = yield* scoped
+              .get(`http://127.0.0.1:${address.port}/`)
+              .pipe(Effect.timeout(Duration.millis(1000)));
+            if (consume) yield* Stream.runDrain(response.stream.pipe(Stream.take(1)));
+            return response;
+          }).pipe(Effect.provide(layerWith())),
+        ),
+      );
+      await closed.promise;
+      // Then scope release closes the socket before EOF, with the response still retained (not GC).
+      expect(response.status).toBe(200);
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  },
+);
+
+test("carries method and headers and streams the response bytes", async () => {
+  // Given a loopback endpoint that echoes request metadata and body bytes.
+  const seen: { method: string; token: string | null }[] = [];
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      seen.push({ method: request.method, token: request.headers.get("x-token") });
+      return new Response(new Uint8Array([0, 1, 254, 255]));
+    },
+  });
+  try {
+    // When an explicit method/header request is streamed to completion.
+    const chunks = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* HttpClient.HttpClient;
+        const response = yield* client.execute(
+          HttpClientRequest.put(server.url.href, {
+            headers: { "x-token": "test" },
+          }),
+        );
+        return yield* Stream.runCollect(response.stream);
+      }).pipe(Effect.provide(layer)),
+    );
+    // Then the adapter preserves metadata and binary bytes without text conversion.
+    expect(seen).toEqual([{ method: "PUT", token: "test" }]);
+    expect(Array.from(chunks).flatMap((chunk) => [...chunk])).toEqual([0, 1, 254, 255]);
+  } finally {
+    server.stop(true);
+  }
+});

@@ -20,6 +20,7 @@ export type CodegenCommand = {
 export const CODEGEN_CATALOG = [
   {
     id: "build-guide-scenarios",
+    dependsOn: ["core-service-env-catalog"],
     ownership: "derived",
     script: "build-guide-scenarios.ts",
     workspace: "repo",
@@ -72,6 +73,12 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "github-actions-pins",
+    ownership: "committed-pin",
+    script: "build-github-actions-pins.ts",
+    workspace: "repo",
+  },
+  {
     id: "tomcat-catalog",
     ownership: "derived",
     script: "build-tomcat-catalog.ts",
@@ -91,6 +98,7 @@ export const CODEGEN_CATALOG = [
   },
   {
     id: "bundled-recipes",
+    dependsOn: ["core-service-env-catalog"],
     ownership: "derived",
     script: "build-bundled-recipes.ts",
     workspace: "repo",

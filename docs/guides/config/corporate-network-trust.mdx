@@ -140,8 +140,8 @@ service out. Read a service's effective trust material from its plan or from
 ## Configure a global proxy
 
 Author the corporate proxy under `network.proxy` in the global config. `http` and `https` are each
-a URL string or `null`; `noProxy` is a list of hostnames or suffixes; `injectIntoServices` controls
-whether the resolved proxy env reaches `type: lando` services:
+a URL string or `null`; `noProxy` lists hostname, suffix, IP-address, or CIDR bypass patterns;
+`injectIntoServices` controls whether the resolved proxy env reaches `type: lando` services:
 
 ```yaml
 network:
@@ -154,14 +154,25 @@ network:
     injectIntoServices: false
 ```
 
-Proxy precedence is block-level, not field-level: a non-empty `http` or `https` value, or a
-non-empty `noProxy` list, makes the whole `network.proxy` block the sole source of proxy values for
-outbound requests. Lando then ignores the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment
-variables (and their lowercase forms), even for a field you left unset. An absent block, or a block
-whose `http`, `https`, and `noProxy` values are all empty or unset, falls back to those environment
-variables instead. Within a block selected by another non-empty proxy value, set `http` or `https`
-to `null` to disable that direction without falling back to its environment variable. A block that
-contains only `null` values does not select config precedence by itself.
+Proxy precedence is block-level, not field-level: an explicit `null` or non-empty URL in `http` or
+`https`, or a non-empty `noProxy` list, selects the whole `network.proxy` block as the sole source
+of proxy values. Lando then ignores `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`
+(and their lowercase forms), including for fields left unset. A block containing only `null`
+proxy values therefore selects config precedence and disables both proxy directions. An absent
+block, or one with only empty or unset proxy values and no bypass entries, uses the environment.
+
+In environment mode, HTTP uses the first non-empty value from `HTTP_PROXY`, `http_proxy`,
+`ALL_PROXY`, and `all_proxy`, in that order. HTTPS uses `HTTPS_PROXY`, `https_proxy`, `ALL_PROXY`,
+and `all_proxy` in that order. Bypass entries come from `NO_PROXY`, then `no_proxy`. Neither scheme
+borrows the other scheme's proxy; without its own resolved proxy, requests use a direct connection.
+To configure one proxy for both schemes, set both `http` and `https`, as above.
+
+For Lando-owned outbound requests, `noProxy` matching is case-insensitive and does not resolve DNS.
+`corp.example` matches that hostname and its descendants; `.corp.example` and `*.corp.example`
+match descendants only. An entry such as `registry.corp.example:8443` restricts the match to that
+host and port. IP literals such as `192.0.2.10` or `2001:db8::10`, and CIDRs such as `10.0.0.0/8`
+or `fd00::/8`, match literal addresses of the same address family. `*` bypasses all hosts.
+Surrounding whitespace is ignored, and empty or whitespace-only entries do not match.
 
 `network.proxy.injectIntoServices` defaults to `false`, the opposite of
 `network.ca.injectIntoServices`'s default `true`. Proxy URLs can carry embedded credentials

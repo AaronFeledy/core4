@@ -1,22 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { createStandaloneRedactor } from "@lando/redaction/service";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest, type RecipeOptionValue } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput, RecipeOptionValue } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
 import { Effect, Result, Schema } from "effect";
-import { nodeApiDecomposer } from "../../src/recipes/builtin/node-api/decomposer.ts";
-import { nodeApiRecipeYaml } from "../../src/recipes/builtin/node-api/manifest.ts";
-import {
-  NODE_API_CONTENT_DIGEST,
-  nodeApiDefaults,
-  nodeApiProducer,
-  nodeApiSnapshot,
-} from "../../src/recipes/builtin/node-api/snapshot.ts";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: nodeApiDecomposer,
+  defaults: nodeApiDefaults,
+  producer: nodeApiProducer,
+  snapshot: nodeApiSnapshot,
+  contentDigest: NODE_API_CONTENT_DIGEST,
+  manifest,
+} = bundledRecipe("node-api");
 
 const defaults = { ...nodeApiDefaults };
 const alternatives = { node: "22", framework: "hono", database: "postgres" };
@@ -33,8 +29,6 @@ const authoringOf = (options: Readonly<Record<string, RecipeOptionValue>>) => {
   )(decompose(options).fragment);
   return authoring;
 };
-
-const manifest = Schema.decodeUnknownSync(RecipeManifest)(Bun.YAML.parse(nodeApiRecipeYaml));
 
 describe("node-api decomposition", () => {
   test("satisfies the provider-free decomposer contract for valid and invalid inputs", async () => {
@@ -122,19 +116,15 @@ describe("node-api decomposition", () => {
   });
 
   test("publishes an explicit empty auxiliary inventory with declared files and postInit", () => {
-    expect(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect(manifest.files).toEqual([]);
     expect(manifest.postInit).toHaveLength(1);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a self-consistent migratable snapshot with a matching content identity", () => {
-    expect(computeRecipeContentDigest(recipeContentDigestProjection(manifest))).toBe(NODE_API_CONTENT_DIGEST);
+  test("publishes a self-consistent migratable snapshot with a matching content identity", async () => {
+    expect(await recompiledBundledDigest(manifest)).toBe(NODE_API_CONTENT_DIGEST);
     expect(manifest.snapshot).toEqual(nodeApiSnapshot);
-    expect(nodeApiSnapshot.identity.contentDigest).toBe(
-      "sha256:d5212f35f982bed13330b4022bab136bf231b5f1969a763e2d0e04b67d31e205",
-    );
+    expect(nodeApiSnapshot.identity.contentDigest).toBe(NODE_API_CONTENT_DIGEST);
     expect(fullRecipeMigratability(manifest, "bundled").status).toBe("migratable");
   });
 

@@ -212,28 +212,21 @@ export const writeLockEntries = (
           }),
     ),
   );
-export const writeLockfileIfNeeded = (
-  ctx: ResolveContext,
-): Effect.Effect<void, LandofileIncludeError | LandofileParseError> => {
-  if (ctx.stagedLocks.size === 0) return Effect.void;
-  return writeLockEntries(ctx.stateStore, {
-    appRoot: ctx.appRoot,
-    lockfilePath: ctx.lockfilePath,
-    entries: [...ctx.stagedLocks.values()],
-    merge: true,
-  });
-};
 export const stageFragmentLock = (fragment: FragmentResult, ctx: ResolveContext): Effect.Effect<void> => {
   // readPinnedFragment already verified pinned fragments; a load keeps existing entries as written.
   if (!fragment.locked || fragment.resolved === undefined) return Effect.void;
   const locked = ctx.lockEntries.get(fragment.sourceId);
-  if (ctx.mode === "pin" && locked !== undefined && locked.version === fragment.version) return Effect.void;
-  ctx.stagedLocks.set(fragment.sourceId, {
+  if (ctx.mode === "pin" && locked !== undefined && locked.version === fragment.version) {
+    ctx.stagedLocks.delete(fragment.sourceId);
+    return Effect.void;
+  }
+  const proposal = {
     source: fragment.sourceId,
     resolved: fragment.resolved,
     checksum: sha256Hex(fragment.content),
     ...(fragment.version === undefined ? {} : { version: fragment.version }),
-  });
+  };
+  ctx.stagedLocks.set(fragment.sourceId, proposal);
   return Effect.void;
 };
 export const lockValue = (entry: LockEntry): string =>
