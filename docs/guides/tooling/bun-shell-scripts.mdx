@@ -285,9 +285,11 @@ Folders do not claim bare namespaced aliases. `.lando/scripts/db/seed.bun.sh` re
 
 ## Use Bun Shell and your host tools
 
-Bun Shell reads like bash: pipes, redirects, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. `rm`, `mkdir`, `cp`, `echo`, `cat`, and friends are Bun Shell builtins. Everything else (`git`, `curl`, `test`, `lando`, your package managers) comes from your host `PATH`.
+Bun Shell supports pipes, redirection, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. It is a separate shell language, not Bash, zsh, or a promise of full POSIX shell compatibility. Use the [Bun Shell syntax reference](https://bun.com/docs/runtime/shell) when writing scripts. `rm`, `mkdir`, `cp`, `echo`, `cat`, and friends are Bun Shell builtins. Everything else (`git`, `curl`, `test`, `lando`, your package managers) comes from your host `PATH`.
 
 Scripts always run from the app root, even when you call them from a subdirectory. Relative paths such as `src/` and `dist/` mean the same thing everywhere in the repo.
+
+Lando resolves the working directory before starting a command, so relative paths and `$PWD` refer to the same directory, including through symbolic links. An explicitly configured `PWD` overrides this default, even when it is empty. Host tooling commands use the same rule. If the working directory is missing, inaccessible, or not a directory, the command does not start; fix the reported directory and rerun it.
 
 ## Smoke test the running site
 
@@ -360,7 +362,7 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
 
 ## Declare a host task in the Landofile
 
-A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Host output streams as the command writes it, value-only redacted and byte-exact, the same sink container tooling uses. Task progress stays on stderr, so `lando <task> > out.txt` captures only the command's output. A string `cmd` goes through a shell. A list is argv, and arguments you pass on the line are appended to it:
+A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Host output streams as the command writes it, value-only redacted and byte-exact, the same sink container tooling uses. Task progress stays on stderr, so `lando <task> > out.txt` captures only the command's output. A string `cmd` uses Bun Shell. A list is argv, and arguments you pass on the line are appended to it:
 
 ```yaml
 name: host-task-demo
