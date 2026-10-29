@@ -1,18 +1,19 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 
 import {
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
-  NotImplementedError,
+  type NotImplementedError,
   causeMessage,
   isErrnoCode,
 } from "@lando/sdk/errors";
-import { BunShellScriptFrontMatter, validationIssue, validationIssuesFromCause } from "@lando/sdk/schema";
+import type { BunShellScriptFrontMatter } from "@lando/sdk/schema";
+import { FRONT_MATTER_REMEDIATION, parseBunShellScriptFrontMatter } from "./bun-sh-frontmatter.ts";
+import { isBunShellScriptMetadataFailure, normalizeBunShellScript } from "./bun-sh-metadata.ts";
 
-import { decodeOrFail } from "./decode.ts";
 export const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
 export const SCRIPTS_DIRNAME = join(".lando", "scripts");
 
@@ -30,141 +31,6 @@ export type BunShellScriptDiscoveryError =
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | NotImplementedError;
-
-const HOST_SERVICE = ":host";
-
-const UNSUPPORTED_FRONT_MATTER_KEYS: ReadonlyArray<{ key: string }> = [
-  { key: "aliases" },
-  { key: "topLevelAlias" },
-  { key: "bootstrap" },
-  { key: "flags" },
-  { key: "args" },
-  { key: "passThrough" },
-  { key: "sources" },
-  { key: "generates" },
-  { key: "status" },
-  { key: "preconditions" },
-  { key: "run" },
-  { key: "platforms" },
-  { key: "internal" },
-  { key: "disabled" },
-  { key: "engine" },
-];
-
-const UNSUPPORTED_FRONT_MATTER_REMEDIATION =
-  "Remove the field from the .bun.sh front-matter; this surface is not supported yet.";
-
-const FRONT_MATTER_REMEDIATION =
-  "Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only the supported keys: service, desc, description, summary.";
-
-const isFrontMatterFenceLine = (line: string): boolean => line.replace(/\s+$/, "") === "# ---";
-
-const isFrontMatterBodyLine = (line: string): boolean =>
-  line === "#" || line === "#\r" || line.startsWith("# ") || line.startsWith("#\t");
-
-const stripFrontMatterPrefix = (line: string): string => {
-  if (line.startsWith("# ")) return line.slice(2);
-  if (line.startsWith("#\t")) return line.slice(2);
-  if (line === "#" || line === "#\r") return "";
-  return line;
-};
-
-interface FrontMatterRegion {
-  readonly start: number;
-  readonly end: number;
-  readonly body: ReadonlyArray<string>;
-}
-
-const findFrontMatterRegion = (
-  lines: ReadonlyArray<string>,
-): { region: FrontMatterRegion | undefined; reason: "missing" | "malformed" | "ok" } => {
-  let index = 0;
-  if (lines[index]?.startsWith("#!")) index += 1;
-  while (index < lines.length && lines[index]?.trim() === "") index += 1;
-
-  const startLine = lines[index];
-  if (startLine === undefined) return { region: undefined, reason: "missing" };
-  if (!isFrontMatterFenceLine(startLine)) return { region: undefined, reason: "missing" };
-
-  const start = index;
-  const bodyStart = index + 1;
-  let cursor = bodyStart;
-  while (cursor < lines.length) {
-    const current = lines[cursor] ?? "";
-    if (isFrontMatterFenceLine(current)) {
-      const body = lines.slice(bodyStart, cursor).map(stripFrontMatterPrefix);
-      return { region: { start, end: cursor, body }, reason: "ok" };
-    }
-    if (!isFrontMatterBodyLine(current)) {
-      return { region: undefined, reason: "malformed" };
-    }
-    cursor += 1;
-  }
-  return { region: undefined, reason: "malformed" };
-};
-
-const parseFrontMatterScalar = (value: string): string => {
-  const trimmed = value.trim();
-  if (
-    trimmed.length >= 2 &&
-    ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'")))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-};
-
-const parseFrontMatterBody = (
-  body: ReadonlyArray<string>,
-): { parsed: Record<string, unknown>; malformedLine?: number } => {
-  const result: Record<string, unknown> = {};
-  for (const [index, raw] of body.entries()) {
-    const trimmed = raw.replace(/\s+$/, "");
-    if (trimmed === "") continue;
-    const match = trimmed.match(/^([A-Za-z][A-Za-z0-9_-]*):(.*)$/);
-    if (match === null) return { parsed: result, malformedLine: index };
-    const [, key, rawValue] = match as [string, string, string];
-    result[key] = parseFrontMatterScalar(rawValue);
-  }
-  return { parsed: result };
-};
-
-const validationIssues = (cause: unknown) =>
-  validationIssuesFromCause(cause, { fallback: "Invalid .bun.sh front-matter." });
-
-const decodeFrontMatter = (
-  scriptPath: string,
-  parsed: Record<string, unknown>,
-): Effect.Effect<BunShellScriptFrontMatter, BunShellScriptFrontMatterError> =>
-  decodeOrFail(
-    BunShellScriptFrontMatter,
-    (cause) =>
-      new BunShellScriptFrontMatterError({
-        message: `.bun.sh front-matter at ${scriptPath} is malformed.`,
-        path: scriptPath,
-        issues: validationIssues(cause),
-        remediation: FRONT_MATTER_REMEDIATION,
-      }),
-  )(parsed, { onExcessProperty: "error", errors: "all" });
-
-const detectUnsupportedKey = (parsed: Record<string, unknown>): { key: string } | undefined => {
-  for (const entry of UNSUPPORTED_FRONT_MATTER_KEYS) {
-    if (Object.hasOwn(parsed, entry.key)) return entry;
-  }
-  return undefined;
-};
-
-const detectUnsupportedKeyFromBody = (body: ReadonlyArray<string>): { key: string } | undefined => {
-  for (const raw of body) {
-    if (raw === "" || /^\s/.test(raw)) continue;
-    const match = raw.match(/^([A-Za-z][A-Za-z0-9_-]*):/);
-    if (match === null) continue;
-    const key = match[1];
-    const entry = UNSUPPORTED_FRONT_MATTER_KEYS.find((candidate) => candidate.key === key);
-    if (entry !== undefined) return entry;
-  }
-  return undefined;
-};
 
 const sanitizeSegment = (segment: string): string => {
   const lowered = segment.toLowerCase();
@@ -211,57 +77,7 @@ export const parseScriptFile = Effect.fnUntraced(function* (
     );
   }
 
-  const lines = content.split(/\r?\n/);
-  const { region, reason } = findFrontMatterRegion(lines);
-  if (region === undefined) {
-    return yield* Effect.fail(
-      new BunShellScriptFrontMatterError({
-        message:
-          reason === "missing"
-            ? `.bun.sh script at ${scriptPath} is missing the front-matter block.`
-            : `.bun.sh script at ${scriptPath} has a malformed front-matter block.`,
-        path: scriptPath,
-        remediation: FRONT_MATTER_REMEDIATION,
-      }),
-    );
-  }
-
-  const unsupportedFromBody = detectUnsupportedKeyFromBody(region.body);
-  if (unsupportedFromBody !== undefined) {
-    return yield* Effect.fail(
-      new NotImplementedError({
-        message: `.bun.sh front-matter field "${unsupportedFromBody.key}:" at ${scriptPath} is not supported yet.`,
-        commandId: "landofile.parse",
-        remediation: UNSUPPORTED_FRONT_MATTER_REMEDIATION,
-      }),
-    );
-  }
-
-  const { parsed, malformedLine } = parseFrontMatterBody(region.body);
-  if (malformedLine !== undefined) {
-    return yield* Effect.fail(
-      new BunShellScriptFrontMatterError({
-        message: `.bun.sh front-matter at ${scriptPath} has a malformed YAML line.`,
-        path: scriptPath,
-        issues: [validationIssue([], `line ${malformedLine + 1}: expected "key: value"`)],
-        remediation: FRONT_MATTER_REMEDIATION,
-      }),
-    );
-  }
-
-  const unsupportedKey = detectUnsupportedKey(parsed);
-  if (unsupportedKey !== undefined) {
-    return yield* Effect.fail(
-      new NotImplementedError({
-        message: `.bun.sh front-matter field "${unsupportedKey.key}:" at ${scriptPath} is not supported yet.`,
-        commandId: "landofile.parse",
-        remediation: UNSUPPORTED_FRONT_MATTER_REMEDIATION,
-      }),
-    );
-  }
-
-  const frontMatter = yield* decodeFrontMatter(scriptPath, parsed);
-
+  const frontMatter = yield* parseBunShellScriptFrontMatter(scriptPath, content);
   const canonical = canonicalIdFromRelativePath(relativePath);
   if (canonical === null) {
     return yield* Effect.fail(
@@ -274,18 +90,18 @@ export const parseScriptFile = Effect.fnUntraced(function* (
     );
   }
 
-  const service = frontMatter.service ?? HOST_SERVICE;
-  const summary = frontMatter.description ?? frontMatter.desc ?? frontMatter.summary ?? "";
-
-  return {
+  const script: DiscoveredBunShellScript = {
     id: canonical.id,
     name: canonical.name,
     path: scriptPath,
     relativePath,
-    service,
-    summary,
+    service: frontMatter.service ?? ":host",
+    summary: frontMatter.description ?? frontMatter.desc ?? frontMatter.summary ?? "",
     frontMatter,
-  } satisfies DiscoveredBunShellScript;
+  };
+  const normalized = normalizeBunShellScript(script);
+  if (Result.isFailure(normalized)) return yield* Effect.fail(normalized.failure);
+  return script;
 });
 
 interface WalkEntry {
@@ -349,7 +165,7 @@ export const discoverBunShellScripts = Effect.fn("Landofile.discoverBunShellScri
   for (const entry of entries) {
     const parsed = yield* Effect.result(parseScriptFile(entry.absolutePath, entry.relativePath));
     if (parsed._tag === "Failure") {
-      if (options.skipInvalid === true) continue;
+      if (options.skipInvalid === true && isBunShellScriptMetadataFailure(parsed.failure)) continue;
       return yield* Effect.fail(parsed.failure);
     }
     const script = parsed.success;
