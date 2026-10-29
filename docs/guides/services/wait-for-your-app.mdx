@@ -167,7 +167,9 @@ For that host example, the normalized `readiness` configuration value is below. 
 
 Host probes run with the CLI process's current identity and the app root as their working directory, not in a provider VM or a sandbox. Only use commands you trust. The string above uses Bun Shell's file test, not your interactive login shell. A list passes the program and arguments exactly without shell expansion. For example, `command: [test, -f, .ready]` needs a `test` executable on the CLI machine instead of a shell builtin.
 
-Host readiness runs at the same lifecycle gates, never as permanent host monitoring. Supply its own command through `command` or Compose `test`; it cannot borrow a type's default command, container user, or listener. Do not set `user` on it. Invalid host readiness fails planning with `HealthcheckTargetUnsupportedError` before changing containers. `target: host` under native `healthcheck` also fails with remediation to move the probe to `readiness`; `target: service` is accepted there as a no-op. Neither execution target changes native monitoring policy. Host probe commands and captured output are not published in progress or error output.
+Host readiness runs at the same lifecycle gates, never as permanent host monitoring. Supply its own command through `command` or Compose `test`; it cannot borrow a type's default command, container user, or listener. Do not set `user` on it. Invalid host readiness fails planning with `HealthcheckTargetUnsupportedError` before changing containers. `target: host` under native `healthcheck` also fails with remediation to move the probe to `readiness`; `target: service` is accepted there as a no-op. Neither execution target changes native monitoring policy.
+
+Private capture prevents live streaming and process/shell execution events; it does not make the configured command confidential. Redacted lifecycle plan metadata can include the command, and failures can include bounded, redacted stderr or command context. Keep secrets in supported secret references rather than literal command text. `lando info` omits raw commands entirely.
 
 ## Turn the probe off
 

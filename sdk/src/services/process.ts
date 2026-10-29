@@ -9,7 +9,8 @@ import type {
 
 export interface ShellCommandOptions {
   /**
-   * Suppress command/output events and live sinks, returning raw output only to the caller.
+   * Suppress runner execution events and live sinks, returning raw output only to the caller.
+   * Caller-authored metadata and bounded redacted diagnostics are not made confidential.
    * Private capture is limited to 1 MiB of bytes per stdout/stderr channel; overflow fails
    * and terminates the child, never returns truncated success. Stdin and ordinary exit
    * semantics are unchanged (shell nonzero exits fail; process nonzero exits are data).
@@ -38,7 +39,8 @@ export interface ShellScriptOptions extends ShellCommandOptions {
 
 export interface ProcessSpawnOptions {
   /**
-   * Suppress command/output events and live observation, not stdin or exit semantics.
+   * Suppress runner execution events and live observation, not stdin or exit semantics.
+   * Caller-authored metadata and bounded redacted diagnostics are not made confidential.
    * Results/stream chunks remain raw for the authorized caller. Private output is limited
    * to 1 MiB of bytes per channel; overflow terminates the child and fails without output
    * diagnostics. Incompatible with inheritOutput, rejected before spawning.
