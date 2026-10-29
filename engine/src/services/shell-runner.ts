@@ -25,6 +25,7 @@ import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { runHostShellRepl } from "./host-shell-repl.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 import { streamBunCommand, streamBunScript } from "./shell-script-stream.ts";
+import { environmentForRedaction } from "./tooling-input-environment.ts";
 
 const ShellRedactionTokens = Context.Reference<ReadonlyArray<string>>("@lando/engine/ShellRedactionTokens", {
   defaultValue: (): ReadonlyArray<string> => [],
@@ -52,7 +53,7 @@ const redactorForOptions = Effect.fnUntraced(function* (options: ShellCommandOpt
   if (redaction._tag === "None") return identityRedactor;
   const redactionTokens = yield* ShellRedactionTokens;
   return yield* redaction.value.forProfile("secrets", {
-    sourceEnv: { ...process.env, ...(options?.env ?? {}) },
+    sourceEnv: yield* environmentForRedaction(process.env, options?.env),
     redactionTokens,
   });
 });
@@ -117,7 +118,7 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* (
   if (redaction._tag === "Some") {
     yield* redaction.value.registerValues([
       ...(yield* ShellRedactionTokens),
-      ...collectSecretEnvValues(options?.env),
+      ...collectSecretEnvValues(yield* environmentForRedaction({}, options?.env)),
     ]);
   }
   yield* publishRedactedShellEvent(options, {

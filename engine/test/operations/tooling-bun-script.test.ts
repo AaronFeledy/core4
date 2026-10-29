@@ -66,7 +66,7 @@ test("emits both output streams before the script can finish", async () => {
     );
     // When: the child cannot exit until its first stdout/stderr lines release the server.
     const result = await Effect.runPromise(
-      runBunShellTooling({ name: "probe", args: ["b c"] }, root).pipe(
+      runBunShellTooling({ name: "probe", input: { _tag: "RawArgv", argv: ["b c"] } }, root).pipe(
         Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer)),
         Effect.provideService(StreamFrameSink, sink),
         Effect.timeout("5 seconds"),
@@ -137,7 +137,11 @@ test.each(["direct", "fallback"] as const)(
         join(root, ".lando/scripts/probe.bun.sh"),
         '# ---\n# desc: Args probe\n# ---\necho "<$1>"; echo "<$2>"; echo "<$3>"; echo "<$4>"\n',
       );
-      const options = { name: "probe", args: ["a", "b c", "$(echo injected)", "*.ts"], cwd: root };
+      const options = {
+        name: "probe",
+        input: { _tag: "RawArgv" as const, argv: ["a", "b c", "$(echo injected)", "*.ts"] },
+        cwd: root,
+      };
       const fallbackLayer = Layer.mergeAll(
         testEnvironmentResolverLayer,
         PrivateFileAccessService.layer,

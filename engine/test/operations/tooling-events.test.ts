@@ -266,7 +266,12 @@ test.each(["command", "task"] as const)(
     const result =
       kind === "command"
         ? await Effect.runPromise(
-            runEventToolingCommand(persisted, "off", tooling.off ?? {}, []).pipe(
+            runEventToolingCommand({
+              plan: persisted,
+              name: "off",
+              task: tooling.off ?? {},
+              input: { _tag: "RawArgv", argv: [] },
+            }).pipe(
               Effect.provide(testEnvironmentResolverLayerFor(h.redaction)),
               Effect.result,
               Effect.provideService(
