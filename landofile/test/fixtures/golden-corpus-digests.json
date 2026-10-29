@@ -374,7 +374,7 @@
     },
     {
       "fixture": "docs/guides/healthcheck-runner/fixtures/healthcheck-shorthand",
-      "digest": "6e4f09c3c3bf8bfdfd3a0a7a657d15bf3a0ea35939631c0e86f63fb406d99fea"
+      "digest": "dff5e1ad8f28f5d8cd3880b8f0c3070cfdf694fb49aec7f5ba628f0bc7ea78ec"
     },
     {
       "fixture": "docs/guides/healthcheck-runner/fixtures/unsupported-http",
@@ -1014,15 +1014,35 @@
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/command-form",
-      "digest": "92f08d2367bf66b8d539ce908b66aef8643d4b6425889ec17ae3298ed14e9c42"
+      "digest": "a3d83783b422a4bd14b1fd5665520abb67bc739021e6eb3b052a06aa25822335"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/disabled",
-      "digest": "b853a254137be7a7099a5cbda45917de8871e481c0801182fa0737e7ff249d6c"
+      "digest": "562677468aaa2a590945c40b964d407eda5d0ff4de8c17d2f5761ffabde28cc1"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/execution-metadata",
+      "digest": "5844d2978bfa3f1a505f2e7126097ef4b0c34458826e3332b0abfd74e9a7de3c"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/host-command-missing",
+      "digest": "a1efbc74f7ffddb808211b2e504bee96908cdd3537bf68d79154d77f2690a4f4"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/host-user-invalid",
+      "digest": "09a9279b30167833b6df809abb52b96fe7c839873d35aa76563dbc3883bc3adc"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-host-invalid",
+      "digest": "bcc4567082628a6d0c5a64c4b948451281715d8ae951c7d969ef5891d8e86478"
+    },
+    {
+      "fixture": "docs/guides/wait-for-your-app/fixtures/native-user-invalid",
+      "digest": "06c17f7c856440bd6d0007c7959911ff86c430aafb8943da3d8ba28902685be6"
     },
     {
       "fixture": "docs/guides/wait-for-your-app/fixtures/object-form",
-      "digest": "22a9ed76520c5ca9f641346c1030d21a800dd5123e47d32f8de2430376ebbeb3"
+      "digest": "9856d6c4108ce53b022b2b7b3fa7ab1c81c9113c757ce3755f9037ed8b5d70d9"
     },
     {
       "fixture": "docs/guides/wordpress-multisite/fixtures/wp-network",

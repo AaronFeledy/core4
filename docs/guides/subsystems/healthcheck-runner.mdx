@@ -6,42 +6,60 @@ timeout: 60000
 tags: [beta, docs, subsystems, healthcheck, provider-exec]
 ---
 
-# Healthcheck runner
+# How the healthcheck runner gates readiness
 
 `HealthcheckRunner` gates startup readiness by probing a service before its
 post-start subscribers run. This contributor reference describes accepted input,
 probe timing, and failure retention. For app configuration, use
 [Make start wait for your app](../services/wait-for-your-app.mdx).
 
-A service `healthcheck:` accepts four forms. `false` turns the probe off and drops a service type's default probe, such as mysql's `mysqladmin ping`. A non-empty string runs through the shell like `command:`. A non-empty argv list is exec form; Compose `CMD`, `CMD-SHELL`, and `NONE` markers only mean something inside an object's `test` list. The object form accepts `kind` (`command`, `http`, `tcp`, or `none`), plus `command`, `url`, `port`, `intervalSeconds`, `timeoutSeconds`, `retries`, and `startPeriodSeconds`; Compose spellings `test`, `disable`, and duration strings (`interval`, `timeout`, `start_period`) also decode. `start_interval` / `startInterval` decode as a raw duration string and are preserved losslessly for runtime extensions. Do not invent other keys.
+Service `healthcheck:` configures native ongoing container health; `readiness:` configures the engine's lifecycle gate. Both accept `false`, a non-empty shell string, literal argv, or a command/timing object. Compose `CMD`, `CMD-SHELL`, and `NONE` markers only mean something in an object's `test` list. The object accepts `kind`, `command`, `intervalSeconds`, `timeoutSeconds`, `retries`, and `startPeriodSeconds`; Compose spellings `test`, `disable`, `interval`, `timeout`, and `start_period` also decode. The schema accepts HTTP/TCP intent, but the shipped runner is command-only. `start_interval` / `startInterval` are preserved duration strings for extensions, not a separate lifecycle scheduler.
 
-An effective disabled spelling (`false`, `disable: true`, `test: [NONE]`, `kind: none`) reads back as `false` in `lando app:config`. Lando fields take precedence over Compose fields, so `command:` wins over `disable: true`. Disabled objects still validate every supplied sibling before becoming `false`; malformed commands, retries, or durations cannot hide behind disabling. Only literal `false` replaces the lower probe wholesale. Disabled objects merge as ordinary mappings, and inherited siblings remain subject to validation.
+Execution metadata `target: service | host` and `user: ContainerUser` survives either dialect without selecting one. Native `healthcheck` rejects host targets and any explicit probe user with `HealthcheckTargetUnsupportedError` before action, with remediation to move the probe to `readiness`. Explicit `target: service` is a native no-op. Readiness accepts a service user without changing the main process identity; host readiness cannot select a container user.
+
+Literal `false` reads back as `false` in `lando app:config`. Disabled objects (`disable: true`, `test: [NONE]`, `kind: none`) retain normalized settings and execution metadata as `kind: none` when any remain; an otherwise empty disabled object becomes `false`. Executable fields are dropped, but malformed commands, retries, or durations still fail validation, and disabling cannot hide unsupported native execution metadata. Lando fields take precedence over Compose fields, so `command:` wins over `disable: true`. Only literal `false` replaces the lower probe wholesale during composition; disabled objects merge as ordinary mappings and inherited siblings remain subject to validation.
 
 ```yaml
 services:
   db:
     type: mysql
     healthcheck: false
+    readiness: mysqladmin ping
   cache:
     type: redis
     healthcheck: redis-cli ping
+    readiness: false
 ```
 
-The shipped `provider-exec` runner is command-only. `kind: command` runs via `RuntimeProvider.exec` in the container (a string command is wrapped as `sh -c`; an argv array is passed through). `kind: none` skips the probe and returns `healthy=true` with `lastStatus: skipped`. Authored `kind: http` and `kind: tcp` fail during planning, before provider actions, with `LandofileValidationError` at `services.<name>.healthcheck.kind`. Use an in-container command probe or `healthcheck: false`. The schema accepts HTTP/TCP intent, but no product runner executes it.
+The engine owns readiness attempt execution. Service execution uses the selected `RuntimeProvider.exec`: strings use `sh -c`, argv stays exact, and an explicit `user` selects only the probe's container identity. Host execution uses `ShellRunner` with Bun Shell for strings or `ProcessRunner` for exact argv, with the CLI machine's current identity and the app root as cwd. It is not the provider VM or a sandbox. `kind: none` skips the command gate, not process-running or completion supervision. Authored HTTP/TCP kinds fail planning with `LandofileValidationError` before provider actions; use a command probe instead.
 
 The runner probes immediately, including during `startPeriodSeconds`. Failed probes during that period do not consume retries; probes run at one-second intervals or `intervalSeconds` when shorter. The first passing probe returns immediately. After the start period, the runner permits `retries` attempts (at least one) at `intervalSeconds`, with `timeoutSeconds` per attempt.
 
-Start, restart, rebuild, and global-service start wait for effective startup readiness before post-start subscribers run. The readiness barrier, provider `service_healthy` dependency gates, and app-build gates use the same startup probe and timing policy. Language runtimes do not add default checks; authors provide `healthcheck:` when needed.
+Start, restart, rebuild, and global-service start wait for effective readiness before post-start subscribers run. The barrier, `service_healthy` dependencies, and app-build gates use the same policy. Disabling readiness does not relax a healthy dependency: its target must still have enabled command readiness, or planning fails. Language runtimes add no default checks; authors provide `readiness:` when needed.
 
 ## Separate startup readiness from ongoing health
 
 Service-type contributors use `ServiceFeatureContext.setHealthcheck` for ongoing native health and may use `setReadiness` for a stronger startup probe. Both accept `HealthcheckPlan`. `effectiveReadiness(service)` selects `readiness` when present, otherwise `healthcheck`; only `healthcheck` becomes the provider's periodic native check. MongoDB uses this split to run a protocol ping during startup without launching a MongoDB shell every ten seconds afterwards.
 
-An authored `healthcheck:` replaces both type defaults. `healthcheck: false` disables both. There is no authored `readiness:` key and no hidden stronger check underneath a custom healthcheck.
+An authored `healthcheck:` overrides only native health; authored `readiness:` overrides only lifecycle readiness. Omitted readiness preserves a contributed default, otherwise it falls back to effective native health. `readiness: false` stores explicit `kind: none` to block fallback. `healthcheck: false` disables native health, including inherited image checks, without disabling explicit or contributed readiness. `ServicePlan.readinessSource` records `authored` or `contributed`; fallback and historical unknown provenance are derived during inspection.
+
+The engine supplies an invocation-scoped `executeReadinessAttempt` delegate to provider apply for both service and host attempts, bound to that plan, cancellation signal, and selected provider execution. Providers retain resource ownership, container creation, the start/dependency graph, and partial-apply persistence. Direct apply without the delegate can execute service readiness but refuses host readiness before mutation. Moving the full start scheduler into the engine is deferred until provider-neutral lifecycle primitives and partial-apply ownership are designed; the delegate is not a second scheduler.
+
+Authored `readiness.target` lowers to `HealthcheckPlan.executionTarget`; it is distinct from the persisted optional listener `HealthcheckPlan.target: EndpointRef`. Host readiness with a user, listener, or no own authored/composed command fails planning with `HealthcheckTargetUnsupportedError`. Host probes inherit neither a type's command nor its container identity/listener. Plan refresh (`lando app:cache:refresh --format=json`) exercises validation without provider mutation.
+
+Host probes use the general SDK private capture mode: no command/output events or live output sink, unchanged stdin and exit semantics, and a hard 1 MiB limit per stdout/stderr channel. Capture plus inherited output is invalid before child creation. Overflow uses the runner's tagged error and terminates/reaps the child without exposing raw captured causes. Host probe commands/output never enter public failure evidence. Host readiness must not depend on app routes or dependents behind its own gate; use an independently produced host prerequisite.
+
+Lando 3 API-4 and raw-service conversion maps every supported top-level `healthcheck` form, including strings, argv, objects, and `false`, to `readiness`. Nested Compose healthchecks remain native. Legacy catalog-service input that ignored healthcheck still ignores it and emits a diagnostic. A converted container user never means host impersonation.
 
 A type-owned command probe can carry `target: EndpointRef` for one of its declared listeners. Port and transport identify the listener. The shared compiler supplies `LANDO_PROBE_HOST` and `LANDO_PROBE_PORT` from managed network intent: the service alias on a private bridge, or its canonical qualified alias on a shared-only network. It never discovers an interface address or falls back to loopback. Invalid listeners, unavailable topology, and reserved or overridden service DNS fail planning before provider action. Custom untargeted commands receive no injected target.
 
 Direct runner calls with a targeted probe must pass the full app plan as the fourth argument: `runner.run(probe, appPlan.id, serviceName, appPlan)`. Provider create requests, Compose output, dependency gates, and the engine runner share the compiler, so their target and command cannot drift independently.
+
+## Distinguish inspection from a successful gate
+
+`ServiceInfo.health` describes native monitoring and provider-observed health. Explicit native `none` is `not-monitored`; missing evidence is neutral `unknown`. `ServiceInfo.readiness.state` is `disabled`, `not-configured`, or `not-observed`; source is `authored`, `contributed`, `healthcheck`, `unknown`, or `none`. Safe metadata includes execution target, identity source, listener, timing, command presence, and configuration pointer, never raw commands. Info performs no probes, extra inspection calls, or durable writes to invent readiness evidence.
+
+Start's `ready` result remains a real observed gate success for that invocation. Info does not retain or imply that proof. Durable last-readiness proof is deferred: it needs start-generation and probe identity, provenance, interruption/failure invalidation, and orphan handling before it can be truthful.
 
 An unsupervised exited service fails with `ServiceNotReadyError`; applied user-app resources stay available for diagnosis. `restart: always` or `unless-stopped` permits an exit or observed restart to yield a warning and `restarting`; `on-failure` permits that only with a non-zero exit code. Exhausted startup probes remain fatal for every service. A `service_completed_successfully` dependency target skips probes and must exit 0 regardless of restart policy. Successful rows report `ready`, `running` without a check, or `completed` for verified jobs. Restart policies never relax dependency gates during provider apply.
 
@@ -52,12 +70,15 @@ Non-instant readiness waits publish task-tree progress. Interruption at any phas
 This is not a user how-to. To make start wait for your app, see [Make start wait for your app](../services/wait-for-your-app.mdx). For a running app, use [everyday commands](../cli/everyday-commands.mdx) and [lando doctor](./doctor-walkthrough.mdx).
 
 <Guide>
-  <Scenario id="healthcheck-shorthand-forms" render={false} reason="Live probe execution needs a running container and is covered by sdk/test/contract/healthcheck-runner.test.ts and core/test/subsystems/healthcheck/live.test.ts. This scenario checks the canonical shapes of the false and string shorthands through the CLI.">
+  <Scenario id="healthcheck-shorthand-forms" render={false} reason="Check independent false and string policies through real config and planning commands">
     <Step name="canonical-shapes">
       <UseFixture name="healthcheck-shorthand" />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db\":\\s*\\{[\\s\\S]*?\"healthcheck\":\\s*false" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[\\s\\S]*?\"healthcheck\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\"redis-cli ping\"\\s*\\}" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"db\":\\s*\\{[\\s\\S]*?\"readiness\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\"mysqladmin ping\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cache\":\\s*\\{[\\s\\S]*?\"readiness\":\\s*false" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
     </Step>
   </Scenario>
   <Scenario id="reject-http-before-provider" render={false} reason="Exercise the real planner rather than a modeled start command">

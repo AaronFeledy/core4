@@ -133,6 +133,8 @@ A third family covers service homes. Lando 3 kept a home directory for every ser
 
 ## What converts and what doesn't
 
+Review converted startup probes separately from native container monitoring. For API-4 and raw Lando 3 services, every supported top-level `healthcheck` form becomes Lando 4 `readiness`, including strings, argv, objects, and `false`; a probe user remains a container identity. Nested Compose healthchecks stay native `healthcheck`. A catalog-service dialect that ignored healthcheck still ignores it and reports that in conversion diagnostics. After conversion, `healthcheck` and `readiness` have independent overrides and disabling rules; see [Make start wait for your app](../services/wait-for-your-app.mdx).
+
 Nothing falls through silently. When a key has both a supported form and a rejected form, the rejected form blocks `--write`.
 
 | Lando 3 input | Result | Blocks `--write` |

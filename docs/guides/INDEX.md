@@ -69,7 +69,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | PRD-04 | US-102 | CertificateAuthority via @lando/ca-mkcert | `docs/guides/subsystems/certificates-mkcert.mdx` | Shipped |
 | PRD-04 | US-103 | SshService sidecar (default) plus host-agent forwarding opt-in | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
-| PRD-04 | US-104 | HealthcheckService (tcp/http/cmd probes) | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
+| PRD-04 | US-104 | native health, lifecycle command readiness, attempt execution, and inspection truth | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
 | PRD-04 | US-105 | ScannerService endpoint discovery + port-collision detection | `docs/guides/subsystems/scanner-service.mdx` | Shipped |
 | PRD-04 | US-106 | HostProxyService (`lndo.site`-style hostnames) | `docs/guides/subsystems/host-proxy.mdx` | Shipped |
 | PRD-04 | US-106 | Open host URLs and reveal app files from containers | `docs/guides/subsystems/host-open.mdx` | Shipped |
@@ -317,6 +317,6 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | Magento Open Source (Mage-OS) on PHP, MariaDB, and OpenSearch | `docs/guides/services/magento.mdx` | Shipped |
 | - | - | Solr 10 on the typed solr service | `docs/guides/services/solr10.mdx` | Shipped |
 | - | - | host project commands from `.lando/scripts/*.bun.sh` Bun Shell scripts | `docs/guides/tooling/bun-shell-scripts.mdx` | Shipped |
-| - | - | make start wait for your app | `docs/guides/services/wait-for-your-app.mdx` | Shipped |
+| - | - | independent health/readiness authoring, host/user probes, disabling, and pre-action validation | `docs/guides/services/wait-for-your-app.mdx` | Shipped |
 | - | - | local LLM with Ollama via Compose passthrough | `docs/guides/services/ollama.mdx` | Shipped |
 | - | - | profile PHP requests with XHProf and XHGui | `docs/guides/tooling/xhprof-xhgui.mdx` | Shipped |
