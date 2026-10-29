@@ -243,7 +243,9 @@ describe("meilisearch service type — scenario: index create + document post + 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "meili", args: ["create-index", "movies"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "meili", input: { _tag: "RawArgv", argv: ["create-index", "movies"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("meili");
@@ -285,7 +287,7 @@ describe("meilisearch service type — scenario: index create + document post + 
     const result = await Effect.runPromise(
       runTooling({
         name: "meili",
-        args: ["add-document", "movies", '[{"id":1,"title":"Casablanca"}]'],
+        input: { _tag: "RawArgv", argv: ["add-document", "movies", '[{"id":1,"title":"Casablanca"}]'] },
       }).pipe(Effect.provide(layer)),
     );
 
@@ -320,7 +322,9 @@ describe("meilisearch service type — scenario: index create + document post + 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "meili", args: ["search", "movies", "casa"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "meili", input: { _tag: "RawArgv", argv: ["search", "movies", "casa"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.exitCode).toBe(0);
