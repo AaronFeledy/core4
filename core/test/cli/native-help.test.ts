@@ -283,7 +283,7 @@ describe("native unknown-command failures", () => {
 
       // Then
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("ToolingCompileError");
+      expect(result.stderr).toContain("ToolingCommandUnavailableError");
       expect(result.stderr).not.toContain("UnknownCommandError");
     } finally {
       await fixture.cleanup();
@@ -304,7 +304,7 @@ describe("native unknown-command failures", () => {
         // Then
         expect(fixtureResult.exitCode).toBe(1);
         expect(fixtureResult.stderr).toContain("UnknownCommandError");
-        expect(fixtureResult.stderr).not.toContain("ToolingCompileError");
+        expect(fixtureResult.stderr).not.toContain("ToolingCommandUnavailableError");
         expect(fixtureResult.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
       } finally {
         await fixture.cleanup();
@@ -312,7 +312,7 @@ describe("native unknown-command failures", () => {
     },
   );
 
-  test("Given an app context and an unknown tooling token with terminal controls, when dispatched, then ToolingCompileError text is escaped", async () => {
+  test("Given an app context and an unknown tooling token with terminal controls, when dispatched, then unavailable-command text is escaped", async () => {
     // Given
     const fixture = await makeAppFixture();
     const commandToken = "unknown-tooling\u001b[31m";
@@ -324,7 +324,7 @@ describe("native unknown-command failures", () => {
 
       // Then
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("ToolingCompileError");
+      expect(result.stderr).toContain("ToolingCommandUnavailableError");
       expect(result.stderr).toContain("commandId: app:unknown-tooling\\u001b[31m");
       expect(result.stderr).not.toContain("\u001b");
     } finally {
@@ -351,9 +351,10 @@ describe("native unknown-command failures", () => {
         command: `app:${name}`,
         ok: false,
         error: {
-          _tag: "ToolingCompileError",
-          message:
-            "Tooling command app:unknown-tooling-json\\u001b[31m is unavailable because the app command cache is missing, stale, or does not contain that task.",
+          _tag: "ToolingCommandUnavailableError",
+          reason: "unknown-command",
+          commandId: `app:${name}`,
+          message: expect.stringContaining("unknown-tooling-json\\u001b[31m"),
         },
       });
     } finally {

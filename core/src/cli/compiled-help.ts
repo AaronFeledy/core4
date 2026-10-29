@@ -3,6 +3,8 @@ import { Effect, Schema } from "effect";
 
 import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
+import { ToolingCommandUnavailableError } from "@lando/sdk/errors";
+import type { ToolingMetadataStatus } from "./tooling-cache-status";
 
 import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
@@ -15,10 +17,12 @@ import {
   renderColdRootHelp,
   visibleHelpRows,
 } from "./cold-path-output";
-import { emitResultLine } from "./compiled-runtime";
+import { activeResultFormat, emitResultLine } from "./compiled-runtime";
+import { isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { shouldStyleHelp } from "./help-style";
+import { printMachineHelpTarget } from "./help-target";
 
 import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./cli-help";
 
@@ -38,6 +42,16 @@ export const HelpCatalogResult = Schema.Struct({
   version: Schema.String,
   platform: Schema.String,
   arch: Schema.String,
+  toolingMetadata: Schema.Union([
+    Schema.Struct({ status: Schema.Literals(["fresh", "not-app"]) }),
+    Schema.Struct({
+      status: Schema.Literal("unavailable"),
+      reason: ToolingCommandUnavailableError.fields.reason,
+      staleReason: ToolingCommandUnavailableError.fields.staleReason,
+      sourcePath: ToolingCommandUnavailableError.fields.sourcePath,
+      remediation: ToolingCommandUnavailableError.fields.remediation,
+    }),
+  ]),
   sections: Schema.Struct({
     common: Schema.Array(HelpCatalogRow),
     thisApp: Schema.Array(HelpCatalogRow),
@@ -67,10 +81,10 @@ export const toolingHelpEntryForToken = (
   for (const entry of cache.entries) {
     if (entry.hidden || isBuiltInRegistryId(entry.id)) continue;
     if (entry.id === token) return toToolingHelpEntry(entry);
-    const implicit = entry.id.startsWith("app:") ? entry.id.slice("app:".length) : entry.id;
     const name = typeableName({
       canonicalId: entry.id,
-      builtInAliases: implicit.length === 0 ? [] : [implicit],
+      builtInAliases: [],
+      implicitNamespaceStrip: true,
       ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
     });
     if (name.primary === token || name.extras.includes(token)) return toToolingHelpEntry(entry);
@@ -112,7 +126,10 @@ const toCatalogRow = (row: ThisAppHelpRow, source: HelpCatalogRow["source"]): He
 const byTypeable = (left: HelpCatalogRow, right: HelpCatalogRow): number =>
   left.typeable.localeCompare(right.typeable) || left.canonicalId.localeCompare(right.canonicalId);
 
-export const buildHelpCatalog = (cache?: AppCommandIndexPayload | null): HelpCatalogResult => {
+export const buildHelpCatalog = (
+  cache?: AppCommandIndexPayload | null,
+  metadata?: ToolingMetadataStatus,
+): HelpCatalogResult => {
   const aliasPolicy = cache?.aliasPolicy;
   const common = commonRows(aliasPolicy).map((row) => toCatalogRow(row, "built-in"));
   const thisApp =
@@ -129,6 +146,7 @@ export const buildHelpCatalog = (cache?: AppCommandIndexPayload | null): HelpCat
     version: CORE_VERSION,
     platform: process.platform,
     arch: process.arch,
+    toolingMetadata: metadata ?? { status: cache == null ? "not-app" : "fresh" },
     sections: { common, thisApp, more },
     all: [...builtIns, ...thisApp].toSorted(byTypeable),
   };
@@ -137,12 +155,13 @@ export const buildHelpCatalog = (cache?: AppCommandIndexPayload | null): HelpCat
 export const printHelpCatalogJson = (
   cache?: AppCommandIndexPayload | null,
   format: CommandResultEnvelopeFormat = "json",
+  metadata?: ToolingMetadataStatus,
 ): Promise<void> => {
   const line = Effect.runSync(
     encodeCommandResult({
       command: HELP_CATALOG_COMMAND,
       resultSchema: HelpCatalogResult,
-      outcome: { _tag: "success", value: buildHelpCatalog(cache) },
+      outcome: { _tag: "success", value: buildHelpCatalog(cache, metadata) },
       redactor: identityRedactor,
       format,
     }),
@@ -153,13 +172,17 @@ export const printHelpCatalogJson = (
 export const printRootHelp = (
   activeAliases?: ReadonlyArray<readonly [string, string]>,
   cache?: AppCommandIndexPayload | null,
+  toolingMetadata?: ToolingMetadataStatus,
 ): Promise<void> => {
   if (cache == null) {
-    return emitResultLine(renderColdRootHelp(activeAliases));
+    return emitResultLine(
+      renderColdRootHelp(activeAliases, toolingMetadata === undefined ? {} : { toolingMetadata }),
+    );
   }
   return emitResultLine(
     renderColdRootHelp(activeAliases, {
       thisAppRows: thisAppHelpRowsFromCache(cache),
+      ...(toolingMetadata === undefined ? {} : { toolingMetadata }),
       ...(cache.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
     }),
   );
@@ -180,6 +203,18 @@ const rendererModeFrom = (
 };
 
 export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
+  if (isEnvelopeResultFormat(activeResultFormat)) {
+    return printMachineHelpTarget(
+      {
+        canonicalId: entry.spec.id,
+        typeable: entry.spec.id,
+        extras: [],
+        summary: entry.spec.summary,
+        source: "built-in",
+      },
+      activeResultFormat,
+    );
+  }
   const argv = process.argv.slice(2);
   return emitResultLine(
     renderCommandHelp(entry, {
@@ -194,6 +229,25 @@ export const printCommandHelp = (entry: BuiltInCommandEntry): Promise<void> => {
 };
 
 export const printToolingHelp = (entry: ToolingHelpEntry, aliasPolicy?: HelpAliasPolicy): Promise<void> => {
+  if (isEnvelopeResultFormat(activeResultFormat)) {
+    const names = typeableName({
+      canonicalId: entry.id,
+      builtInAliases: [],
+      implicitNamespaceStrip: true,
+      ...(aliasPolicy === undefined ? {} : { aliasPolicy }),
+    });
+    return printMachineHelpTarget(
+      {
+        canonicalId: entry.id,
+        typeable: names.primary,
+        extras: [...names.extras],
+        summary: entry.summary,
+        source: "tooling",
+        ...(entry.input === undefined ? {} : { input: entry.input }),
+      },
+      activeResultFormat,
+    );
+  }
   const argv = process.argv.slice(2);
   return emitResultLine(
     renderToolingHelp(entry, {
