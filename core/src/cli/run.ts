@@ -241,6 +241,10 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       const formatResolution = resolveResultFormat({ argv, rendererMode: activeRendererMode });
       argv = formatResolution.remainingArgv;
       setActiveResultFormat(formatResolution.format);
+      // Bare --json lists command result keys; without a command, retain root text help.
+      if (formatResolution.source === "json" && extracted.jsonList && argv.length === 0) {
+        setActiveResultFormat(DEFAULT_RESULT_FORMAT);
+      }
       setActiveJsonControl(resolveJsonControl(extracted, formatResolution.format));
       setActiveJq(extracted.jq);
       if (
