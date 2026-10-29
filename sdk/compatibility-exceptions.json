@@ -1,5 +1,41 @@
 [
   {
+    "surface": "schema:LogSourceStrategy",
+    "changeKind": "enum-widened",
+    "path": "$",
+    "justification": "Reviewed pre-release console-source contract: console joins redirect and follow as a native-pipe alias strategy. Consumers must distinguish the pathless branch rather than assume every runtime source names a file. Existing file strategies and file-only Landofile authoring remain unchanged; strict schema, provider selection, and CLI regressions cover the new variant. No unreleased exhaustive-match compatibility shim is retained."
+  },
+  {
+    "surface": "schema:LogSource",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release discriminated union: the original file-source shape retains redirect/follow, absolute path, required and timestamp defaults. The new console arm requires a native stream and forbids path, required and timestamps, including without excess-property checking. Strict round trips and source-selection regressions cover both branches; authored LogSourceInput remains file-only."
+  },
+  {
+    "surface": "schema:ServiceInfoLogSource",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed additive native-console info projection: file rows retain their existing path, strategy and availability contract. Console rows carry strategy console, stream, id and available/unavailable state without a fabricated path or redirected-file state. Schema and human/machine info tests cover the distinction."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-construct",
+    "path": "$.logSources.items.anyOf",
+    "justification": "Reviewed propagation of ServiceInfoLogSource's pathless native-console branch. Existing file log-source rows and every unrelated ServiceInfo field retain their contract; info projects the selected daemon pipe and actual provider availability instead of inventing file paths. Strict schema and CLI info tests cover both forms."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.logSources.items.anyOf",
+    "justification": "Reviewed app-info result propagation of the pathless console-alias branch. Existing file-source results remain valid; console aliases report their native stream and availability without file-only fields. Command result/schema and CLI info regressions cover this intentional pre-release output evolution."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.logSources.items.anyOf",
+    "justification": "Reviewed global-info result propagation of the shared ServiceInfoLogSource console-alias branch. Existing file rows remain valid and the global command uses the same provider-neutral projection as app info; native aliases report their pipe without fabricated paths. Shared schema and info projection regressions cover the output evolution."
+  },
+  {
     "surface": "command:apps:init",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
