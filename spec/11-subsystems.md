@@ -382,7 +382,7 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 ### 10.9 Logs and diagnostics
 
 - Core logs live under `<userCacheRoot>/logs/`; app logs are discoverable by app id and root.
-- `RuntimeProvider.logs` streams service output. Declared service log sources (§6.14) use redirect or provider file-follow capability, are labeled by `LogChunk.source`, and MUST NOT disappear silently.
+- `RuntimeProvider.logs` streams service output. Declared service log sources (§6.14) use native console aliases, owned redirects, or provider file-follow capability, are labeled by `LogChunk.source`, and MUST NOT disappear silently. Aliases and redirects select a native pipe, not an isolated writer; default console collection occurs once.
 - Debug logs include provider operation names and redacted inputs; structured logger annotations preserve `traceId`.
 - Normal diagnosis MUST NOT require provider-native commands.
 
