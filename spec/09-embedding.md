@@ -138,7 +138,7 @@ App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable co
 - `appConfig` and `metaConfig` expose their subcommands as nested function namespaces.
 - Operations MUST NOT access process stdio or invoke OCLIF. They inherit runtime services through the Effect requirements channel.
 - The binary MUST use the same operations; there is no second implementation.
-- `runTooling(canonicalId, input)` invokes cached tooling programs with the CLI’s normalized input semantics (§8.6).
+- `runTooling({ name, input?, expectedInputRevision?, ...options })` and `app.tooling(id, options?)` share §8.5.1's input contract: `input` is `ToolingInvocationInput` (RawArgv or NamedMaps), and `expectedInputRevision` is the branded revision from discovery. The old options-level args vector and declaration-array snapshot are replaced. Omitted input means empty RawArgv; retained hosts MUST pass the discovered revision. Named inputs bind once against the invocation-authoritative declaration, preserving omission, false, and empty strings; only argv-only adapters lower them. App handles retain their captured configuration, so this check MUST NOT silently reload files behind a handle.
 - `appConfig.translate`, `appConfig.detectTranslators`, and `appConfig.listTranslators` are explicit authoring calls. Translation/refresh options MUST follow §7.4.2: explicit refresh may fetch metadata, check is local/read-only, and lifecycle refresh uses local snapshots only.
 
 `meta:setup`, `apps:init`, `meta:events:follow`, `meta:shellenv`, and `meta:uninstall` are not exported as command functions. Hosts compose their underlying services, provide `InteractionService` for init, subscribe to `EventService`, or keep installation concerns outside the runtime as applicable.
