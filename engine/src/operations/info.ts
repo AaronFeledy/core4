@@ -34,6 +34,7 @@ import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.
 import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
 import { projectFileSyncInfo } from "./info-file-sync.ts";
+import { projectServiceProbes } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
@@ -117,7 +118,6 @@ const toServiceInfo = (
   const hostnames = Array.from(
     new Set(landoServiceNetworkAttachments(plan, service).flatMap((attachment) => attachment.aliases)),
   );
-  const healthcheck = service.healthcheck;
   const certsProvenance = service.extensions["@lando/core/certs"];
   const certs =
     service.certs !== undefined
@@ -125,25 +125,6 @@ const toServiceInfo = (
       : Schema.is(CertsProvenance)(certsProvenance)
         ? { state: certsProvenance }
         : undefined;
-  const health =
-    healthcheck === undefined && runtimeHealth === undefined
-      ? undefined
-      : {
-          state: runtimeHealth ?? ("unknown" as const),
-          ...(healthcheck === undefined
-            ? {}
-            : {
-                check: {
-                  kind: healthcheck.kind,
-                  intervalSeconds: healthcheck.intervalSeconds,
-                  timeoutSeconds: healthcheck.timeoutSeconds,
-                  retries: healthcheck.retries,
-                  ...(healthcheck.startPeriodSeconds === undefined
-                    ? {}
-                    : { startPeriodSeconds: healthcheck.startPeriodSeconds }),
-                },
-              }),
-        };
   return {
     app: String(plan.id),
     service: String(service.name),
@@ -157,7 +138,7 @@ const toServiceInfo = (
     ...(service.workingDirectory === undefined ? {} : { workingDirectory: service.workingDirectory }),
     hostnames,
     ...(certs === undefined ? {} : { certs }),
-    ...(health === undefined ? {} : { health }),
+    ...projectServiceProbes(service, runtimeHealth),
     ...(service.home === undefined ? {} : { home: service.home }),
     connections,
     ...(logSources.length === 0 ? {} : { logSources }),
