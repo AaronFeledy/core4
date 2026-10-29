@@ -5,6 +5,7 @@ import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
 import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
+import { FileSyncPolicy } from "./file-sync-policy.ts";
 import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
 import { DataStorePlan, MountPlan } from "./mounts.ts";
@@ -407,6 +408,10 @@ export const AppPlan = Schema.Struct({
    */
   fileSync: Schema.Array(FileSyncPlan).annotate({
     description: "File-sync sessions selected during planning.",
+  }),
+  fileSyncPolicy: Schema.optionalKey(FileSyncPolicy).annotate({
+    description:
+      "Recorded selection and per-service project-file policy; absent historical reasons are unknown.",
   }),
   /**
    * Effective Landofile `events:` and `config.yml hostEvents` steps compiled

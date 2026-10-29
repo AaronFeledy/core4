@@ -359,6 +359,9 @@ export const ProviderCapabilities = Schema.Struct({
   persistentStorage: Schema.Boolean,
   bindMounts: Schema.Boolean,
   bindMountPerformance: Schema.Literals(["native", "slow", "none"]),
+  fileSyncTargets: Schema.optionalKey(Schema.Literal("prepared-volume")).annotate({
+    description: "Provider implements preparation and inspection of owned file-sync volume targets.",
+  }),
   copyMounts: Schema.Boolean,
   copyOnWriteAppRoot: Schema.Boolean,
   volumeSnapshot: Schema.Literals(["native", "none"]),

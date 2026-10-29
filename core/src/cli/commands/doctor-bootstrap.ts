@@ -26,7 +26,7 @@ import { buildHostProxyCheck } from "./doctor-host-proxy-check";
 import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
-import { subsystemDoctor } from "./doctor-subsystems";
+import { type SubsystemDoctorResult, subsystemDoctor } from "./doctor-subsystems";
 import { resolveSecretsRedactor } from "./secrets-redactor";
 
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
@@ -171,7 +171,7 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
     subsystems: (subsystemOptions) =>
       (context === undefined
         ? buildHostProxyCheck(undefined, options.fix === true).pipe(
-            Effect.map((check) => ({ checks: [check] })),
+            Effect.map((check): SubsystemDoctorResult => ({ checks: [check] })),
           )
         : subsystemDoctor(subsystemOptions).pipe(Effect.provide(context))
       ).pipe(Effect.provide(dnsLayer)),

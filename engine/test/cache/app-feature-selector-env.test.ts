@@ -11,11 +11,11 @@ import {
   type ServiceType,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import * as AppCacheService from "../../src/cache/service.ts";
-import { planApp } from "../../src/planner/assemble.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { snapshotAppFeatureEnv } from "../../src/services/app-feature.ts";
+import { planApp } from "../plan-app.ts";
 
 const featureFor = (fromConfig: string): AppFeatureDefinition => ({
   id: "test.selector-env",
@@ -106,19 +106,19 @@ for (const scenario of [
             compileTestLandofile(landofile, root).pipe(
               Effect.flatMap((compiled) =>
                 planApp(
-                  registry,
                   {
-                    ...cache,
-                    writeAtomic: (path, bytes) =>
-                      cache.writeAtomic(path, bytes).pipe(Effect.tap(() => Effect.sync(() => writes++))),
+                    landofile: compiled,
+                    providerCapabilities: TestRuntimeProvider.capabilities,
+                    appRoot: root,
                   },
-                  undefined,
-                  undefined,
-                  undefined,
-                  undefined,
-                  compiled,
-                  TestRuntimeProvider.capabilities,
-                  root,
+                  Layer.mergeAll(
+                    Layer.succeed(PluginRegistry, registry),
+                    Layer.succeed(CacheService, {
+                      ...cache,
+                      writeAtomic: (path, bytes) =>
+                        cache.writeAtomic(path, bytes).pipe(Effect.tap(() => Effect.sync(() => writes++))),
+                    }),
+                  ),
                 ),
               ),
             ),

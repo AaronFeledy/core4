@@ -10,6 +10,7 @@ export class DataTransferError extends Schema.TaggedError<DataTransferError>()("
   toEndpoint: Schema.optional(Schema.String),
   operation: Schema.optional(Schema.String),
   exitCode: Schema.optional(Schema.Number),
+  reason: Schema.optional(Schema.Literals(["exit", "protocol", "provider", "timeout", "stdout-limit"])),
   stderrTail: Schema.optional(Schema.String),
   recoverySnapshotId: Schema.optional(Schema.String),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),

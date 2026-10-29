@@ -63,6 +63,8 @@ export const runInfo = async (
   selected: ServicePlan,
   mounts?: ServiceRuntimeInfo["mounts"],
   labels?: ServiceRuntimeInfo["labels"],
+  health?: ServiceRuntimeInfo["health"],
+  selectedPlan: AppPlan = plan,
 ) => {
   const calls: string[] = [];
   const provider = {
@@ -71,11 +73,12 @@ export const runInfo = async (
       Effect.sync(() => {
         calls.push(`inspect:${target.service}`);
         return {
-          app: plan.id,
+          app: selectedPlan.id,
           service: target.service,
-          providerId: plan.provider,
+          providerId: selectedPlan.provider,
           status: "running",
           publications: { status: "present" as const, bindings: [] },
+          ...(health === undefined ? {} : { health }),
           ...(mounts === undefined ? {} : { mounts }),
           ...(labels === undefined ? {} : { labels }),
         };
@@ -87,7 +90,7 @@ export const runInfo = async (
       appliedPlansFor: () => Effect.succeed([]),
       resolveAppliedPlan: () => Effect.succeed(undefined),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      list: Effect.succeed([plan.provider]),
+      list: Effect.succeed([selectedPlan.provider]),
       capabilities: Effect.succeed(provider.capabilities),
       select: () =>
         Effect.sync(() => {
@@ -97,7 +100,7 @@ export const runInfo = async (
     }),
   );
   const result = await Effect.runPromise(
-    infoForPlan({ ...plan, services: { [selected.name]: selected } }).pipe(Effect.provide(layer)),
+    infoForPlan({ ...selectedPlan, services: { [selected.name]: selected } }).pipe(Effect.provide(layer)),
   );
   return { row: result.services[0], calls };
 };

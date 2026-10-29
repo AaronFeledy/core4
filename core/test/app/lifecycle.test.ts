@@ -36,6 +36,7 @@ import { FileSyncStartError } from "@lando/sdk/errors";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestRouterService } from "@lando/sdk/test";
 import { preparedFileSyncTargets } from "../_support/prepared-sync-targets.ts";
+import { lifecycleFileSyncPlugin } from "./lifecycle-file-sync-plugin.ts";
 
 const fixedDateTime = DateTime.makeUnsafe("2026-06-22T00:00:00Z");
 
@@ -188,6 +189,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
   let appliedPlan: AppPlan | undefined;
   return RuntimeProvider.of({
     ...provider,
+    capabilities: { ...provider.capabilities, fileSyncTargets: "prepared-volume" },
     appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     prepareFileSyncTargets: (syncPlan: AppPlan) =>
       Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
@@ -289,6 +291,7 @@ const appLayer = (
     bootstrap: "app",
     plugins: {
       policy: "bundled-only",
+      manifests: [lifecycleFileSyncPlugin(engine)],
       layers: [
         Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
         Layer.succeed(
@@ -314,7 +317,6 @@ const appLayer = (
           }),
         ),
         Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
-        Layer.succeed(FileSyncEngine, FileSyncEngine.of(engine)),
         Layer.succeed(RouterService, RouterService.of(TestRouterService)),
       ],
     },
@@ -1355,6 +1357,7 @@ describe("App handle managed lifecycle scopes", () => {
               cwd: dir,
               plugins: {
                 policy: "bundled-only",
+                manifests: [lifecycleFileSyncPlugin(tracking.engine)],
                 layers: [
                   Layer.succeed(RuntimeProvider, RuntimeProvider.of(fixtureProvider)),
                   Layer.succeed(
@@ -1372,7 +1375,6 @@ describe("App handle managed lifecycle scopes", () => {
                     AppPlanner,
                     AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(planWithFileSync(dir))) }),
                   ),
-                  Layer.succeed(FileSyncEngine, FileSyncEngine.of(tracking.engine)),
                   Layer.succeed(RouterService, RouterService.of(TestRouterService)),
                 ],
               },

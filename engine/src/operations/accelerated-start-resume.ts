@@ -1,11 +1,13 @@
 import { sameRealpath } from "@lando/paths";
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
-import { FileSyncEngine, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { Effect, Option } from "effect";
+import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { Effect } from "effect";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { type PendingStart, matchesRecordedTargets } from "./accelerated-start-record.ts";
+import { acquireFileSyncEngine, requireFileSyncProvider } from "./file-sync-acquire.ts";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
 import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
@@ -24,10 +26,12 @@ export const recordedSessionInventory = Effect.fnUntraced(function* (
   record: PendingStart,
   plan: AppPlan,
 ) {
-  const selected = yield* Effect.serviceOption(FileSyncEngine);
-  if (Option.isNone(selected) || selected.value.id !== record.engineId)
-    return yield* Effect.fail(resumeError(record, "Resume requires the recorded file-sync engine."));
-  const engine = selected.value;
+  const bundle = yield* fileSyncBundle(plan);
+  if (bundle.kind !== "accelerated" || bundle.id !== record.engineId)
+    return yield* Effect.fail(resumeError(record, "The recorded engine disagrees with the executable plan."));
+  const engine = yield* acquireFileSyncEngine(record.engineId).pipe(
+    Effect.mapError((cause) => resumeError(record, "Resume requires the recorded file-sync engine.", cause)),
+  );
   const sessions = yield* engine.listSessions({ app });
   const identities = new Set<string>();
   const refs = new Set<string>();
@@ -48,7 +52,7 @@ export const recordedSessionInventory = Effect.fnUntraced(function* (
         spec.app.id !== app.id ||
         !sameRealpath(spec.app.root, app.root) ||
         !record.sessions.some(({ name }) => name === identity) ||
-        !plan.fileSync.some(({ session }) => sameFileSyncSessionSpec(session, spec))
+        !bundle.sessions.some((session) => sameFileSyncSessionSpec(session, spec))
       );
     })
   )
@@ -65,6 +69,7 @@ export const verifyPendingStartResume = Effect.fnUntraced(function* (app: AppRef
   const provider = yield* registry
     .select(plan)
     .pipe(mapFailureErrors((cause) => resumeError(record, "The recorded provider is unavailable.", cause)));
+  yield* requireFileSyncProvider(yield* fileSyncBundle(plan), provider);
   if (provider.prepareFileSyncTargets === undefined || provider.inspectAppliedFileSync === undefined)
     return yield* Effect.fail(
       resumeError(record, "The recorded provider cannot verify accelerated targets."),

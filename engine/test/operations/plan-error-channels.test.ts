@@ -11,6 +11,7 @@ import type {
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
   EventError,
+  FileSyncSelectionError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
@@ -62,6 +63,7 @@ type LandofileRootLoadError = Effect.Error<ReturnType<typeof loadLandofileLayers
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | AppPlacementError
   | LandofileRootLoadError
@@ -80,6 +82,7 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | LandofileValidationError
   | RouteInputError
@@ -110,6 +113,7 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | AppPlacementError
   | LandofileRootLoadError
@@ -140,6 +144,7 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | RemoteSyncError
   | UserLandofileError
@@ -152,6 +157,7 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | UserLandofileError
   | CapabilityError

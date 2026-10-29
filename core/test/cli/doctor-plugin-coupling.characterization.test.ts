@@ -25,12 +25,14 @@ import { type Context, Effect, Layer } from "effect";
 import { makeLandoPaths } from "@lando/core/paths";
 import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import {
   MUTAGEN_TOOL_MANIFEST,
   MUTAGEN_TOOL_VERSION,
   mutagenInstalledVersionPath,
 } from "@lando/file-sync-mutagen";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { TestFileSyncEngine } from "@lando/sdk/test";
 import { resolveHostKey } from "@lando/sdk/tool-provisioning";
 
 import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
@@ -52,7 +54,11 @@ const buildConfigService = (
 
 const slowBindMountProvider = { ...TestRuntimeProvider, id: "lando" as const };
 Object.assign(slowBindMountProvider, {
-  capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
+  capabilities: {
+    ...TestRuntimeProvider.capabilities,
+    bindMountPerformance: "slow",
+    fileSyncTargets: "prepared-volume",
+  },
 });
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) =>
@@ -71,6 +77,10 @@ const runDoctorWithUserDataRoot = (userDataRoot: string) =>
       Effect.provide(
         Layer.mergeAll(
           Layer.succeed(RuntimeProviderRegistry, buildRegistry(slowBindMountProvider)),
+          FileSyncResolver.layerWithEngine(
+            { ...TestFileSyncEngine, id: "mutagen" },
+            { platform: ["linux", "darwin", "win32"] },
+          ),
           Layer.succeed(
             ConfigService,
             ConfigService.of(buildConfigService({ userDataRoot: AbsolutePath.make(userDataRoot) })),

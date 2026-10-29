@@ -34,7 +34,9 @@ export const waitForSqlDatabase = Effect.fn("Sql.waitForDatabase")(function* (
         failure: () => "red",
       },
     },
-    Effect.suspend(() => checkedSqlExecution(exec(target.service, target.command, env), { ...target, env })),
+    Effect.suspend(() =>
+      checkedSqlExecution(exec(target.service, target.command, env), { ...target, env, stdout: "discard" }),
+    ),
   ).pipe(
     Effect.flatMap((result) =>
       result.outcome === "green"

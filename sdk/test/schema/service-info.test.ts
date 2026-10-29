@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { ServiceInfo, ServiceState, StartedService } from "@lando/sdk/schema";
+import { CertificatePlan, ServiceInfo, ServiceState, StartedService } from "@lando/sdk/schema";
+import type { ServiceFeatureContext } from "@lando/sdk/services";
 import { Schema } from "effect";
 
 const service = {
@@ -56,6 +57,67 @@ test("preserves connection addresses when info crosses the SDK boundary", () => 
   const encoded = Schema.encodeSync(ServiceInfo)(decoded);
   // Then
   expect(encoded).toEqual(service);
+});
+
+test("preserves the historical certificate struct and typed generated consumer", () => {
+  expect(Object.keys(CertificatePlan.fields)).toEqual(["cn", "sans", "caId"]);
+  const mapped = CertificatePlan.mapFields((fields) => ({ ...fields }));
+  expect(Object.keys(mapped.fields)).toEqual(["cn", "sans", "caId"]);
+  const certificate: Parameters<ServiceFeatureContext["setCerts"]>[0] = CertificatePlan.make({
+    cn: "web.internal",
+    sans: ["web.internal"],
+    caId: "test",
+  });
+  expect(certificate.cn).toBe("web.internal");
+  const input = { cn: "web.internal", sans: ["web.internal"], caId: "test" };
+  const HistoricalCertificatePlan = Schema.Struct({
+    cn: Schema.String,
+    sans: Schema.Array(Schema.String),
+    caId: Schema.String,
+  });
+  const historical = Schema.decodeUnknownSync(HistoricalCertificatePlan)(input, {
+    onExcessProperty: "error",
+  });
+  expect(Schema.encodeSync(CertificatePlan)(historical)).toEqual(input);
+  const decoded = Schema.decodeUnknownSync(CertificatePlan)(input, { onExcessProperty: "error" });
+  const encoded = Schema.encodeSync(CertificatePlan)(decoded);
+  expect(encoded).toEqual(input);
+  expect(Schema.decodeUnknownSync(HistoricalCertificatePlan)(encoded, { onExcessProperty: "error" })).toEqual(
+    input,
+  );
+});
+
+test.each([
+  { state: "none" },
+  { state: "custom" },
+  { state: "none", cn: "web" },
+  { state: "custom", sans: ["web"] },
+  { state: "generated", cn: "web", sans: [], caId: "test" },
+])("rejects marker-only, mixed, or fabricated certificate-plan forms %j", (input) => {
+  expect(() => Schema.decodeUnknownSync(CertificatePlan)(input, { onExcessProperty: "error" })).toThrow();
+});
+
+test("round trips safe service metadata and JSON provider details", () => {
+  const input = {
+    ...service,
+    artifact: { kind: "ref", ref: "node:22-alpine", digest: "sha256:example" },
+    user: "node",
+    workingDirectory: "/app",
+    hostnames: ["web", "web.demo.internal"],
+    certs: { state: "custom" },
+    health: {
+      check: { kind: "tcp", intervalSeconds: 10, timeoutSeconds: 2, retries: 3 },
+      state: "unhealthy",
+    },
+    providerInfo: { observation: "limited", retries: 2, labels: ["safe"] },
+  } as const;
+  expect(Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(input))).toEqual(input);
+});
+
+test("rejects non-JSON provider details", () => {
+  expect(() =>
+    Schema.decodeUnknownSync(ServiceInfo)({ ...service, providerInfo: { invalid: () => 1 } }),
+  ).toThrow();
 });
 
 test("round trips storage lifetime and the full resolved application mount", () => {

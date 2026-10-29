@@ -8,7 +8,7 @@ tags: [beta, docs, file-sync, mutagen, setup]
 
 # Accelerate Windows project files with Mutagen
 
-Run `lando setup` to install the file-sync tools for Windows with the managed `lando` provider. Lando starts and manages the sync sessions for your app.
+Run `lando setup` to install the file-sync tools for Windows with the managed `lando` provider. Lando starts and manages the sync sessions for your app. If you'd rather keep a plain bind mount, set `appMount.accelerate: false` on the service or `defaultFileSyncEngine: passthrough` in global config; both are supported and reversible.
 
 ## Install the sync tools
 
@@ -21,6 +21,8 @@ Setup installs checksum-verified Mutagen binaries and a private Docker command-l
 
 The `file-sync` doctor check verifies that the installed tools and session client are available. The separate `filesystem-watch` check creates a temporary Windows file and verifies that a native watcher receives its event. That watch check covers the host temporary directory; it does not test every project directory or a container watcher.
 
+Setup installs the selected engine only when the provider reports slow bind mounts and an installed engine supports the host and provider. With automatic selection on a native Linux provider, with no compatible engine, or when global config selects `passthrough`, setup does no file-sync work and doctor does not require a sync engine.
+
 ## Start the app
 
 If you set a service’s `user`, use a numeric UID and GID on Windows, such as `1000:1000`. Lando uses that identity for synced files. Named service users cannot be resolved before the container starts; use the numeric identity from your image.
@@ -29,17 +31,72 @@ From your project directory:
 
 ```sh
 lando start
-lando info
+lando info --format=json
 ```
 
-If the app already uses ordinary mounts, start it after setup so its containers use the accelerated mounts:
+Edit a project file on Windows and check the change through the app's URL or tooling. Files written inside the synced project paths return to Windows too. Lando completes the initial sync before it starts the app's services. That first scan can take several minutes for a large project; later starts reuse the session and its history. Only the project app mount is accelerated; extra bind mounts, including config files, keep their ordinary mount behavior.
+
+Read `result.fileSync.applied` for the recorded mount policy, not proof that the sync daemon is healthy. If start reports a missing tool, unavailable engine, or failed sync-target preparation, follow its remediation and retry. A planned accelerated start fails rather than silently switching to ordinary binds.
+
+## Keep an app mount as an ordinary bind
+
+Acceleration is automatic, not forced. To keep one service's app mount as a plain bind on a slow provider, set `accelerate: false` on its `appMount` block. `target` stays required:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    primary: true
+    appMount:
+      target: /app
+      accelerate: false
+```
+
+Lando then mounts the project directory directly and creates no sync session. Excluded directories such as `node_modules` still get their own service-owned overlays. Unshadowed files and `.git` become visible through the bind. A fresh app needs no sync engine; an already accelerated app still needs its previous engine to finish the safe switch described below. Omitting `accelerate`, or writing `true`, permits automatic acceleration and never forces it: a native Linux provider stays an ordinary bind either way.
+
+A Landofile cannot name a sync engine. Engine choice belongs to the host, through global config.
+
+## Choose an engine for every app
+
+Global config decides which engine accelerates app mounts on this machine:
 
 ```sh
-lando start
-lando doctor
+lando config set defaultFileSyncEngine passthrough
+lando config get defaultFileSyncEngine --format=json
 ```
 
-Edit a project file on Windows and check the change through the app's URL or tooling. Files written inside the synced project paths return to Windows too. Lando completes the initial sync before it starts the app's services. That first scan can take several minutes for a large project; later starts reuse the session and its history. The project app mount is accelerated; extra bind mounts, including config files, keep their ordinary mount behavior.
+```yaml
+defaultFileSyncEngine: passthrough
+```
+
+`passthrough` is a reserved policy, not an engine: app mounts on this host use ordinary binds instead of creating sync sessions. Existing accelerated apps first drain through their recorded engine. Unset the key to return to automatic selection. See [Read and write global config](../config/global-config.mdx) for how `config.yml`, drop-ins, and `LANDO_CONFIG__DEFAULT_FILE_SYNC_ENGINE` layer.
+
+When an app mount may accelerate on a slow provider, Lando first checks which installed engines support the host platform, the provider's sync-target capabilities, `two-way-safe` synchronization, and exclusion patterns. A plugin's default preference does not grant support. Lando then chooses:
+
+- The engine id in `defaultFileSyncEngine`, if it is installed and eligible. An unknown or unsupported named choice fails with a selection error and remediation; naming an engine never bypasses support checks.
+- Otherwise, the one eligible engine whose plugin metadata nominates it for this host platform and bind-mount performance. Multiple matching defaults fail until you choose an eligible engine explicitly.
+- Otherwise, the sole eligible engine. Multiple eligible engines with no unique default also fail instead of choosing by load order.
+
+If automatic selection finds no eligible engine, the app uses ordinary binds and `lando info --format=json` reports `no-compatible-engine`. You do not need a file-sync workaround in your Landofile or global config for macOS or Docker Desktop. Ordinary binds still support directory overlays, but do not filter excluded files or `.git` out of the host tree.
+
+Once Lando plans acceleration, engine loading, setup, availability, capability, and sync-target failures are errors with remediation, not reasons to downgrade to ordinary binds. This applies to new apps too. Changing an existing accelerated app to ordinary binds still requires the safe transition below; automatic selection cannot bypass unreturned edits.
+
+## Inspect the project-file policy
+
+From the app directory, refresh the desired plan and read its policy without starting services:
+
+```sh
+lando app:cache:refresh
+lando info --format=json
+```
+
+Under `result.fileSync`, `planned` describes the desired policy and `applied`, when present, describes the recorded applied plan. `pendingChange: true` means both realizations are known and their policy snapshots differ. If there is no applied evidence, `applied` is absent and `pendingChange` is false; that does not mean the app is running or the desired plan has been applied.
+
+If the current configuration or desired provider cannot be planned, `info` still shows available applied state. It omits `planned` and leaves `pendingChange` false rather than claiming the plans match. The terminal summary identifies the missing desired policy; run `lando app:cache:refresh` to see the planning error and its remediation.
+
+Each snapshot has a `mode` and a `reason`, with `engineId` shown once for the app when accelerated. Its `services` list distinguishes accelerated app mounts, ordinary binds, and services with no app mount (`absent`). Reasons include `native-provider`, `service-opt-out`, `global-passthrough`, and `no-compatible-engine`. A mixed app can have an engine selected while an opted-out service stays ordinary.
+
+For each service, `exclusions.kind` distinguishes transport filtering (`transport-patterns`) from directory overlays (`directory-overlays`). `patterns` lists transport filters, `overlays` lists derived volume paths, and `hostBackedIncludes` lists the host and container paths kept by explicit includes. A historical plan without recorded reasons reports `unknown`; Lando does not guess from today's config. This policy view does not load a sync engine, query its sessions, or check daemon health. Use `lando doctor` and an actual file edit to check operation.
 
 ## Exclude generated files
 
@@ -59,6 +116,16 @@ services:
 The defaults already exclude `node_modules`, `vendor`, `.git`, and `tmp`. See [Exclude paths from file sync](./file-sync-excludes.mdx) for includes and per-service overrides.
 
 After you change `excludes`, `includes`, or what is mounted under the app mount, the next `lando start` tells you the sync settings changed, syncs pending changes back to your project, removes the old session, and creates a new one with the new settings. Named data volumes stay. The new session starts with a full initial scan. If that start is interrupted, the next `lando start` picks up where it stopped.
+
+## Switch between accelerated and ordinary mounts
+
+Changing `accelerate`, changing `defaultFileSyncEngine`, or installing a plugin that changes automatic selection takes effect on the next `lando start`. Lando treats a changed selection like a changed sync setting. The transition runs in this order:
+
+Lando first checks that the previously applied app state is fully yours and reads the engine id recorded with it. It stops the app's writers, then uses that recorded engine, not the new one, to flush pending container-side edits back to your project and remove the old sessions and sync targets.
+
+After that, Lando retires the old applied state without removing named data or cache volumes and without running authored destroy steps. It applies the new plan: an ordinary bind with no session, or a fresh session under the new engine that populates from your project.
+
+Start refuses the switch and leaves everything in place when it can't do that safely: an unresolved file conflict, a session whose history is gone, an engine it can't reach, applied state it doesn't recognize, a failed flush, or an unfinished accelerated start recorded for a different plan. Fix the reported problem, or restore the previous settings, then run `lando start` again. An interrupted switch resumes from where it stopped.
 
 ## Stop and resume the app
 
@@ -98,13 +165,15 @@ lando info
 
 Directory, deletion, and symbolic-link conflicts need a decision about which content to keep; see [Mutagen's conflict resolution guide](https://mutagen.io/documentation/synchronization#conflict-resolution). Keep your backups until the app starts and the files match. Do not reset or terminate Lando's session or remove its cache to bypass a conflict: that can discard the history or the container's unreturned edits.
 
-## Skip installation
+## Check whether your host can accelerate
 
-`lando setup --skip-file-sync` skips installing sync tools. It does not remove tools that are already installed or change your provider.
+The bundled Mutagen transport supports native Windows with the managed `lando` provider's prepared sync volumes. A Windows host alone is not sufficient: an external runtime socket does not provide that managed target lifecycle. On macOS or Docker Desktop, the bundled engine is ineligible, so automatic selection keeps ordinary binds without extra configuration. Native Linux providers, including rootless Podman and Docker Engine, also use ordinary binds.
 
-Native Linux providers keep their native bind mounts and skip this file-sync check. Accelerated sessions described here require Windows and the managed `lando` provider; other provider and host combinations keep their existing mount behavior.
+An explicit engine id is still validated when host policy is evaluated, even on a native provider. Clear an unsupported named choice with `lando config unset defaultFileSyncEngine`, then read the effective value with `lando config get defaultFileSyncEngine --format=json`. If a drop-in or environment override supplies it, remove it there instead. A valid explicit choice does not force a native provider to accelerate.
 
-Lint the exclude before you start. The check reads the Landofile. It does not install Mutagen or boot a session.
+`lando setup --skip-file-sync` skips engine selection and installation for that setup run, including when the configured engine is missing or ambiguous. It does not remove existing tools, select ordinary mounts, or change your provider. Later app planning still follows the configured policy.
+
+Lint the opt-out before you start, then refresh the plan and inspect its mount layout. These commands do not install Mutagen or boot a sync session.
 
 <Guide>
   <Scenario id="accelerated-excludes-lint" render>
@@ -115,6 +184,33 @@ Lint the exclude before you start. The check reads the Landofile. It does not in
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"/app\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"excludes\":\\s*\\[\\s*\"dist\"" } }} />
+    </Step>
+    <Step name="inspect-native-policy">
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"fileSync\":\\s*\\{\\s*\"planned\":\\s*\\{\\s*\"mode\":\\s*\"ordinary\",\\s*\"reason\":\\s*\"native-provider\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\",\\s*\"mode\":\\s*\"ordinary\",\\s*\"reason\":\\s*\"native-provider\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"engineId\")(?![\\s\\S]*\"applied\")[\\s\\S]*\"pendingChange\":\\s*false" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="ordinary-app-mount-opt-out" render>
+    <Step name="lint-opt-out">
+      <UseFixture name="ordinary-app-mount" />
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"accelerate\":\\s*false" } }} />
+    </Step>
+    <Step name="plan-opt-out">
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"bind\",\\s*\"target\":\\s*\"/app\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"volume\",\\s*\"target\":\\s*\"/app/node_modules\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"fileSync\":\\s*\\{\\s*\"planned\":\\s*\\{\\s*\"mode\":\\s*\"ordinary\",\\s*\"reason\":\\s*\"service-opt-out\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"service\":\\s*\"app\",\\s*\"mode\":\\s*\"ordinary\",\\s*\"reason\":\\s*\"service-opt-out\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"kind\":\\s*\"directory-overlays\",\\s*\"patterns\":\\s*\\[\\s*\\]" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"overlays\":\\s*\\[(?![^\\]]*/app/generated[.]txt)[^\\]]*/app/node_modules" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"engineId\")(?![\\s\\S]*\"applied\")[\\s\\S]*\"pendingChange\":\\s*false" } }} />
     </Step>
   </Scenario>
 </Guide>

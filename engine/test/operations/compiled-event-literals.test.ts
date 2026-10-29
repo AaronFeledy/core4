@@ -20,7 +20,6 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { Effect, Layer, Schema, Stream } from "effect";
 import { runAppEvent } from "../../src/operations/events.ts";
 import * as Invocation from "../../src/operations/tooling-compile.ts";
-import { planApp } from "../../src/planner/assemble.ts";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import * as Resolver from "../../src/services/environment-value-resolver.ts";
@@ -30,6 +29,7 @@ import {
 } from "../../src/services/event-command-executor.ts";
 import * as Events from "../../src/services/event-service.ts";
 import * as Tooling from "../../src/services/tooling-engine.ts";
+import { planApp } from "../plan-app.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
 const serviceType: ServiceType = {
@@ -62,14 +62,14 @@ const fixture = async (source: string, hostEvents: HostEvents = {}) => {
     Effect.gen(function* () {
       const registry = yield* PluginRegistry;
       return yield* planApp(
-        { ...registry, loadServiceType: () => Effect.succeed(serviceType) },
-        undefined,
-        ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-        undefined,
-        undefined,
-        undefined,
-        loaded,
-        TestRuntimeProvider.capabilities,
+        { landofile: loaded, providerCapabilities: TestRuntimeProvider.capabilities },
+        Layer.mergeAll(
+          Layer.succeed(PluginRegistry, { ...registry, loadServiceType: () => Effect.succeed(serviceType) }),
+          Layer.succeed(
+            ConfigService,
+            ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+          ),
+        ),
       );
     }).pipe(Effect.provide(Registry.layerWith({ bundled: false }, []))),
   );

@@ -341,6 +341,10 @@
       "digest": "72446e8f58e661512c33405ee91996d3d5e998e4791c8c46b58f85dfae548b04"
     },
     {
+      "fixture": "docs/guides/file-sync-mutagen/fixtures/ordinary-app-mount",
+      "digest": "3f5748de71e83a8bbb040e0f6f802dba4e0b2bb626df3ac521489b218e1289c9"
+    },
+    {
       "fixture": "docs/guides/flags-and-args/fixtures/flags-demo",
       "digest": "49fb4d290f20b8d94f80548c6c21dc10685a151bdb66e96b4254b6c2721b5440"
     },
@@ -351,6 +355,10 @@
     {
       "fixture": "docs/guides/git-worktrees/fixtures/shop-feature",
       "digest": "8af3a9210e786e4c66360725a43ca244fa5a8e1837abb4247764f878029ef7d0"
+    },
+    {
+      "fixture": "docs/guides/global-config/fixtures/file-sync-policy",
+      "digest": "9204e5cf5b9116168bfc7475d87f1807a26085a5f19176852cd426fbe1c865a4"
     },
     {
       "fixture": "docs/guides/go/fixtures/go-demo",

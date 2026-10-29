@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
 import { encodeCommandResult, identityRedactor } from "@lando/sdk/command-result";
 import { DataTransferError, SqlCommandFailedError } from "@lando/sdk/errors";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 import { checkedSqlExecution } from "../src/checked-execution.ts";
 import { SqlEnvironmentSession } from "../src/environment.ts";
 import { executeDbCommand } from "../src/execute.ts";
 import { DbCommandResult } from "../src/schemas.ts";
-import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
+import { cleanupSqlTestDeps, makeSqlTestDeps, sqlResult } from "./support/fakes.ts";
 import { valueResolver } from "./support/value-resolver.ts";
 
 afterEach(cleanupSqlTestDeps);
@@ -23,7 +23,7 @@ test.each([
         ...harness.deps,
         exec: (service, command, env) =>
           command.some((argument) => argument.includes("COUNT(*)"))
-            ? Effect.succeed({
+            ? sqlResult({
                 exitCode: 23,
                 stdout: "PRIVATE COUNT PAYLOAD",
                 stderr: "count denied for count-private\n",
@@ -55,6 +55,7 @@ test("preserves a transfer failure as the primary error after recovery capture",
               message: "Database load failed",
               operation: "exec",
               exitCode: 5,
+              reason: "provider",
               stderrTail: "load failed: [redacted]",
               remediation: "Fix database credentials or the dump file, then retry import.",
             }),
@@ -65,6 +66,7 @@ test("preserves a transfer failure as the primary error after recovery capture",
   );
   if (result._tag !== "Failure") throw new Error("expected failure");
   expect(result.failure).toMatchObject({
+    reason: "provider",
     _tag: "DataTransferError",
     exitCode: 5,
     stderrTail: "load failed: [redacted]",
@@ -85,7 +87,7 @@ test("a failed BACKUP after preparation never copies a stale backup", async () =
         exec: (service, command, env) => {
           calls.push(command.join(" "));
           return command.some((arg) => arg.startsWith("BACKUP DATABASE"))
-            ? Effect.succeed({
+            ? sqlResult({
                 exitCode: 12,
                 stdout: "PRIVATE BACKUP",
                 stderr: "backup failed for private\n",
@@ -127,10 +129,16 @@ test("a failed RESTORE keeps its primary tag and safe diagnostics beside recover
           ),
         exec: (service, command, env) =>
           command.some((arg) => arg.startsWith("RESTORE DATABASE"))
-            ? Effect.sync(() => {
-                expect(uploaded).toBe(true);
-                return { exitCode: 17, stdout: "PRIVATE DATABASE", stderr: "restore failed: private\n" };
-              })
+            ? Stream.unwrap(
+                Effect.sync(() => {
+                  expect(uploaded).toBe(true);
+                  return sqlResult({
+                    exitCode: 17,
+                    stdout: "PRIVATE DATABASE",
+                    stderr: "restore failed: private\n",
+                  });
+                }),
+              )
             : harness.deps.exec(service, command, env),
       },
       { action: "import", file: "dump.bak", yes: true },
@@ -148,6 +156,7 @@ test("a failed RESTORE keeps its primary tag and safe diagnostics beside recover
   );
   expect(JSON.parse(encoded).error).toMatchObject({
     _tag: "SqlCommandFailedError",
+    reason: "exit",
     exitCode: 17,
     stderrTail: expect.stringContaining("restore failed"),
     recoverySnapshotId: expect.stringMatching(/^snap-/u),
@@ -162,7 +171,7 @@ test("SQL execution failure is normalized without relabeling a provider message 
     Effect.scoped(
       Effect.gen(function* () {
         const session = yield* valueResolver({}).resolver.openSession();
-        return yield* checkedSqlExecution(Effect.fail("private provider error"), {
+        return yield* checkedSqlExecution(Stream.fail("private provider error"), {
           service: "database",
           command: ["sqlcmd"],
         }).pipe(Effect.provideService(SqlEnvironmentSession, session), Effect.result);
@@ -174,4 +183,47 @@ test("SQL execution failure is normalized without relabeling a provider message 
   expect(result.failure._tag).toBe("SqlCommandFailedError");
   expect(result.failure.exitCode).toBeUndefined();
   expect(result.failure.stderrTail).toBeUndefined();
+});
+
+test.each(["import", "seed"] as const)(
+  "rejects oversized count output before %s can mutate data",
+  async (action) => {
+    const harness = makeSqlTestDeps({ password: "private", countStdout: `0${" ".repeat(65536)}` });
+    const result = await Effect.runPromise(
+      executeDbCommand(harness.deps, { action, file: "dump.sql", yes: true }).pipe(Effect.result),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected stdout limit failure");
+    expect(result.failure).toMatchObject({
+      _tag: "SqlCommandFailedError",
+      reason: "stdout-limit",
+      exitCode: 0,
+    });
+    expect(harness.transfers()).toEqual([]);
+    expect(harness.snapshots()).toEqual([]);
+  },
+);
+
+test("discards large SQL control stdout while checking command completion", async () => {
+  const harness = makeSqlTestDeps({ type: "mssql:2022", password: "private" });
+  let backup = false;
+  await Effect.runPromise(
+    executeDbCommand(
+      {
+        ...harness.deps,
+        exec: (service, command, env) => {
+          if (command.some((argument) => argument.startsWith("BACKUP DATABASE"))) {
+            backup = true;
+            return Stream.make(
+              { kind: "stdout" as const, chunk: new Uint8Array(16 * 1024 * 1024) },
+              { exitCode: 0 },
+            );
+          }
+          return harness.deps.exec(service, command, env);
+        },
+      },
+      { action: "export", file: "dump.bak", yes: false },
+    ),
+  );
+  expect(backup).toBe(true);
+  expect(harness.transfers()).toHaveLength(1);
 });

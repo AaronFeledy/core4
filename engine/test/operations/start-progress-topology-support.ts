@@ -23,7 +23,7 @@ import {
   type ApplyOptions,
   BuildOrchestrator,
   EventService,
-  FileSyncEngine,
+  type FileSyncEngine,
   GlobalAppService,
   LandofileService,
   PathsService,
@@ -57,6 +57,7 @@ const providerId = ProviderId.make("lando");
 
 const capabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
+  fileSyncTargets: "prepared-volume",
   multiServiceApply: true,
   hostReachability: "emulated",
   bindMounts: true,
@@ -436,7 +437,7 @@ export const makeHarness = (
       ),
     ),
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
-    ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
+    ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
     // After LandoConfigService.layer: that snapshot also provides PathsService, and the later layer wins.
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
   );
@@ -454,3 +455,4 @@ export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: Ap
       },
     ).pipe(Effect.provide(harness.layer)),
   );
+import { fileSyncEngineLayer } from "../file-sync-engine.ts";

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Stream } from "effect";
 
 import { DataChecksumMismatchError } from "@lando/sdk/errors";
 import { runImport } from "../src/actions.ts";
@@ -115,9 +115,11 @@ describe("host dump compression safety", () => {
                   }),
               },
               (service, command, env) =>
-                session
-                  .resolveEnvironment(env ?? {})
-                  .pipe(Effect.flatMap((resolved) => harness.deps.exec(service, command, resolved))),
+                Stream.unwrap(
+                  session
+                    .resolveEnvironment(env ?? {})
+                    .pipe(Effect.map((resolved) => harness.deps.exec(service, command, resolved))),
+                ),
               input,
             ).pipe(Effect.provideService(SqlEnvironmentSession, session), Effect.flip),
           ),

@@ -1,4 +1,4 @@
-import { createPayloadRedactor, isSecretEnvName } from "@lando/sdk/secrets";
+import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { Effect, Option } from "effect";
 import { RedactionService, createPayloadValues, createStandaloneRedactor } from "./service.ts";
 
@@ -6,24 +6,11 @@ const LIMIT = 8 * 1024;
 const CONTEXT_LIMIT = 8 * LIMIT;
 const MARKER = "[diagnostic truncated]\n";
 const encoder = new TextEncoder();
-const COMMAND_SECRET_ENV = new Set(["PGPASSWORD", "MYSQL_PWD", "SQLCMDPASSWORD", "MONGO_URI"]);
 
 /** Resolve redaction once; each call creates independent bounded diagnostic state. Never feed stdout here. */
 export const makeDiagnosticTailFactory = Effect.fnUntraced(function* (
-  env?: Readonly<Record<string, string>>,
+  options: { readonly authoritativeTokens?: Iterable<string> | undefined } = {},
 ) {
-  const authoritativeTokens = Object.entries(env ?? {})
-    .filter(([key, value]) => (isSecretEnvName(key) || COMMAND_SECRET_ENV.has(key)) && value.length > 0)
-    .map(([, value]) => value);
-  if (env?.MONGO_URI !== undefined) {
-    try {
-      const password = decodeURIComponent(new URL(env.MONGO_URI).password);
-      if (password.length > 0) authoritativeTokens.push(password);
-    } catch (error) {
-      if (!(error instanceof TypeError || error instanceof URIError)) throw error;
-    }
-  }
-  const options = { authoritativeTokens };
   const service = yield* Effect.serviceOption(RedactionService);
   const redactor = Option.isSome(service)
     ? yield* service.value.forProfile("secrets", options)
@@ -33,11 +20,22 @@ export const makeDiagnosticTailFactory = Effect.fnUntraced(function* (
     : createPayloadValues([], options);
   return () => {
     let suppressed = false;
+    const tokenBuffer = new Uint8Array(LIMIT + 1);
+    const tokenFits = (token: string) => {
+      const encoded = encoder.encodeInto(token, tokenBuffer);
+      return encoded.read === token.length && encoded.written <= LIMIT;
+    };
+    let previousValues: Iterable<string> | undefined;
+    let filteredTokens: string[] = [];
     const payload = createPayloadRedactor(() => {
-      const tokens = [...values()];
+      const currentValues = values();
+      if (currentValues === previousValues) return filteredTokens;
+      previousValues = currentValues;
+      const tokens = [...currentValues];
       // The exact matcher holds a partial token. Fail closed rather than hold an unbounded token.
-      if (tokens.some((token) => encoder.encode(token).length > LIMIT)) suppressed = true;
-      return tokens.filter((token) => encoder.encode(token).length <= LIMIT);
+      if (tokens.some((token) => !tokenFits(token))) suppressed = true;
+      filteredTokens = tokens.filter((token) => tokenFits(token));
+      return filteredTokens;
     });
     const decoder = new TextDecoder();
     let context = "";
@@ -112,7 +110,9 @@ export const makeDiagnosticTailFactory = Effect.fnUntraced(function* (
 });
 
 /** One bounded stderr collector per command subscription. Never feed stdout here. */
-export const makeDiagnosticTail = Effect.fnUntraced(function* (env?: Readonly<Record<string, string>>) {
-  const createTail = yield* makeDiagnosticTailFactory(env);
+export const makeDiagnosticTail = Effect.fnUntraced(function* (
+  options: { readonly authoritativeTokens?: Iterable<string> | undefined } = {},
+) {
+  const createTail = yield* makeDiagnosticTailFactory(options);
   return createTail();
 });

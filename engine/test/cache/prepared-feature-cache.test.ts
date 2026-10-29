@@ -14,9 +14,9 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import * as Cache from "../../src/cache/service.ts";
-import { planApp } from "../../src/planner/assemble.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 test("cache hits prepare declarations but skip apply and application-only decoding; hidden original SSH config invalidates", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-prepared-cache-"));
@@ -148,21 +148,21 @@ test("cache hits prepare declarations but skip apply and application-only decodi
       Effect.runPromise(
         Effect.gen(function* () {
           return yield* planApp(
-            yield* PluginRegistry,
-            cache,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            yield* compileTestLandofile(
-              {
-                name: "prepared-cache",
-                services: { web: { type: type.id, home: false, routes: ["prepared.lndo.site"] } },
-              },
-              root,
+            {
+              landofile: yield* compileTestLandofile(
+                {
+                  name: "prepared-cache",
+                  services: { web: { type: type.id, home: false, routes: ["prepared.lndo.site"] } },
+                },
+                root,
+              ),
+              providerCapabilities: TestRuntimeProvider.capabilities,
+              appRoot: root,
+            },
+            Layer.mergeAll(
+              Layer.succeed(PluginRegistry, yield* PluginRegistry),
+              Layer.succeed(CacheService, cache),
             ),
-            TestRuntimeProvider.capabilities,
-            root,
           );
         }).pipe(Effect.provide(registry)),
       );
