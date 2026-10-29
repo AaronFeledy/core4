@@ -278,7 +278,7 @@ Flags:
 | `--no-viewer` | Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior). |
 | `--service, -s` | Filter logs to a single planned service. |
 | `--since` | Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp. |
-| `--source` | Select a declared source id, or `console` for the container stream. Redirected sources share that stdout/stderr stream and cannot be isolated. |
+| `--source` | Select a declared source id, or `console` for all container logs. Console aliases and redirects select a native stdout/stderr pipe; aliases on the same pipe share its logs. |
 | `--tail` | Show last N lines per service. |
 
 ## `lando app:open`
