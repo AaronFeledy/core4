@@ -33,7 +33,7 @@ export interface CommandLifecycleOptions<A> {
   readonly invocation: CliInvocationSnapshot;
   readonly completion?: (value: A) => CommandCompletion;
   readonly failureExitCode?: (error: unknown) => number | undefined;
-  readonly interruptionExitCode?: number;
+  readonly interruptionExitCode?: () => number;
   /** Runs after the init event is published and before the command starts. */
   readonly onInitialized?: Effect.Effect<void>;
 }
@@ -194,7 +194,7 @@ export const runCommandLifecycle: <A, E, R>(
         _tag: `cli-${options.invocation.commandId}-error`,
         ...terminal,
         exitCode: Cause.hasInterruptsOnly(outcome.cause)
-          ? (options.interruptionExitCode ?? 1)
+          ? (options.interruptionExitCode?.() ?? 1)
           : (options.failureExitCode?.(failure.error) ?? 1),
         ...failureIdentity(outcome.cause),
       });

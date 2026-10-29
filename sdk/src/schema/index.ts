@@ -1,4 +1,5 @@
 export * from "./agent-forwarding.ts";
+export * from "./tooling-input.ts";
 export * from "./app-plan.ts";
 export * from "./file-sync-policy.ts";
 export * from "./image-reference.ts";

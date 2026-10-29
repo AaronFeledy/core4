@@ -52,7 +52,7 @@ const toProviderUnavailable = (cause: unknown) =>
     message: "Unable to list runtime provider plugins.",
     cause,
     remediation:
-      "Run lando plugin:list and repair the provider plugin manifest or import reported by the cause before retrying.",
+      "Run lando doctor and repair the provider plugin manifest or import reported by the cause before retrying.",
   });
 
 export const makeRuntimeProviderRegistry = (

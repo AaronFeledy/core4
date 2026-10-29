@@ -102,7 +102,6 @@ describe("normalizeToolingTask", () => {
     const task: ToolingTaskShape = {
       description: "preferred",
       summary: "fallback",
-      arguments: false,
       disabled: true,
       flags: { count: { default: 2 } },
       args: { b: { order: 2, default: false }, a: { order: 1, required: true } },
@@ -113,13 +112,14 @@ describe("normalizeToolingTask", () => {
     expect(result).toMatchObject({
       summary: "preferred",
       disabled: true,
-      hasInput: true,
-      acceptsArguments: false,
-      flags: [{ name: "count", default: "2", boolean: false, required: false }],
-      args: [
-        { name: "a", order: 1 },
-        { name: "b", order: 2, default: "false" },
-      ],
+      input: {
+        acceptsArguments: true,
+        flags: [{ name: "count", default: "2", boolean: false, required: false }],
+        args: [
+          { name: "a", order: 1 },
+          { name: "b", order: 2, default: "false" },
+        ],
+      },
     });
   });
 
@@ -127,7 +127,7 @@ describe("normalizeToolingTask", () => {
     // Given / When
     const result = Result.getOrThrow(normalizeToolingTask("run", {}));
     // Then
-    expect(result).toMatchObject({ disabled: false, hasInput: false, acceptsArguments: true });
+    expect(result).toMatchObject({ disabled: false, input: { flags: [], args: [], acceptsArguments: true } });
   });
 
   test.each([

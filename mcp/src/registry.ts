@@ -9,7 +9,8 @@
  * compiled CLI into scope.
  */
 import { McpToolInputError } from "@lando/sdk/errors";
-import type { CommandCompletion } from "@lando/sdk/schema";
+import type { CommandCompletion, ToolingInputDeclaration } from "@lando/sdk/schema";
+import { toolingInputSchema } from "./tooling-input-schema";
 
 import type { Effect, Schema } from "effect";
 import { Predicate } from "effect";
@@ -22,6 +23,8 @@ export interface McpCommandSpec {
   readonly mcpAllowed?: boolean;
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
+  readonly toolingInput?: ToolingInputDeclaration;
+  readonly inputRedactionTokens?: (input: unknown) => readonly string[];
   readonly run: (input: McpRunInput) => Effect.Effect<unknown, unknown, unknown>;
   readonly resultSchema: Schema.Codec<unknown, unknown>;
   readonly streamFrames?: (result: unknown) => ReadonlyArray<McpProgressFrame>;
@@ -99,14 +102,17 @@ const groupSchema = (members: Readonly<Record<string, unknown>> | undefined): Js
  * declared `flags`/`args`. Commands that declare neither get a closed object
  * with empty `flags`/`args` groups.
  */
-export const deriveToolInputSchema = (spec: McpCommandSpec): JsonSchemaObject => ({
-  type: "object",
-  properties: {
-    flags: groupSchema(spec.flags),
-    args: groupSchema(spec.args),
-  },
-  additionalProperties: false,
-});
+export const deriveToolInputSchema = (spec: McpCommandSpec): JsonSchemaObject =>
+  spec.toolingInput === undefined
+    ? {
+        type: "object",
+        properties: {
+          flags: groupSchema(spec.flags),
+          args: groupSchema(spec.args),
+        },
+        additionalProperties: false,
+      }
+    : toolingInputSchema(spec.toolingInput);
 
 /** The `{ flags?, args? }` payload an MCP tool call carries. */
 export interface McpToolInput {
@@ -200,9 +206,16 @@ const validateGroup = (
   }
 };
 
-const validateTopLevelInput = (toolId: string, input: McpToolInput | undefined): void => {
+const validateTopLevelInput = (spec: McpCommandSpec, input: McpToolInput | undefined): void => {
+  const toolId = spec.id;
   for (const key of Object.keys(input ?? {})) {
     if (key === "flags" || key === "args" || key === "appPath") continue;
+    if (spec.toolingInput !== undefined)
+      throw new McpToolInputError({
+        toolId,
+        message: "Unknown tooling input property.",
+        remediation: 'Tool input accepts only "flags", "args", and "appPath"; remove other properties.',
+      });
     throw new McpToolInputError({
       message: `Unknown input property "${key}" for tool ${toolId}.`,
       toolId,
@@ -221,10 +234,24 @@ export const validateToolInput = (
   spec: McpCommandSpec,
   input: McpToolInput | undefined,
 ): { readonly flags: Record<string, unknown>; readonly args: Record<string, unknown> } => {
-  validateTopLevelInput(spec.id, input);
+  validateTopLevelInput(spec, input);
+  if (spec.toolingInput !== undefined) {
+    for (const group of ["flags", "args"] as const) {
+      const value = input?.[group];
+      if (value !== undefined && !Predicate.isObject(value))
+        throw new McpToolInputError({
+          toolId: spec.id,
+          path: group,
+          message: `Tooling ${group} must be an object.`,
+          remediation: `Supply named ${group} as an object.`,
+        });
+    }
+  }
   const flags = input?.flags ?? {};
   const args = input?.args ?? {};
-  validateGroup(spec.id, "flags", spec.flags, flags);
-  validateGroup(spec.id, "args", spec.args, args);
+  if (spec.toolingInput === undefined) {
+    validateGroup(spec.id, "flags", spec.flags, flags);
+    validateGroup(spec.id, "args", spec.args, args);
+  }
   return { flags, args };
 };

@@ -13,6 +13,7 @@ import type { LandoEvent } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
+import { environmentForRedaction } from "./tooling-input-environment.ts";
 
 const textEncoder = new TextEncoder();
 const ProcessRedactionTokens = Context.Reference<readonly string[]>("@lando/engine/ProcessRedactionTokens", {
@@ -60,7 +61,7 @@ const redactorForInput = Effect.fnUntraced(function* (input: ProcessSpawnOptions
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "None") return identityRedactor;
   return yield* redaction.value.forProfile("secrets", {
-    sourceEnv: { ...process.env, ...(input.env ?? {}) },
+    sourceEnv: yield* environmentForRedaction(process.env, input.env),
     authoritativeTokens: yield* ProcessRedactionTokens,
   });
 });

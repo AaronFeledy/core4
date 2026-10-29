@@ -1,5 +1,10 @@
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
-import type { AppPlan, ToolingTaskShape } from "@lando/sdk/schema";
+import type {
+  AppPlan,
+  ToolingInputRevision,
+  ToolingInvocationInput,
+  ToolingTaskShape,
+} from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { resolveConnectionClientTask } from "../planner/connection-client-task.ts";
 import { toolingSourcePathForPlan } from "../planner/effective-tooling.ts";
@@ -9,6 +14,14 @@ import { resolveToolingTaskShape } from "../tooling/step-runner.ts";
 import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { compileToolingInvocations } from "./tooling-compile.ts";
 
+export interface EventToolingInvocation {
+  readonly plan: AppPlan;
+  readonly name: string;
+  readonly task: ToolingTaskShape;
+  readonly input: ToolingInvocationInput;
+  readonly expectedInputRevision?: ToolingInputRevision;
+}
+
 /**
  * Runs a canonical `app:<task>` command reached from an event `command:` step.
  *
@@ -17,12 +30,8 @@ import { compileToolingInvocations } from "./tooling-compile.ts";
  * active-frame guard rather than recursing. The authored `arguments` declaration is kept so
  * a task that refuses positionals still refuses them here.
  */
-export const runEventToolingCommand = Effect.fnUntraced(function* (
-  plan: AppPlan,
-  name: string,
-  task: ToolingTaskShape,
-  raw: ReadonlyArray<string>,
-) {
+export const runEventToolingCommand = Effect.fnUntraced(function* (input: EventToolingInvocation) {
+  const { plan, name, task } = input;
   const client = yield* resolveConnectionClientTask({
     plan,
     name,
@@ -34,7 +43,10 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (
     name,
     lookupKey: name,
     task: resolved,
-    args: raw,
+    input: input.input,
+    ...(input.expectedInputRevision === undefined
+      ? {}
+      : { expectedInputRevision: input.expectedInputRevision }),
     cwd: String(plan.root),
     source: {
       path: toolingSourcePathForPlan(plan, name),
@@ -48,6 +60,7 @@ export const runEventToolingCommand = Effect.fnUntraced(function* (
         lookupKey: name,
         invocations: compiled.invocations,
         requiresProvider: requiresProvider(compiled.normalized),
+        redactionTokens: compiled.redactionTokens,
       }),
     ),
   );

@@ -253,7 +253,10 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "mongosh", args: ["--eval", "db.runCommand('ping')"] }).pipe(Effect.provide(layer)),
+      runTooling({
+        name: "mongosh",
+        input: { _tag: "RawArgv", argv: ["--eval", "db.runCommand('ping')"] },
+      }).pipe(Effect.provide(layer)),
     );
 
     expect(result.tool).toBe("mongosh");
@@ -277,7 +280,10 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     await Effect.runPromise(
-      runTooling({ name: "mongosh", args: ["--quiet", "--eval", "show dbs"] }).pipe(Effect.provide(layer)),
+      runTooling({
+        name: "mongosh",
+        input: { _tag: "RawArgv", argv: ["--quiet", "--eval", "show dbs"] },
+      }).pipe(Effect.provide(layer)),
     );
 
     expect(calls[0]?.command).toEqual(["mongosh", "--quiet", "--eval", "show dbs"]);

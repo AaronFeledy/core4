@@ -3,6 +3,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
+import * as tooling from "@lando/engine/operations/tooling";
 import { effectiveBootstrapForCommand } from "@lando/engine/runtime/cli-options";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
@@ -52,7 +53,7 @@ describe("CLI lifecycle adapters", () => {
     expect(invocation?.parentInvocationId).toBeUndefined();
   });
 
-  test("dynamic tooling replaces stale invocation identity and retains arguments", async () => {
+  test("dynamic tooling replaces stale identity without retaining pre-admission values", async () => {
     // Given
     const runCompiledCommand = spyOn(compiledRuntime, "runCompiledCommand").mockResolvedValue();
     setActiveCommandId("stale:command");
@@ -69,26 +70,44 @@ describe("CLI lifecycle adapters", () => {
     expect(activeCommandId).toBe("app:missing-lifecycle-test-tool");
     expect(getActiveCommandInvocation()).toMatchObject({
       commandId: "app:missing-lifecycle-test-tool",
-      argv: ["--verbose", "target"],
+      argv: [],
+      flags: {},
+      args: {},
     });
   });
 
   test("dynamic tooling consumes only Lando's leading separator", async () => {
     const runCompiledCommand = spyOn(compiledRuntime, "runCompiledCommand").mockResolvedValue();
+    const runTooling = spyOn(tooling, "runTooling").mockReturnValue(
+      Effect.succeed({ tool: "drush", service: "", exitCode: 0, stdout: "", stderr: "" }),
+    );
     try {
       await runDynamicTooling(["drush", "--", "status", "--format=json", "--", "literal argument"]);
       expect(getActiveCommandInvocation()).toMatchObject({
         commandId: "app:drush",
+        argv: [],
+        flags: {},
+        args: {},
+      });
+      expect(runTooling.mock.calls[0]?.[0].input).toEqual({
+        _tag: "RawArgv",
         argv: ["status", "--format=json", "--", "literal argument"],
       });
 
       await runDynamicTooling(["drush", "status", "--", "--format=json"]);
       expect(getActiveCommandInvocation()).toMatchObject({
         commandId: "app:drush",
+        argv: [],
+        flags: {},
+        args: {},
+      });
+      expect(runTooling.mock.calls[1]?.[0].input).toEqual({
+        _tag: "RawArgv",
         argv: ["status", "--", "--format=json"],
       });
     } finally {
       runCompiledCommand.mockRestore();
+      runTooling.mockRestore();
     }
   });
 

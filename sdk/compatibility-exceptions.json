@@ -1,5 +1,29 @@
 [
   {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.tooling.additionalProperties",
+    "justification": "Approved unreleased agent-first input redesign adds sensitive:true to shared authored flags and arguments. Effective sensitivity also retains secret-name classification; sensitive defaults and choices are refused without retaining their values. The canonical binder and declaration revision replace argv round trips, with focused conformance and privacy regressions. No legacy input execution path is retained."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.tooling.additionalProperties",
+    "justification": "Approved unreleased agent-first input redesign propagates optional sensitive:true through loaded Landofile tooling declarations. Shared normalization enforces explicit-or-name sensitivity and refuses sensitive literal defaults and choices. Ordered canonical input revisions and focused logical-value regressions govern admission without compatibility shims."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.tooling.additionalProperties",
+    "justification": "Approved unreleased agent-first input redesign propagates shared authored sensitive:true flag and argument declarations through service-scoped Landofiles. The optional field widens authoring; canonical normalization deliberately rejects sensitive defaults and choices and contradictory positional policy. Focused privacy and cross-surface conformance tests cover the resulting admission contract."
+  },
+  {
+    "surface": "schema:ToolingTaskInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Approved unreleased agent-first input redesign shares authored flag and argument schemas with scripts and adds sensitive:true. Existing task shorthands remain; the object member carries the shared input fields. Canonical declarations, ordered semantic revisions, lossless named maps, explicit boolean false, and sensitivity validation are exercised by focused SDK, Landofile, engine, and port regressions. No parallel legacy execution path ships."
+  },
+  {
     "surface": "command:apps:init",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",

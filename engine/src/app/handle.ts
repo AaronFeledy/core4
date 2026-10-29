@@ -158,7 +158,16 @@ export const makeAppHandle = (
         provide,
       ),
     tooling: (id: string, options?: ToolingOptions) =>
-      ops.runTooling({ name: id, cwd: root, ...options }, target).pipe(provide),
+      ops.runTooling({ name: id, cwd: root, ...options }, target).pipe(
+        Effect.map(({ tool, service, exitCode, stdout, stderr }) => ({
+          tool,
+          service,
+          exitCode,
+          stdout,
+          stderr,
+        })),
+        provide,
+      ),
     logs: (options?: LogsAppOptions) =>
       Stream.unwrap(
         ops.logsApp(options, target).pipe(

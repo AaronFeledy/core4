@@ -26,7 +26,15 @@ describe("compileToolingCommands", () => {
       // When
       const entries = compileAppCommands(source, []);
       // Then
-      expect(entries).toEqual([{ id: "app:retired", summary: "", hidden: true }]);
+      expect(entries).toMatchObject([
+        {
+          id: "app:retired",
+          summary: "",
+          hidden: true,
+          disabled: true,
+          input: { flags: [], args: [], acceptsArguments: true },
+        },
+      ]);
     },
   );
 
@@ -49,7 +57,7 @@ describe("compileToolingCommands", () => {
     // When
     const [entry] = compileToolingCommands(source);
     // Then
-    expect(entry?.input).toEqual({
+    expect(entry?.input).toMatchObject({
       flags: [
         { name: "name", alias: "n", default: "world", boolean: false, required: false },
         { name: "loud", boolean: true, required: false },
@@ -62,13 +70,18 @@ describe("compileToolingCommands", () => {
     });
   });
 
-  test("omits input when neither flags nor args are declared", () => {
+  test("publishes an explicit empty declaration when neither flags nor args are declared", () => {
     // Given
     const source = landofile({ plain: { cmd: "echo plain" } });
     // When
     const [entry] = compileToolingCommands(source);
     // Then
-    expect(entry).not.toHaveProperty("input");
+    expect(entry?.input).toMatchObject({
+      flags: [],
+      args: [],
+      acceptsArguments: true,
+      revision: expect.any(String),
+    });
   });
 
   test.each([":host", ":target"])("omits a literal service when service is %s", (service) => {
@@ -109,7 +122,7 @@ describe("compileToolingCommands", () => {
       }),
     );
 
-    expect(entries).toEqual([
+    expect(entries).toMatchObject([
       { id: "app:composer", summary: "Run Composer", hidden: false, service: "appserver" },
       { id: "app:test", summary: "Tests", hidden: false, service: "appserver" },
       { id: "app:zoo", summary: "Z thing", hidden: false, service: "appserver" },
@@ -143,7 +156,7 @@ describe("compileToolingCommands", () => {
 
   test("omits the service field when the tooling task has no service binding", () => {
     const [entry] = compileToolingCommands(landofile({ build: { cmd: "make" } }));
-    expect(entry).toEqual({ id: "app:build", summary: "", hidden: false });
+    expect(entry).toMatchObject({ id: "app:build", summary: "", hidden: false });
     expect(entry).not.toHaveProperty("service");
   });
 
@@ -159,6 +172,7 @@ describe("compileToolingCommands", () => {
 
     // Then only the included tasks are hidden
     expect(entries.find((entry) => entry.id === "app:docs:build")?.hidden).toBe(true);
+    expect(entries.find((entry) => entry.id === "app:docs:build")).not.toHaveProperty("disabled");
     expect(entries.find((entry) => entry.id === "app:build")?.hidden).toBe(false);
   });
 });
@@ -182,7 +196,7 @@ describe("compileBunShellScriptCommands", () => {
     const entries = compileBunShellScriptCommands(scripts);
 
     // Then
-    expect(entries).toEqual([
+    expect(entries).toMatchObject([
       {
         id: "app:quality",
         summary: "Run quality checks",
@@ -210,7 +224,7 @@ describe("compileBunShellScriptCommands", () => {
     // When
     const entries = compileAppCommands(source, scripts);
     // Then
-    expect(entries).toEqual([{ id: "app:quality", summary: "Tooling wins", hidden: false }]);
+    expect(entries).toMatchObject([{ id: "app:quality", summary: "Tooling wins", hidden: false }]);
   });
 });
 

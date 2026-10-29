@@ -11,16 +11,22 @@ import {
   type ToolingDisabledError,
   type ToolingInputError,
 } from "@lando/sdk/errors";
-import type { Environment, HostTerminal, LoadScopedLandofile } from "@lando/sdk/schema";
+import type {
+  Environment,
+  HostTerminal,
+  ToolingInputRevision,
+  ToolingInvocationInput,
+} from "@lando/sdk/schema";
+import { createRedactor } from "@lando/sdk/secrets";
 
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import {
-  AppPlanner,
+  type AppPlanner,
   ConfigService,
   type EnvironmentValueResolver,
   EventService,
   LandofileService,
-  RuntimeProviderRegistry,
+  type RuntimeProviderRegistry,
   type ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
@@ -49,11 +55,13 @@ import { runBracketedInvocations } from "./tooling-bracket.ts";
 import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { compileToolingInvocations } from "./tooling-compile.ts";
 import { withToolingOutput } from "./tooling-output.ts";
+import { resolveToolingPlan } from "./tooling-plan.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
   readonly name: string;
-  readonly args?: ReadonlyArray<string>;
+  readonly expectedInputRevision?: ToolingInputRevision;
+  readonly input?: ToolingInvocationInput;
   readonly user?: string;
   readonly cwd?: string;
   readonly env?: Environment;
@@ -88,40 +96,6 @@ type RunToolingServices =
   | PrivateFileAccessService
   | RuntimeProviderRegistry
   | ToolingEngine;
-
-const withProcessCwd = <A, E, R>(
-  cwd: string,
-  use: () => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | ToolingCompileError, R> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(cwd);
-        return original;
-      },
-      catch: (cause) =>
-        new ToolingCompileError({
-          message: `Unable to enter the app directory at ${cwd}.`,
-          tool: "tooling",
-          cause,
-        }),
-    }),
-    () => use(),
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
-
-const resolveToolingPlan = Effect.fnUntraced(function* (input: {
-  readonly landofile: LoadScopedLandofile;
-  readonly appRoot: string | undefined;
-}) {
-  const planner = yield* AppPlanner;
-  const registry = yield* RuntimeProviderRegistry;
-  const capabilities = yield* registry.capabilities;
-  return yield* input.appRoot === undefined
-    ? planner.plan(input.landofile, capabilities)
-    : withProcessCwd(input.appRoot, () => planner.plan(input.landofile, capabilities));
-});
 
 export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   options: RunToolingOptions,
@@ -231,6 +205,7 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   const redactionTokens = [
     ...new Set([
       ...collectAppPlanRedactionTokens(plan),
+      ...compiled.redactionTokens,
       ...invocations.flatMap((invocation) =>
         collectSecretEnvValues(
           Object.fromEntries(
@@ -272,13 +247,14 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
   }
   if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
   const result = exit.success;
+  const inputRedactor = createRedactor("secrets", { values: compiled.redactionTokens });
 
   return {
     tool: result.tool,
     service: String(result.service),
     exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    stdout: compiled.redactionTokens.length === 0 ? result.stdout : inputRedactor.redactString(result.stdout),
+    stderr: compiled.redactionTokens.length === 0 ? result.stderr : inputRedactor.redactString(result.stderr),
     redactionTokens,
   };
 });

@@ -490,6 +490,13 @@ import {
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {
+  NormalizedToolingArg,
+  NormalizedToolingFlag,
+  ToolingInputDeclaration,
+  ToolingInputValues,
+  ToolingInvocationInput,
+} from "./tooling-input.ts";
+import {
   TunnelCapabilities,
   TunnelSession,
   TunnelSessionFilter,
@@ -696,6 +703,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProviderCapabilities,
   CommandAliasesShape,
   ServiceConfig,
+  NormalizedToolingFlag,
+  NormalizedToolingArg,
+  ToolingInputDeclaration,
+  ToolingInputValues,
+  ToolingInvocationInput,
   ServiceConfigInput,
   ServiceFileConfig,
   PhpComposerConfig,
@@ -1191,6 +1203,12 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServicePlan: "Public Lando schema contract for Service Plan.",
   ServiceHomePlan: "Resolved service home persistence status.",
   AppMountInput: "Application source mount destination, options, or false to disable it.",
+  ToolingInputValues:
+    "Authoritative resolved flags and positional values, including the LANDO_INPUT script contract.",
+  ToolingInputDeclaration: "Canonical ordered tooling input declaration and semantic revision.",
+  ToolingInvocationInput: "Original raw argv or lossless named maps awaiting authoritative admission.",
+  NormalizedToolingFlag: "Canonical normalized tooling flag metadata.",
+  NormalizedToolingArg: "Canonical normalized tooling positional metadata.",
   MountObservation: "Runtime container mount observation evidence.",
   ObservedMount: "Provider-neutral observed container mount.",
   ServiceInfoMount: "User-facing mount observation and storage lifetime.",

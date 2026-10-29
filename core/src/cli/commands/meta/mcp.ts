@@ -1,5 +1,3 @@
-import { serializeToolingInput } from "@lando/landofile/tooling-input";
-import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 /**
  * `meta:mcp` (`lando mcp`) command logic.
  *
@@ -14,21 +12,14 @@ import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
  * Built-in entries are injected so this module stays out of the command-graph
  * import cycle.
  */
-import { Effect, Layer, Predicate, type Result, Schema } from "effect";
+import { Effect, Layer } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { McpToolInputError, type McpTransportError, type ToolingInputError } from "@lando/sdk/errors";
+import type { McpToolInputError, McpTransportError } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
-import { CommandRegistry, ConfigService, type RegisteredCommand } from "@lando/sdk/services";
+import { CommandRegistry, ConfigService } from "@lando/sdk/services";
 
-import {
-  type RunToolingResult,
-  runTooling,
-  runToolingRedactionTokens,
-} from "@lando/engine/operations/tooling";
-import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "@lando/mcp/allowlist";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
-import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
 import type { RedactionService } from "@lando/redaction/service";
@@ -38,12 +29,24 @@ import { resources } from "../../../mcp-resources";
 import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
 import type { CliInvocationSnapshot } from "../../command-lifecycle";
-import { appConfigMcpSpecs } from "../../command-specs/app/config";
 import type { ResultFormat } from "../../format-flags";
 import { runWithRendererHandling } from "../../renderer-boundary";
-import type { LandoCommandSpec } from "../../spec/command-base";
-import { renderRunToolingResult } from "../tooling";
 import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
+import {
+  type McpCommandRegistry,
+  type ResolvedMcpOptions,
+  knownIdsOf,
+  mcpRegistryFromBuiltIns,
+  mcpRegistryWithToolingEntries,
+  validateMcpAllowlistIds,
+} from "./mcp-registry";
+export {
+  type McpCommandRegistry,
+  type ResolvedMcpOptions,
+  mcpRegistryFromBuiltIns,
+  mcpRegistryWithToolingEntries,
+  validateMcpAllowlistIds,
+} from "./mcp-registry";
 
 export interface McpCommandFlags {
   readonly allow?: ReadonlyArray<string> | undefined;
@@ -52,120 +55,7 @@ export interface McpCommandFlags {
   readonly list?: boolean | undefined;
 }
 
-/** Effective exposure options after composing flags with global `mcp.*` config. */
-export interface ResolvedMcpOptions {
-  readonly allow: ReadonlyArray<string>;
-  readonly deny: ReadonlyArray<string>;
-  readonly tooling: boolean;
-  readonly maxConcurrent?: number | undefined;
-}
-
 export { classifyMcpServeStartup } from "@lando/mcp/stdio-limits";
-
-export interface McpCommandRegistry {
-  readonly commandEntries: ReadonlyArray<McpCommandEntry>;
-  readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
-}
-
-type RegisteredToolingCommand = RegisteredCommand;
-type ToolingInput = NonNullable<RegisteredToolingCommand["input"]>;
-
-const toolingMemberMetadata = (member: ToolingInput["flags"][number] | ToolingInput["args"][number]) => {
-  const description = [
-    member.description,
-    ...(member.choices === undefined ? [] : [`(one of: ${member.choices.join(", ")})`]),
-    ...(member.default === undefined ? [] : [`[default: ${member.default}]`]),
-  ]
-    .filter(Boolean)
-    .join(" ");
-  return {
-    required: member.required && member.default === undefined,
-    ...(description === "" ? {} : { description }),
-  };
-};
-
-/** Tooling tools are registered as `app:<task>`; the shared parser names the bare task. */
-const toolingTaskName = (id: string): string => (id.startsWith("app:") ? id.slice(4) : id);
-
-export const toolingArgvFromInput = (
-  id: string,
-  declaration: ToolingInput,
-  input: unknown,
-): Result.Result<ReadonlyArray<string>, ToolingInputError> => {
-  const record = Predicate.isObject(input) ? input : {};
-  const flags = Predicate.isObject(record.flags) ? record.flags : {};
-  const args = Predicate.isObject(record.args) ? record.args : {};
-  return serializeToolingInput({ ...declaration, name: toolingTaskName(id) }, { flags, args });
-};
-
-const ToolingMcpResultSchema = Schema.Struct({
-  tool: Schema.String,
-  service: Schema.String,
-  exitCode: Schema.Number,
-  stdout: Schema.String,
-  stderr: Schema.String,
-});
-
-const toolingArgsFromInput = (input: unknown): ReadonlyArray<string> => {
-  if (input === null || typeof input !== "object") return [];
-  const args = (input as { readonly args?: Record<string, unknown> }).args;
-  const values = args?.args;
-  return Array.isArray(values) ? values.filter((value): value is string => typeof value === "string") : [];
-};
-
-const toolingSpecFromRegistered = (command: RegisteredToolingCommand): LandoCommandSpec<RunToolingResult> => {
-  let namespace: LandoCommandSpec["namespace"] = "app";
-  if (command.id.startsWith("meta:")) namespace = "meta";
-  else if (command.id.startsWith("apps:")) namespace = "apps";
-
-  return {
-    id: command.id,
-    summary: command.summary,
-    namespace,
-    bootstrap: "app",
-    hidden: command.hidden,
-    ...(command.input === undefined
-      ? {
-          args: {
-            args: {
-              type: "string" as const,
-              multiple: true,
-              description: "Arguments passed to the tooling task.",
-            },
-          },
-        }
-      : {
-          flags: Object.fromEntries(
-            command.input.flags.map((flag) => [
-              flag.name,
-              {
-                type: flag.boolean ? ("boolean" as const) : ("string" as const),
-                ...toolingMemberMetadata(flag),
-              },
-            ]),
-          ),
-          args: Object.fromEntries(
-            command.input.args.map((arg) => [
-              arg.name,
-              {
-                type: "string" as const,
-                ...toolingMemberMetadata(arg),
-              },
-            ]),
-          ),
-        }),
-    resultSchema: ToolingMcpResultSchema,
-    completion: (result) => commandCompletionFromExitCode(result.exitCode),
-    run: (input) =>
-      command.input === undefined
-        ? runTooling({ name: command.id, args: toolingArgsFromInput(input) })
-        : Effect.flatMap(Effect.fromResult(toolingArgvFromInput(command.id, command.input, input)), (args) =>
-            runTooling({ name: command.id, args }),
-          ),
-    redactionTokens: (result) => runToolingRedactionTokens(result as RunToolingResult),
-    render: (result) => renderRunToolingResult(result as RunToolingResult),
-  };
-};
 
 const parsedStringArray = (value: unknown): ReadonlyArray<string> | undefined => {
   if (!Array.isArray(value)) return undefined;
@@ -183,27 +73,6 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
     list: flags.list === true,
   };
 };
-
-export const mcpRegistryFromBuiltIns = (
-  entries: ReadonlyArray<{ readonly spec: McpCommandSpec }>,
-): McpCommandRegistry => ({
-  commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
-    assertMcpAllowlistSafe(spec);
-    if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
-    if (spec.id === "app:config") return appConfigMcpSpecs.map((projection) => ({ spec: projection }));
-    return [{ spec }];
-  }),
-});
-
-export const mcpRegistryWithToolingEntries = (
-  registry: McpCommandRegistry,
-  commands: ReadonlyArray<RegisteredToolingCommand>,
-): McpCommandRegistry => ({
-  commandEntries: registry.commandEntries,
-  toolingEntries: commands
-    .filter((command) => !command.hidden)
-    .map((command) => ({ spec: toolingSpecFromRegistered(command), tooling: true })),
-});
 
 const resolveToolingRegistry = (
   registry: McpCommandRegistry,
@@ -252,38 +121,6 @@ export const resolveMcpOptions = (
   tooling: (config?.tooling ?? false) || flags.tooling === true,
   ...(config?.maxConcurrent === undefined ? {} : { maxConcurrent: config.maxConcurrent }),
 });
-
-const knownIdsOf = (registry: McpCommandRegistry): ReadonlySet<string> =>
-  new Set([
-    ...registry.commandEntries.map((entry) => entry.spec.id),
-    ...(registry.toolingEntries ?? []).map((entry) => entry.spec.id),
-  ]);
-
-/**
- * Reject an unknown canonical id in `--allow` (or global `mcp.allow`) BEFORE
- * opening the transport, so serve startup fails deterministically with one
- * schema-valid failure envelope and no protocol frame. `--list` fails the same
- * way. `deny` is subtractive: an id outside the active registry is harmless and
- * may name tooling that is intentionally disabled for this invocation.
- */
-export const validateMcpAllowlistIds = (
-  options: ResolvedMcpOptions,
-  knownIds: ReadonlySet<string>,
-): Effect.Effect<void, McpToolInputError> => {
-  for (const id of options.allow) {
-    if (!knownIds.has(id)) {
-      return Effect.fail(
-        new McpToolInputError({
-          message: `Unknown command id "${id}" in mcp.allow.`,
-          toolId: id,
-          path: "flags.allow",
-          remediation: "Use a canonical Lando command id; run `lando mcp --list` to see available ids.",
-        }),
-      );
-    }
-  }
-  return Effect.void;
-};
 
 const resolveOptions = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,

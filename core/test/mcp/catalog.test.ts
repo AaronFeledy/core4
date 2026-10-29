@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
+import { ToolingInputRevision } from "@lando/sdk/schema";
 
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
@@ -207,8 +208,10 @@ describe("buildCatalog", () => {
         summary: "Greet",
         hidden: false,
         input: {
-          flags: [{ name: "loud", boolean: true, required: false }],
-          args: [{ name: "target", order: 0, required: true }],
+          flags: [{ name: "loud", boolean: true, required: false, sensitive: false }],
+          args: [{ name: "target", order: 0, required: true, sensitive: false }],
+          acceptsArguments: true,
+          revision: ToolingInputRevision.make("fixture-revision"),
         },
       },
     ]);
@@ -221,6 +224,9 @@ describe("buildCatalog", () => {
     // Then
     expect(catalog.tools[0]?.inputSchema).toEqual({
       type: "object",
+      required: ["args"],
+      "x-lando-input-revision": "fixture-revision",
+      "x-lando-accepts-arguments": true,
       additionalProperties: false,
       properties: {
         flags: { type: "object", additionalProperties: false, properties: { loud: { type: "boolean" } } },
