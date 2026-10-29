@@ -44,7 +44,7 @@ services:
         condition: service_healthy
 ```
 
-Each service keeps its own `vendor` directory unless you include it, so both services include it to share the one Composer installs on your host. The worker gets the same `DATABASE_URL` the recipe gives `appserver`, built from the database's real credentials. `--time-limit=3600` makes the consumer exit after an hour, and `unless-stopped` starts a fresh one. Long-running PHP never gets too comfortable.
+Each service keeps its own `vendor` directory unless you include it, so both services include it to share the one Composer installs on your host. The worker gets the same `DATABASE_URL` the recipe gives `appserver`, built from the database's real credentials. `--time-limit=3600` makes the consumer exit after an hour, and `unless-stopped` starts a fresh one.
 
 Check the config and start the app:
 
@@ -63,7 +63,7 @@ Install the skeleton as [Run the Symfony recipe](../symfony-workflow/) shows, th
 lando composer require symfony/messenger symfony/doctrine-messenger symfony/orm-pack --no-interaction
 ```
 
-The Flex recipe writes `MESSENGER_TRANSPORT_DSN=doctrine://default?auto_setup=0` to `.env`, so messages go to a table in the recipe's Postgres database. Stock PHP services don't include the `redis` extension that Symfony's Redis transport needs; Doctrine works with the `pdo_pgsql` driver they already ship.
+The Flex recipe writes `MESSENGER_TRANSPORT_DSN=doctrine://default?auto_setup=0` to `.env`, so messages go to a table in the recipe's Postgres database. The recipe's `cache` Redis service isn't used here: stock PHP services don't include the `redis` extension Symfony's Redis transport needs, and Doctrine runs on the `pdo_pgsql` driver they already ship.
 
 Save this as `config/packages/messenger.yaml`:
 
