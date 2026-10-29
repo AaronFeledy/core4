@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ServiceConfig, ServiceName, effectiveReadiness } from "@lando/sdk/schema";
+import { ContainerUser, ServiceConfig, ServiceName, effectiveReadiness } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { applyAuthoredHealthcheck } from "../../src/planner/authored.ts";
 import { validateServiceProbes } from "../../src/planner/service-probes.ts";
@@ -45,6 +45,23 @@ test("timing-only readiness inherits its own stronger command", () => {
   // Then
   expect(result.readiness).toEqual({ ...strong, timeoutSeconds: 9 });
   expect(result.healthcheck).toEqual(native);
+});
+
+test("authored host readiness drops a contributed container identity", async () => {
+  // Given
+  const contributed = { ...web, readiness: { ...strong, user: ContainerUser.make("root") } };
+  const config = Schema.decodeUnknownSync(ServiceConfig)({
+    readiness: { target: "host", command: "test -f .ready" },
+  });
+  // When
+  const service = applyAuthoredHealthcheck(contributed, config);
+  const validation = await Effect.runPromise(
+    Effect.result(validateServiceProbes({ ...plan, services: { [service.name]: service } })),
+  );
+  // Then
+  expect(service.readiness?.executionTarget).toBe("host");
+  expect(service.readiness?.user).toBeUndefined();
+  expect(Result.isSuccess(validation)).toBe(true);
 });
 
 test.each([

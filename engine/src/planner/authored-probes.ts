@@ -12,7 +12,7 @@ const mergeProbe = (authored: HealthcheckInput, existing?: HealthcheckPlan): Hea
   const port = authored.port ?? existing?.port;
   const startPeriodSeconds = authored.startPeriodSeconds ?? existing?.startPeriodSeconds;
   const executionTarget = authored.target ?? existing?.executionTarget;
-  const user = authored.user ?? existing?.user;
+  const user = authored.user ?? (authored.target === "host" ? undefined : existing?.user);
   return {
     kind: authored.kind ?? existing?.kind ?? "command",
     intervalSeconds: authored.intervalSeconds ?? base.intervalSeconds,
