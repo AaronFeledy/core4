@@ -60,6 +60,7 @@ export const sidebar = [
           { label: "Run the FastAPI recipe", slug: "guides/recipes/fastapi-workflow" },
           { label: "Run the MEAN recipe", slug: "guides/recipes/mean-workflow" },
           { label: "Run the Symfony recipe", slug: "guides/recipes/symfony-workflow" },
+          { label: "Run Symfony Messenger workers", slug: "guides/recipes/symfony-messenger" },
           { label: "Run the Laravel recipe", slug: "guides/recipes/laravel-workflow" },
           { label: "Run Laravel Reverb websockets", slug: "guides/recipes/laravel-reverb" },
           { label: "Run Laravel Horizon queues", slug: "guides/recipes/laravel-horizon" },
