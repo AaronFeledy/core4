@@ -10,7 +10,7 @@ import {
 } from "@lando/sdk/secrets";
 
 import { expandRedactionValues } from "./exact-values.ts";
-import { collectSecretEnvValues, nonEmpty } from "./heuristic-values.ts";
+import { collectSecretEnvValues } from "./heuristic-values.ts";
 
 export {
   collectPublicCredentialValues,
@@ -92,18 +92,27 @@ export class RedactionValues extends Inspectable.Class implements Redactable.Red
   }
 }
 
-const collectProxyValues = (proxyUrls: Iterable<string | undefined> | undefined): string[] => {
-  if (proxyUrls === undefined) return [];
+/** Extract only authored URL userinfo; malformed escapes retain their encoded exact value. */
+export const collectUrlCredentialValues = (urls: Iterable<string | undefined> | undefined): string[] => {
   const values: string[] = [];
-  for (const proxyUrl of proxyUrls) {
-    if (proxyUrl === undefined) continue;
+  for (const url of urls ?? []) {
+    if (url === undefined) continue;
+    let parsed: URL;
     try {
-      const parsed = new URL(proxyUrl);
-      if (nonEmpty(parsed.password)) values.push(parsed.password);
-      if (nonEmpty(parsed.username)) values.push(parsed.username);
+      parsed = new URL(url);
     } catch (error) {
       if (error instanceof TypeError) continue;
       throw error;
+    }
+    for (const component of [parsed.password, parsed.username]) {
+      if (component.length === 0) continue;
+      values.push(component);
+      try {
+        const decoded = decodeURIComponent(component);
+        if (decoded.length > 0) values.push(decoded);
+      } catch (error) {
+        if (!(error instanceof URIError)) throw error;
+      }
     }
   }
   return values;
@@ -111,7 +120,7 @@ const collectProxyValues = (proxyUrls: Iterable<string | undefined> | undefined)
 
 const collectOptionValues = (options: RedactionForProfileOptions | undefined): string[] => [
   ...collectSecretEnvValues(options?.sourceEnv),
-  ...collectProxyValues(options?.proxyUrls),
+  ...collectUrlCredentialValues(options?.proxyUrls),
   ...(options?.redactionTokens ?? []),
 ];
 

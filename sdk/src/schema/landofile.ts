@@ -551,6 +551,9 @@ const AppMountEntry = Schema.String.check(
 
 const AppMountObject = Schema.Struct({
   target: Schema.String.annotate({ description: "Container destination for application source." }),
+  accelerate: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Allow automatic file-sync acceleration; false keeps an ordinary provider bind.",
+  }),
   readOnly: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Mount application source read-only.",
   }),

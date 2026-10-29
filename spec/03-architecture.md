@@ -32,13 +32,13 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 |---|---|---|
 | `none` | Command-base depth with no prebuilt runtime; dispatcher-routed commands receive the internal runtime-factory and captured-config-source ports but no decoded configuration or minimal runtime; the static fast-path subset skips dispatcher and Effect entirely and constructs no services | none |
 | `minimal` | Host configuration and safe local primitives | eager: `PathsService`, `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `StateStore`, `EventService`, `DeprecationService`, `RedactionService`, `TemplateEngineRegistry`, `TemplateRenderer`, `HttpClient`, `Downloader`; lazy: `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner`, `InteractionService`, `ManagedFileService`, `ExecutionSessionService` |
-| `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry`; lazy `PrivilegeService`; plugin implementations register here |
+| `plugins` | Plugin discovery, manifest validation, and contribution graph | `minimal` + eager `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`; lazy `PrivilegeService`; plugin implementations register here |
 | `commands` | Complete native command registry and command-cache refresh | `plugins` + `CommandRegistry` |
 | `tooling` | Command services plus cache-only `ToolingProgram` and app-plan access | `commands` + lazy selected `ToolingEngine`; no live provider or full planner |
-| `provider` | Provider selection and provider-dependent subsystems | `commands` + eager `RuntimeProviderRegistry`; lazy `CertificateAuthority`, `RouterService`, `DataMover` |
+| `provider` | Provider selection and provider-dependent subsystems | `commands` + eager `RuntimeProviderRegistry`, engine-private `FileSyncResolver`; lazy `CertificateAuthority`, `RouterService`, `DataMover` |
 | `global` | Global-app lifecycle (§20) | `provider` + eager `GlobalAppService` and global-root `LandofileService`; lazy `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner` |
 | `scratch` | Scoped scratch-app lifecycle (§21) | `provider` + eager `ScratchAppService` and arbitrary-root `LandofileService`; lazy `AppPlanner`, `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner`, conditional `HostProxyService`, conditional `GlobalAppService` |
-| `app` | Full user-app planning and lifecycle | `global` + eager user-root `AppPlanner` and `LandofileService`; lazy `HealthcheckRunner`, `CheckRunner`, `HostProxyService`, `TunnelService`, `BuildOrchestrator`, and the selected accelerated `FileSyncEngine` |
+| `app` | Full user-app planning and lifecycle | `global` + eager user-root `AppPlanner` and `LandofileService`; lazy `HealthcheckRunner`, `CheckRunner`, `HostProxyService`, `TunnelService`, `BuildOrchestrator`; no globally provided `FileSyncEngine` (selected engines are scope-acquired through the provider-tier `FileSyncResolver`) |
 
 The `LandoCommandSpec` registry is canonical for command-to-level assignment (§8.3). Levels `minimal` through `app` emit `pre-bootstrap-<level>` and `post-bootstrap-<level>`, followed by `post-bootstrap` and `ready`; `none` emits no events through the command-base path.
 
@@ -81,7 +81,7 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `ConfigTranslatorRegistry` | Select plugin-contributed external config translators (§4, §7) |
 | `TemplateEngineRegistry` | Select template engines; the built-in `lando` engine is always registered |
 | `TemplateRenderer` | Render whole files and strings through the selected engine and cache (§7, §12) |
-| `FileSyncEngineRegistry` | Select passthrough or accelerated mount realization (§10.6) |
+| `FileSyncResolver` (engine-private, provider tier) | Resolve metadata and scope-acquire the engine an accelerated app mount selects (§4.3, §10.6); ordinary realizations require no new engine, while reconciliation acquires the recorded previous engine |
 | `ToolingEngine` | Execute compiled tooling programs against a selected target (§8.6) |
 | `RuntimeProviderRegistry` | Discover and select the runtime provider (§5) |
 | `CertificateAuthority` | Issue and trust development certificates (§10.3) |

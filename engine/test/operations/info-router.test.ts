@@ -85,7 +85,9 @@ test("round trips actual info without redundant fields or runtime leakage", asyn
   expect(Object.keys(result.services[0] ?? {}).sort()).toEqual([
     "api",
     "app",
+    "artifact",
     "connections",
+    "hostnames",
     "primary",
     "provider",
     "service",

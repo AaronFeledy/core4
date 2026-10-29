@@ -91,6 +91,9 @@ If you are looking for a public surface or policy:
 | Service bases and common service schema | 06 | §6.1 + §6.2 |
 | Artifact build contract | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
+| File-sync eligibility, shared policy, and provider prepared-volume support | 04 + 05 | §4.3 + §4.4 + §5.4 |
+| Canonical file-sync execution bundle and retained flat session history | 06 | §6.4 |
+| Planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
 | Healthchecks, start-failure retention, certificates, and trust injection | 06 | §6.7 + §6.8 |

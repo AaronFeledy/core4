@@ -6,9 +6,9 @@ import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { ServiceName } from "@lando/sdk/schema";
 import { PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
-import { planApp } from "../../src/planner/assemble.ts";
+import { Effect, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import { planApp } from "../plan-app.ts";
 
 test("planApp resolves each service exactly once", async () => {
   // Given
@@ -47,14 +47,11 @@ test("planApp resolves each service exactly once", async () => {
       Effect.gen(function* () {
         const registry = yield* PluginRegistry;
         return yield* planApp(
-          { ...registry, loadServiceType: () => Effect.succeed(serviceType) },
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          yield* compileTestLandofile(landofile, root),
-          TestRuntimeProvider.capabilities,
+          {
+            landofile: yield* compileTestLandofile(landofile, root),
+            providerCapabilities: TestRuntimeProvider.capabilities,
+          },
+          Layer.succeed(PluginRegistry, { ...registry, loadServiceType: () => Effect.succeed(serviceType) }),
         );
       }).pipe(Effect.provide(PluginRegistryLayer.layer)),
     );

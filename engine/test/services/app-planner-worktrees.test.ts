@@ -14,8 +14,9 @@ import {
   serviceAppMount,
 } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
+import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
@@ -48,6 +49,10 @@ const planAt = (
           Layer.provide(
             Layer.mergeAll(
               PluginRegistryLayer.layer,
+              FileSyncResolver.layerWithEngine(
+                { ...TestFileSyncEngine, id: "mutagen" },
+                { platform: ["linux", "darwin", "win32"] },
+              ),
               BunFileSystem.layer,
               Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", home: root, env: {} })),
             ),
@@ -251,7 +256,11 @@ test("includes removes both overlay and sync ignores while files never shadow", 
         excludes: ["some-file"],
         includes: ["vendor"],
       },
-      { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
+      {
+        ...TestRuntimeProvider.capabilities,
+        bindMountPerformance: "slow",
+        fileSyncTargets: "prepared-volume",
+      },
     );
     const web = plan.services[ServiceName.make("web")];
     // Then ignores retain files, but included entries and Git binds are absent.
@@ -286,7 +295,11 @@ test.each([false, true])(
       const plan = await planAt(
         root,
         {},
-        { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
+        {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow",
+          fileSyncTargets: "prepared-volume",
+        },
         overlay ? { storage: ["/app/node_modules", "/app/public/uploads"] } : {},
       );
       // Then storage-only paths join defaults before the fixed Git ignore.
@@ -318,7 +331,11 @@ test("including Git cancels its fixed ignore without creating an overlay", async
     const plan = await planAt(
       root,
       { includes: [".git"] },
-      { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" },
+      {
+        ...TestRuntimeProvider.capabilities,
+        bindMountPerformance: "slow",
+        fileSyncTargets: "prepared-volume",
+      },
     );
     // Then Git is synchronized without a shadow.
     expect(plan.fileSync[0]?.session.excludes).toEqual(["node_modules", "vendor", "tmp"]);

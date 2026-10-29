@@ -24,6 +24,9 @@ tags: [beta, docs, agent-native, info, json]
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"app\":\\s*\"in-container-context-demo\"" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"services\":\\s*\\[" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"artifact\":\\s*\\{" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"workingDirectory\":\\s*\"/app\"" } }} />
+      <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"hostnames\":\\s*\\[" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"connections\":\\s*\\[" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"scope\":\\s*\"app\"" } }} />
       <Verify command="lando app:info --format=json" expect={{ stdout: { regex: "\"url\":\\s*\"http://app:3000\"" } }} />
@@ -43,15 +46,35 @@ The result carries `app` (the app name, matching the Landofile) and `services`,
 an array with one entry per service defined in the Landofile.
 
 Each `services[]` entry names the service and its type and provider, whether
-it's primary, its current status, and its connections:
+it's primary, its current status, and its connections. It also carries safe
+facts from the plan when Lando has them:
 
 ```
-{ app, service, api, type, provider, primary, status, connections, logSources?, creds? }
+{ app, service, api, type, provider, primary, status, connections,
+  artifact?, user?, workingDirectory?, home?, appMount?, mounts?,
+  hostnames?, certs?, health?, logSources?, creds?, providerInfo? }
 ```
 
 `status` is one of a fixed set of values, safe to branch on directly instead of
 parsing prose: `unknown | stopped | starting | running | healthy | unhealthy |
 ready | completed | restarting | paused | error`.
+
+`artifact` identifies a selected image as `{ kind: "ref", ref, digest? }`, or
+a build as `{ kind: "build", contentHash? }`. It never includes build arguments,
+source files, or inline build instructions. `user` and `workingDirectory` are
+the planned container user and directory. `home`, `appMount`, and `mounts`
+describe planned storage and any mounts the provider observed.
+
+`hostnames` lists the service's planned, deduplicated network aliases. Those
+aliases are names other containers can use when the networks are running, not
+route URLs or host-file entries.
+`certs.state` is `none`, `generated`, or `custom` when the plan records a
+certificate source. `health.check`, when present, gives the ongoing probe's
+kind and timings without its command or URL. `health.state` is the provider's
+reported health status or `unknown` if it hasn't reported one; it is separate
+from the service's `status`. These plan fields can be absent on older plans,
+and `providerInfo` is reserved for providers that explicitly supply JSON-safe
+details. Lando currently omits it.
 
 `connections` is a required array. It includes configured addresses and any host
 port bindings the provider observed that don't match a planned publication.

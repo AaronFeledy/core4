@@ -21,7 +21,11 @@ import {
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { isPathWithin } from "@lando/paths";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  collectUrlCredentialValues,
+  createStandaloneRedactor,
+} from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   ArtifactTransferError,
@@ -716,7 +720,8 @@ const streamFromProvider = (
                 mounts: [{ type: "volume", store: endpoint.store, target: helperTarget, readOnly: true }],
                 remove: true,
               }),
-              (exitCode, stderrTail) => serviceCommandFailure("runStream", exitCode, stderrTail),
+              (exitCode, stderrTail, evidence) =>
+                serviceCommandFailure("runStream", exitCode, stderrTail, evidence),
             ),
           ),
           Effect.mapError((cause) =>
@@ -738,15 +743,16 @@ const streamFromProvider = (
       return provider
         .exportArtifact({ providerId: providerId(provider.id), ref: endpoint.ref })
         .pipe(Stream.mapError((cause) => providerFailure("exportArtifact", cause)));
-    case "serviceCmd":
+    case "serviceCmd": {
+      const command = providerCommandSpec(endpoint.command, endpoint.env);
+      const values = Object.values(command.env ?? {}).filter((value) => value.length > 0);
       return execStdoutStream(
-        provider.execStream(
-          { app: endpoint.app, service: endpoint.service },
-          providerCommandSpec(endpoint.command, endpoint.env),
-        ),
-        (exitCode, stderrTail) => serviceCommandFailure("execStream", exitCode, stderrTail),
-        endpoint.env,
+        provider.execStream({ app: endpoint.app, service: endpoint.service }, command),
+        (exitCode, stderrTail, evidence) =>
+          serviceCommandFailure("execStream", exitCode, stderrTail, evidence),
+        [...values, ...collectUrlCredentialValues(values)],
       );
+    }
     case "stream":
       return Stream.fail(
         new DataEndpointUnsupportedError({
@@ -881,7 +887,7 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         );
         const helperImage = yield* resolveDataHelperImage(provider);
         yield* checkedTransferCommand(
-          provider.run({
+          provider.runStream({
             owner: { app: target.app },
             image: helperImage,
             command: ["sh", "-c", `cat > ${helperPayload}`],
@@ -949,16 +955,12 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
         ),
       );
       const stdinStream = Bun.file(staged.path).stream();
+      const command = { ...providerCommandSpec(target.command, target.env), stdinStream };
+      const values = Object.values(command.env ?? {}).filter((value) => value.length > 0);
       yield* checkedTransferCommand(
-        provider.exec(
-          { app: target.app, service: target.service },
-          {
-            ...providerCommandSpec(target.command, target.env),
-            stdinStream,
-          },
-        ),
+        provider.execStream({ app: target.app, service: target.service }, command),
         "exec",
-        target.env,
+        [...values, ...collectUrlCredentialValues(values)],
       );
       return {
         accelerated: true,

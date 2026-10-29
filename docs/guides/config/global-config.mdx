@@ -89,6 +89,56 @@ Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a
 
 `defaultProviderId` is the provider `lando setup` persisted. `LANDO_PROVIDER` overrides it per command and never writes it. See [What persists](../setup/provider-selection.mdx#what-persists).
 
+## Choose a host-wide file-sync policy
+
+`defaultFileSyncEngine` controls acceleration on providers with slow bind mounts. Leave it unset for automatic selection. Lando considers only engines that support your platform, the provider's sync-target capabilities, exclusion patterns, and `two-way-safe` synchronization. It chooses a unique matching default, then a sole eligible engine. With no eligible engine, apps use ordinary binds with reason `no-compatible-engine`; macOS and Docker Desktop do not need an opt-out workaround. Ambiguous choices fail with remediation rather than depending on plugin load order.
+
+To deliberately keep every app mount ordinary, set the reserved policy `passthrough` and verify the effective value:
+
+```sh
+lando config set defaultFileSyncEngine passthrough
+lando config get defaultFileSyncEngine --format=json
+```
+
+The equivalent `config.yml` entry is:
+
+```yaml
+defaultFileSyncEngine: passthrough
+```
+
+You can name an installed engine instead, but its id never bypasses support checks. An unknown or unsupported explicit choice fails when host policy is evaluated, including on native providers. A valid choice does not force native binds to accelerate. `passthrough` is a no-session policy, not an engine. For one service only, use `appMount.accelerate: false` in its Landofile.
+
+After changing the setting, run these commands from an app directory to inspect the desired policy without starting services:
+
+```sh
+lando app:cache:refresh
+lando info --format=json
+```
+
+Read `result.fileSync.planned` and, when available, `result.fileSync.applied`. `pendingChange` is true when both realizations are known and their snapshots differ. If desired planning fails, available applied state is still shown, `planned` is absent, and `pendingChange` is false. Run `lando app:cache:refresh` to inspect that planning failure. The engine appears once at app level; each service reports its mode and reason, exclusion mechanism, and host-backed includes. These are plan facts, not daemon health. Historical reasons can be `unknown`.
+
+Changes take effect on the next `lando start`. Existing accelerated apps must first drain through their recorded engine, preserving container-side edits. Missing tools or failed setup, availability, or target preparation after acceleration is planned fail with remediation; they never silently downgrade the app. See [Switch between accelerated and ordinary mounts](../setup/file-sync-mutagen.mdx#switch-between-accelerated-and-ordinary-mounts) before changing an app that already uses sync.
+
+To return to automatic selection, run `lando config unset defaultFileSyncEngine`, then `lando config get defaultFileSyncEngine --format=json`. If a drop-in or `LANDO_CONFIG__DEFAULT_FILE_SYNC_ENGINE` still supplies a value, clear it in that higher-precedence layer too.
+
+  <Scenario id="file-sync-host-policy" render>
+    <Step name="set-ordinary-policy">
+      <UseFixture name="file-sync-policy" />
+      <Run command="lando config set defaultFileSyncEngine passthrough" />
+      <Verify command="lando config get defaultFileSyncEngine --format=json" expect={{ stdout: { regex: "\"value\":\\s*\"passthrough\"" } }} />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"fileSync\":\\s*\\{\\s*\"planned\":\\s*\\{\\s*\"mode\":\\s*\"ordinary\",\\s*\"reason\":\\s*\"global-passthrough\"" } }} />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "^(?![\\s\\S]*\"engineId\")(?![\\s\\S]*\"applied\")[\\s\\S]*\"pendingChange\":\\s*false" } }} />
+    </Step>
+    <Step name="restore-automatic-policy">
+      <Run command="lando config unset defaultFileSyncEngine" />
+      <Run command="lando app:cache:refresh" />
+      <Run command="lando info --format=json" />
+      <Verify command="lando info --format=json" expect={{ stdout: { regex: "\"fileSync\":\\s*\\{\\s*\"planned\":\\s*\\{\\s*\"mode\":\\s*\"ordinary\",\\s*\"reason\":\\s*\"native-provider\"" } }} />
+    </Step>
+  </Scenario>
+
 ## Get, set, unset, validate, or edit a key
 
 Lando picks the value type from the config schema: text first, then number, boolean, null, or JSON. Use `--type` to force a type, for example `--type=json` to write a JSON array into a field that also accepts text.

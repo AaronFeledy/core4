@@ -84,9 +84,9 @@ export interface FileSyncEngineShape {
 }
 
 /**
- * FileSyncEngine — pluggable accelerated bind-mount engine. Default
- * implementation is the no-op `passthrough`; the bundled default for
- * `bindMountPerformance: "slow"` providers is `@lando/file-sync-mutagen`.
+ * FileSyncEngine — pluggable accelerated bind-mount engine. Ordinary binds
+ * and the reserved passthrough policy create no engine sessions. Engines are
+ * selected by contribution metadata or the global engine override.
  */
 // The recursive bound-engine result makes the inline form fail with TS2310/TS2506.
 export class FileSyncEngine extends Context.Service<FileSyncEngine, FileSyncEngineShape>()(

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, StateStore } from "@lando/sdk/services";
-import { Deferred, Effect, Fiber } from "effect";
+import { Deferred, Effect, Fiber, Stream } from "effect";
 import { run, runScoped, store, withCatalog } from "./catalog-fixture.ts";
 
 const storeFailure = () =>
@@ -236,11 +236,13 @@ test.each(["native", "copy"] as const)("%s restore rejects a different target ow
         Effect.sync(() => {
           actions += 1;
         }),
-      run: () =>
-        Effect.sync(() => {
-          actions += 1;
-          return { exitCode: 0, stdout: "", stderr: "" };
-        }),
+      runStream: () =>
+        Stream.fromEffect(
+          Effect.sync(() => {
+            actions += 1;
+            return { exitCode: 0 };
+          }),
+        ),
     });
     // When restoring without optional database metadata.
     const result = await runScoped(f.mover(provider).restore(handle, store).pipe(Effect.result));

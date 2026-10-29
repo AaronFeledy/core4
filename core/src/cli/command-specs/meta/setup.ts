@@ -276,6 +276,9 @@ export const setupSpec: LandoCommandSpec<
       userDataRoot,
       network,
       recorder,
+      ...(globalConfig.defaultFileSyncEngine === undefined
+        ? {}
+        : { defaultEngine: globalConfig.defaultFileSyncEngine }),
     }).pipe(withHostProvider);
 
     const failedStep = recorder.firstFailedStep();

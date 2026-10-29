@@ -116,15 +116,18 @@ export const resolveSeedSource = Effect.fn("Sql.resolveSeedSource")(function* (
     providerId: deps.providerId,
   });
   const creds = resolveSqlCreds(connection);
+  const env = credsEnv(service.family, creds);
+  const redactionTokens = secretTokens({ password: creds.password });
   return {
     endpoint: {
       _tag: "serviceCmd" as const,
       app: source.id,
       service: ServiceName.make(service.name),
       command: dumpCommand(service.family, creds),
-      env: credsEnv(service.family, creds),
+      env,
     },
     database: creds.database,
-    redactionTokens: secretTokens(creds),
+    credentials: [creds.password],
+    redactionTokens,
   };
 });

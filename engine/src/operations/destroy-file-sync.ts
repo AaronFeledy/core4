@@ -1,6 +1,7 @@
 import { FileSyncStopError } from "@lando/sdk/errors";
 import {
   FileSyncEngine,
+  type FileSyncEngineShape,
   type FileSyncError,
   type ProviderError,
   type RuntimeProviderShape,
@@ -9,6 +10,8 @@ import {
 import { Effect, Option } from "effect";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import { pendingStartDisposal } from "./accelerated-start-disposal.ts";
+import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
 
@@ -25,34 +28,42 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
   provider: RuntimeProviderShape,
 ): Effect.fn.Return<DestroyFileSync, FileSyncError | ProviderError, StateStore> {
   const { plan, app } = target;
+  const bundle = yield* fileSyncBundle(plan);
   const retained = yield* pendingStartDisposal(app, plan);
   const inspected =
     provider.inspectAppliedFileSync === undefined
       ? {
           status:
-            plan.fileSync.length > 0 && provider.prepareFileSyncTargets !== undefined
+            bundle.kind === "accelerated" && provider.prepareFileSyncTargets !== undefined
               ? ("unknown" as const)
               : ("ordinary" as const),
         }
       : yield* provider.inspectAppliedFileSync(plan);
   const retainedUnapplied = retained !== undefined && inspected.status !== "accelerated";
   const applied =
-    retainedUnapplied && plan.fileSync[0] !== undefined
+    retainedUnapplied && bundle.kind === "accelerated"
       ? {
           status: "accelerated" as const,
-          engineId: plan.fileSync[0].engineId,
-          sessions: plan.fileSync.map(({ session }) => session),
+          engineId: bundle.id,
+          sessions: bundle.sessions,
         }
       : inspected;
   const failure = (message: string) =>
     new FileSyncStopError({
-      engineId: plan.fileSync[0]?.engineId ?? "unavailable",
+      engineId: bundle.kind === "accelerated" ? bundle.id : "unavailable",
       sessionRef: String(app.id),
       message,
       remediation: "Repair the file sync sessions and provider cleanup hooks, then retry destroy.",
     });
-  const selected = yield* Effect.serviceOption(FileSyncEngine);
-  const engine = Option.getOrUndefined(selected);
+  // Applied / journal identity: acquire the recorded engine, not the desired selection.
+  const engine: FileSyncEngineShape | undefined =
+    applied.status === "accelerated"
+      ? yield* acquireFileSyncEngine(applied.engineId).pipe(
+          Effect.map(Option.some),
+          Effect.catch(() => Effect.succeed(Option.none())),
+          Effect.map(Option.getOrUndefined),
+        )
+      : undefined;
   const lifecycle = applied.status === "accelerated" ? engine?.appLifecycle : undefined;
   const phase = lifecycle === undefined ? undefined : yield* lifecycle.disposalPhase(app);
   const resumed = phase === "disposing" || phase === "completed";
@@ -120,8 +131,11 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
       if (disposeTargets !== undefined) yield* disposeTargets(plan);
       if (phase !== "absent") yield* lifecycle.completeDisposal(app);
     } else {
-      yield* terminateFileSyncSessions(app, sessions);
-      if (retained !== undefined && disposeTargets !== undefined) yield* disposeTargets(plan);
+      if (engine === undefined) {
+        return yield* Effect.fail(failure("An accelerated mount has no matching file sync engine."));
+      }
+      yield* terminateFileSyncSessions(app, sessions).pipe(Effect.provideService(FileSyncEngine, engine));
+      if (disposeTargets !== undefined) yield* disposeTargets(plan);
     }
   });
   return {

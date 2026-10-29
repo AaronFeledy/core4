@@ -12,12 +12,12 @@ import {
   type ServiceType,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
-import { planApp } from "../../src/planner/assemble.ts";
+import { Effect, Layer, Schema } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as EnvSecretStore from "../../src/services/secret-store.ts";
 import { resolvePlanEnvironment } from "../environment-values.ts";
+import { planApp } from "../plan-app.ts";
 
 const raw = "$${HOME} {{{{literal ${secret:TEST}";
 const serviceType: ServiceType = {
@@ -46,30 +46,28 @@ const planFile = (file: string, feature?: AppFeatureDefinition) =>
     const registry = yield* PluginRegistry;
     const fileSystem = yield* FileSystem;
     return yield* planApp(
-      {
-        ...registry,
-        loadServiceType: () => Effect.succeed(serviceType),
-        ...(feature === undefined
-          ? {}
-          : {
-              list: Effect.succeed([
-                Schema.decodeUnknownSync(PluginManifest)({
-                  name: "@test/bindings",
-                  version: "1.0.0",
-                  api: 4,
-                  contributes: { appFeatures: [feature.id] },
-                }),
-              ]),
-              loadAppFeature: () => Effect.succeed(feature),
-            }),
-      },
-      undefined,
-      configService,
-      fileSystem,
-      undefined,
-      undefined,
-      loaded,
-      TestRuntimeProvider.capabilities,
+      { landofile: loaded, providerCapabilities: TestRuntimeProvider.capabilities },
+      Layer.mergeAll(
+        Layer.succeed(PluginRegistry, {
+          ...registry,
+          loadServiceType: () => Effect.succeed(serviceType),
+          ...(feature === undefined
+            ? {}
+            : {
+                list: Effect.succeed([
+                  Schema.decodeUnknownSync(PluginManifest)({
+                    name: "@test/bindings",
+                    version: "1.0.0",
+                    api: 4,
+                    contributes: { appFeatures: [feature.id] },
+                  }),
+                ]),
+                loadAppFeature: () => Effect.succeed(feature),
+              }),
+        }),
+        Layer.succeed(ConfigService, configService),
+        Layer.succeed(FileSystem, fileSystem),
+      ),
     );
   }).pipe(
     Effect.provide(PluginRegistryLayer.layerWith({ bundled: false }, [])),

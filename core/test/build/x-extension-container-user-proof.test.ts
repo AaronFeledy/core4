@@ -8,6 +8,7 @@ import {
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import delta from "./fixtures/x-extension-container-user.delta.json";
+import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
 import {
   FIXTURE_PATH,
   loadNormalizedArtifact,
@@ -142,20 +143,22 @@ test.each([
   const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
   const repaired = repairClosedExtension(withIntentionalChangesSinceCapture(captured.landofile));
   if (!isJsonObject(repaired)) throw new TypeError("Missing repaired Landofile");
-  const expected = evolveHistoricalToolingShorthand(
-    evolveHistoricalEnvironment(
-      evolveHistoricalEndpointMetadata(
-        evolveHistoricalServicePort(
-          evolveHistoricalTimestamps(
-            evolveHistoricalContainerUser(
-              evolveHistoricalShorthand(evolveHistoricalNetworks(normalizeJsonSchema(repaired), "bare")),
+  const expected = evolveHistoricalAppMountAcceleration(
+    evolveHistoricalToolingShorthand(
+      evolveHistoricalEnvironment(
+        evolveHistoricalEndpointMetadata(
+          evolveHistoricalServicePort(
+            evolveHistoricalTimestamps(
+              evolveHistoricalContainerUser(
+                evolveHistoricalShorthand(evolveHistoricalNetworks(normalizeJsonSchema(repaired), "bare")),
+              ),
+              "bare",
             ),
-            "bare",
           ),
         ),
       ),
+      "bare",
     ),
-    "bare",
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(jsonEquals(expected, current)).toBe(true);

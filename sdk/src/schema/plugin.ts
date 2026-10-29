@@ -4,6 +4,7 @@ import { Schema } from "effect";
 import { CertificateAuthorityContribution } from "./certificate-authority-contribution.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
+import { FileSyncEngineCapabilities } from "./file-sync-engine.ts";
 import { BootstrapLevel, PluginName } from "./primitives.ts";
 import { PromptType } from "./prompt.ts";
 import { ProxyCapabilities } from "./proxy.ts";
@@ -35,6 +36,41 @@ export type DeprecatedContributionRef = typeof DeprecatedContributionRef.Type;
 
 export const ContributionRef = Schema.Union([Schema.String, DeprecatedContributionRef]);
 export type ContributionRef = typeof ContributionRef.Type;
+
+export const FileSyncEngineDescriptor = Schema.Struct({
+  id: Schema.String.check(
+    Schema.makeFilter((id) => id !== "passthrough", {
+      message: "passthrough is a reserved no-session policy, not an engine id.",
+    }),
+  ).annotate({ description: "Unique file-sync engine id; passthrough is reserved." }),
+  module: Schema.optionalKey(Schema.String).annotate({
+    description: "Contained module exporting the engine factory.",
+  }),
+  capabilities: FileSyncEngineCapabilities.annotate({
+    description: "Planning-sensitive engine capabilities.",
+  }),
+  supports: Schema.Struct({
+    platform: Schema.Array(Schema.Literals(["linux", "darwin", "win32"]))
+      .check(Schema.isMinLength(1))
+      .annotate({
+        description: "Nonempty supported host platform families, independent of default preference.",
+      }),
+  }).annotate({ description: "Required host eligibility for this engine." }),
+  defaultFor: Schema.optionalKey(
+    Schema.Struct({
+      platform: Schema.optionalKey(Schema.Array(Schema.Literals(["linux", "darwin", "win32"]))).annotate({
+        description: "Matching host platform families.",
+      }),
+      bindMountPerformance: Schema.optionalKey(Schema.Array(Schema.Literals(["native", "slow"]))).annotate({
+        description: "Matching provider bind performance classes.",
+      }),
+    }),
+  ).annotate({
+    description: "Nonempty dimensions match together; alternatives within a dimension match individually.",
+  }),
+  deprecated: Schema.optionalKey(DeprecationNotice),
+});
+export type FileSyncEngineDescriptor = typeof FileSyncEngineDescriptor.Type;
 
 // ====
 // Plugin manifest declared by package.json + plugin.yaml.
@@ -264,7 +300,7 @@ export const PluginContribution = Schema.Struct({
   loggers: Schema.optionalKey(Schema.Array(ContributionRef)),
   renderers: Schema.optionalKey(Schema.Array(ContributionRef)),
   templateEngines: Schema.optionalKey(Schema.Array(ContributionRef)),
-  fileSyncEngines: Schema.optionalKey(Schema.Array(ContributionRef)),
+  fileSyncEngines: Schema.optionalKey(Schema.Array(FileSyncEngineDescriptor)),
   certificateAuthorities: Schema.optionalKey(Schema.Array(CertificateAuthorityContribution)).annotate({
     description: "CertificateAuthority implementations registered by this plugin.",
   }),

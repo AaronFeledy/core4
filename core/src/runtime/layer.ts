@@ -19,7 +19,6 @@ import type {
   Downloader,
   EnvironmentValueResolver,
   EventService,
-  FileSyncEngine,
   FileSystem,
   GlobalAppService,
   InteractionService,
@@ -48,6 +47,7 @@ import { bundledPluginModules } from "@lando/engine/composition";
 import type { LoggerMode } from "@lando/engine/logging/service";
 import type { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import type { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import type { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import {
   type BootstrapLifecycleTracker,
@@ -140,6 +140,7 @@ type ProviderRuntimeServices =
   | RuntimeProvider
   | RuntimeProviderRegistry
   | CertificateAuthorityResolver
+  | FileSyncResolver
   | DataMover
   | AppPlanSanitizer
   | ContainerHelperAssets
@@ -162,7 +163,6 @@ export type AppRuntimeServices =
   | EventService
   | ToolingEngine
   | ShellRunner
-  | FileSyncEngine
   | RouterService
   | RuntimeCwd
   | EventCommandExecutor;

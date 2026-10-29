@@ -168,6 +168,7 @@ The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, 
 | `bindMounts` | Supports host bind mounts. |
 | `bindMountPerformance` | Bind IO is `native`, `slow`, or `none`. |
 | `copyMounts` | Supports copy-style mounts; deferred with copy mounts (#1810), so every provider reports `false`. |
+| `fileSyncTargets` | Optional `prepared-volume` support for provider-owned sync-target preparation and applied-state inspection; omission means unsupported. |
 | `hostPortPublish` | Publishing is `native`, `proxy`, `manual`, or `none`. |
 | `routeProvider` | Realizes host routes. |
 | `tlsCertificates` | TLS realization is `native`, `lando`, or `none`. |
@@ -204,7 +205,9 @@ Bundled container providers MUST derive `composeKnobs.supported` from the shared
 
 The relay carries raw agent bytes and is separate from the §10.10 host-proxy protocol. Failure policy follows §10.4: in sidecar mode an unsupported combination or a failed bridge publishes a warning, the app starts without the socket overlay, and `lando doctor` reports the ssh check degraded; in host mode (`sshAgent.sidecar: false`) and for gpg forwarding, a missing `agentSocket` capability is a planning-time `CapabilityError` naming the provider and the alternatives, start-time discovery and bridge failures are `SshAgentUnavailableError` or `GpgAgentUnavailableError`, and faults after readiness are the matching `*TransportError`. Relay sockets are `0666` inside a per-user `0700` run directory. The Windows `guest-bridge` loopback TCP broker carries no token: other local accounts on that Windows host can reach it while the app runs, which is a documented trust-boundary limitation.
 
-`bindMountPerformance: slow` causes the planner to use the active `FileSyncEngine` unless the user explicitly selects the documented passthrough escape hatch; `none` rejects bind mounts. `sharedCrossAppNetwork` gates global-service contributions. Data-plane declarations select native behavior, documented generic fallback, or typed failure.
+`bindMountPerformance: slow` permits acceleration through an eligible `FileSyncEngine` (§4.3). `appMount.accelerate: false`, global `defaultFileSyncEngine: passthrough`, or no eligible automatic candidate keeps ordinary binds; `native` never accelerates, though explicit engine choices still undergo host-policy validation; `none` rejects bind mounts. `sharedCrossAppNetwork` gates global-service contributions. Data-plane declarations select native behavior, documented generic fallback, or typed failure.
+
+A provider MUST declare `fileSyncTargets: prepared-volume` only when its actual implementation supplies the required preparation and inspection lifecycle. The bundled `lando` provider declares it only on Windows when it manages the runtime, has applied-plan state, and has the API request hook needed to construct its preparation operations. An external socket MUST NOT gain this capability merely because the host is Windows. The acquired provider's capabilities and methods MUST agree before hooks, rotation, journaling, or target work. Capability, preparation, and ownership failures for a planned accelerated app fail with tagged errors and actionable remediation, never an ordinary-bind downgrade.
 
 ### 5.5 The `AppPlan`
 

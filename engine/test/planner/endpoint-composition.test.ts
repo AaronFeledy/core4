@@ -3,11 +3,11 @@ import { definePlugin } from "@lando/sdk/plugins";
 import { AppPlan, type EndpointPlan, PluginManifest, ServiceName } from "@lando/sdk/schema";
 import { type AppFeatureDefinition, PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Layer, Result, Schema } from "effect";
 import { bundledPluginModules } from "../../src/composition.ts";
-import { planApp } from "../../src/planner/assemble.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 const lateHttp: AppFeatureDefinition = {
   id: "test.late-http",
@@ -66,21 +66,18 @@ const plan = (service: Readonly<Record<string, unknown>>) =>
   Effect.gen(function* () {
     const registry = yield* PluginRegistry;
     return yield* planApp(
-      registry,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      yield* compileTestLandofile(
-        {
-          name: "endpoint-replay",
-          services: { web: { home: false, ...service } },
-        },
-        "/srv/endpoint-replay",
-      ),
-      TestRuntimeProvider.capabilities,
-      "/srv/endpoint-replay",
+      {
+        landofile: yield* compileTestLandofile(
+          {
+            name: "endpoint-replay",
+            services: { web: { home: false, ...service } },
+          },
+          "/srv/endpoint-replay",
+        ),
+        providerCapabilities: TestRuntimeProvider.capabilities,
+        appRoot: "/srv/endpoint-replay",
+      },
+      Layer.succeed(PluginRegistry, registry),
     );
   }).pipe(
     Effect.provide(

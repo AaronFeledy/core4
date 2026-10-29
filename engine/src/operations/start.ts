@@ -9,6 +9,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
+import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
 import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { rotateChangedFileSync } from "./start-file-sync-rotation.ts";
 import type { StartManagedScope } from "./start-file-sync.ts";
@@ -35,6 +36,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
     readonly transactionPreflightDone?: boolean;
   } = {},
 ) {
+  yield* validateDesiredFileSyncEngine(target.plan);
   return yield* withHomeTransitionNotices(
     withAppMutationLock(
       appLockTarget(target.plan),

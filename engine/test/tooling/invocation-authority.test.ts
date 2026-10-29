@@ -4,14 +4,14 @@ import type { ExpressionContext } from "@lando/sdk/expressions";
 import { AppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
 import { PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Schema } from "effect";
-import { planApp } from "../../src/planner/assemble.ts";
+import { Effect, Layer, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../../src/planner/invocation-authority.ts";
 import * as Registry from "../../src/plugins/registry.ts";
 import { compileEventStepProgram } from "../../src/tooling/step-compiler.ts";
 import { resolveToolingTaskShape, runToolingStepProgram } from "../../src/tooling/step-runner.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 const compile = (document: unknown, env: Readonly<Record<string, string>> = {}) =>
   Effect.runPromise(
@@ -19,14 +19,11 @@ const compile = (document: unknown, env: Readonly<Record<string, string>> = {}) 
       const loaded = yield* compileTestLandofile(document, "/tmp/invocation-authority");
       const registry = yield* PluginRegistry;
       return yield* planApp(
-        registry,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        LoadScopedLandofile.make({ ...loaded, context: { ...loaded.context, env } }),
-        TestRuntimeProvider.capabilities,
+        {
+          landofile: LoadScopedLandofile.make({ ...loaded, context: { ...loaded.context, env } }),
+          providerCapabilities: TestRuntimeProvider.capabilities,
+        },
+        Layer.succeed(PluginRegistry, registry),
       );
     }).pipe(Effect.provide(Registry.layerWith({ bundled: false }, []))),
   );
