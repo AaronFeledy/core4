@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { type LandofileShape, PortablePath } from "@lando/sdk/schema";
+import { type LandofileShape, PortablePath, ToolingInputRevision } from "@lando/sdk/schema";
 
 import {
   APP_COMMAND_MAGIC,
+  type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
   PLUGIN_COMMAND_MAGIC,
   decodeAppCommandIndex,
@@ -14,9 +15,9 @@ import {
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
-  test("uses version five when encoding script routing fingerprints", () => {
+  test("uses version six for canonical input declarations", () => {
     // Given / When / Then
-    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(5n);
+    expect(COMMAND_INDEX_SCHEMA_VERSION).toBe(6n);
   });
 
   test.each([2n, 3n, 4n])("returns a cache miss for an old payload with header %s", (headerVersion) => {
@@ -55,12 +56,23 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
           summary: "Run tests",
           hidden: false,
           input: {
-            flags: [{ name: "name", alias: "n", boolean: false, default: "world", required: false }],
-            args: [{ name: "target", order: 0, choices: ["dev", "prod"], required: true }],
+            flags: [
+              {
+                name: "name",
+                alias: "n",
+                boolean: false,
+                default: "world",
+                required: false,
+                sensitive: false,
+              },
+            ],
+            args: [{ name: "target", order: 0, choices: ["dev", "prod"], required: true, sensitive: false }],
+            acceptsArguments: true,
+            revision: ToolingInputRevision.make("fixture-revision"),
           },
         },
       ],
-    };
+    } satisfies AppCommandIndexPayload;
 
     const bytes = encodeAppCommandIndex(payload);
     const decoded = decodeAppCommandIndex(bytes);
