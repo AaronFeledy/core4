@@ -50,7 +50,7 @@ const redactorForInput = Effect.fnUntraced(function* (context: CapturedHostExecu
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "None") return identityRedactor;
   return yield* redaction.value.forProfile("secrets", {
-    sourceEnv: yield* environmentForRedaction(context.env, undefined),
+    sourceEnv: yield* environmentForRedaction(context.env, context.explicitEnv),
     authoritativeTokens: yield* ProcessRedactionTokens,
   });
 });
@@ -68,6 +68,7 @@ const publishRedactedProcessEvent = Effect.fnUntraced(function* (
   const events = yield* Effect.serviceOption(EventService);
   if (redaction._tag === "None" || events._tag === "None") return;
   const redactor = yield* redactorForInput(context);
+  const secretEnv = yield* environmentForRedaction({}, event.env);
   const fields = {
     cmd: redactor.redactString(event.cmd),
     args: event.args.map((arg) => redactor.redactString(arg)),
@@ -78,7 +79,9 @@ const publishRedactedProcessEvent = Effect.fnUntraced(function* (
           env: Object.fromEntries(
             Object.entries(event.env).map(([key, value]) => [
               key,
-              isSecretFieldName(key) ? REDACTED : redactor.redactString(value),
+              isSecretFieldName(key) && Object.hasOwn(secretEnv, key)
+                ? REDACTED
+                : redactor.redactString(value),
             ]),
           ),
         }),

@@ -7,6 +7,7 @@ export interface CapturedHostExecutionContext {
   readonly baseCwd: string;
   readonly platform: NodeJS.Platform;
   readonly env: Readonly<Record<string, string>>;
+  readonly explicitEnv: Readonly<Record<string, string>>;
   readonly pwdKey: string;
   readonly explicitPwd: string | undefined;
 }
@@ -40,6 +41,7 @@ export const captureHostExecutionContext = (
     baseCwd: host.cwd,
     platform: host.platform,
     env,
+    explicitEnv: overrides,
     pwdKey: Object.keys(env).find((key) => keyOf(key) === "PWD") ?? "PWD",
     explicitPwd: callerPwd === undefined ? undefined : overrides[callerPwd],
   };

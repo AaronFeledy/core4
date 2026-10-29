@@ -53,14 +53,12 @@ const shellError = (
         : "Fix the Bun Shell command so it succeeds in the reported working directory, then re-run.",
   });
 
-const redactorForOptions = Effect.fnUntraced(function* (
-  sourceEnv: Readonly<Record<string, string | undefined>>,
-) {
+const redactorForOptions = Effect.fnUntraced(function* (context: CapturedHostExecutionContext) {
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "None") return identityRedactor;
   const redactionTokens = yield* ShellRedactionTokens;
   return yield* redaction.value.forProfile("secrets", {
-    sourceEnv: yield* environmentForRedaction(sourceEnv, undefined),
+    sourceEnv: yield* environmentForRedaction(context.env, context.explicitEnv),
     redactionTokens,
   });
 });
@@ -82,29 +80,30 @@ type ShellEvent = ReturnType<typeof shellEventShape> &
     readonly _tag: "pre-shell-exec" | "post-shell-exec";
   };
 
-const publishRedactedShellEvent = (redactor: Redactor, event: ShellEvent) =>
-  Effect.serviceOption(RedactionService).pipe(
-    Effect.flatMap((redaction) => {
-      if (redaction._tag === "None") return Effect.void;
-      return publishShellEvent({
-        ...event,
-        command: redactor.redactString(event.command),
-        ...(event.cwd === undefined ? {} : { cwd: redactor.redactString(event.cwd) }),
-        ...(event.env === undefined
-          ? {}
-          : {
-              env: Object.fromEntries(
-                Object.entries(event.env).map(([key, value]) => [
-                  key,
-                  isSecretFieldName(key) ? REDACTED : redactor.redactString(value),
-                ]),
-              ),
-            }),
-        ...(event.stdout === undefined ? {} : { stdout: redactor.redactString(event.stdout) }),
-        ...(event.stderr === undefined ? {} : { stderr: redactor.redactString(event.stderr) }),
-      });
-    }),
-  );
+const publishRedactedShellEvent = Effect.fnUntraced(function* (redactor: Redactor, event: ShellEvent) {
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (redaction._tag === "None") return;
+  const secretEnv = yield* environmentForRedaction({}, event.env);
+  yield* publishShellEvent({
+    ...event,
+    command: redactor.redactString(event.command),
+    ...(event.cwd === undefined ? {} : { cwd: redactor.redactString(event.cwd) }),
+    ...(event.env === undefined
+      ? {}
+      : {
+          env: Object.fromEntries(
+            Object.entries(event.env).map(([key, value]) => [
+              key,
+              isSecretFieldName(key) && Object.hasOwn(secretEnv, key)
+                ? REDACTED
+                : redactor.redactString(value),
+            ]),
+          ),
+        }),
+    ...(event.stdout === undefined ? {} : { stdout: redactor.redactString(event.stdout) }),
+    ...(event.stderr === undefined ? {} : { stderr: redactor.redactString(event.stderr) }),
+  });
+});
 
 const shellEventShape = (command: string, options: ShellCommandOptions | undefined) => ({
   command,
@@ -144,7 +143,7 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* <Options extends 
           ...(options.argv === undefined ? {} : { argv: [...options.argv] }),
         };
   const context = captureHostExecutionContext({ ...snapshot, env: { ...snapshot?.env, BUN_BE_BUN: "1" } });
-  const redactor = yield* redactorForOptions(context.env);
+  const redactor = yield* redactorForOptions(context);
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "Some") {
     yield* redaction.value.registerValues([
