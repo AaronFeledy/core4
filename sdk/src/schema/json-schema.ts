@@ -222,7 +222,6 @@ import {
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
 import { DatabaseConnection, ServiceCreds, ServiceCredsDisplay } from "./database-connection.ts";
-import { SqliteTargetConfig } from "./sqlite.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -488,6 +487,7 @@ import {
   TomcatServiceConfig,
   VarnishServiceConfig,
 } from "./services/index.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
 import {

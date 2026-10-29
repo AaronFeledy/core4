@@ -36,14 +36,21 @@ export type SqlTargetPlan = {
   >;
 };
 
-export const NOT_FOUND_REMEDIATION =
-  "Add a mysql, mariadb, postgres, mongodb, mssql, or sqlite service.";
+export const NOT_FOUND_REMEDIATION = "Add a mysql, mariadb, postgres, mongodb, mssql, or sqlite service.";
 
 export const sqlCandidates = (plan: SqlTargetPlan): ReadonlyArray<SqlTarget> =>
   Object.values(plan.services)
     .flatMap((service): ReadonlyArray<SqlTarget> => {
       if (service.sqlite !== undefined) {
-        return [{ kind: "file", name: service.name, type: service.type, family: "sqlite", path: service.sqlite.path }];
+        return [
+          {
+            kind: "file",
+            name: service.name,
+            type: service.type,
+            family: "sqlite",
+            path: service.sqlite.path,
+          },
+        ];
       }
       const family = service.connection?.family ?? familyFromServiceType(service.type);
       return family === undefined ? [] : [{ kind: "server", name: service.name, type: service.type, family }];

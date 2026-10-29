@@ -16,7 +16,7 @@ import { DateTime, Effect } from "effect";
 
 import { packSqliteTar, unpackSqliteTar } from "./sqlite-archive.ts";
 import { isSqliteDatabaseHeader } from "./sqlite-header.ts";
-import { prepareSqliteHelper, runSqliteHelper, type SqliteHelperDeps } from "./sqlite-helper.ts";
+import { type SqliteHelperDeps, prepareSqliteHelper, runSqliteHelper } from "./sqlite-helper.ts";
 import { sqliteSnapshotStore } from "./sqlite-path.ts";
 import type { SqlFileTarget } from "./target.ts";
 import { type SqlPlan, type SqlPlanService, sqlPlanIdentity } from "./views.ts";
@@ -48,7 +48,12 @@ export const sqliteSnapshotMetadata = (input: {
 
 export const sqliteSnapshotsCompatible = (
   source: SnapshotInfo | undefined,
-  context: { readonly ownerKey: string; readonly service: string; readonly path: string; readonly version: string },
+  context: {
+    readonly ownerKey: string;
+    readonly service: string;
+    readonly path: string;
+    readonly version: string;
+  },
 ): boolean =>
   source?.metadata !== undefined &&
   source.metadata.family === "sqlite" &&
@@ -59,7 +64,12 @@ export const sqliteSnapshotsCompatible = (
 
 export const requireSqliteCompatibleSnapshot = (
   source: SnapshotInfo | undefined,
-  context: { readonly ownerKey: string; readonly service: string; readonly path: string; readonly version: string },
+  context: {
+    readonly ownerKey: string;
+    readonly service: string;
+    readonly path: string;
+    readonly version: string;
+  },
 ): Effect.Effect<void, SqlRecoveryUnavailableError> =>
   sqliteSnapshotsCompatible(source, context)
     ? Effect.void
@@ -86,9 +96,15 @@ const observeSqliteVersion = Effect.fn("Sql.observeSqliteVersion")(function* (
   target: SqlFileTarget,
 ) {
   const helper = yield* prepareSqliteHelper(deps, service, target);
-  const result = yield* runSqliteHelper(deps, target, helper, ["sqlite3", helper.dbPath, "SELECT sqlite_version();"], {
-    captureStdout: true,
-  });
+  const result = yield* runSqliteHelper(
+    deps,
+    target,
+    helper,
+    ["sqlite3", helper.dbPath, "SELECT sqlite_version();"],
+    {
+      captureStdout: true,
+    },
+  );
   const version = result.stdout.trim();
   if (version.length === 0) {
     return yield* Effect.fail(
@@ -147,7 +163,8 @@ export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(functi
   const directory = join(deps.paths.ownerSnapshotsDir(owner.ownerKey), store.store);
   yield* Effect.tryPromise({
     try: () => mkdir(directory, { recursive: true }),
-    catch: (cause) => catalogFailure(target.name, "Cannot create the SQLite snapshot catalog directory.", cause),
+    catch: (cause) =>
+      catalogFailure(target.name, "Cannot create the SQLite snapshot catalog directory.", cause),
   });
   yield* Effect.tryPromise({
     try: () => Bun.write(join(directory, `${id}.tar`), archive),
@@ -178,10 +195,18 @@ export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(functi
       codec: "json",
       onCorrupt: "fail",
     })
-    .pipe(Effect.mapError((cause) => catalogFailure(target.name, "Cannot open the SQLite snapshot sidecar.", cause)));
+    .pipe(
+      Effect.mapError((cause) =>
+        catalogFailure(target.name, "Cannot open the SQLite snapshot sidecar.", cause),
+      ),
+    );
   yield* bucket
     .set(info)
-    .pipe(Effect.mapError((cause) => catalogFailure(target.name, "Cannot write the SQLite snapshot sidecar.", cause)));
+    .pipe(
+      Effect.mapError((cause) =>
+        catalogFailure(target.name, "Cannot write the SQLite snapshot sidecar.", cause),
+      ),
+    );
   return snapshotHandle(info);
 });
 
@@ -209,5 +234,9 @@ export const readSqliteSnapshotArchive = (
   service: string,
 ): Effect.Effect<Uint8Array, SqlRecoveryUnavailableError> => {
   const directory = join(deps.paths.ownerSnapshotsDir(info.owner.ownerKey), info.store.store);
-  return readHostBytes(join(directory, `${info.id}.${info.format ?? "tar"}`), service, "Cannot read the SQLite snapshot archive.");
+  return readHostBytes(
+    join(directory, `${info.id}.${info.format ?? "tar"}`),
+    service,
+    "Cannot read the SQLite snapshot archive.",
+  );
 };

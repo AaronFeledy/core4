@@ -3,7 +3,6 @@ import { Schema } from "effect";
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
-import { SqliteTargetConfig } from "./sqlite.ts";
 import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { FileSyncPolicy } from "./file-sync-policy.ts";
@@ -33,6 +32,7 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.

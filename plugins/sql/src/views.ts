@@ -94,7 +94,9 @@ export const toSqlLandofile = (value: unknown): SqlLandofile => {
         )
       : undefined;
     const sqlitePath =
-      objectOrArray(service.sqlite) && typeof service.sqlite.path === "string" ? service.sqlite.path : undefined;
+      objectOrArray(service.sqlite) && typeof service.sqlite.path === "string"
+        ? service.sqlite.path
+        : undefined;
     mapped[serviceName] = {
       ...(type === undefined ? {} : { type }),
       ...(creds === undefined ? {} : { creds }),
@@ -138,9 +140,12 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
       return [{ store: entry.store, ...(target === undefined ? {} : { target }) }];
     });
     const sqlitePath =
-      objectOrArray(service.sqlite) && typeof service.sqlite.path === "string" ? service.sqlite.path : undefined;
+      objectOrArray(service.sqlite) && typeof service.sqlite.path === "string"
+        ? service.sqlite.path
+        : undefined;
     const mounts: SqlPlanMount[] = plannedMounts.flatMap((entry): SqlPlanMount[] => {
-      if (!objectOrArray(entry) || typeof entry.type !== "string" || typeof entry.target !== "string") return [];
+      if (!objectOrArray(entry) || typeof entry.type !== "string" || typeof entry.target !== "string")
+        return [];
       if (entry.type === "bind" && typeof entry.source === "string") {
         return [
           {

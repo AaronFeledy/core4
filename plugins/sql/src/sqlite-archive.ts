@@ -10,7 +10,9 @@ export const packSqliteTar = (payload: Uint8Array): Uint8Array => {
     typeflag: "0",
   });
   const padding = padToBlock(payload.byteLength);
-  const archive = new Uint8Array(header.byteLength + payload.byteLength + padding + END_OF_ARCHIVE.byteLength);
+  const archive = new Uint8Array(
+    header.byteLength + payload.byteLength + padding + END_OF_ARCHIVE.byteLength,
+  );
   archive.set(header);
   archive.set(payload, header.byteLength);
   archive.set(END_OF_ARCHIVE, header.byteLength + payload.byteLength + padding);

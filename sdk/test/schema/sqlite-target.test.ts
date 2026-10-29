@@ -21,19 +21,23 @@ describe("SqliteTargetConfig", () => {
     const once = Schema.decodeUnknownSync(SDK.LandofileShape)(input);
     const twice = Schema.decodeUnknownSync(SDK.LandofileShape)(once);
     expect(twice).toEqual(once);
-    expect(strictDecode(SDK.ServiceConfigInput, { type: "php:8.3", sqlite: { path: "db/app.sqlite" } })._tag).toBe(
-      "Success",
-    );
+    expect(
+      strictDecode(SDK.ServiceConfigInput, { type: "php:8.3", sqlite: { path: "db/app.sqlite" } })._tag,
+    ).toBe("Success");
   });
 
-  test.each(["", "/abs.sqlite", "C:db.sqlite", "data\\site.sqlite", "data//site.sqlite", "data/../site.sqlite"])(
-    "rejects sqlite.path %j",
-    (path) => {
-      expect(SDK.isSqliteAppRelativePath(path)).toBe(false);
-      expect(SDK.sqliteAppRelativePathIssue(path)).toBeDefined();
-      expect(Result.isFailure(strictDecode(SDK.SqliteTargetConfig, { path }))).toBe(true);
-    },
-  );
+  test.each([
+    "",
+    "/abs.sqlite",
+    "C:db.sqlite",
+    "data\\site.sqlite",
+    "data//site.sqlite",
+    "data/../site.sqlite",
+  ])("rejects sqlite.path %j", (path) => {
+    expect(SDK.isSqliteAppRelativePath(path)).toBe(false);
+    expect(SDK.sqliteAppRelativePathIssue(path)).toBeDefined();
+    expect(Result.isFailure(strictDecode(SDK.SqliteTargetConfig, { path }))).toBe(true);
+  });
 
   test("rejects unknown members under sqlite", () => {
     expect(strictDecode(SDK.SqliteTargetConfig, { path: "db.sqlite", extra: true })._tag).toBe("Failure");

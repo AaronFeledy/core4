@@ -6,11 +6,12 @@ import { expect, test } from "bun:test";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 
-import { isSqliteDatabaseHeader } from "../src/sqlite-header.ts";
 import { packSqliteTar, unpackSqliteTar } from "../src/sqlite-archive.ts";
+import { isSqliteDatabaseHeader } from "../src/sqlite-header.ts";
 
 const socket = process.env.LANDO_TEST_DOCKER_SOCKET || undefined;
-const dockerHost = socket === undefined ? undefined : socket.startsWith("unix://") ? socket : `unix://${socket}`;
+const dockerHost =
+  socket === undefined ? undefined : socket.startsWith("unix://") ? socket : `unix://${socket}`;
 
 test.skipIf(dockerHost === undefined)(
   `sqlite helper import/export/snapshot/restore round trip${dockerHost === undefined ? " (SKIP: LANDO_TEST_DOCKER_SOCKET required)" : ""}`,
@@ -38,7 +39,8 @@ test.skipIf(dockerHost === undefined)(
       const pull = await docker(["pull", sqliteHelperImage.ref]);
       expect(pull.exitCode).toBe(0);
 
-      const sql = "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items (name) VALUES ('ok');";
+      const sql =
+        "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items (name) VALUES ('ok');";
       const create = await docker(
         [
           "run",

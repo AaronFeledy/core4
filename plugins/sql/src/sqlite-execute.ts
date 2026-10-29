@@ -6,8 +6,8 @@ import { SqlRecoveryUnavailableError, SqlSeedSourceError } from "@lando/sdk/erro
 import type { DataTransferResult, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 import { physicalVolumeLockKey } from "@lando/sdk/services";
 
-import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { hostFile } from "./command-input.ts";
+import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { withHostDumpCompression } from "./compression.ts";
 import { ensureReadableDump } from "./dump-file.ts";
@@ -15,15 +15,15 @@ import { confirmOrFail, publishTree } from "./progress.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
 import { isSqliteDatabaseHeader } from "./sqlite-header.ts";
-import { prepareSqliteHelper, runSqliteHelper, type SqliteHelperDeps } from "./sqlite-helper.ts";
+import { type SqliteHelperDeps, prepareSqliteHelper, runSqliteHelper } from "./sqlite-helper.ts";
 import { sqliteSidecarPaths } from "./sqlite-path.ts";
 import {
+  type SqliteSnapshotDeps,
   createSqliteSnapshot,
   extractSqliteSnapshotArchive,
   readSqliteSnapshotArchive,
   requireSqliteCompatibleSnapshot,
   sqliteSnapshotVolume,
-  type SqliteSnapshotDeps,
 } from "./sqlite-snapshot.ts";
 import type { SqlFileTarget } from "./target.ts";
 import { sqlPlanIdentity } from "./views.ts";
@@ -109,8 +109,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
   const owner = sqlPlanIdentity(deps.plan);
   const store = sqliteSnapshotVolume(deps.plan, target.path);
   const file = hostFile(deps.plan, { ...input, service: target.name });
-  const dump =
-    input.action === "import" ? yield* ensureReadableDump(file, deps.plan.root) : undefined;
+  const dump = input.action === "import" ? yield* ensureReadableDump(file, deps.plan.root) : undefined;
   const compression = dump?.compression ?? compressionFromExportPath(file);
   const steps = [
     {
@@ -168,7 +167,9 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
       app: deps.plan.id,
       store: store.store,
       ownerKey: owner.ownerKey,
-      ...(deps.plan.identity?.repoGroupKey === undefined ? {} : { repoGroupKey: deps.plan.identity.repoGroupKey }),
+      ...(deps.plan.identity?.repoGroupKey === undefined
+        ? {}
+        : { repoGroupKey: deps.plan.identity.repoGroupKey }),
       service: target.name,
       ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
       ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),
@@ -239,16 +240,18 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
             ...(dump?.digest === undefined ? {} : { expectedDigest: dump.digest }),
             direction: "import",
             transfer: Effect.fn("Sql.sqliteImport.transfer")(function* (workingPath: string) {
-              const payload = new Uint8Array(yield* Effect.tryPromise({
-                try: () => Bun.file(workingPath).arrayBuffer(),
-                catch: (cause) =>
-                  new SqlRecoveryUnavailableError({
-                    message: `Cannot read import payload ${workingPath}.`,
-                    service: target.name,
-                    reason: String(cause),
-                    remediation: "Check the dump path and retry.",
-                  }),
-              }));
+              const payload = new Uint8Array(
+                yield* Effect.tryPromise({
+                  try: () => Bun.file(workingPath).arrayBuffer(),
+                  catch: (cause) =>
+                    new SqlRecoveryUnavailableError({
+                      message: `Cannot read import payload ${workingPath}.`,
+                      service: target.name,
+                      reason: String(cause),
+                      remediation: "Check the dump path and retry.",
+                    }),
+                }),
+              );
               if (isSqliteDatabaseHeader(payload)) {
                 yield* replaceSqliteFile(sqlite, service, target, payload);
               } else {
@@ -268,7 +271,13 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
         Effect.gen(function* () {
           yield* createSqliteSnapshot(sqlite, deps.plan, service, target, { recoveryReason: "reset" });
           const helper = yield* prepareSqliteHelper(sqlite, service, target);
-          yield* runSqliteHelper(sqlite, target, helper, ["sh", "-c", resetScript, "sqlite-reset", helper.dbPath]);
+          yield* runSqliteHelper(sqlite, target, helper, [
+            "sh",
+            "-c",
+            resetScript,
+            "sqlite-reset",
+            helper.dbPath,
+          ]);
         }),
       );
       break;
@@ -287,7 +296,9 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
         app: deps.plan.id,
         store: store.store,
         ownerKey: owner.ownerKey,
-        ...(deps.plan.identity?.repoGroupKey === undefined ? {} : { repoGroupKey: deps.plan.identity.repoGroupKey }),
+        ...(deps.plan.identity?.repoGroupKey === undefined
+          ? {}
+          : { repoGroupKey: deps.plan.identity.repoGroupKey }),
         service: target.name,
         ...(input.fromApp === undefined ? {} : { fromApp: input.fromApp }),
         ...(input.fromPath === undefined ? {} : { fromPath: input.fromPath }),

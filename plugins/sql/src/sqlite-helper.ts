@@ -7,7 +7,7 @@ import type { AppPlan } from "@lando/sdk/schema";
 import type { EphemeralRunSpec, ExecResult } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import { sqliteContainerPath, sqliteHelperAccess, requireSqliteCoveringMount } from "./sqlite-mount.ts";
+import { requireSqliteCoveringMount, sqliteContainerPath, sqliteHelperAccess } from "./sqlite-mount.ts";
 import { SQLITE_HELPER_SCRATCH_TARGET } from "./sqlite-path.ts";
 import type { SqlFileTarget } from "./target.ts";
 import type { SqlPlanService } from "./views.ts";
@@ -51,7 +51,9 @@ const helperFailure = (
     remediation: "Inspect the helper stderr, confirm sqlite.path is on a writable mount, then retry.",
   });
 
-export const resolveSqliteHelperImage = (deps: SqliteHelperDeps): Effect.Effect<string, SqlRecoveryUnavailableError> =>
+export const resolveSqliteHelperImage = (
+  deps: SqliteHelperDeps,
+): Effect.Effect<string, SqlRecoveryUnavailableError> =>
   deps.pullArtifact({ ref: sqliteHelperImage.ref, policy: "missing" }).pipe(
     Effect.mapError(
       (cause) =>
@@ -70,7 +72,8 @@ export const resolveSqliteHelperImage = (deps: SqliteHelperDeps): Effect.Effect<
               message: "Pinned SQLite helper image digest could not be verified.",
               service: "sqlite",
               reason: "The provider returned a different image digest than the pinned manifest.",
-              remediation: "Refuse to run an unverified helper image; retry after checking the provider runtime.",
+              remediation:
+                "Refuse to run an unverified helper image; retry after checking the provider runtime.",
             }),
           )
         : Effect.succeed(sqliteHelperImage.ref),
@@ -144,15 +147,16 @@ export const runSqliteHelper = Effect.fn("Sql.runSqliteHelper")(function* (
     ...(options?.captureStdout === undefined ? {} : { captureStdout: options.captureStdout }),
   };
   const result = yield* deps.run(spec).pipe(
-    Effect.mapError((cause) =>
-      new SqlCommandFailedError({
-        message: `SQLite helper failed for ${target.name}.`,
-        service: target.name,
-        command,
-        reason: "provider",
-        stderrTail: String(cause),
-        remediation: "Check provider runtime health with `lando doctor`, then retry.",
-      }),
+    Effect.mapError(
+      (cause) =>
+        new SqlCommandFailedError({
+          message: `SQLite helper failed for ${target.name}.`,
+          service: target.name,
+          command,
+          reason: "provider",
+          stderrTail: String(cause),
+          remediation: "Check provider runtime health with `lando doctor`, then retry.",
+        }),
     ),
   );
   if (result.exitCode !== 0) return yield* Effect.fail(helperFailure(target, command, result));

@@ -10,7 +10,8 @@ export type SqliteCoveringMount =
   | { readonly kind: "bind"; readonly source: string; readonly target: string; readonly readOnly: boolean }
   | { readonly kind: "volume"; readonly store: string; readonly target: string; readonly readOnly: boolean };
 
-const targetDepth = (target: string): number => target.split("/").filter((segment) => segment.length > 0).length;
+const targetDepth = (target: string): number =>
+  target.split("/").filter((segment) => segment.length > 0).length;
 
 export const sqliteContainerPath = (service: SqlPlanService, target: SqlFileTarget): string | undefined => {
   const appMount = service.mounts.find((mount) => mount.type === "bind" && mount.role === "app");
@@ -54,8 +55,7 @@ export const requireSqliteCoveringMount = (
       message: `No planned mount covers SQLite file ${filePath} on ${target.name}.`,
       service: target.name,
       reason: "The helper can only see bind or named-volume mounts from the applied plan.",
-      remediation:
-        "Rebuild the app so the SQLite path is on the app mount or an exclude volume, then retry.",
+      remediation: "Rebuild the app so the SQLite path is on the app mount or an exclude volume, then retry.",
     });
   }
   if (covering.kind === "tmpfs") {

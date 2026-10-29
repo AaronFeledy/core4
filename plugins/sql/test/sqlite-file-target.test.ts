@@ -4,9 +4,9 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { SqlSeedSourceError } from "@lando/sdk/errors";
 
 import { executeDbCommand } from "../src/run.ts";
-import { coveringSqliteMount, sqliteContainerPath } from "../src/sqlite-mount.ts";
-import { isSqliteDatabaseHeader } from "../src/sqlite-header.ts";
 import { packSqliteTar, unpackSqliteTar } from "../src/sqlite-archive.ts";
+import { isSqliteDatabaseHeader } from "../src/sqlite-header.ts";
+import { coveringSqliteMount, sqliteContainerPath } from "../src/sqlite-mount.ts";
 import { sqliteSidecarPaths, sqliteSnapshotStore } from "../src/sqlite-path.ts";
 import { sqliteSnapshotsCompatible } from "../src/sqlite-snapshot.ts";
 import { overlaySqliteFromLandofile } from "../src/views.ts";
@@ -59,9 +59,7 @@ describe("covering sqlite mounts", () => {
   test("joins sqlite.path onto the app mount", () => {
     expect(
       sqliteContainerPath(
-        service([
-          { type: "bind", source: "/host/app", target: "/app", readOnly: false, role: "app" },
-        ]),
+        service([{ type: "bind", source: "/host/app", target: "/app", readOnly: false, role: "app" }]),
         target,
       ),
     ).toBe("/app/data/site.sqlite");
@@ -85,10 +83,7 @@ describe("covering sqlite mounts", () => {
 
   test("rejects tmpfs covering mounts", () => {
     expect(
-      coveringSqliteMount(
-        service([{ type: "tmpfs", target: "/app/data" }]),
-        "/app/data/site.sqlite",
-      ),
+      coveringSqliteMount(service([{ type: "tmpfs", target: "/app/data" }]), "/app/data/site.sqlite"),
     ).toEqual({ kind: "tmpfs", target: "/app/data" });
   });
 });
