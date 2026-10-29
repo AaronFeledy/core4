@@ -17,14 +17,9 @@ import { type AppPlan, BootstrapLevel, type ToolingTaskShape } from "@lando/sdk/
 import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-command";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
-import { serializeToolingInput } from "@lando/landofile/tooling-input";
-import {
-  type NormalizedToolingArg,
-  type NormalizedToolingFlag,
-  type NormalizedToolingTask,
-  normalizeToolingTask,
-} from "@lando/landofile/tooling-normalize";
+import { type NormalizedToolingTask, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
+import { resolveEventScriptTarget } from "./event-script-target";
 import type { LandoCommandSpec } from "./spec/command-spec";
 
 const loaderCache = new WeakMap<ExecutableCommandLoader, Promise<ExecutableCommandSpec>>();
@@ -106,18 +101,6 @@ const loadPluginSpec = (
           }),
   });
 
-const toolingFlag = (definition: NormalizedToolingFlag) =>
-  ({
-    type: definition.boolean === true ? "boolean" : "option",
-    ...(definition.default === undefined ? {} : { default: definition.default }),
-  }) satisfies NonNullable<ExecutableCommandSpec["flags"]>[string];
-
-const toolingArg = (definition: NormalizedToolingArg) => ({
-  type: "option" as const,
-  ...(definition.required === undefined ? {} : { required: definition.required }),
-  ...(definition.default === undefined ? {} : { default: definition.default }),
-});
-
 const toolingSpec = (
   declaration: NormalizedToolingTask,
   task: ToolingTaskShape,
@@ -127,21 +110,15 @@ const toolingSpec = (
   summary: declaration.summary ?? `Run ${declaration.name} tooling.`,
   namespace: "app",
   bootstrap: "tooling",
-  flags: Object.fromEntries(declaration.flags.map((value) => [value.name, toolingFlag(value)])),
-  args: Object.fromEntries(declaration.args.map((value) => [value.name, toolingArg(value)])),
-  strict: task.arguments === false,
   resultSchema: Schema.Unknown,
   run: (input) =>
-    Effect.flatMap(
-      Effect.fromResult(
-        serializeToolingInput(declaration, {
-          flags: input.flags,
-          args: input.args,
-          passthroughArgv: input.argv,
-        }),
-      ),
-      (raw) => runEventToolingCommand(plan, declaration.name, task, raw),
-    ),
+    runEventToolingCommand({
+      plan,
+      name: declaration.name,
+      task,
+      input: { _tag: "NamedMaps", flags: input.flags, args: input.args, passthroughArgv: input.argv },
+      expectedInputRevision: declaration.input.revision,
+    }),
   completion: (result) =>
     commandCompletionFromExitCode(
       Schema.decodeUnknownSync(Schema.Struct({ exitCode: Schema.Number }))(result).exitCode,
@@ -178,7 +155,8 @@ type ToolingEventCommandTarget = {
   readonly kind: "tooling";
   readonly spec: ExecutableCommandSpec;
   readonly toolingName: string;
-  readonly toolingTask: ToolingTaskShape;
+  readonly toolingTask?: ToolingTaskShape;
+  readonly toolingInput: NormalizedToolingTask["input"];
 };
 
 export type EventCommandTarget =
@@ -220,7 +198,11 @@ export const resolveEventCommandTarget = (
   plan?: AppPlan,
 ): Effect.Effect<
   EventCommandTarget,
-  PluginDescriptorMismatchError | PluginLoadError | ToolingCommandLookupError | ToolingCompileError
+  | PluginDescriptorMismatchError
+  | PluginLoadError
+  | ToolingCommandLookupError
+  | ToolingCompileError
+  | Effect.Error<ReturnType<typeof resolveEventScriptTarget>>
 > => {
   const graph = Context.getOption(runtimeContext, PluginContributionGraph);
   const tooling = plan === undefined ? undefined : effectiveToolingForPlan(plan);
@@ -249,8 +231,17 @@ export const resolveEventCommandTarget = (
         spec: toolingSpec(declaration, task, plan),
         toolingName,
         toolingTask: task,
+        toolingInput: declaration.input,
       }),
     );
   }
+  if (plan !== undefined && toolingName !== undefined)
+    return resolveEventScriptTarget(toolingName, plan).pipe(
+      Effect.flatMap((target) =>
+        target === undefined
+          ? Effect.fail(lookupFailure({ command, builtIns, graph, tooling }))
+          : Effect.succeed(target),
+      ),
+    );
   return Effect.fail(lookupFailure({ command, builtIns, graph, tooling }));
 };
