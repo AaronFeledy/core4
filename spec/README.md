@@ -68,6 +68,7 @@ If you are looking for a public surface or policy:
 | Runtime layers, dependency direction, and source layout | 03 | §3.1 + §3.3 |
 | Bootstrap levels and fast paths | 03 | §3.2 |
 | Core Effect service tags | 03 | §3.4 |
+| Host execution directory identity, environment snapshots, and PWD precedence | 03 | §3.4 |
 | Lifecycle event scopes and names | 03 | §3.5 |
 | CLI and embedding imperative shells | 03 | §3.6 |
 | Canonical secret and PII redaction | 03 | §3.7 |
