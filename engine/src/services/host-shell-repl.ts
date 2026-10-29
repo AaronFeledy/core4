@@ -1,7 +1,7 @@
 import { Effect, Option } from "effect";
 
-import { ShellExecError } from "@lando/sdk/errors";
-import { REDACTED, type Redactor, parseSecretReference } from "@lando/sdk/secrets";
+import { FileIoError, ShellExecError } from "@lando/sdk/errors";
+import { REDACTED, type Redactor } from "@lando/sdk/secrets";
 import {
   EventService,
   type LandoEvent,
@@ -14,61 +14,14 @@ import {
 
 import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import { captureHostExecutionContext } from "./host-execution-context.ts";
 import { DEFAULT_SHELL_HISTORY_LIMIT, appendShellHistory, readShellHistory } from "./host-shell-history.ts";
-import { runHostShellLine } from "./host-shell-line.ts";
+import { hostShellError, redactHostShellError, runHostShellLine } from "./host-shell-line.ts";
 import { makeStatefulShellRedactor } from "./host-shell-redactor.ts";
+import { resolveHostShellSecrets } from "./host-shell-secrets.ts";
 
-const SECRET_REFERENCE = /\$\{secret:([^}\r\n]+)\}/g;
 const EXIT_LINE = /^exit(?:\s+([+-]?[0-9]+))?\s*$/;
 type HostShellReplSpec = Omit<ShellInteractiveSpec, "io"> & { readonly io: ShellReplIO };
-
-const shellError = (message: string, command: string, cause?: unknown): ShellExecError =>
-  new ShellExecError({
-    message,
-    command,
-    cause,
-    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
-  });
-
-const redactShellError = (redactor: Redactor, error: ShellExecError): ShellExecError =>
-  new ShellExecError({
-    message: redactor.redactString(error.message),
-    command: redactor.redactString(error.command),
-    ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
-    ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
-    ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
-    ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
-    cause: redactor.redactValue(error.cause),
-    remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
-  });
-
-const resolveSecrets = Effect.fnUntraced(function* (
-  line: string,
-  resolveSecret: ShellInteractiveSpec["resolveSecret"],
-): Effect.fn.Return<
-  { readonly fragments: ReadonlyArray<string>; readonly values: ReadonlyArray<string> },
-  ShellExecError
-> {
-  SECRET_REFERENCE.lastIndex = 0;
-  const matches = [...line.matchAll(SECRET_REFERENCE)];
-  if (line.replace(SECRET_REFERENCE, "").includes("${secret:")) {
-    return yield* Effect.fail(shellError("Malformed secret reference.", REDACTED));
-  }
-  const values = yield* Effect.forEach(matches, (match) =>
-    Effect.gen(function* () {
-      const reference = yield* Effect.fromResult(parseSecretReference(match[1] ?? ""));
-      return yield* resolveSecret(reference.raw);
-    }),
-  ).pipe(Effect.mapError((error) => shellError(error.message, REDACTED, error)));
-  const fragments: string[] = [];
-  let cursor = 0;
-  for (const match of matches) {
-    fragments.push(line.slice(cursor, match.index));
-    cursor = (match.index ?? cursor) + match[0].length;
-  }
-  fragments.push(line.slice(cursor));
-  return { fragments, values };
-});
 
 const nextInput = (iterator: AsyncIterator<ShellReplInput>): Promise<ShellReplInput> =>
   iterator.next().then((result) => (result.done ? { _tag: "eof" } : result.value));
@@ -96,10 +49,9 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
   const eventService = yield* Effect.serviceOption(EventService);
   const redactionService = yield* Effect.serviceOption(RedactionService);
   const sourceEnv = { ...process.env, ...spec.env };
-  const envRedactionTokens = collectSecretEnvValues(sourceEnv);
-  const redactorFor = (redactionTokens: Iterable<string>): Effect.Effect<Redactor> => {
+  const redactorFor = (redactionTokens: Iterable<string>, env = sourceEnv): Effect.Effect<Redactor> => {
     const options = {
-      sourceEnv,
+      sourceEnv: env,
       redactionTokens,
     };
     return Option.isNone(redactionService)
@@ -156,9 +108,12 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
           if (line.length === 0) continue;
           const exitCode = parseExit(line, lastStatus);
           if (exitCode !== undefined) return { exitCode };
+          const captured = captureHostExecutionContext(spec);
+          const lineEnv = { ...captured.env };
+          const envRedactionTokens = collectSecretEnvValues(lineEnv);
           const resolution = await Effect.runPromise(
             Effect.result(
-              resolveSecrets(line, (reference) =>
+              resolveHostShellSecrets(line, (reference) =>
                 spec.resolveSecret(reference).pipe(
                   Effect.tap((value) =>
                     Option.match(redactionService, {
@@ -176,7 +131,7 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
             continue;
           }
           const resolved = resolution.success;
-          const redactor = await Effect.runPromise(redactorFor(resolved.values));
+          const redactor = await Effect.runPromise(redactorFor(resolved.values, lineEnv));
           const command = redactor.redactString(
             resolved.fragments.reduce(
               (text, fragment, index) => `${text}${index === 0 ? "" : REDACTED}${fragment}`,
@@ -216,15 +171,18 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
           );
           let result: ProcessResult;
           try {
-            const execution = runHostShellLine({
-              fragments: resolved.fragments,
-              values: resolved.values,
-              ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
-              ...(spec.env === undefined ? {} : { env: spec.env }),
-              signal: controller.signal,
-              writeStdout: (chunk) => outputRedactor.push("stdout", chunk),
-              writeStderr: (chunk) => outputRedactor.push("stderr", chunk),
-            })
+            const execution = runHostShellLine(
+              {
+                fragments: resolved.fragments,
+                values: resolved.values,
+                ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
+                ...(spec.env === undefined ? {} : { env: spec.env }),
+                signal: controller.signal,
+                writeStdout: (chunk) => outputRedactor.push("stdout", chunk),
+                writeStderr: (chunk) => outputRedactor.push("stderr", chunk),
+              },
+              captured,
+            )
               .finally(() => {
                 outputRedactor.flush();
               })
@@ -247,22 +205,20 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
               if (raced.kind === "input") pending = Promise.resolve(raced.event);
             }
           } catch (cause) {
+            if (controller.signal.aborted) return { exitCode: 130 };
             const message = redactor.redactString(
               cause instanceof Error ? cause.message : "Host shell evaluator failed.",
             );
-            result = { exitCode: 1, stdout: "", stderr: message };
-            await publishPost(result);
-            await persistHistory();
             throw new ShellExecError({
               message,
               command,
               ...(spec.cwd === undefined ? {} : { cwd: redactor.redactString(spec.cwd) }),
-              exitCode: result.exitCode,
-              stdout: result.stdout,
-              stderr: result.stderr,
               cause: redactor.redactValue(cause),
-              remediation:
-                "Fix the shell command so it succeeds in the reported working directory, then re-run.",
+              remediation: redactor.redactString(
+                cause instanceof FileIoError
+                  ? cause.remediation
+                  : "Fix the Bun Shell command so it succeeds in the reported working directory, then re-run.",
+              ),
             });
           } finally {
             spec.signal?.removeEventListener("abort", abort);
@@ -290,8 +246,8 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
     },
     catch: (cause) =>
       cause instanceof ShellExecError
-        ? redactShellError(baseRedactor, cause)
-        : shellError(
+        ? redactHostShellError(baseRedactor, cause)
+        : hostShellError(
             baseRedactor.redactString(cause instanceof Error ? cause.message : "Host shell REPL failed."),
             REDACTED,
             baseRedactor.redactValue(cause),
