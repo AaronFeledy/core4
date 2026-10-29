@@ -89,6 +89,6 @@ test("projections retain array-shaped objects while excluding null and functions
   // Then
   expect(landofile.services).toEqual({ "0": { type: "mysql", environment: { "0": "array-value" } } });
   expect(plan.services).toEqual({
-    "0": { name: "0", type: "mysql", environment: { "0": "array-value" }, storage: [] },
+    "0": { name: "0", type: "mysql", environment: { "0": "array-value" }, mounts: [], storage: [] },
   });
 });

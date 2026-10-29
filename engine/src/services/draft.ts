@@ -50,6 +50,7 @@ export interface DraftServicePlan {
   environment: Record<string, EnvironmentValue>;
   readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
+  sqlite?: ServicePlan["sqlite"];
   user?: string;
   workingDirectory?: ServicePlan["workingDirectory"];
   appMount?: ServiceAppMountIntent;

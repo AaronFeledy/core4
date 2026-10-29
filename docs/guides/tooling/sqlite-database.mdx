@@ -1,0 +1,60 @@
+---
+id: sqlite-database
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, database, sqlite]
+---
+
+# Use SQLite with db commands
+
+Declare `sqlite.path` on an app service to run `lando db:import`, `lando db:export`, `lando db:snapshot`, `lando db:restore`, and `lando db:reset` against a SQLite file. The path is relative to that service's app mount. Absolute paths and `..` segments are rejected.
+
+```yaml
+name: sqlite-database-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    sqlite:
+      path: data/site.sqlite
+```
+
+`lando app:config:lint --format=json` from the app directory confirms the Landofile. `db:*` commands use this key even before you rebuild, as long as the service already has an applied plan. `lando info` shows `engine=sqlite` and the path after the planner stamps the next apply.
+
+Pass `--service <name>` when the app also has a mysql, mariadb, postgres, mongodb, or mssql service. Seed is not supported for SQLite files; import, restore, or reset the file instead.
+
+## Import, export, snapshot, restore, and reset
+
+Run dump commands from the app directory. A raw SQLite file is detected from its `SQLite format 3` header, not from the suffix, and replaces the target file. Other dumps decompress on the host and run through `sqlite3` with `.bail` on. Export writes `.dump` SQL and uses the same host gzip or zstd path as other `db:export` commands.
+
+```sh
+lando db:export backup.sql.gz --service appserver
+lando db:import backup.sql.gz --service appserver --yes
+lando db:snapshot --service appserver
+lando db:restore <id> --service appserver --yes
+lando db:reset --service appserver --yes
+```
+
+Reset deletes the database file together with `-wal`, `-shm`, and `-journal` sidecars. Snapshots are scoped to this app, worktree, service, and path, and they record `sqlite_version()` so a restore cannot land on a different engine build. They do not reuse named-volume snapshot restore.
+
+Import, restore, and reset write a temp file, checkpoint WAL with `TRUNCATE`, then rename. Do not swap a live writer blindly. On macOS virtiofs, file locks can lag behind the container, so stop writers or retry if a replace fails.
+
+If `appMount.excludes` puts the file's directory on a named volume, the helper mounts that volume. A tmpfs covering mount fails closed; move `sqlite.path` onto a bind or named volume.
+
+## Check the Landofile
+
+<Guide>
+  <Scenario id="lint-sqlite-path" render>
+    <Step name="scaffold">
+      <UseFixture name="sqlite-database-demo" />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Import and export app databases](./db-import-export.mdx)

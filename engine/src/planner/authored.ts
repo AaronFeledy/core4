@@ -46,6 +46,9 @@ export const validateAuthoredAppMount = (
   });
 };
 
+export const applyAuthoredSqlite = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan =>
+  service.sqlite === undefined ? servicePlan : { ...servicePlan, sqlite: service.sqlite };
+
 export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.healthcheck;
   if (authored === undefined) return servicePlan;
@@ -115,7 +118,7 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
       ),
     );
     const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
-      applyAuthoredHealthcheck(composition.plan, service),
+      applyAuthoredSqlite(applyAuthoredHealthcheck(composition.plan, service), service),
       service,
     );
     const authoredServicePlan = mergeComposeKnobs(

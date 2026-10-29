@@ -1,0 +1,7 @@
+name: sqlite-database-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    sqlite:
+      path: data/site.sqlite

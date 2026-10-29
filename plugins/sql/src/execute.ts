@@ -26,6 +26,7 @@ import { executeSeed } from "./seed.ts";
 import { requireRestoreCompatibleSnapshot } from "./snapshot-compatibility.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
+import { executeSqliteCommand } from "./sqlite-execute.ts";
 import { resolveSqlTarget } from "./target.ts";
 import { sqlPlanIdentity } from "./views.ts";
 export type { DbAction, DbCommandInput, SqlCommandDeps } from "./command-types.ts";
@@ -44,6 +45,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   const resolved = resolveSqlTarget(rawDeps.plan, input.service);
   if (resolved._tag === "Failure") return yield* Effect.fail(resolved.failure);
   const target = resolved.success;
+  if (target.kind === "file") return yield* executeSqliteCommand(rawDeps, input, target);
   const owner = sqlPlanIdentity(rawDeps.plan);
   const service = rawDeps.plan.services[target.name];
   if (service === undefined) {
@@ -52,7 +54,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         message: `No SQL service named ${target.name}.`,
         service: target.name,
         available: [],
-        remediation: "Add a mysql, mariadb, postgres, mongodb, or mssql service.",
+        remediation: "Add a mysql, mariadb, postgres, mongodb, mssql, or sqlite service.",
       }),
     );
   }

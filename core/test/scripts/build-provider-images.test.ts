@@ -22,6 +22,14 @@ describe("provider-image manifest", () => {
     expect(volumeWitness?.digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
   });
 
+  test("pins the sqlite helper image by digest", () => {
+    const sqliteHelper = PROVIDER_IMAGES.images.sqliteHelper;
+    expect(sqliteHelper?.image).toBe("docker.io/keinos/sqlite3:3.54.1");
+    expect(sqliteHelper?.digest).toBe(
+      "sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17",
+    );
+  });
+
   test("validates schemaVersion, non-empty image, and digest shape", () => {
     expect(() =>
       validateProviderImageManifest({

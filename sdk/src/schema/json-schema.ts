@@ -222,6 +222,7 @@ import {
   VolumeSnapshotSpec,
 } from "./data-transfer.ts";
 import { DatabaseConnection, ServiceCreds, ServiceCredsDisplay } from "./database-connection.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import {
   DeprecationNotice,
   DeprecationNoticeJsonShape,
@@ -710,6 +711,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ToolingInvocationInput,
   ServiceConfigInput,
   ServiceFileConfig,
+  SqliteTargetConfig,
   PhpComposerConfig,
   LogSource,
   LogSourceId,
@@ -1093,7 +1095,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   Environment: "Single typed environment map.",
   ServiceCreds: "Credentials with typed deferred passwords.",
   DatabaseConnection: "Canonical database family, credentials and planned port.",
-  ServiceCredsDisplay: "String-only redacted credential display.",
+  ServiceCredsDisplay: "String-only info view: server credentials, or a SQLite engine and path.",
   CurrentExecutableAppPlan: "Explicitly current plan required for creation eligibility.",
   EventStepPlan: "Compiled event step with authored provenance and execution status.",
   EventStepSource: "Host or project provenance of a compiled event step.",
@@ -1272,6 +1274,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceConfigInput:
     "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
   ServiceFileConfig: "App-relative file-backed service configuration mounted read-only into the container.",
+  SqliteTargetConfig: "File-backed SQLite database declared on an app service.",
   PhpComposerConfig: "Composer release selection plus the global Composer packages installed with it.",
   LogSource: "Public Lando schema contract for Log Source.",
   LogSourceId: "Public Lando schema contract for Log Source Id.",

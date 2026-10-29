@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import { sha256Hex } from "../digest/index.ts";
 import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { FileSyncPolicy } from "./file-sync-policy.ts";
@@ -84,6 +85,9 @@ const ServicePlanFields = {
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
   environment: Environment,
+  sqlite: Schema.optionalKey(SqliteTargetConfig).annotate({
+    description: "File-backed SQLite database copied from the service's authored sqlite.path.",
+  }),
   user: Schema.optionalKey(Schema.String),
   home: Schema.optionalKey(ServiceHomePlan).annotate({
     description: "Resolved home status, always set by the planner; optional for hand-built plans.",

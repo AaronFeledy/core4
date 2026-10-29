@@ -10,6 +10,7 @@ import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeServiceKnobFields, ComposeTmpfsServiceField } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { ServiceCreds } from "./database-connection.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
@@ -621,6 +622,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     database: Schema.optionalKey(Schema.String).annotate({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
+    }),
+    sqlite: Schema.optionalKey(SqliteTargetConfig).annotate({
+      description:
+        "File-backed SQLite database relative to this service's app mount. Use db:import, db:export, db:snapshot, db:restore, and db:reset against the file.",
     }),
     password: Schema.optionalKey(EnvironmentValue).annotate({
       description:

@@ -921,6 +921,48 @@ describe("provider data plane", () => {
     });
   });
 
+  test("forwards ephemeral bind mounts, user, and empty entrypoint", async () => {
+    let createBody: unknown;
+    const api: DataPlaneApiClient = {
+      request: (request) => {
+        if (request.path.startsWith("/containers/create?name=")) createBody = request.body;
+        return Effect.succeed(
+          request.path.endsWith("/json")
+            ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+            : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+        );
+      },
+      stream: () => Stream.empty,
+    };
+    const provider = makeProviderDataPlane({
+      providerId: "test",
+      api,
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
+    });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.run({
+          image: "docker.io/keinos/sqlite3:3.54.1",
+          command: ["sqlite3", "/app/db.sqlite", ".dump"],
+          binds: [{ source: "/host/app", target: "/app" }],
+          user: "33:33",
+          entrypoint: [],
+          remove: true,
+        }),
+      ),
+    );
+
+    expect(createBody).toMatchObject({
+      User: "33:33",
+      Entrypoint: [],
+      HostConfig: {
+        Mounts: [{ Type: "bind", Source: "/host/app", Target: "/app", ReadOnly: false }],
+      },
+    });
+  });
+
   test("adopts an existing ephemeral volume without treating submitted labels as observed", async () => {
     // Given: the daemon reports that the declared volume already exists.
     const requests: Array<{ readonly path: string; readonly body?: unknown }> = [];

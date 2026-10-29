@@ -75,6 +75,7 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
       : draft.nonSqlCreds === undefined
         ? {}
         : { nonSqlCreds: draft.nonSqlCreds }),
+    ...(draft.sqlite === undefined ? {} : { sqlite: draft.sqlite }),
     ...(draft.user === undefined ? {} : { user: draft.user }),
     ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
     mounts,

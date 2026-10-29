@@ -47,7 +47,7 @@ export {
 } from "./volume-ownership.ts";
 import { volumeCreationLabels as makeVolumeCreationLabels } from "./volume-creation.ts";
 export { volumeCreationFact, volumeCreationLabels } from "./volume-creation.ts";
-export { dataHelperImage, volumeWitnessImage } from "./helper-images.ts";
+export { dataHelperImage, sqliteHelperImage, volumeWitnessImage } from "./helper-images.ts";
 
 import { Cause, Duration, Effect, Exit, Fiber, type Scope, Stream } from "effect";
 
@@ -596,19 +596,27 @@ const createEphemeralContainer = (
       ? []
       : [`${volumeName(mount.store)}:${mount.target}${mount.readOnly ? ":ro" : ""}`],
   );
-  const mounts = (spec.mounts ?? []).flatMap((mount) =>
-    mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
-      ? [
-          {
-            Type: "volume",
-            Source: volumeName(mount.store),
-            Target: mount.target,
-            ReadOnly: mount.readOnly,
-            ...(mount.subpath === undefined ? {} : { VolumeOptions: { Subpath: mount.subpath } }),
-          },
-        ]
-      : [],
-  );
+  const mounts = [
+    ...(spec.mounts ?? []).flatMap((mount) =>
+      mount.subpath !== undefined || requiresLongMountSyntax(mount.target)
+        ? [
+            {
+              Type: "volume",
+              Source: volumeName(mount.store),
+              Target: mount.target,
+              ReadOnly: mount.readOnly,
+              ...(mount.subpath === undefined ? {} : { VolumeOptions: { Subpath: mount.subpath } }),
+            },
+          ]
+        : [],
+    ),
+    ...(spec.binds ?? []).map((bind) => ({
+      Type: "bind",
+      Source: bind.source,
+      Target: bind.target,
+      ReadOnly: bind.readOnly === true,
+    })),
+  ];
   const attachStdin = spec.stdinStream !== undefined;
   return request(options, "run.create", {
     method: "POST",
@@ -624,7 +632,11 @@ const createEphemeralContainer = (
       }),
       ...(envList(spec.env) === undefined ? {} : { Env: envList(spec.env) }),
       ...(witnessSource === undefined
-        ? { HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) } }
+        ? {
+            ...(spec.user === undefined ? {} : { User: spec.user }),
+            ...(spec.entrypoint === undefined ? {} : { Entrypoint: spec.entrypoint }),
+            HostConfig: { Binds: binds, ...(mounts.length === 0 ? {} : { Mounts: mounts }) },
+          }
         : {
             User: "0:0",
             Entrypoint: [],

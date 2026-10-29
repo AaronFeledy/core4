@@ -212,6 +212,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ToolingInvocationInput: "sdk/test/schema/tooling-input.test.ts",
   ServiceConfigInput: "sdk/test/schema/service-config-compose-spellings.test.ts",
   ServiceFileConfig: "sdk/test/schema/service-file-config.test.ts",
+  SqliteTargetConfig: "sdk/test/schema/sqlite-target.test.ts",
   PhpComposerConfig: "sdk/test/schema/php-composer-config.test.ts",
   LogSource: "sdk/test/schema/log-source.test.ts",
   LogSourceId: "sdk/test/schema/log-source.test.ts",
@@ -672,6 +673,7 @@ const recipeProvenanceFixture = {
 } as const;
 
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  SqliteTargetConfig: { path: "data/site.sqlite" },
   RecipeSourceCompileContext: { sourceKind: "local", packageName: "example", assets: [] },
   ContainerHelperArch: "x64",
   ContainerHelperTarget: { os: "linux", arch: "arm64" },

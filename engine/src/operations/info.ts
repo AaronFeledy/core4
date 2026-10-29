@@ -77,6 +77,11 @@ const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppServ
   };
 };
 
+const credsFromService = (service: ServicePlan): InfoAppService["creds"] =>
+  service.sqlite === undefined
+    ? credsFromConnection(service.connection)
+    : { engine: "sqlite", path: service.sqlite.path };
+
 const toServiceInfo = (
   plan: AppPlan,
   service: ServicePlan,
@@ -98,7 +103,7 @@ const toServiceInfo = (
         "This provider cannot follow log files. Set `strategy: redirect` on this source to view it with `lando logs`.",
     };
   });
-  const creds = credsFromConnection(service.connection);
+  const creds = credsFromService(service);
   const artifact =
     service.artifact === undefined
       ? undefined

@@ -6,8 +6,9 @@
  *
  * Helper images are run only by digest reference, acquired with the `missing`
  * pull policy and verified against the pin before use: `dataHelper` (DataMover
- * transfers and the data-plane snapshot commit) and `volumeWitness` (the
- * volume-ownership witness and the Windows file-sync helper).
+ * transfers and the data-plane snapshot commit), `volumeWitness` (the
+ * volume-ownership witness and the Windows file-sync helper), and `sqliteHelper`
+ * (the sql plugin's pinned sqlite3 helper for file-backed targets).
  *
  * Drift gate: re-run + `git diff --exit-code` on the output. The generated TS
  * is byte-stable for a given pinned image/digest table.
@@ -42,6 +43,10 @@ export const PROVIDER_IMAGES: ProviderImageManifest = {
     volumeWitness: {
       image: "docker.io/oven/bun:1.4.0-alpine",
       digest: "sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb",
+    },
+    sqliteHelper: {
+      image: "docker.io/keinos/sqlite3:3.54.1",
+      digest: "sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17",
     },
   },
 };
