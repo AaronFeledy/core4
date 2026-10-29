@@ -9,6 +9,7 @@ import {
 } from "../../../scripts/schema-compatibility/classifier.ts";
 import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
+import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
@@ -69,29 +70,31 @@ const WIRE_TEST_TIMEOUT_MS = 120_000;
 // normalizes identically for every test, so compute both once per file.
 const evolvedTypedCache = new Map<
   keyof typeof typedCaptured,
-  ReturnType<typeof evolveHistoricalIncludeChecksum>
+  ReturnType<typeof evolveHistoricalAppMountAcceleration>
 >();
 const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
-  const evolved = evolveHistoricalToolingShorthand(
-    evolveHistoricalEnvironment(
-      evolveHistoricalEndpointMetadata(
-        evolveHistoricalIncludeChecksum(
-          evolveHistoricalTimestamps(
-            evolveHistoricalShorthand(
-              evolveHistoricalNetworks(
-                normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
-                "authoring",
+  const evolved = evolveHistoricalAppMountAcceleration(
+    evolveHistoricalToolingShorthand(
+      evolveHistoricalEnvironment(
+        evolveHistoricalEndpointMetadata(
+          evolveHistoricalIncludeChecksum(
+            evolveHistoricalTimestamps(
+              evolveHistoricalShorthand(
+                evolveHistoricalNetworks(
+                  normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+                  "authoring",
+                ),
               ),
+              "authoring",
             ),
-            "authoring",
           ),
         ),
+        "authoring",
       ),
       "authoring",
     ),
-    "authoring",
   );
   evolvedTypedCache.set(source, evolved);
   return evolved;
@@ -134,19 +137,21 @@ describe("embedded wire closed x-* artifact repair", () => {
   }, 120_000);
 
   test("collapses an identifier-only local ref onto the same normalized graph", async () => {
-    const repaired = evolveHistoricalEnvironment(
-      evolveHistoricalEndpointMetadata(
-        evolveHistoricalTimestamps(
-          evolveHistoricalShorthand(
-            evolveHistoricalNetworks(
-              normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
-              "authoring",
+    const repaired = evolveHistoricalAppMountAcceleration(
+      evolveHistoricalEnvironment(
+        evolveHistoricalEndpointMetadata(
+          evolveHistoricalTimestamps(
+            evolveHistoricalShorthand(
+              evolveHistoricalNetworks(
+                normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+                "authoring",
+              ),
             ),
+            "authoring",
           ),
-          "authoring",
         ),
+        "authoring",
       ),
-      "authoring",
     );
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),

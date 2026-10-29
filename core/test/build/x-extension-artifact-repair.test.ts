@@ -12,6 +12,7 @@ import {
 } from "../../../scripts/schema-compatibility/classifier.ts";
 import { type JsonSchema, isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
+import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
 import {
   CLOSED_EXTENSION_JUSTIFICATION,
   CONFIG_COMMANDS,
@@ -54,20 +55,22 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalToolingShorthand(
-    evolveHistoricalEnvironment(
-      evolveHistoricalEndpointMetadata(
-        evolveHistoricalServicePort(
-          evolveHistoricalTimestamps(
-            evolveHistoricalContainerUser(
-              evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+  evolveHistoricalAppMountAcceleration(
+    evolveHistoricalToolingShorthand(
+      evolveHistoricalEnvironment(
+        evolveHistoricalEndpointMetadata(
+          evolveHistoricalServicePort(
+            evolveHistoricalTimestamps(
+              evolveHistoricalContainerUser(
+                evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+              ),
+              "bare",
             ),
-            "bare",
           ),
         ),
       ),
+      "bare",
     ),
-    "bare",
   );
 
 describe("closed x-* extension artifact repair", () => {
