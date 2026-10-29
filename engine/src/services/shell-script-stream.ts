@@ -35,17 +35,17 @@ export const streamBunScript = Effect.fnUntraced(
   ) {
     const runner = yield* ProcessRunner;
     const sink = Option.fromUndefinedOr(output.sink);
-    return yield* collectExecStream(
-      runner.streamWithExit({
-        cmd: process.execPath,
-        args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), path, ...(options?.argv ?? [])],
-        ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-        env: yield* scriptEnv(options),
-        ...(options?.hostIo === undefined ? {} : { inheritStdin: true }),
-        ...(options?.signal === undefined ? {} : { signal: options.signal }),
-      }),
-      sink,
-    );
+    const input = {
+      cmd: process.execPath,
+      args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), path, ...(options?.argv ?? [])],
+      ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+      env: yield* scriptEnv(options),
+      ...(options?.hostIo === undefined ? {} : { inheritStdin: true }),
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
+      ...(options?.capture === true ? { capture: true } : {}),
+    };
+    if (options?.capture === true) return yield* runner.run(input);
+    return yield* collectExecStream(runner.streamWithExit(input), sink);
   },
   Effect.scoped,
   Effect.provide(BunProcessRunner.layer),
@@ -59,19 +59,18 @@ export const streamBunCommand = Effect.fnUntraced(
   ) {
     const runner = yield* ProcessRunner;
     const source = [command, ...(options?.argv ?? []).map(quoteShellPath)].join(" ");
+    const input = {
+      cmd: process.execPath,
+      args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), "exec", source],
+      env: yield* scriptEnv(options),
+      ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+      ...(options?.signal === undefined ? {} : { signal: options.signal }),
+      ...(options?.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
+      ...(options?.capture === true ? { capture: true } : {}),
+    };
     return yield* BunProcessRunner.withProcessRedactionTokens(
       [source],
-      collectExecStream(
-        runner.streamWithExit({
-          cmd: process.execPath,
-          args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), "exec", source],
-          env: yield* scriptEnv(options),
-          ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-          ...(options?.signal === undefined ? {} : { signal: options.signal }),
-          ...(options?.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
-        }),
-        sink,
-      ),
+      options?.capture === true ? runner.run(input) : collectExecStream(runner.streamWithExit(input), sink),
     );
   },
   Effect.scoped,

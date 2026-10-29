@@ -8,6 +8,13 @@ import type {
 } from "../errors/index.ts";
 
 export interface ShellCommandOptions {
+  /**
+   * Suppress command/output events and live sinks, returning raw output only to the caller.
+   * Private capture is limited to 1 MiB of bytes per stdout/stderr channel; overflow fails
+   * and terminates the child, never returns truncated success. Stdin and ordinary exit
+   * semantics are unchanged (shell nonzero exits fail; process nonzero exits are data).
+   */
+  readonly capture?: boolean;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly shell?: "bun";
@@ -30,6 +37,13 @@ export interface ShellScriptOptions extends ShellCommandOptions {
 }
 
 export interface ProcessSpawnOptions {
+  /**
+   * Suppress command/output events and live observation, not stdin or exit semantics.
+   * Results/stream chunks remain raw for the authorized caller. Private output is limited
+   * to 1 MiB of bytes per channel; overflow terminates the child and fails without output
+   * diagnostics. Incompatible with inheritOutput, rejected before spawning.
+   */
+  readonly capture?: boolean;
   readonly cmd: string;
   readonly args: ReadonlyArray<string>;
   readonly cwd?: string;

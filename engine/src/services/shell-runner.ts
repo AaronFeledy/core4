@@ -44,7 +44,7 @@ const shellError = (
     ...(output?.exitCode === undefined ? {} : { exitCode: output.exitCode }),
     ...(output?.stdout === undefined ? {} : { stdout: output.stdout }),
     ...(output?.stderr === undefined ? {} : { stderr: output.stderr }),
-    cause,
+    ...(options?.capture === true ? {} : { cause }),
     remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
 
@@ -81,7 +81,7 @@ const redactShellEvent = Effect.fnUntraced(function* (
 const publishRedactedShellEvent = (options: ShellCommandOptions | undefined, event: LandoEvent) =>
   Effect.serviceOption(RedactionService).pipe(
     Effect.flatMap((redaction) => {
-      if (redaction._tag === "None") return Effect.void;
+      if (redaction._tag === "None" || options?.capture === true) return Effect.void;
       return redactShellEvent(options, event).pipe(Effect.flatMap(publishShellEvent));
     }),
   );
@@ -104,7 +104,7 @@ const redactShellError = Effect.fnUntraced(function* (
     ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
     ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
     ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
-    cause: error.cause,
+    ...(options?.capture === true ? {} : { cause: error.cause }),
     remediation: "Fix the shell command so it succeeds in the reported working directory, then re-run.",
   });
 });
@@ -148,7 +148,10 @@ export const makeShellRunnerService = (
         command,
         options,
         Effect.gen(function* () {
-          const sink = yield* Effect.serviceOption(StreamFrameSink);
+          const sink =
+            options?.capture === true
+              ? Option.none<StreamFrameSink["Service"]>()
+              : yield* Effect.serviceOption(StreamFrameSink);
           const result = yield* streamBunCommand(command, options, sink).pipe(
             Effect.mapError((cause) => shellError(command, options, cause)),
           );
@@ -167,7 +170,10 @@ export const makeShellRunnerService = (
     run: (command, options) => service.exec(command, options),
     runScript: Effect.fn("ShellRunner.runScript")(function* (path, options) {
       const command = `bun ${quoteShellPath(path)}`;
-      const sink = yield* Effect.serviceOption(StreamFrameSink);
+      const sink =
+        options?.capture === true
+          ? Option.none<StreamFrameSink["Service"]>()
+          : yield* Effect.serviceOption(StreamFrameSink);
       return yield* execWithEvents(
         command,
         options,

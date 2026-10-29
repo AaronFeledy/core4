@@ -13,6 +13,7 @@ import type { LandoEvent } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
+import { collectPrivateText, privateCaptureBudget } from "./private-capture.ts";
 import { environmentForRedaction } from "./tooling-input-environment.ts";
 
 const textEncoder = new TextEncoder();
@@ -81,7 +82,7 @@ const redactProcessEvent = Effect.fnUntraced(function* (input: ProcessSpawnOptio
 const publishRedactedProcessEvent = (input: ProcessSpawnOptions, event: LandoEvent) =>
   Effect.serviceOption(RedactionService).pipe(
     Effect.flatMap((redaction) => {
-      if (redaction._tag === "None") return Effect.void;
+      if (redaction._tag === "None" || input.capture === true) return Effect.void;
       return redactProcessEvent(input, event).pipe(Effect.flatMap(publishProcessEvent));
     }),
   );
@@ -112,8 +113,8 @@ const redactProcessError = Effect.fnUntraced(function* (
     cmd: redactor.redactString(error.cmd),
     ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
     ...(error.errno === undefined ? {} : { errno: error.errno }),
-    cause: error.cause,
-    remediation: "Install the missing host executable or fix its path, then re-run the command.",
+    ...(input.capture === true ? {} : { cause: error.cause }),
+    remediation: redactor.redactString(error.remediation),
   });
 });
 
@@ -134,6 +135,13 @@ export const resolveProcessCgroup = (
 ): string | undefined => (platform === "linux" && cgroup !== undefined && cgroup !== "" ? cgroup : undefined);
 
 const buildSpawnOptions = (input: ProcessSpawnOptions) => {
+  if (input.capture === true && input.inheritOutput === true) {
+    throw new ProcessExecError({
+      message: "Private capture cannot inherit stdout or stderr.",
+      cmd: input.cmd,
+      remediation: "Remove inheritOutput when requesting private capture.",
+    });
+  }
   const cgroup = resolveProcessCgroup(input.cgroup);
   return {
     ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
@@ -244,7 +252,7 @@ const pumpStdin = async (
 const runProcess = async (
   input: ProcessSpawnOptions,
   effectSignal?: AbortSignal,
-  observeExit?: (exited: Promise<number>) => void,
+  observeFinalization?: (finalized: Promise<void>) => void,
 ): Promise<ProcessResult> => {
   const startedAt = DateTime.toEpochMillis(DateTime.nowUnsafe());
   const signal =
@@ -255,7 +263,6 @@ const runProcess = async (
         : AbortSignal.any([input.signal, effectSignal]);
   if (signal?.aborted) throw new DOMException("Process aborted.", "AbortError");
   const proc = Bun.spawn([input.cmd, ...input.args], buildSpawnOptions(input));
-  observeExit?.(proc.exited);
   const abort = () => proc.kill("SIGKILL");
   signal?.addEventListener("abort", abort, { once: true });
 
@@ -271,20 +278,29 @@ const runProcess = async (
             resolve();
           }, input.timeoutMs);
         });
-  const stdoutPromise = readText(proc.stdout);
-  const stderrPromise = readText(proc.stderr);
+  const budget = privateCaptureBudget(input);
+  const stdoutPromise =
+    input.capture === true
+      ? collectPrivateText(pipedOutput(proc.stdout), (chunk) => budget({ kind: "stdout", chunk }))
+      : readText(proc.stdout);
+  const stderrPromise =
+    input.capture === true
+      ? collectPrivateText(pipedOutput(proc.stderr), (chunk) => budget({ kind: "stderr", chunk }))
+      : readText(proc.stderr);
   const stdinPump = pumpStdin(
     proc.stdin as BunFileSink | null | undefined,
     input,
     proc.exited,
     () => typeof proc.exitCode === "number",
   );
+  const output = Promise.all([stdoutPromise, stderrPromise, proc.exited, stdinPump]);
+  const finalized = Promise.withResolvers<void>();
+  observeFinalization?.(finalized.promise);
   try {
-    await Promise.race([proc.exited, timeoutGate, stdinPump.then(() => proc.exited)]);
+    await Promise.race([output, timeoutGate]);
     if (timedOut) throw timeoutError(input, DateTime.toEpochMillis(DateTime.nowUnsafe()) - startedAt);
     if (signal?.aborted) throw new DOMException("Process aborted.", "AbortError");
-    await stdinPump;
-    const [stdout, stderr, exitCode] = await Promise.all([stdoutPromise, stderrPromise, proc.exited]);
+    const [stdout, stderr, exitCode] = await output;
     return { exitCode, stdout, stderr };
   } catch (cause) {
     proc.kill("SIGKILL");
@@ -292,10 +308,9 @@ const runProcess = async (
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     signal?.removeEventListener("abort", abort);
-    if (timedOut || signal?.aborted) {
-      proc.kill("SIGKILL");
-      await proc.exited;
-    }
+    await proc.exited;
+    await Promise.allSettled([stdoutPromise, stderrPromise, stdinPump]);
+    finalized.resolve();
   }
 };
 
@@ -320,6 +335,7 @@ async function* streamProcess(
   // reader wakes the consumer and preserves the original pipe error.
   const queue: ProcessStreamChunk[] = [];
   const queueLimit = 16;
+  const budget = privateCaptureBudget(input);
   const stdoutStream = pipedOutput(proc.stdout);
   const stderrStream = pipedOutput(proc.stderr);
   let openReaders = (stdoutStream === undefined ? 0 : 1) + (stderrStream === undefined ? 0 : 1);
@@ -354,13 +370,16 @@ async function* streamProcess(
   };
   const drain = async (stream: ReadableStream<Uint8Array>, kind: ProcessStreamChunk["kind"]) => {
     try {
-      for await (const chunk of stream) await enqueue({ kind, chunk });
+      for await (const chunk of stream) {
+        if (input.capture === true) budget({ kind, chunk });
+        await enqueue({ kind, chunk });
+      }
     } catch (cause) {
       if (!failed) {
         failed = true;
         failure = cause;
       }
-      proc.kill();
+      proc.kill("SIGKILL");
       wakeReaders();
     } finally {
       openReaders--;
@@ -396,6 +415,7 @@ async function* streamProcess(
     input.signal?.removeEventListener("abort", abort);
     proc.kill("SIGKILL");
     await proc.exited;
+    await Promise.all([stdoutReader, stderrReader]);
   }
 }
 
@@ -419,7 +439,9 @@ const scopedProcessStream = (input: ProcessSpawnOptions, includeExitCode: boolea
           }),
         };
         return Stream.fromAsyncIterable(iterable, (cause) =>
-          cause instanceof ProcessTimeoutError ? cause : execError(input, cause),
+          cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
+            ? cause
+            : execError(input, cause),
         );
       }),
     ),
@@ -431,11 +453,11 @@ const processRunnerService: Context.Service.Shape<typeof ProcessRunner> = Proces
       _tag: "pre-process-exec",
       ...processEventShape(input),
     });
-    let childExit: Promise<number> | undefined;
+    let childFinalization: Promise<void> | undefined;
     const result = yield* Effect.tryPromise({
       try: (signal) =>
-        runProcess(input, signal, (exited) => {
-          childExit = exited;
+        runProcess(input, signal, (finalized) => {
+          childFinalization = finalized;
         }),
       catch: (cause) =>
         cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
@@ -444,7 +466,7 @@ const processRunnerService: Context.Service.Shape<typeof ProcessRunner> = Proces
     }).pipe(
       Effect.onInterrupt(() =>
         Effect.promise(async () => {
-          await childExit?.catch(() => undefined);
+          await childFinalization;
         }),
       ),
       Effect.catch((error) => Effect.flatMap(redactProcessError(input, error), Effect.fail)),
