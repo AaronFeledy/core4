@@ -17,7 +17,10 @@ import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
-import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
+import {
+  evolveHistoricalToolingSensitivity,
+  evolveHistoricalToolingShorthand,
+} from "./x-extension-tooling-shorthand-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import {
   WIRE_TARGETS,
@@ -75,26 +78,29 @@ const evolvedTypedCache = new Map<
 const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
-  const evolved = evolveHistoricalAppMountAcceleration(
-    evolveHistoricalToolingShorthand(
-      evolveHistoricalEnvironment(
-        evolveHistoricalEndpointMetadata(
-          evolveHistoricalIncludeChecksum(
-            evolveHistoricalTimestamps(
-              evolveHistoricalShorthand(
-                evolveHistoricalNetworks(
-                  normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
-                  "authoring",
+  const evolved = evolveHistoricalToolingSensitivity(
+    evolveHistoricalAppMountAcceleration(
+      evolveHistoricalToolingShorthand(
+        evolveHistoricalEnvironment(
+          evolveHistoricalEndpointMetadata(
+            evolveHistoricalIncludeChecksum(
+              evolveHistoricalTimestamps(
+                evolveHistoricalShorthand(
+                  evolveHistoricalNetworks(
+                    normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+                    "authoring",
+                  ),
                 ),
+                "authoring",
               ),
-              "authoring",
             ),
           ),
+          "authoring",
         ),
         "authoring",
       ),
-      "authoring",
     ),
+    "authoring",
   );
   evolvedTypedCache.set(source, evolved);
   return evolved;
