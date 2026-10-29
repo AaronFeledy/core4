@@ -55,6 +55,7 @@ import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
 import { web } from "./destroy-progress-topology-support.ts";
@@ -173,23 +174,15 @@ const planAt = (root: string): AppPlan => ({
 
 const retainedPlanAt = (root: string): AppPlan => {
   const base = planAt(root);
-  return {
-    ...base,
-    fileSync: [
-      {
-        engineId: "mutagen",
-        session: {
-          app: { kind: "user", id: base.id, root: base.root },
-          service: ServiceName.make("web"),
-          mountKey: "app-mount",
-          source: base.root,
-          target: { _tag: "volume", name: "retained-web", path: PortablePath.make("/app") },
-          mode: "two-way-safe",
-          excludes: [],
-        },
-      },
-    ],
-  };
+  return withAcceleratedBind({ ...base, services: { [web.name]: web } }, web.name, {
+    type: "bind",
+    source: base.root,
+    target: PortablePath.make("/app"),
+    readOnly: false,
+    realization: "accelerated",
+    mountKey: "app-mount",
+    excludes: [],
+  });
 };
 
 const targetFor = (plan: AppPlan, root = plan.root): ResolvedAppTarget => ({
