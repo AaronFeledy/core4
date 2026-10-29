@@ -41,7 +41,12 @@ const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<Sum
   return [
     {
       label: "log sources",
-      value: sources.map((source) => `${source.id} [${availability(source)}]`).join(", "),
+      value: sources
+        .map(
+          (source) =>
+            `${source.id}${source.strategy === "console" ? ` (console/${source.stream})` : ""} [${availability(source)}]`,
+        )
+        .join(", "),
     },
     ...(reasons.length === 0 ? [] : [{ label: "log details", value: reasons.join(" ") }]),
   ];
@@ -198,7 +203,8 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     const base = `${service.service}\t${service.status}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;
     const logRows = (service.logSources ?? []).map((source) => {
       const reason = source.reason === undefined ? "" : `\t${source.reason}`;
-      return `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}${reason}`;
+      const location = source.strategy === "console" ? `console/${source.stream}` : source.path;
+      return `${service.service}\tlog-source\t${source.id}\t${location}\t${source.strategy}\t${source.availability}${reason}`;
     });
     const credsRows =
       service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
