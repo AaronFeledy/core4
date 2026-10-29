@@ -1050,7 +1050,8 @@ const main = async (): Promise<void> => {
   const workflow = renderCiWorkflow();
 
   await Bun.write(OUTPUT, workflow);
-  await formatGeneratedPaths([OUTPUT]);
+  // Biome 1 cannot check YAML; include the generator so this remains a real check.
+  await formatGeneratedPaths([OUTPUT, import.meta.path]);
   console.log(`[build-ci-workflow] wrote ${OUTPUT}`);
 };
 
