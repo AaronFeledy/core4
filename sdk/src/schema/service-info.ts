@@ -3,6 +3,7 @@ import { ServiceHomePlan } from "./app-plan.ts";
 import { PortablePath } from "./primitives.ts";
 
 import { ServiceCredsDisplay } from "./database-connection.ts";
+import { LogSourceStream } from "./log-source.ts";
 import { BindMountPlan } from "./mounts.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceInfoMount } from "./service-mount.ts";
@@ -17,7 +18,7 @@ const connectionAddressFields = {
   }),
 };
 
-export const ServiceInfoLogSource = Schema.Struct({
+const FileServiceInfoLogSource = Schema.Struct({
   id: Schema.String.annotate({ description: "Declared log source identifier." }),
   path: Schema.String.annotate({ description: "Log file path inside the service." }),
   strategy: Schema.Literals(["redirect", "follow"]).annotate({
@@ -28,6 +29,19 @@ export const ServiceInfoLogSource = Schema.Struct({
   }),
   reason: Schema.optionalKey(Schema.String).annotate({ description: "Reason the source is unavailable." }),
 });
+export const ServiceInfoLogSource = Schema.Union([
+  FileServiceInfoLogSource,
+  Schema.Struct({
+    id: FileServiceInfoLogSource.fields.id,
+    strategy: Schema.Literal("console").annotate({ description: "A native console pipe alias." }),
+    stream: LogSourceStream.annotate({ description: "Native daemon pipe selected by this alias." }),
+    path: Schema.optionalKey(Schema.Never),
+    availability: Schema.Literals(["available", "unavailable"]).annotate({
+      description: "Whether this provider can stream native service logs.",
+    }),
+    reason: FileServiceInfoLogSource.fields.reason,
+  }),
+]);
 export type ServiceInfoLogSource = typeof ServiceInfoLogSource.Type;
 
 export const StartedService = Schema.Struct({
