@@ -62,6 +62,7 @@ import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { readJournal } from "@lando/engine/operations/accelerated-start-journal";
 import { effectiveEventsForPlan, withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import * as LandoConfigService from "@lando/engine/services/config";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import * as BunFileSystem from "@lando/engine/services/file-system";
@@ -2299,7 +2300,7 @@ describe("lando start", () => {
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
       platform: "linux",
-      capabilities,
+      capabilities: { ...capabilities, fileSyncTargets: "prepared-volume" },
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.sync(() => {
@@ -2393,7 +2394,7 @@ describe("lando start", () => {
         }),
       ),
       unusedGlobalServicesLayer,
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
     await Effect.runPromise(startApp().pipe(Effect.provide(fullLayer)));
 
@@ -2474,7 +2475,7 @@ describe("lando start", () => {
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
       platform: "linux",
-      capabilities,
+      capabilities: { ...capabilities, fileSyncTargets: "prepared-volume" },
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
@@ -2561,7 +2562,7 @@ describe("lando start", () => {
         }),
       ),
       unusedGlobalServicesLayer,
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     await Effect.runPromise(startApp().pipe(Effect.provide(fullLayer)));
@@ -2632,7 +2633,7 @@ describe("lando start", () => {
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
       platform: "linux",
-      capabilities,
+      capabilities: { ...capabilities, fileSyncTargets: "prepared-volume" },
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({ targets: preparedFileSyncTargets(syncPlan) }),
@@ -2723,7 +2724,7 @@ describe("lando start", () => {
         }),
       ),
       unusedGlobalServicesLayer,
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     await Effect.runPromise(startApp().pipe(Effect.provide(layer)));
@@ -2792,7 +2793,7 @@ describe("lando start", () => {
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
       platform: "linux",
-      capabilities,
+      capabilities: { ...capabilities, fileSyncTargets: "prepared-volume" },
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
@@ -2886,7 +2887,7 @@ describe("lando start", () => {
         }),
       ),
       unusedGlobalServicesLayer,
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     await expect(Effect.runPromise(startApp().pipe(Effect.provide(layer)))).rejects.toThrow(
@@ -2968,7 +2969,7 @@ describe("lando start", () => {
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
       platform: "linux",
-      capabilities,
+      capabilities: { ...capabilities, fileSyncTargets: "prepared-volume" },
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
@@ -3066,7 +3067,7 @@ describe("lando start", () => {
         }),
       ),
       unusedGlobalServicesLayer,
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     await expect(Effect.runPromise(startApp().pipe(Effect.provide(layer)))).rejects.toThrow(
@@ -3176,7 +3177,7 @@ describe("lando start", () => {
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
       platform: "linux",
-      capabilities,
+      capabilities: { ...capabilities, fileSyncTargets: "prepared-volume" },
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
@@ -3276,7 +3277,7 @@ describe("lando start", () => {
         }),
       ),
       unusedGlobalServicesLayer,
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     try {
@@ -3373,7 +3374,7 @@ describe("lando start", () => {
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
       platform: "linux",
-      capabilities,
+      capabilities: { ...capabilities, fileSyncTargets: "prepared-volume" },
       inspectAppliedFileSync: () => Effect.succeed({ status: "missing" as const }),
       prepareFileSyncTargets: (syncPlan: AppPlan) =>
         Effect.succeed({
@@ -3467,7 +3468,7 @@ describe("lando start", () => {
         }),
       ),
       unusedGlobalServicesLayer,
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     // When

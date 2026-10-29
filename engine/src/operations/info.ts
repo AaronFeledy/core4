@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 
 import type {
   InfoAppOptions,
@@ -9,6 +9,7 @@ import type {
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  FileSyncInfo,
   type LoadScopedLandofile,
   type ServiceConnection,
   ServiceInfo,
@@ -32,6 +33,7 @@ import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
 import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
+import { projectFileSyncInfo } from "./info-file-sync.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 
@@ -61,6 +63,7 @@ export const AppInfoResultSchema = Schema.Struct({
   services: Schema.Array(AppInfoServiceSchema),
   agentEnv: Schema.optionalKey(AppInfoAgentEnvSchema),
   hostProxy: Schema.optionalKey(AppInfoHostProxySchema),
+  fileSync: Schema.optionalKey(FileSyncInfo),
 });
 
 const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] => {
@@ -168,6 +171,7 @@ const toServiceInfo = (
 export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
   completionPlan: AppPlan = plan,
+  plannedPolicy: AppPlan | null = completionPlan,
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
@@ -188,7 +192,15 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   });
 
   const hostProxy = hostProxyPlanExtension(plan);
-  return { app: plan.name, services, ...(hostProxy === undefined ? {} : { hostProxy }) };
+  const applied = yield* registry.resolveAppliedPlan(completionPlan.identity?.appRoot ?? completionPlan.root);
+  // selectInfoPlan returns the original plan only for an unscoped view.
+  const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);
+  return {
+    app: plan.name,
+    services,
+    fileSync: projectFileSyncInfo(plannedPolicy ?? undefined, applied, selectedServices),
+    ...(hostProxy === undefined ? {} : { hostProxy }),
+  };
 });
 
 export const infoApp = Effect.fn("AppOperation.info")(function* (
@@ -212,7 +224,12 @@ export const infoApp = Effect.fn("AppOperation.info")(function* (
 
   const observedPlan = yield* observedAppPlan(plan);
   const selectedPlan = yield* selectInfoPlan(observedPlan, options?.services);
-  const result = yield* infoForPlan(selectedPlan, observedPlan);
+  let desired: AppPlan | null = target?.plan ?? plan;
+  if (observedTarget !== undefined && target === undefined) {
+    const planned = yield* Effect.result(planDesiredApp);
+    desired = Result.match(planned, { onFailure: () => null, onSuccess: ({ plan }) => plan });
+  }
+  const result = yield* infoForPlan(selectedPlan, observedPlan, desired);
   if (options?.deep !== true) return result;
   const agentEnv = yield* resolveAgentEnvAudit(landofile?.document.agentEnv, process.env);
   return { ...result, agentEnv };

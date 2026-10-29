@@ -31,7 +31,8 @@ import {
 } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/sdk/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -92,6 +93,7 @@ const composePreservedPathCapabilities: ProviderCapabilities = {
 const slowBindMountCapabilities: ProviderCapabilities = {
   ...providerLandoCapabilities,
   bindMountPerformance: "slow",
+  fileSyncTargets: "prepared-volume",
 };
 
 const landofileFixture: LandofileShape = {
@@ -132,7 +134,12 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
       Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(PluginRegistryLayer.layer),
+      Effect.provide(
+        Layer.mergeAll(
+          PluginRegistryLayer.layer,
+          fileSyncEngineLayer({ ...TestFileSyncEngine, id: "mutagen" }),
+        ),
+      ),
       Effect.provideService(GlobalConfigSources, {
         env: { ...process.env },
         sources: { user: false, env: true },
@@ -3080,6 +3087,31 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
+  test("keeps an opted-out slow-provider app mount ordinary without a session key", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        {
+          ...landofileFixture,
+          services: {
+            [ServiceName.make("web")]: {
+              image: "node:lts",
+              home: false,
+              appMount: { target: "/app", accelerate: false },
+            },
+          },
+        },
+        slowBindMountCapabilities,
+      );
+      expect(appPlan.fileSync).toEqual([]);
+      expect(serviceAppMount(appPlan.services[ServiceName.make("web")] ?? { mounts: [] })).toMatchObject({
+        realization: "passthrough",
+      });
+      expect(
+        serviceAppMount(appPlan.services[ServiceName.make("web")] ?? { mounts: [] })?.mountKey,
+      ).toBeUndefined();
+    });
+  });
+
   test("resolves the file-sync engine id once per plan for all slow bind-mount services", async () => {
     await withTempCwd(async () => {
       let fileSyncEngineIdReads = 0;
@@ -3124,7 +3156,19 @@ describe("AppPlannerLayer.layer", () => {
               serviceTypes: [serviceType.id],
               get fileSyncEngines() {
                 fileSyncEngineIdReads += 1;
-                return ["mutagen"];
+                return [
+                  {
+                    id: "mutagen",
+                    supports: { platform: ["linux", "darwin", "win32"] },
+                    capabilities: {
+                      modes: ["two-way-safe"],
+                      remoteAgentDeployment: "none",
+                      exclusionPatterns: true,
+                      conflictReporting: false,
+                      progressReporting: false,
+                    },
+                  },
+                ];
               },
             },
           } as unknown as PluginManifest,

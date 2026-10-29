@@ -3,6 +3,8 @@ import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { Effect, Exit } from "effect";
 
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   decodeProviderCapabilities,
   introspectProviderCapabilities,
@@ -14,9 +16,11 @@ import {
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "fileSyncTargets"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -41,6 +45,32 @@ const podmanApiForArch = (arch: string) => ({
 });
 
 describe("provider-lando capabilities", () => {
+  test("declares prepared-volume targets only under the complete managed Windows preparation gate", async () => {
+    const appliedPlanState = makePluginStateStore(
+      makeTestStateStore().service,
+      AbsolutePath.make("/tmp/lando-sync-capabilities"),
+      ownerOnlyFileAccess,
+    );
+    const podmanApi = {
+      ...podmanApiForArch("x64"),
+      request: () => Effect.die("Capability introspection must not prepare targets"),
+    };
+    const base = { platform: "win32" as const, providerSocketPath: "managed", appliedPlanState, podmanApi };
+    const eligible = await resolveRuntimeProvider(base);
+    expect(eligible.capabilities.fileSyncTargets).toBe("prepared-volume");
+    expect(eligible.prepareFileSyncTargets).toBeDefined();
+    const { appliedPlanState: _state, ...withoutState } = base;
+    for (const options of [
+      { ...base, platform: "linux" as const },
+      { ...base, socketPath: "external" },
+      withoutState,
+      { ...base, podmanApi: podmanApiForArch("x64") },
+    ]) {
+      const provider = await resolveRuntimeProvider(options);
+      expect(provider.capabilities.fileSyncTargets).toBeUndefined();
+      expect(provider.prepareFileSyncTargets).toBeUndefined();
+    }
+  });
   test.each(["linux", "darwin", "win32"] as const)(
     "%s declares only its dialect realizations",
     (platform) => {

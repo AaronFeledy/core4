@@ -87,7 +87,7 @@ const listenTcp = (server: Server): Promise<number> =>
     });
   });
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "fileSyncTargets"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))

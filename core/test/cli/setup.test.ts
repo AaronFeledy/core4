@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 import { GlobalConfigSources } from "@lando/engine/services/config";
+import { makeLandoPaths } from "@lando/paths";
+import { PathsService } from "@lando/sdk/services";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
@@ -108,6 +110,7 @@ const buildSetupLayers = (
   Layer.mergeAll(
     Layer.succeed(GlobalConfigSources, { env: { ...process.env }, sources: { user: false, env: true } }),
     Layer.succeed(RuntimeProviderRegistry, RuntimeProviderRegistry.of(registry)),
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(ConfigService, ConfigService.of(makeConfigService(configOverrides))),
     Layer.succeed(Downloader, Downloader.of(testDownloader.service)),
     Layer.succeed(InteractionService, InteractionService.of(testInteraction.service)),
@@ -138,7 +141,9 @@ const buildSetupLayersWithHostIntegrations = (
     Layer.succeed(CertificateAuthority, CertificateAuthority.of(services.ca)),
     Layer.succeed(RouterService, RouterService.of(services.proxy)),
     Layer.succeed(SshService, SshService.of(services.ssh)),
-    Layer.succeed(FileSyncEngine, FileSyncEngine.of(services.fileSync)),
+    FileSyncResolver.layerWithEngine(FileSyncEngine.of(services.fileSync), {
+      platform: ["linux", "darwin", "win32"],
+    }),
   );
 
 const buildSetupLayersWithPrivilege = (
@@ -228,7 +233,7 @@ const normalizeSetupFailure = (stderr: string): string =>
     .filter((line) => line.includes("Podman") || line.includes("Install Podman"))
     .join("\n");
 
-const fileSyncSatisfiedLine = "file-sync: already satisfied (native bind mounts)";
+const fileSyncSatisfiedLine = "file-sync: already satisfied (ordinary bind mounts)";
 const setupReadinessPath = (userDataRoot: string): string => join(userDataRoot, "setup", "readiness.json");
 
 const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): string =>
@@ -522,7 +527,11 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        bindMountPerformance: "slow" as const,
+        fileSyncTargets: "prepared-volume" as const,
+      },
       setup: () =>
         Effect.sync(() => {
           calls.push("provider");
@@ -647,7 +656,11 @@ describe("meta:setup command", () => {
       const provider = {
         ...TestRuntimeProvider,
         id: providerId,
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         isAvailable: Effect.succeed(true),
         setup: () => Effect.void,
       };
@@ -1681,7 +1694,11 @@ describe("meta:setup command", () => {
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         setup: (_plan: ProviderSetupPlan, options: { readonly network?: unknown }) =>
           Effect.sync(() => {
             observedProviderNetworks.push(options.network);
@@ -1763,7 +1780,11 @@ describe("meta:setup command", () => {
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         setup: () =>
           Effect.sync(() => {
             calls.push("provider");
@@ -1822,7 +1843,11 @@ describe("meta:setup command", () => {
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         setup: () => Effect.void,
       };
       const fileSync = {
@@ -1872,7 +1897,9 @@ describe("meta:setup command", () => {
       expect(readiness.status).toBe("ready");
       expect(readiness.steps.find((step) => step.id === "file-sync")).toMatchObject({
         status: "skipped",
-        evidence: "Mutagen binaries are installed, but this build has no live file-sync session client.",
+        evidence: expect.stringMatching(
+          /File-sync engine .+ is installed, but this build has no live file-sync session client\./,
+        ),
         remediation: "Continue with ordinary mounts; accelerated file sync is unavailable in this build.",
       });
     } finally {
@@ -2470,17 +2497,22 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toContain(fileSyncSatisfiedLine);
   });
 
-  test("--skip-file-sync skips Mutagen download until setup is rerun", async () => {
+  test("--skip-file-sync records the explicitly configured engine without installing it", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-file-sync-deferred-"));
     try {
       const provider = {
         ...TestRuntimeProvider,
         id: "lando",
-        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        capabilities: {
+          ...TestRuntimeProvider.capabilities,
+          bindMountPerformance: "slow" as const,
+          fileSyncTargets: "prepared-volume" as const,
+        },
         setup: () => Effect.void,
       };
       const fileSync = {
         ...TestFileSyncEngine,
+        id: "custom-sync",
         setup: () => Effect.die("--skip-file-sync should not run file-sync setup"),
       };
       const registry = {
@@ -2503,7 +2535,7 @@ describe("meta:setup command", () => {
                 ssh: makeTestSshService(),
                 fileSync,
               },
-              { userDataRoot },
+              { userDataRoot, defaultFileSyncEngine: "custom-sync" },
             ),
           ),
         ),
@@ -2516,11 +2548,11 @@ describe("meta:setup command", () => {
       };
       expect(marker).toEqual({
         status: "deferred",
-        engineId: "mutagen",
+        engineId: "custom-sync",
         resumeCommand: "lando setup",
       });
       expect(setupSpec.render?.(result)).toContain(
-        "file-sync: Mutagen download skipped (run lando setup to install later)",
+        "file-sync: engine installation skipped (run lando setup to install later)",
       );
     } finally {
       await rm(userDataRoot, { recursive: true, force: true });
@@ -2533,7 +2565,11 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        bindMountPerformance: "slow" as const,
+        fileSyncTargets: "prepared-volume" as const,
+      },
       setup: () =>
         Effect.sync(() => {
           calls.push("provider");
@@ -2940,7 +2976,11 @@ describe("meta:setup command", () => {
           ...TestRuntimeProvider,
           id: "docker",
           isAvailable: Effect.succeed(true),
-          capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+          capabilities: {
+            ...TestRuntimeProvider.capabilities,
+            bindMountPerformance: "slow" as const,
+            fileSyncTargets: "prepared-volume" as const,
+          },
         };
         const { registry } = buildRegistryThatCapturesPlan(provider);
         await Effect.runPromise(
@@ -3598,3 +3638,4 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(compiled.stderr).toContain(`LANDO_INSTALL_DIR="${dirname(binaryPath)}"`);
   }, 120_000);
 });
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";

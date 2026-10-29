@@ -230,6 +230,9 @@ export const GlobalConfig = Schema.Struct({
   defaultRouterService: Schema.optionalKey(Schema.String).annotate({
     description: "Globally selected RouterService contribution id.",
   }),
+  defaultFileSyncEngine: Schema.optionalKey(Schema.String).annotate({
+    description: "File-sync engine contribution id, or passthrough to use ordinary binds without sessions.",
+  }),
   appEnv: Schema.optionalKey(AppEnvironmentDefaults).annotate({
     description: "Environment defaults applied below each user-app service's authored environment.",
   }),

@@ -5,9 +5,11 @@ import { Effect } from "effect";
 import { type AppPlan, PortablePath, serviceAppMount } from "@lando/sdk/schema";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
+import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { destroyAppForTarget } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
+import { startApp } from "../../src/operations/start.ts";
 import { stopAppForTarget } from "../../src/operations/stop.ts";
 import { makeHarness, plan, runStart, web } from "./start-progress-topology-support.ts";
 
@@ -48,34 +50,59 @@ const planned: AppPlan = {
   ],
 };
 const target = { plan: planned, root: planned.root, app };
+const ordinary: AppPlan = {
+  ...plan,
+  services: {
+    [web.name]: {
+      ...web,
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: plan.root,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+      ],
+    },
+  },
+};
 type LifecycleOperation = ReturnType<
   typeof stopAppForTarget | typeof destroyAppForTarget | typeof restartApp | typeof rebuildApp
 >;
 const operations: ReadonlyArray<{
   readonly name: string;
-  readonly run: Effect.Effect<void, Effect.Error<LifecycleOperation>, Effect.Services<LifecycleOperation>>;
+  readonly run: (
+    target: ResolvedAppTarget,
+  ) => Effect.Effect<void, Effect.Error<LifecycleOperation>, Effect.Services<LifecycleOperation>>;
   readonly applies: number;
   readonly removeState: boolean;
 }> = [
-  { name: "stop", run: Effect.asVoid(stopAppForTarget({}, target)), applies: 1, removeState: false },
+  {
+    name: "stop",
+    run: (target) => Effect.asVoid(stopAppForTarget({}, target)),
+    applies: 1,
+    removeState: false,
+  },
   {
     name: "destroy",
-    run: Effect.asVoid(destroyAppForTarget({ volumes: true }, target)),
+    run: (target) => Effect.asVoid(destroyAppForTarget({ volumes: true }, target)),
     applies: 1,
     removeState: true,
   },
-  { name: "restart", run: Effect.asVoid(restartApp({}, target)), applies: 2, removeState: false },
-  { name: "rebuild", run: Effect.asVoid(rebuildApp({}, target)), applies: 2, removeState: false },
+  { name: "restart", run: (target) => Effect.asVoid(restartApp({}, target)), applies: 2, removeState: false },
+  { name: "rebuild", run: (target) => Effect.asVoid(rebuildApp({}, target)), applies: 2, removeState: false },
 ];
 
 for (const operation of operations) {
   for (const available of [false, true]) {
-    test(`${operation.name} succeeds after ordinary fallback without provider sync hooks (adapter available: ${available})`, async () => {
-      // Given: an accelerated desired plan, but a provider that can only apply ordinary mounts.
+    test(`${operation.name} succeeds for ordinary mounts without provider sync hooks (adapter available: ${available})`, async () => {
+      // Given: an ordinary plan and a provider that can only apply ordinary mounts.
       const applied: AppPlan[] = [];
       const destroyed: boolean[] = [];
       const harness = makeHarness({
-        plannedApp: planned,
+        plannedApp: ordinary,
         providerCanPrepareFileSync: false,
         providerCanInspectFileSync: false,
         fileSync: {
@@ -88,11 +115,13 @@ for (const operation of operations) {
         onDestroy: (_target, options) => destroyed.push(options?.removeState === true),
       });
       try {
-        await runStart(harness, planned);
+        await runStart(harness, ordinary);
         expect(applied[0]?.fileSync).toEqual([]);
 
-        // When: a later lifecycle operation uses the original desired plan, not the applied fallback.
-        await Effect.runPromise(operation.run.pipe(Effect.provide(harness.layer)));
+        // When: a later lifecycle operation uses the ordinary desired plan.
+        await Effect.runPromise(
+          operation.run({ ...target, plan: ordinary }).pipe(Effect.provide(harness.layer)),
+        );
 
         // Then: provider teardown runs, and any subsequent start still applies ordinary mounts.
         expect(destroyed).toEqual([operation.removeState]);
@@ -123,7 +152,7 @@ for (const operation of operations.slice(0, 2)) {
     try {
       // When: teardown is attempted without trustworthy applied-state evidence.
       const result = await Effect.runPromise(
-        operation.run.pipe(Effect.result, Effect.provide(harness.layer)),
+        operation.run(target).pipe(Effect.result, Effect.provide(harness.layer)),
       );
 
       // Then: fail closed before touching the provider.
@@ -135,3 +164,41 @@ for (const operation of operations.slice(0, 2)) {
     }
   });
 }
+
+test.each([false, true])(
+  "accelerated start fails closed without provider sync hooks (adapter available: %s)",
+  async (available) => {
+    const calls: string[] = [];
+    const harness = makeHarness({
+      plannedApp: planned,
+      providerCanPrepareFileSync: false,
+      providerCanInspectFileSync: false,
+      fileSync: {
+        ...TestFileSyncEngine,
+        id: "mutagen",
+        isAvailable: Effect.succeed(available),
+        listSessions: () => Effect.die("Unsupported providers must not inspect sync sessions"),
+      },
+      onApply: () => calls.push("apply"),
+      onDestroy: () => calls.push("destroy"),
+      onStop: () => {
+        calls.push("stop");
+      },
+      onPrepareFileSync: () => {
+        calls.push("prepare");
+      },
+    });
+    try {
+      const result = await Effect.runPromise(
+        startApp({}, target).pipe(Effect.result, Effect.provide(harness.layer)),
+      );
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "FileSyncStartError", engineId: "mutagen" },
+      });
+      expect(calls).toEqual([]);
+    } finally {
+      rmSync(harness.userDataRoot, { recursive: true, force: true });
+    }
+  },
+);

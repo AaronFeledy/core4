@@ -117,6 +117,17 @@ describe("generated bootstrap layers", () => {
     expect(importsMutagenPackage).toBe(false);
   });
 
+  test("provider bootstrap wires FileSyncResolver and app does not eager-load FileSyncEngine", async () => {
+    const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
+    const app = await readFile(resolve(generatedLayersDir, "app.ts"), "utf8");
+
+    expect(provider).toContain('from "@lando/engine/plugins/file-sync-resolver"');
+    expect(provider).toContain("FileSyncResolver.layer");
+    expect(provider).toContain("fileSyncResolverLayer");
+    expect(app).not.toContain("BundledFileSyncEngine");
+    expect(app).not.toContain("file-sync-from-modules");
+  });
+
   test("generated layers resolve composition through engine accessors", async () => {
     // Given: every generated bootstrap layer source.
     const sources = await Promise.all(

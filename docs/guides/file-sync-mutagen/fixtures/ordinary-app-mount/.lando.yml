@@ -1,0 +1,10 @@
+name: file-sync-ordinary-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    appMount:
+      target: /app
+      accelerate: false
+      excludes:
+        - generated.txt

@@ -376,6 +376,7 @@ export interface InfoAppResult {
   readonly app: string;
   readonly services: ReadonlyArray<InfoAppService>;
   readonly agentEnv?: InfoAppAgentEnv;
+  readonly fileSync?: import("../schema/file-sync-policy.ts").FileSyncInfo;
 }
 
 export type InfoAppError =

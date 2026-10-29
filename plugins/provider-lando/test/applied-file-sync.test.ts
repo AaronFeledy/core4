@@ -195,3 +195,99 @@ describe("verifiedFileSyncSessions", () => {
     }
   });
 });
+
+describe("verifiedFileSyncSessions exclusion coverage", () => {
+  const patternsPlan = (): AppPlan => acceleratedPlan(AbsolutePath.make("/repo"), AbsolutePath.make("/repo"));
+
+  test("accepts historical exact-pattern entries and rejects omitted filters", () => {
+    const base = patternsPlan();
+    const patterns = {
+      ...base,
+      fileSync: base.fileSync.map((entry) => ({ ...entry, session: { ...entry.session } })),
+    };
+    const unfiltered = {
+      ...base,
+      fileSync: base.fileSync.map((entry) => ({
+        ...entry,
+        session: { ...entry.session, excludes: [] },
+      })),
+    };
+    const historical = base;
+
+    expect(verifiedFileSyncSessions(patterns)).toEqual(patterns.fileSync.map(({ session }) => session));
+    expect(verifiedFileSyncSessions(unfiltered)).toBeUndefined();
+    expect(verifiedFileSyncSessions(historical)).toEqual(historical.fileSync.map(({ session }) => session));
+  });
+
+  test("rejects excludes, source, target, mode, permissions, id, duplicate, missing, and orphan tampering", () => {
+    const base = patternsPlan();
+    const session = base.fileSync[0]?.session;
+    if (session === undefined) throw new Error("expected session");
+
+    const withSession = (next: FileSyncSessionSpec): AppPlan => ({
+      ...base,
+      fileSync: [
+        {
+          engineId: "mutagen",
+          session: next,
+        },
+      ],
+    });
+
+    expect(verifiedFileSyncSessions(withSession({ ...session, excludes: ["node_modules"] }))).toBeUndefined();
+    expect(
+      verifiedFileSyncSessions(withSession({ ...session, excludes: [...session.excludes].reverse() })),
+    ).toBeUndefined();
+    expect(verifiedFileSyncSessions(withSession({ ...session, excludes: [] }))).toBeUndefined();
+    expect(
+      verifiedFileSyncSessions(withSession({ ...session, source: AbsolutePath.make("/other") })),
+    ).toBeUndefined();
+    expect(
+      verifiedFileSyncSessions(
+        withSession({
+          ...session,
+          target: { _tag: "volume", name: "wrong", path: PortablePath.make("/app") },
+        }),
+      ),
+    ).toBeUndefined();
+    expect(verifiedFileSyncSessions(withSession({ ...session, mode: "one-way-safe" }))).toBeUndefined();
+    expect(
+      verifiedFileSyncSessions(withSession({ ...session, permissions: { owner: "node" } })),
+    ).toBeUndefined();
+    expect(
+      verifiedFileSyncSessions(withSession({ ...session, app: { ...session.app, id: AppId.make("other") } })),
+    ).toBeUndefined();
+    expect(
+      verifiedFileSyncSessions({
+        ...base,
+        fileSync: [
+          { engineId: "mutagen", session },
+          { engineId: "mutagen", session: { ...session } },
+        ],
+      }),
+    ).toBeUndefined();
+    expect(verifiedFileSyncSessions({ ...base, fileSync: [] })).toBeUndefined();
+    expect(verifiedFileSyncSessions(withSession({ ...session, mountKey: "orphan-mount" }))).toBeUndefined();
+  });
+
+  test("preserves sameRealpath equivalence for coverage", async () => {
+    const canonical = AbsolutePath.make(await realpath(await mkdtemp(join(tmpdir(), "lando-cov-sync-"))));
+    const legacy = AbsolutePath.make(`${canonical}-short`);
+    await symlink(canonical, legacy);
+    try {
+      const patterns = acceleratedPlan(canonical, legacy);
+      const unfiltered: AppPlan = {
+        ...patterns,
+        fileSync: patterns.fileSync.map((entry) => ({
+          ...entry,
+          session: { ...entry.session, excludes: [] },
+        })),
+      };
+      expect(verifiedFileSyncSessions(patterns)).toEqual(patterns.fileSync.map(({ session }) => session));
+      expect(verifiedFileSyncSessions(unfiltered)).toBeUndefined();
+    } finally {
+      await rm(legacy, { force: true });
+      await rm(canonical, { recursive: true, force: true });
+    }
+  });
+});

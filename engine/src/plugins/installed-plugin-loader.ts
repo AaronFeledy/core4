@@ -46,6 +46,7 @@ const normalizeExternalContributionModules = async (
   const httpClients = manifest.contributes?.httpClients;
   const interactionServices = manifest.contributes?.interactionServices;
   const certificateAuthorities = manifest.contributes?.certificateAuthorities;
+  const fileSyncEngines = manifest.contributes?.fileSyncEngines;
   const routerServices = manifest.contributes?.routerServices;
   const secretStores = manifest.contributes?.secretStores;
   const remoteSources = manifest.contributes?.remoteSources;
@@ -59,6 +60,7 @@ const normalizeExternalContributionModules = async (
     httpClients === undefined &&
     interactionServices === undefined &&
     certificateAuthorities === undefined &&
+    fileSyncEngines === undefined &&
     routerServices === undefined &&
     secretStores === undefined &&
     remoteSources === undefined &&
@@ -163,6 +165,19 @@ const normalizeExternalContributionModules = async (
             module: await normalizeManifestModulePath(contribution.module, "certificateAuthorities"),
           })),
         );
+  const normalizedFileSyncEngines =
+    fileSyncEngines === undefined
+      ? undefined
+      : await Promise.all(
+          fileSyncEngines.map(async (contribution) =>
+            contribution.module === undefined
+              ? contribution
+              : {
+                  ...contribution,
+                  module: await normalizeManifestModulePath(contribution.module, "fileSyncEngines"),
+                },
+          ),
+        );
   const normalizedRouterServices =
     routerServices === undefined
       ? undefined
@@ -232,6 +247,7 @@ const normalizeExternalContributionModules = async (
     ...(normalizedSubscribers === undefined ? {} : { subscribers: normalizedSubscribers }),
     contributes: {
       ...manifest.contributes,
+      ...(normalizedFileSyncEngines === undefined ? {} : { fileSyncEngines: normalizedFileSyncEngines }),
       ...(normalizedGlobalServices === undefined ? {} : { globalServices: normalizedGlobalServices }),
       ...(normalizedDownloaders === undefined ? {} : { downloaders: normalizedDownloaders }),
       ...(normalizedHttpClients === undefined ? {} : { httpClients: normalizedHttpClients }),

@@ -112,7 +112,7 @@ The forms ship from the same source at the same version and MUST NOT drift.
 - Docker Compose as core's runtime model; only the documented input subset is supported (§7.4).
 - Required Traefik or Docker implementations.
 - Built-in Kubernetes, plugin sandboxing, registry push workflows, or core SQL helpers.
-- File-sync engines beyond passthrough and bundled Mutagen, or file-sync-owned TCP/UDP forwarding (§10.6).
+- Bundled file-sync engines beyond Mutagen (`passthrough` is a no-session policy, not an engine), or file-sync-owned TCP/UDP forwarding (§10.6).
 - Copy-on-write scratch isolation, scratch fleets, fork-source hot reload, or scratch apps as expression sources (§21.15).
 - Foreign automation dialects/protocols and the execution-platform features excluded by §22.1.
 

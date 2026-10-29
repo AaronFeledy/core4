@@ -12,6 +12,7 @@ import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "./connection-summary";
+import { fileSyncSection, plainFileSyncLines } from "./info-file-sync-render.ts";
 import { homeFields, plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
 import { INFO_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
@@ -81,6 +82,7 @@ const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string =>
 
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
   const hostProxy = hostProxyFor(result);
+  const projectFiles = fileSyncSection(result.fileSync);
   const rows: SummaryRow[] = result.services.map((service) => {
     const remedy = storageRemedy(service);
     return {
@@ -140,6 +142,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
             ? { notes: [jsonDetailsNote(hasLogSources, hasStorage)] }
             : {}),
       },
+      ...(projectFiles === undefined ? [] : [projectFiles]),
       ...(hostProxy === undefined
         ? []
         : [
@@ -189,7 +192,7 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
 };
 
 const renderPlainInfoAppResult = (result: InfoAppResult): string => {
-  const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
+  const extra = [...plainFileSyncLines(result.fileSync), ...hostProxyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
     const base = `${service.service}\t${service.status}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;

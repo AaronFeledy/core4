@@ -1,10 +1,12 @@
 import { FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, PreparedFileSyncTarget } from "@lando/sdk/schema";
-import { FileSyncEngine, type RuntimeProviderShape } from "@lando/sdk/services";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 import type { ProgressEmitter } from "@lando/sdk/task-progress";
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import { beginOrResumeAcceleratedStart } from "./accelerated-start-journal.ts";
 import { matchesRecordedTargets } from "./accelerated-start-record.ts";
+import { acquirePlannedFileSyncEngine, requireFileSyncProvider } from "./file-sync-acquire.ts";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { verifyPreparedFileSyncTargets } from "./prepared-file-sync-targets.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 
@@ -18,9 +20,11 @@ export const prepareAcceleratedStart = Effect.fnUntraced(function* (
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
   },
 ) {
-  if (plan.fileSync.length === 0) return { pendingStart: undefined };
+  const bundle = yield* fileSyncBundle(plan);
+  if (bundle.kind === "ordinary") return { pendingStart: undefined };
+  yield* requireFileSyncProvider(bundle, provider);
   const prepare = provider.prepareFileSyncTargets;
-  const engineId = plan.fileSync[0]?.engineId ?? "unknown";
+  const engineId = bundle.id;
   if (prepare === undefined)
     return yield* Effect.fail(
       new FileSyncStartError({
@@ -42,8 +46,8 @@ export const prepareAcceleratedStart = Effect.fnUntraced(function* (
           "Restore the recorded sync target volumes and provider settings, then run `lando start`. Sessions have been left untouched.",
       }),
     );
-  const selected = yield* Effect.serviceOption(FileSyncEngine);
-  const bind = Option.isSome(selected) ? selected.value.bindPreparedTargets : undefined;
+  const selected = yield* acquirePlannedFileSyncEngine(plan);
+  const bind = selected.bindPreparedTargets;
   const bound = bind === undefined ? undefined : yield* bind(plan, prepared.targets);
   if (
     bound !== undefined &&

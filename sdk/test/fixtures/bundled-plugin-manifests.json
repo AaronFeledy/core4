@@ -32,7 +32,25 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
-        "fileSyncEngines": ["mutagen"]
+        "fileSyncEngines": [
+          {
+            "capabilities": {
+              "conflictReporting": true,
+              "exclusionPatterns": true,
+              "modes": ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
+              "progressReporting": true,
+              "remoteAgentDeployment": "auto"
+            },
+            "defaultFor": {
+              "bindMountPerformance": ["slow"],
+              "platform": ["win32"]
+            },
+            "id": "mutagen",
+            "supports": {
+              "platform": ["win32"]
+            }
+          }
+        ]
       },
       "description": "Mutagen-backed FileSyncEngine for accelerated bind mounts on slow-bind-mount providers.",
       "enabled": true,

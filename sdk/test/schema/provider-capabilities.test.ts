@@ -48,6 +48,7 @@ const OPTIONAL_FIELDS = [
   "composePreservedPaths",
   "composeProjectFields",
   "composeServiceFields",
+  "fileSyncTargets",
   "hostProxy",
 ] as const;
 
@@ -166,7 +167,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the documented capability fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(36);
+    expect(actual).toHaveLength(37);
   });
 
   test("defaults architectureEmulation to false when omitted", () => {

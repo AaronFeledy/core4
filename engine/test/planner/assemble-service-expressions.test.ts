@@ -8,14 +8,14 @@ import { ConfigExpressionError } from "@lando/sdk/errors";
 import { type LandofileShape, PortNumber, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
-import { planApp } from "../../src/planner/assemble.ts";
+import { Effect, Layer, Result, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { collectAppPlanRedactionTokens } from "../../src/services/app-plan-redaction.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 /** Publishes creds the way the catalog database types do: defaults, authored `creds:` wins. */
 const databaseType: ServiceType = {
@@ -80,19 +80,19 @@ const plan = Effect.fnUntraced(
     const fileSystem = withFileSystem ? yield* FileSystem : undefined;
     return yield* planApp(
       {
-        ...registry,
-        loadServiceType: (id) => {
-          const type = serviceTypes.get(id);
-          return type === undefined ? registry.loadServiceType(id) : Effect.succeed(type);
-        },
+        landofile: yield* compileTestLandofile(landofile, getLandofileAppRoot(landofile) ?? process.cwd()),
+        providerCapabilities: TestRuntimeProvider.capabilities,
       },
-      undefined,
-      undefined,
-      fileSystem,
-      undefined,
-      undefined,
-      yield* compileTestLandofile(landofile, getLandofileAppRoot(landofile) ?? process.cwd()),
-      TestRuntimeProvider.capabilities,
+      Layer.mergeAll(
+        Layer.succeed(PluginRegistry, {
+          ...registry,
+          loadServiceType: (id) => {
+            const type = serviceTypes.get(id);
+            return type === undefined ? registry.loadServiceType(id) : Effect.succeed(type);
+          },
+        }),
+        fileSystem === undefined ? Layer.empty : Layer.succeed(FileSystem, fileSystem),
+      ),
     );
   },
   Effect.provide(PluginRegistryLayer.layer),

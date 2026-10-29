@@ -261,6 +261,13 @@ import {
   PreparedFileSyncTarget,
 } from "./file-sync-engine.ts";
 import {
+  FileSyncInfo,
+  FileSyncPolicy,
+  FileSyncPolicyInfo,
+  FileSyncPolicyReason,
+  FileSyncServicePolicy,
+} from "./file-sync-policy.ts";
+import {
   HostEventCmdStep,
   HostEventCommandStep,
   HostEventName,
@@ -837,6 +844,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   FileSyncEventChunk,
   FileSyncPlan,
   RecipeChoicesFrom,
+  FileSyncInfo,
+  FileSyncPolicy,
+  FileSyncPolicyInfo,
+  FileSyncPolicyReason,
+  FileSyncServicePolicy,
   RecipeManifest,
   RecipeRegistryResolution,
   RecipeRegistryResponse,
@@ -1381,6 +1393,11 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   FileSyncSessionInfo: "Public Lando schema contract for File Sync Session Info.",
   FileSyncEventChunk: "Public Lando schema contract for File Sync Event Chunk.",
   FileSyncPlan: "Public Lando schema contract for File Sync Plan.",
+  FileSyncInfo: "Planned and recorded applied project-file policy, separate from runtime health.",
+  FileSyncPolicy: "Recorded app-level selection and per-service project-file policy.",
+  FileSyncPolicyInfo: "Verified project-file policy projection for one plan.",
+  FileSyncPolicyReason: "Bounded recorded selection or realization reason.",
+  FileSyncServicePolicy: "Recorded project-file realization and reason for one service.",
   RecipeChoicesFrom: "Public Lando schema contract for Recipe Choices From.",
   RecipeManifest: "Public Lando schema contract for Recipe Manifest.",
   RecipeSource: "Recipe author source compiled into runtime metadata and historical snapshots.",
