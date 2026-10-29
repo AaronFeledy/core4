@@ -104,7 +104,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
             resultRedactor,
             ...(publish === undefined ? {} : { publish }),
           },
-        });
+        }).pipe(Effect.provideService(RedactionService, redaction));
       });
       return McpService.of({ serve, catalog, handleMemoryPressure: onMemoryPressure });
     }),

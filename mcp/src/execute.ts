@@ -55,9 +55,9 @@ export const makeNestedExecute = (
           rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),
           {
             commandId: entry.spec.id,
-            argv: runInput.argv,
-            args: runInput.args,
-            flags: runInput.flags,
+            argv: entry.tooling === true ? [] : runInput.argv,
+            args: entry.tooling === true ? {} : runInput.args,
+            flags: entry.tooling === true ? {} : runInput.flags,
             ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
             ...(completion === undefined ? {} : { completion: (value) => completion(value, runInput) }),
           },
