@@ -205,6 +205,7 @@ export const OPTIONAL_CAPABILITY_KEYS = new Set<keyof typeof ProviderCapabilitie
   "composeProjectFields",
   "composePreservedPaths",
   "composeServiceFields",
+  "fileSyncTargets",
   "hostProxy",
 ]);
 export const REQUIRED_CAPABILITY_KEYS = CAPABILITY_KEYS.filter((key) => !OPTIONAL_CAPABILITY_KEYS.has(key));
