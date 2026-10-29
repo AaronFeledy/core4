@@ -416,7 +416,33 @@ describe("lando logs", () => {
     expect(harness.logCalls[0]?.options.source).toBeUndefined();
   });
 
-  test("--source for a redirected source keeps the console-backed stream available", async () => {
+  test.each([false, true])(
+    "--source selects native aliases without file capability, follow=%s",
+    async (follow) => {
+      // Given an alias on web, but not on the database service.
+      const access = Schema.decodeUnknownSync(LogSource)({
+        id: "access",
+        strategy: "console",
+        stream: "stdout",
+      });
+      const harness = makeLogsLayer({ appPlan: withWebSources([access]), serviceLogSources: false });
+      // When selecting that source across the app.
+      await Effect.runPromise(
+        (follow ? followLogsApp({ source: "access" }) : logsApp({ source: "access" })).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+      // Then only web is subscribed, with the descriptor and selected logical id.
+      expect(harness.logCalls.map((call) => String(call.target.service))).toEqual(["web"]);
+      expect(harness.logCalls[0]?.options).toEqual({
+        follow,
+        sources: [access],
+        source: LogSourceId.make("access"),
+      });
+    },
+  );
+
+  test("--source for a redirected source keeps its descriptor and logical selection", async () => {
     const access = Schema.decodeUnknownSync(LogSource)({
       id: "access",
       path: "/var/log/apache/access.log",
@@ -429,8 +455,8 @@ describe("lando logs", () => {
       logsApp({ service: "web", source: "access" }).pipe(Effect.provide(harness.layer)),
     );
 
-    expect(harness.logCalls[0]?.options.sources).toEqual([]);
-    expect(harness.logCalls[0]?.options.source).toBeUndefined();
+    expect(harness.logCalls[0]?.options.sources).toEqual([access]);
+    expect(harness.logCalls[0]?.options.source).toBe(LogSourceId.make("access"));
     expect(result.lines.map((line) => line.line)).toContain("web line 1");
   });
 
