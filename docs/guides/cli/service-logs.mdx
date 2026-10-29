@@ -15,7 +15,10 @@ Read a service’s console output and declared log files from your app directory
 lando logs --service appserver
 ```
 
-That prints a snapshot for the service, merging console output with any declared file sources. File-source lines carry their source id (`appserver stderr [myapp-error]: line`). Console lines omit a source label (`appserver stdout: line`).
+That prints a snapshot for the service, reading its native console once and
+merging any followed files. File-source lines carry their source id; unfiltered
+console lines omit it. A catalog alias does not add another copy of console
+output to this default view.
 
 Every line prints whole, however the container writes it. A service that writes a line in pieces, the way SQL Server does, still gets one line stamped with the time its first piece arrived. A last line with no trailing newline prints when the output ends. While following, a partial line waits for its newline. Lines longer than 64 KiB are cut there and end in `…[truncated]`. A known secret that straddles the cut is still masked.
 
@@ -50,7 +53,7 @@ lando logs --service appserver --source myapp-error
 lando logs --service appserver --source myapp-error --follow
 ```
 
-`--tail` applies per source, not as one total across merged sources:
+`--tail` applies to each collected source, not as one total across merged sources:
 
 ```sh
 lando logs --service appserver --tail 50
@@ -62,13 +65,50 @@ lando logs --service appserver --tail 50
 lando logs --service appserver --since 15m
 ```
 
+## Select a PHP console alias
+
+For a stock PHP service with Lando-generated startup, select `access` or `error`:
+
+```sh
+lando logs --service appserver --source access --tail 50
+lando logs --service appserver --source error --follow
+```
+
+Apache's `access` alias selects stdout; `error` selects stderr. PHP-FPM's
+`access` and `error` aliases both select stderr, so either shows the same
+shared pipe. Other writers on that pipe can appear too. These are not
+file-specific or producer-isolated views. The selected source id labels the
+returned lines; the native pipe is selected before applying `--tail` and `--since`.
+
+Run `lando info --format=json` to inspect the service's `logSources`. These
+catalog entries have `strategy: console` and a `stream`, not a file path.
+Human info shows `console/stdout` or `console/stderr`. This is catalog metadata,
+not new Landofile syntax: an authored `logs:` entry still requires `path`.
+An explicit file source with `id: access` or `id: error` replaces the matching
+catalog alias. Use a different id to keep both.
+
+Custom PHP images, replacement context builds, CLI mode, and authored
+`command:`/`entrypoint:` values do not get PHP's implicit aliases. They keep
+native stdout/stderr and any explicit file sources. For both native streams,
+without followed files, run:
+
+```sh
+lando logs --service appserver --source console
+```
+
 ## When a source is missing
 
-A provider that cannot stream service logs fails before planning with a tagged capability error and a fix. Follow sources from container files need the `serviceLogSources` capability. Redirect sources still work without it because they flow through the console stream.
+A provider that cannot stream service logs fails before planning with a tagged capability error and a fix. Follow sources from container files need the `serviceLogSources` capability. Console aliases and redirect sources still work without it because they select native console pipes; they need no file reader.
 
-Selecting a redirected source selects that console stream. Other stdout and stderr from the same container can appear with it because the runtime cannot separate the original file after redirection. Use a `follow` source when you need file-specific output and the provider supports it.
+Selecting a redirected source selects its declared stdout or stderr pipe,
+not both streams. Other writers on that same pipe can appear because the
+runtime cannot separate the original file after redirection. Declare a file
+source when you need file-specific output and the provider supports following it.
 
 A required follow source fails up front when the provider cannot follow service files. A non-required unavailable follow source is marked unavailable and skipped. An undeclared `--source` fails and lists the known source ids, including `console`.
+
+When selecting a source across services, Lando skips services without that id;
+it does not substitute their console output.
 
 Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Followers survive common log rotation (rename+create and copytruncate) and keep per-source order. Interrupting `lando logs` releases every follower. Lines are redacted once before they reach the CLI.
 
@@ -108,6 +148,7 @@ Known secrets and credential patterns are redacted before truncation. Unregister
       <Run command="lando logs --help" />
       <Verify command="lando logs --help" expect={{ stdout: { regex: "--service" } }} />
       <Verify command="lando logs --help" expect={{ stdout: { regex: "--source" } }} />
+      <Verify command="lando logs --help" expect={{ stdout: { regex: "aliases on the same pipe share" } }} />
     </Step>
   </Scenario>
 </Guide>
