@@ -1,5 +1,5 @@
 import type { LogSource, ServiceConfig } from "@lando/sdk/schema";
-import { AbsolutePath, LogSourceId, sameImageReference } from "@lando/sdk/schema";
+import { LogSourceId } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
@@ -8,6 +8,8 @@ import { apacheErrorPageDirectives } from "./http-errors.ts";
 
 export const PHP_VIA_MODES = ["apache", "fpm", "cli"] as const;
 export type PhpVia = (typeof PHP_VIA_MODES)[number];
+export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] as const;
+export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
 
 export const APACHE_DEFAULT_SITE_BUILD_STEP_ID = "service-lando.php:apache-default-site" as const;
 
@@ -18,21 +20,15 @@ export const PHP_CLI_KEEP_ALIVE: ReadonlyArray<string> = ["sh", "-c", "tail -f /
 export const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
     id: LogSourceId.make("access"),
-    label: "php-fpm access log",
-    path: AbsolutePath.make("/var/log/php-fpm/access.log"),
-    stream: "stdout",
-    strategy: "redirect",
-    required: false,
-    timestamps: false,
+    label: "php-fpm access (shared stderr)",
+    stream: "stderr",
+    strategy: "console",
   },
   {
     id: LogSourceId.make("error"),
-    label: "php-fpm error log",
-    path: AbsolutePath.make("/var/log/php-fpm/error.log"),
+    label: "php-fpm error (shared stderr)",
     stream: "stderr",
-    strategy: "redirect",
-    required: false,
-    timestamps: false,
+    strategy: "console",
   },
 ];
 
@@ -40,30 +36,26 @@ export const PHP_APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
     id: LogSourceId.make("access"),
     label: "Apache access log",
-    path: AbsolutePath.make("/var/log/apache2/access.log"),
     stream: "stdout",
-    strategy: "redirect",
-    required: false,
-    timestamps: false,
+    strategy: "console",
   },
   {
     id: LogSourceId.make("error"),
     label: "Apache error log",
-    path: AbsolutePath.make("/var/log/apache2/error.log"),
     stream: "stderr",
-    strategy: "redirect",
-    required: false,
-    timestamps: false,
+    strategy: "console",
   },
 ];
 
-export const phpLogSources = (via: PhpVia): ReadonlyArray<LogSource> => {
-  switch (via) {
-    case "apache":
+export const phpLogSources = (
+  mode: "apache-console" | "fpm-shared-stderr" | "console-only",
+): ReadonlyArray<LogSource> => {
+  switch (mode) {
+    case "apache-console":
       return PHP_APACHE_LOG_SOURCES;
-    case "fpm":
+    case "fpm-shared-stderr":
       return PHP_FPM_LOG_SOURCES;
-    case "cli":
+    case "console-only":
       return [];
   }
 };
@@ -87,12 +79,6 @@ const phpUpstreamVersion = (version: string): string => (version === "8.6" ? "8.
 
 export const phpImageFor = (version: string, via: PhpVia): string =>
   `php:${phpUpstreamVersion(version)}-${via}-bookworm`;
-
-export const hasCustomPhpImage = (service: ServiceConfig): boolean => {
-  if (service.image === undefined) return false;
-  const version = service.type?.startsWith("php:") === true ? service.type.slice("php:".length) : undefined;
-  return version === undefined || !sameImageReference(service.image, phpImageFor(version, "apache"));
-};
 
 export const phpListenPort = (via: Exclude<PhpVia, "cli">, authoredPort: number | undefined): number => {
   if (authoredPort !== undefined) return authoredPort;
@@ -152,15 +138,20 @@ export const assertPhpViaKeys = (via: PhpVia, service: ServiceConfig): void => {
  * configuration tree is read, but they land on the main server, and a virtual
  * host keeps its own `DocumentRoot` through the merge — so a directive alone
  * cannot move the document root while that site is enabled. Retiring the site
- * during the image build leaves the main server answering every request, which
- * is the configuration the launcher's directives then describe in full.
+ * during the image build lets the launcher own the document root. Debian's
+ * additive access-log config must also be retired so only the launcher's
+ * inherited-stream logger remains, including for its generated virtual host.
  */
 export const apacheDefaultSiteRemovalBuildStep = (): ServiceBuildStepIntent => ({
   id: APACHE_DEFAULT_SITE_BUILD_STEP_ID,
   phase: "build",
   user: "root",
   // `rm -f` rather than `a2dissite`, which fails when the site is already gone.
-  command: ["sh", "-c", "a2enmod rewrite env && rm -f /etc/apache2/sites-enabled/000-default.conf"],
+  command: [
+    "sh",
+    "-c",
+    "a2enmod rewrite env && rm -f /etc/apache2/sites-enabled/000-default.conf /etc/apache2/conf-enabled/other-vhosts-access-log.conf",
+  ],
 });
 
 /**
@@ -198,7 +189,8 @@ export const windowsBindWorkerIdentity = (preserveExplicitApacheIdentity = false
  * lines. Emitting them directly is what removes the write: the command mutates
  * no filesystem path. For the default image user, a shell prelude maps the
  * www-data worker to the Windows project mount owner before it execs Apache.
- * An authored non-root service user runs the same directives directly.
+ * Every user saves stderr on fd 3 before exec: Apache redirects its main piped
+ * logger's stderr to stdout, so that logger must use the saved descriptor.
  *
  * An authored `port:` moves the site into a virtual host bound to that port and
  * declares the matching listener, still in the same directive stream. The
@@ -223,16 +215,22 @@ export const apacheStartCommand = (
   ];
   const directives = [
     "ServerName localhost",
+    `ErrorLog "|/bin/sh -c 'exec /bin/cat >&3'"`,
+    'CustomLog "|/bin/cat" vhost_combined',
     ...(listenPort === undefined
       ? site
       : [`Listen ${String(listenPort)}`, `<VirtualHost *:${String(listenPort)}>`, ...site, "</VirtualHost>"]),
   ];
   const flags = directives.flatMap((directive) => ["-c", directive]);
-  if (!mapWindowsWorker) return ["apache2-foreground", ...flags];
   return [
     "sh",
     "-c",
-    ["set -eu", ...windowsBindWorkerIdentity(true), 'exec apache2-foreground "$@"'].join("\n"),
+    [
+      "set -eu",
+      "exec 3>&2",
+      ...(mapWindowsWorker ? windowsBindWorkerIdentity(true) : []),
+      'exec apache2-foreground "$@"',
+    ].join("\n"),
     "lando-apache",
     ...flags,
   ];
