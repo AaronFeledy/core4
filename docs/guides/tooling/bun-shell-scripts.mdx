@@ -285,7 +285,7 @@ Folders do not claim bare namespaced aliases. `.lando/scripts/db/seed.bun.sh` re
 
 ## Use Bun Shell and your host tools
 
-Bun Shell supports pipes, redirection, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. It is a separate shell language, not Bash, zsh, or a promise of full POSIX shell compatibility. Use the [Bun Shell syntax reference](https://bun.com/docs/runtime/shell) when writing scripts. `rm`, `mkdir`, `cp`, `echo`, `cat`, and friends are Bun Shell builtins. Everything else (`git`, `curl`, `test`, `lando`, your package managers) comes from your host `PATH`.
+Bun Shell supports pipes, redirection, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. It is a separate shell language, not Bash, zsh, or a promise of full POSIX shell compatibility. Use the [Bun Shell syntax reference](https://bun.com/docs/runtime/shell) when writing scripts. Commands can use shell builtins or executables found on your host `PATH`. Host tools such as `git`, `curl`, and your package managers must be available in that environment.
 
 Scripts always run from the app root, even when you call them from a subdirectory. Relative paths such as `src/` and `dist/` mean the same thing everywhere in the repo.
 
