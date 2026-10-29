@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { ToolingInputRevision } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
@@ -61,11 +62,14 @@ const writeFreshDeclaredInputCache = async (fixture: RouterFixture, taskName: st
           hidden: false,
           service: "web",
           input: {
+            acceptsArguments: true,
+            revision: ToolingInputRevision.make("fixture-revision"),
             flags: [
               {
                 name: "name",
                 alias: "n",
                 boolean: false,
+                sensitive: false,
                 required: false,
                 default: "world",
                 description: "Who to greet",
@@ -75,6 +79,7 @@ const writeFreshDeclaredInputCache = async (fixture: RouterFixture, taskName: st
               {
                 name: "target",
                 order: 0,
+                sensitive: false,
                 required: true,
                 choices: ["dev", "prod"],
                 description: "Environment to greet",
@@ -388,7 +393,7 @@ test("Given corrupted app caches, when a custom task is resolved, then both disp
       ok: false,
       error: {
         _tag: "CacheError",
-        message: "Failed to read app-command cache.",
+        key: "app-command",
       },
     });
     expect(lastEnvelope(compiledResult.stdout)).toEqual(lastEnvelope(sourceResult.stdout));
@@ -491,8 +496,9 @@ test("Given fresh caches without a match, when an unknown task is invoked, then 
       command: "app:unknown-router-task",
       ok: false,
       error: {
-        _tag: "ToolingCompileError",
-        remediation: expect.stringContaining("lando app:cache:refresh"),
+        _tag: "ToolingCommandUnavailableError",
+        reason: "unknown-command",
+        commandId: "app:unknown-router-task",
       },
     });
     expect(lastEnvelope(compiledResult.stdout)).toEqual(lastEnvelope(sourceResult.stdout));
@@ -537,7 +543,7 @@ test("Given a cached task that declares input, when help is in its tail, then bo
       expect(result.exitCode, `${result.stderr}\n${result.stdout}`).toBe(0);
       expect(result.stdout).toContain("USAGE");
       expect(result.stdout).toContain("lando greet [flags] <TARGET>");
-      expect(result.stdout).toContain("--name, -n");
+      expect(result.stdout).toContain("--name=<value>, -n");
       expect(result.stdout).toContain("[default: world]");
       expect(result.stdout).toContain("ARGUMENTS");
       expect(result.stdout).toContain("target");
