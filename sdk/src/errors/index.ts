@@ -49,3 +49,4 @@ export * from "./tooling-step.ts";
 export * from "./tunnel.ts";
 export * from "./environment-value.ts";
 export { LandoInternalError } from "./internal.ts";
+export { ToolingCommandUnavailableError } from "./tooling-command-unavailable.ts";

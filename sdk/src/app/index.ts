@@ -420,7 +420,8 @@ export type ExecAppError =
  * argument to `app.tooling(id, options?)`, so it is not part of this object.
  */
 export interface ToolingOptions {
-  readonly args?: ReadonlyArray<string>;
+  readonly input?: import("../schema/tooling-input.ts").ToolingInvocationInput;
+  readonly expectedInputRevision?: import("../schema/tooling-input.ts").ToolingInputRevision;
   readonly user?: string;
   readonly cwd?: string;
   readonly env?: Environment;
