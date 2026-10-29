@@ -367,6 +367,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null) {
+      yield* validateServiceProbes(cached);
       if (cached.fileSync.length > 0) yield* selectFileSyncEngine;
       yield* assertAuthoredNetworksSupported(provider, providerCapabilities, cached.networking);
       yield* validateServiceDependencies(appRoot, cached.services);

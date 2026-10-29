@@ -745,6 +745,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
 
     healthcheck: Schema.optionalKey(HealthcheckInput),
+    readiness: Schema.optionalKey(HealthcheckInput).annotate({
+      description:
+        "Lifecycle readiness probe, independent of native healthcheck; false explicitly disables command readiness, not process supervision.",
+    }),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optionalKey(Schema.Array(Schema.String)),

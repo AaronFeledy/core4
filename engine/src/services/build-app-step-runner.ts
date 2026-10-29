@@ -1,4 +1,5 @@
 import { type Context, DateTime, Effect, Stream } from "effect";
+import type { HostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 
 import { exactSecretReferenceId } from "@lando/landofile/secret-reference";
 import { TaskCompleteEvent, TaskDetailEvent, TaskFailEvent, TaskStartEvent } from "@lando/sdk/events";
@@ -11,6 +12,7 @@ import { type AppStep, providerCommand } from "./build-app-plan.ts";
 import { openBuildTranscript } from "./build-transcript.ts";
 
 export interface AppBuildInput {
+  readonly hostProbeRunners?: HostProbeRunners;
   readonly events: Context.Service.Shape<typeof EventService>;
   readonly paths: Context.Service.Shape<typeof PathsService>;
   readonly plan: AppPlan;

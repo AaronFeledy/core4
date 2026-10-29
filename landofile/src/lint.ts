@@ -7,7 +7,9 @@ import {
   LandofileAuthoringFragmentNative,
   type LandofileShape,
   type LoadScopedLandofile,
+  ServiceName,
   type ValidationIssue,
+  authoredProbeTargetError,
 } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { analyzeComposeRejections } from "./compose/rejections.ts";
@@ -141,6 +143,27 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     );
     documents = finalizedDocuments;
     if (Result.isFailure(effective)) return yield* Effect.fail(effective.failure);
+    for (const [name, service] of Object.entries(effective.success.document.services ?? {})) {
+      for (const role of ["healthcheck", "readiness"] as const) {
+        const probe = service[role];
+        if (probe === undefined) continue;
+        const invalid = authoredProbeTargetError(probe, ServiceName.make(name), role);
+        if (invalid === undefined) continue;
+        violations.push(
+          attributeLintIssue(
+            {
+              rule: `${role}.execution-target`,
+              severity: "error",
+              path: ["services", name, role],
+              message: invalid.message,
+              suggestion: invalid.remediation,
+            },
+            "effective",
+            documents,
+          ),
+        );
+      }
+    }
     return effective.success;
   }).pipe(Effect.result);
   if (Result.isFailure(finalized)) {

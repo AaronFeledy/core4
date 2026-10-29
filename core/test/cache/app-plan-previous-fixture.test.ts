@@ -13,7 +13,7 @@ import {
 } from "@lando/engine/cache/app-plan";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 
-test.each([19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35, 38, 39])(
+test.each([19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 35, 38, 39, 41])(
   "current app-plan cache rejects the persisted revision %i fixture",
   async (revision) => {
     // Given intact versioned bytes at the real cache path.

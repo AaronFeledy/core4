@@ -17,6 +17,7 @@ import type {
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
   GlobalServiceMissingError,
+  HealthcheckTargetUnsupportedError,
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileParseError,
@@ -63,6 +64,7 @@ type LandofileRootLoadError = Effect.Error<ReturnType<typeof loadLandofileLayers
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | AppPlacementError
@@ -82,6 +84,7 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | LandofileValidationError
@@ -144,6 +147,7 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | RemoteSyncError
@@ -157,6 +161,7 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | UserLandofileError

@@ -6,6 +6,7 @@ import type {
   ArtifactBuildError,
   ArtifactTransferError,
   EnvironmentValueResolutionError,
+  HealthcheckTargetUnsupportedError,
   NoProviderInstalledError,
   PlanReplanRequiredError,
   ProviderCapabilityError,
@@ -33,6 +34,7 @@ import type {
   AppPlan,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
+  HealthcheckPlan,
   HostPlatform,
   HostProxyBridgeInput,
   HostProxyBridgeResult,
@@ -62,9 +64,10 @@ import type {
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
 import type { MountObservation } from "../schema/service-mount.ts";
-import type { PrivilegeService } from "./process.ts";
+import type { PrivilegeService, ProcessResult } from "./process.ts";
 
 export type ProviderError =
+  | HealthcheckTargetUnsupportedError
   | PlanReplanRequiredError
   | EnvironmentValueResolutionError
   | SecretStoreError
@@ -144,6 +147,10 @@ export interface ApplyOptions {
   /** Full dependency graph for completion-intent classification during partial apply; not recorded state. */
   readonly completionPlan?: AppPlan;
   readonly signal?: AbortSignal;
+  readonly executeReadinessAttempt?: (
+    serviceName: ServiceName,
+    probe: HealthcheckPlan,
+  ) => Effect.Effect<ProcessResult, ProviderError>;
   readonly resolveServiceEnvironment?: (
     service: ServicePlan,
   ) => Effect.Effect<Readonly<Record<string, string>>, ProviderError>;
