@@ -58,7 +58,7 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
       ? Effect.succeed(createStandaloneRedactor("secrets", options))
       : redactionService.value.forProfile("secrets", options);
   };
-  const baseRedactor = yield* redactorFor([]);
+  let redactor = yield* redactorFor([]);
   const publish = (event: LandoEvent): Promise<void> =>
     Option.isNone(eventService)
       ? Promise.resolve()
@@ -111,6 +111,7 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
           const captured = captureHostExecutionContext(spec);
           const lineEnv = { ...captured.env };
           const envRedactionTokens = collectSecretEnvValues(lineEnv);
+          redactor = await Effect.runPromise(redactorFor([], lineEnv));
           const resolution = await Effect.runPromise(
             Effect.result(
               resolveHostShellSecrets(line, (reference) =>
@@ -126,12 +127,12 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
             ),
           );
           if (resolution._tag === "Failure") {
-            io.writeStderr(`${baseRedactor.redactString(resolution.failure.message)}\n`);
+            io.writeStderr(`${redactor.redactString(resolution.failure.message)}\n`);
             io.prompt?.();
             continue;
           }
           const resolved = resolution.success;
-          const redactor = await Effect.runPromise(redactorFor(resolved.values, lineEnv));
+          redactor = await Effect.runPromise(redactorFor(resolved.values, lineEnv));
           const command = redactor.redactString(
             resolved.fragments.reduce(
               (text, fragment, index) => `${text}${index === 0 ? "" : REDACTED}${fragment}`,
@@ -246,11 +247,11 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
     },
     catch: (cause) =>
       cause instanceof ShellExecError
-        ? redactHostShellError(baseRedactor, cause)
+        ? redactHostShellError(redactor, cause)
         : hostShellError(
-            baseRedactor.redactString(cause instanceof Error ? cause.message : "Host shell REPL failed."),
+            redactor.redactString(cause instanceof Error ? cause.message : "Host shell REPL failed."),
             REDACTED,
-            baseRedactor.redactValue(cause),
+            redactor.redactValue(cause),
           ),
   }).pipe(Effect.ensuring(Effect.sync(close)));
 });
