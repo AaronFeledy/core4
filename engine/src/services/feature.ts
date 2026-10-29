@@ -30,6 +30,7 @@ export interface ComposeServiceInput {
   readonly appRoot: ServiceFeatureContext["appRoot"];
   readonly host?: ServiceFeatureContext["host"];
   readonly normalizedConfig: ServiceConfig;
+  readonly resolutionMetadata?: Readonly<NonNullable<ServicePlan["provenance"]>> | undefined;
   readonly features: ReadonlyArray<ComposeServiceFeature>;
 }
 
