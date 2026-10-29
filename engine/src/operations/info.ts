@@ -171,7 +171,7 @@ const toServiceInfo = (
 export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
   plan: AppPlan,
   completionPlan: AppPlan = plan,
-  plannedPolicy: AppPlan | null = plan,
+  plannedPolicy: AppPlan | null = completionPlan,
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
@@ -193,10 +193,12 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
 
   const hostProxy = hostProxyPlanExtension(plan);
   const applied = yield* registry.resolveAppliedPlan(completionPlan.identity?.appRoot ?? completionPlan.root);
+  // selectInfoPlan returns the original plan only for an unscoped view.
+  const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);
   return {
     app: plan.name,
     services,
-    fileSync: projectFileSyncInfo(plannedPolicy ?? undefined, applied),
+    fileSync: projectFileSyncInfo(plannedPolicy ?? undefined, applied, selectedServices),
     ...(hostProxy === undefined ? {} : { hostProxy }),
   };
 });

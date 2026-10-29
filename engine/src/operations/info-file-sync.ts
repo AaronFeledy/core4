@@ -28,7 +28,7 @@ const matchesReason = (
   }
 };
 
-export const projectFileSyncPolicy = (plan: AppPlan): FileSyncPolicyInfo => {
+export const projectFileSyncPolicy = (plan: AppPlan, services?: readonly string[]): FileSyncPolicyInfo => {
   const bundle = normalizeFileSyncBundle(plan);
   const valid = Result.isSuccess(bundle);
   const engineId = valid && bundle.success.kind === "accelerated" ? bundle.success.id : undefined;
@@ -52,11 +52,15 @@ export const projectFileSyncPolicy = (plan: AppPlan): FileSyncPolicyInfo => {
       const facts = recorded.services[name];
       return facts?.mode === mode && matchesReason(mode, facts.reason);
     });
+  // Selection is a view: bundle coverage and explanatory metadata require the complete plan above.
+  const selectedServices = Object.entries(plan.services).filter(
+    ([name]) => services === undefined || services.includes(name),
+  );
   return {
     mode: valid ? (engineId === undefined ? "ordinary" : "accelerated") : "unknown",
     ...(engineId === undefined ? {} : { engineId }),
     reason: metadataMatches ? recorded.reason : "unknown",
-    services: Object.entries(plan.services).map(([name, service]) => {
+    services: selectedServices.map(([name, service]) => {
       const mount = serviceAppMount(service);
       const accelerated = mount?.realization === "accelerated";
       const sessions = plan.fileSync.filter(({ session }) => session.service === name);
@@ -112,9 +116,10 @@ export const projectFileSyncPolicy = (plan: AppPlan): FileSyncPolicyInfo => {
 export const projectFileSyncInfo = (
   planned: AppPlan | undefined,
   applied: AppPlan | undefined,
+  services?: readonly string[],
 ): FileSyncInfo => {
-  const plannedPolicy = planned === undefined ? undefined : projectFileSyncPolicy(planned);
-  const appliedPolicy = applied === undefined ? undefined : projectFileSyncPolicy(applied);
+  const plannedPolicy = planned === undefined ? undefined : projectFileSyncPolicy(planned, services);
+  const appliedPolicy = applied === undefined ? undefined : projectFileSyncPolicy(applied, services);
   return {
     ...(plannedPolicy === undefined ? {} : { planned: plannedPolicy }),
     ...(appliedPolicy === undefined ? {} : { applied: appliedPolicy }),
