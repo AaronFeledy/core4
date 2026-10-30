@@ -37,7 +37,9 @@ lando db:reset --service appserver --yes
 
 Reset deletes the database file together with `-wal`, `-shm`, and `-journal` sidecars. Snapshots are scoped to this app, worktree, service, and path, and they record `sqlite_version()` so a restore cannot land on a different engine build. They do not reuse named-volume snapshot restore.
 
-Import, restore, and reset write a temp file, checkpoint WAL with `TRUNCATE`, then rename. Do not swap a live writer blindly. On macOS virtiofs, file locks can lag behind the container, so stop writers or retry if a replace fails.
+Stop the owning service before `db:import`, `db:restore`, or `db:reset`. Those commands refuse while the service is running unless you pass `--force`. `--force` warns and still replaces the file, which can drop concurrent WAL writes.
+
+Import, restore, and reset copy onto a unique temp file next to the database, then rename over it and remove `-wal`, `-shm`, and `-journal` sidecars. On macOS virtiofs, file locks can lag behind the container, so stop writers or retry if a replace fails.
 
 If `appMount.excludes` puts the file's directory on a named volume, the helper mounts that volume. A tmpfs covering mount fails closed; move `sqlite.path` onto a bind or named volume.
 

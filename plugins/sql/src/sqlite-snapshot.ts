@@ -14,14 +14,20 @@ import {
 import type { StateStoreShape } from "@lando/sdk/services";
 import { DateTime, Effect } from "effect";
 
-import { packSqliteTar, unpackSqliteTar } from "./sqlite-archive.ts";
-import { isSqliteDatabaseHeader } from "./sqlite-header.ts";
-import { type SqliteHelperDeps, prepareSqliteHelper, runSqliteHelper } from "./sqlite-helper.ts";
+import { packSqliteTarFile, unpackSqliteTarFile } from "./sqlite-archive.ts";
+import {
+  type SqliteHelperContext,
+  type SqliteHelperDeps,
+  copyHostFile,
+  runSqliteHelper,
+  sqliteScratchFile,
+  withSqliteHelper,
+} from "./sqlite-helper.ts";
 import { sqliteSnapshotStore } from "./sqlite-path.ts";
 import type { SqlFileTarget } from "./target.ts";
 import { type SqlPlan, type SqlPlanService, sqlPlanIdentity } from "./views.ts";
 
-const SQLITE_IMAGE_IDENTITY = "sqlite-file";
+const SQLITE_COMPAT_IDENTITY = "sqlite";
 
 export type SqliteSnapshotDeps = SqliteHelperDeps & {
   readonly stateStore: StateStoreShape;
@@ -42,7 +48,7 @@ export const sqliteSnapshotMetadata = (input: {
   volumeInstanceId: input.path,
   family: "sqlite",
   version: input.version,
-  imageIdentity: SQLITE_IMAGE_IDENTITY,
+  imageIdentity: SQLITE_COMPAT_IDENTITY,
   recoveryReason: input.recoveryReason,
 });
 
@@ -92,10 +98,9 @@ const catalogFailure = (service: string, message: string, cause: unknown) =>
 
 const observeSqliteVersion = Effect.fn("Sql.observeSqliteVersion")(function* (
   deps: SqliteHelperDeps,
-  service: SqlPlanService,
   target: SqlFileTarget,
+  helper: SqliteHelperContext,
 ) {
-  const helper = yield* prepareSqliteHelper(deps, service, target);
   const result = yield* runSqliteHelper(
     deps,
     target,
@@ -116,14 +121,8 @@ const observeSqliteVersion = Effect.fn("Sql.observeSqliteVersion")(function* (
       }),
     );
   }
-  return { helper, version };
+  return version;
 });
-
-const readHostBytes = (path: string, service: string, message: string) =>
-  Effect.tryPromise({
-    try: async () => new Uint8Array(await Bun.file(path).arrayBuffer()),
-    catch: (cause) => catalogFailure(service, message, cause),
-  });
 
 export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(function* (
   deps: SqliteSnapshotDeps,
@@ -134,108 +133,99 @@ export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(functi
 ) {
   const owner = sqlPlanIdentity(plan);
   const store = sqliteSnapshotVolume(plan, target.path);
-  const observed = yield* observeSqliteVersion(deps, service, target);
-  const snapshotFile = `${observed.helper.scratchTarget}/snapshot.sqlite`;
-  yield* runSqliteHelper(deps, target, observed.helper, [
-    "sqlite3",
-    observed.helper.dbPath,
-    `VACUUM INTO '${snapshotFile}';`,
-  ]);
-  const payload = yield* readHostBytes(
-    join(observed.helper.scratchHost, "snapshot.sqlite"),
-    target.name,
-    "Cannot read the SQLite snapshot produced by VACUUM INTO.",
-  );
-  if (!isSqliteDatabaseHeader(payload)) {
-    return yield* Effect.fail(
-      new SqlRecoveryUnavailableError({
-        message: `VACUUM INTO did not produce a SQLite database for ${target.name}.`,
-        service: target.name,
-        reason: "The snapshot file is missing the SQLite header.",
-        remediation: "Retry the snapshot after checking the SQLite file and helper image.",
-      }),
-    );
-  }
-  const archive = packSqliteTar(payload);
-  const digest = new Bun.CryptoHasher("sha256").update(archive).digest("hex");
-  const id = randomUUID();
-  const createdAt = yield* DateTime.now;
-  const directory = join(deps.paths.ownerSnapshotsDir(owner.ownerKey), store.store);
-  yield* Effect.tryPromise({
-    try: () => mkdir(directory, { recursive: true }),
-    catch: (cause) =>
-      catalogFailure(target.name, "Cannot create the SQLite snapshot catalog directory.", cause),
-  });
-  yield* Effect.tryPromise({
-    try: () => Bun.write(join(directory, `${id}.tar`), archive),
-    catch: (cause) => catalogFailure(target.name, "Cannot write the SQLite snapshot archive.", cause),
-  });
-  const info: SnapshotInfo = {
-    owner,
-    id,
-    store,
-    digest,
-    sizeBytes: archive.byteLength,
-    createdAt,
-    format: "tar",
-    ...(options?.label === undefined ? {} : { label: options.label }),
-    metadata: sqliteSnapshotMetadata({
-      service: target.name,
-      path: target.path,
-      version: observed.version,
-      recoveryReason: options?.recoveryReason ?? "manual",
+  return yield* withSqliteHelper(deps, service, target, (helper) =>
+    Effect.gen(function* () {
+      const version = yield* observeSqliteVersion(deps, target, helper);
+      const staged = sqliteScratchFile(helper, ".sqlite");
+      yield* runSqliteHelper(deps, target, helper, [
+        "sqlite3",
+        helper.dbPath,
+        `VACUUM INTO '${staged.target}';`,
+      ]);
+      const id = randomUUID();
+      const createdAt = yield* DateTime.now;
+      const directory = join(deps.paths.ownerSnapshotsDir(owner.ownerKey), store.store);
+      yield* Effect.tryPromise({
+        try: () => mkdir(directory, { recursive: true }),
+        catch: (cause) =>
+          catalogFailure(target.name, "Cannot create the SQLite snapshot catalog directory.", cause),
+      });
+      const archivePath = join(directory, `${id}.tar`);
+      const packed = yield* Effect.tryPromise({
+        try: () => packSqliteTarFile(staged.host, archivePath),
+        catch: (cause) => catalogFailure(target.name, "Cannot write the SQLite snapshot archive.", cause),
+      });
+      const info: SnapshotInfo = {
+        owner,
+        id,
+        store,
+        digest: packed.digest,
+        sizeBytes: packed.sizeBytes,
+        createdAt,
+        format: "tar",
+        ...(options?.label === undefined ? {} : { label: options.label }),
+        metadata: sqliteSnapshotMetadata({
+          service: target.name,
+          path: target.path,
+          version,
+          recoveryReason: options?.recoveryReason ?? "manual",
+        }),
+      };
+      const bucket = yield* deps.stateStore
+        .open({
+          root: { path: AbsolutePath.make(directory) },
+          key: `${id}.json`,
+          schema: SnapshotInfo,
+          version: 1,
+          codec: "json",
+          onCorrupt: "fail",
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            catalogFailure(target.name, "Cannot open the SQLite snapshot sidecar.", cause),
+          ),
+        );
+      yield* bucket
+        .set(info)
+        .pipe(
+          Effect.mapError((cause) =>
+            catalogFailure(target.name, "Cannot write the SQLite snapshot sidecar.", cause),
+          ),
+        );
+      return snapshotHandle(info);
     }),
-  };
-  const bucket = yield* deps.stateStore
-    .open({
-      root: { path: AbsolutePath.make(directory) },
-      key: `${id}.json`,
-      schema: SnapshotInfo,
-      version: 1,
-      codec: "json",
-      onCorrupt: "fail",
-    })
-    .pipe(
-      Effect.mapError((cause) =>
-        catalogFailure(target.name, "Cannot open the SQLite snapshot sidecar.", cause),
-      ),
-    );
-  yield* bucket
-    .set(info)
-    .pipe(
-      Effect.mapError((cause) =>
-        catalogFailure(target.name, "Cannot write the SQLite snapshot sidecar.", cause),
-      ),
-    );
-  return snapshotHandle(info);
+  );
 });
 
-export const extractSqliteSnapshotArchive = (
-  archive: Uint8Array,
+export const extractSqliteSnapshotArchiveToFile = (
+  archivePath: string,
+  destPath: string,
   service: string,
-): Effect.Effect<Uint8Array, SqlRecoveryUnavailableError> => {
-  const payload = unpackSqliteTar(archive);
-  if (payload === undefined || !isSqliteDatabaseHeader(payload)) {
-    return Effect.fail(
+): Effect.Effect<void, SqlRecoveryUnavailableError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const ok = await unpackSqliteTarFile(archivePath, destPath);
+      if (!ok) throw new Error("The archive is missing a SQLite payload.");
+    },
+    catch: (cause) =>
       new SqlRecoveryUnavailableError({
         message: `Snapshot archive for ${service} is not a SQLite database tar.`,
         service,
-        reason: "The archive is missing a SQLite payload.",
+        reason: String(cause),
         remediation: "Use a matching SQLite snapshot created by lando db:snapshot.",
       }),
-    );
-  }
-  return Effect.succeed(payload);
-};
+  });
 
-export const readSqliteSnapshotArchive = (
+export const copySqliteSnapshotArchive = (
   deps: SqliteSnapshotDeps,
   info: SnapshotInfo,
+  destPath: string,
   service: string,
-): Effect.Effect<Uint8Array, SqlRecoveryUnavailableError> => {
+): Effect.Effect<void, SqlRecoveryUnavailableError> => {
   const directory = join(deps.paths.ownerSnapshotsDir(info.owner.ownerKey), info.store.store);
-  return readHostBytes(
+  return copyHostFile(
     join(directory, `${info.id}.${info.format ?? "tar"}`),
+    destPath,
     service,
     "Cannot read the SQLite snapshot archive.",
   );

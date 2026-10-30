@@ -11,6 +11,11 @@ export const spec = {
   flags: {
     service: { type: "string", description: "Target database service." },
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
+    force: {
+      type: "boolean",
+      default: false,
+      description: "Replace a SQLite file while the owning service is running.",
+    },
   },
   args: {
     file: { type: "string", required: true, description: "Dump file to import." },

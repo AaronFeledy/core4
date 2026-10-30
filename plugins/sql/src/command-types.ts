@@ -24,6 +24,7 @@ export type DbAction =
 export type DbCommandInput = {
   readonly action: DbAction;
   readonly yes: boolean;
+  readonly force?: boolean;
   readonly service?: string;
   readonly file?: string;
   readonly snapshotId?: string;

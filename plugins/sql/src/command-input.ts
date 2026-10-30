@@ -81,6 +81,7 @@ export const dbCommandRedactionTokens = (result: unknown): ReadonlyArray<string>
 export const dbInputFromCommand = (action: DbAction, input: ExecutableCommandInput): DbCommandInput => ({
   action,
   yes: input.flags.yes === true,
+  ...(input.flags.force === true ? { force: true } : {}),
   hostCwd: process.cwd(),
   ...(typeof input.flags.service === "string" ? { service: input.flags.service } : {}),
   ...(typeof input.args.file === "string" ? { file: input.args.file } : {}),
