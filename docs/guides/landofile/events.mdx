@@ -38,6 +38,8 @@ After the app starts, the `warm-cache` task runs inside `web`. In this example i
 
 A plain-string step runs inside a service by default. Before start, that service may not exist yet, so use `service: ":host"` for `pre-start` shell commands. Use `pre-stop` for work that needs a running service, and `service: ":host"` for shell work after stop.
 
+Host commands use Lando's embedded Bun Shell, not Bash, zsh, or the container's shell. They use the same language as [host tooling and project scripts](../tooling/bun-shell-scripts.mdx#use-bun-shell-and-your-host-tools).
+
 <Guide>
   <Scenario id="ordered-lifecycle-tasks" render>
     <Step name="start">

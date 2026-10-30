@@ -8,7 +8,9 @@ import type {
 } from "../errors/index.ts";
 
 export interface ShellCommandOptions {
+  /** Uses native directory identity; defaults to the host cwd captured when execution starts. */
   readonly cwd?: string;
+  /** Inherits one host environment snapshot. Explicit PWD (including empty) wins; otherwise PWD is the effective directory. */
   readonly env?: Readonly<Record<string, string>>;
   readonly shell?: "bun";
   readonly argv?: ReadonlyArray<string>;
@@ -32,7 +34,9 @@ export interface ShellScriptOptions extends ShellCommandOptions {
 export interface ProcessSpawnOptions {
   readonly cmd: string;
   readonly args: ReadonlyArray<string>;
+  /** Native directory identity, defaulting to the host cwd at execution (stream subscription). */
   readonly cwd?: string;
+  /** Overrides one inherited snapshot; explicit PWD (including empty) wins over the effective directory. */
   readonly env?: Readonly<Record<string, string>>;
   readonly stdin?: string | Uint8Array;
   readonly stdinStream?: AsyncIterable<Uint8Array>;
@@ -77,6 +81,7 @@ export interface ShellReplIO {
 }
 
 export interface ShellInteractiveSpec {
+  /** Each executed line resolves this directory anew with the same PWD precedence as ShellCommandOptions. */
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;

@@ -12,6 +12,7 @@ import {
 } from "../../../scripts/schema-compatibility/classifier.ts";
 import { type JsonSchema, isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
+import sensitivityDelta from "./fixtures/x-extension-tooling-sensitivity.delta.json";
 import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
 import {
   CLOSED_EXTENSION_JUSTIFICATION,
@@ -40,7 +41,10 @@ import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps, timestampsDelta } from "./x-extension-timestamps-proof.ts";
-import { evolveHistoricalToolingShorthand } from "./x-extension-tooling-shorthand-proof.ts";
+import {
+  evolveHistoricalToolingSensitivity,
+  evolveHistoricalToolingShorthand,
+} from "./x-extension-tooling-shorthand-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -55,25 +59,77 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalAppMountAcceleration(
-    evolveHistoricalToolingShorthand(
-      evolveHistoricalEnvironment(
-        evolveHistoricalEndpointMetadata(
-          evolveHistoricalServicePort(
-            evolveHistoricalTimestamps(
-              evolveHistoricalContainerUser(
-                evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+  evolveHistoricalToolingSensitivity(
+    evolveHistoricalAppMountAcceleration(
+      evolveHistoricalToolingShorthand(
+        evolveHistoricalEnvironment(
+          evolveHistoricalEndpointMetadata(
+            evolveHistoricalServicePort(
+              evolveHistoricalTimestamps(
+                evolveHistoricalContainerUser(
+                  evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+                ),
+                "bare",
               ),
-              "bare",
             ),
           ),
         ),
+        "bare",
       ),
-      "bare",
     ),
+    "bare",
   );
 
 describe("closed x-* extension artifact repair", () => {
+  test("pins the independently reviewed tooling sensitivity delta and source provenance", async () => {
+    const bytes = await Bun.file(
+      resolve(import.meta.dirname, "fixtures/x-extension-tooling-sensitivity.delta.json"),
+    ).bytes();
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(
+      "32d02a24f561514a3b608d736cf9a991d3fa1f2ba80c23b16991440a25ea6b5a",
+    );
+    expect(sensitivityDelta.provenance).toEqual({
+      commit: "34e17e671c0864ac6db5c046c8c4a0491a8aef0b",
+      sources: { "sdk/src/schema/tooling-input.ts": "b95e4ef6ae6ef905e4db52ad25496fd84843e5c4" },
+    });
+  });
+
+  test.each(["flags", "args"])(
+    "replays sensitivity only onto the exact historical %s declaration",
+    (field) => {
+      const before = schemaAt(
+        repairedLandofile(),
+        `$.tooling.additionalProperties.${field}.additionalProperties`,
+      );
+      const serialized = JSON.stringify(before);
+      const evolved = evolveHistoricalToolingSensitivity(before, "bare");
+      const { sensitive, ...properties } = requireObject(
+        evolved.properties,
+        "evolved declaration properties",
+      );
+      expect(sensitive).toEqual({ type: "boolean", enum: [true] });
+      expect(jsonEquals({ ...evolved, properties }, before)).toBe(true);
+      expect(JSON.stringify(before)).toBe(serialized);
+      expect(jsonEquals(evolveHistoricalToolingSensitivity(before, "authoring"), before)).toBe(true);
+      for (const altered of [
+        { ...before, minProperties: 1 },
+        { ...before, required: ["description"] },
+        { ...before, additionalProperties: true },
+        { ...before, properties: { ...properties, choices: { type: "string" } } },
+        { ...before, properties: { ...properties, sensitive: { type: "boolean" } } },
+      ]) {
+        const input = normalizeJsonSchema(altered);
+        expect(jsonEquals(evolveHistoricalToolingSensitivity(input, "bare"), input)).toBe(true);
+        expect(jsonEquals(evolved, input)).toBe(false);
+      }
+      for (const sensitive of [{ type: "boolean" }, { type: "boolean", enum: [false] }, { not: {} }]) {
+        expect(jsonEquals(evolved, { ...evolved, properties: { ...properties, sensitive } })).toBe(false);
+      }
+      expect(jsonEquals(evolved, { ...evolved, properties })).toBe(false);
+      expect(jsonEquals(evolved, { ...evolved, required: ["sensitive"] })).toBe(false);
+    },
+  );
+
   test("records the captured base artifact provenance", () => {
     expect(captured.provenanceCommit).toBe("15133ee26729942dde7b9d4f0e033b4ced46406d");
     expect(captured.pattern).toBe(EXTENSION_PATTERN);

@@ -8,12 +8,14 @@ import {
   type CommandAliasTargetError,
   type LandofileFormConflictError,
   type NotImplementedError,
-  ToolingCompileError,
+  ToolingCommandUnavailableError,
 } from "@lando/sdk/errors";
 
-import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/cache/command-index";
-import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
-import { canonicalIdFromRelativePath } from "@lando/landofile/bun-sh-discovery";
+import { compileBunShellScriptCommand } from "@lando/engine/cache/command-compiler";
+import {
+  readAppCommandCacheForCwdDetailed,
+  readFreshAppCommandCacheForCwd,
+} from "@lando/engine/cache/command-index-writer";
 import { resolveBunShellScript } from "@lando/landofile/bun-sh-script";
 import { findAppRoot } from "@lando/landofile/discovery";
 import {
@@ -23,96 +25,15 @@ import {
 } from "./built-in-command-registry";
 import { activeCommandAliases, commandAliasPolicyError } from "./command-alias-policy";
 import { escapeDiagnosticText } from "./diagnostic-text";
+import { toolingCacheRecovery } from "./tooling-cache-status";
+import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./tooling-route";
 
-const CACHE_REMEDIATION =
-  "Run `lando app:cache:refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";
+export { type ToolingRoute, type NormalizedToolingRoute, toolingHelpRequested } from "./tooling-route";
+
+const UNKNOWN_REMEDIATION = "Check the task name with `lando help` or inspect the app's tooling definitions.";
 
 const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
   builtInCommandEntries.find((entry) => entry.spec.id === commandId);
-
-export type ToolingRoute =
-  | { readonly _tag: "not-tooling" }
-  | {
-      readonly _tag: "built-in";
-      readonly commandId: string;
-      readonly entry: BuiltInCommandEntry;
-    }
-  | { readonly _tag: "alias-disabled"; readonly token: string }
-  | {
-      readonly _tag: "cache-miss";
-      readonly commandId: string;
-      readonly name: string;
-      readonly remediation: string;
-    }
-  | {
-      readonly _tag: "unknown-tooling";
-      readonly commandId: string;
-      readonly name: string;
-      readonly remediation: string;
-    }
-  | {
-      readonly _tag: "tooling";
-      readonly commandId: string;
-      readonly name: string;
-      readonly hidden: boolean;
-      readonly input?: CommandIndexEntry["input"];
-    }
-  | {
-      readonly _tag: "bun-script";
-      readonly commandId: string;
-      readonly name: string;
-      readonly appRoot: string;
-      readonly relativePath?: string;
-    };
-
-export type NormalizedToolingRoute = Extract<ToolingRoute, { readonly _tag: "tooling" }>;
-
-const bunScriptRoute = (
-  commandId: string,
-  appRoot: string,
-  cache: AppCommandIndexPayload,
-): Extract<ToolingRoute, { readonly _tag: "bun-script" }> => {
-  const relativePath = cache.sourceScripts?.find(
-    (script) => canonicalIdFromRelativePath(script.relativePath)?.id === commandId,
-  )?.relativePath;
-  return {
-    _tag: "bun-script",
-    commandId,
-    name: commandId.slice("app:".length),
-    appRoot,
-    ...(relativePath === undefined ? {} : { relativePath }),
-  };
-};
-
-const normalizedToolingRoute = (
-  commandId: string,
-  name: string,
-  entry: CommandIndexEntry,
-): NormalizedToolingRoute => ({
-  _tag: "tooling",
-  commandId,
-  name,
-  hidden: entry.hidden,
-  ...(entry.input === undefined ? {} : { input: entry.input }),
-});
-
-/**
- * Declared flags and args make Lando the owner of the task's argv, so `--help` describes the
- * declaration instead of reaching the command. Raw-passthrough tasks keep handing `--help` to the
- * tool they wrap, hidden tasks keep their own refusal, and a declared help flag wins over ours.
- */
-export const toolingHelpRequested = (
-  route: ToolingRoute,
-  argv: ReadonlyArray<string>,
-): route is NormalizedToolingRoute => {
-  if (route._tag !== "tooling" || route.hidden || route.input === undefined) return false;
-  if (route.input.flags.some((flag) => flag.name === "help" || flag.alias === "h")) return false;
-  for (const token of argv) {
-    if (token === "--") return false;
-    if (token === "--help" || token === "-h") return true;
-  }
-  return false;
-};
 
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
@@ -166,7 +87,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   const appRoot = yield* findAppRoot(options.cwd);
   if (appRoot === undefined) return { _tag: "not-tooling" } as const;
 
-  const cache = yield* readFreshAppCommandCacheForCwd({
+  const receipt = yield* readAppCommandCacheForCwdDetailed({
     cwd: appRoot,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   }).pipe(
@@ -176,7 +97,7 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
       resolveBuiltInCommand(token) === undefined ? Effect.fail(error) : Effect.succeed(null),
     ),
   );
-  if (cache === null) {
+  if (receipt === null || receipt.status !== "fresh") {
     const registeredAlias = resolveBuiltInCommand(token);
     if (registeredAlias !== undefined) {
       return {
@@ -191,17 +112,17 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
       _tag: "cache-miss",
       commandId,
       name,
-      remediation: CACHE_REMEDIATION,
+      ...toolingCacheRecovery(receipt ?? { status: "missing" }),
     } as const;
   }
+  const cache = receipt.payload;
 
   const canonicalEntry = cache.entries.find((candidate) => candidate.id === token);
   if (canonicalEntry !== undefined) {
-    const canonicalName = token.startsWith("app:") ? token.slice("app:".length) : token;
     if (canonicalEntry.source === "bun-script") {
-      return bunScriptRoute(token, appRoot, cache);
+      return bunScriptRoute(canonicalEntry, appRoot, cache);
     }
-    return normalizedToolingRoute(token, canonicalName, canonicalEntry);
+    return normalizedToolingRoute(canonicalEntry, cache.aliasPolicy, cache.sourceFile);
   }
 
   const policy = cache.aliasPolicy;
@@ -227,12 +148,12 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
         _tag: "unknown-tooling",
         commandId: custom,
         name: customName,
-        remediation: CACHE_REMEDIATION,
+        remediation: UNKNOWN_REMEDIATION,
       } as const;
     if (customEntry.source === "bun-script") {
-      return bunScriptRoute(custom, appRoot, cache);
+      return bunScriptRoute(customEntry, appRoot, cache);
     }
-    return normalizedToolingRoute(custom, customName, customEntry);
+    return normalizedToolingRoute(customEntry, cache.aliasPolicy, cache.sourceFile);
   }
 
   if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
@@ -256,27 +177,37 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
   if (entry === undefined) {
     if (!aliasesEnabled && isKnownAlias) return { _tag: "alias-disabled", token } as const;
     const script = yield* resolveBunShellScript(appRoot, name);
-    if (script !== undefined)
-      return { _tag: "bun-script", commandId, name, appRoot, relativePath: script.relativePath } as const;
+    if (script !== undefined) {
+      const entry = yield* Effect.fromResult(compileBunShellScriptCommand(script));
+      return { ...bunScriptRoute(entry, appRoot, cache), relativePath: script.relativePath };
+    }
     return {
       _tag: "unknown-tooling",
       commandId,
       name,
-      remediation: CACHE_REMEDIATION,
+      remediation: UNKNOWN_REMEDIATION,
     } as const;
   }
 
   if (entry.source === "bun-script") {
-    return bunScriptRoute(commandId, appRoot, cache);
+    return bunScriptRoute(entry, appRoot, cache);
   }
-  return normalizedToolingRoute(commandId, name, entry);
+  return normalizedToolingRoute(entry, cache.aliasPolicy, cache.sourceFile);
 });
 
 export const toolingRouteError = (
   route: Extract<ToolingRoute, { readonly _tag: "cache-miss" | "unknown-tooling" }>,
-): ToolingCompileError =>
-  new ToolingCompileError({
-    message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable because the app command cache is missing, stale, or does not contain that task.`,
+): ToolingCommandUnavailableError =>
+  new ToolingCommandUnavailableError({
+    message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable (${route._tag === "unknown-tooling" ? "unknown-command" : route.reason}).`,
+    commandId: route.commandId,
     tool: route.name,
+    reason: route._tag === "unknown-tooling" ? "unknown-command" : route.reason,
+    ...(route._tag === "cache-miss" && route.staleReason !== undefined
+      ? { staleReason: route.staleReason }
+      : {}),
+    ...(route._tag === "cache-miss" && route.sourcePath !== undefined
+      ? { sourcePath: route.sourcePath }
+      : {}),
     remediation: route.remediation,
   });

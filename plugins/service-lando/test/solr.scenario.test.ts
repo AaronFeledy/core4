@@ -293,7 +293,9 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "solr-admin", args: ["status"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "solr-admin", input: { _tag: "RawArgv", argv: ["status"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("solr-admin");
@@ -333,9 +335,10 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "solr-admin", args: ["healthcheck", "-c", "gettingstarted"] }).pipe(
-        Effect.provide(layer),
-      ),
+      runTooling({
+        name: "solr-admin",
+        input: { _tag: "RawArgv", argv: ["healthcheck", "-c", "gettingstarted"] },
+      }).pipe(Effect.provide(layer)),
     );
 
     expect(result.exitCode).toBe(0);

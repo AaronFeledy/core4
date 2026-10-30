@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { ToolingInputRevision } from "@lando/sdk/schema";
 
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
-import { renderCommandHelp, renderToolingHelp } from "../../src/cli/cli-help.ts";
+import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "../../src/cli/cli-help.ts";
 import { commandStructureExample } from "../../src/cli/compiled-argv.ts";
 import { shouldStyleHelp } from "../../src/cli/help-style.ts";
 import { Flags } from "../../src/cli/spec/metadata.ts";
@@ -286,11 +287,14 @@ describe("renderToolingHelp", () => {
       id: "app:deploy",
       summary: "Deploy the app",
       input: {
+        acceptsArguments: true,
+        revision: ToolingInputRevision.make("help-fixture"),
         flags: [
           {
             name: "env",
             alias: "e",
             boolean: false,
+            sensitive: false,
             choices: ["dev", "prod"] as const,
             default: "dev",
             required: false,
@@ -299,14 +303,14 @@ describe("renderToolingHelp", () => {
         ],
         args: [],
       },
-    };
+    } satisfies ToolingHelpEntry;
 
     // When tooling help is rendered
     const help = renderToolingHelp(entry);
 
     // Then FLAGS lists the flag token, alias, description, default, and choices
     const rows = flagRows(help);
-    expect(rows.some((row) => row.startsWith("--env, -e"))).toBe(true);
+    expect(rows.some((row) => row.startsWith("--env=<value>, -e"))).toBe(true);
     expect(rows.some((row) => row.includes("Target environment"))).toBe(true);
     expect(rows.some((row) => row.includes("[default: dev]"))).toBe(true);
     expect(rows.some((row) => row.includes("(dev, prod)"))).toBe(true);
@@ -318,11 +322,14 @@ describe("renderToolingHelp", () => {
       id: "app:deploy",
       summary: "Deploy the app",
       input: {
+        acceptsArguments: true,
+        revision: ToolingInputRevision.make("help-fixture"),
         flags: [
           {
             name: "verbose",
             alias: "v",
             boolean: true,
+            sensitive: false,
             required: false,
             description: "Verbose output",
           },
@@ -337,7 +344,7 @@ describe("renderToolingHelp", () => {
     // Then the boolean flag token has no value placeholder
     const row = flagRows(help).find((line) => line.startsWith("--verbose"));
     expect(row).toBeDefined();
-    expect(row).toContain("--verbose, -v");
+    expect(row).toContain("--verbose[=true|false], -v");
     expect(row).not.toContain("--verbose=");
     expect(row).not.toContain("<verbose>");
     expect(row).not.toContain(" VERBOSE");
@@ -349,10 +356,13 @@ describe("renderToolingHelp", () => {
       id: "app:deploy",
       summary: "Deploy the app",
       input: {
+        acceptsArguments: true,
+        revision: ToolingInputRevision.make("help-fixture"),
         flags: [
           {
             name: "name",
             boolean: false,
+            sensitive: false,
             required: true,
             description: "Release name",
           },
@@ -376,11 +386,14 @@ describe("renderToolingHelp", () => {
       id: "app:deploy",
       summary: "Deploy the app",
       input: {
+        acceptsArguments: true,
+        revision: ToolingInputRevision.make("help-fixture"),
         flags: [],
         args: [
           {
             name: "target",
             order: 0,
+            sensitive: false,
             choices: ["local", "remote"] as const,
             required: true,
             description: "Where to deploy",
@@ -388,13 +401,14 @@ describe("renderToolingHelp", () => {
           {
             name: "tag",
             order: 1,
+            sensitive: false,
             required: false,
             default: "latest",
             description: "Image tag",
           },
         ],
       },
-    };
+    } satisfies ToolingHelpEntry;
 
     // When tooling help is rendered
     const help = renderToolingHelp(entry);
@@ -416,10 +430,12 @@ describe("renderToolingHelp", () => {
       id: "app:deploy",
       summary: "Deploy the app",
       input: {
-        flags: [{ name: "env", boolean: false, required: false }],
+        acceptsArguments: true,
+        revision: ToolingInputRevision.make("help-fixture"),
+        flags: [{ name: "env", boolean: false, required: false, sensitive: false }],
         args: [
-          { name: "target", order: 0, required: true },
-          { name: "tag", order: 1, required: false },
+          { name: "target", order: 0, required: true, sensitive: false },
+          { name: "tag", order: 1, required: false, sensitive: false },
         ],
       },
     };

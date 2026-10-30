@@ -263,7 +263,7 @@ describe("compose passthrough — scenario: third-party image with default endpo
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "whoami-probe", args: [] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "whoami-probe", input: { _tag: "RawArgv", argv: [] } }).pipe(Effect.provide(layer)),
     );
 
     expect(result.tool).toBe("whoami-probe");

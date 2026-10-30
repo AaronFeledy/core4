@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
@@ -237,14 +237,14 @@ describe("HostToolingEngine.layer", () => {
       const invocation: ToolingInvocation = {
         tool: "read-marker",
         cwd,
-        commands: [["sh", "-c", "cat marker.txt"]],
-        hostSteps: [{ kind: "shell", source: "cat marker.txt", argv: [] }],
+        commands: [["sh", "-c", 'cat marker.txt; printf "\\n%s\\n" "$PWD"']],
+        hostSteps: [{ kind: "shell", source: 'cat marker.txt; printf "\\n%s\\n" "$PWD"', argv: [] }],
       };
 
       const result = await Effect.runPromise(runEngine(invocation, plan));
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe("marker-content");
+      expect(result.stdout).toBe(`marker-content\n${await realpath(cwd)}\n`);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

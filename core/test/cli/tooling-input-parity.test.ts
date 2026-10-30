@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { type AppHandleRuntimeServices, makeAppHandle } from "@lando/engine/app/handle";
+import { makeAppLifecycle } from "@lando/engine/app/lifecycle";
+import { appOperations } from "@lando/engine/app/operations";
 import { compileToolingCommands } from "@lando/engine/cache/command-compiler";
 import { runTooling } from "@lando/engine/operations/tooling";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
@@ -17,7 +20,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Context, DateTime, Effect, Layer, Result, Schema } from "effect";
+import { Context, DateTime, Effect, Layer, Schema } from "effect";
 import { mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
@@ -105,73 +108,100 @@ const harnessLayer = (input: {
     emptyConfigServiceLayer,
   );
 
-test.each([0, 7])("keeps CLI, event and MCP tooling argv and exit %i equal", async (exitCode) => {
-  // Given
-  const landofile = Schema.decodeUnknownSync(LandofileShape)({
-    name: "input-parity",
-    tooling: {
-      inspect: {
-        cmd: ["inspect"],
-        flags: { mode: {}, loud: { boolean: true } },
-        args: { second: { order: 2 }, first: { order: 1 } },
+test.each(
+  Array.from({ length: 8 }, (_, seed) => ({
+    exitCode: seed % 2 === 0 ? 0 : 7,
+    loud: seed % 3 === 0,
+    mode: seed % 4 === 0 ? "" : `a b-${seed}`,
+  })),
+)(
+  "keeps CLI, event, MCP and library values equal for $mode/$loud/$exitCode",
+  async ({ exitCode, loud, mode }) => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "input-parity",
+      tooling: {
+        inspect: {
+          cmd: ["inspect"],
+          flags: { mode: {}, loud: { boolean: true, default: true } },
+          args: { second: { order: 2 }, first: { order: 1 } },
+        },
       },
-    },
-  });
-  const plan = planFor(landofile);
-  const invocations: ToolingInvocation[] = [];
-  const layer = harnessLayer({ landofile, plan, invocations, exitCode });
-  const structured = { flags: { loud: true, mode: "a b" }, args: { second: "last", first: "--first" } };
-  const registry = mcpRegistryWithToolingEntries({ commandEntries: [] }, compileToolingCommands(landofile));
-  const entry = registry.toolingEntries?.[0];
-  if (entry === undefined) throw new Error("Missing tooling MCP projection");
-  // When
-  const results = await Effect.runPromise(
-    Effect.scoped(
-      Effect.gen(function* () {
-        const context = yield* Layer.build(layer);
-        const cli = yield* runTooling({
-          name: "inspect",
-          args: ["--mode=a b", "--loud", "--", "--first", "last"],
-        }).pipe(Effect.provide(context));
-        const event = yield* makeEventCommandExecutor(context).run({
-          command: "app:inspect",
-          ...structured,
-          argv: [],
-          cwd: process.cwd(),
-          plan,
-        });
-        const mcp = yield* dispatchTool(
-          { toolId: entry.spec.id, input: structured },
-          {
-            registry: new Map([[entry.spec.id, entry]]),
-            effective: new Set([entry.spec.id]),
-            allowlistSource: "tooling",
-            redactor: createRedactor("secrets"),
-            resultRedactor: (tokens) => Effect.succeed(createRedactor("secrets", { values: tokens })),
-            execute: (target, input) =>
-              target.spec.run(input).pipe(
-                Effect.provide(context),
-                Effect.map((value) => ({ _tag: "success", value }) as const),
-                Effect.catch((error) =>
-                  Effect.succeed({ _tag: "failure", error, additionalErrors: [] } as const),
+    });
+    const plan = planFor(landofile);
+    const invocations: ToolingInvocation[] = [];
+    const layer = harnessLayer({ landofile, plan, invocations, exitCode });
+    const structured = { flags: { loud, mode }, args: { second: "last", first: "--first" } };
+    const registry = mcpRegistryWithToolingEntries({ commandEntries: [] }, compileToolingCommands(landofile));
+    const entry = registry.toolingEntries?.[0];
+    if (entry === undefined) throw new Error("Missing tooling MCP projection");
+    // When
+    const results = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const context = yield* Layer.build(layer);
+          const cli = yield* runTooling({
+            name: "inspect",
+            input: { _tag: "RawArgv", argv: [`--mode=${mode}`, `--loud=${loud}`, "--", "--first", "last"] },
+          }).pipe(Effect.provide(context));
+          const event = yield* makeEventCommandExecutor(context).run({
+            command: "app:inspect",
+            ...structured,
+            argv: [],
+            cwd: process.cwd(),
+            plan,
+          });
+          const mcp = yield* dispatchTool(
+            { toolId: entry.spec.id, input: structured },
+            {
+              registry: new Map([[entry.spec.id, entry]]),
+              effective: new Set([entry.spec.id]),
+              allowlistSource: "tooling",
+              redactor: createRedactor("secrets"),
+              resultRedactor: (tokens) => Effect.succeed(createRedactor("secrets", { values: tokens })),
+              execute: (target, input) =>
+                target.spec.run(input).pipe(
+                  Effect.provide(context),
+                  Effect.map((value) => ({ _tag: "success", value }) as const),
+                  Effect.catch((error) =>
+                    Effect.succeed({ _tag: "failure", error, additionalErrors: [] } as const),
+                  ),
                 ),
-              ),
-          },
-        );
-        return { cli, event, mcp };
-      }),
-    ),
-  );
-  // Then
-  expect(invocations).toHaveLength(3);
-  expect(invocations[0]?.commands).toEqual([["inspect", "--mode=a b", "--loud", "--first", "last"]]);
-  expect(invocations[1]?.commands).toEqual(invocations[0]?.commands);
-  expect(invocations[2]?.commands).toEqual(invocations[0]?.commands);
-  expect(results.cli.exitCode).toBe(exitCode);
-  expect(results.event.exitCode).toBe(results.cli.exitCode);
-  expect(results.mcp.envelope).toMatchObject({ result: { exitCode: results.cli.exitCode } });
-  expect(results.mcp.ok).toBe(true);
-});
+            },
+          );
+          const lifecycle = yield* makeAppLifecycle(yield* Effect.scope);
+          const handle = makeAppHandle(
+            {
+              plan,
+              root: plan.root,
+              app: { kind: "user", id: plan.id, root: plan.root },
+              landofile: literalLandofile(landofile, plan.root),
+            },
+            Context.makeUnsafe<AppHandleRuntimeServices>(context.mapUnsafe),
+            appOperations,
+            lifecycle,
+          );
+          const library = yield* handle.tooling("inspect", { input: { _tag: "NamedMaps", ...structured } });
+          return { cli, event, mcp, library };
+        }),
+      ),
+    );
+    // Then
+    expect(invocations).toHaveLength(4);
+    expect(invocations[0]?.commands).toEqual([
+      ["inspect", `--mode=${mode}`, ...(loud ? ["--loud"] : []), "--first", "last"],
+    ]);
+    expect(invocations[1]?.commands).toEqual(invocations[0]?.commands);
+    expect(invocations[2]?.commands).toEqual(invocations[0]?.commands);
+    expect(invocations[3]?.commands).toEqual(invocations[0]?.commands);
+    expect(results.library.exitCode).toBe(exitCode);
+    expect(results.library).not.toHaveProperty("redactionTokens");
+    expect(results.cli.exitCode).toBe(exitCode);
+    expect(results.event.exitCode).toBe(results.cli.exitCode);
+    expect(results.mcp.envelope).toMatchObject({ result: { exitCode: results.cli.exitCode } });
+    expect(results.mcp.ok).toBe(true);
+  },
+);
 
 test("emits one ToolingInputError for an omitted non-trailing positional on CLI, event and MCP", async () => {
   // Given a declaration whose leading positional is optional and whose later positional has a default
@@ -193,7 +223,7 @@ test("emits one ToolingInputError for an omitted non-trailing positional on CLI,
       Effect.gen(function* () {
         const context = yield* Layer.build(layer);
         const cli = yield* Effect.result(
-          runTooling({ name: "inspect", args: [] }).pipe(Effect.provide(context)),
+          runTooling({ name: "inspect", input: { _tag: "RawArgv", argv: [] } }).pipe(Effect.provide(context)),
         );
         const event = yield* Effect.result(
           makeEventCommandExecutor(context).run({
@@ -215,22 +245,16 @@ test("emits one ToolingInputError for an omitted non-trailing positional on CLI,
     ),
   );
   // Then all three refuse with the identical tagged failure and nothing reaches the engine
-  const identity = (result: Result.Result<unknown, unknown>) => {
-    const error = Result.isFailure(result) ? (result.failure as Record<string, unknown>) : undefined;
-    if (error === undefined) return undefined;
-    const { _tag, tool, field, message, remediation } = error;
-    return { _tag, tool, field, message, remediation };
-  };
   const expected = {
     _tag: "ToolingInputError",
     tool: "inspect",
     field: "first",
-    message: "Positional argument first cannot be omitted because a later positional argument has a value.",
+    message: "Positional argument first cannot be omitted before a later value.",
     remediation:
-      "Supply argument first or change the tooling declaration so no later positional value follows it.",
+      "Check the declared inputs for lando inspect. If metadata changed, run lando app:cache:refresh and reconnect or re-resolve the command catalog.",
   };
-  expect(identity(results.cli)).toEqual(expected);
-  expect(identity(results.event)).toEqual(expected);
-  expect(identity(results.mcp)).toEqual(expected);
+  expect(results.cli).toMatchObject({ _tag: "Failure", failure: expected });
+  expect(results.event).toMatchObject({ _tag: "Failure", failure: expected });
+  expect(results.mcp).toMatchObject({ _tag: "Failure", failure: expected });
   expect(invocations).toHaveLength(0);
 });

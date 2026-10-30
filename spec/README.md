@@ -68,6 +68,7 @@ If you are looking for a public surface or policy:
 | Runtime layers, dependency direction, and source layout | 03 | §3.1 + §3.3 |
 | Bootstrap levels and fast paths | 03 | §3.2 |
 | Core Effect service tags | 03 | §3.4 |
+| Host execution directory identity, environment snapshots, and PWD precedence | 03 | §3.4 |
 | Lifecycle event scopes and names | 03 | §3.5 |
 | CLI and embedding imperative shells | 03 | §3.6 |
 | Canonical secret and PII redaction | 03 | §3.7 |
@@ -134,8 +135,12 @@ If you are looking for a public surface or policy:
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
-| Single native dispatch and help projection | 08 | §8.4.1 + §8.4.2 |
-| Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
+| Single native dispatch, help projection, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| Tooling schemas, named-first binding, boolean projection, sensitivity, and retained input revisions | 08 | §8.5.1 |
+| Tooling steps, expressions, events, and scripts | 08 | §8.5 |
+| Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |
+| Tooling cache/help recovery and explicit refresh | 08 | §8.7 |
+| Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |

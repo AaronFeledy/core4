@@ -230,7 +230,9 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "valkey-cli", args: ["ping"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "valkey-cli", input: { _tag: "RawArgv", argv: ["ping"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("valkey-cli");
@@ -262,13 +264,17 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const setResult = await Effect.runPromise(
-      runTooling({ name: "valkey-cli", args: ["set", "foo", "bar"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "valkey-cli", input: { _tag: "RawArgv", argv: ["set", "foo", "bar"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(setResult.exitCode).toBe(0);
     expect(setResult.stdout).toBe("OK\n");
 
     const getResult = await Effect.runPromise(
-      runTooling({ name: "valkey-cli", args: ["get", "foo"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "valkey-cli", input: { _tag: "RawArgv", argv: ["get", "foo"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(getResult.exitCode).toBe(0);
     expect(getResult.stdout).toBe("bar\n");

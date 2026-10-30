@@ -36,6 +36,10 @@
       "digest": "d8542d338b4e92526b12db77475a61875368fb034ee7326a55c15154c677f18a"
     },
     {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/declared-inputs",
+      "digest": "23091addc0205e5effabdfb7d0ac927b05406d6a65d1553d9a20c2c1d6c7300b"
+    },
+    {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/exit-code",
       "digest": "46a9e4c5d4a02001f2e9e6b50f1413d231fe01941fc9b4d45dde7d5f49f666ad"
     },
@@ -486,6 +490,10 @@
     {
       "fixture": "docs/guides/mariadb/fixtures/mariadb-demo",
       "digest": "c9c9136dde9088335ea92c3cd10df75dd116b5d96c2fb1fd946c6144a971937f"
+    },
+    {
+      "fixture": "docs/guides/mcp/fixtures/named-inputs",
+      "digest": "4678b6d9da5e9f16dd662ed6f1efbb8e09af575cc54324ce18ff12161916f52a"
     },
     {
       "fixture": "docs/guides/meilisearch/fixtures/meilisearch-demo",

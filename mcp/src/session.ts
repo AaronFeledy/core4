@@ -10,7 +10,7 @@ import * as McpServer from "effect/ai/McpServer";
 import { stringifyBoundedJson } from "./bounded-json";
 import { confirmationPrompt } from "./confirmation";
 import type { McpDispatchDeps, McpNotify } from "./dispatch";
-import { dispatchTool } from "./dispatch";
+import { dispatchTool, registerToolInputRedaction } from "./dispatch";
 import { makeNestedExecute } from "./execute";
 import { type MemoryPressureLevel, attachMemoryPressureListener } from "./memory-pressure";
 import type { McpCommandExecutorShape } from "./port";
@@ -78,6 +78,7 @@ export const serveSession = Effect.fnUntraced(
                   message,
                 });
               });
+              yield* registerToolInputRedaction(entry.spec, input);
               const decodedInput = yield* Effect.try({
                 try: () => SchemaInput(input),
                 catch: () => stdioTransportError("MCP tool arguments must be an object."),

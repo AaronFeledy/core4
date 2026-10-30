@@ -25,6 +25,7 @@ import { JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
 import { EventService, Renderer } from "@lando/sdk/services";
+import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
@@ -332,6 +333,10 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     };
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
+        if (Cause.hasInterruptsOnly(cause)) {
+          setExitCode(commandInterruptionExitCode(options.signal));
+          return;
+        }
         const primary = primaryFailureReason(cause);
         if (primary !== undefined && Cause.isDieReason(primary)) {
           setExitCode(1);
@@ -351,10 +356,8 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
         redactionTokens: extraTokens,
       });
       yield* recordCliDefect(cause, defectRedactor, io);
-      const { error: primaryError, additionalErrors } = failureOutcomeFromCause(cause, normalizeDefect);
-      const error = yield* renderFailureEvidence(
-        Cause.hasInterruptsOnly(cause) ? "All fibers interrupted without errors." : primaryError,
-      );
+      const { error: primaryError, additionalErrors } = commandFailureOutcome(cause, options.signal);
+      const error = yield* renderFailureEvidence(primaryError);
       if (envelopeFormat) {
         const outcome = {
           _tag: "failure",
@@ -399,7 +402,10 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
               onInitialized: initStage.end(Exit.void),
               ...(options.completion === undefined ? {} : { completion: options.completion }),
               ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
-              ...(options.suppressInterruptionDiagnostics === true ? { interruptionExitCode: 0 } : {}),
+              interruptionExitCode: () =>
+                options.suppressInterruptionDiagnostics === true
+                  ? 0
+                  : commandInterruptionExitCode(options.signal),
             });
       yield* finishCommandProgress();
       resultExit = commandExit;

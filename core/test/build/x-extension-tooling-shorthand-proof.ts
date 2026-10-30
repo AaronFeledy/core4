@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import {
   type JsonSchema,
   type JsonValue,
   isJsonObject,
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
+import sensitivityDelta from "./fixtures/x-extension-tooling-sensitivity.delta.json";
 import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
 // Reviewed delta: a tooling task may also be `false` (disable) or a non-empty
@@ -63,6 +65,34 @@ export const evolveHistoricalToolingShorthand = (
       next.anyOf = [...next.anyOf.filter((member) => !isExpressionBranch(member)), ...AUTHORING_SHORTHANDS];
     }
     return next;
+  };
+  return normalizeJsonSchema(wireObject(visit(historical)));
+};
+
+export const evolveHistoricalToolingSensitivity = (
+  historical: JsonSchema,
+  projection: "bare" | "authoring",
+): JsonSchema => {
+  const visit = (value: JsonValue): JsonValue => {
+    if (Array.isArray(value)) return value.map(visit);
+    if (!isJsonObject(value)) return value;
+    const next = Object.fromEntries(Object.entries(value).map(([key, child]) => [key, visit(child)]));
+    const properties = value.properties;
+    if (!isJsonObject(properties) || !("choices" in properties) || !("default" in properties)) return next;
+    const digest = createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    if (
+      !sensitivityDelta.before.some((entry) => entry.projection === projection && entry.sha256 === digest)
+    ) {
+      return next;
+    }
+    return {
+      ...next,
+      properties: {
+        ...wireObject(next.properties),
+        sensitive:
+          projection === "bare" ? sensitivityDelta.bareSensitive : sensitivityDelta.authoringSensitive,
+      },
+    };
   };
   return normalizeJsonSchema(wireObject(visit(historical)));
 };

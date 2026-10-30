@@ -251,7 +251,12 @@ export const appliedClientFixture = (
         Effect.gen(function* () {
           const task = generated.psql;
           if (task === undefined) return yield* Effect.die("missing fixture task");
-          return yield* runEventToolingCommand(plan, "psql", task, []);
+          return yield* runEventToolingCommand({
+            plan,
+            name: "psql",
+            task,
+            input: { _tag: "RawArgv", argv: [] },
+          });
         }).pipe(Effect.provide(layer), Effect.result),
       ),
   };

@@ -287,7 +287,7 @@ test.each(["echo", ["echo", "literal value"]])("forwards undeclared argv unchang
   const f = fixture({ cmd });
   const args = ["--bogus", "a b", "", "--", "$literal"];
   // When invoked
-  const result = await f.run({ args });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: args } });
   // Then raw tokens reach the provider
   expect(Result.isSuccess(result)).toBe(true);
   expect(f.calls[0]?.command.slice(-args.length)).toEqual(args);
@@ -296,9 +296,9 @@ test.each(["echo", ["echo", "literal value"]])("forwards undeclared argv unchang
 const invalidInputs: readonly {
   readonly task: ToolingTaskShape;
   readonly args: readonly string[];
-  readonly field: string;
+  readonly field: string | undefined;
 }[] = [
-  { task: { cmd: "echo", flags: { verbose: { boolean: true } } }, args: ["--bogus"], field: "bogus" },
+  { task: { cmd: "echo", flags: { verbose: { boolean: true } } }, args: ["--bogus"], field: undefined },
   { task: { cmd: "echo", args: { mode: { choices: ["safe"] } } }, args: ["unsafe"], field: "mode" },
   { task: { cmd: "echo", service: ":svc", flags: { svc: { alias: "s" } } }, args: [], field: "svc" },
   ...[":host", ":other", ":"].map((value) => ({
@@ -318,9 +318,12 @@ test.each([...invalidInputs])(
     // Given a declared input
     const f = fixture(task);
     // When invalid argv is submitted
-    const result = await f.run({ args });
+    const result = await f.run({ input: { _tag: "RawArgv", argv: args } });
     // Then validation prevents all execution
-    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingInputError", field } });
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ToolingInputError", ...(field === undefined ? {} : { field }) },
+    });
     expect(f.selections).toHaveLength(0);
     expect(f.calls).toHaveLength(0);
   },
@@ -330,7 +333,7 @@ test("resolves a service from its validated flag alias", async () => {
   // Given a service reference and alias
   const f = fixture({ cmd: "echo", service: ":svc", flags: { svc: { alias: "s", choices: ["worker"] } } });
   // When the alias supplies the service
-  const result = await f.run({ args: ["-s", "worker"] });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["-s", "worker"] } });
   // Then the provider receives the resolved service
   expect(Result.isSuccess(result)).toBe(true);
   expect(f.calls[0]?.service).toBe("worker");
@@ -340,7 +343,7 @@ test("never selects a provider for all-host tooling", async () => {
   // Given host-only steps
   const f = fixture({ service: ":host", cmds: ["echo first", "echo last"] });
   // When invoked with raw argv
-  const result = await f.run({ args: ["a b"] });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["a b"] } });
   // Then host steps run without provider selection and only the last receives argv
   expect(Result.isSuccess(result)).toBe(true);
   expect(f.selections).toHaveLength(0);
@@ -420,9 +423,9 @@ test("preserves arguments false rejection", async () => {
   // Given a task that rejects arguments
   const f = fixture({ cmd: "echo", arguments: false });
   // When arguments are provided
-  const result = await f.run({ args: ["extra"] });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["extra"] } });
   // Then the original compile error tag is retained
-  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingCompileError" } });
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingInputError" } });
   expect(f.selections).toHaveLength(0);
 });
 
@@ -435,7 +438,7 @@ test("accepts declared flags when arguments is false", async () => {
     service: ":host",
   });
   // When a declared flag is supplied
-  const result = await f.run({ args: ["--verbose"] });
+  const result = await f.run({ input: { _tag: "RawArgv", argv: ["--verbose"] } });
   // Then the flag is parsed instead of treated as a forbidden positional
   expect(result).toMatchObject({ _tag: "Success" });
   expect(f.selections).toHaveLength(0);

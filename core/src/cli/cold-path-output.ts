@@ -5,6 +5,7 @@ import { COMMAND_TOPICS } from "./command-topics";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
 import { shouldStyleHelp, bold as wrapBold, cyan as wrapCyan, dim as wrapDim } from "./help-style";
+import { type ToolingMetadataStatus, toolingMetadataNotice } from "./tooling-cache-status";
 
 export type ThisAppHelpRow = {
   readonly canonicalId: string;
@@ -17,6 +18,7 @@ export type ColdHelpStyle = {
   readonly style?: boolean;
   readonly thisAppRows?: ReadonlyArray<ThisAppHelpRow>;
   readonly aliasPolicy?: HelpAliasPolicy;
+  readonly toolingMetadata?: ToolingMetadataStatus;
 };
 
 export const HELP_TOPICS = ["app", "apps", "plugin", "global", "recipes", "scratch"] as const;
@@ -211,6 +213,7 @@ export const renderColdRootHelp = (
     style.bold("COMMON"),
     ...formatSection(commonRows(options?.aliasPolicy), style),
     ...thisAppBlock,
+    ...toolingMetadataNotice(options?.toolingMetadata),
     "",
     style.bold("MORE"),
     ...moreLines,
@@ -250,6 +253,7 @@ export const renderColdAllHelp = (options?: ColdHelpStyle): string => {
     style.bold("ALL"),
     ...formatSection(rows, style),
     ...(thisAppRows.length === 0 ? [] : ["", style.bold("THIS APP"), ...formatSection(thisAppRows, style)]),
+    ...toolingMetadataNotice(options?.toolingMetadata),
   ].join("\n");
 };
 
