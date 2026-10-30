@@ -7,7 +7,7 @@ import { Cause, Effect, Exit, Option } from "effect";
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { SqlCommandFailedError, SqlRecoveryUnavailableError, SqlSeedSourceError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
-import type { EphemeralRunSpec, StateStoreShape } from "@lando/sdk/services";
+import type { EphemeralRunSpec } from "@lando/sdk/services";
 import { dbInputFromCommand } from "../src/command-input.ts";
 import { executeDbCommand } from "../src/run.ts";
 import { packSqliteTar, unpackSqliteTar } from "../src/sqlite-archive.ts";
@@ -438,7 +438,10 @@ describe("sqlite export dump", () => {
         },
         pullArtifact: () => Effect.succeed({ digest: sqliteHelperImage.digest }),
         paths: { ownerSnapshotsDir: (key: string) => join(dataRoot, "snapshots", key) },
-        stateStore: { withLock: (_key: string, body: Effect.Effect<unknown>) => body } as StateStoreShape,
+        stateStore: {
+          open: () => Effect.die("unused"),
+          withLock: <A, E>(_key: string, body: Effect.Effect<A, E>) => body,
+        },
       },
     };
     const exit = await Effect.runPromiseExit(
