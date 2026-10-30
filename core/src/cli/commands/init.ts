@@ -34,7 +34,9 @@ export interface InitAppResult {
 }
 
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
-  const { prepared, manifest, directory, publicAnswers, appName } = await prepareInitApp(options);
+  options.signal?.throwIfAborted();
+  const { prepared, manifest, directory, publicAnswers, appName, interaction, reviewEligible } =
+    await prepareInitApp(options);
 
   const filesToWrite = prepared.outputs;
   const postInitActions = prepared.actions;
@@ -54,21 +56,15 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     mode: "list",
   });
 
-  await Effect.runPromise(tree.start);
-  await Effect.runPromise(tree.startTask("render"));
-
   let postInit: PostInitOutcome = { executed: [] };
   const skippedScaffold = prepared.skippedScaffold;
   let receipt: RecipeInitReceipt;
   let postInitStarted = false;
+  let renderStarted = false;
 
   try {
     if (prepared.conflicts[0] !== undefined) {
       const conflictPath = join(directory, prepared.conflicts[0]);
-      await Effect.runPromise(
-        tree.failTask("render", `Init target already has a Landofile: ${conflictPath}`),
-      );
-      await Effect.runPromise(tree.close("Initialization aborted"));
       throw new InitTargetExistsError({
         message: `Init target already has a Landofile: ${conflictPath}`,
         path: conflictPath,
@@ -85,41 +81,61 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
       });
     }
     const result = await Effect.runPromise(
-      runRecipeInitPipeline({
-        prepared,
-        postInitEnabled: options.runPostInit !== false,
-        journalRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
-        privateFileAccess: options.privateFileAccess,
-        runPostInit: async (bound) => {
-          if (!shouldRunPostInit) {
-            return { executed: [] };
-          }
-          if (!postInitStarted) {
-            await Effect.runPromise(
-              tree.completeTask(
-                "render",
-                `Rendered ${filesToWrite.length} ${filesToWrite.length === 1 ? "file" : "files"}`,
-              ),
-            );
-            await Effect.runPromise(tree.startTask("postinit"));
-            postInitStarted = true;
-          }
-          return runPostInit({
-            ...bound,
-            ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
-            ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
-            ...(options.postInitCommandRunner === undefined
-              ? {}
-              : { commandRunner: options.postInitCommandRunner }),
-          });
+      runRecipeInitPipeline(
+        {
+          prepared,
+          postInitEnabled: options.runPostInit !== false,
+          journalRoot: () => options.userDataRoot ?? resolveUserDataRoot(),
+          privateFileAccess: options.privateFileAccess,
+          runPostInit: async (bound) => {
+            if (!shouldRunPostInit) {
+              return { executed: [] };
+            }
+            if (!postInitStarted) {
+              await Effect.runPromise(
+                tree.completeTask(
+                  "render",
+                  `Rendered ${filesToWrite.length} ${filesToWrite.length === 1 ? "file" : "files"}`,
+                ),
+              );
+              await Effect.runPromise(tree.startTask("postinit"));
+              postInitStarted = true;
+            }
+            return runPostInit({
+              ...bound,
+              ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
+              ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
+              ...(options.postInitCommandRunner === undefined
+                ? {}
+                : { commandRunner: options.postInitCommandRunner }),
+            });
+          },
         },
-      }),
+        (review) =>
+          Effect.gen(function* () {
+            const onPrepared = options.onPrepared;
+            if (reviewEligible && onPrepared !== undefined) {
+              yield* Effect.tryPromise({
+                try: async (signal) => {
+                  const sharedSignal = options.signal ?? signal;
+                  sharedSignal.throwIfAborted();
+                  await onPrepared(review, { interaction, signal: sharedSignal });
+                  sharedSignal.throwIfAborted();
+                },
+                catch: (cause) => cause,
+              });
+            }
+            yield* tree.start;
+            renderStarted = true;
+            yield* tree.startTask("render");
+          }),
+      ),
       options.signal === undefined ? undefined : { signal: options.signal },
     );
     postInit = result.postInit;
     receipt = result.receipt;
   } catch (cause) {
-    if (cause instanceof InitTargetExistsError) throw cause;
+    if (!renderStarted) throw cause;
 
     await Effect.runPromise(
       tree.failTask(
