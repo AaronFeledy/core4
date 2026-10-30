@@ -67,7 +67,7 @@ Set `NO_COLOR` to any non-empty value and Lando prints its task tree, notices, s
 NO_COLOR=1 lando start
 ```
 
-Status still reads from the glyphs (`✓`, `✗`, `!`, `◌`), and bold and dim stay. `TERM=dumb` turns color off too and also prints one progress line per event instead of a redrawing tree. `FORCE_COLOR` does not turn Lando's color back on. Lando never rewrites the output of the tools you run, so a command such as `lando exec web -- ls --color=always` keeps its own colors. Interactive prompts still use their color theme.
+Status still reads from the glyphs (`✓`, `✗`, `!`, `◌`), and bold and dim stay. `TERM=dumb` turns color off too and also prints one progress line per event instead of a redrawing tree. `FORCE_COLOR` does not turn Lando's color back on. Interactive prompts switch to your terminal's default colors and keep the `▶` marker on the current choice. When `lando exec`, `lando ssh`, or a service tooling task runs on your terminal, Lando also passes `NO_COLOR=1` into the container, so tools that honor the convention go plain too; a `NO_COLOR` your service already sets wins. Lando never rewrites the output of the tools you run, so a command such as `lando exec web -- ls --color=always` keeps its own colors.
 
 <Guide>
   <Scenario id="debug-default-flip" render>

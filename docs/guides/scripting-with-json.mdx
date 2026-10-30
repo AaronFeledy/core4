@@ -34,8 +34,12 @@ structured too. Raw causes, stacks, and redaction-token lists are not emitted.
 
 Streaming commands such as `app:logs` and `app:exec` emit `StreamFrame`
 frames under `--format json`: `stdout` and `stderr` frames carry output,
-`event` frames carry progress and lifecycle events, and a single result frame
-comes last.
+`event` frames carry progress and lifecycle events as they happen, and a
+single result frame comes last. `lando start --format=json` and
+`lando rebuild --format=json` stream their events the same way, so a script
+sees each service's progress while the command runs. If the reader falls far
+enough behind that Lando drops events instead of stalling, the result frame's
+`envelope.warnings` carries `LANDO_EVENT_FRAMES_DROPPED` with the count.
 Source and compiled `--format json` are identical because both use the same
 native registry and dispatcher.
 
