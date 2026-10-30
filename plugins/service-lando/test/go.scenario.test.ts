@@ -255,7 +255,7 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "go", args: ["version"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "go", input: { _tag: "RawArgv", argv: ["version"] } }).pipe(Effect.provide(layer)),
     );
 
     expect(result.tool).toBe("go");
@@ -279,7 +279,9 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "go", args: ["build", "./..."] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "go", input: { _tag: "RawArgv", argv: ["build", "./..."] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.exitCode).toBe(0);
@@ -318,7 +320,7 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     try {
       const result = await Effect.runPromise(
         runTooling(
-          { name: "go", args: ["version"] },
+          { name: "go", input: { _tag: "RawArgv", argv: ["version"] } },
           {
             plan: appPlan,
             root: AbsolutePath.make(process.cwd()),

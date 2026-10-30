@@ -2,18 +2,17 @@ import { Effect } from "effect";
 
 import { AppFeatureSelectorMatchedNothingError, MailpitMsmtpBaseFamilyError } from "@lando/sdk/errors";
 import { ServiceName } from "@lando/sdk/schema";
-import type { AppFeatureDefinition } from "@lando/sdk/services";
+import type { AppFeatureDefinition, AppFeatureServiceMutators } from "@lando/sdk/services";
 
 import { MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
+import { PHP_FEATURE_ID } from "../services/php-feature.ts";
 import {
-  MSMTP_SUPPORTED_FAMILIES,
   type MsmtpFamilyPin,
   msmtpBuildKeyInput,
   msmtpBuildStepCommand,
   msmtpPinFor,
-  resolveMsmtpBaseFamily,
 } from "../services/php-msmtp.ts";
-import { PHP_FEATURE_ID } from "../services/php.ts";
+import { readPhpRuntimePolicy } from "../services/php-runtime-policy.ts";
 
 export const mailpitWireFeature: AppFeatureDefinition = {
   id: "service-lando.mailpit.wire",
@@ -21,7 +20,12 @@ export const mailpitWireFeature: AppFeatureDefinition = {
   activatedBy: { services: { type: "mailpit" } },
   selectors: { types: ["mailpit"], hasFeature: [PHP_FEATURE_ID] },
   apply: Effect.fn("MailpitWireFeature.apply")(function* (ctx) {
-    const php = ctx.selected.filter((service) => service.featureIds.includes(PHP_FEATURE_ID));
+    const php = new Map(
+      ctx.selected
+        .filter((service) => service.featureIds.includes(PHP_FEATURE_ID))
+        .map((service) => [service.serviceName, service]),
+    );
+    const pins = new Map<string, MsmtpFamilyPin>();
     const unknownTarget = (mailName: string, target: string) =>
       new AppFeatureSelectorMatchedNothingError({
         message: `Mailpit service ${mailName} mailFrom target ${target} is not a resolved PHP service.`,
@@ -29,42 +33,63 @@ export const mailpitWireFeature: AppFeatureDefinition = {
         remediation:
           "Choose existing PHP service names in mailFrom, omit it for all PHP services, or set it to false.",
       });
-    const unprovableFamily = (target: string, image: string | undefined) =>
-      new MailpitMsmtpBaseFamilyError({
-        message: `Mailpit cannot pin msmtp for PHP service ${target}: image ${image ?? "(none)"} proves no supported base image family.`,
-        feature: ctx.featureId,
-        remediation: `Use a canonical php:<version>-<via>-bookworm or php:<version>-<via>-bullseye image (supported families: ${MSMTP_SUPPORTED_FAMILIES.join(", ")}), or leave ${target} out of mailFrom (list the other services, or set mailFrom: false).`,
-      });
     const wiring: Array<{
       readonly mail: (typeof ctx.selected)[number];
-      readonly targets: ReadonlyArray<{ readonly name: string; readonly pin: MsmtpFamilyPin }>;
+      readonly targets: ReadonlyArray<{
+        readonly service: AppFeatureServiceMutators;
+        readonly pin: MsmtpFamilyPin;
+      }>;
     }> = [];
     for (const mail of ctx.selected.filter((service) => service.serviceType === "mailpit")) {
       const authored = mail.normalizedConfig.mailFrom;
-      const names = authored === false ? [] : (authored ?? php.map((service) => service.serviceName));
+      const names = authored === false ? [] : (authored ?? [...php.keys()]);
       const targets = [];
       for (const name of names) {
-        const sender = php.find((service) => service.serviceName === name);
+        const sender = php.get(name);
         if (sender === undefined) {
           return yield* Effect.fail(unknownTarget(mail.serviceName, name));
         }
-        // Refuse before any mutation: a sender whose image proves no family
-        // has no reproducible msmtp source, and Lando never guesses one.
-        const family = resolveMsmtpBaseFamily(sender.normalizedConfig);
-        if (family === undefined) {
-          return yield* Effect.fail(unprovableFamily(name, sender.normalizedConfig.image));
+        let pin = pins.get(name);
+        if (pin === undefined) {
+          const policy = yield* readPhpRuntimePolicy(sender, ctx.featureId);
+          const family = policy.baseFamily;
+          switch (family.kind) {
+            case "unknown": {
+              const exclusion = `Leave ${name} out of mailFrom by listing other services, or set mailFrom: false.`;
+              return yield* Effect.fail(
+                new MailpitMsmtpBaseFamilyError({
+                  feature: ctx.featureId,
+                  service: name,
+                  reason: family.reason,
+                  ...(policy.reference === undefined ? {} : { image: policy.reference }),
+                  message:
+                    family.reason === "replacement-build"
+                      ? `Mailpit cannot pin msmtp for PHP service ${name}: the replacement Dockerfile result voids base-family proof from an image reference.`
+                      : `Mailpit cannot pin msmtp for PHP service ${name}: image ${policy.reference ?? "(none)"} proves no supported base image family.`,
+                  remediation:
+                    family.reason === "replacement-build"
+                      ? `Use a known image without a replacement build. ${exclusion}`
+                      : `Use a canonical php:<version>-<via>-bookworm (debian-bookworm) or php:<version>-<via>-bullseye (debian-bullseye) reference. ${exclusion}`,
+                }),
+              );
+            }
+            case "known":
+              pin = msmtpPinFor(family.family);
+              pins.set(name, pin);
+              break;
+            default:
+              return family satisfies never;
+          }
         }
-        targets.push({ name: String(name), pin: msmtpPinFor(family) });
+        const service = ctx.select(name);
+        if (service === undefined) return yield* Effect.fail(unknownTarget(mail.serviceName, name));
+        targets.push({ service, pin });
       }
       wiring.push({ mail, targets });
     }
     for (const { mail, targets } of wiring) {
       const port = mail.normalizedConfig.port ?? MAILPIT_SMTP_PORT;
-      for (const { name: target, pin } of targets) {
-        const service = ctx.select(target);
-        if (service === undefined) {
-          return yield* Effect.fail(unknownTarget(mail.serviceName, target));
-        }
+      for (const { service, pin } of targets) {
         service.addEnv("LANDO_MAIL_HOST", mail.serviceName);
         service.addEnv("LANDO_MAIL_PORT", String(port));
         service.addDependency({

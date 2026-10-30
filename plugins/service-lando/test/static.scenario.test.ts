@@ -248,7 +248,9 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "curl", args: ["index.html"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "curl", input: { _tag: "RawArgv", argv: ["index.html"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("curl");

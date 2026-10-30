@@ -10,7 +10,6 @@ import {
   RendererSelectionError,
 } from "@lando/sdk/errors";
 
-import { readFreshAppCommandCacheForCwd } from "@lando/engine/cache/command-index-writer";
 import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
 import { AGENT_RELAY_WORKER_COMMAND } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import {
@@ -20,20 +19,12 @@ import {
   suggestBuiltInCommandForSuffix,
 } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
-import { type HelpTopic, isHelpTopic, renderColdAllHelp, renderColdTopicHelp } from "./cold-path-output";
 import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
 import { scratchRunHasCommandTail } from "./commands/scratch-run";
 import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv";
 import { COMPILED_DECODER_ASTS } from "./compiled-decoder-targets";
-import {
-  printCommandHelp,
-  printHelpCatalogJson,
-  printRootHelp,
-  printToolingHelp,
-  thisAppHelpRowsFromCache,
-  toolingHelpEntryForToken,
-} from "./compiled-help";
+import { printToolingHelp } from "./compiled-help";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import {
   normalizeCompiledCommandArgv,
@@ -47,7 +38,6 @@ import {
   commandErrorMessage,
   emitDiagnosticLine,
   emitJsonListModeIfRequested,
-  emitResultLine,
   resetActiveCommandInvocation,
   runCompiledCommand,
   setActiveCommandId,
@@ -77,6 +67,13 @@ import { applyDebugRendererFlip, readConfigCliGlobals } from "./renderer-mode-re
 import { setActiveLogLevel } from "./renderer-mode-state";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { runBuiltInCommand } from "./run-built-in-command";
+import {
+  dispatchHelpTarget,
+  printAllHelp,
+  printHelpCatalogPage,
+  printRootHelpPage,
+  rejectUnknownHelpFlags,
+} from "./run-help";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
 import { resolveToolingRoute, toolingHelpRequested } from "./tooling-router";
@@ -135,88 +132,12 @@ const rejectJsonControlConflicts = async (): Promise<boolean> => {
   return true;
 };
 
-// allow: SIZE_OK — help dispatch stays in the single native dispatcher so source and compiled entries share one registry.
-const HELP_SPECIAL_FLAGS = {
-  all: { type: "boolean" },
-  help: { type: "boolean", char: "h" },
-} as const;
-
-const readAppCommandCacheOrNull = async () => {
-  const exit = await Effect.runPromiseExit(Effect.result(readFreshAppCommandCacheForCwd()));
-  if (Exit.isFailure(exit)) throw exit.cause;
-  const cache = exit.value;
-  return cache._tag === "Success" ? cache.success : null;
-};
-
 const resolveToolingRouteExit = async (token: string | undefined, signal?: AbortSignal) => {
   const exit = await Effect.runPromiseExit(
     interruptOnAbort(Effect.result(resolveToolingRoute(token)), signal),
   );
   if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
-};
-
-const printAllHelp = async (): Promise<void> => {
-  const cache = await readAppCommandCacheOrNull();
-  await emitResultLine(
-    renderColdAllHelp({
-      thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
-      ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
-    }),
-  );
-};
-
-const printTopicHelp = async (topic: HelpTopic): Promise<void> => {
-  const cache = await readAppCommandCacheOrNull();
-  await emitResultLine(
-    renderColdTopicHelp(topic, cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
-  );
-};
-
-const rejectUnknownHelpFlags = async (argv: ReadonlyArray<string>): Promise<boolean> => {
-  const flagError = validateCommandCliFlags({
-    commandId: "cli:help",
-    argv,
-    definitions: HELP_SPECIAL_FLAGS,
-    allowUnknownFlags: false,
-  });
-  if (flagError === undefined) return false;
-  await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
-    failureExitCode: () => 2,
-    preCommand: true,
-  });
-  return true;
-};
-
-const printRootHelpPage = async (): Promise<void> => {
-  await printRootHelp(undefined, await readAppCommandCacheOrNull());
-};
-
-const printHelpCatalogPage = async (): Promise<void> => {
-  await printHelpCatalogJson(
-    await readAppCommandCacheOrNull(),
-    isEnvelopeResultFormat(activeResultFormat) ? activeResultFormat : "json",
-  );
-};
-
-const dispatchHelpTarget = async (token: string): Promise<void> => {
-  if (isHelpTopic(token)) {
-    await printTopicHelp(token);
-    return;
-  }
-  const helpCommand = resolveBuiltInCommand(token);
-  if (helpCommand !== undefined) {
-    await printCommandHelp(helpCommand);
-    return;
-  }
-  const cache = await readAppCommandCacheOrNull();
-  const tooling = cache === null ? undefined : toolingHelpEntryForToken(cache, token);
-  if (tooling !== undefined) {
-    await printToolingHelp(tooling, cache?.aliasPolicy);
-    return;
-  }
-  if (await tryPluginOwnedCommand(token, ["--help"])) return;
-  await failUnknownCommand(token);
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
@@ -320,6 +241,10 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       const formatResolution = resolveResultFormat({ argv, rendererMode: activeRendererMode });
       argv = formatResolution.remainingArgv;
       setActiveResultFormat(formatResolution.format);
+      // Bare --json lists command result keys; without a command, retain root text help.
+      if (formatResolution.source === "json" && extracted.jsonList && argv.length === 0) {
+        setActiveResultFormat(DEFAULT_RESULT_FORMAT);
+      }
       setActiveJsonControl(resolveJsonControl(extracted, formatResolution.format));
       setActiveJq(extracted.jq);
       if (
@@ -352,6 +277,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
   if (argv[0] === "help") {
     const helpArgv = argv.slice(1);
     if (await rejectUnknownHelpFlags(helpArgv)) return;
+    const target = helpArgv.find((arg) => !arg.startsWith("-"));
+    if (target !== undefined && !helpArgv.includes("--all")) {
+      await dispatchHelpTarget(target);
+      return;
+    }
     if (isEnvelopeResultFormat(activeResultFormat)) {
       setActiveCommandId("cli:help");
       await printHelpCatalogPage();
@@ -361,12 +291,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       await printAllHelp();
       return;
     }
-    const target = helpArgv.find((arg) => !arg.startsWith("-"));
-    if (target === undefined) {
-      await printRootHelpPage();
-      return;
-    }
-    await dispatchHelpTarget(target);
+    await printRootHelpPage();
     return;
   }
 
@@ -393,7 +318,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       await failUnknownCommand(route.token, false);
       return;
     } else if (toolingHelpRequested(route, argvTail)) {
-      await dispatchHelpTarget(route.commandId);
+      if (route.disabled) await dispatchHelpTarget(route.commandId);
+      else await printToolingHelp({ ...route, id: route.commandId }, route.aliasPolicy);
       return;
     } else if (await routeResolvedTooling(route, argvTail, signal)) {
       return;

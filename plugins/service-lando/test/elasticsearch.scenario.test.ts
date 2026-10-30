@@ -241,7 +241,9 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "es-cli", args: ["/_cluster/health"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "es-cli", input: { _tag: "RawArgv", argv: ["/_cluster/health"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("es-cli");
@@ -277,7 +279,9 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "es-cli", args: ["/_cat/indices"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "es-cli", input: { _tag: "RawArgv", argv: ["/_cat/indices"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.exitCode).toBe(0);

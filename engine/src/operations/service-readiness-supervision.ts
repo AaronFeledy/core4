@@ -1,5 +1,5 @@
 import { isServiceRestartExpected } from "@lando/container-runtime/supervision";
-import type { ServiceNotReadyError } from "@lando/sdk/errors";
+import type { HealthcheckTargetUnsupportedError, ServiceNotReadyError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { EventService, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { DateTime, Deferred, Effect, Option } from "effect";
@@ -89,7 +89,10 @@ export const makeServiceSupervision = Effect.fnUntraced(function* (
     yield* Deferred.succeed(actor.signal, row);
     return row;
   });
-  const wait = <R>(name: string, effect: Effect.Effect<ReadinessRow, ServiceNotReadyError, R>) => {
+  const wait = <R>(
+    name: string,
+    effect: Effect.Effect<ReadinessRow, ServiceNotReadyError | HealthcheckTargetUnsupportedError, R>,
+  ) => {
     const actor = actors.get(name);
     return actor === undefined
       ? effect

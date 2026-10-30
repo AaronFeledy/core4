@@ -94,6 +94,16 @@ For an app feature, return endpoint lists keyed by selected service name. The sa
 `activatedBy` and `selectors` logic chooses services for declarations and application.
 Declaration contexts have no mutation methods; application contexts cannot add endpoints.
 
+If an app feature needs a fact established by a service type, return it in
+`ServiceTypeResolution.metadata`. Both declaration and application expose
+that record as the optional, read-only `AppFeatureServiceView.resolutionMetadata`.
+Use a namespaced key owned by your plugin and validate its value before relying
+on it. These are service-type-produced facts, not authored `x-*` fields,
+provider observations, or the final artifact after mutable feature application.
+Keep private implementation keys private rather than making them Landofile
+options. A missing fact is not permission to reconstruct it from a later image
+reference that may have changed.
+
 ```ts
 import { Effect } from "effect";
 import type { AppFeatureDefinition } from "@lando/sdk/services";

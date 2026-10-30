@@ -618,7 +618,7 @@ describe("runTooling — CLI rendering", () => {
     const layer = makeLayer({ landofile, plan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "composer", args: ["install"] }).pipe(runtimeFor(layer)),
+      runTooling({ name: "composer", input: { _tag: "RawArgv", argv: ["install"] } }).pipe(runtimeFor(layer)),
     );
 
     expect(result.tool).toBe("composer");
@@ -723,7 +723,11 @@ describe("runTooling — CLI rendering", () => {
     };
     const layer = makeLayer({ landofile, plan, provider });
 
-    await Effect.runPromise(runTooling({ name: "phpunit", args: ["--testdox"] }).pipe(runtimeFor(layer)));
+    await Effect.runPromise(
+      runTooling({ name: "phpunit", input: { _tag: "RawArgv", argv: ["--testdox"] } }).pipe(
+        runtimeFor(layer),
+      ),
+    );
 
     expect(calls[0]?.command).toEqual(["phpunit", "--colors=always", "--testdox"]);
   });
@@ -746,7 +750,7 @@ describe("runTooling — CLI rendering", () => {
     const layer = makeLayer({ landofile, plan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "test", args: ["--testdox"] }).pipe(runtimeFor(layer)),
+      runTooling({ name: "test", input: { _tag: "RawArgv", argv: ["--testdox"] } }).pipe(runtimeFor(layer)),
     );
 
     expect(calls.map((call) => call.command)).toEqual([
@@ -1192,7 +1196,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       expect(flat).toContain("are not supported");
       expect(flat).not.toContain("Alpha");
       expect(flat).not.toContain("Beta");
-      expect(flat).toContain("Remove the `service:` field");
+      expect(flat).toContain("Remove the service field");
       expect(calls).toHaveLength(0);
     });
   });

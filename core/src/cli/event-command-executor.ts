@@ -11,6 +11,7 @@ import { EventCommandExecutor } from "@lando/engine/services/event-command-execu
 import type { EventCommandExecutorInput } from "@lando/engine/services/event-command-executor";
 import { withShellRedactionTokens } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
+import { toolingInputRedactionTokens } from "@lando/landofile/tooling-input-redaction";
 import { RedactionService, collectSecretEnvValues } from "@lando/redaction/service";
 import * as RendererOutput from "@lando/renderer/output";
 import { BuiltInCommandCatalog } from "./built-in-command-catalog-service";
@@ -55,11 +56,12 @@ export const makeEventCommandExecutor = (
       if (target.kind === "built-in" && target.builtIn.status.kind === "embedding-exempt") {
         return yield* Effect.fail(embeddingExemptErrorForCommand(target.builtIn));
       }
-      yield* validateEventCommandInput(target.spec, {
-        flags: resolved.flags,
-        args: resolved.args,
-        raw: resolved.argv,
-      });
+      if (target.kind !== "tooling")
+        yield* validateEventCommandInput(target.spec, {
+          flags: resolved.flags,
+          args: resolved.args,
+          raw: resolved.argv,
+        });
     }),
     run: Effect.fn("EventCommandExecutor.run")(function* (
       this: Context.Service.Shape<typeof EventCommandExecutor>,
@@ -78,21 +80,41 @@ export const makeEventCommandExecutor = (
         if (target.kind === "built-in" && target.builtIn.status.kind === "embedding-exempt") {
           return yield* Effect.fail(embeddingExemptErrorForCommand(target.builtIn));
         }
-        const input = yield* validateEventCommandInput(target.spec, {
-          flags: resolved.flags,
-          args: resolved.args,
-          raw: resolved.argv,
-        });
+        const input =
+          target.kind === "tooling"
+            ? {
+                flags: resolved.flags,
+                args: resolved.args,
+                argv: resolved.argv,
+                parsedArgv: [],
+                interaction: "non-interactive" as const,
+              }
+            : yield* validateEventCommandInput(target.spec, {
+                flags: resolved.flags,
+                args: resolved.args,
+                raw: resolved.argv,
+              });
 
         const toolingEnvTokens =
-          target.kind === "tooling" && target.toolingTask.env !== undefined
+          target.kind === "tooling" && target.toolingTask?.env !== undefined
             ? collectSecretEnvValues(
                 Object.fromEntries(
                   Object.entries(target.toolingTask.env).map(([name, value]) => [name, String(value)]),
                 ),
               )
             : [];
-        const redactionTokens = [...(resolved.redactionTokens ?? []), ...toolingEnvTokens];
+        const redactionTokens = [
+          ...(resolved.redactionTokens ?? []),
+          ...toolingEnvTokens,
+          ...(target.kind === "tooling"
+            ? toolingInputRedactionTokens([target.toolingInput], {
+                _tag: "NamedMaps",
+                flags: input.flags,
+                args: input.args,
+                passthroughArgv: input.argv,
+              })
+            : []),
+        ];
         const lifecycleRedaction = yield* RedactionService;
         yield* lifecycleRedaction.registerValues(redactionTokens);
         const inputRedactor = yield* lifecycleRedaction.forProfile("secrets", { sourceEnv: process.env });
@@ -127,9 +149,9 @@ export const makeEventCommandExecutor = (
         );
         const redactedCommand = withShellRedactionTokens(redactionTokens, command);
         const invocation = yield* makeNestedCommandInvocation(target.spec.id, {
-          argv: input.argv,
-          args: input.args,
-          flags: input.flags,
+          argv: target.kind === "tooling" ? [] : input.argv,
+          args: target.kind === "tooling" ? {} : input.args,
+          flags: target.kind === "tooling" ? {} : input.flags,
           cwd: resolved.cwd,
         });
         const completion = target.spec.completion;

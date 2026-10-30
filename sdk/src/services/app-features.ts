@@ -15,6 +15,7 @@ import type {
   EnvironmentValue,
   ProviderCapabilities,
   ServiceConfig,
+  ServicePlan,
 } from "../schema/index.ts";
 import type {
   ServiceAppMountIntent,
@@ -59,6 +60,8 @@ export interface AppFeatureServiceView {
   readonly primary: boolean;
   readonly featureIds: ReadonlyArray<string>;
   readonly normalizedConfig: ServiceConfig;
+  /** Immutable service-type resolution facts, also retained as plan provenance. */
+  readonly resolutionMetadata?: Readonly<NonNullable<ServicePlan["provenance"]>> | undefined;
   readonly connection?: DatabaseConnection | undefined;
 }
 

@@ -104,7 +104,14 @@ export class PhpMyAdminHostsCredsError extends Schema.TaggedError<PhpMyAdminHost
  */
 export class MailpitMsmtpBaseFamilyError extends Schema.TaggedError<MailpitMsmtpBaseFamilyError>()(
   "MailpitMsmtpBaseFamilyError",
-  { message: Schema.String, feature: Schema.String, remediation: Remediation },
+  {
+    message: Schema.String,
+    feature: Schema.String,
+    service: Schema.String,
+    reason: Schema.Literals(["replacement-build", "unproven-image-family"]),
+    image: Schema.optionalKey(Schema.String),
+    remediation: Remediation,
+  },
 ) {}
 
 export type AppFeatureError =

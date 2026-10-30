@@ -230,7 +230,9 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["stats"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["stats"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("memcached-tool");
@@ -268,13 +270,17 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const setResult = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["set foo 0 0 3\r\nbar"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["set foo 0 0 3\r\nbar"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(setResult.exitCode).toBe(0);
     expect(setResult.stdout).toBe("STORED\r\n");
 
     const getResult = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["get foo"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["get foo"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(getResult.exitCode).toBe(0);
     expect(getResult.stdout).toContain("bar");

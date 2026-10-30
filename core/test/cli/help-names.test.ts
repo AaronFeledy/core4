@@ -5,6 +5,23 @@ import { typeableName } from "../../src/cli/help-names.ts";
 describe("typeableName", () => {
   test.each([
     {
+      name: "nested tooling keeps its canonical token",
+      input: { canonicalId: "app:db:wait", builtInAliases: [], implicitNamespaceStrip: true },
+      primary: "app:db:wait",
+      extras: [] as const,
+    },
+    {
+      name: "custom alias for nested tooling remains callable",
+      input: {
+        canonicalId: "app:db:wait",
+        builtInAliases: [],
+        implicitNamespaceStrip: true,
+        aliasPolicy: { custom: { wait: "app:db:wait" } },
+      },
+      primary: "wait",
+      extras: ["app:db:wait"],
+    },
+    {
       name: "implicit start from app:start",
       input: { canonicalId: "app:start", builtInAliases: ["start"] },
       primary: "start",

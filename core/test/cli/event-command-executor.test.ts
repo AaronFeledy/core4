@@ -979,7 +979,10 @@ describe("EventCommandExecutorLayer.layer", () => {
     expect(lifecycle).toHaveLength(2);
     const payload = JSON.stringify(lifecycle);
     expect(payload).not.toContain(secret);
-    expect(payload).toContain("[redacted]");
+    expect(lifecycle).toMatchObject([
+      { argv: [], args: {}, flags: {} },
+      { argv: [], args: {}, flags: {} },
+    ]);
     expect(harness.presentation).toEqual([]);
   });
 

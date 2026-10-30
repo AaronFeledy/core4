@@ -12,6 +12,7 @@ import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-ext
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
@@ -21,11 +22,14 @@ const expected = evolveHistoricalAppMountAcceleration(
   evolveHistoricalEnvironment(
     evolveHistoricalEndpointMetadata(
       evolveHistoricalTimestamps(
-        evolveHistoricalShorthand(
-          evolveHistoricalNetworks(
-            normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
-            "authoring",
+        evolveHistoricalReadiness(
+          evolveHistoricalShorthand(
+            evolveHistoricalNetworks(
+              normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+              "authoring",
+            ),
           ),
+          "authoring",
         ),
         "authoring",
       ),
@@ -140,3 +144,36 @@ test("does not discard an unexpected constraint while applying shell shorthand t
   expect(evolved.anyOf.some((member) => jsonEquals(member, extra))).toBe(true);
   expect(evolved.anyOf.some((member) => jsonEquals(member, { type: "string" }))).toBe(false);
 });
+
+test.each(["bare", "authoring"] as const)(
+  "preserves unreviewed probe constraints during %s readiness evolution",
+  (mode) => {
+    const keys = shorthandDelta.healthcheckKeys;
+    if (!Array.isArray(keys)) throw new TypeError("Missing historical probe keys");
+    const properties: Record<string, JsonValue> = {};
+    for (const key of keys) {
+      if (typeof key !== "string") throw new TypeError("Invalid historical probe key");
+      properties[key] = { type: "string" };
+    }
+    properties.kind = { type: "string", enum: ["command", "http", "none", "tcp"] };
+    properties.intervalSeconds = { type: "number", minimum: 999 };
+    properties.timeoutSeconds = { type: "number", maximum: 999 };
+    properties.url = { type: "string", minLength: 999 };
+    const probe = { type: "object", additionalProperties: false, minProperties: 1, properties };
+    const historical = { properties: { healthcheck: probe, image: { type: "number" } } };
+    const serialized = JSON.stringify(historical);
+
+    const evolved = evolveHistoricalReadiness(historical, mode);
+
+    for (const field of ["healthcheck", "readiness"]) {
+      const object = schemaAt(evolved, `$.${field}`);
+      if (!isJsonObject(object.properties)) throw new TypeError("Missing probe object");
+      expect(object.minProperties).toBe(1);
+      expect(object.properties.intervalSeconds).toEqual(properties.intervalSeconds);
+      expect(object.properties.timeoutSeconds).toEqual(properties.timeoutSeconds);
+      expect(object.properties.url).toEqual(properties.url);
+    }
+    expect(schemaAt(evolved, "$.image")).toEqual({ type: "number" });
+    expect(JSON.stringify(historical)).toBe(serialized);
+  },
+);

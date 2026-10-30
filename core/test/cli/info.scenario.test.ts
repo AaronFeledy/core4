@@ -764,10 +764,14 @@ describe("lando info --deep — agent-context env audit", () => {
 });
 
 describe("lando info — resolved log sources", () => {
-  const makeLogSourceLayer = (logSources: ReadonlyArray<LogSourceShape>, serviceLogSources: boolean) => {
+  const makeLogSourceLayer = (
+    logSources: ReadonlyArray<LogSourceShape>,
+    serviceLogSources: boolean,
+    serviceLogs = true,
+  ) => {
     const svc: ServicePlan = { ...postgres, logSources };
     const logPlan: AppPlan = { ...plan, services: { [svc.name]: svc } };
-    const caps: ProviderCapabilities = { ...capabilities, serviceLogSources };
+    const caps: ProviderCapabilities = { ...capabilities, serviceLogSources, serviceLogs };
     const provider: RuntimeProviderShape = {
       id: "lando",
       displayName: "Lando Runtime Provider",
@@ -862,6 +866,37 @@ describe("lando info — resolved log sources", () => {
     stream: "stderr",
     strategy: "follow",
   });
+  test.each([false, true])(
+    "reports pathless console aliases using serviceLogs=%s, not file capability",
+    async (serviceLogs) => {
+      // Given a native alias and a provider with the opposite file capability.
+      const source = Schema.decodeUnknownSync(LogSource)({
+        id: "error",
+        strategy: "console",
+        stream: "stderr",
+      });
+      // When projecting info through the operation.
+      const result = await Effect.runPromise(
+        infoApp().pipe(Effect.provide(makeLogSourceLayer([source], !serviceLogs, serviceLogs))),
+      );
+      // Then JSON stays pathless and presentation names the actual pipe.
+      const log = result.services[0]?.logSources?.[0];
+      expect(log).toMatchObject({
+        id: "error",
+        strategy: "console",
+        stream: "stderr",
+        availability: serviceLogs ? "available" : "unavailable",
+      });
+      expect(log).not.toHaveProperty("path");
+      expect(renderInfoAppResult(result)).toContain(
+        `log-source\terror\tconsole/stderr\tconsole\t${serviceLogs ? "available" : "unavailable"}`,
+      );
+      expect(
+        buildInfoSummary(result).sections[0]?.rows[0]?.fields?.find((field) => field.label === "log sources")
+          ?.value,
+      ).toContain("error (console/stderr)");
+    },
+  );
   const redirectSource = Schema.decodeUnknownSync(LogSource)({
     id: "access",
     path: "/var/log/apache/access.log",

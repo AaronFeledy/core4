@@ -1,4 +1,5 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
+import type { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { Effect, Layer, Schema } from "effect";
 
 import {
@@ -9,6 +10,7 @@ import {
   type CommandAliasTargetError,
   type LandofileFormConflictError,
   type NotImplementedError,
+  type ToolingCommandUnavailableError,
   ToolingCompileError,
   ToolingExecError,
 } from "@lando/sdk/errors";
@@ -72,15 +74,16 @@ const dynamicToolingStreaming = (): { readonly streamingMode?: "live" } =>
 
 const assertNever = (value: never): never => value;
 
-const prepareDynamicToolingInvocation = (name: string, argv: ReadonlyArray<string>): void => {
+const prepareDynamicToolingInvocation = (name: string): void => {
   const commandId = `app:${name}`;
   setActiveCommandId(commandId);
-  resetActiveCommandInvocation(commandId, argv);
+  resetActiveCommandInvocation(commandId, []);
 };
 
 export const runDynamicTooling = async (
   argv: ReadonlyArray<string>,
   parentSignal?: AbortSignal,
+  declaration?: ToolingInputDeclaration,
 ): Promise<void> => {
   if (parentSignal?.aborted) return;
   const name = argv[0];
@@ -88,7 +91,7 @@ export const runDynamicTooling = async (
   const taskArgv = argv.slice(1);
   // The first separator belongs to Lando; subsequent separators belong to the task.
   const commandArgv = taskArgv[0] === "--" ? taskArgv.slice(1) : taskArgv;
-  prepareDynamicToolingInvocation(name, commandArgv);
+  prepareDynamicToolingInvocation(name);
   if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
   const { restore, ...hostIo } = attachToolingHostIo(
     !isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json",
@@ -101,7 +104,8 @@ export const runDynamicTooling = async (
           interactive,
           runTooling({
             name,
-            args: commandArgv,
+            input: { _tag: "RawArgv", argv: commandArgv },
+            ...(declaration === undefined ? {} : { expectedInputRevision: declaration.revision }),
             ...hostIo,
             signal,
           }),
@@ -129,9 +133,9 @@ const runDynamicBunShellTooling = async (
   parentSignal?: AbortSignal,
 ): Promise<void> => {
   if (parentSignal?.aborted) return;
-  const { name, appRoot, relativePath } = route;
+  const { name, appRoot, relativePath, input } = route;
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
-  prepareDynamicToolingInvocation(name, commandArgv);
+  prepareDynamicToolingInvocation(name);
   if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
   const mode = toolingHostStdin(!isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json");
   return runWithProcessAbortSignal(
@@ -141,7 +145,8 @@ const runDynamicBunShellTooling = async (
         runBunShellTooling(
           {
             name,
-            args: commandArgv,
+            input: { _tag: "RawArgv", argv: commandArgv },
+            ...(input === undefined ? {} : { expectedInputRevision: input.revision }),
             ...(mode === "none"
               ? {}
               : { hostIo: mode === "keyboard" ? ("terminal" as const) : ("stdin" as const) }),
@@ -185,9 +190,9 @@ const runDynamicBunShellTooling = async (
 
 const runDynamicToolingFailure = (
   name: string,
-  argv: ReadonlyArray<string>,
   error:
     | ToolingCompileError
+    | ToolingCommandUnavailableError
     | CacheError
     | LandofileFormConflictError
     | CommandAliasConflictError
@@ -196,7 +201,7 @@ const runDynamicToolingFailure = (
     | BunShellScriptFrontMatterError
     | NotImplementedError,
 ): Promise<void> => {
-  prepareDynamicToolingInvocation(name, argv);
+  prepareDynamicToolingInvocation(name);
   return runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, dynamicToolingOptions);
 };
 
@@ -219,7 +224,7 @@ export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<
 
   const resolution = await Effect.runPromise(Effect.result(resolveToolingRoute(token)));
   if (resolution._tag === "Failure") {
-    await runDynamicToolingFailure(name, argv.slice(1), resolution.failure);
+    await runDynamicToolingFailure(name, resolution.failure);
     return true;
   }
 
@@ -239,7 +244,7 @@ export const routeResolvedTooling = async (
       return false;
     case "cache-miss":
     case "unknown-tooling":
-      await runDynamicToolingFailure(route.name, argv, toolingRouteError(route));
+      await runDynamicToolingFailure(route.name, toolingRouteError(route));
       return true;
     case "bun-script":
       // A tooling task renders its own streams and declares no opt-in format.
@@ -248,7 +253,7 @@ export const routeResolvedTooling = async (
       return true;
     case "tooling":
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
-      await runDynamicTooling([route.name, ...argv], signal);
+      await runDynamicTooling([route.name, ...argv], signal, route.input);
       return true;
     default:
       return assertNever(route);

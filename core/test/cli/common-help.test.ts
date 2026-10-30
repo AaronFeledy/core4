@@ -33,7 +33,9 @@ const sectionLines = (help: string, heading: string, nextHeadings: readonly stri
     .filter((index) => index > start)
     .toSorted((left, right) => left - right)[0];
   expect(end).toBeGreaterThan(start);
-  return lines.slice(start + 1, end).filter((line) => line.trim() !== "");
+  const section = lines.slice(start + 1, end);
+  const blank = section.findIndex((line) => line.trim() === "");
+  return blank === -1 ? section : section.slice(0, blank);
 };
 
 const primaryOf = (line: string): string => {

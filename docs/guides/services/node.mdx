@@ -133,7 +133,7 @@ services:
 
 An explicit `environment.PORT` still wins for the process environment. The endpoint continues to use `port:`, so keep those values aligned unless your command intentionally translates between them.
 
-Node has no default healthcheck, even with an authored `command:`. A command might be a server, an asset watcher, or a queue worker. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. A command string is enough, and the official `node` image ships `curl`:
+Node has no default healthcheck or readiness probe, even with an authored `command:`. A command might be a server, an asset watcher, or a queue worker. Add `readiness:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. Use `healthcheck:` separately for ongoing native monitoring. A command string is enough, and the official `node` image ships `curl`:
 
 ```yaml
 services:
@@ -141,7 +141,7 @@ services:
     type: node
     primary: true
     command: ["node", "server.js"]
-    healthcheck: curl -fsS http://localhost:3000/
+    readiness: curl -fsS http://localhost:3000/
 ```
 
 Lando stops a service with SIGTERM. A string `command:` runs under `sh -lc`, and that shell does not pass the signal on. Write the command as a list, such as `["node", "server.mjs"]`, and handle SIGTERM in your app so it stops before the runtime's timeout.

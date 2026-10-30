@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 import {
   CONTAINER_HELPER_ARM64_JOB_ID,
@@ -265,6 +266,11 @@ ${renderSmokeCommands(platform)}
           LANDO_RELEASE_TARGET: ${platform.id}
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${platform.binaryName}
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/host-execution-compiled.test.ts
 
       - name: Upload ${platform.id} binary
         if: always()
@@ -1044,6 +1050,8 @@ const main = async (): Promise<void> => {
   const workflow = renderCiWorkflow();
 
   await Bun.write(OUTPUT, workflow);
+  // Biome 1 cannot check YAML; include the generator so this remains a real check.
+  await formatGeneratedPaths([OUTPUT, import.meta.path]);
   console.log(`[build-ci-workflow] wrote ${OUTPUT}`);
 };
 

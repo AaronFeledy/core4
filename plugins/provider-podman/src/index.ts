@@ -1,3 +1,4 @@
+import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { inspectEngineResourceNames } from "@lando/container-runtime/resource-names";
 
 /**
@@ -813,9 +814,13 @@ const assembleRuntimeProvider = (
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
         yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
+          ...(applyOptions.executeReadinessAttempt === undefined
+            ? {}
+            : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
           api: podmanApi,
           ctx: PODMAN_CTX,
           ensureImage: makeEnsureImage(podmanApi, { ctx: PODMAN_CTX, dialect: libpodPullDialect }),

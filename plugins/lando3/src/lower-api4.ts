@@ -1,5 +1,6 @@
 import { isLegacyTagged } from "@lando/sdk/landofile";
-import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { type ConfigTranslateDiagnostic, ContainerUser } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { splitStringArgv } from "./compose-command.ts";
 import { lowerComposeFields } from "./compose-fields.ts";
 import type { Lando3Path } from "./contract.ts";
@@ -256,15 +257,26 @@ export const lowerApi4Service = (
   if (hasPlainObjectPrototype(service.packages))
     for (const key of Object.keys(service.packages)) drop(["packages", key]);
   const health = service.healthcheck;
-  if (health === false) patch.healthcheck = false;
-  else if (typeof health === "string") patch.healthcheck = { command: health };
+  if (health === false) patch.readiness = false;
+  else if (typeof health === "string" || Array.isArray(health)) patch.readiness = health;
   else if (hasPlainObjectPrototype(health)) {
-    patch.healthcheck = {
+    if (health.user !== undefined && !Schema.is(ContainerUser)(health.user)) {
+      blocked = true;
+      diagnostics.push(
+        unsupportedServiceKey({
+          ctx,
+          relative: ["healthcheck", "user"],
+          message: "The healthcheck user is not a valid container identity.",
+          remediation: "Use a container username, numeric uid, or user:group identity.",
+        }),
+      );
+    }
+    patch.readiness = {
       ...(health.command === undefined ? {} : { command: health.command }),
+      ...(health.user === undefined ? {} : { user: health.user }),
       ...(health.retry === undefined ? {} : { retries: health.retry }),
       ...(typeof health.delay === "number" ? { intervalSeconds: Math.round(health.delay / 1000) } : {}),
     };
-    if (health.user !== undefined) drop(["healthcheck", "user"]);
   }
   const endpoints: V4Wire[] = [];
   const ports: unknown[] = [];

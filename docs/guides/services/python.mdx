@@ -19,7 +19,7 @@ services:
 
 Add `framework:` when you want FastAPI, Django, or Flask defaults for port and env. Keep-alive still runs until you set `command:` or serve with `lando exec`.
 
-Python publishes its port endpoint but has no default healthcheck, including for authored worker commands. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. The slim image has no `curl`, so probe with Python itself in argv form. This example serves the app directory with Python's built-in HTTP server:
+Python publishes its port endpoint but has no default healthcheck or readiness probe, including for authored worker commands. Add `readiness:` when you want start to wait for application readiness; use `healthcheck:` separately for native ongoing monitoring. Without an effective readiness command, Lando checks that the process stays running. The slim image has no `curl`, so probe with Python itself in argv form. This example serves the app directory with Python's built-in HTTP server:
 
 ```yaml
 services:
@@ -28,7 +28,7 @@ services:
     primary: true
     port: 8000
     command: [python, -m, http.server, "8000"]
-    healthcheck: [python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+    readiness: [python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
 ```
 
 For an existing FastAPI project, save this complete service and tooling configuration in `.lando.yml`:

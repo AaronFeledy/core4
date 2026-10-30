@@ -96,7 +96,7 @@ describe("resolveEventCommandTarget", () => {
       source: { path: plan.metadata.source, task: "invalid" },
     });
   });
-  test("orders native arguments by declared order after schema decode", async () => {
+  test("orders tooling arguments in the shared declaration after schema decode", async () => {
     // Given
     const task = Schema.decodeUnknownSync(ToolingTaskShape)({
       cmd: ["echo"],
@@ -108,7 +108,10 @@ describe("resolveEventCommandTarget", () => {
       resolveEventCommandTarget("app:ordered", Context.empty(), [], plan),
     );
     // Then
-    expect(Object.keys(target.spec.args ?? {})).toEqual(["first", "second"]);
+    expect(target.kind).toBe("tooling");
+    if (target.kind !== "tooling") throw new Error("Expected a tooling target");
+    expect(target.toolingInput.args.map((arg) => arg.name)).toEqual(["first", "second"]);
+    expect(target.spec.args).toBeUndefined();
   });
   test("resolves a built-in target without weakening its command spec", async () => {
     // Given

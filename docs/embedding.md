@@ -81,6 +81,51 @@ The runtime's `StateStore`, plugin trust store, and HTTP client use its captured
 
 An invalid value in any configuration layer fails the layer build with `ConfigError`, not `LandoRuntimeBootstrapError`. Each entry in `issues[]` contains `path`, `message`, `suggestion`, and a `source`, such as `{ layer: "host", path }`. After construction, `ConfigService.load` and `ConfigService.get` cannot fail.
 
+## Supply tooling inputs by name
+
+On a resolved `App` handle, call `app.tooling(id, options)` with
+`input: { _tag: "NamedMaps", flags, args }` for declared inputs. For example, if
+the app declares a `greet` task with boolean `loud` and string argument `target`,
+run this inside the scoped Effect program that owns `app`:
+
+```ts
+const result = yield* app.tooling("app:greet", {
+  input: {
+    _tag: "NamedMaps",
+    flags: { loud: false },
+    args: { target: "dev" },
+  },
+});
+```
+
+Inspect `result.exitCode`, `result.stdout`, and `result.stderr`. Explicit false
+overrides a true declaration default. An empty string stays present, while an
+omitted key allows its default. Named-map input binds once against the resolved
+task rather than being serialized to argv and parsed again. Map-capable scripts
+accept omitted optional arguments before later named values; argv-only adapters
+reject such gaps with `ToolingInputError` before execution.
+
+For original CLI tokens, use
+`input: { _tag: "RawArgv", argv: ["dev", "--loud=false"] }` instead.
+Omitting `input` means an empty raw invocation. `NamedMaps.passthroughArgv` is
+only for undeclared passthrough, not a tail to mix with declared named arguments.
+The former options-level argument vector and declaration-array snapshot are
+replaced by `input` and `expectedInputRevision`.
+
+If your host retains discovered command metadata, pass its `input.revision` as
+`expectedInputRevision` alongside the invocation. This is the SDK's branded
+`ToolingInputRevision` from discovery; do not construct a hash or copy an example
+string. A semantic declaration change fails with `ToolingInputError` before
+execution. Re-resolve the command and review its new declaration before retrying.
+Description-only and body-only changes keep the revision compatible. A direct
+call without a retained revision uses the invocation-authoritative declaration.
+
+App handles retain their resolved Landofile and plan, so a revision check is
+not a request to reload files behind the handle. Resolve a new handle when you
+want edited configuration. See
+[Embed the runtime](./guides/library/embedding-runtime.mdx) for handle lifetime
+and runtime setup.
+
 ## Handle operation failures
 
 `invokeOperation` from `@lando/core/cli/operations` returns `{ ok: false, error, additionalErrors }` when the projected primary is a typed failure. `additionalErrors` is always present, possibly empty, with `{ role, error }` entries for the remaining failures and defects in cause order. Each additional error has a role:

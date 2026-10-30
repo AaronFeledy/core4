@@ -2,6 +2,7 @@ import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 import { Result } from "effect";
 
 import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
+import { normalizeBunShellScript } from "@lando/landofile/bun-sh-metadata";
 import { getInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import type { EffectiveTooling } from "../planner/effective-tooling.ts";
@@ -38,22 +39,31 @@ export const compileToolingCommands = (
         id: `app:${name}`,
         summary: task.summary ?? "",
         hidden: internal.has(name) || task.disabled,
+        ...(task.disabled ? { disabled: true as const } : {}),
         ...(service === undefined ? {} : { service }),
-        ...(task.hasInput ? { input: { flags: task.flags, args: task.args } } : {}),
+        input: task.input,
       };
     });
 };
 
+export const compileBunShellScriptCommand = (script: DiscoveredBunShellScript) =>
+  Result.map(
+    normalizeBunShellScript(script),
+    (task): CommandIndexEntry => ({
+      id: script.id,
+      summary: task.summary,
+      hidden: task.disabled,
+      ...(task.disabled ? { disabled: true as const } : {}),
+      service: task.rawService,
+      source: "bun-script",
+      input: task.input,
+    }),
+  );
+
 export const compileBunShellScriptCommands = (
   scripts: ReadonlyArray<DiscoveredBunShellScript>,
 ): ReadonlyArray<CommandIndexEntry> =>
-  scripts.map((script) => ({
-    id: script.id,
-    summary: script.summary,
-    hidden: false,
-    service: script.service,
-    source: "bun-script" as const,
-  }));
+  scripts.map((script) => Result.getOrThrowWith(compileBunShellScriptCommand(script), (error) => error));
 
 export const compileAppCommands = (
   landofile: LandofileShape,
