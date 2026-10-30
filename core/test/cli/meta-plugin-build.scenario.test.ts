@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Context, Effect, Exit, Layer, Queue, Stream } from "effect";
 
 import { FailureRoleAnnotation, failureOutcomeFromCause } from "@lando/sdk/command-result";
+import { FileIoError } from "@lando/sdk/errors";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
 import { pluginBuild, renderPluginBuildResult } from "../../src/cli/commands/plugin-build.ts";
@@ -281,7 +282,7 @@ describe("meta:plugin:build command", () => {
   });
 
   test.each([false, true])(
-    "removes the declaration config after a declaration spawner defect (cleanup fails: %p)",
+    "removes the declaration config after a tagged declaration spawn failure (cleanup fails: %p)",
     async (cleanupFails) => {
       await writePlugin(root);
       const defect = new Error("declaration spawn failed");
@@ -301,7 +302,12 @@ describe("meta:plugin:build command", () => {
       );
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isSuccess(exit)) throw new Error("Expected declaration build to fail");
-      expect(failureOutcomeFromCause(exit.cause).error).toBe(defect);
+      const error = failureOutcomeFromCause(exit.cause).error;
+      expect(error).toBeInstanceOf(FileIoError);
+      if (error instanceof FileIoError) {
+        expect(error.cause).toBe(defect);
+        expect(error.path).toBe(process.execPath);
+      }
       if (cleanupFails) {
         expect(failureOutcomeFromCause(exit.cause).additionalErrors).toMatchObject([
           { role: "cleanup", error: { _tag: "FileIoError" } },
