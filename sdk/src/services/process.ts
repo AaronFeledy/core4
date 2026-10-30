@@ -10,13 +10,15 @@ import type {
 export interface ShellCommandOptions {
   /**
    * Suppress runner execution events and live sinks, returning raw output only to the caller.
-   * Caller-authored metadata and bounded redacted diagnostics are not made confidential.
+   * Authored lifecycle plan metadata and bounded redacted failure context are not made confidential.
    * Private capture is limited to 1 MiB of bytes per stdout/stderr channel; overflow fails
    * and terminates the child, never returns truncated success. Stdin and ordinary exit
    * semantics are unchanged (shell nonzero exits fail; process nonzero exits are data).
    */
   readonly capture?: boolean;
+  /** Uses native directory identity; defaults to the host cwd captured when execution starts. */
   readonly cwd?: string;
+  /** Inherits one host environment snapshot. Explicit PWD (including empty) wins; otherwise PWD is the effective directory. */
   readonly env?: Readonly<Record<string, string>>;
   readonly shell?: "bun";
   readonly argv?: ReadonlyArray<string>;
@@ -40,7 +42,7 @@ export interface ShellScriptOptions extends ShellCommandOptions {
 export interface ProcessSpawnOptions {
   /**
    * Suppress runner execution events and live observation, not stdin or exit semantics.
-   * Caller-authored metadata and bounded redacted diagnostics are not made confidential.
+   * Authored lifecycle plan metadata and bounded redacted failure context are not made confidential.
    * Results/stream chunks remain raw for the authorized caller. Private output is limited
    * to 1 MiB of bytes per channel; overflow terminates the child and fails without output
    * diagnostics. Incompatible with inheritOutput, rejected before spawning.
@@ -48,7 +50,9 @@ export interface ProcessSpawnOptions {
   readonly capture?: boolean;
   readonly cmd: string;
   readonly args: ReadonlyArray<string>;
+  /** Native directory identity, defaulting to the host cwd at execution (stream subscription). */
   readonly cwd?: string;
+  /** Overrides one inherited snapshot; explicit PWD (including empty) wins over the effective directory. */
   readonly env?: Readonly<Record<string, string>>;
   readonly stdin?: string | Uint8Array;
   readonly stdinStream?: AsyncIterable<Uint8Array>;
@@ -93,6 +97,7 @@ export interface ShellReplIO {
 }
 
 export interface ShellInteractiveSpec {
+  /** Each executed line resolves this directory anew with the same PWD precedence as ShellCommandOptions. */
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;

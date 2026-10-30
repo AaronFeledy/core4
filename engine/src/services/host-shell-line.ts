@@ -1,5 +1,35 @@
+import { FileIoError, ShellExecError } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { ProcessResult } from "@lando/sdk/services";
-import { type BunCommandRuntime, createBunCommandEnv, inheritCommandEnv } from "./bun-command-env.ts";
+import { type BunCommandRuntime, createBunCommandEnv } from "./bun-command-env.ts";
+import {
+  type CapturedHostExecutionContext,
+  captureHostExecutionContext,
+  prepareHostExecutionContext,
+} from "./host-execution-context.ts";
+
+export const hostShellError = (message: string, command: string, cause?: unknown): ShellExecError =>
+  new ShellExecError({
+    message,
+    command,
+    cause,
+    remediation:
+      cause instanceof FileIoError
+        ? cause.remediation
+        : "Fix the Bun Shell command so it succeeds in the reported working directory, then re-run.",
+  });
+
+export const redactHostShellError = (redactor: Redactor, error: ShellExecError): ShellExecError =>
+  new ShellExecError({
+    message: redactor.redactString(error.message),
+    command: redactor.redactString(error.command),
+    ...(error.cwd === undefined ? {} : { cwd: redactor.redactString(error.cwd) }),
+    ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
+    ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
+    ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
+    cause: redactor.redactValue(error.cause),
+    remediation: redactor.redactString(error.remediation),
+  });
 
 const EVALUATOR = [
   'import { $ } from "bun";',
@@ -35,15 +65,29 @@ const collect = async (stream: ReadableStream<Uint8Array>, write: (chunk: string
   if (tail.length > 0) write(tail);
 };
 
-export const runHostShellLine = async (options: HostShellLineOptions): Promise<ProcessResult> => {
+export const runHostShellLine = async (
+  options: HostShellLineOptions,
+  captured: CapturedHostExecutionContext = captureHostExecutionContext(options),
+): Promise<ProcessResult> => {
+  if (options.signal?.aborted) return { exitCode: 130, stdout: "", stderr: "" };
+  const context = await prepareHostExecutionContext(captured);
+  options.signal?.throwIfAborted();
   await using launcher = await createBunCommandEnv(
-    { command: "bun", env: { ...inheritCommandEnv(options.env ?? {}), BUN_BE_BUN: "1" } },
+    {
+      command: "bun",
+      env: {
+        ...context.env,
+        BUN_BE_BUN: "1",
+      },
+      cwd: context.cwd,
+    },
     options.runtime,
   );
+  options.signal?.throwIfAborted();
   const evaluatorArgv = hostShellEvaluatorArgv();
   const child = Bun.spawn({
     cmd: [...evaluatorArgv],
-    ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+    cwd: context.cwd,
     env: launcher.env,
     stdin: "inherit",
     stdout: "pipe",

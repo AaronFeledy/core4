@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -349,9 +349,16 @@ test("escapes percent signs and uses CRLF in a Windows launcher", () => {
   });
 });
 
-test.each(["collected", "live"] as const)(
-  "preserves script inputs and both output streams with restricted PATH in %s mode",
-  async (mode) => {
+test.each([
+  ["collected", undefined],
+  ["live", undefined],
+  ["collected", "caller-pwd"],
+  ["live", "caller-pwd"],
+  ["collected", ""],
+  ["live", ""],
+] as const)(
+  "preserves script inputs and both output streams with restricted PATH in %s mode and PWD %j",
+  async (mode, pwd) => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-shell-runtime-"));
     const frames: StreamFrameSinkFrame[] = [];
@@ -362,12 +369,12 @@ test.each(["collected", "live"] as const)(
       const script = join(root, "probe.bun.sh");
       await writeFile(
         script,
-        'echo "$FOO"; echo "<$1>"; echo "<$2>"; echo "<$3>"; pwd; echo diagnostic 1>&2; echo -n tail\n',
+        'echo "$FOO"; echo "<$1>"; echo "<$2>"; echo "<$3>"; pwd; echo "$PWD"; echo diagnostic 1>&2; echo -n tail\n',
       );
       const run = Effect.flatMap(ShellRunner, (shell) =>
         shell.runScript(script, {
           cwd: root,
-          env: { PATH: root, FOO: "explicit-env" },
+          env: { PATH: root, FOO: "explicit-env", ...(pwd === undefined ? {} : { PWD: pwd }) },
           argv: ["two words", "", "$(echo injected)"],
         }),
       ).pipe(Effect.provide(shellLayer));
@@ -385,7 +392,8 @@ test.each(["collected", "live"] as const)(
             ),
       );
       // Then
-      const expectedStdout = `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${root}\ntail`;
+      const cwd = await realpath(root);
+      const expectedStdout = `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${cwd}\n${pwd ?? cwd}\ntail`;
       const expectedStderr = "diagnostic\n";
       if (mode === "collected") {
         expect(result).toEqual({ exitCode: 0, stdout: expectedStdout, stderr: expectedStderr });
