@@ -140,6 +140,7 @@ If you are looking for a public surface or policy:
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
+| Single preparation, immutable pre-publication review, and unattended init paths | 08 | §8.8.7 + §8.8.9 |
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
