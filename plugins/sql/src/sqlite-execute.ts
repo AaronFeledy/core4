@@ -286,7 +286,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
               yield* runSqliteHelper(sqlite, target, helper, [
                 "sh",
                 "-c",
-                'sqlite3 "$1" .dump > "$2"',
+                'sqlite3 -bail "$1" .dump > "$2"',
                 "sqlite-dump",
                 helper.dbPath,
                 dumpFile.target,
