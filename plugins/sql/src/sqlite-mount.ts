@@ -87,9 +87,17 @@ export const sqliteHelperUser = (covering: SqliteCoveringMount): string => {
       const info = statSync(covering.source);
       if (Number.isInteger(info.uid) && Number.isInteger(info.gid)) return `${info.uid}:${info.gid}`;
     } catch {
-      // Fall back to the process identity the volume witness uses when a bind cannot be stated.
+      // Fall back to the process identity when a bind cannot be stated.
     }
   }
+  // TODO: Named-volume mounts fall back to the Lando process uid. The volume
+  // witness stamps process.getuid()/getgid() of the helper; it does not read
+  // unix ownership of existing volume files. Service-owned exclude volumes
+  // (php writing as www-data) can therefore run the sqlite helper as the wrong
+  // uid. Resolving the owner needs a helper inspect of volume contents, which
+  // is circular with sqliteHelperUser, or ServicePlan.user, which was rejected
+  // because the pinned sqlite3 image defaults to uid 100. Leave process
+  // identity until a dedicated volume-stat helper exists.
   return hostProcessUser();
 };
 
