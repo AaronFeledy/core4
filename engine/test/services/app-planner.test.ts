@@ -20,6 +20,7 @@ import {
   GlobalConfig,
   LandofileShape,
   LogSource,
+  LogSourceId,
   PluginManifest,
   PluginName,
   PortablePath,
@@ -833,50 +834,37 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("emits parent creation before each PHP-FPM redirect link", async () => {
+  test("keeps PHP-FPM native stderr aliases pathless without filesystem redirects", async () => {
     await withTempCwd(async () => {
-      const appPlan = await plan(
-        Schema.decodeUnknownSync(LandofileShape)({
-          name: "php-logs-app",
-          runtime: 4,
-          services: { appserver: { type: "php:8.2", via: "fpm" } },
-        }),
-      );
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "php-logs-app",
+        runtime: 4,
+        services: { appserver: { type: "php:8.2", via: "fpm" } },
+      });
+      // When
+      const appPlan = await plan(landofile);
 
+      // Then
       const appserver = appPlan.services[ServiceName.make("appserver")];
-      const buildSteps = (
-        appserver?.extensions["@lando/core/service-features"] as
-          | { readonly buildSteps?: ReadonlyArray<unknown> }
-          | undefined
-      )?.buildSteps;
-      // PHP prerequisite steps may precede the redirects; the invariant is that
-      // redirects are finalization steps with each mkdir immediately before its link.
-      expect(buildSteps?.slice(-4)).toEqual([
+      expect(appserver?.logSources).toEqual([
         {
-          id: "lando-log-redirect-mkdir:access",
-          phase: "build",
-          command: ["mkdir", "-p", "/var/log/php-fpm"],
-          user: "root",
+          id: LogSourceId.make("access"),
+          label: "php-fpm access (shared stderr)",
+          strategy: "console",
+          stream: "stderr",
         },
         {
-          id: "lando-log-redirect:access",
-          phase: "build",
-          command: ["ln", "-sf", "/dev/stdout", "/var/log/php-fpm/access.log"],
-          user: "root",
-        },
-        {
-          id: "lando-log-redirect-mkdir:error",
-          phase: "build",
-          command: ["mkdir", "-p", "/var/log/php-fpm"],
-          user: "root",
-        },
-        {
-          id: "lando-log-redirect:error",
-          phase: "build",
-          command: ["ln", "-sf", "/dev/stderr", "/var/log/php-fpm/error.log"],
-          user: "root",
+          id: LogSourceId.make("error"),
+          label: "php-fpm error (shared stderr)",
+          strategy: "console",
+          stream: "stderr",
         },
       ]);
+      const { buildSteps } = Schema.decodeUnknownSync(
+        Schema.Struct({ buildSteps: Schema.Array(Schema.Struct({ id: Schema.String })) }),
+      )(appserver?.extensions["@lando/core/service-features"]);
+      expect(buildSteps.filter(({ id }) => id.startsWith("lando-log-redirect"))).toEqual([]);
     });
   });
 
