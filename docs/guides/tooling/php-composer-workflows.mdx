@@ -32,6 +32,17 @@ tooling:
 
 Run `lando start` from the project directory to apply the configuration and install dependencies. `build.app` runs after the code is mounted, so Composer can read `composer.json`. By default, `vendor/` is a service-owned excluded directory, not the host’s `vendor/`; see [app mount excludes](../setup/file-sync-excludes.mdx). The flags keep installation non-interactive and quiet, and `--no-dev` omits development dependencies. Remove that flag if your development workflow needs them.
 
+Check the installed dependencies inside the service:
+
+```sh
+lando composer check-platform-reqs --no-dev
+```
+
+Resolve any reported PHP or extension requirement before running the app. For
+a stock service with `user: www-data`, Lando prepares and persists `/var/www`
+as that user's home by default, so Composer's home cache survives rebuilds.
+You do not need `home: false` for non-root Composer use.
+
 ## Install global tools in the image
 
 Put the tools on `composer.packages` and Lando bakes them into the image for you:
@@ -55,7 +66,12 @@ Lando normalizes the map before it reaches the build: package names and version 
 
 Names must be lowercase `vendor/name`, and constraints are ordinary Composer constraints such as `^13.0`, `13.0.0`, or `>=1.0,<2.0`. Anything else fails at plan time, before any container work, with the offending package named.
 
-A custom `image:` skips the Lando-managed Composer install but still installs your packages, so bring an image that already ships `composer`.
+A custom `image:` or `build.context` skips the Lando-managed Composer binary install but still installs your explicit `composer.packages`, so supply a working `composer` binary in that image. Additive `build.artifact` or `build.app` steps alone keep the stock Composer install.
+
+An authored `command:` or `entrypoint:` changes startup, not stock Composer
+installation. For custom image home persistence, use an explicit `home.path`
+you know is valid in that image, or `home: false` to disable it. See
+[Replace the PHP image](../services/php-customization.mdx#replace-the-image).
 
 If you would rather script it yourself, a `build.artifact` step also runs while the image is baked, before project code is mounted:
 

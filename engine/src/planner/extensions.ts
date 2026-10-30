@@ -119,6 +119,7 @@ export const toAppFeatureDraft = (
     framework: serviceResolution.normalizedConfig.framework,
     featureIds,
     normalizedConfig: serviceResolution.normalizedConfig,
+    resolutionMetadata: serviceResolution.metadata,
     ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
     ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
     ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),

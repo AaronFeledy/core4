@@ -31,9 +31,11 @@ export const containerConsoleLogs = (
   service: ServiceName,
   options: Partial<LogOptions>,
 ): Stream.Stream<LogChunk, ProviderError> => {
+  const selected = options.sources?.find((source) => source.id === options.source);
+  const pipe = selected?.strategy === "follow" ? undefined : selected?.stream;
   const query = new URLSearchParams({
-    stdout: "true",
-    stderr: "true",
+    stdout: String(pipe === undefined || pipe === "stdout"),
+    stderr: String(pipe === undefined || pipe === "stderr"),
     follow: String(options.follow ?? true),
     timestamps: "true",
   });
@@ -47,7 +49,10 @@ export const containerConsoleLogs = (
         path: `/containers/${encodeURIComponent(container)}/logs?${query}`,
       },
     ),
-  ).pipe(Stream.map((line) => ({ service, ...line })));
+  ).pipe(
+    Stream.filter((line) => pipe === undefined || line.stream === pipe),
+    Stream.map((line) => ({ service, ...line, ...(selected === undefined ? {} : { source: selected.id }) })),
+  );
 };
 
 const fileSourceSince = (value: string | undefined): number | undefined => {
@@ -77,6 +82,13 @@ export const logs = (
     const api = runtime.api;
     const logFileAccess = runtime.logFileAccess;
     const logSources = options.sources ?? service.logSources ?? [];
+    const selected = logSources.find((source) => source.id === options.source);
+    if (selected !== undefined && selected.strategy !== "follow") {
+      return containerConsoleLogs(api, ctx, containerName(plan, service), service.name, {
+        ...options,
+        sources: [selected],
+      });
+    }
     const since = fileSourceSince(options.since);
 
     return Stream.suspend(() => {

@@ -24,6 +24,7 @@ import {
   type ConfigService,
   LandofileService,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
 
@@ -34,6 +35,7 @@ import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.
 import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
 import { projectFileSyncInfo } from "./info-file-sync.ts";
+import { infoLogSources } from "./info-log-sources.ts";
 import { projectServiceProbes } from "./info-probes.ts";
 import { projectServiceMounts } from "./info-storage.ts";
 import { selectInfoPlan } from "./service-selection.ts";
@@ -83,22 +85,10 @@ const toServiceInfo = (
   service: ServicePlan,
   status: ServiceState,
   connections: readonly ServiceConnection[],
-  serviceLogSources: boolean,
+  capabilities: RuntimeProviderShape["capabilities"],
   runtimeHealth: ServiceRuntimeInfo["health"],
 ): InfoAppService => {
-  const logSources = (service.logSources ?? []).map((source) => {
-    const base = { id: String(source.id), path: String(source.path), strategy: source.strategy };
-    if (source.strategy === "redirect") {
-      return { ...base, availability: "redirected-to-console" as const };
-    }
-    if (serviceLogSources) return { ...base, availability: "available" as const };
-    return {
-      ...base,
-      availability: "unavailable" as const,
-      reason:
-        "This provider cannot follow log files. Set `strategy: redirect` on this source to view it with `lando logs`.",
-    };
-  });
+  const logSources = infoLogSources(service, capabilities);
   const creds = credsFromConnection(service.connection);
   const artifact =
     service.artifact === undefined
@@ -156,7 +146,6 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
 ): Effect.fn.Return<InfoAppResult, InfoAppError, RuntimeProviderRegistry> {
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(plan);
-  const serviceLogSources = provider.capabilities.serviceLogSources === true;
   const observations = yield* collectPlanObservations(plan, completionPlan, provider);
   const rows = yield* collectObservedConnections(plan, observations);
   const services = rows.map((row) => {
@@ -166,7 +155,7 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     const mounts = projectServiceMounts(plan, service, runtime);
     const appMount = serviceAppMount(service);
     return {
-      ...toServiceInfo(plan, service, row.state, row.connections, serviceLogSources, runtime?.health),
+      ...toServiceInfo(plan, service, row.state, row.connections, provider.capabilities, runtime?.health),
       ...(mounts === undefined ? {} : { mounts }),
       ...(appMount === undefined ? {} : { appMount }),
     };

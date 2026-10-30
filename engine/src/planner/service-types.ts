@@ -206,21 +206,6 @@ export const servicePlanError = (appRoot: string, serviceName: string, cause: un
   });
 };
 
-export const appFeatureError = (appRoot: string, cause: unknown) => {
-  if (cause instanceof LandofileValidationError) return cause;
-  return new LandofileValidationError({
-    message: cause instanceof Error ? cause.message : "Invalid app-feature composition.",
-    remediation: "Correct the app-feature configuration or remove the failing feature.",
-    file: `${appRoot}/.lando.yml`,
-    issues: [
-      validationIssue(
-        ["appFeatures"],
-        cause instanceof Error ? cause.message : "Invalid app-feature composition.",
-      ),
-    ],
-  });
-};
-
 export interface ResolvedService {
   readonly routes: ReadonlyArray<NormalizedRoute> | undefined;
   readonly name: string;

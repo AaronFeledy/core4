@@ -81,6 +81,7 @@ export const prepareServiceComposition = (input: ComposeServiceInput): PreparedS
       primary: base.primary,
       featureIds: Object.freeze(ordered.map((feature) => feature.id)),
       normalizedConfig: input.normalizedConfig,
+      resolutionMetadata: input.resolutionMetadata,
       connection: base.connection,
       framework: input.normalizedConfig.framework,
     }),
