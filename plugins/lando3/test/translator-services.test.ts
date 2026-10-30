@@ -15,6 +15,90 @@ const translate = (text: string) => {
   return Effect.runPromise(translator.translate(documentSet([document(".lando.yml", text)])));
 };
 
+test.each(["api: 4, type: lando", "type: lando, services: {image: 'alpine:3.21'}"])(
+  "carries legacy healthcheck identity through %s",
+  async (service) => {
+    // Given
+    const text = `services: {web: {${service}, healthcheck: {command: "id -u", user: "1001:1002", retry: 3, delay: 1000}}}`;
+    // When
+    const result = await translate(text);
+    // Then
+    expect(result.outputs).toHaveLength(1);
+    const fragment = result.outputs[0]?.fragment;
+    expect(
+      Schema.decodeUnknownSync(LandofileAuthoringFragment, { onExcessProperty: "error" })(fragment),
+    ).toMatchObject({
+      services: {
+        web: { readiness: { command: "id -u", user: "1001:1002", retries: 3, intervalSeconds: 1 } },
+      },
+    });
+    expect(result.diagnostics.filter((entry) => entry.kind === "dropped")).toEqual([]);
+  },
+);
+
+test.each(["api: 4, type: lando", "type: lando, services: {image: 'alpine:3.21'}"])(
+  "reports an invalid legacy healthcheck identity through %s",
+  async (service) => {
+    // Given
+    const text = `services: {web: {${service}, healthcheck: {command: "id -u", user: "bad user"}}}`;
+    // When
+    const result = await translate(text);
+    // Then
+    expect(result.outputs).toEqual([]);
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({ kind: "unsupported", keyPath: ["services", "web", "healthcheck", "user"] }),
+    );
+  },
+);
+
+test("does not activate a healthcheck ignored by the legacy catalog dialect", async () => {
+  // Given
+  const text = 'services: {web: {type: "php:8.3", healthcheck: {command: "exit 7", user: "root"}}}';
+  // When
+  const result = await translate(text);
+  // Then
+  expect(result.outputs[0]?.fragment).toMatchObject({ services: { web: { type: "php:8.3" } } });
+  expect(result.diagnostics).toContainEqual(
+    expect.objectContaining({ kind: "dropped", keyPath: ["services", "web", "healthcheck"] }),
+  );
+  const fragment = Schema.decodeUnknownSync(LandofileAuthoringFragment)(result.outputs[0]?.fragment);
+  expect(fragment).not.toHaveProperty("services.web.healthcheck");
+  expect(fragment).not.toHaveProperty("services.web.readiness");
+});
+
+for (const service of ["api: 4, type: lando", "type: lando, services: {image: 'alpine:3.21'}"]) {
+  test.each([
+    { authored: "false", expected: false },
+    { authored: '"test -f ready"', expected: "test -f ready" },
+    { authored: '["ready", "literal argument"]', expected: ["ready", "literal argument"] },
+    {
+      authored: '{command: ["ready"], retry: 0, delay: 0}',
+      expected: { command: ["ready"], retries: 0, intervalSeconds: 0 },
+    },
+  ])(
+    `maps lifecycle healthcheck forms to readiness for ${service}: $authored`,
+    async ({ authored, expected }) => {
+      // Given
+      const text = `services: {web: {${service}, healthcheck: ${authored}, overrides: {healthcheck: {test: [CMD, native]}}}}`;
+      // When
+      const result = await translate(text);
+      // Then
+      expect(result.outputs).toHaveLength(1);
+      const fragment = Schema.decodeUnknownSync(LandofileAuthoringFragment, { onExcessProperty: "error" })(
+        result.outputs[0]?.fragment,
+      );
+      expect(fragment).toMatchObject({
+        services: {
+          web: {
+            readiness: expected,
+            healthcheck: { test: ["CMD", "native"] },
+          },
+        },
+      });
+    },
+  );
+}
+
 test.each([
   ["", "webapps/ROOT"],
   [', webroot: "."', "webapps/ROOT"],

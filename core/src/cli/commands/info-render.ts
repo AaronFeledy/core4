@@ -13,6 +13,7 @@ import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "./connection-summary";
 import { fileSyncSection, plainFileSyncLines } from "./info-file-sync-render.ts";
+import { probeFields } from "./info-probes-render.ts";
 import { homeFields, plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
 import { INFO_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
@@ -41,7 +42,12 @@ const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<Sum
   return [
     {
       label: "log sources",
-      value: sources.map((source) => `${source.id} [${availability(source)}]`).join(", "),
+      value: sources
+        .map(
+          (source) =>
+            `${source.id}${source.strategy === "console" ? ` (console/${source.stream})` : ""} [${availability(source)}]`,
+        )
+        .join(", "),
     },
     ...(reasons.length === 0 ? [] : [{ label: "log details", value: reasons.join(" ") }]),
   ];
@@ -88,12 +94,13 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
     const remedy = storageRemedy(service);
     return {
       label: service.service,
-      tone: infoStatusTone(service.status),
+      tone: service.health?.state === "unhealthy" ? "warn" : infoStatusTone(service.status),
       value: service.status,
       fields: [
         { label: "type", value: service.type },
         { label: "provider", value: service.provider },
         ...planMetadataFields(service),
+        ...probeFields(service),
         ...connectionFields(service.connections),
         ...storageFields(service),
         ...homeFields(service),
@@ -199,7 +206,8 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     const base = `${service.service}\t${service.status}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;
     const logRows = (service.logSources ?? []).map((source) => {
       const reason = source.reason === undefined ? "" : `\t${source.reason}`;
-      return `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}${reason}`;
+      const location = source.strategy === "console" ? `console/${source.stream}` : source.path;
+      return `${service.service}\tlog-source\t${source.id}\t${location}\t${source.strategy}\t${source.availability}${reason}`;
     });
     const credsRows =
       service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
@@ -209,7 +217,18 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     const metadataRows = planMetadataFields(service).map(
       (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
     );
-    return [base, ...metadataRows, ...plainStorageRows(service), ...homeRows, ...logRows, ...credsRows];
+    const probes = probeFields(service).map(
+      (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
+    );
+    return [
+      base,
+      ...metadataRows,
+      ...probes,
+      ...plainStorageRows(service),
+      ...homeRows,
+      ...logRows,
+      ...credsRows,
+    ];
   });
   return [`app\t${result.app}`, "service\tstate\tHost\tApp Network", ...rows, ...extra].join("\n");
 };

@@ -53,6 +53,7 @@ import {
 } from "../subsystems/ssh/intent.ts";
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
+import { appFeatureError } from "./app-feature-error.ts";
 import { planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
@@ -78,7 +79,7 @@ import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
 import { validateServiceProbes } from "./service-probes.ts";
-import { type ResolvedService, appFeatureError, resolvedServiceCacheInput } from "./service-types.ts";
+import { type ResolvedService, resolvedServiceCacheInput } from "./service-types.ts";
 import { authoredStorageScopes } from "./storage.ts";
 
 export interface PlanAppInput {
@@ -367,6 +368,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       fileSystem,
     }).pipe(Effect.catch(() => Effect.succeed(null)));
     if (cached !== null) {
+      yield* validateServiceProbes(cached);
       if (cached.fileSync.length > 0) yield* selectFileSyncEngine;
       yield* assertAuthoredNetworksSupported(provider, providerCapabilities, cached.networking);
       yield* validateServiceDependencies(appRoot, cached.services);

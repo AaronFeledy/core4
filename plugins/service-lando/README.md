@@ -50,11 +50,65 @@ With `appMount: false`, PHP, nginx, Apache, static, and Tomcat still accept an a
 
 A generated start command runs as the service's planned `user:`. [Default start commands and the planned service user](./DEFAULT_COMMAND_AUDIT.md) records what each bundled default writes and which ones still assume root.
 
+Stock Apache-served PHP supports `user: www-data` without startup writes into
+root-owned configuration or log files. Set `port: 8080`
+(or another port at or above 1024) for portable non-root binding. Lando prepares
+`www-data`'s `/var/www` home during the image build and persists it by default;
+no `home: false` workaround is needed. A fresh home volume inherits the prepared
+ownership; an existing populated volume keeps its ownership.
+Access and error logs reach container stdout and stderr through piped loggers
+and remain available through `lando logs`. See [Run PHP as a non-root user](../../docs/guides/services/php.mdx#run-as-a-non-root-user)
+for a complete example.
+
+For PHP, a custom `image:` or normalized Compose `build.context` owns image
+setup and startup across Apache, FPM, and CLI modes. Lando skips PHP-managed
+prerequisites, extension and Composer binary installs, database clients,
+WordPress tools/settings, and generated launchers. This applies even when the
+planner carries the stock PHP image reference alongside the contextual build.
+Additive `build.artifact` and `build.app` scripts alone keep stock setup.
+Custom runtimes also omit PHP's implicit console aliases and file-log redirects; container stdout
+and stderr remain available, and authored log sources still apply.
+Explicit `composer.packages` still installs packages using the image's Composer;
+Xdebug environment and tooling still apply, but the image supplies the extension.
+See [Replace the PHP image](../../docs/guides/services/php-customization.mdx#replace-the-image).
+
+PHP computes artifact ownership, process ownership, base-family evidence, and
+log mode once during service-type resolution. Its service feature and app
+features consume those facts rather than guessing from a later image reference.
+Canonical aliases of the catalog Apache reference retain stock ownership;
+another namespace does not. An authored `command:` or `entrypoint:` keeps stock
+installers but owns startup, so it gets no generated launcher, Apache process
+preparation, or implicit aliases.
+
+Generated Apache aliases `access` to stdout and `error` to stderr. Generated FPM
+aliases both names to stderr; selecting either includes all writers on that
+pipe. `lando logs` reads native console once plus real followed files, and
+`--source console` reads both native streams. A same-id authored file source
+replaces the alias. Info reports aliases as `console/stdout` or `console/stderr`,
+not invented paths. See [service logs](../../docs/guides/cli/service-logs.mdx).
+
+Before start hooks and builds, `LANDO_NONROOT_LOW_PORT_UNVERIFIED` warns when
+a declared user other than explicit root/UID 0 has a planned container port
+below 1024. The warning is conditional on the identity resolving to non-root;
+it neither probes bind permission nor changes ports or fails start. Provider
+names and rootless mode are not proof of effective bind permission.
+
 Node exposes port `3000` and sets `PORT=3000` by default. Set `port:` to change the endpoint and default `PORT`. The default idle Node process exits cleanly on SIGTERM or SIGINT and has no healthcheck. When `command:` is authored, Lando generates a TCP healthcheck against the configured service port. An authored `environment.PORT` still wins without changing the endpoint or healthcheck target.
 
 ## Capture PHP mail
 
 Add a `mailpit` service and run `lando rebuild` to wire PHP's `mail()` to the app inbox. Omitted `mailFrom` selects every resolved PHP service; `false` selects none; a list selects only those PHP services, with duplicates removed in authored order. Unknown and non-PHP targets fail before provider action. Selected services receive `msmtp` plus a PHP `sendmail_path` setting. Other services keep their mail configuration. Run `lando info` to find the inbox URL and verify a message from a selected PHP service there.
+
+A selected PHP service with `build.context` fails with
+`MailpitMsmtpBaseFamilyError`, reason `replacement-build`: the Dockerfile
+controls the result, so a reference cannot prove its Debian family. Exclude
+it with `mailFrom: false` or a list of other PHP services, or use a known image
+without a replacement build. Reason `unproven-image-family` instead calls for
+a canonical reference or sender exclusion. The error carries `service`, `reason`,
+and optional `image`; all selected senders are validated before wiring mutations.
+Canonical upstream
+`php:` images ending in `-bookworm` or `-bullseye` remain supported without a
+contextual build; additive build scripts alone do not change that selection.
 
 ## Beta scope vs. the GA-target catalog
 

@@ -8,6 +8,7 @@ import {
   ServiceName,
   type ValidationIssue,
   type ValidationIssuePath,
+  authoredProbeTargetError,
   landoAuthoredNetworkName,
 } from "@lando/sdk/schema";
 import { Iterable, Result, Schema } from "effect";
@@ -147,20 +148,29 @@ export const validateResolvedLandofile = (input: {
         });
       }
     }
-    const healthcheck = service.healthcheck;
-    if (healthcheck !== undefined && healthcheck !== false) {
+    for (const role of ["healthcheck", "readiness"] as const) {
+      const healthcheck = service[role];
+      if (healthcheck === undefined || healthcheck === false) continue;
+      const invalid = authoredProbeTargetError(healthcheck, ServiceName.make(name), role);
+      if (invalid !== undefined)
+        issues.push({
+          path: ["services", name, role],
+          rule: `${role}.execution-target`,
+          message: invalid.message,
+          suggestion: invalid.remediation,
+        });
       switch (healthcheck.kind) {
         case "http":
         case "tcp":
           issues.push({
-            path: ["services", name, "healthcheck", "kind"],
-            rule: "landofile.healthcheck",
-            message: `Authored healthcheck kind ${healthcheck.kind} is not supported by the healthcheck runner.`,
-            suggestion:
-              "Use kind: command with an in-container probe command, or healthcheck: false to disable the probe.",
+            path: ["services", name, role, "kind"],
+            rule: `landofile.${role}`,
+            message: `Authored ${role} kind ${healthcheck.kind} is not supported by the healthcheck runner.`,
+            suggestion: `Use kind: command with a probe command, or ${role}: false to disable the probe.`,
           });
           break;
         case "command":
+        case "none":
         case undefined:
           break;
       }

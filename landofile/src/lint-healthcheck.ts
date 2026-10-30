@@ -24,58 +24,57 @@ export const healthcheckWarnings = (
   const warnings: ConfigLintViolation[] = [];
   for (const [name, service] of Object.entries(merged.services)) {
     if (!isPlainRecord(service)) continue;
-    const healthcheck = service.healthcheck;
-    const path = ["services", name, "healthcheck"];
-    const sourceAt = (fieldPath: readonly string[]) =>
-      origins === undefined ? undefined : valueOriginAt(origins, fieldPath).source;
-    if (Array.isArray(healthcheck) && ["CMD", "CMD-SHELL", "NONE"].includes(healthcheck[0])) {
-      const source = sourceAt(path);
-      warnings.push(
-        attributeLintIssue(
-          {
-            rule: "healthcheck.bare-compose-marker",
-            severity: "warning",
-            path,
-            message: "A Compose test marker in bare healthcheck argv is executed literally.",
-            suggestion:
-              "Remove the marker for literal argv, or use a block healthcheck object with test: and the Compose marker.",
-            ...(source === undefined ? {} : { source }),
-          },
-          "effective",
-          documents,
-        ),
-      );
-    }
-    if (!isPlainRecord(healthcheck) || origins === undefined) continue;
-    const lando = LANDO_FIELDS.filter((field) => Object.hasOwn(healthcheck, field));
-    const compose = COMPOSE_FIELDS.filter((field) => Object.hasOwn(healthcheck, field));
-    for (const field of lando) {
-      const source = sourceAt([...path, field]);
-      if (
-        source === undefined ||
-        !compose.some((other) => {
-          const origin = sourceAt([...path, other]);
-          return origin !== undefined && (origin.file !== source.file || origin.layer !== source.layer);
-        })
-      )
-        continue;
-      warnings.push(
-        attributeLintIssue(
-          {
-            rule: "healthcheck.mixed-dialects",
-            severity: "warning",
-            path,
-            source,
-            message:
-              "Surviving healthcheck fields combine Lando and Compose dialects from different sources.",
-            suggestion:
-              "Use one healthcheck dialect across layers. Lando fields take precedence over Compose fields.",
-          },
-          "effective",
-          documents,
-        ),
-      );
-      break;
+    for (const role of ["healthcheck", "readiness"] as const) {
+      const healthcheck = service[role];
+      const path = ["services", name, role];
+      const sourceAt = (fieldPath: readonly string[]) =>
+        origins === undefined ? undefined : valueOriginAt(origins, fieldPath).source;
+      if (Array.isArray(healthcheck) && ["CMD", "CMD-SHELL", "NONE"].includes(healthcheck[0])) {
+        const source = sourceAt(path);
+        warnings.push(
+          attributeLintIssue(
+            {
+              rule: `${role}.bare-compose-marker`,
+              severity: "warning",
+              path,
+              message: `A Compose test marker in bare ${role} argv is executed literally.`,
+              suggestion: `Remove the marker for literal argv, or use a block ${role} object with test: and the Compose marker.`,
+              ...(source === undefined ? {} : { source }),
+            },
+            "effective",
+            documents,
+          ),
+        );
+      }
+      if (!isPlainRecord(healthcheck) || origins === undefined) continue;
+      const lando = LANDO_FIELDS.filter((field) => Object.hasOwn(healthcheck, field));
+      const compose = COMPOSE_FIELDS.filter((field) => Object.hasOwn(healthcheck, field));
+      for (const field of lando) {
+        const source = sourceAt([...path, field]);
+        if (
+          source === undefined ||
+          !compose.some((other) => {
+            const origin = sourceAt([...path, other]);
+            return origin !== undefined && (origin.file !== source.file || origin.layer !== source.layer);
+          })
+        )
+          continue;
+        warnings.push(
+          attributeLintIssue(
+            {
+              rule: `${role}.mixed-dialects`,
+              severity: "warning",
+              path,
+              source,
+              message: `Surviving ${role} fields combine Lando and Compose dialects from different sources.`,
+              suggestion: `Use one ${role} dialect across layers. Lando fields take precedence over Compose fields.`,
+            },
+            "effective",
+            documents,
+          ),
+        );
+        break;
+      }
     }
   }
   return warnings;

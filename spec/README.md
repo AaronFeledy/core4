@@ -68,6 +68,7 @@ If you are looking for a public surface or policy:
 | Runtime layers, dependency direction, and source layout | 03 | §3.1 + §3.3 |
 | Bootstrap levels and fast paths | 03 | §3.2 |
 | Core Effect service tags | 03 | §3.4 |
+| Host execution directory identity, environment snapshots, and PWD precedence | 03 | §3.4 |
 | Lifecycle event scopes and names | 03 | §3.5 |
 | CLI and embedding imperative shells | 03 | §3.6 |
 | Canonical secret and PII redaction | 03 | §3.7 |
@@ -96,19 +97,25 @@ If you are looking for a public surface or policy:
 | Planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
-| Healthchecks, start-failure retention, certificates, and trust injection | 06 | §6.7 + §6.8 |
+| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, and start-failure retention | 06 | §6.7 |
+| Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
+| Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
+| Certificates and trust injection | 06 | §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
+| Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
+| PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
-| Service log-source contracts | 06 | §6.14 |
+| Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
+| Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
 | Six-layer Landofile merge | 07 | §7.2 |

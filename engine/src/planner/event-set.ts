@@ -8,7 +8,9 @@ import {
   type ProviderCapabilities,
   type ProviderId,
   ServiceScopedLandofile,
+  authoredProbeTargetError,
 } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import type { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { type Context, DateTime, Effect, Iterable, Result, Schema } from "effect";
 import { hostProviderIdFrom } from "../providers/host-provider.ts";
@@ -240,6 +242,14 @@ const knownEventSetFrom = Effect.fnUntraced(function* (resolution: ResolvedLando
 
 export const resolveKnownEventSet = Effect.fn("AppPlanner.discover")(function* (input: KnownEventSetInput) {
   const result = yield* resolveLandofileForPlanning(input);
+  for (const [name, service] of Object.entries(result.resolution.landofile.services ?? {})) {
+    for (const role of ["healthcheck", "readiness"] as const) {
+      const probe = service[role];
+      if (probe === undefined || probe === false) continue;
+      const invalid = authoredProbeTargetError(probe, ServiceName.make(name), role);
+      if (invalid !== undefined) return yield* Effect.fail(invalid);
+    }
+  }
   const issues = [
     ...(result._tag === "Invalid" ? result.issues : []),
     ...toolingAndEventIssues(result.resolution),

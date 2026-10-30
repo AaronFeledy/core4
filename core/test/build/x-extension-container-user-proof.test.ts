@@ -22,6 +22,7 @@ import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadat
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
+import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
@@ -154,7 +155,11 @@ test.each([
             evolveHistoricalServicePort(
               evolveHistoricalTimestamps(
                 evolveHistoricalContainerUser(
-                  evolveHistoricalShorthand(evolveHistoricalNetworks(normalizeJsonSchema(repaired), "bare")),
+                  evolveHistoricalReadiness(
+                    evolveHistoricalShorthand(
+                      evolveHistoricalNetworks(normalizeJsonSchema(repaired), "bare"),
+                    ),
+                  ),
                 ),
                 "bare",
               ),

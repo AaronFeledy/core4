@@ -19,7 +19,11 @@ export const runAppBuildGate = (
       const readiness = candidate === undefined ? undefined : effectiveReadiness(candidate);
       if (readiness === undefined || readiness.kind !== "command" || readiness.command === undefined)
         return Effect.succeed<ScheduleOutcome>("failed");
-      return makeHealthcheckRunner({ exec: input.provider.exec, ...(signal === undefined ? {} : { signal }) })
+      return makeHealthcheckRunner({
+        exec: input.provider.exec,
+        ...(input.hostProbeRunners === undefined ? {} : { runners: input.hostProbeRunners }),
+        ...(signal === undefined ? {} : { signal }),
+      })
         .run(readiness, input.plan.id, service, input.plan)
         .pipe(
           Effect.map((result): ScheduleOutcome => (result.healthy ? "succeeded" : "failed")),

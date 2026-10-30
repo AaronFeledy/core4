@@ -105,6 +105,10 @@ const ServicePlanFields = {
     description:
       "Startup probe; defaults to healthcheck when absent. Ongoing native health uses healthcheck only.",
   }),
+  readinessSource: Schema.optionalKey(Schema.Literals(["authored", "contributed"])).annotate({
+    description:
+      "Origin of explicit lifecycle readiness; absent for historical plans with unknown provenance.",
+  }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
   }),

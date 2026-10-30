@@ -78,6 +78,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       appRoot: input.appRoot,
       host: input.host,
       normalizedConfig: resolution.normalizedConfig,
+      resolutionMetadata: resolution.metadata,
     });
     const declared = yield* declarePreparedServiceEndpoints(prepared).pipe(
       Effect.mapError((error) => servicePlanError(input.appRoot, name, error)),

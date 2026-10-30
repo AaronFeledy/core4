@@ -55,7 +55,7 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
     }),
     source: Flags.string({
       description:
-        "Select a declared source id, or `console` for the container stream. Redirected sources share that stdout/stderr stream and cannot be isolated.",
+        "Select a declared source id, or `console` for all container logs. Console aliases and redirects select a native stdout/stderr pipe; aliases on the same pipe share its logs.",
     }),
     "no-viewer": Flags.boolean({
       description:

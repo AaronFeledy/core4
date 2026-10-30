@@ -106,18 +106,18 @@ const validateSource = (
     );
   }
   if (requested === RESERVED_LOG_SOURCE_ID || serviceLogSources) return Effect.void;
-  const hasRedirectSource = services.some((service) =>
+  const hasConsoleSource = services.some((service) =>
     (service.logSources ?? []).some(
-      (source) => String(source.id) === requested && source.strategy === "redirect",
+      (source) => String(source.id) === requested && source.strategy !== "follow",
     ),
   );
-  if (hasRedirectSource) return Effect.void;
+  if (hasConsoleSource) return Effect.void;
   return Effect.fail(
     new ToolingExecError({
       message: `logs: log source "${requested}" is unavailable because the runtime provider does not advertise serviceLogSources.`,
       tool: "app:logs",
       remediation:
-        "Use a provider that advertises serviceLogSources, or omit --source / use --source container.",
+        "Use a provider that advertises serviceLogSources, or omit --source / use --source console.",
     }),
   );
 };
@@ -202,7 +202,15 @@ const servicesForPlan = Effect.fnUntraced(function* (
 
   const services = yield* selectServices(plan, options.service);
   yield* validateSource(options.source, services, provider.capabilities.serviceLogSources);
-  return { services, provider };
+  return {
+    services: services.filter(
+      (service) =>
+        options.source === undefined ||
+        options.source === RESERVED_LOG_SOURCE_ID ||
+        (service.logSources ?? []).some((source) => String(source.id) === options.source),
+    ),
+    provider,
+  };
 });
 
 const resolvePlanServices = Effect.fnUntraced(function* (
@@ -244,11 +252,6 @@ const logOptionsForService = (
   const capable = serviceSources.filter((source) => serviceLogSources || source.strategy !== "follow");
   if (requestedSource === undefined) return { ...logOptions, sources: capable };
   if (requestedSource === RESERVED_LOG_SOURCE_ID) return { ...logOptions, sources: [] };
-  if (
-    serviceSources.some((source) => String(source.id) === requestedSource && source.strategy === "redirect")
-  ) {
-    return { ...logOptions, sources: [] };
-  }
   return {
     ...logOptions,
     sources: capable.filter((source) => String(source.id) === requestedSource),

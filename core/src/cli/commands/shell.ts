@@ -152,14 +152,6 @@ const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, Deprec
   );
 };
 
-const filterStringEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === "string") out[key] = value;
-  }
-  return out;
-};
-
 const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError => {
   const list = availableServiceList(services);
   return new ToolingExecError({
@@ -338,7 +330,6 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   const hostUser = process.env.USER ?? process.env.USERNAME;
   const hostHome = process.env.HOME ?? process.env.USERPROFILE;
   const env: Record<string, string> = {
-    ...filterStringEnv(process.env),
     ...(options.env ?? {}),
     LANDO: "ON",
     LANDO_DEBUG: process.env.LANDO_DEBUG === "1" ? "1" : "",

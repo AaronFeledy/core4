@@ -174,17 +174,22 @@ describe("bunSelfRun redaction", () => {
       spawn: async () => ({ exitCode: 0 }),
     };
 
-    await Effect.runPromise(
-      bunSelfRun({
-        argv: ["install", "--registry=https://topsecret.example"],
-        cwd: "/tmp/topsecret-project",
-        env: { BUN_AUTH_TOKEN: "topsecret" },
-        spawner,
-        execPath: "/bin/bun",
-        callerSubsystem: "plugin-topsecret",
-        verb: "install-topsecret",
-      }).pipe(Effect.provide(Layer.mergeAll(eventLayer, redactionLayer))),
-    );
+    const cwd = await mkdtemp(join(tmpdir(), "topsecret-project-"));
+    try {
+      await Effect.runPromise(
+        bunSelfRun({
+          argv: ["install", "--registry=https://topsecret.example"],
+          cwd,
+          env: { BUN_AUTH_TOKEN: "topsecret" },
+          spawner,
+          execPath: "/bin/bun",
+          callerSubsystem: "plugin-topsecret",
+          verb: "install-topsecret",
+        }).pipe(Effect.provide(Layer.mergeAll(eventLayer, redactionLayer))),
+      );
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
 
     expect(events).toHaveLength(2);
     expect(events.map((event) => event._tag)).toEqual(["pre-bun-self-exec", "post-bun-self-exec"]);

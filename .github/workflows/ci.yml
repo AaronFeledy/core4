@@ -1261,6 +1261,11 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
       - name: Upload darwin-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1333,6 +1338,11 @@ jobs:
           LANDO_RELEASE_TARGET: darwin-x64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -1407,6 +1417,11 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
       - name: Upload linux-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1480,6 +1495,11 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
       - name: Upload linux-x64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1550,6 +1570,11 @@ jobs:
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-x64.exe
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
       - name: Upload windows-x64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1619,6 +1644,11 @@ jobs:
           LANDO_RELEASE_TARGET: windows-arm64
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-arm64.exe
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
+
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
+        run: bun test core/test/build/host-execution-compiled.test.ts
 
       - name: Upload windows-arm64 binary
         if: always()

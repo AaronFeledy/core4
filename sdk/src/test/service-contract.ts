@@ -200,10 +200,14 @@ export const runServiceCompositionContract = Effect.fnUntraced(function* (
       { index, source },
     );
     sourceIds.add(String(source.id));
-    yield* requireServiceComposition(source.path.startsWith("/"), "resolution logSource path is absolute", {
-      index,
-      source,
-    });
+    yield* requireServiceComposition(
+      source.path === undefined || source.path.startsWith("/"),
+      "resolution logSource path is absolute",
+      {
+        index,
+        source,
+      },
+    );
     yield* requireServiceComposition(
       resolution.base === "lando" || source.strategy !== "redirect",
       "resolution logSource strategy is supported by the base",

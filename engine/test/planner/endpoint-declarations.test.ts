@@ -24,6 +24,7 @@ import { planApp } from "../plan-app.ts";
 
 const listener = (port: number): EndpointPlan => ({ _tag: "internal", protocol: "http", port });
 const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof definePlugin> => {
+  const metadata = Object.freeze({ "@test/resolution": Object.freeze({ listener: endpoint }) });
   const feature: ServiceFeatureDefinition = {
     id: "test.listener",
     priority: 700,
@@ -51,10 +52,13 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
         calls.push("app-declaration");
         expect("forEachSelected" in ctx).toBe(false);
         expect(ctx.selected.map((view) => view.serviceName)).toEqual(["web"]);
+        expect(ctx.selected[0]?.resolutionMetadata).toEqual(metadata);
         return { web: [{ ...listener(9000), name: "late" }] };
       }),
-    apply: () =>
+    apply: (ctx) =>
       Effect.sync(() => {
+        expect(ctx.selected[0]?.resolutionMetadata).toEqual(metadata);
+        ctx.forEachSelected((service) => expect(service.service.resolutionMetadata).toEqual(metadata));
         calls.push("app-apply");
       }),
   };
@@ -67,6 +71,7 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
       Effect.succeed({
         base: "l337",
         normalizedConfig: service,
+        metadata,
         features: [{ id: feature.id, config: { port: endpoint } }],
       }),
   };

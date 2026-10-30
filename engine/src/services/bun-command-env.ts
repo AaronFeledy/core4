@@ -63,26 +63,15 @@ const isPathKey = (key: string, platform: NodeJS.Platform): boolean =>
 
 const commandPath = (env: NodeJS.ProcessEnv, platform: NodeJS.Platform) => {
   const callerKey = Object.keys(env).find((key) => isPathKey(key, platform));
-  const key = Object.keys(process.env).find((key) => isPathKey(key, platform)) ?? "PATH";
-  return { key, value: (callerKey === undefined ? process.env[key] : env[callerKey]) ?? "" };
-};
-
-export const inheritCommandEnv = (
-  env: NodeJS.ProcessEnv,
-  platform: NodeJS.Platform = process.platform,
-): NodeJS.ProcessEnv => {
-  const path = commandPath(env, platform);
-  const result = { ...process.env, ...env };
-  for (const key of Object.keys(result).filter((key) => isPathKey(key, platform))) delete result[key];
-  result[path.key] = path.value;
-  return result;
+  const key = callerKey ?? "PATH";
+  return { key, value: env[key] ?? "" };
 };
 
 export const createBunCommandEnv = async (
   options: {
     readonly command: "lando" | "bun";
     readonly env: Readonly<Record<string, string>>;
-    readonly cwd?: string;
+    readonly cwd: string;
   },
   runtime: BunCommandRuntime = bunCommandRuntime(),
 ): Promise<{ readonly env: Record<string, string>; readonly [Symbol.asyncDispose]: () => Promise<void> }> => {
@@ -90,7 +79,7 @@ export const createBunCommandEnv = async (
   const fallback = runtime.standalone ? runtime.execPath : undefined;
   const target =
     options.command === "lando"
-      ? (Bun.which("lando", { PATH: effectivePath, cwd: options.cwd ?? process.cwd() }) ?? fallback)
+      ? (Bun.which("lando", { PATH: effectivePath, cwd: options.cwd }) ?? fallback)
       : fallback;
   if (target === undefined) return { env: { ...options.env }, [Symbol.asyncDispose]: async () => {} };
   const directory = await mkdtemp(join(tmpdir(), "lando-script-bin-"));

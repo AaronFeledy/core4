@@ -5,6 +5,7 @@ import type {
   AppPlacementError,
   CaError,
   HealthcheckError,
+  HealthcheckTargetUnsupportedError,
   HealthcheckTimeoutError,
   HostProxyError,
   PortCollisionError,
@@ -136,7 +137,10 @@ export interface HealthcheckResult {
   readonly lastStatus?: string;
 }
 
-export type HealthcheckRunError = HealthcheckTimeoutError | HealthcheckError;
+export type HealthcheckRunError =
+  | HealthcheckTimeoutError
+  | HealthcheckError
+  | HealthcheckTargetUnsupportedError;
 
 export class HealthcheckRunner extends Context.Service<
   HealthcheckRunner,

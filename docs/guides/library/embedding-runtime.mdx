@@ -59,11 +59,14 @@ shut down or remove the app. Use
 runtime scope, matching the CLI's detached semantics.
 
 Service startup also honors each Landofile `depends_on` condition: `service_started`
-waits for the dependency to start, `service_healthy` waits for its startup check (its healthcheck, or the stronger startup probe
-its service type declares), and
+waits for the dependency to start, `service_healthy` requires enabled command readiness and waits for it, and
 `service_completed_successfully` waits for a zero exit code. An optional dependency
 declared with `required: false` does not block the remaining services when it is absent
 or fails.
+
+Author `readiness` independently of native `healthcheck`. Omitted readiness keeps a type's contributed probe, otherwise falls back to effective native health. `readiness: false` blocks fallback but not process/completion supervision; `healthcheck: false` disables native monitoring without disabling explicit or contributed readiness. Disabling readiness does not relax a `service_healthy` gate.
+
+`app.info()` only observes runtime state and projects safe configuration metadata. Native `health` and lifecycle `readiness` are separate: readiness is `disabled`, `not-configured`, or `not-observed`, not a retained proof that start passed. Info does not execute probes. Use the result of `app.start()` for the gate observed by that invocation; neither a running container nor native healthy state proves it.
 
 The handle retains its resolved plan and captured Landofile. `exec`, deep `info`, and handle-bound tooling reuse that object, including when `agentEnv` is omitted. A later file edit does not refresh the handle. Re-resolve with `runtime.app(originalSelector)` or layer-native `resolveApp(originalSelector)` to capture edits; supply an updated object when the selector contains a Landofile shape. Ordinary CLI invocations still discover fresh configuration.
 

@@ -1,0 +1,13 @@
+name: php-custom-build
+services:
+  app:
+    type: php:8.3
+    via: fpm
+    primary: true
+    home: false
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+  edge:
+    type: nginx
+    backend: app
