@@ -1,5 +1,4 @@
-import { lstat } from "node:fs/promises";
-import { dirname, join, normalize, sep } from "node:path";
+import { join, normalize, sep } from "node:path";
 import { canonicalMissingAppRoot } from "@lando/engine/operations/app-mutation-lock";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME } from "@lando/landofile/discovery";
 import { eligibleBindingPath } from "@lando/landofile/secret-reference";
@@ -13,8 +12,13 @@ import { Effect } from "effect";
 import { recipeAssetDigest } from "./builtin/snapshot-asset.ts";
 import { makeCompiledRecipeDecomposer } from "./compiled-decomposer.ts";
 import { encodeRecipeLandofile } from "./init-pipeline/encoding.ts";
-import { blocked } from "./init-pipeline/errors.ts";
-import { auxiliaryDestination, renderAuxiliaryScaffold } from "./init-pipeline/files.ts";
+import { type RecipeInitBlockedError, blocked } from "./init-pipeline/errors.ts";
+import {
+  auxiliaryDestination,
+  inspectInitOutputPath,
+  observeInitDestinationAnchor,
+  renderAuxiliaryScaffold,
+} from "./init-pipeline/files.ts";
 import { postInitSemanticIssues } from "./manifest/action-semantics.ts";
 import { shouldRunPostInitAction } from "./post-init/authorization.ts";
 import { resolveCreateTemplate } from "./post-init/create-template.ts";
@@ -23,41 +27,36 @@ import type {
   RecipeInitPreparationRequest,
   RecipeInitPreview,
 } from "./prepared-init-types.ts";
+import { snapshotRecipeInitData } from "./prepared-init-types.ts";
 export type {
   PreparedRecipeInit,
   PreparedRecipeOutput,
   RecipeInitPreparationRequest,
   RecipeInitPreview,
+  RecipeInitReview,
 } from "./prepared-init-types.ts";
 
-/** Only metadata reads: missing roots and nested parents remain absent. */
-const inspectPath = async (path: string): Promise<boolean> => {
-  const parent = dirname(path);
-  if (parent !== path) {
-    try {
-      const stat = await lstat(parent);
-      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new RangeError("Unsafe output parent.");
-    } catch (error) {
-      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
-    }
-    await inspectPath(parent);
-  }
-  try {
-    await lstat(path);
-    return true;
-  } catch (error) {
-    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
-    return false;
-  }
-};
-
 export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
-  request: RecipeInitPreparationRequest,
-) {
+  input: RecipeInitPreparationRequest,
+): Effect.fn.Return<
+  PreparedRecipeInit | { readonly status: "requires-input"; readonly missing: readonly string[] },
+  RecipeInitBlockedError
+> {
+  const request = {
+    ...input,
+    answers: snapshotRecipeInitData(input.answers),
+    ...(input.secretAnswers === undefined
+      ? {}
+      : { secretAnswers: snapshotRecipeInitData(input.secretAnswers) }),
+  };
   const { compiled } = request;
   const appRoot = yield* canonicalMissingAppRoot(request.appRoot).pipe(
     Effect.mapError(() => blocked("validate")),
   );
+  const destinationAnchor = yield* Effect.tryPromise({
+    try: () => observeInitDestinationAnchor(appRoot),
+    catch: () => blocked("validate"),
+  });
   const manifest = compiled.manifest;
   const snapshot = compiled.snapshot;
   const secrets = yield* Effect.fromResult(validateRecipeSecretPrompts(manifest)).pipe(
@@ -178,7 +177,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
       const paths = [...new Set([...outputs.map(({ destination }) => destination), LANDOFILE_TS_NAME])];
       return (
         await Promise.all(
-          paths.map(async (path) => ((await inspectPath(join(appRoot, path))) ? path : undefined)),
+          paths.map(async (path) => ((await inspectInitOutputPath(join(appRoot, path))) ? path : undefined)),
         )
       ).filter((path): path is string => path !== undefined);
     },
@@ -203,7 +202,7 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
     catch: () => blocked("validate"),
   });
   const authorized = outputs.filter(({ destination }) => !skippedScaffold.includes(destination));
-  const preview: RecipeInitPreview = {
+  const preview: RecipeInitPreview = snapshotRecipeInitData({
     landofile: encoded.redact(encoded.text),
     outputs: authorized.map(({ destination, mode, digest, byteLength }) => ({
       destination,
@@ -218,19 +217,18 @@ export const prepareRecipeInit = Effect.fn("RecipeInit.prepare")(function* (
     })),
     conflicts,
     skippedScaffold,
-  };
+  });
   return Object.freeze({
     ...request,
     appRoot,
-    ...(request.secretAnswers === undefined
-      ? {}
-      : { secretAnswers: Object.freeze({ ...request.secretAnswers }) }),
-    answers: Object.freeze(answers),
+    source: encoded.source,
+    destinationAnchor,
+    answers: snapshotRecipeInitData(answers),
     status: "ready",
     outputs: Object.freeze(authorized),
     actions: Object.freeze(actions),
-    skippedScaffold,
-    conflicts,
+    skippedScaffold: preview.skippedScaffold,
+    conflicts: preview.conflicts,
     diagnostics: encoded.diagnostics,
     preview,
     redact: encoded.redact,
