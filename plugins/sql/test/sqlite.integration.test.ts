@@ -41,7 +41,9 @@ const docker = async (
               controller.close();
             },
           });
-  const proc = Bun.spawn(["docker", ...args], {
+  const command =
+    args[0] === "run" && options?.stdin !== undefined ? ["run", "-i", ...args.slice(1)] : [...args];
+  const proc = Bun.spawn(["docker", ...command], {
     ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
     env: dockerEnv,
     stdin,
