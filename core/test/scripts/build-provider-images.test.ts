@@ -28,6 +28,9 @@ describe("provider-image manifest", () => {
     expect(sqliteHelper?.digest).toBe(
       "sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17",
     );
+    expect(`${sqliteHelper?.image}@${sqliteHelper?.digest}`).toBe(
+      "docker.io/keinos/sqlite3:3.54.1@sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17",
+    );
   });
 
   test("validates schemaVersion, non-empty image, and digest shape", () => {

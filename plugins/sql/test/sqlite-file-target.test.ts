@@ -1,19 +1,23 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
-import { SqlRecoveryUnavailableError, SqlSeedSourceError } from "@lando/sdk/errors";
+import { SqlCommandFailedError, SqlRecoveryUnavailableError, SqlSeedSourceError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
+import type { EphemeralRunSpec, StateStoreShape } from "@lando/sdk/services";
 import { dbInputFromCommand } from "../src/command-input.ts";
 import { executeDbCommand } from "../src/run.ts";
 import { packSqliteTar, unpackSqliteTar } from "../src/sqlite-archive.ts";
+import { executeSqliteCommand } from "../src/sqlite-execute.ts";
 import { isSqliteDatabaseHeader } from "../src/sqlite-header.ts";
 import {
   prepareSqliteHelper,
+  prepareSqliteScratchDir,
   removeSqliteHelperScratch,
+  requireSqliteDatabaseHeader,
   sqliteScratchFile,
   withSqliteHelper,
 } from "../src/sqlite-helper.ts";
@@ -211,6 +215,14 @@ describe("sqlite seed", () => {
 });
 
 describe("sqlite helper user and scratch", () => {
+  test("pins keinos/sqlite3 by tag and digest", () => {
+    expect(sqliteHelperImage.digest).toBe(
+      "sha256:b577e65892c6468d94b390097eda4488e05253470c161bdea68a05abb961fa17",
+    );
+    expect(sqliteHelperImage.ref).toBe(`docker.io/keinos/sqlite3:3.54.1@${sqliteHelperImage.digest}`);
+    expect(sqliteHelperImage.ref).toContain("@sha256:");
+  });
+
   test("resolves helper uid:gid from the app mount owner", () => {
     const source = mkdtempSync(join(tmpdir(), "lando-sqlite-uid-"));
     const info = statSync(source);
@@ -228,6 +240,63 @@ describe("sqlite helper user and scratch", () => {
         readOnly: false,
       }),
     ).toBe(`${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`);
+  });
+
+  test("named volumes fall back to the process identity until volume file owners can be stated", () => {
+    expect(
+      sqliteHelperUser({
+        kind: "volume",
+        store: "appserver_data",
+        target: "/app/data",
+        readOnly: false,
+      }),
+    ).toBe(`${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`);
+  });
+
+  test("keeps Lando as scratch owner and stays writable when helper uid cannot be chowned", () => {
+    const parent = mkdtempSync(join(tmpdir(), "lando-sqlite-scratch-"));
+    const scratch = join(parent, "op");
+    const processUid = process.getuid?.() ?? 0;
+    const processGid = process.getgid?.() ?? 0;
+    prepareSqliteScratchDir(scratch, `${processUid}:${processGid}`);
+    writeFileSync(join(scratch, "same-uid"), "ok");
+    const foreignUid = processUid === 65534 ? 65533 : 65534;
+    const foreignGid = processGid === 65534 ? 65533 : 65534;
+    const foreign = join(parent, "foreign");
+    prepareSqliteScratchDir(foreign, `${foreignUid}:${foreignGid}`);
+    const info = statSync(foreign);
+    writeFileSync(join(foreign, "lando-owned"), "ok");
+    if (processUid === 0) {
+      expect(info.uid).toBe(foreignUid);
+      expect(info.gid).toBe(foreignGid);
+      return;
+    }
+    expect(info.uid).toBe(processUid);
+    const mode = info.mode & 0o7777;
+    expect(mode === 0o1777 || mode === 0o2770).toBe(true);
+  });
+
+  test("rejects VACUUM INTO output that is not a SQLite database", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "lando-sqlite-vacuum-"));
+    const missingHeader = join(dir, "empty.sqlite");
+    writeFileSync(missingHeader, "not a database");
+    const exit = await Effect.runPromiseExit(
+      requireSqliteDatabaseHeader(
+        missingHeader,
+        "appserver",
+        "VACUUM INTO did not produce a SQLite database.",
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(SqlRecoveryUnavailableError);
+    if (!(error instanceof SqlRecoveryUnavailableError)) return;
+    expect(error.message).toContain("VACUUM INTO");
+    expect(error.reason).toContain("SQLite format 3");
+    const valid = join(dir, "ok.sqlite");
+    writeFileSync(valid, header);
+    await Effect.runPromise(requireSqliteDatabaseHeader(valid, "appserver", "ok"));
   });
 
   test("always passes a numeric user and isolates scratch under owner snapshots", async () => {
@@ -318,6 +387,80 @@ describe("sqlite helper user and scratch", () => {
       ),
     );
     expect(existsSync(observed)).toBe(false);
+  });
+});
+
+describe("sqlite export dump", () => {
+  afterEach(cleanupSqlTestDeps);
+
+  test("fails dump with -bail and attaches helper stderr", async () => {
+    const harness = makeSqlTestDeps({ password: "secret", initiallyRunning: false });
+    mkdirSync(join(harness.root, "data"));
+    const dataRoot = mkdtempSync(join(tmpdir(), "lando-sqlite-export-"));
+    const commands: Array<ReadonlyArray<string>> = [];
+    const applied = {
+      id: "app",
+      root: AbsolutePath.make(harness.root),
+      identity: { appRoot: AbsolutePath.make(harness.root), ownerKey: "owner-key" },
+    } as AppPlan;
+    const deps = {
+      ...harness.deps,
+      plan: {
+        ...harness.deps.plan,
+        services: {
+          appserver: {
+            name: "appserver",
+            type: "php:8.3",
+            environment: {},
+            sqlite: { path: "data/site.sqlite" },
+            mounts: [
+              {
+                type: "bind" as const,
+                source: harness.root,
+                target: "/app",
+                readOnly: false,
+                role: "app" as const,
+              },
+            ],
+            storage: [],
+          },
+        },
+      },
+      sqlite: {
+        applied,
+        run: (spec: EphemeralRunSpec) => {
+          commands.push(spec.command);
+          return Effect.succeed({
+            exitCode: 1,
+            stdout: "",
+            stderr: "Error: unable to open database file\n",
+          });
+        },
+        pullArtifact: () => Effect.succeed({ digest: sqliteHelperImage.digest }),
+        paths: { ownerSnapshotsDir: (key: string) => join(dataRoot, "snapshots", key) },
+        stateStore: { withLock: (_key: string, body: Effect.Effect<unknown>) => body } as StateStoreShape,
+      },
+    };
+    const exit = await Effect.runPromiseExit(
+      executeSqliteCommand(
+        deps,
+        { action: "export", yes: true, file: join(harness.root, "dump.sql") },
+        {
+          kind: "file",
+          name: "appserver",
+          type: "php:8.3",
+          family: "sqlite",
+          path: "data/site.sqlite",
+        },
+      ),
+    );
+    expect(commands.some((command) => command.includes('sqlite3 -bail "$1" .dump > "$2"'))).toBe(true);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(SqlCommandFailedError);
+    if (!(error instanceof SqlCommandFailedError)) return;
+    expect(error.stderrTail).toContain("unable to open database file");
   });
 });
 
