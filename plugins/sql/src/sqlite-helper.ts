@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { chownSync } from "node:fs";
-import { mkdir, rm } from "node:fs/promises";
+import { chmodSync, chownSync, mkdirSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
@@ -9,6 +9,7 @@ import { type AppPlan, planAppIdentity } from "@lando/sdk/schema";
 import type { EphemeralRunSpec, ExecResult } from "@lando/sdk/services";
 import { Effect } from "effect";
 
+import { SQLITE_HEADER_BYTES, isSqliteDatabaseHeader } from "./sqlite-header.ts";
 import {
   requireSqliteCoveringMount,
   sqliteContainerPath,
@@ -89,16 +90,50 @@ export const resolveSqliteHelperImage = (
 const helperOwnerKey = (applied: AppPlan): string =>
   applied.identity?.ownerKey ?? planAppIdentity({ root: applied.root }).ownerKey;
 
-const chownScratch = (path: string, user: string): void => {
+const parseHelperUser = (user: string): { readonly uid: number; readonly gid: number } | undefined => {
   const [uidText, gidText] = user.split(":");
   const uid = Number(uidText);
   const gid = Number(gidText);
-  if (!Number.isInteger(uid) || !Number.isInteger(gid)) return;
-  try {
-    chownSync(path, uid, gid);
-  } catch {
-    // The helper still runs as this user; a same-uid bind remains writable.
+  if (!Number.isInteger(uid) || !Number.isInteger(gid) || uid < 0 || gid < 0) return undefined;
+  return { uid, gid };
+};
+
+const processGroups = (): ReadonlySet<number> => {
+  const groups = new Set<number>();
+  const gid = process.getgid?.();
+  if (typeof gid === "number") groups.add(gid);
+  for (const extra of process.getgroups?.() ?? []) groups.add(extra);
+  return groups;
+};
+
+/**
+ * Keep the Lando process as directory owner so Effect.ensuring can still rm.
+ * When CAP_CHOWN is missing, share the helper gid (2770 setgid) or fall back
+ * to a sticky world-writable directory so the helper can create scratch files.
+ */
+export const prepareSqliteScratchDir = (path: string, user: string): void => {
+  mkdirSync(path, { recursive: true });
+  const parsed = parseHelperUser(user);
+  if (parsed === undefined) {
+    chmodSync(path, 0o1777);
+    return;
   }
+  try {
+    chownSync(path, parsed.uid, parsed.gid);
+    return;
+  } catch {
+    // No CAP_CHOWN: keep Lando as owner so cleanup still works.
+  }
+  if (processGroups().has(parsed.gid)) {
+    try {
+      chownSync(path, -1, parsed.gid);
+      chmodSync(path, 0o2770);
+      return;
+    } catch {
+      // Fall through to sticky world-writable.
+    }
+  }
+  chmodSync(path, 0o1777);
 };
 
 export const sqliteScratchFile = (
@@ -130,6 +165,27 @@ export const hostFileSize = (path: string): number => {
   return typeof size === "number" && Number.isFinite(size) ? size : 0;
 };
 
+export const requireSqliteDatabaseHeader = (
+  path: string,
+  service: string,
+  message: string,
+): Effect.Effect<void, SqlRecoveryUnavailableError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const prefix = new Uint8Array(await Bun.file(path).slice(0, SQLITE_HEADER_BYTES).arrayBuffer());
+      if (!isSqliteDatabaseHeader(prefix)) {
+        throw new Error("The file does not start with the SQLite format 3 header.");
+      }
+    },
+    catch: (cause) =>
+      new SqlRecoveryUnavailableError({
+        message,
+        service,
+        reason: String(cause),
+        remediation: "Confirm sqlite.path is a SQLite database on a writable mount, then retry.",
+      }),
+  });
+
 export const removeSqliteHelperScratch = (scratchHost: string): Effect.Effect<void> =>
   Effect.promise(() => rm(scratchHost, { recursive: true, force: true }).then(() => undefined));
 
@@ -158,10 +214,9 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
     "sqlite-helper",
     randomUUID(),
   );
-  yield* Effect.tryPromise({
-    try: async () => {
-      await mkdir(scratchHost, { recursive: true });
-      chownScratch(scratchHost, user);
+  yield* Effect.try({
+    try: () => {
+      prepareSqliteScratchDir(scratchHost, user);
     },
     catch: (cause) =>
       new SqlRecoveryUnavailableError({
