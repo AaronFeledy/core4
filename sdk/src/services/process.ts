@@ -8,6 +8,14 @@ import type {
 } from "../errors/index.ts";
 
 export interface ShellCommandOptions {
+  /**
+   * Suppress runner execution events and live sinks, returning raw output only to the caller.
+   * Authored lifecycle plan metadata and bounded redacted failure context are not made confidential.
+   * Private capture is limited to 1 MiB of bytes per stdout/stderr channel; overflow fails
+   * and terminates the child, never returns truncated success. Stdin and ordinary exit
+   * semantics are unchanged (shell nonzero exits fail; process nonzero exits are data).
+   */
+  readonly capture?: boolean;
   /** Uses native directory identity; defaults to the host cwd captured when execution starts. */
   readonly cwd?: string;
   /** Inherits one host environment snapshot. Explicit PWD (including empty) wins; otherwise PWD is the effective directory. */
@@ -32,6 +40,14 @@ export interface ShellScriptOptions extends ShellCommandOptions {
 }
 
 export interface ProcessSpawnOptions {
+  /**
+   * Suppress runner execution events and live observation, not stdin or exit semantics.
+   * Authored lifecycle plan metadata and bounded redacted failure context are not made confidential.
+   * Results/stream chunks remain raw for the authorized caller. Private output is limited
+   * to 1 MiB of bytes per channel; overflow terminates the child and fails without output
+   * diagnostics. Incompatible with inheritOutput, rejected before spawning.
+   */
+  readonly capture?: boolean;
   readonly cmd: string;
   readonly args: ReadonlyArray<string>;
   /** Native directory identity, defaulting to the host cwd at execution (stream subscription). */

@@ -9,6 +9,7 @@ import type {
   PodmanApiClient,
   ProviderErrorContext,
 } from "@lando/container-runtime/engine-api";
+import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeEnsureImage } from "@lando/container-runtime/image-ensure";
 import {
@@ -1631,6 +1632,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 ),
         removeArtifact: () => Effect.void,
         apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+          yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
           const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
           yield* ensureEffect;
           const physicalPlan = yield* physicalNetworkPlan(plan);
@@ -1641,6 +1643,9 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
             String(plan.id),
             "apply",
             runtimeBringUp(physicalPlan, {
+              ...(applyOptions.executeReadinessAttempt === undefined
+                ? {}
+                : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
               ...(podmanApi === undefined
                 ? {}
                 : {

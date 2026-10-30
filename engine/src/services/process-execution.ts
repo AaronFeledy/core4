@@ -7,6 +7,7 @@ import type {
 } from "@lando/sdk/services";
 import { DateTime } from "effect";
 import type { CapturedHostExecutionContext } from "./host-execution-context.ts";
+import { collectPrivateText, privateCaptureBudget } from "./private-capture.ts";
 import { pipedOutput, pumpStdin, readText } from "./process-io.ts";
 import { buildSpawnOptions, prepareProcessSpawn } from "./process-spawn-context.ts";
 
@@ -56,15 +57,29 @@ export const runProcess = async (
             resolve();
           }, input.timeoutMs);
         });
-  const stdoutPromise = readText(proc.stdout);
-  const stderrPromise = readText(proc.stderr);
+  const budget = privateCaptureBudget(input);
+  const stdoutPromise =
+    input.capture === true
+      ? collectPrivateText(pipedOutput(proc.stdout), (chunk) => budget({ kind: "stdout", chunk }))
+      : readText(proc.stdout);
+  const stderrPromise =
+    input.capture === true
+      ? collectPrivateText(pipedOutput(proc.stderr), (chunk) => budget({ kind: "stderr", chunk }))
+      : readText(proc.stderr);
   const stdinPump = pumpStdin(proc, { ...input, signal });
+  const output =
+    input.capture === true ? Promise.all([stdoutPromise, stderrPromise, proc.exited, stdinPump]) : undefined;
   try {
-    await Promise.race([proc.exited, timeoutGate, stdinPump.then(() => proc.exited)]);
+    await Promise.race(
+      output === undefined
+        ? [proc.exited, timeoutGate, stdinPump.then(() => proc.exited)]
+        : [output, timeoutGate],
+    );
     if (timedOut) throw timeoutError(input, DateTime.toEpochMillis(DateTime.nowUnsafe()) - startedAt);
     signal.throwIfAborted();
     await stdinPump;
-    const [stdout, stderr, exitCode] = await Promise.all([stdoutPromise, stderrPromise, proc.exited]);
+    const [stdout, stderr, exitCode] = await (output ??
+      Promise.all([stdoutPromise, stderrPromise, proc.exited]));
     return { exitCode, stdout, stderr };
   } catch (cause) {
     proc.kill("SIGKILL");
@@ -74,7 +89,8 @@ export const runProcess = async (
     signal.removeEventListener("abort", abort);
     if (proc.exitCode === null) proc.kill("SIGKILL");
     await proc.exited;
-    void Promise.allSettled([stdinPump, stdoutPromise, stderrPromise]);
+    const settled = Promise.allSettled([stdinPump, stdoutPromise, stderrPromise]);
+    if (input.capture === true) await settled;
   }
 };
 
@@ -99,6 +115,7 @@ export async function* streamProcess(
   void stdinPump.catch(() => proc.kill());
   const queue: ProcessStreamChunk[] = [];
   const queueLimit = 16;
+  const budget = privateCaptureBudget(input);
   const stdoutStream = pipedOutput(proc.stdout);
   const stderrStream = pipedOutput(proc.stderr);
   let openReaders = (stdoutStream === undefined ? 0 : 1) + (stderrStream === undefined ? 0 : 1);
@@ -133,13 +150,16 @@ export async function* streamProcess(
   };
   const drain = async (stream: ReadableStream<Uint8Array>, kind: ProcessStreamChunk["kind"]) => {
     try {
-      for await (const chunk of stream) await enqueue({ kind, chunk });
+      for await (const chunk of stream) {
+        if (input.capture === true) budget({ kind, chunk });
+        await enqueue({ kind, chunk });
+      }
     } catch (cause) {
       if (!failed) {
         failed = true;
         failure = cause;
       }
-      proc.kill();
+      proc.kill(input.capture === true ? "SIGKILL" : "SIGTERM");
       wakeReaders();
     } finally {
       openReaders--;
@@ -174,5 +194,6 @@ export async function* streamProcess(
     input.signal?.removeEventListener("abort", abort);
     proc.kill("SIGKILL");
     await proc.exited;
+    if (input.capture === true) await Promise.all([stdoutReader, stderrReader]);
   }
 }

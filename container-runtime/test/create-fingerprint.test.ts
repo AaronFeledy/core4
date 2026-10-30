@@ -4,6 +4,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  ContainerUser,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -52,6 +53,30 @@ const plan: AppPlan = {
 };
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
+
+test("fingerprints probe identity, execution locus, argv/shell semantics and host cwd", () => {
+  // Given
+  const readiness = {
+    kind: "command",
+    command: ["ready", "a b"],
+    intervalSeconds: 0,
+    timeoutSeconds: 1,
+    retries: 1,
+  } as const;
+  const baseline = fingerprint({ ...service, readiness });
+  // When
+  const variants = [
+    fingerprint({ ...service, readiness: { ...readiness, user: ContainerUser.make("1001") } }),
+    fingerprint({ ...service, readiness: { ...readiness, executionTarget: "host" } }),
+    fingerprint({ ...service, readiness: { ...readiness, command: "ready a b" } }),
+    fingerprint(
+      { ...service, readiness: { ...readiness, executionTarget: "host" } },
+      { ...plan, root: AbsolutePath.make("/tmp/other-probe-root") },
+    ),
+  ];
+  // Then
+  expect(new Set([baseline, ...variants]).size).toBe(5);
+});
 
 const fixtureRedaction = makeRedactionService();
 

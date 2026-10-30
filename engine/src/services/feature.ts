@@ -84,6 +84,7 @@ const makeContext = (
   },
   setReadiness: (readiness) => {
     draft.readiness = { ...readiness };
+    draft.readinessSource = "contributed";
   },
   setCerts: (certs) => {
     draft.certs = { ...certs };

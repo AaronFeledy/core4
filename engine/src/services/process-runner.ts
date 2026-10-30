@@ -101,6 +101,7 @@ const processEventShape = (input: ProcessSpawnOptions) => ({
 const redactProcessError = Effect.fnUntraced(function* (
   context: CapturedHostExecutionContext,
   error: ProcessExecError | ProcessTimeoutError,
+  capture: boolean,
 ) {
   const redactor = yield* redactorForInput(context);
   const fields = {
@@ -114,7 +115,7 @@ const redactProcessError = Effect.fnUntraced(function* (
   return new ProcessExecError({
     ...fields,
     ...(error.errno === undefined ? {} : { errno: error.errno }),
-    cause: redactor.redactValue(error.cause),
+    ...(capture ? {} : { cause: redactor.redactValue(error.cause) }),
   });
 });
 
@@ -151,10 +152,14 @@ const scopedProcessStream = (
         }),
       };
       return Stream.fromAsyncIterable(iterable, (cause) =>
-        cause instanceof ProcessTimeoutError ? cause : execError(snapshot, cause),
+        cause instanceof ProcessTimeoutError || cause instanceof ProcessExecError
+          ? cause
+          : execError(snapshot, cause),
       ).pipe(
         Stream.catch((error) =>
-          Stream.fromEffect(redactProcessError(captured, error).pipe(Effect.flatMap(Effect.fail))),
+          Stream.fromEffect(
+            redactProcessError(captured, error, snapshot.capture === true).pipe(Effect.flatMap(Effect.fail)),
+          ),
         ),
       );
     }),
@@ -172,10 +177,11 @@ const service = (
         ...(input.env === undefined ? {} : { env: { ...input.env } }),
       };
       const captured = context ?? captureHostExecutionContext(snapshot);
-      yield* publishRedactedProcessEvent(captured, {
-        _tag: "pre-process-exec",
-        ...processEventShape(snapshot),
-      });
+      if (snapshot.capture !== true)
+        yield* publishRedactedProcessEvent(captured, {
+          _tag: "pre-process-exec",
+          ...processEventShape(snapshot),
+        });
       let running: Promise<ProcessResult> | undefined;
       const result = yield* Effect.tryPromise({
         try: (signal) => {
@@ -192,13 +198,16 @@ const service = (
             if (running !== undefined) await Promise.allSettled([running]);
           }),
         ),
-        Effect.catch((error) => Effect.flatMap(redactProcessError(captured, error), Effect.fail)),
+        Effect.catch((error) =>
+          Effect.flatMap(redactProcessError(captured, error, snapshot.capture === true), Effect.fail),
+        ),
       );
-      yield* publishRedactedProcessEvent(captured, {
-        _tag: "post-process-exec",
-        ...processEventShape(snapshot),
-        ...result,
-      });
+      if (snapshot.capture !== true)
+        yield* publishRedactedProcessEvent(captured, {
+          _tag: "post-process-exec",
+          ...processEventShape(snapshot),
+          ...result,
+        });
       return result;
     }),
     stream: (input) =>

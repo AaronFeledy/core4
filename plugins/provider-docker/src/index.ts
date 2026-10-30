@@ -78,6 +78,7 @@ import { normalizeNamedPipePath } from "@lando/container-runtime/transport";
 import { waitForExit } from "@lando/container-runtime/wait-for-exit";
 import { DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
 
+import { validateHealthcheckExecution } from "@lando/container-runtime/healthcheck-attempt";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import { type PluginStateStore, definePlugin } from "@lando/sdk/plugins";
@@ -624,9 +625,13 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       ),
       removeArtifact: Effect.fn("RuntimeProvider.removeArtifact")(() => Effect.void),
       apply: Effect.fn("RuntimeProvider.apply")(function* (plan, applyOptions) {
+        yield* validateHealthcheckExecution(plan, applyOptions.executeReadinessAttempt);
         const previous = yield* appliedPlans.resolveMutationPlan(plan.id);
         yield* planState.ownership.prepare(plan, previous);
         return yield* bringUp(plan, {
+          ...(applyOptions.executeReadinessAttempt === undefined
+            ? {}
+            : { executeReadinessAttempt: applyOptions.executeReadinessAttempt }),
           api: dockerApi,
           ctx: DOCKER_CTX,
           dialect: dockerLifecycleDialect,

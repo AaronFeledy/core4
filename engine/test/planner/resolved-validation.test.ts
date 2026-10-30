@@ -374,6 +374,34 @@ test("all unsupported authored healthcheck kinds are reported together", async (
   );
 });
 
+test.each([{ target: "host" }, { target: "host", command: "true", user: "root" }])(
+  "lint reports unsupported host healthcheck execution",
+  async (healthcheck) => {
+    // Given
+    await withApp(
+      emitYamlDocument({ services: { web: { type: "validation", healthcheck } } }),
+      async (root) => {
+        // When
+        const lint = await Effect.runPromise(
+          appConfigLint({ cwd: root }).pipe(
+            Effect.provide(registryLayer),
+            Effect.provide(BunFileSystem.layer),
+          ),
+        );
+        // Then
+        expect(lint.valid).toBe(false);
+        expect(lint.violations).toContainEqual(
+          expect.objectContaining({
+            rule: "healthcheck.execution-target",
+            path: ["services", "web", "healthcheck"],
+            severity: "error",
+          }),
+        );
+      },
+    );
+  },
+);
+
 test("declared timestamped log sources lint and resolve successfully", async () => {
   await withApp(
     "services:\n  web: {type: validation, logs: [{id: app, path: /tmp/app.log, timestamps: true}]}\n",

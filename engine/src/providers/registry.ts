@@ -29,6 +29,7 @@ import { bundledPluginModules } from "../composition.ts";
 import { makePublishRender } from "../lifecycle/publish-render.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { captureHostProbeRunners } from "../subsystems/healthcheck/attempt.ts";
 import { TeardownProvider } from "./app-placement.ts";
 import {
   observeProviderRuntime,
@@ -175,6 +176,7 @@ export const makeRuntimeProviderRegistry = (
       });
 
       const makeProvider = makeProviderFactory({
+        hostProbeRunners: yield* captureHostProbeRunners,
         paths,
         downloader,
         containerHelperAssets,

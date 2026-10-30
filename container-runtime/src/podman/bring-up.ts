@@ -6,6 +6,7 @@ import {
   PlanReplanRequiredError,
   ProviderInternalError,
   ProviderUnavailableError,
+  ServiceExecError,
   ServiceStartError,
   type ServiceStartLogTail,
 } from "@lando/sdk/errors";
@@ -39,6 +40,11 @@ import { missingApi, parseEngineJson } from "../engine-errors.ts";
 import { literalServiceEnvironment, requireCurrentCreationPlan } from "../environment-values.ts";
 import { prepareFileModeMounts } from "../file-mode-mounts.ts";
 import {
+  interruptOnAbort,
+  unsupportedHealthcheckTarget,
+  validateHealthcheckExecution,
+} from "../healthcheck-attempt.ts";
+import {
   containerOwnershipLabels,
   inspectOwnedNativeId,
   isSharedNetwork,
@@ -53,6 +59,7 @@ import {
   serviceContainerName,
 } from "../plan.ts";
 import { StartFailureLogRedactor, redactDetails, redactorFor, withApiReason } from "../redact.ts";
+import { compileServiceProbe } from "../service-probe.ts";
 import {
   type ServicePublishProbe,
   classifyServicePublishHost,
@@ -125,6 +132,7 @@ export type StartFailureRemediation = (input: {
 }) => string | undefined;
 
 export interface BringUpOptions {
+  readonly executeReadinessAttempt?: ApplyOptions["executeReadinessAttempt"];
   readonly api?: EngineHttpApi;
   readonly ctx: ProviderErrorContext;
   readonly dialect?: LifecycleDialect;
@@ -997,6 +1005,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   logicalPlan: AppPlan,
   options: BringUpOptions,
 ): Effect.fn.Return<ApplyResult, ProviderError> {
+  yield* validateHealthcheckExecution(logicalPlan, options.executeReadinessAttempt);
   const api = options.api;
   if (api?.request === undefined) {
     return yield* Effect.fail(missingApi(options.ctx, "bringUp"));
@@ -1059,6 +1068,12 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     }
   }
   const result = yield* runServiceStartSchedule(plan, {
+    redactProbeError: (error) =>
+      deps.redactor.redactString(
+        typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Readiness attempt infrastructure failure.",
+      ),
     startService: Effect.fnUntraced(function* (service) {
       if (options.signal?.aborted === true) {
         return yield* Effect.interrupt;
@@ -1067,13 +1082,43 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         Effect.catch((error) => (options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
       );
     }),
-    execHealthcheck: (service, command) =>
-      exec(
-        plan,
-        { app: plan.id, service: service.name },
-        { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
-        { api, ctx: options.ctx },
-      ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
+    execHealthcheck: (service, probe) =>
+      interruptOnAbort(
+        options.executeReadinessAttempt !== undefined
+          ? options.executeReadinessAttempt(service.name, probe)
+          : Effect.try({
+              try: () => compileServiceProbe(probe, plan, service),
+              catch: () =>
+                new ServiceExecError({
+                  providerId: options.ctx.providerId,
+                  service: String(service.name),
+                  operation: "readiness",
+                  message: "The service readiness command could not be compiled.",
+                  remediation: "Supply a command and a declared listener in the application plan.",
+                }),
+            }).pipe(
+              Effect.flatMap((command) =>
+                command === undefined
+                  ? Effect.fail(unsupportedHealthcheckTarget(service.name, probe))
+                  : exec(
+                      plan,
+                      {
+                        app: plan.id,
+                        service: service.name,
+                        plan,
+                        ...(probe.user === undefined ? {} : { user: probe.user }),
+                      },
+                      {
+                        command: [...command],
+                        raw: true,
+                        ...(options.signal === undefined ? {} : { signal: options.signal }),
+                      },
+                      { api, ctx: options.ctx },
+                    ),
+              ),
+            ),
+        options.signal,
+      ),
     waitForExit: (service) =>
       waitForExit(
         plan,
@@ -1129,6 +1174,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             service,
             operation: "bringUp.schedule",
             message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+            ...(blocked.lastError === undefined ? {} : { details: { readinessFailure: blocked.lastError } }),
             ...(logTail === undefined ? {} : { logTail }),
           }),
         );
