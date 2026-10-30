@@ -87,10 +87,13 @@ test.skipIf(dockerHost === undefined)(
 
       const sql =
         "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items (name) VALUES ('ok');";
+      const hostUser = `${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`;
       const create = await docker(
         [
           "run",
           "--rm",
+          "--user",
+          hostUser,
           "--entrypoint",
           "sqlite3",
           "-v",
@@ -108,6 +111,8 @@ test.skipIf(dockerHost === undefined)(
       const dumped = await docker([
         "run",
         "--rm",
+        "--user",
+        hostUser,
         "--entrypoint",
         "sqlite3",
         "-v",
@@ -122,6 +127,8 @@ test.skipIf(dockerHost === undefined)(
       const vacuum = await docker([
         "run",
         "--rm",
+        "--user",
+        hostUser,
         "--entrypoint",
         "sqlite3",
         "-v",
@@ -142,6 +149,8 @@ test.skipIf(dockerHost === undefined)(
       const count = await docker([
         "run",
         "--rm",
+        "--user",
+        hostUser,
         "--entrypoint",
         "sqlite3",
         "-v",
