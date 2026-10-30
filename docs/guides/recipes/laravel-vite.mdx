@@ -70,27 +70,11 @@ lando artisan migrate --no-interaction
 
 ## Point Vite at the proxy
 
-Save this as `vite.config.js`, replacing the skeleton's file. The `plugins` block is the skeleton's; only `server` changes:
+In `vite.config.js`, keep the skeleton's imports and `plugins` array as they are. Replace only the `server` block with this:
 
 ```js
-import { defineConfig } from 'vite';
-import laravel from 'laravel-vite-plugin';
-import { bunny } from 'laravel-vite-plugin/fonts';
-import tailwindcss from '@tailwindcss/vite';
-
 export default defineConfig({
-    plugins: [
-        laravel({
-            input: ['resources/css/app.css', 'resources/js/app.js'],
-            refresh: true,
-            fonts: [
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
-                }),
-            ],
-        }),
-        tailwindcss(),
-    ],
+    // keep your existing plugins
     server: {
         host: '0.0.0.0',
         port: 5173,
