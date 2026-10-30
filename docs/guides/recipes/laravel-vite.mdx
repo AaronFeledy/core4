@@ -1,0 +1,194 @@
+---
+id: laravel-vite
+provider: test
+timeout: 90000
+tags: [beta, docs, recipes, laravel, php, node, vite, hmr]
+---
+
+# Run Vite HMR with the Laravel recipe
+
+`lando npm run dev` starts Vite inside the recipe's `node` service, but the browser can't reach it there. Give `node` a proxy route, point Laravel's Vite plugin at that hostname, and Blade edits reload the page.
+
+Prerequisite: a running Laravel app from [Run the Laravel recipe](./laravel-workflow.mdx), with `lando npm install` done. The examples use app name `vite-demo`, the default `lndo.site` domain, and the stock Laravel skeleton, which ships `laravel-vite-plugin`.
+
+## Route the node service
+
+The recipe writes `endpoints: []` on `node`, so it advertises nothing. In `.lando.yml`, replace the `node` service with this. Delete the `endpoints: []` line; a route needs an HTTP endpoint and `port: 5173` declares one:
+
+```yaml
+services:
+  node:
+    type: node:22
+    primary: false
+    port: 5173
+    routes:
+      - hostname: "vite.{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+```
+
+Keep the recipe's `appserver`, `database`, `cache`, and `tooling` blocks as they are. If you leave `endpoints: []` in place, `lando app:config:lint` reports `Route vite.vite-demo.lndo.site for service node does not resolve to an HTTP endpoint.`
+
+Apply it:
+
+```sh
+lando app:config:lint
+lando start
+lando info
+```
+
+`lando info` lists `https://vite.vite-demo.lndo.site` for `node`. Nothing answers there until Vite runs. `port: 5173` is the port inside the container, not a host port.
+
+The examples assume HTTPS on 443. If `lando info` shows `:8443`, add it to both URLs below and set `hmr.clientPort` to `8443`. Keep `server.port` at `5173`.
+
+## Point Laravel at MariaDB and the proxy
+
+Apache runs as `www-data` and needs to write Laravel's cache and logs. This `chmod` is for local development only; don't use it as a production permissions policy:
+
+```sh
+lando exec appserver -- chmod -R a+rwX storage bootstrap/cache
+```
+
+Set these in `.env`:
+
+```dotenv
+APP_URL=https://vite-demo.lndo.site
+DB_CONNECTION=mariadb
+DB_HOST=database
+DB_PORT=3306
+DB_DATABASE=vite-demo
+DB_USERNAME=lando
+DB_PASSWORD=lando
+```
+
+Then create the session and cache tables the skeleton expects:
+
+```sh
+lando artisan migrate --no-interaction
+```
+
+`laravel-vite-plugin` allows cross-origin requests from `APP_URL`, so the page on `vite-demo.lndo.site` can load modules from the Vite hostname.
+
+## Point Vite at the proxy
+
+Save this as `vite.config.js`, replacing the skeleton's file. The `plugins` block is the skeleton's; only `server` changes:
+
+```js
+import { defineConfig } from 'vite';
+import laravel from 'laravel-vite-plugin';
+import { bunny } from 'laravel-vite-plugin/fonts';
+import tailwindcss from '@tailwindcss/vite';
+
+export default defineConfig({
+    plugins: [
+        laravel({
+            input: ['resources/css/app.css', 'resources/js/app.js'],
+            refresh: true,
+            fonts: [
+                bunny('Instrument Sans', {
+                    weights: [400, 500, 600],
+                }),
+            ],
+        }),
+        tailwindcss(),
+    ],
+    server: {
+        host: '0.0.0.0',
+        port: 5173,
+        strictPort: true,
+        allowedHosts: ['vite.vite-demo.lndo.site'],
+        hmr: {
+            host: 'vite.vite-demo.lndo.site',
+            protocol: 'wss',
+            clientPort: 443,
+        },
+        watch: {
+            ignored: ['**/storage/framework/views/**'],
+        },
+    },
+});
+```
+
+Swap `vite-demo` for your app name. Lando's proxy terminates HTTPS and forwards HTTP and WebSocket traffic to Node on `5173`, so Vite listens on `0.0.0.0` without `server.https`. `allowedHosts` lets Vite answer the proxy hostname, and `strictPort` stops Vite from drifting off the declared endpoint.
+
+Leave `server.origin` unset. The plugin builds the URL it writes to `public/hot` from the `hmr` settings, and `server.origin` would also replace the `APP_URL` CORS rule.
+
+## Run the dev server
+
+```sh
+lando npm run dev
+```
+
+Leave that running and wait for Vite's `ready` line and the `APP_URL` line from the Laravel plugin. In a second terminal:
+
+```sh
+cat public/hot
+```
+
+Check that `public/hot` contains `https://vite.vite-demo.lndo.site`. Laravel's `@vite` directive reads that file over the shared `/app` mount, which proves the plugin wrote the proxy origin, not that the browser can reach it.
+
+```sh
+curl -fsS https://vite-demo.lndo.site/ | grep -o 'https://vite.vite-demo.lndo.site/[^"]*'
+curl -fsS -o /dev/null https://vite.vite-demo.lndo.site/@vite/client
+```
+
+Check that the first command lists `@vite/client`, `resources/css/app.css`, and `resources/js/app.js` on the Vite hostname. That proves the page asks Vite for its assets. The second command exits 0 when the proxy reaches the running Vite server.
+
+Open `https://vite-demo.lndo.site` in a browser. In developer tools, check for a WebSocket to `wss://vite.vite-demo.lndo.site` with status `101`. Then edit `resources/views/welcome.blade.php` and save; `refresh: true` reloads the page. If saves don't trigger a reload on your filesystem, add `usePolling: true` under `server.watch`; polling costs CPU.
+
+Stop Vite with Ctrl+C in its terminal. The plugin deletes `public/hot` on exit, and Laravel goes back to built assets. If you killed Vite some other way and `public/hot` is still there, delete it.
+
+## Build for production
+
+Lando's proxy talks to Apache over HTTP, so Laravel builds `http://` asset URLs on an HTTPS page and the browser blocks them as mixed content. Tell Laravel to trust the proxy's forwarded headers. In `bootstrap/app.php`, inside `withMiddleware`:
+
+```php
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->trustProxies(at: '*');
+})
+```
+
+Trusting every proxy fits local development behind Lando. In production, list your real proxy addresses instead.
+
+With Vite stopped:
+
+```sh
+lando npm run build
+curl -fsS https://vite-demo.lndo.site/ | grep -o 'https://vite-demo.lndo.site/build/assets/[^"]*'
+```
+
+Check that the page now loads hashed files from `/build/assets/` over `https`. The build writes `public/build/manifest.json` into the shared `/app`, so Apache serves it without a restart.
+
+## Check the Landofile
+
+```sh
+lando app:config:lint
+lando app:config --format=json
+```
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <UseFixture name="laravel-vite" />
+    </Step>
+    <Step name="check-config">
+      <Run command="lando app:config:lint" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"type\":\\s*\"node:22\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"node\":\\s*\\{[^}]*\"port\":\\s*5173" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"hostname\":\\s*\"vite\\.\\{\\{ app\\.name \\}\\}\\.\\{\\{ proxy\\.defaultDomain \\}\\}\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npm\":\\s*\\{[^}]*\"service\":\\s*\"node\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{[^}]*\"framework\":\\s*\"laravel\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"artisan\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Run the Laravel recipe](./laravel-workflow.mdx)
+- [Run Laravel Reverb websockets behind the Lando proxy](./laravel-reverb.mdx)
+- [Add Node.js](../services/node.mdx)
+- [Route shorthand](../proxy/route-shorthand.mdx)

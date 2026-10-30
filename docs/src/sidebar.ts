@@ -63,6 +63,7 @@ export const sidebar = [
           { label: "Run the Laravel recipe", slug: "guides/recipes/laravel-workflow" },
           { label: "Run Laravel Reverb websockets", slug: "guides/recipes/laravel-reverb" },
           { label: "Run Laravel Horizon queues", slug: "guides/recipes/laravel-horizon" },
+          { label: "Run Vite HMR with Laravel", slug: "guides/recipes/laravel-vite" },
           { label: "Run the SvelteKit recipe", slug: "guides/recipes/sveltekit-workflow" },
           { label: "Run the Next.js recipe", slug: "guides/recipes/nextjs-workflow" },
           { label: "Run the Node API recipe", slug: "guides/recipes/node-api-workflow" },

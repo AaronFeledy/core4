@@ -460,6 +460,10 @@
       "digest": "327f073ed97ef99d37bbbeab31398043483b11459b40b9a5f200150cf783801e"
     },
     {
+      "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
+      "digest": "47c334d453ee06e682ccd196d4d4b27dc04408fe0c7cdc679c62b84821bd9356"
+    },
+    {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
       "digest": "020f24b8d43a8efd4f99e762ec00d472fb5bb78c11a54bf154ec202b8588ce07"
     },
