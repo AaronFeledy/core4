@@ -150,6 +150,7 @@
       "query:<Name extends string>(name:Name,filter?:(event:EventFor<Name>) => boolean) => Effect.Effect<ReadonlyArray<EventFor<Name>>,never>",
       "subscribe:<Name extends string>(name:Name) => Stream.Stream<EventFor<Name>,EventError>",
       "subscribeQueue:Effect.Effect<Queue.Dequeue<LandoEvent>,never,Scope.Scope>",
+      "subscribeWithHistory:(options?:{ capacity?:number }) => Effect.Effect<{ history:ReadonlyArray<LandoEvent>;queue:Queue.Dequeue<LandoEvent>;dropped:Effect.Effect<number>;stop:Effect.Effect<void>;},never,Scope.Scope>",
       "waitFor:<Name extends string>(name:Name,options?:EventWaitOptions<Name>) => Effect.Effect<EventFor<Name>,EventError>",
       "waitForAny:<const Names extends string[]>(specs:EventWaitSpecs<Names>,options?:EventWaitAnyOptions) => Effect.Effect<EventFor<Names[number]&string>,EventError>"
     ],

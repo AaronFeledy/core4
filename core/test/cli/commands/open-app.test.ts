@@ -102,6 +102,7 @@ const layers = (rec: ReturnType<typeof record>) =>
         subscribe: () => Effect.die("nu") as never,
         subscribeQueue: Effect.die("nu") as never,
         waitFor: () => Effect.die("nu") as never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("nu") as never,
         query: () => Effect.die("nu") as never,
       }),

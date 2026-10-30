@@ -73,6 +73,7 @@ const makeRecordingHarness = (ordering?: Array<string>, failPublish = false): Re
       return queue;
     }),
     waitFor: () => Effect.never,
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   });

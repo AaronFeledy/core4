@@ -680,6 +680,7 @@ describe("meta:setup command", () => {
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused subscription queue"),
         waitFor: () => Effect.die("unused event wait"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("unused event wait"),
         query: () => Effect.succeed([]),
       });

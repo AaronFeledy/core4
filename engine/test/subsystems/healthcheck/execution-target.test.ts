@@ -201,6 +201,7 @@ test.each(["argv", "shell"])("real host %s runs captured in the app root", async
             subscribe: () => Stream.empty,
             subscribeQueue: Queue.unbounded<never>(),
             waitFor: () => Effect.never,
+            subscribeWithHistory: () => Effect.never,
             waitForAny: () => Effect.never,
             query: () => Effect.succeed([]),
           }),
