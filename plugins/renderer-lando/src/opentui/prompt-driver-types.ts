@@ -106,10 +106,8 @@ export interface OpenTuiModuleLike<R extends RendererLike = RendererLike> {
   InputRenderable: ConstructorLike<R, InputRenderableLike>;
   TextareaRenderable: ConstructorLike<R, TextareaRenderableLike>;
   SelectRenderable: ConstructorLike<R, SelectRenderableLike>;
-  TabSelectRenderable: ConstructorLike<R, SelectRenderableLike>;
   InputRenderableEvents: { ENTER: string; INPUT: string; CHANGE: string };
   SelectRenderableEvents: { ITEM_SELECTED: string; SELECTION_CHANGED: string };
-  TabSelectRenderableEvents: { ITEM_SELECTED: string };
 }
 
 export interface OpenTuiPromptDriverDeps<R extends RendererLike = RendererLike> {

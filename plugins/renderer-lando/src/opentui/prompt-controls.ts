@@ -1,5 +1,5 @@
 import { truncateToWidth } from "../terminal-width.ts";
-import { checkboxOption, checkedIndicesFromDefault, isYesDefault, readPromptType } from "./prompt-choice.ts";
+import { checkboxOption, checkedIndicesFromDefault, readPromptType } from "./prompt-choice.ts";
 import type {
   KeyEventLike,
   OpenTuiModuleLike,
@@ -178,32 +178,6 @@ const addMultiselectControl = <R extends RendererLike>(
   return () => removeListener(renderer.keyInput, "keypress", toggleListener);
 };
 
-const addConfirmControl = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
-  renderer: R,
-  panel: RenderableLike,
-  request: PromptDriverRequestLike,
-  done: (value: string) => void,
-): void => {
-  const tabs = new mod.TabSelectRenderable(renderer, {
-    id: "lando-prompt-confirm",
-    width: Math.max(18, Math.min(30, panelWidth(renderer) - 4)),
-    options: [
-      { name: "Yes", description: "y" },
-      { name: "No", description: "n" },
-    ],
-    tabWidth: 10,
-    ...promptSelectColors,
-    showDescription: false,
-    showUnderline: true,
-    wrapSelection: true,
-  });
-  tabs.setSelectedIndex?.(isYesDefault(request.defaultRaw) ? 0 : 1);
-  tabs.on(mod.TabSelectRenderableEvents.ITEM_SELECTED, (index: number) => done(index === 0 ? "y" : "n"));
-  panel.add?.(tabs);
-  tabs.focus?.();
-};
-
 export const buildPrompt = <R extends RendererLike>(
   mod: OpenTuiModuleLike<R>,
   renderer: R,
@@ -217,10 +191,6 @@ export const buildPrompt = <R extends RendererLike>(
   }
   if (type === "multiselect") {
     return addMultiselectControl(mod, renderer, panel, request, done);
-  }
-  if (type === "confirm") {
-    addConfirmControl(mod, renderer, panel, request, done);
-    return noopDisposer;
   }
   if (type === "textarea") {
     addTextareaControl(mod, renderer, panel, request, done);
