@@ -939,6 +939,10 @@
       "digest": "af52f8b657a1349fc157b50d79d9629754cc761c1263b32016d8eb5a9b03109f"
     },
     {
+      "fixture": "docs/guides/sqlite-database/fixtures/sqlite-database-demo",
+      "digest": "2683d707e077c08e6b988ec1848259e68e5c623d3fbbbb8d88ec9b6d31cacac3"
+    },
+    {
       "fixture": "docs/guides/ssh-host-agent/fixtures/host-agent-1password",
       "digest": "5a9190f732b23967b7db07b8b8764a0b4d4b1b03ebf10c9cc17dbf25080a016b"
     },
