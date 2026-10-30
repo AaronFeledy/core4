@@ -484,6 +484,10 @@
       "digest": "4f0b83eed9321a3857c974bd2f0193308f00681c747c415257070be807e7ab36"
     },
     {
+      "fixture": "docs/guides/mailpit/fixtures/replacement-sender",
+      "digest": "0fd125d156e9180b820f055748d2388790edc7e3e85af893a6fec36331d57a1d"
+    },
+    {
       "fixture": "docs/guides/mailpit/fixtures/selected-php",
       "digest": "9e0d728afa636d94ce8083aed0027c684db2a9fcf0acefc58f1c41241e2bde86"
     },
@@ -737,6 +741,10 @@
       "digest": "6dd24aea8de78226c343072aad09dcb9c5b1e2e4a99dc6ac693720831dec8553"
     },
     {
+      "fixture": "docs/guides/php-customization/fixtures/replacement-context",
+      "digest": "17a41f4e0275bd952c91b884adc108734ab2da08868d164e1e825c975fd3319f"
+    },
+    {
       "fixture": "docs/guides/php-version-matrix/fixtures/php-81",
       "digest": "3b6fffcafc0bb668041f8a77101c654b7ad66878f9cdb136484771db02dc70a5"
     },
@@ -771,6 +779,10 @@
     {
       "fixture": "docs/guides/php/fixtures/php-fpm-nginx",
       "digest": "f1d973b3bfa3802f2900de503422f333037b90d8b013199d4fca1970af132e77"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/stock-nonroot",
+      "digest": "9780ae284c8b9aef5fda92cec5a2d84da3b0afc4c34f3294f3b7f443e3ffe6b9"
     },
     {
       "fixture": "docs/guides/phpmyadmin/fixtures/phpmyadmin-demo",
