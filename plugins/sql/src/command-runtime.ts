@@ -156,8 +156,6 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
         run: (spec) => Effect.scoped(provider.run(spec)),
         pullArtifact: (spec) => provider.pullArtifact(spec),
         paths: {
-          scratchDir: paths.scratchDir,
-          snapshotsDir: paths.snapshotsDir,
           ownerSnapshotsDir: paths.ownerSnapshotsDir,
         },
         stateStore,

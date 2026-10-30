@@ -1,13 +1,20 @@
-import { mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chownSync } from "node:fs";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { SqlCommandFailedError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import type { AppPlan } from "@lando/sdk/schema";
+import { type AppPlan, planAppIdentity } from "@lando/sdk/schema";
 import type { EphemeralRunSpec, ExecResult } from "@lando/sdk/services";
 import { Effect } from "effect";
 
-import { requireSqliteCoveringMount, sqliteContainerPath, sqliteHelperAccess } from "./sqlite-mount.ts";
+import {
+  requireSqliteCoveringMount,
+  sqliteContainerPath,
+  sqliteHelperAccess,
+  sqliteHelperUser,
+} from "./sqlite-mount.ts";
 import { SQLITE_HELPER_SCRATCH_TARGET } from "./sqlite-path.ts";
 import type { SqlFileTarget } from "./target.ts";
 import type { SqlPlanService } from "./views.ts";
@@ -23,8 +30,6 @@ export type SqliteHelperDeps = {
   readonly run: SqliteHelperRun;
   readonly pullArtifact: SqliteHelperPull;
   readonly paths: {
-    readonly scratchDir: string;
-    readonly snapshotsDir: string;
     readonly ownerSnapshotsDir: (ownerKey: string) => string;
   };
 };
@@ -33,6 +38,7 @@ export type SqliteHelperContext = {
   readonly dbPath: string;
   readonly scratchHost: string;
   readonly scratchTarget: string;
+  readonly user: string;
   readonly spec: Omit<EphemeralRunSpec, "command" | "stdinStream" | "captureStdout">;
 };
 
@@ -80,6 +86,53 @@ export const resolveSqliteHelperImage = (
     ),
   );
 
+const helperOwnerKey = (applied: AppPlan): string =>
+  applied.identity?.ownerKey ?? planAppIdentity({ root: applied.root }).ownerKey;
+
+const chownScratch = (path: string, user: string): void => {
+  const [uidText, gidText] = user.split(":");
+  const uid = Number(uidText);
+  const gid = Number(gidText);
+  if (!Number.isInteger(uid) || !Number.isInteger(gid)) return;
+  try {
+    chownSync(path, uid, gid);
+  } catch {
+    // The helper still runs as this user; a same-uid bind remains writable.
+  }
+};
+
+export const sqliteScratchFile = (
+  helper: SqliteHelperContext,
+  suffix: string,
+): { readonly host: string; readonly target: string; readonly name: string } => {
+  const name = `${randomUUID()}${suffix}`;
+  return { host: join(helper.scratchHost, name), target: `${helper.scratchTarget}/${name}`, name };
+};
+
+export const copyHostFile = (from: string, to: string, service: string, message: string) =>
+  Effect.tryPromise({
+    try: async () => {
+      const writer = Bun.file(to).writer();
+      for await (const chunk of Bun.file(from).stream()) writer.write(chunk);
+      await writer.end();
+    },
+    catch: (cause) =>
+      new SqlRecoveryUnavailableError({
+        message,
+        service,
+        reason: String(cause),
+        remediation: "Check permissions on the Lando user data directory, then retry.",
+      }),
+  });
+
+export const hostFileSize = (path: string): number => {
+  const size = Bun.file(path).size;
+  return typeof size === "number" && Number.isFinite(size) ? size : 0;
+};
+
+export const removeSqliteHelperScratch = (scratchHost: string): Effect.Effect<void> =>
+  Effect.promise(() => rm(scratchHost, { recursive: true, force: true }).then(() => undefined));
+
 export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function* (
   deps: SqliteHelperDeps,
   service: SqlPlanService,
@@ -99,15 +152,23 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
     );
   }
   const image = yield* resolveSqliteHelperImage(deps);
-  const scratchHost = join(deps.paths.scratchDir, "sqlite-helper");
+  const user = sqliteHelperUser(covering);
+  const scratchHost = join(
+    deps.paths.ownerSnapshotsDir(helperOwnerKey(deps.applied)),
+    "sqlite-helper",
+    randomUUID(),
+  );
   yield* Effect.tryPromise({
-    try: () => mkdir(scratchHost, { recursive: true }),
+    try: async () => {
+      await mkdir(scratchHost, { recursive: true });
+      chownScratch(scratchHost, user);
+    },
     catch: (cause) =>
       new SqlRecoveryUnavailableError({
         message: "Cannot create the SQLite helper scratch directory.",
         service: target.name,
         reason: String(cause),
-        remediation: "Check permissions on the Lando scratch directory, then retry.",
+        remediation: "Check permissions on the Lando user data directory, then retry.",
       }),
   });
   const access = sqliteHelperAccess(covering, deps.applied, {
@@ -118,17 +179,30 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
     dbPath,
     scratchHost,
     scratchTarget: SQLITE_HELPER_SCRATCH_TARGET,
+    user,
     spec: {
       image,
       ...(access.owner === undefined ? {} : { owner: access.owner }),
       ...(access.mounts === undefined ? {} : { mounts: access.mounts }),
       binds: access.binds,
-      ...(service.user === undefined ? {} : { user: service.user }),
+      user,
       entrypoint: [],
       remove: true,
     },
   } satisfies SqliteHelperContext;
 });
+
+export const withSqliteHelper = <A, E, R>(
+  deps: SqliteHelperDeps,
+  service: SqlPlanService,
+  target: SqlFileTarget,
+  body: (helper: SqliteHelperContext) => Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | SqlRecoveryUnavailableError, R> =>
+  prepareSqliteHelper(deps, service, target).pipe(
+    Effect.flatMap((helper) =>
+      Effect.suspend(() => body(helper)).pipe(Effect.ensuring(removeSqliteHelperScratch(helper.scratchHost))),
+    ),
+  );
 
 export const runSqliteHelper = Effect.fn("Sql.runSqliteHelper")(function* (
   deps: SqliteHelperDeps,

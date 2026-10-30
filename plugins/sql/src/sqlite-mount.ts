@@ -1,3 +1,5 @@
+import { statSync } from "node:fs";
+
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { type AppPlan, PortablePath, type VolumeMountPlan } from "@lando/sdk/schema";
 import type { EphemeralBindMount, EphemeralRunSpec } from "@lando/sdk/services";
@@ -75,6 +77,20 @@ export const requireSqliteCoveringMount = (
     });
   }
   return covering;
+};
+
+const hostProcessUser = (): string => `${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`;
+
+export const sqliteHelperUser = (covering: SqliteCoveringMount): string => {
+  if (covering.kind === "bind") {
+    try {
+      const info = statSync(covering.source);
+      if (Number.isInteger(info.uid) && Number.isInteger(info.gid)) return `${info.uid}:${info.gid}`;
+    } catch {
+      // Fall back to the process identity the volume witness uses when a bind cannot be stated.
+    }
+  }
+  return hostProcessUser();
 };
 
 export const sqliteHelperAccess = (
