@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { makeLandoPaths } from "@lando/paths";
@@ -42,7 +42,7 @@ const docker = async (
             },
           });
   const proc = Bun.spawn(["docker", ...args], {
-    cwd: options?.cwd,
+    ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
     env: dockerEnv,
     stdin,
     stdout: "pipe",
@@ -195,6 +195,7 @@ test.skipIf(dockerHost === undefined)(
         Effect.provide(Layer.succeed(PathsService, PathsService.of(paths))),
       ),
     );
+    const identity = planAppIdentity({ root: AbsolutePath.make(appDir) });
     const applied = {
       id: AppId.make("sqlite-it"),
       name: "sqlite-it",
@@ -205,7 +206,9 @@ test.skipIf(dockerHost === undefined)(
       routes: [],
       stores: [],
       fileSync: [],
-      identity: planAppIdentity({ root: AbsolutePath.make(appDir) }),
+      identity,
+      metadata: { resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"), source: "sqlite-it", runtime: 4 },
+      extensions: {},
     } as AppPlan;
     const harness = makeSqlTestDeps({ password: "secret", initiallyRunning: false });
     const dbPath = join(appDir, "data", "app.sqlite");
@@ -214,7 +217,7 @@ test.skipIf(dockerHost === undefined)(
       plan: {
         ...harness.deps.plan,
         root: appDir,
-        identity: applied.identity,
+        identity,
         services: {
           appserver: {
             name: "appserver",
