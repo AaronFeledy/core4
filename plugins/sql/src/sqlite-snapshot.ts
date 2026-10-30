@@ -19,6 +19,7 @@ import {
   type SqliteHelperContext,
   type SqliteHelperDeps,
   copyHostFile,
+  requireSqliteDatabaseHeader,
   runSqliteHelper,
   sqliteScratchFile,
   withSqliteHelper,
@@ -142,6 +143,11 @@ export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(functi
         helper.dbPath,
         `VACUUM INTO '${staged.target}';`,
       ]);
+      yield* requireSqliteDatabaseHeader(
+        staged.host,
+        target.name,
+        `VACUUM INTO did not produce a SQLite database for ${target.name}.`,
+      );
       const id = randomUUID();
       const createdAt = yield* DateTime.now;
       const directory = join(deps.paths.ownerSnapshotsDir(owner.ownerKey), store.store);
