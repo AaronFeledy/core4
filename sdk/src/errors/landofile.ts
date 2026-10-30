@@ -173,6 +173,10 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
     file: Schema.String,
     cause: Schema.optional(Schema.Unknown),
     issues: Schema.Array(ValidationIssue),
+    context: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)).annotate({
+      description:
+        "Machine-readable identifiers from an underlying configuration failure, excluding arbitrary values and native causes.",
+    }),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
       description: "Action required to correct the authored configuration.",
     }),

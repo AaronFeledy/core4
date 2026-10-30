@@ -1,52 +1,25 @@
-import { Effect, Schema, absurd } from "effect";
-
 import type { ServiceConfig } from "@lando/sdk/schema";
 import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
-import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import {
-  ServiceConfigIssue,
-  addEnvRecord,
-  loopbackTcpHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
-
-import { servicePortEndpoints } from "./_port-helpers.ts";
-import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import type { ServiceType } from "@lando/sdk/services";
+import { Schema } from "effect";
+import { ServiceConfigIssue, rootIdentity, serviceTypeResolve } from "./_feature-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
-import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
-import { landoErrorPagesBuildStep } from "./http-errors.ts";
-import { phpBaselineBuildStep } from "./php-baseline.ts";
-import { phpComposerPackagesBuildStep, resolvePhpComposerPackages } from "./php-composer-packages.ts";
+import { resolvePhpComposerPackages } from "./php-composer-packages.ts";
 import { resolvePhpDbClient } from "./php-db-client.ts";
+import { PHP_FEATURE_ID } from "./php-feature.ts";
+import { assertPhpComposerCompatible, resolvePhpComposer } from "./php-prerequisites.ts";
+import { PHP_RUNTIME_POLICY_KEY, resolvePhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
-  PHP_COMPOSER_STEP_ID,
-  assertPhpComposerCompatible,
-  phpPrerequisiteBuildSteps,
-  resolvePhpComposer,
-} from "./php-prerequisites.ts";
-import {
-  PHP_CLI_KEEP_ALIVE,
-  apacheDefaultSiteRemovalBuildStep,
-  apacheStartCommand,
+  SUPPORTED_PHP_VERSIONS,
+  type SupportedPhpVersion,
   assertPhpViaKeys,
-  fpmStartCommand,
-  hasCustomPhpImage,
   phpImageFor,
   phpLogSources,
-  phpServingMode,
   resolvePhpVia,
 } from "./php-via.ts";
-import { PHP_WP_CLI_STEP } from "./php-wp-cli.ts";
-import {
-  assertPhpXdebugSupported,
-  phpXdebugBuildStep,
-  phpXdebugConfigEnv,
-  phpXdebugTooling,
-  resolvePhpXdebug,
-} from "./php-xdebug.ts";
+import { assertPhpXdebugSupported, phpXdebugTooling, resolvePhpXdebug } from "./php-xdebug.ts";
 
+export { PHP_FEATURE_ID, PHP_FEATURE_PRIORITY, phpServiceFeature } from "./php-feature.ts";
 export {
   PHP_APT_PACKAGE_PINS,
   PHP_COMMON_EXTENSIONS,
@@ -58,164 +31,31 @@ export {
   PHP_PREREQUISITES_STEP_ID,
   phpPrerequisitesBuildKeyInputs,
 } from "./php-prerequisites.ts";
-
 export { PHP_COMPOSER_PACKAGES_STEP_ID } from "./php-composer-packages.ts";
-
 export {
   PHP_BASELINE_INI_PATH,
   PHP_BASELINE_STEP_ID,
   PHP_SECURITY_BASELINE,
   renderPhpBaselineIni,
 } from "./php-baseline.ts";
-
-export { PHP_FPM_LOG_SOURCES } from "./php-via.ts";
-
-export const SUPPORTED_PHP_VERSIONS = ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"] as const;
-export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
+export { PHP_FPM_LOG_SOURCES, SUPPORTED_PHP_VERSIONS, type SupportedPhpVersion } from "./php-via.ts";
+const PhpVersion = Schema.Literals(SUPPORTED_PHP_VERSIONS);
 const PHP_ARTIFACTS = Object.fromEntries(
   SUPPORTED_PHP_VERSIONS.map((version) => [version, phpImageFor(version, "apache")]),
 );
-
-export const PHP_FEATURE_ID = "service-lando.php" as const;
-export const PHP_FEATURE_PRIORITY = 600;
-
-const PhpFeatureConfigSchema = Schema.Struct({
-  allowOverride: Schema.Boolean,
-  version: Schema.Literals([...SUPPORTED_PHP_VERSIONS]),
-  via: Schema.Literals(["apache", "fpm", "cli"]),
-  webroot: Schema.String,
-});
-type PhpFeatureConfig = typeof PhpFeatureConfigSchema.Type;
-
-const REMEDIATION_VERSION = (requested: string): string =>
-  `Set type to one of: ${SUPPORTED_PHP_VERSIONS.map((v) => `php:${v}`).join(", ")} (got php:${requested}).`;
 
 const validateVersion = (
   declaredType: string | undefined,
   fallback: SupportedPhpVersion,
 ): SupportedPhpVersion => {
-  if (declaredType === undefined) return fallback;
-  if (!declaredType.startsWith("php:")) return fallback;
+  if (declaredType === undefined || !declaredType.startsWith("php:")) return fallback;
   const version = declaredType.slice("php:".length);
-  if ((SUPPORTED_PHP_VERSIONS as ReadonlyArray<string>).includes(version)) {
-    return version as SupportedPhpVersion;
-  }
+  if (Schema.is(PhpVersion)(version)) return version;
   throw new ServiceConfigIssue(
     ["type"],
     `Unsupported PHP version "${version}".`,
-    REMEDIATION_VERSION(version),
+    `Set type to one of: ${SUPPORTED_PHP_VERSIONS.map((v) => `php:${v}`).join(", ")} (got php:${version}).`,
   );
-};
-
-const configFor = (ctx: { readonly config: Readonly<Record<string, unknown>> }): PhpFeatureConfig =>
-  ctx.config as PhpFeatureConfig;
-
-const applyApacheShape = (
-  ctx: ServiceFeatureContext,
-  config: PhpFeatureConfig,
-  listenPort: number | undefined,
-): void => {
-  const { webroot, allowOverride } = config;
-  ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
-  if (
-    !hasCustomPhpImage(ctx.normalizedConfig) &&
-    ctx.normalizedConfig.command === undefined &&
-    ctx.normalizedConfig.entrypoint === undefined
-  ) {
-    ctx.addBuildStep(apacheDefaultSiteRemovalBuildStep());
-    ctx.addBuildStep(landoErrorPagesBuildStep());
-    if (listenPort !== undefined) ctx.addBuildStep(apacheListenBuildStep(DEBIAN_APACHE_PORTS_CONF_PATH));
-    ctx.setCommand([
-      ...apacheStartCommand(webroot, allowOverride, listenPort, ctx.normalizedConfig.user === undefined),
-      ...(ctx.normalizedConfig.environment?.BACKDROP_SETTINGS === undefined
-        ? []
-        : ["-c", "PassEnv BACKDROP_SETTINGS"]),
-    ]);
-  }
-};
-
-const applyFpmShape = (ctx: ServiceFeatureContext, port: number): void => {
-  if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
-    ctx.setCommand(fpmStartCommand(port, ctx.normalizedConfig.user === undefined));
-  }
-};
-
-const applyCliShape = (ctx: ServiceFeatureContext): void => {
-  if (!hasCustomPhpImage(ctx.normalizedConfig) && ctx.normalizedConfig.command === undefined) {
-    ctx.setCommand([...PHP_CLI_KEEP_ALIVE]);
-  }
-};
-
-const applyServingMode = (ctx: ServiceFeatureContext, mode: ReturnType<typeof phpServingMode>): void => {
-  switch (mode.via) {
-    case "apache":
-      applyApacheShape(ctx, configFor(ctx), mode.authoredApachePort);
-      return;
-    case "fpm":
-      applyFpmShape(ctx, mode.listener.port);
-      return;
-    case "cli":
-      applyCliShape(ctx);
-      return;
-    default:
-      absurd(mode);
-  }
-};
-
-const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
-  const service = ctx.normalizedConfig;
-  const { allowOverride, version, via, webroot } = configFor(ctx);
-  const mode = phpServingMode(via, authoredListenPort(service.port));
-  const customImage = hasCustomPhpImage(service);
-  const artifact = customImage && service.image !== undefined ? service.image : phpImageFor(version, via);
-
-  ctx.setArtifact({ kind: "ref", ref: artifact });
-  const xdebug = resolvePhpXdebug(service.xdebug);
-  const composerRelease = resolvePhpComposer(service.composer);
-  if (!customImage) {
-    const baseline = phpBaselineBuildStep();
-    if (baseline !== undefined) ctx.addBuildStep(baseline);
-    for (const step of phpPrerequisiteBuildSteps(service.composer)) ctx.addBuildStep(step);
-    if (service.framework === "wordpress") {
-      ctx.addBuildStep(PHP_WP_CLI_STEP);
-      addEnvRecord(ctx, { WP_CLI_ALLOW_ROOT: "1" });
-    }
-    if (xdebug !== false) ctx.addBuildStep(phpXdebugBuildStep(version, xdebug));
-  }
-  const composerPackagesStep = phpComposerPackagesBuildStep(resolvePhpComposerPackages(service.composer), {
-    dependsOnComposerStep: !customImage && composerRelease !== false,
-    composerStepId: PHP_COMPOSER_STEP_ID,
-  });
-  if (composerPackagesStep !== undefined) ctx.addBuildStep(composerPackagesStep);
-  if (xdebug !== false) {
-    addEnvRecord(ctx, phpXdebugConfigEnv());
-  }
-  applyServingMode(ctx, mode);
-  if (mode.listener !== undefined) {
-    ctx.setHealthcheck(loopbackTcpHealthcheck(mode.listener.port, 10));
-  }
-
-  applyAuthoredProcessFields(ctx, ["user", "command", "entrypoint"]);
-
-  ctx.addExtension("lando-service-php", {
-    allowOverride,
-    webroot,
-    version,
-    via,
-  });
-};
-
-export const phpServiceFeature: ServiceFeatureDefinition = {
-  id: PHP_FEATURE_ID,
-  schema: PhpFeatureConfigSchema as Schema.Codec<unknown>,
-  priority: PHP_FEATURE_PRIORITY,
-  declareEndpoints: (ctx) =>
-    Effect.sync(() => {
-      const { via } = configFor(ctx);
-      const { listener } = phpServingMode(via, authoredListenPort(ctx.normalizedConfig.port));
-      return listener === undefined ? [] : servicePortEndpoints(ctx, listener);
-    }),
-  apply: serviceFeatureApply(PHP_FEATURE_ID, "service-lando.php failed to apply", applyPhpFeature),
 };
 
 const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
@@ -244,20 +84,15 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       resolvePhpDbClient(input.service.db_client);
       const webroot = resolveWebroot("PHP", input.service.webroot, input.service.appMount);
       const allowOverride = input.service.allowOverride ?? false;
-
+      const policy = resolvePhpRuntimePolicy(input.service, resolvedVersion, via);
       return {
         base: "lando" as const,
-        normalizedConfig: {
-          ...input.service,
-          type: `php:${resolvedVersion}`,
-        } satisfies ServiceConfig,
-        logSources: phpLogSources(via),
+        normalizedConfig: { ...input.service, type: `php:${resolvedVersion}` } satisfies ServiceConfig,
+        metadata: { [PHP_RUNTIME_POLICY_KEY]: policy },
+        logSources: phpLogSources(policy.logMode),
         features: [
-          { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot } },
-          {
-            id: "lando.env",
-            config: { webroot },
-          },
+          { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot, policy } },
+          { id: "lando.env", config: { webroot } },
           { id: "lando.app-mount", config: { target: "/app", workingDirectory: webroot } },
         ],
         ...(xdebug === false ? {} : { tooling: phpXdebugTooling(input.name, via, xdebug.mode) }),

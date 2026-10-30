@@ -2,9 +2,9 @@ import { deserialize, serialize } from "node:v8";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
-import type { NormalizedToolingArg, NormalizedToolingFlag } from "@lando/landofile/tooling-normalize";
-import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
+import type { LandofileShape, PluginManifest, ToolingInputDeclaration } from "@lando/sdk/schema";
 import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
+import { isAppCommandIndexPayload, isPluginCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
 import {
@@ -12,7 +12,7 @@ import {
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 5n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 6n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
@@ -25,12 +25,10 @@ export interface CommandIndexEntry {
   readonly id: string;
   readonly summary: string;
   readonly hidden: boolean;
+  readonly disabled?: true;
   readonly service?: string;
   readonly source?: "bun-script";
-  readonly input?: {
-    readonly flags: readonly NormalizedToolingFlag[];
-    readonly args: readonly NormalizedToolingArg[];
-  };
+  readonly input?: ToolingInputDeclaration;
 }
 
 interface CommandAliasPolicy {
@@ -164,14 +162,16 @@ const headerMatches = (bytes: Uint8Array, magic: Uint8Array): boolean => {
   return view.getBigUint64(VERSION_OFFSET, true) === COMMAND_INDEX_SCHEMA_VERSION;
 };
 
-const decodePayload = <T>(bytes: Uint8Array, magic: Uint8Array): T | null => {
+const decodePayload = (bytes: Uint8Array, magic: Uint8Array): unknown => {
   if (!headerMatches(bytes, magic)) return null;
   try {
-    const payload = deserialize(bytes.subarray(COMMAND_INDEX_HEADER_BYTES)) as T;
+    const payload: unknown = deserialize(bytes.subarray(COMMAND_INDEX_HEADER_BYTES));
     if (
       payload === null ||
       typeof payload !== "object" ||
-      (payload as { schemaVersion?: unknown }).schemaVersion !== Number(COMMAND_INDEX_SCHEMA_VERSION)
+      !Object.hasOwn(payload, "schemaVersion") ||
+      !("schemaVersion" in payload) ||
+      payload.schemaVersion !== Number(COMMAND_INDEX_SCHEMA_VERSION)
     ) {
       return null;
     }
@@ -184,11 +184,15 @@ const decodePayload = <T>(bytes: Uint8Array, magic: Uint8Array): T | null => {
 export const encodeAppCommandIndex = (payload: AppCommandIndexPayload): Uint8Array =>
   encodePayload(APP_COMMAND_MAGIC, payload);
 
-export const decodeAppCommandIndex = (bytes: Uint8Array): AppCommandIndexPayload | null =>
-  decodePayload<AppCommandIndexPayload>(bytes, APP_COMMAND_MAGIC);
+export const decodeAppCommandIndex = (bytes: Uint8Array): AppCommandIndexPayload | null => {
+  const payload = decodePayload(bytes, APP_COMMAND_MAGIC);
+  return isAppCommandIndexPayload(payload) ? payload : null;
+};
 
 export const encodePluginCommandIndex = (payload: PluginCommandIndexPayload): Uint8Array =>
   encodePayload(PLUGIN_COMMAND_MAGIC, payload);
 
-export const decodePluginCommandIndex = (bytes: Uint8Array): PluginCommandIndexPayload | null =>
-  decodePayload<PluginCommandIndexPayload>(bytes, PLUGIN_COMMAND_MAGIC);
+export const decodePluginCommandIndex = (bytes: Uint8Array): PluginCommandIndexPayload | null => {
+  const payload = decodePayload(bytes, PLUGIN_COMMAND_MAGIC);
+  return isPluginCommandIndexPayload(payload) ? payload : null;
+};

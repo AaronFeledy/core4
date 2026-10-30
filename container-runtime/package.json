@@ -44,6 +44,7 @@
     "./dependency-schedule": "./src/dependency-schedule.ts",
     "./service-start-schedule": "./src/service-start-schedule.ts",
     "./healthcheck-probe": "./src/healthcheck-probe.ts",
+    "./healthcheck-attempt": "./src/healthcheck-attempt.ts",
     "./service-probe": "./src/service-probe.ts",
     "./supervision": "./src/supervision.ts",
     "./engine-api": "./src/engine-api.ts",

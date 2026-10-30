@@ -64,8 +64,9 @@ Send integer flags as JSON numbers without a fractional part. For example, the
 ```
 
 `20.5` and `"20"` are rejected with `McpToolInputError` naming `flags.tail`.
-For tooling tasks, send positional arguments by name in `args`; Lando applies
-their declared `order`, just as the CLI does. Hyphen-leading values stay positional.
+For tooling tasks, send declared flags and arguments by name in `flags` and
+`args`. Use JSON booleans, including `false`, rather than strings for boolean
+flags. Hyphen-leading strings remain values, not new options.
 
 For `app:exec`, send `args.command` as an array of exact arguments. An optional
 service name may come first; shell syntax runs only when you explicitly invoke
@@ -75,20 +76,104 @@ a shell:
 {"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"app:exec","arguments":{"args":{"command":["appserver","--","printf","%s","one argument"]}}}}
 ```
 
-Positions are resolved by `order` and never compacted. A trailing positional
-with no value may be left out. Omit one that has no `default` while a later
-positional has a value (sent by you or filled from its `default`) and the call
-fails with `ToolingInputError`; `field` names the omitted argument and the
-message reads `Positional argument <name> cannot be omitted because a later
-positional argument has a value.` With a task declaring `label` at `order: 0`
-and `channel` at `order: 1` with `default: stable`, this call fails on `label`:
+## Send named tooling inputs
 
-```json
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"app:tag","arguments":{"args":{"channel":"beta"}}}}
+To expose app tooling, refresh its command cache in the app directory, then
+inspect the opt-in catalog:
+
+```sh
+lando app:cache:refresh
+lando mcp --tooling --list --format=json
 ```
 
-The tag, message, and `field` are byte-identical to what the CLI emits for the
-same declaration and input.
+Launch the client session with `lando mcp --tooling` from that same directory.
+The refresh rebuilds the full app plan and command index without starting
+services. It is explicit, not an automatic metadata-only repair.
+
+A `.bun.sh` script can accept sparse named arguments. For example, save this as
+`.lando/scripts/tag.bun.sh` before refreshing:
+
+```sh
+# ---
+# desc: Inspect release inputs
+# flags:
+#   loud:
+#     boolean: true
+#     default: true
+# args:
+#   label:
+#     order: 0
+#   channel:
+#     order: 1
+#     default: stable
+#     choices: [stable, beta]
+# ---
+printf '%s\n' "$LANDO_INPUT"
+```
+
+After initializing the MCP session, send:
+
+```json
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"app:tag","arguments":{"flags":{"loud":false},"args":{"channel":"beta"}}}}
+```
+
+Read the tool result's collected output. The script's `LANDO_INPUT` has exactly
+`flags` and `args`: `flags.loud` is false, `args.channel` is `beta`, and `label`
+is absent. No physical argv is synthesized. An explicit empty string would
+remain present; omission alone allows a default. Lando considers only supplied
+own properties, so names such as `constructor` do not pick up inherited values.
+
+An argv-only Landofile task cannot represent the same positional gap. It fails
+with `ToolingInputError`, whose `field` identifies the absent earlier argument,
+rather than silently shifting `beta` into `label`. Required arguments remain
+required on both surfaces. For tasks with no declarations, the catalog instead
+exposes `args.args` as a string-array passthrough. Do not combine a raw tail with
+declared named inputs.
+
+Use `tools/list` as the input contract: choices are JSON Schema `enum`, defaults
+retain their string or boolean type, and required members make their containing
+`flags` or `args` group required too. The objects are closed with
+`additionalProperties: false`. The schema includes `x-lando-input-revision` and
+`x-lando-accepts-arguments`. Sensitive flags and arguments expose `writeOnly: true`;
+they cannot have defaults or choices. These fields come from the same normalized
+declaration used at execution, not prose-only hints. Send only the values you
+intend to supply; the authoritative binder applies defaults once.
+
+## Refresh a changed tooling contract
+
+The server retains the revision it advertised and passes it with each tooling
+call. Execution checks it against the resolved task after normal task precedence
+and late connection-client resolution. Changes to input order, names, aliases,
+types, defaults, choices, requiredness, sensitivity, or raw-argument policy reject
+the call with `ToolingInputError` before the body runs. Script-body and
+description-only edits keep the revision compatible.
+
+After changing metadata, run `lando app:cache:refresh`, reconnect the client,
+and inspect `tools/list` again. A running session does not atomically replace its
+catalog after a refresh, and rejected calls are not automatically replayed.
+Review the new declaration before retrying.
+
+If discovery reports `ToolingCommandUnavailableError`, inspect its `reason`:
+`missing-cache`, `stale-cache`, or `invalid-cache` requires an explicit refresh;
+`unknown-command` means a fresh index has no matching command, so check the name
+and aliases. `lando help --format=json` exposes `result.toolingMetadata` with
+`status` and, when unavailable, `reason` and `remediation`. Neither help nor a
+failed lookup repairs metadata by planning or starting a provider. You do not
+need `lando start` or `lando rebuild` just to repair discovery.
+
+## Protect sensitive tooling values
+
+Authors mark a flag or argument `sensitive: true`; the existing secret-name
+heuristic also applies and cannot be disabled with `sensitive: false`. The
+annotation works for an ordinary name such as `note`. Lando redacts supplied
+sensitive values before publishing its output, errors, events, or traces,
+including invalid, stale, and disabled calls. When authoritative metadata is
+unavailable, pre-admission records omit input values rather than guessing which
+are safe. Values remain literal, not expressions or secret-provider references.
+
+This does not redact arbitrary files or external logs written by the script,
+nor does it protect values your client records before sending them. Test with
+fake values, as in [Mark sensitive inputs](../../tooling/bun-shell-scripts/#mark-sensitive-inputs).
 
 ## Read streamed command output
 
@@ -185,6 +270,71 @@ can tab through the public schema registry instead of guessing names.
 ```
 
 <Guide>
+  <Scenario id="named-script-sparse-boolean-input" render={false} reason="MCP preserves explicit false and a later named argument without synthesizing argv">
+    <Step name="prepare-named-script">
+      <UseFixture name="named-inputs" />
+    </Step>
+    <Step name="call-script-through-mcp">
+      <Run runtime="library" code={`const { Fiber, Layer, Schema, Stdio } = yield* Effect.promise(() => import("effect"));
+const { join } = yield* Effect.promise(() => import("node:path"));
+const { discoverBunShellScripts } = yield* Effect.promise(() => import("@lando/landofile/bun-sh-discovery"));
+const { compileBunShellScriptCommands } = yield* Effect.promise(() => import("@lando/engine/cache/command-compiler"));
+const { mcpRegistryWithToolingEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
+const { McpRuntimeConfig, McpService } = yield* Effect.promise(() => import("../../../../../mcp/src/service.ts"));
+const { makeStdioClient } = yield* Effect.promise(() => import("../../../../../mcp/src/testing.ts"));
+const { serviceLayer: mcpServiceLayer } = yield* Effect.promise(() => import("../../../../../core/src/mcp-command-executor.ts"));
+const { RedactionService, makeRedactionService } = yield* Effect.promise(() => import("@lando/redaction/service"));
+const { withCwd } = yield* Effect.promise(() => import("../../../../../core/test/_support/temp-cwd.ts"));
+const root = join(context.testDir, "named-inputs");
+const commands = compileBunShellScriptCommands(yield* discoverBunShellScripts({ appRoot: root }));
+const registry = mcpRegistryWithToolingEntries({ commandEntries: [] }, commands);
+const serviceLayer = mcpServiceLayer.pipe(Layer.provide(Layer.mergeAll(
+  Layer.succeed(McpRuntimeConfig, {
+    commandEntries: registry.commandEntries,
+    toolingEntries: registry.toolingEntries ?? [],
+    defaultAllowlist: [],
+    runtimeLayer: LandoCore.makeLandoRuntime({ bootstrap: "tooling", cwd: root }).pipe(Layer.orDie),
+  }),
+  Layer.succeed(RedactionService, makeRedactionService()),
+)));
+const response = yield* Effect.promise(() => withCwd(root, () => Effect.runPromise(
+  Effect.gen(function* () {
+    const client = yield* makeStdioClient();
+    const service = yield* McpService;
+    const fiber = yield* service.serve({ transport: "stdio", tooling: true }).pipe(
+      Effect.provideService(Stdio.Stdio, client.stdio), Effect.forkScoped,
+    );
+    yield* client.initialize({});
+    const called = yield* client.request("tools/call", {
+      name: "app:tag",
+      arguments: { flags: { loud: false }, args: { channel: "beta" } },
+    });
+    yield* client.close;
+    yield* Fiber.join(fiber);
+    return called;
+  }).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("10 seconds")),
+)));
+const result = Schema.decodeUnknownSync(Schema.Struct({
+  isError: Schema.Boolean,
+  structuredContent: Schema.Struct({
+    ok: Schema.Boolean,
+    result: Schema.Struct({ exitCode: Schema.Number }),
+    output: Schema.Struct({ chunks: Schema.Array(Schema.Struct({ _tag: Schema.String, chunk: Schema.String })) }),
+  }),
+}))(response.result);
+expect(result).toMatchObject({ isError: false, structuredContent: { ok: true, result: { exitCode: 0 } } });
+const stdout = result.structuredContent.output.chunks.filter((chunk) => chunk._tag === "stdout").map((chunk) => chunk.chunk).join("");
+expect(JSON.parse(stdout)).toEqual({ flags: { loud: false }, args: { channel: "beta" } });`}
+        displayCode={`const result = await client.request("tools/call", {
+  name: "app:tag",
+  arguments: { flags: { loud: false }, args: { channel: "beta" } },
+});`} />
+    </Step>
+    <Step name="cleanup-named-script">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
   <Scenario id="stdio-conversation" render>
     <Step name="call-a-read-only-tool">
       <Run

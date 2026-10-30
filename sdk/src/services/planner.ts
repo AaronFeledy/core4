@@ -7,6 +7,7 @@ import type {
   DataTreeOwnershipCapabilityError,
   EventError,
   FileSyncSelectionError,
+  HealthcheckTargetUnsupportedError,
   LandofileValidationError,
   NotImplementedError,
   PublicationUnsupportedError,
@@ -22,6 +23,7 @@ import type {
 import type { ProviderError, ProviderSelectionError } from "./provider.ts";
 
 export type AppPlannerError =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | LandofileValidationError
   | RouteInputError

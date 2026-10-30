@@ -178,6 +178,7 @@
     "./services/feature": "./src/services/feature.ts",
     "./services/file-system": "./src/services/file-system.ts",
     "./services/global-services": "./src/services/global-services.ts",
+    "./services/host-execution-context": "./src/services/host-execution-context.ts",
     "./services/host-opener": "./src/services/host-opener.ts",
     "./services/json-fetch": "./src/services/json-fetch.ts",
     "./services/landofile-live": "./src/services/landofile-live.ts",

@@ -106,7 +106,17 @@ test("round trips safe service metadata and JSON provider details", () => {
     hostnames: ["web", "web.demo.internal"],
     certs: { state: "custom" },
     health: {
-      check: { kind: "tcp", intervalSeconds: 10, timeoutSeconds: 2, retries: 3 },
+      check: {
+        kind: "tcp",
+        intervalSeconds: 10,
+        timeoutSeconds: 2,
+        retries: 3,
+        target: "service",
+        userSource: "service",
+        user: "node",
+        commandConfigured: false,
+        configPath: ["services", "web", "healthcheck"],
+      },
       state: "unhealthy",
     },
     providerInfo: { observation: "limited", retries: 2, labels: ["safe"] },

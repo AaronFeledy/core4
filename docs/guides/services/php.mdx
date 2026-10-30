@@ -7,7 +7,7 @@ tags: [beta, docs, php, service, runtime]
 
 # Add PHP
 
-Add `type: php:8.3` under `services` in `.lando.yml`. PHP has no bare `type: php` alias, so pin a minor. Lando supports `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, and `8.6`. The default serving mode is Apache with mod_php on port `80`. 8.1 through 8.5 use `php:<version>-apache-bookworm`. 8.6 uses the official RC tag `php:8.6-rc-apache-bookworm` until GA. Your repository is bind-mounted read-write at `/app`:
+Add `type: php:8.3` under `services` in `.lando.yml` to serve PHP with Apache on port `80`. PHP needs a minor version; there is no bare `type: php` alias. In your PHP project root, save:
 
 ```yaml
 name: php-demo
@@ -17,22 +17,28 @@ services:
     primary: true
 ```
 
+Put an `index.php` in that directory, then run from the host:
+
+```sh
+lando app:config:lint --format=json
+lando start
+lando info
+```
+
+Open the app URL from `lando info` and check that your page loads. If startup
+fails, inspect `lando logs -s app`. Your project is mounted read-write at `/app`.
+
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="php-demo" />
     </Step>
-    <Step name="start">
-      <Run command="lando start" />
-      <Verify event="post-start" />
-    </Step>
-    <Step name="verify-version">
+    <Step name="validate-config">
       <Run command="lando app:config:lint --format=json" />
       <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 
@@ -49,7 +55,7 @@ services:
 Lando enables `mod_rewrite` while building stock Apache services. Set
 `allowOverride: true` if your app uses `.htaccess` rewrite rules; it defaults to
 `false`. PHP framework recipes such as Laravel and Backdrop already set it.
-Custom images and authored `command:` or `entrypoint:` values own their Apache
+Custom images, `build.context`, and authored `command:` or `entrypoint:` values own their Apache
 configuration, including module setup. After upgrading Lando, run `lando start`
 to apply the updated default build key to existing apps.
 
@@ -83,34 +89,13 @@ services:
 
 ## Run as a non-root user
 
-Set `user:` to run an Apache-served PHP service as an account the image already
-ships. Lando hands its Apache directives to `apache2-foreground` as `-c`
-arguments and bakes the branded error pages into the image, so nothing is
-written into the image's root-owned configuration tree at start:
+To run stock Apache PHP as the image's `www-data` account, save this as
+`.lando.yml` in your PHP project root. Use port `8080` for a portable non-root
+listener: permission to bind ports below `1024` depends on runtime policy.
+Put an `index.php` in that directory for Apache to serve:
 
 ```yaml
-services:
-  appserver:
-    type: php:8.3
-    user: www-data
-```
-
-Lando keeps `www-data`'s home at `/var/www`, the directory the account's
-passwd entry points at. The image ships it owned by root, so Lando creates it
-for `www-data` in a root build step and the fresh home volume starts owned by
-`www-data`. Composer and shell caches dropped there survive a rebuild. Run
-`lando info` to see the mount labeled `(home)`; see
-[Keep a service home across rebuilds](./home-and-host.mdx) for the volume
-naming and what happens when you change `user:`.
-
-A non-root process still can't bind a port below 1024 on the default `lando`
-provider, and the image's own `ports.conf` says `Listen 80`. Set `port:` to
-1024 or above and Apache listens there instead. Lando emits `Listen <port>`,
-serves the app from a `<VirtualHost *:<port>>` that carries the generated
-document-root, directory, and error-page directives, and drops the image's
-`Listen 80` from `/etc/apache2/ports.conf` during the build:
-
-```yaml
+name: php-nonroot
 services:
   appserver:
     type: php:8.3
@@ -118,10 +103,58 @@ services:
     port: 8080
 ```
 
-Leave `port:` out and nothing changes: same launcher, same image, no extra
-build step. If you set your own `command:` or `entrypoint:`, or point `image:`
-at a custom image, Lando does not generate the launcher or touch the image
-config. Your launcher owns `Listen`.
+Lando keeps `www-data`'s home at `/var/www`, the directory the account's
+passwd entry points at. The image ships it owned by root, so Lando prepares it
+for `www-data` during the image build. The fresh home volume starts owned by
+`www-data`, and Composer and shell caches there survive a rebuild. Run
+`lando info` to see the mount labeled `(home)`; see
+[Keep a service home across rebuilds](./home-and-host.mdx) for volume naming
+and what happens when you change `user:`.
+
+From that directory on your host, start the app and find its URL:
+
+```sh
+lando start
+lando info
+lando logs -s appserver
+```
+
+Open the appserver URL from `lando info` and check that your page loads. Apache
+access and error logs remain available through `lando logs`; you don't need
+to make `/var/log/apache2` writable or add your own log redirection.
+
+Lando passes Apache's serving directives at launch without writing into
+root-owned configuration files. It prepares the error pages and removes the
+stock default site and extra access-log configuration during the image build.
+Access logs go to container stdout and error logs to container stderr. An
+authored `port:` also changes Apache's listener, not just Lando's endpoint;
+choose `1024` or above for portable non-root use.
+
+If logs show a bind permission error, check `port:` first. Omitting it keeps
+Apache on `80`; the logging setup does not grant permission to bind low ports.
+Before start hooks and builds, Lando warns with
+`LANDO_NONROOT_LOW_PORT_UNVERIFIED` when a declared user other than explicit
+root/UID 0 has a planned container port below `1024`. For a named user, the
+warning is conditional on that name resolving to a non-root UID. It does not
+probe permissions, reject the app, or change the port. A provider name alone
+does not establish whether the bind will succeed.
+
+If you set your own `command:` or `entrypoint:`, use a custom `image:`, or
+provide `build.context`, you own the serving and logging configuration instead.
+See [Replace the image](./php-customization.mdx#replace-the-image).
+
+  <Scenario id="stock-nonroot-plan" render>
+    <Step name="inspect-nonroot-config">
+      <UseFixture name="stock-nonroot" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{\"type\":\\s*\"php:8\\.3\",\"user\":\\s*\"www-data\",\"port\":\\s*8080\\}" } }} />
+    </Step>
+    <Step name="plan-with-default-home">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true,\"result\":\\s*\\{\"app\":\\s*\"php-nonroot\",\"commandsCompiled\":\\s*0" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
 
 `via: fpm` works the same way with a different file. Lando writes its pool
 override to `/tmp/lando-php-fpm.conf` and starts the daemon with
@@ -140,6 +173,11 @@ FPM listens on `9000`, so there's no privileged port to worry about. Under a
 non-root user php-fpm logs that the pool's `user` and `group` directives are
 ignored. That's a notice, not a failure; the pool already runs as the account
 you set.
+
+Generated Apache services expose `access` on stdout and `error`
+on stderr. Generated FPM services expose `access` and `error`,
+both on the same stderr pipe. These names select pipes, not individual writers.
+See [Read service logs](../cli/service-logs.mdx#select-a-php-console-alias).
 
 ## Set the webroot yourself
 
@@ -164,7 +202,9 @@ lando php -v
 
 ## Pin a version
 
-Pin any of the six supported PHP minor versions under `type`:
+Pin one of `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, or `8.6` under `type`.
+Versions 8.1 through 8.5 use Bookworm tags for the selected serving mode;
+8.6 uses the official `8.6-rc` Bookworm tags until GA:
 
 ```yaml
 services:
@@ -172,7 +212,9 @@ services:
     type: php:8.2
 ```
 
-`image:` still overrides the base image Lando builds from. You're responsible
-for wiring a custom tag end to end.
+`image:` or a Compose build with `build.context` replaces Lando's stock image
+setup. You supply the tools, extensions, and serving configuration; see
+[Replace the image](./php-customization.mdx#replace-the-image). Additive
+`build.artifact` and `build.app` steps alone keep the stock PHP setup.
 
 </Guide>

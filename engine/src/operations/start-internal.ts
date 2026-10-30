@@ -57,6 +57,7 @@ import {
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { resolveFileSyncMountPlan } from "./file-sync-plan.ts";
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
+import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
@@ -243,6 +244,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
   }
   const ref = target.app;
 
+  yield* publishLowPortWarnings(plan);
   yield* events.publish(
     PreAppStartEvent.make({
       eventName: "pre-app-start",

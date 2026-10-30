@@ -39,6 +39,7 @@ import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
 import { DEFAULT_SERVICE_LOGIN_SHELL } from "../../src/cli/service-login-shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
+import { withEnvVar } from "../_support/temp-cwd.ts";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -798,6 +799,27 @@ describe("shellApp — shell modes", () => {
     const spec = await hostSpec({ cwd: "/tmp/other" });
     expect(spec.cwd).toBe("/tmp/other");
   });
+
+  test.each([undefined, "caller-pwd", ""])(
+    "host mode leaves inheritance to ShellRunner while preserving explicit PWD %j",
+    async (pwd) => {
+      // Given
+      const env = { CALLER_VALUE: "kept", ...(pwd === undefined ? {} : { PWD: pwd }) };
+      // When
+      const spec = await withEnvVar("PWD", "/inherited-launch-directory", () =>
+        hostSpec({ cwd: "/tmp/other", env }),
+      );
+      // Then
+      expect(spec.cwd).toBe("/tmp/other");
+      expect(spec.env?.PWD).toBe(pwd);
+      expect(spec.env?.CALLER_VALUE).toBe("kept");
+      expect(
+        Object.keys(spec.env ?? {})
+          .filter((key) => !key.startsWith("LANDO_") && key !== "LANDO")
+          .sort(),
+      ).toEqual(Object.keys(env).sort());
+    },
+  );
 
   test("reserved LANDO_* env wins over caller options.env", async () => {
     const spec = await hostSpec({

@@ -1,7 +1,12 @@
 import { tmpdir } from "node:os";
-import { createBunCommandEnv, inheritCommandEnv } from "@lando/engine/services/bun-command-env";
+import { createBunCommandEnv } from "@lando/engine/services/bun-command-env";
+import {
+  captureHostExecutionContext,
+  prepareHostExecutionContext,
+} from "@lando/engine/services/host-execution-context";
 import { DateTime, Effect, type Scope } from "effect";
 
+import { identityRedactor } from "@lando/sdk/command-result";
 import { FileIoError, NotImplementedError } from "@lando/sdk/errors";
 import { publishOptionalEvent } from "./optional-event-publish";
 
@@ -55,6 +60,7 @@ const isReentryBlocked = (env: NodeJS.ProcessEnv): boolean => {
 
 export const defaultBunSelfSpawner: BunSelfSpawner = {
   spawn: async ({ cmd, env, cwd, signal }) => {
+    signal?.throwIfAborted();
     const proc = Bun.spawn({
       cmd: [...cmd],
       env,
@@ -97,7 +103,7 @@ const redactBunSelfEvent = Effect.fnUntraced(function* (
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "None") return event;
   const redactor = yield* redaction.value.forProfile("secrets", {
-    sourceEnv: { ...process.env, ...(env ?? {}) },
+    sourceEnv: env ?? {},
   });
   return {
     ...event,
@@ -117,7 +123,10 @@ const redactBunSelfEvent = Effect.fnUntraced(function* (
 export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
   options: BunSelfRunOptions,
 ): Effect.fn.Return<BunSelfRunResult, NotImplementedError | FileIoError, Scope.Scope> {
-  if (isReentryBlocked(process.env)) {
+  const reentryBlocked = isReentryBlocked(process.env);
+  const captured = captureHostExecutionContext(options);
+  const argv = [...options.argv];
+  if (reentryBlocked) {
     return yield* Effect.fail(
       new NotImplementedError({
         message: "Recursive `lando bun` invocation detected — BunSelfRunner refuses to re-enter.",
@@ -129,14 +138,41 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
   }
   const spawner = options.spawner ?? defaultBunSelfSpawner;
   const execPath = options.execPath ?? process.execPath;
-  const cwd = options.cwd ?? process.cwd();
-  const verb = options.verb ?? options.argv[0] ?? "run";
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const redactor =
+    redaction._tag === "None"
+      ? identityRedactor
+      : yield* redaction.value.forProfile("secrets", { sourceEnv: captured.env });
+  const redactIoError = (error: FileIoError) =>
+    new FileIoError({
+      message: redactor.redactString(error.message),
+      path: redactor.redactString(error.path),
+      cause: redactor.redactValue(error.cause),
+      remediation: redactor.redactString(error.remediation),
+    });
+  const context = yield* Effect.tryPromise({
+    try: (signal) => {
+      signal.throwIfAborted();
+      return prepareHostExecutionContext(captured);
+    },
+    catch: (cause) =>
+      cause instanceof FileIoError
+        ? cause
+        : new FileIoError({
+            message: "Could not prepare host working directory.",
+            path: captured.requestedCwd,
+            cause,
+            remediation:
+              "Ensure the requested working directory exists and is accessible, then re-run the command.",
+          }),
+  }).pipe(Effect.mapError(redactIoError));
+  const cwd = context.cwd;
+  const verb = options.verb ?? argv[0] ?? "run";
   const callerSubsystem = options.callerSubsystem ?? "cli:meta:bun";
   let spawnPromise: Promise<{ readonly exitCode: number }> | undefined;
   const launcher = yield* Effect.acquireRelease(
     Effect.tryPromise({
-      try: () =>
-        createBunCommandEnv({ command: "lando", cwd, env: childEnv(inheritCommandEnv(options.env ?? {})) }),
+      try: () => createBunCommandEnv({ command: "lando", cwd, env: childEnv(context.env) }),
       catch: (cause) =>
         new FileIoError({
           message:
@@ -146,7 +182,7 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
           remediation:
             "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
         }),
-    }),
+    }).pipe(Effect.mapError(redactIoError)),
     (launcher) =>
       Effect.promise(async () => {
         if (spawnPromise !== undefined) await Promise.allSettled([spawnPromise]);
@@ -158,34 +194,42 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (
       _tag: "pre-bun-self-exec",
       verb,
       callerSubsystem,
-      argv: [...options.argv],
+      argv,
       cwd,
       mode: "embedded",
       timestamp: DateTime.formatIso(yield* DateTime.now),
     },
-    options.env,
+    captured.env,
   ).pipe(Effect.flatMap(publishOptionalEvent));
-  const { exitCode } = yield* Effect.promise((signal) => {
-    spawnPromise = spawner.spawn({
-      cmd: [execPath, ...options.argv],
-      env: launcher.env,
-      cwd,
-      signal,
-    });
-    return spawnPromise;
+  const { exitCode } = yield* Effect.tryPromise({
+    try: (signal) => {
+      signal.throwIfAborted();
+      spawnPromise = spawner.spawn({ cmd: [execPath, ...argv], env: launcher.env, cwd, signal });
+      return spawnPromise;
+    },
+    catch: (cause) =>
+      redactIoError(
+        new FileIoError({
+          message: cause instanceof Error ? cause.message : "Could not start embedded Bun.",
+          path: execPath,
+          cause,
+          remediation:
+            "Ensure the embedded Bun executable exists and is executable, then re-run the command.",
+        }),
+      ),
   });
   yield* redactBunSelfEvent(
     {
       _tag: "post-bun-self-exec",
       verb,
       callerSubsystem,
-      argv: [...options.argv],
+      argv,
       cwd,
       mode: "embedded",
       exitCode,
       timestamp: DateTime.formatIso(yield* DateTime.now),
     },
-    options.env,
+    captured.env,
   ).pipe(Effect.flatMap(publishOptionalEvent));
   return { exitCode };
 }, Effect.scoped);

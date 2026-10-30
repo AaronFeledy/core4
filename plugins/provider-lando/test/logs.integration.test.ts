@@ -98,12 +98,14 @@ const makeFakeApi = (...chunks: ReadonlyArray<Uint8Array>) => {
   return { api, calls };
 };
 
+const FileLogSource = LogSource.members[0];
+
 const collectLines = (chunks: Iterable<LogChunk>) => Array.from(chunks, (chunk) => chunk.line);
 
 describe("provider-lando logs", () => {
   test("prefers injected file access over a different helper fallback", async () => {
     // Given: an injected file and a fallback API without helper request transport.
-    const source = Schema.decodeUnknownSync(LogSource)({
+    const source = Schema.decodeUnknownSync(FileLogSource)({
       id: "file",
       path: "/app.log",
       stream: "stdout",

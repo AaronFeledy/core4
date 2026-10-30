@@ -3,7 +3,7 @@ import { Effect, Schema, Stream } from "effect";
 
 import { PortablePath, ToolingTaskInput, type ToolingTaskShape } from "@lando/sdk/schema";
 
-import { compileToolingInvocations, validateToolingArguments } from "../../src/operations/tooling-compile.ts";
+import { compileToolingInvocations } from "../../src/operations/tooling-compile.ts";
 
 const source = { path: "/app/.lando.yml", task: "task" } as const;
 
@@ -74,7 +74,7 @@ describe("compileToolingInvocations", () => {
     const args = ["site:install", "--site-name=Lando Drupal 11", "", "$(touch /tmp/unwanted)", "it's-safe"];
 
     // When
-    const invocations = compile("drush", task, { args });
+    const invocations = compile("drush", task, { input: { _tag: "RawArgv", argv: args } });
 
     // Then
     expect(invocations).toHaveLength(1);
@@ -89,7 +89,9 @@ describe("compileToolingInvocations", () => {
     const task = { cmds: ["composer validate", { cmd: "vendor/bin/drush", service: "worker" }] };
 
     // When
-    const invocations = compile("check", task, { args: ["status", "--field=bootstrap"] });
+    const invocations = compile("check", task, {
+      input: { _tag: "RawArgv", argv: ["status", "--field=bootstrap"] },
+    });
 
     // Then each step is separately addressable rather than collapsed into one invocation
     expect(invocations).toHaveLength(2);
@@ -105,7 +107,7 @@ describe("compileToolingInvocations", () => {
     const task = { cmds: ["composer validate", "vendor/bin/drush"] };
 
     // When
-    const invocations = compile("check", task, { args: ["status"] });
+    const invocations = compile("check", task, { input: { _tag: "RawArgv", argv: ["status"] } });
 
     // Then
     expect(invocations.map((invocation) => invocation.hostSteps)).toEqual([
@@ -119,7 +121,7 @@ describe("compileToolingInvocations", () => {
     const task = { cmd: ["php", "-r", "echo $argv[1];"] };
 
     // When
-    const invocations = compile("php", task, { args: ["two words", ""] });
+    const invocations = compile("php", task, { input: { _tag: "RawArgv", argv: ["two words", ""] } });
 
     // Then
     expect(invocations[0]?.commands).toEqual([["php", "-r", "echo $argv[1];", "two words", ""]]);
@@ -192,7 +194,7 @@ describe("compileToolingInvocations", () => {
     const task = { cmd: 'printf "<%s>\\n" "$@"' };
 
     // When
-    const invocations = compile("printf", task, { args: ["one", "two"] });
+    const invocations = compile("printf", task, { input: { _tag: "RawArgv", argv: ["one", "two"] } });
 
     // Then
     expect(invocations[0]?.commands).toEqual([
@@ -203,7 +205,7 @@ describe("compileToolingInvocations", () => {
   test.each(["echo $1", "echo $9", "echo ${1:-fallback}"])(
     "does not append argv for authored positional form %s",
     (cmd) => {
-      const invocations = compile("positional", { cmd }, { args: ["value"] });
+      const invocations = compile("positional", { cmd }, { input: { _tag: "RawArgv", argv: ["value"] } });
 
       expect(invocations[0]?.commands[0]?.[2]).toBe(cmd);
     },
@@ -254,14 +256,25 @@ describe("compileToolingInvocations", () => {
 
   test("rejects the drupal-scaffold composer.json deletion reproducer", () => {
     // Given
-    const task = { acceptsArguments: false };
+    const task = { cmd: "echo", arguments: false as const };
 
     // When
-    const failure = validateToolingArguments("drupal-scaffold", task, ["composer.json"]);
+    const result = Effect.runSync(
+      Effect.result(
+        compileToolingInvocations({
+          name: "drupal-scaffold",
+          lookupKey: "drupal-scaffold",
+          task,
+          source,
+          input: { _tag: "RawArgv", argv: ["composer.json"] },
+        }),
+      ),
+    );
 
     // Then
-    expect(failure?._tag).toBe("ToolingCompileError");
-    expect(failure?.tool).toBe("drupal-scaffold");
-    expect(failure?.message).toContain("does not accept positional arguments");
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ToolingInputError", tool: "drupal-scaffold" },
+    });
   });
 });

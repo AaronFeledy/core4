@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -159,21 +159,27 @@ describe("audited services compose canonical redaction", () => {
   test("BunSelfRunner redacts published event fields through RedactionService.layer", async () => {
     const events: LandoEvent[] = [];
     const spawner: BunSelfSpawner = { spawn: async () => ({ exitCode: 0 }) };
+    const root = await mkdtemp(join(tmpdir(), `lando-bun-redaction-${REGISTERED_SECRET}-`));
+    try {
+      const cwd = join(root, UNREGISTERED_BEARER);
+      await mkdir(cwd);
+      await Effect.runPromise(
+        bunSelfRun({
+          argv: ["install", VALUE_AND_PATTERN_SOUP],
+          cwd,
+          env: { BUN_AUTH_TOKEN: REGISTERED_SECRET },
+          spawner,
+          execPath: "/bin/bun",
+          callerSubsystem: `caller ${VALUE_AND_PATTERN_SOUP}`,
+          verb: `verb ${VALUE_AND_PATTERN_SOUP}`,
+        }).pipe(Effect.provide(Layer.mergeAll(realRedactionLayer, captureEventLayer(events)))),
+      );
 
-    await Effect.runPromise(
-      bunSelfRun({
-        argv: ["install", VALUE_AND_PATTERN_SOUP],
-        cwd: `/tmp/${REGISTERED_SECRET}/${UNREGISTERED_BEARER}`,
-        env: { BUN_AUTH_TOKEN: REGISTERED_SECRET },
-        spawner,
-        execPath: "/bin/bun",
-        callerSubsystem: `caller ${VALUE_AND_PATTERN_SOUP}`,
-        verb: `verb ${VALUE_AND_PATTERN_SOUP}`,
-      }).pipe(Effect.provide(Layer.mergeAll(realRedactionLayer, captureEventLayer(events)))),
-    );
-
-    expect(events.map((event) => event._tag)).toEqual(["pre-bun-self-exec", "post-bun-self-exec"]);
-    assertFixtureSecretsGone(JSON.stringify(events));
+      expect(events.map((event) => event._tag)).toEqual(["pre-bun-self-exec", "post-bun-self-exec"]);
+      assertFixtureSecretsGone(JSON.stringify(events));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("Downloader redacts lifecycle events with the canonical secrets profile and request tokens", async () => {

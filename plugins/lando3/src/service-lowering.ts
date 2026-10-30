@@ -93,7 +93,7 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
     return mergePatches(
       common,
       nested,
-      { patch: healthPatch, diagnostics: health.diagnostics },
+      { ...health, patch: healthPatch },
       { patch, topLevel, diagnostics },
       overrides,
       hooks,

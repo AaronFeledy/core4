@@ -234,14 +234,14 @@ describe("discoverBunShellScripts", () => {
     });
   });
 
-  test("rejects unsupported front-matter object-form keys (flags:) with NotImplementedError", async () => {
+  test("rejects invalid nested flag types with BunShellScriptFrontMatterError", async () => {
     await withAppRoot(async (root) => {
       await writeScript(
         root,
         "unsupported-flags.bun.sh",
         [
           "# ---",
-          "# desc: flags map is unsupported",
+          "# desc: invalid flag field",
           "# flags:",
           "#   verbose:",
           "#     type: boolean",
@@ -251,8 +251,7 @@ describe("discoverBunShellScripts", () => {
         ].join("\n"),
       );
       const failure = await expectFailureTag(discoverBunShellScripts({ appRoot: root }));
-      expect(failure._tag).toBe("NotImplementedError");
-      expect(failure.commandId).toBe("landofile.parse");
+      expect(failure._tag).toBe("BunShellScriptFrontMatterError");
     });
   });
 

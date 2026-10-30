@@ -71,7 +71,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   const healthcheckRemediation =
     evidence.reason === "not-running" || evidence.reason === "inspect-failed"
       ? ""
-      : " Check the declared listener, probe executable, binding and TLS configuration. An authored healthcheck replaces startup readiness and ongoing health; healthcheck: false disables both.";
+      : " Check the readiness executable, declared listener, binding and TLS configuration. Configure readiness for lifecycle checks and healthcheck for ongoing native health. Disable them independently with readiness: false or healthcheck: false.";
   return yield* Effect.fail(
     new ServiceNotReadyError({
       message: `Service ${name} is not ready (${evidence.reason}).${target.plan.extensions["@lando/core/scratch"] === undefined ? " The applied app has been retained." : ""}`,

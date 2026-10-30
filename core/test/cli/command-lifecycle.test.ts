@@ -427,3 +427,20 @@ describe("generic CLI command lifecycle", () => {
     expect(ordering).toEqual(["cli-app:start-init", "stream-frame", "cli-app:start-run", "result-frame"]);
   });
 });
+
+for (const signal of ["SIGINT", "SIGTERM"] as const)
+  test(`lifecycle reads ${signal} interruption status after command aborts`, async () => {
+    const harness = makeRecordingHarness();
+    const controller = new AbortController();
+    await runWithRendererHandling(
+      Effect.sync(() => controller.abort(signal)).pipe(Effect.andThen(Effect.never)),
+      { ...optionsFor(harness), signal: controller.signal },
+    );
+    const expectedCode = signal === "SIGINT" ? 130 : 143;
+    expect(harness.exitCodes).toEqual([expectedCode]);
+    expect(harness.events.at(-1)).toMatchObject({
+      _tag: "cli-app:start-error",
+      exitCode: expectedCode,
+      failureTag: "Interrupted",
+    });
+  });

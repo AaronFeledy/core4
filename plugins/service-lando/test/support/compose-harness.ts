@@ -96,6 +96,7 @@ export const composeServicePlan = async (args: ComposeServicePlanArgs): Promise<
       appName: args.appName,
       appRoot: args.appRoot,
       normalizedConfig: resolution.normalizedConfig,
+      resolutionMetadata: resolution.metadata,
       features,
       host: args.host,
     }),

@@ -223,7 +223,9 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           );
 
           const result = await Effect.runPromise(
-            runTooling({ name: "go", args: ["version"] }).pipe(Effect.provide(toolingLayer)),
+            runTooling({ name: "go", input: { _tag: "RawArgv", argv: ["version"] } }).pipe(
+              Effect.provide(toolingLayer),
+            ),
           );
 
           expect(result.tool).toBe("go");
