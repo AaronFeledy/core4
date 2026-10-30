@@ -3,19 +3,19 @@
   "majors": {
     "9": {
       "version": "9.0.123",
-      "indexDigest": "sha256:c50ae64e4e1ce2a8521ebf97fb818fa3f1d9eeaeb8639100bd6452c84d7181b4",
+      "indexDigest": "sha256:4a270d7ffbca171edb2e127e78de428619e1a6814d883c5c7f98e27aca264d35",
       "upstreamCommit": "110077ac321964192c316e5836d4285f096e9d05",
       "configSha256": "61a387d09173adabe22f0f6af7589304d666be3dc78b95280c2e73e02f0fbe90"
     },
     "10": {
       "version": "10.1.61",
-      "indexDigest": "sha256:84d868a604a41ad44abeefad5ce62af225d3cf6e11fefe4753f993d9e41cac5a",
+      "indexDigest": "sha256:3d44bc001dd6f281b967007f76799ff23496506c051cee14980e94604d3e95ea",
       "upstreamCommit": "ed89280ad31d8dfcac3a3b498d759f6f8b5eb097",
       "configSha256": "5771ecf807db1a8390f6918b55f20e8565c0c8252f23ddde257e091e5a31a2ff"
     },
     "11": {
       "version": "11.0.27",
-      "indexDigest": "sha256:41f51387cadc55ef7d2808a088c00d2f2435e2c2c88f863c4a357cd03e40e03a",
+      "indexDigest": "sha256:ee05c9b532b75b0de6155becbe072b3fab62727de44b2251bafd5bdb614d0dc0",
       "upstreamCommit": "52f3b364e5882a5dbcfc42cb8313a7c2ae532c64",
       "configSha256": "e5a951708e88609f1f2ba093944b358d204c651147c1e4db575b0d9306139482"
     }
