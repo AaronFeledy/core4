@@ -11,7 +11,6 @@ import {
   claimOpenTuiDegradationNotice,
   recordOpenTuiSubstrateFailure,
 } from "./opentui/substrate-availability.ts";
-import { capabilitiesForIO } from "./renderer-capabilities.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 import { type SessionSubstrate, commitOpenSession, routeSessionEvent } from "./task-tree-session-consume.ts";
 import { type TaskTreeSession, idleSession, shouldFlushSessionOnDispose } from "./task-tree-session.ts";
@@ -45,7 +44,7 @@ export const layer = (
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
   raiseInterrupt: () => void,
   prefetchLiveRegion: () => void,
-  color = capabilitiesForIO(io).color,
+  color: boolean,
 ): Layer.Layer<never, never, EventService | TranscriptTailReader> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -62,7 +61,7 @@ export const layer = (
       let handleResize = (_width: number, _height: number): void => {};
       let unsubscribe: (() => void) | undefined;
       let session: TaskTreeSession = idleSession();
-      const toolingStatus = createToolingStatusPainter(undefined, () => closing, color);
+      const toolingStatus = createToolingStatusPainter(color, undefined, () => closing);
       let active:
         | (SessionSubstrate & { readonly dispose: () => void; readonly hasTasks: () => boolean })
         | undefined;

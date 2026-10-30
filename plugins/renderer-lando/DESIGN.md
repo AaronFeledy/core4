@@ -25,7 +25,7 @@ frames against golden fixtures; agents consume undecorated plain or JSON output.
 
 ## 2. Color
 
-ANSI SGR tokens from `csi` in `task-tree-frame.ts`. Terminal default background
+ANSI SGR tokens from `@lando/renderer/palette`; internal painters require an explicit palette or color decision. Terminal default background
 and default foreground. Status colors are the standard 16-color palette only:
 red 31, green 32, yellow 33, cyan 36, dim 2. No RGB or custom status palette.
 `csi.amber` is the local name for standard yellow (33). Bright magenta 95 is
@@ -48,7 +48,7 @@ Rules:
 
 - Never introduce a color outside this table.
 - Never communicate state by color alone. Glyph or compact word first.
-- A non-empty host `NO_COLOR` (including `0`) or `TERM=dumb` suppresses chromatic SGR without changing glyphs, text, or layout. `TERM=dumb` also keeps narration append-only. Child payload bytes are unchanged. The OpenTUI prompt theme does not follow the opt-out yet.
+- A non-empty host `NO_COLOR` (including `0`) or `TERM=dumb` suppresses chromatic SGR without changing glyphs, text, or layout. `TERM=dumb` also keeps narration append-only. Child payload bytes are unchanged. OpenTUI prompts use terminal-default foreground/background under the opt-out, retain the `▶` selection indicator and `▬` confirm underline, and preserve the terminal's cursor color. Preview, search, and validation text follow the same per-driver theme.
 - Title text is bold default, not pink. Footer copy is dim default, not pink.
 - Pink is rail chrome, the active moving spinner glyph, and the opt-in brand icon. It is not a status
   color and must not paint labels, static `·`, wrap continuations, durations,

@@ -18,7 +18,7 @@ import {
   wrapFieldToWidth,
   wrapToWidth,
 } from "./console-layout.ts";
-import type { FormatSummaryOptions, SummaryDocument, SummaryRow, SummarySection } from "./summary.ts";
+import type { SummaryDocument, SummaryPaintOptions, SummaryRow, SummarySection } from "./summary.ts";
 
 const BODY_INDENT = 2;
 const FIELD_INDENT = 4;
@@ -34,14 +34,14 @@ const quietRowHead = (row: SummaryRow): string => {
 
 const composeQuietRowStyle = (
   row: SummaryRow,
-  options: FormatSummaryOptions,
+  options: SummaryPaintOptions,
 ): ((line: string) => string) | undefined => {
   const tone = row.tone === undefined || isOkTone(row.tone) ? undefined : row.tone;
   const muted = row.muted === true;
   const href = options.hyperlinks === false ? undefined : row.href;
   if (tone === undefined && !muted && href === undefined) return undefined;
   return (line: string) => {
-    const toned = tone === undefined ? line : paintTone(tone, line, options.color);
+    const toned = tone === undefined ? line : paintTone(tone, line, options.palette);
     const dimmed = muted ? dimText(toned) : toned;
     return href === undefined ? dimmed : hyperlink(dimmed, href);
   };
@@ -71,7 +71,7 @@ const pushRemedy = (lines: string[], remedy: string, width: number): void => {
 const renderSection = (
   section: SummarySection,
   width: number,
-  options: FormatSummaryOptions,
+  options: SummaryPaintOptions,
 ): ReadonlyArray<string> => {
   const lines: string[] = [];
   pushWrapped(lines, section.title, 0, width, dimText);
@@ -100,10 +100,7 @@ const renderSection = (
   return lines;
 };
 
-export const formatPreparedQuietSummary = (
-  doc: SummaryDocument,
-  options: FormatSummaryOptions = {},
-): string => {
+export const formatPreparedQuietSummary = (doc: SummaryDocument, options: SummaryPaintOptions): string => {
   const width = resolveSummaryWidth(options.columns);
   const groups: Array<ReadonlyArray<string>> = [];
 

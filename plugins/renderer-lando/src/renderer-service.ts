@@ -85,7 +85,7 @@ export const makeLandoService = (
 
 export const makeLineModeConsumer = (
   io: RendererNarrationIO,
-  color = true,
+  color: boolean,
 ): Layer.Layer<never, never, EventService> =>
   layerEventConsumer((event) => {
     const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns, color);

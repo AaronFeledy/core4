@@ -29,6 +29,7 @@ import {
   wrapToWidth,
 } from "./console-layout.ts";
 
+import { type TerminalPalette, terminalPalette } from "./palette.ts";
 import { formatPreparedQuietSummary } from "./summary-quiet.ts";
 import { formatPreparedRailSummary } from "./summary-rail.ts";
 
@@ -92,6 +93,12 @@ export interface FormatSummaryOptions {
   readonly columns?: number | undefined;
   /** Applied to arbitrary document text before paint so SGR is never redacted. */
   readonly redact?: ((text: string) => string) | undefined;
+}
+
+export interface SummaryPaintOptions {
+  readonly palette: TerminalPalette;
+  readonly hyperlinks: boolean;
+  readonly columns: number | undefined;
 }
 
 /** Redact arbitrary summary text, retaining tones and finite public command ids. */
@@ -158,14 +165,14 @@ const rowHead = (row: SummaryRow): string => {
 
 const composeRowStyle = (
   row: SummaryRow,
-  options: FormatSummaryOptions,
+  options: SummaryPaintOptions,
 ): ((line: string) => string) | undefined => {
   const tone = row.tone;
   const muted = row.muted === true;
   const href = options.hyperlinks === false ? undefined : row.href;
   if (tone === undefined && !muted && href === undefined) return undefined;
   return (line: string) => {
-    const toned = tone === undefined ? line : paintTone(tone, line, options.color);
+    const toned = tone === undefined ? line : paintTone(tone, line, options.palette);
     const dimmed = muted ? dimText(toned) : toned;
     return href === undefined ? dimmed : hyperlink(dimmed, href);
   };
@@ -173,7 +180,9 @@ const composeRowStyle = (
 
 export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
   const prepared = prepareSummaryDocument(doc, options);
-  const detailStyle = (line: string) => styleBoxBottom(line, options.color);
+  const palette = terminalPalette(options.color !== false);
+  const paint = { palette, hyperlinks: options.hyperlinks !== false, columns: options.columns };
+  const detailStyle = (line: string) => styleBoxBottom(line, palette);
   const width = resolveSummaryWidth(options.columns);
   const innerWidth = width - 4;
   const lines: string[] = [];
@@ -181,14 +190,14 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
   const pushBody = (raw: string, indent: number, style: ((line: string) => string) | undefined): void => {
     const pad = " ".repeat(indent);
     for (const segment of wrapToWidth(raw, Math.max(1, innerWidth - indent))) {
-      lines.push(boxBody(`${pad}${segment}`, width, style, options.color));
+      lines.push(boxBody(`${pad}${segment}`, width, style, palette));
     }
   };
 
-  lines.push(styleBoxTop(boxTop(headerTitle(prepared), width), options.color));
+  lines.push(styleBoxTop(boxTop(headerTitle(prepared), width), palette));
 
   for (const section of prepared.sections) {
-    lines.push(styleBoxSeparator(boxSeparator(sectionTitle(section), width), options.color));
+    lines.push(styleBoxSeparator(boxSeparator(sectionTitle(section), width), palette));
     if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0))
       pushBody("(none)", 2, undefined);
     const labelWidth = fieldLabelWidth(
@@ -196,11 +205,11 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
       innerWidth - 2,
     );
     for (const row of section.rows) {
-      pushBody(rowHead(row), 0, composeRowStyle(row, options));
+      pushBody(rowHead(row), 0, composeRowStyle(row, paint));
       if (row.fields !== undefined && row.fields.length > 0) {
         for (const field of row.fields) {
           for (const segment of wrapFieldToWidth(field.label, field.value, labelWidth, innerWidth - 2)) {
-            lines.push(boxBody(`  ${segment}`, width, detailStyle, options.color));
+            lines.push(boxBody(`  ${segment}`, width, detailStyle, palette));
           }
         }
       }
@@ -217,23 +226,29 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
   }
 
   if (prepared.nextSteps !== undefined && prepared.nextSteps.length > 0) {
-    lines.push(styleBoxSeparator(boxSeparator("next steps", width), options.color));
+    lines.push(styleBoxSeparator(boxSeparator("next steps", width), palette));
     for (const step of prepared.nextSteps) pushBody(`• ${step}`, 2, undefined);
   }
 
-  lines.push(
-    boxBottom(prepared.footer ?? "", width, (line) => styleBoxFooter(line, options.color), options.color),
-  );
+  lines.push(boxBottom(prepared.footer ?? "", width, (line) => styleBoxFooter(line, palette), palette));
   return lines.join("\n");
 };
 
 export const formatQuietSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
   const prepared = prepareSummaryDocument(doc, options);
-  return formatPreparedQuietSummary(prepared, options);
+  return formatPreparedQuietSummary(prepared, {
+    palette: terminalPalette(options.color !== false),
+    hyperlinks: options.hyperlinks !== false,
+    columns: options.columns,
+  });
 };
 
 /** Task-tree rail framing for a static report printed under a live tree. */
 export const formatRailSummary = (doc: SummaryDocument, options: FormatSummaryOptions = {}): string => {
   const prepared = prepareSummaryDocument(doc, options);
-  return formatPreparedRailSummary(prepared, options);
+  return formatPreparedRailSummary(prepared, {
+    palette: terminalPalette(options.color !== false),
+    hyperlinks: options.hyperlinks !== false,
+    columns: options.columns,
+  });
 };

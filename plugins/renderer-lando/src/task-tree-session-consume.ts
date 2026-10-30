@@ -11,7 +11,7 @@ import {
 } from "./task-tree-session.ts";
 
 export type SessionSubstrate = {
-  readonly color?: boolean;
+  readonly color: boolean;
   readonly consume: (event: LandoEvent) => Effect.Effect<void>;
   readonly openSession: (commandId: string) => void;
   readonly closeSession: () => ReadonlyArray<string>;

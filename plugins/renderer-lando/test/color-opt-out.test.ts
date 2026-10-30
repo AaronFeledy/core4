@@ -4,6 +4,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import { DateTime } from "effect";
 import { renderLandoLine } from "../src/format.ts";
+import { capabilitiesForIO } from "../src/renderer-capabilities.ts";
 import { makeTaskTreeSubstrateHandler } from "../src/task-tree-substrate-handler.ts";
 import { TREE_FIXTURES } from "./frame-fixtures.ts";
 
@@ -18,19 +19,23 @@ for (const fixture of TREE_FIXTURES) {
     const render = async (noColor: boolean) => {
       const frames: string[] = [];
       const io = createBufferedRendererIO({ isTTY: true, noColor, terminalColumns: 40 });
-      const handler = makeTaskTreeSubstrateHandler(io, {
-        setFooter: (lines) => {
-          frames.push(lines.join("\n"));
+      const handler = makeTaskTreeSubstrateHandler(
+        io,
+        {
+          setFooter: (lines) => {
+            frames.push(lines.join("\n"));
+          },
+          clearFooter: () => {},
+          commitScrollback: () => {},
+          rememberScrollback: () => {},
+          requestLive: () => {},
+          dropLive: () => {},
+          enterFullTail: () => {},
+          exitFullTail: async () => {},
+          dispose: async () => {},
         },
-        clearFooter: () => {},
-        commitScrollback: () => {},
-        rememberScrollback: () => {},
-        requestLive: () => {},
-        dropLive: () => {},
-        enterFullTail: () => {},
-        exitFullTail: async () => {},
-        dispose: async () => {},
-      });
+        capabilitiesForIO(io).color,
+      );
       try {
         for (const event of fixture.events) await handler.consume(event);
         return frames.join("\n");
@@ -54,7 +59,7 @@ test("warning notices preserve wrapped text when color is disabled", () => {
     body: "A warning that wraps across several lines in a narrow terminal.",
     timestamp: DateTime.makeUnsafe("2026-06-18T12:00:00.000Z"),
   });
-  const colored = renderLandoLine(event, true, 30);
+  const colored = renderLandoLine(event, true, 30, true);
   // When
   const monochrome = renderLandoLine(event, true, 30, false);
   // Then

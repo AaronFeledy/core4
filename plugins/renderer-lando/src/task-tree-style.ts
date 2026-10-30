@@ -1,7 +1,6 @@
+import { type TerminalPalette, csi, terminalPalette } from "@lando/renderer/palette";
 import {
   type BodyStyleSegment,
-  csi,
-  framePalette,
   styleBodyFrame,
   styleBodyFrameSegments,
   styleBottomFrame,
@@ -37,7 +36,7 @@ const isRunningGlyphRow = (line: string): boolean => {
 const isSettledGlyphRow = (line: string): boolean =>
   SETTLED_GLYPHS.some((glyph) => line.startsWith(`│ ${glyph} `));
 
-const selectBodyStyle = (line: string, csi: ReturnType<typeof framePalette>): BodyStyle | undefined => {
+const selectBodyStyle = (line: string, csi: TerminalPalette): BodyStyle | undefined => {
   if (line.startsWith(`│ ${INFO_MARKER} `)) return DIM_DURATION;
   if (line.includes("✗")) return { start: csi.red, end: csi.reset };
   if (line.includes("  cached")) return { start: csi.cyan, end: csi.reset };
@@ -71,7 +70,7 @@ const completedBodySegments = (content: string, style: BodyStyle): ReadonlyArray
 const runningBodySegments = (
   content: string,
   style: BodyStyle,
-  csi: ReturnType<typeof framePalette>,
+  csi: TerminalPalette,
 ): ReadonlyArray<BodyStyleSegment> => {
   if (!content.startsWith(" ")) return [{ text: content, start: style.start, end: style.end }];
   const rest = content.slice(1);
@@ -85,19 +84,14 @@ const runningBodySegments = (
   ];
 };
 
-const paintBody = (
-  line: string,
-  style: BodyStyle,
-  settled: boolean,
-  csi: ReturnType<typeof framePalette>,
-): string => {
+const paintBody = (line: string, style: BodyStyle, settled: boolean, csi: TerminalPalette): string => {
   const content = bodyContent(line);
   const segments = settled ? completedBodySegments(content, style) : runningBodySegments(content, style, csi);
   return styleBodyFrameSegments(line, segments, csi);
 };
 
-export const styleFrame = (logical: ReadonlyArray<string>, color = true): ReadonlyArray<string> => {
-  const csi = framePalette(color);
+export const styleFrame = (logical: ReadonlyArray<string>, color: boolean): ReadonlyArray<string> => {
+  const csi = terminalPalette(color);
   let rowStyle: BodyStyle | undefined;
   let settledRow = false;
   return logical.map((line) => {

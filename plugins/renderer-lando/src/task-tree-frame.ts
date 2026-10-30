@@ -4,24 +4,8 @@
  * boundaries via the shared primitive, so CJK and emoji content stays readable
  * at any width — including below 60 columns.
  */
+import type { TerminalPalette } from "@lando/renderer/palette";
 import { displayWidth, graphemes, takeWidth, truncateToWidth } from "./terminal-width.ts";
-
-const ESC = String.fromCharCode(27);
-
-export const csi = {
-  dim: `${ESC}[2m`,
-  dimReset: `${ESC}[22m`,
-  bold: `${ESC}[1m`,
-  reset: `${ESC}[0m`,
-  cyan: `${ESC}[36m`,
-  pink: `${ESC}[95m`,
-  green: `${ESC}[32m`,
-  amber: `${ESC}[33m`,
-  red: `${ESC}[31m`,
-} as const;
-
-export const framePalette = (color: boolean) =>
-  color ? csi : { ...csi, cyan: "", pink: "", green: "", amber: "", red: "" };
 
 const DEFAULT_TERMINAL_COLUMNS = 80;
 
@@ -147,7 +131,7 @@ export type BodyStyleSegment = {
 
 const bodyChrome = (
   line: string,
-  csi: ReturnType<typeof framePalette>,
+  csi: TerminalPalette,
 ): { readonly rail: string; readonly content: string; readonly trailingFrame: string } => {
   const hasTrailingFrame = line.length > 1 && line.endsWith("│");
   return {
@@ -161,7 +145,7 @@ export const styleBodyFrame = (
   line: string,
   styleStart: string,
   styleEnd: string,
-  csi: ReturnType<typeof framePalette> = framePalette(true),
+  csi: TerminalPalette,
 ): string => {
   const { content } = bodyChrome(line, csi);
   return styleBodyFrameSegments(line, [{ text: content, start: styleStart, end: styleEnd }], csi);
@@ -170,17 +154,14 @@ export const styleBodyFrame = (
 export const styleBodyFrameSegments = (
   line: string,
   segments: ReadonlyArray<BodyStyleSegment>,
-  csi: ReturnType<typeof framePalette> = framePalette(true),
+  csi: TerminalPalette,
 ): string => {
   const { rail, trailingFrame } = bodyChrome(line, csi);
   const painted = segments.map((segment) => `${segment.start}${segment.text}${segment.end}`).join("");
   return `${csi.pink}${rail}${csi.reset}${painted}${trailingFrame}`;
 };
 
-export const styleBottomFrame = (
-  line: string,
-  csi: ReturnType<typeof framePalette> = framePalette(true),
-): string => {
+export const styleBottomFrame = (line: string, csi: TerminalPalette): string => {
   let trailingFrameStart = line.length;
   if (line.endsWith("╯")) {
     trailingFrameStart -= 1;

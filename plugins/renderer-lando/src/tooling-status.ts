@@ -21,7 +21,7 @@ const formatQuietDuration = (durationMs: number): string => {
 export const formatToolingStatusLines = (
   tool: string,
   elapsedMs: number,
-  color = true,
+  color: boolean,
 ): ReadonlyArray<string> => styleFrame([`╰─ executing ${tool}${formatQuietDuration(elapsedMs)}`], color);
 
 const parentIdOf = (event: LandoEvent): string | undefined => {
@@ -48,9 +48,9 @@ export type ToolingStatusPainter = {
 };
 
 export const createToolingStatusPainter = (
+  color: boolean,
   now: () => number = () => DateTime.toEpochMillis(DateTime.nowUnsafe()),
   isClosing: () => boolean = () => false,
-  color = true,
 ): ToolingStatusPainter => {
   let timer: ReturnType<typeof setInterval> | undefined;
   let startedAt = 0;

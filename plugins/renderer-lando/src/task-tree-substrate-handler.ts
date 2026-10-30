@@ -2,7 +2,6 @@ import type { RendererNarrationIO } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { isRenderableTaskTreeEvent, renderLandoLine } from "./format.ts";
-import { capabilitiesForIO } from "./renderer-capabilities.ts";
 import { TaskTreeCollection } from "./task-tree-collection.ts";
 
 export interface LiveRegionHandle {
@@ -21,7 +20,7 @@ export interface LiveRegionHandle {
 export const makeTaskTreeSubstrateHandler = (
   io: RendererNarrationIO,
   controller: LiveRegionHandle,
-  color = capabilitiesForIO(io).color,
+  color: boolean,
 ) => {
   let terminalColumns = io.terminalColumns;
   let terminalRows = io.terminalRows;

@@ -9,28 +9,14 @@
  * result summaries that are rendered once with no cursor accounting.
  */
 
+import { type TerminalPalette, csi } from "./palette.ts";
+
 const ESC = String.fromCharCode(27);
 const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
 const osc8Pattern = new RegExp(`${ESC}\\]8;.*?(?:${ESC}\\\\|\\x07)`, "g");
 
 /** Strip CSI/SGR and OSC 8 sequences so width math sees only visible glyphs. */
 export const stripAnsi = (text: string): string => text.replace(osc8Pattern, "").replace(ansiPattern, "");
-
-const csi = {
-  reset: `${ESC}[0m`,
-  bold: `${ESC}[1m`,
-  dim: `${ESC}[2m`,
-  dimReset: `${ESC}[22m`,
-  cyan: `${ESC}[36m`,
-  pink: `${ESC}[95m`,
-  green: `${ESC}[32m`,
-  amber: `${ESC}[33m`,
-  red: `${ESC}[31m`,
-  defaultFg: `${ESC}[39m`,
-} as const;
-
-const monochromeCsi = { ...csi, cyan: "", pink: "", green: "", amber: "", red: "" } as const;
-const palette = (color: boolean) => (color ? csi : monochromeCsi);
 
 export const hasC0OrDel = (value: string): boolean => {
   for (const ch of value) {
@@ -383,10 +369,9 @@ export const boxTop = (title: string, width: number): string => capLine("╭─"
 export const boxBottom = (
   title: string,
   width: number,
-  style?: (content: string) => string,
-  color = true,
+  style: ((content: string) => string) | undefined,
+  csi: TerminalPalette,
 ): string => {
-  const csi = palette(color);
   const innerBudget = Math.max(1, width - displayWidth("╰─") - displayWidth("╯") - 2);
   const fitted = truncateToWidth(title, innerBudget);
   const content = style === undefined ? ` ${fitted} ` : style(` ${fitted} `);
@@ -401,10 +386,9 @@ export const boxSeparator = (title: string, width: number): string => capLine("�
 export const boxBody = (
   text: string,
   width: number,
-  style?: (content: string) => string,
-  color = true,
+  style: ((content: string) => string) | undefined,
+  csi: TerminalPalette,
 ): string => {
-  const csi = palette(color);
   const innerWidth = Math.max(1, width - 4);
   const fitted = truncateToWidth(text, innerWidth);
   const padding = repeat(" ", innerWidth - displayWidth(fitted));
@@ -423,13 +407,13 @@ const TONE_CHIP_TEXT: Record<SummaryTone, string> = {
   skipped: "SKIP",
 };
 
-const TONE_COLOR: Record<SummaryTone, string> = {
-  ok: csi.green,
-  warn: csi.amber,
-  error: csi.red,
-  info: csi.cyan,
-  pending: csi.amber,
-  skipped: csi.dim,
+const TONE_COLOR: Record<SummaryTone, keyof TerminalPalette> = {
+  ok: "green",
+  warn: "amber",
+  error: "red",
+  info: "cyan",
+  pending: "amber",
+  skipped: "dim",
 };
 
 /**
@@ -530,19 +514,19 @@ export const wrapFieldToWidth = (
 };
 
 /** ANSI accents for the framed surfaces, mirroring the task-tree cockpit palette. */
-export const styleBoxTop = (line: string, color = true): string =>
-  `${csi.bold}${palette(color).pink}${line}${csi.reset}`;
-export const styleBoxBottom = (line: string, color = true): string =>
-  `${palette(color).cyan}${line}${csi.reset}`;
-export const styleBoxFooter = (line: string, color = true): string =>
-  `${csi.dim}${palette(color).pink}${line}${csi.dimReset}${csi.reset}`;
-export const styleBoxSeparator = (line: string, color = true): string =>
-  `${palette(color).pink}${line}${csi.reset}`;
+export const styleBoxTop = (line: string, csi: TerminalPalette): string =>
+  `${csi.bold}${csi.pink}${line}${csi.reset}`;
+export const styleBoxBottom = (line: string, csi: TerminalPalette): string =>
+  `${csi.cyan}${line}${csi.reset}`;
+export const styleBoxFooter = (line: string, csi: TerminalPalette): string =>
+  `${csi.dim}${csi.pink}${line}${csi.dimReset}${csi.reset}`;
+export const styleBoxSeparator = (line: string, csi: TerminalPalette): string =>
+  `${csi.pink}${line}${csi.reset}`;
 export const dimText = (text: string): string => `${csi.dim}${text}${csi.dimReset}${csi.reset}`;
 
 /** Color a whole line by tone; skipped/pending read dim so the chip text leads. */
-export const paintTone = (tone: SummaryTone, line: string, enabled = true): string => {
-  const color = enabled || tone === "skipped" ? TONE_COLOR[tone] : "";
+export const paintTone = (tone: SummaryTone, line: string, csi: TerminalPalette): string => {
+  const color = csi[TONE_COLOR[tone]];
   return color === csi.dim ? `${csi.dim}${line}${csi.dimReset}${csi.reset}` : `${color}${line}${csi.reset}`;
 };
 
@@ -563,23 +547,21 @@ const TONE_GLYPH: Record<SummaryTone, string> = {
 export const toneGlyph = (tone: SummaryTone): string => TONE_GLYPH[tone];
 
 /** Pink rail/frame chrome shared with the task tree (`╭─`, `│`, `├─`, `╰─`). */
-export const paintRail = (text: string, color = true): string => `${palette(color).pink}${text}${csi.reset}`;
+export const paintRail = (text: string, csi: TerminalPalette): string => `${csi.pink}${text}${csi.reset}`;
 
 /** Bold text in the tone color, for a summary title. */
-export const paintToneBold = (tone: SummaryTone, text: string, color = true): string =>
-  `${csi.bold}${color || tone === "skipped" ? TONE_COLOR[tone] : ""}${text}${csi.reset}`;
+export const paintToneBold = (tone: SummaryTone, text: string, csi: TerminalPalette): string =>
+  `${csi.bold}${csi[TONE_COLOR[tone]]}${text}${csi.reset}`;
 
 /** Cyan text, the palette color for commands. */
-export const cyanText = (text: string, color = true): string =>
-  `${palette(color).cyan}${text}${csi.defaultFg}`;
+export const cyanText = (text: string, csi: TerminalPalette): string => `${csi.cyan}${text}${csi.defaultFg}`;
 
 /**
  * Paint backtick-quoted spans cyan across already-wrapped lines. A span that
  * wraps stays painted on its continuation line; backticks stay visible so the
  * text still reads as code without color.
  */
-export const paintCodeSpans = (lines: ReadonlyArray<string>, color = true): ReadonlyArray<string> => {
-  const csi = palette(color);
+export const paintCodeSpans = (lines: ReadonlyArray<string>, csi: TerminalPalette): ReadonlyArray<string> => {
   let inCode = false;
   return lines.map((line) => {
     let out = inCode ? csi.cyan : "";
