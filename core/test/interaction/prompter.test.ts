@@ -5,7 +5,7 @@ import { type Context, Effect, Layer } from "effect";
 
 import { InteractionService, Renderer } from "@lando/sdk/services";
 
-import { makeInteractionPrompter } from "../../src/interaction/prompter.ts";
+import { makeInteractionPrompter, makePromiseInteractionPrompter } from "../../src/interaction/prompter.ts";
 import { makeInteractionService } from "../../src/interaction/service.ts";
 
 type RendererService = Context.Service.Shape<typeof Renderer>;
@@ -59,7 +59,7 @@ const buildPrompter = (
   if (renderer !== undefined) {
     layer = Layer.merge(layer, Layer.succeed(Renderer, Renderer.of(renderer)));
   }
-  return Effect.runPromise(makeInteractionPrompter.pipe(Effect.provide(layer)));
+  return Effect.runPromise(makeInteractionPrompter().pipe(Effect.provide(layer)));
 };
 
 describe("makeInteractionPrompter — Promise adapter over InteractionService", () => {
@@ -91,6 +91,40 @@ describe("makeInteractionPrompter — Promise adapter over InteractionService", 
     const ok = await prompter.confirm({ message: "Continue?", name: "go", default: true, yes: true });
     expect(ok).toBe(true);
   });
+
+  test.each([false, true])(
+    "invocation abort cancels a pending confirmation (captured=%s)",
+    async (captured) => {
+      const waitingForInput = Promise.withResolvers<void>();
+      const controller = new AbortController();
+      let released = false;
+      const service = InteractionService.of({
+        ...makeInteractionService(),
+        confirm: () =>
+          Effect.sync(() => waitingForInput.resolve()).pipe(
+            Effect.andThen(Effect.never),
+            Effect.ensuring(
+              Effect.sync(() => {
+                released = true;
+              }),
+            ),
+          ),
+      });
+      const prompter = captured
+        ? await Effect.runPromise(
+            makeInteractionPrompter(controller.signal).pipe(
+              Effect.provideService(InteractionService, InteractionService.of(service)),
+            ),
+          )
+        : makePromiseInteractionPrompter(service, controller.signal);
+
+      const confirmation = prompter.confirm({ name: "create", message: "Create files?", interactive: true });
+      await waitingForInput.promise;
+      controller.abort();
+      await expect(confirmation).rejects.toMatchObject({ _tag: "InteractionCancelledError" });
+      expect(released).toBe(true);
+    },
+  );
 
   test("a captured Renderer receives prompt chrome on stderr only", async () => {
     const renderer = capturingRenderer();
