@@ -53,7 +53,7 @@ const tty: RenderContext = {
   format: "text",
   isTTY: true,
   columns: 80,
-  env: { TERM: "xterm-256color" },
+  noColor: false,
 };
 const renderers = {
   info: (ctx: RenderContext) => renderInfoAppResult(info, ctx),

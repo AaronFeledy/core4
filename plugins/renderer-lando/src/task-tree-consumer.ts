@@ -11,6 +11,7 @@ import {
   claimOpenTuiDegradationNotice,
   recordOpenTuiSubstrateFailure,
 } from "./opentui/substrate-availability.ts";
+import { capabilitiesForIO } from "./renderer-capabilities.ts";
 import { outputJournalFor } from "./renderer-output-journal.ts";
 import { type SessionSubstrate, commitOpenSession, routeSessionEvent } from "./task-tree-session-consume.ts";
 import { type TaskTreeSession, idleSession, shouldFlushSessionOnDispose } from "./task-tree-session.ts";
@@ -44,6 +45,7 @@ export const layer = (
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
   raiseInterrupt: () => void,
   prefetchLiveRegion: () => void,
+  color = capabilitiesForIO(io).color,
 ): Layer.Layer<never, never, EventService | TranscriptTailReader> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -60,13 +62,13 @@ export const layer = (
       let handleResize = (_width: number, _height: number): void => {};
       let unsubscribe: (() => void) | undefined;
       let session: TaskTreeSession = idleSession();
-      const toolingStatus = createToolingStatusPainter(undefined, () => closing);
+      const toolingStatus = createToolingStatusPainter(undefined, () => closing, color);
       let active:
         | (SessionSubstrate & { readonly dispose: () => void; readonly hasTasks: () => boolean })
         | undefined;
 
       const line = (event: LandoEvent): void => {
-        const text = renderLandoLine(event, true, io.terminalColumns);
+        const text = renderLandoLine(event, true, io.terminalColumns, color);
         if (text !== null) journal.writeStderr(`${text}\n`);
       };
       const reportDegradation = Effect.suspend(() => {
@@ -116,7 +118,7 @@ export const layer = (
           closeSession,
           hasTasks,
           dispose,
-        } = makeTaskTreeSubstrateHandler(io, controller);
+        } = makeTaskTreeSubstrateHandler(io, controller, color);
         const transcriptTail = yield* makeTranscriptTailController({
           reader: transcriptReader,
           viewModel,
@@ -227,6 +229,7 @@ export const layer = (
           });
         }
         active = {
+          color,
           controller,
           consume,
           dispose,

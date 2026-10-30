@@ -32,11 +32,11 @@ const layerEventConsumer = (handle: (event: LandoEvent) => void): Layer.Layer<ne
 
 const nowTimestamp = (): DateTime.Utc => DateTime.nowUnsafe();
 
-const makeMessageContract = (io: RendererNarrationIO) => {
+const makeMessageContract = (io: RendererNarrationIO, color: boolean) => {
   const output = outputJournalFor(io);
   const emit = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
-      const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns);
+      const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns, color);
       if (line !== null) output.writeStderr(`${line}\n`);
     });
   return {
@@ -68,7 +68,7 @@ export const makeLandoService = (
         get capabilities() {
           return getCapabilities();
         },
-        message: makeMessageContract(io),
+        message: makeMessageContract(io, getCapabilities().color),
         output: {
           stdout: (chunk: string | Uint8Array) =>
             Effect.sync(() =>
@@ -83,8 +83,11 @@ export const makeLandoService = (
     })(),
   );
 
-export const makeLineModeConsumer = (io: RendererNarrationIO): Layer.Layer<never, never, EventService> =>
+export const makeLineModeConsumer = (
+  io: RendererNarrationIO,
+  color = true,
+): Layer.Layer<never, never, EventService> =>
   layerEventConsumer((event) => {
-    const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns);
+    const line = renderLandoLine(event, io.isTTY === true, io.terminalColumns, color);
     if (line !== null) io.writeStderr(`${line}\n`);
   });

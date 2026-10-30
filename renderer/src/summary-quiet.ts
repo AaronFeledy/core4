@@ -18,7 +18,7 @@ import {
   wrapFieldToWidth,
   wrapToWidth,
 } from "./console-layout.ts";
-import type { SummaryDocument, SummaryRow, SummarySection } from "./summary.ts";
+import type { FormatSummaryOptions, SummaryDocument, SummaryRow, SummarySection } from "./summary.ts";
 
 const BODY_INDENT = 2;
 const FIELD_INDENT = 4;
@@ -32,13 +32,16 @@ const quietRowHead = (row: SummaryRow): string => {
   return `${chip}${row.label}${value}`;
 };
 
-const composeQuietRowStyle = (row: SummaryRow): ((line: string) => string) | undefined => {
+const composeQuietRowStyle = (
+  row: SummaryRow,
+  options: FormatSummaryOptions,
+): ((line: string) => string) | undefined => {
   const tone = row.tone === undefined || isOkTone(row.tone) ? undefined : row.tone;
   const muted = row.muted === true;
-  const href = row.href;
+  const href = options.hyperlinks === false ? undefined : row.href;
   if (tone === undefined && !muted && href === undefined) return undefined;
   return (line: string) => {
-    const toned = tone === undefined ? line : paintTone(tone, line);
+    const toned = tone === undefined ? line : paintTone(tone, line, options.color);
     const dimmed = muted ? dimText(toned) : toned;
     return href === undefined ? dimmed : hyperlink(dimmed, href);
   };
@@ -65,7 +68,11 @@ const pushRemedy = (lines: string[], remedy: string, width: number): void => {
     pushWrapped(lines, segment, FIELD_INDENT + REMEDY_ARROW.length, width, undefined);
 };
 
-const renderSection = (section: SummarySection, width: number): ReadonlyArray<string> => {
+const renderSection = (
+  section: SummarySection,
+  width: number,
+  options: FormatSummaryOptions,
+): ReadonlyArray<string> => {
   const lines: string[] = [];
   pushWrapped(lines, section.title, 0, width, dimText);
   if (section.rows.length === 0 && (section.notes === undefined || section.notes.length === 0)) {
@@ -76,7 +83,7 @@ const renderSection = (section: SummarySection, width: number): ReadonlyArray<st
     width - FIELD_INDENT,
   );
   for (const row of section.rows) {
-    pushWrapped(lines, quietRowHead(row), BODY_INDENT, width, composeQuietRowStyle(row));
+    pushWrapped(lines, quietRowHead(row), BODY_INDENT, width, composeQuietRowStyle(row, options));
     if (row.fields !== undefined && row.fields.length > 0) {
       for (const field of row.fields) {
         for (const segment of wrapFieldToWidth(field.label, field.value, labelWidth, width - FIELD_INDENT)) {
@@ -93,8 +100,11 @@ const renderSection = (section: SummarySection, width: number): ReadonlyArray<st
   return lines;
 };
 
-export const formatPreparedQuietSummary = (doc: SummaryDocument, columns?: number | undefined): string => {
-  const width = resolveSummaryWidth(columns);
+export const formatPreparedQuietSummary = (
+  doc: SummaryDocument,
+  options: FormatSummaryOptions = {},
+): string => {
+  const width = resolveSummaryWidth(options.columns);
   const groups: Array<ReadonlyArray<string>> = [];
 
   const header: string[] = [];
@@ -102,7 +112,7 @@ export const formatPreparedQuietSummary = (doc: SummaryDocument, columns?: numbe
   if (doc.subtitle !== undefined) pushWrapped(header, doc.subtitle, BODY_INDENT, width, dimText);
   groups.push(header);
 
-  for (const section of doc.sections) groups.push(renderSection(section, width));
+  for (const section of doc.sections) groups.push(renderSection(section, width, options));
 
   if (doc.nextSteps !== undefined && doc.nextSteps.length > 0) {
     const next: string[] = [];

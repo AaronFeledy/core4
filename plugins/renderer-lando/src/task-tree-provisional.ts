@@ -10,5 +10,5 @@ export const provisionalDisplayLabel = (commandId: string): string => {
   return separator === -1 ? commandId : commandId.slice(separator + 1);
 };
 
-export const provisionalTitleFrame = (commandId: string): ReadonlyArray<string> =>
-  styleFrame([`╭─ ${provisionalDisplayLabel(commandId)}`]);
+export const provisionalTitleFrame = (commandId: string, color = true): ReadonlyArray<string> =>
+  styleFrame([`╭─ ${provisionalDisplayLabel(commandId)}`], color);

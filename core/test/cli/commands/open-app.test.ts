@@ -548,7 +548,7 @@ describe("renderOpenAppResult", () => {
     ],
     launch: "printed" as const,
   };
-  const tty: RenderContext = { mode: "lando", format: "text", columns: 80, isTTY: true };
+  const tty: RenderContext = { mode: "lando", format: "text", columns: 80, isTTY: true, noColor: false };
   const qrFor = (url: string): string => {
     const qr = renderTerminalQr(url);
     expect(qr).toBeDefined();

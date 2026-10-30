@@ -22,8 +22,8 @@ lando version --debug
 | Mode | What you get |
 | --- | --- |
 | `lando` (default) | Live tree on terminal stderr, including when you redirect stdout; line-mode narration on stderr otherwise. |
-| `plain` | One human line per renderable event on stderr. No live tree, no spinners. Tooling shows detail-only events. |
-| `json` | Structured `{_tag:"event", ...}` lines on stderr. The command result still prints on stdout as a JSON envelope. |
+| `plain` | One human line per renderable event on stderr. No live tree, no spinners. |
+| `json` | The result as a JSON envelope on stdout. Add `--format=text` to get structured `{_tag:"event", ...}` lines on stderr next to the human result. |
 | `verbose` | The human line plus the full event payload for every event on stderr. This is the dump, not the task tree. |
 
 Set the mode three ways. First match wins:
@@ -34,7 +34,7 @@ Set the mode three ways. First match wins:
 
 The default is `lando`.
 
-`--format=json` changes the command result shape. It does not switch the event stream. `--renderer=json` forces the result format to JSON and also emits JSON events on stderr.
+`--format=json` and `--format=yaml` change the command result shape. With the `lando`, `plain`, or `json` renderer they also keep progress off stderr (desktop notifications aside), so a script reads one clean result from stdout; `verbose` still dumps every event on stderr. `--renderer=json` defaults the result format to JSON, and an explicit `--format` wins. Streaming commands such as `lando exec` and `lando logs --follow` add one thing under `--format=json`: their events arrive on stdout as `event` frames in the same stream as the output. See [Stream tooling output](../tooling/output-streaming.mdx#pick-a-renderer-mode).
 
 ```sh
 lando info --format=json
@@ -58,6 +58,16 @@ Set the log level three ways. First match wins:
 The default log level is `none`. The CLI stays quiet until you ask. `LANDO_DEBUG` is not a host CLI switch. Lando only forwards `LANDO_DEBUG=1` into `lando shell`.
 
 For scripts and agents, prefer `--format=json` or `--renderer=json` and read `ok`, `error._tag`, and `remediation`.
+
+## Turn off color
+
+Set `NO_COLOR` to any non-empty value and Lando prints its task tree, notices, summaries, and help without color:
+
+```sh
+NO_COLOR=1 lando start
+```
+
+Status still reads from the glyphs (`✓`, `✗`, `!`, `◌`), and bold and dim stay. `TERM=dumb` turns color off too and also prints one progress line per event instead of a redrawing tree. `FORCE_COLOR` does not turn Lando's color back on. Lando never rewrites the output of the tools you run, so a command such as `lando exec web -- ls --color=always` keeps its own colors. Interactive prompts still use their color theme.
 
 <Guide>
   <Scenario id="debug-default-flip" render>

@@ -33,7 +33,9 @@ need to parse that name from the human message. Other JSON-safe error fields sta
 structured too. Raw causes, stacks, and redaction-token lists are not emitted.
 
 Streaming commands such as `app:logs` and `app:exec` emit `StreamFrame`
-frames under `--format json` and terminate with a single result frame.
+frames under `--format json`: `stdout` and `stderr` frames carry output,
+`event` frames carry progress and lifecycle events, and a single result frame
+comes last.
 Source and compiled `--format json` are identical because both use the same
 native registry and dispatcher.
 

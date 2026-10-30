@@ -60,6 +60,7 @@
   "rendererNarrationIOMembers": [
     "externalOutputStream",
     "isTTY",
+    "noColor",
     "subscribeInput",
     "terminalColumns",
     "terminalRows",

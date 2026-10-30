@@ -24,6 +24,7 @@ const asAbsolutePath = (value: unknown): typeof AbsolutePath.Type | undefined =>
   Schema.is(AbsolutePath)(value) ? value : undefined;
 
 export interface TaskTreeViewModelOptions {
+  readonly color?: boolean;
   readonly detailCapacity?: number;
   readonly terminalColumns?: number | undefined;
   readonly getTerminalColumns?: (() => number | undefined) | undefined;
@@ -57,6 +58,7 @@ type NewTaskInput = {
 };
 
 export class TaskTreeViewModel implements TaskTreeInteractionModel {
+  readonly #color: boolean;
   readonly #detailCapacity: number;
   readonly #terminalColumns: number | undefined;
   readonly #getTerminalColumns: (() => number | undefined) | undefined;
@@ -71,6 +73,7 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
   #expandedLines: ReadonlyArray<string> = [];
 
   constructor(options: TaskTreeViewModelOptions = {}) {
+    this.#color = options.color !== false;
     this.#detailCapacity = options.detailCapacity ?? TASK_DETAIL_TAIL_CAPACITY;
     this.#terminalColumns = options.terminalColumns;
     this.#getTerminalColumns = options.getTerminalColumns;
@@ -182,11 +185,11 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
   }
 
   frameLines(): ReadonlyArray<string> {
-    return styleFrame(renderLogicalFrame(this.renderState()));
+    return styleFrame(renderLogicalFrame(this.renderState()), this.#color);
   }
 
   treeFrameLines(): ReadonlyArray<string> {
-    return styleFrame(renderTreeFrame(this.renderState()));
+    return styleFrame(renderTreeFrame(this.renderState()), this.#color);
   }
 
   renderState(): TaskTreeRenderState {

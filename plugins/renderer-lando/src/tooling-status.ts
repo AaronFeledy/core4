@@ -18,8 +18,11 @@ const formatQuietDuration = (durationMs: number): string => {
   return `  ${(durationMs / 1000).toFixed(1)}s`;
 };
 
-export const formatToolingStatusLines = (tool: string, elapsedMs: number): ReadonlyArray<string> =>
-  styleFrame([`╰─ executing ${tool}${formatQuietDuration(elapsedMs)}`]);
+export const formatToolingStatusLines = (
+  tool: string,
+  elapsedMs: number,
+  color = true,
+): ReadonlyArray<string> => styleFrame([`╰─ executing ${tool}${formatQuietDuration(elapsedMs)}`], color);
 
 const parentIdOf = (event: LandoEvent): string | undefined => {
   const value = Reflect.get(event, "parentId");
@@ -47,6 +50,7 @@ export type ToolingStatusPainter = {
 export const createToolingStatusPainter = (
   now: () => number = () => DateTime.toEpochMillis(DateTime.nowUnsafe()),
   isClosing: () => boolean = () => false,
+  color = true,
 ): ToolingStatusPainter => {
   let timer: ReturnType<typeof setInterval> | undefined;
   let startedAt = 0;
@@ -55,7 +59,7 @@ export const createToolingStatusPainter = (
 
   const paint = (): void => {
     if (handle === undefined || isClosing()) return;
-    handle.setFooter(formatToolingStatusLines(tool, now() - startedAt));
+    handle.setFooter(formatToolingStatusLines(tool, now() - startedAt, color));
   };
 
   const stop = (): void => {

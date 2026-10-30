@@ -11,7 +11,6 @@ import {
   hyperlink,
   linkKnownHttpUrls,
   resolveSummaryWidth,
-  shouldEmitHyperlinks,
   stripAnsi,
   styleBoxBottom,
   toneChip,
@@ -346,32 +345,6 @@ describe("hyperlink", () => {
     expect(hyperlink("x", "https://example.com/\u0000")).toBe("x");
     expect(hyperlink("x", "https://example.com/\u007f")).toBe("x");
     expect(hyperlink("x", `file:///tmp/${ESC}x`)).toBe("x");
-  });
-});
-
-describe("shouldEmitHyperlinks", () => {
-  test("emits on a TTY when TERM is set and NO_COLOR is unset", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color" } })).toBe(true);
-  });
-
-  test("treats empty NO_COLOR as unset", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color", NO_COLOR: "" } })).toBe(true);
-  });
-
-  test("stays plain when stdout is not a TTY", () => {
-    expect(shouldEmitHyperlinks({ isTTY: false, env: { TERM: "xterm-256color" } })).toBe(false);
-  });
-
-  test("stays plain when NO_COLOR is set", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color", NO_COLOR: "1" } })).toBe(false);
-  });
-
-  test("stays plain when TERM is dumb", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "dumb" } })).toBe(false);
-  });
-
-  test("stays plain when env is missing", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true })).toBe(false);
   });
 });
 

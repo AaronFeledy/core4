@@ -20,6 +20,9 @@ export const csi = {
   red: `${ESC}[31m`,
 } as const;
 
+export const framePalette = (color: boolean) =>
+  color ? csi : { ...csi, cyan: "", pink: "", green: "", amber: "", red: "" };
+
 const DEFAULT_TERMINAL_COLUMNS = 80;
 
 const normalizeTerminalColumns = (terminalColumns: number | undefined): number =>
@@ -144,6 +147,7 @@ export type BodyStyleSegment = {
 
 const bodyChrome = (
   line: string,
+  csi: ReturnType<typeof framePalette>,
 ): { readonly rail: string; readonly content: string; readonly trailingFrame: string } => {
   const hasTrailingFrame = line.length > 1 && line.endsWith("│");
   return {
@@ -153,18 +157,30 @@ const bodyChrome = (
   };
 };
 
-export const styleBodyFrame = (line: string, styleStart: string, styleEnd: string): string => {
-  const { content } = bodyChrome(line);
-  return styleBodyFrameSegments(line, [{ text: content, start: styleStart, end: styleEnd }]);
+export const styleBodyFrame = (
+  line: string,
+  styleStart: string,
+  styleEnd: string,
+  csi: ReturnType<typeof framePalette> = framePalette(true),
+): string => {
+  const { content } = bodyChrome(line, csi);
+  return styleBodyFrameSegments(line, [{ text: content, start: styleStart, end: styleEnd }], csi);
 };
 
-export const styleBodyFrameSegments = (line: string, segments: ReadonlyArray<BodyStyleSegment>): string => {
-  const { rail, trailingFrame } = bodyChrome(line);
+export const styleBodyFrameSegments = (
+  line: string,
+  segments: ReadonlyArray<BodyStyleSegment>,
+  csi: ReturnType<typeof framePalette> = framePalette(true),
+): string => {
+  const { rail, trailingFrame } = bodyChrome(line, csi);
   const painted = segments.map((segment) => `${segment.start}${segment.text}${segment.end}`).join("");
   return `${csi.pink}${rail}${csi.reset}${painted}${trailingFrame}`;
 };
 
-export const styleBottomFrame = (line: string): string => {
+export const styleBottomFrame = (
+  line: string,
+  csi: ReturnType<typeof framePalette> = framePalette(true),
+): string => {
   let trailingFrameStart = line.length;
   if (line.endsWith("╯")) {
     trailingFrameStart -= 1;

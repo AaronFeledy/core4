@@ -1,6 +1,7 @@
 import {
   type BodyStyleSegment,
   csi,
+  framePalette,
   styleBodyFrame,
   styleBodyFrameSegments,
   styleBottomFrame,
@@ -36,7 +37,7 @@ const isRunningGlyphRow = (line: string): boolean => {
 const isSettledGlyphRow = (line: string): boolean =>
   SETTLED_GLYPHS.some((glyph) => line.startsWith(`│ ${glyph} `));
 
-const selectBodyStyle = (line: string): BodyStyle | undefined => {
+const selectBodyStyle = (line: string, csi: ReturnType<typeof framePalette>): BodyStyle | undefined => {
   if (line.startsWith(`│ ${INFO_MARKER} `)) return DIM_DURATION;
   if (line.includes("✗")) return { start: csi.red, end: csi.reset };
   if (line.includes("  cached")) return { start: csi.cyan, end: csi.reset };
@@ -67,7 +68,11 @@ const completedBodySegments = (content: string, style: BodyStyle): ReadonlyArray
   ];
 };
 
-const runningBodySegments = (content: string, style: BodyStyle): ReadonlyArray<BodyStyleSegment> => {
+const runningBodySegments = (
+  content: string,
+  style: BodyStyle,
+  csi: ReturnType<typeof framePalette>,
+): ReadonlyArray<BodyStyleSegment> => {
   if (!content.startsWith(" ")) return [{ text: content, start: style.start, end: style.end }];
   const rest = content.slice(1);
   const glyph = rest[0];
@@ -80,13 +85,19 @@ const runningBodySegments = (content: string, style: BodyStyle): ReadonlyArray<B
   ];
 };
 
-const paintBody = (line: string, style: BodyStyle, settled: boolean): string => {
+const paintBody = (
+  line: string,
+  style: BodyStyle,
+  settled: boolean,
+  csi: ReturnType<typeof framePalette>,
+): string => {
   const content = bodyContent(line);
-  const segments = settled ? completedBodySegments(content, style) : runningBodySegments(content, style);
-  return styleBodyFrameSegments(line, segments);
+  const segments = settled ? completedBodySegments(content, style) : runningBodySegments(content, style, csi);
+  return styleBodyFrameSegments(line, segments, csi);
 };
 
-export const styleFrame = (logical: ReadonlyArray<string>): ReadonlyArray<string> => {
+export const styleFrame = (logical: ReadonlyArray<string>, color = true): ReadonlyArray<string> => {
+  const csi = framePalette(color);
   let rowStyle: BodyStyle | undefined;
   let settledRow = false;
   return logical.map((line) => {
@@ -98,19 +109,19 @@ export const styleFrame = (logical: ReadonlyArray<string>): ReadonlyArray<string
     if (line.startsWith("╰─")) {
       rowStyle = undefined;
       settledRow = false;
-      return styleBottomFrame(line);
+      return styleBottomFrame(line, csi);
     }
-    const selected = selectBodyStyle(line);
+    const selected = selectBodyStyle(line, csi);
     if (selected !== undefined) {
       rowStyle = selected;
       settledRow = isSettledGlyphRow(line);
-      return paintBody(line, selected, settledRow);
+      return paintBody(line, selected, settledRow, csi);
     }
     if (line.startsWith("│") && rowStyle !== undefined) {
-      return paintBody(line, rowStyle, settledRow);
+      return paintBody(line, rowStyle, settledRow, csi);
     }
     rowStyle = undefined;
     settledRow = false;
-    return line.startsWith("│") ? styleBodyFrame(line, csi.cyan, csi.reset) : line;
+    return line.startsWith("│") ? styleBodyFrame(line, csi.cyan, csi.reset, csi) : line;
   });
 };

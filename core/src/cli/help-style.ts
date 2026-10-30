@@ -33,6 +33,7 @@ export const shouldStyleHelp = (input: ShouldStyleHelpInput): boolean => {
   const noColor = input.env.NO_COLOR;
   return (
     input.isTTY &&
+    input.env.TERM !== "dumb" &&
     (noColor === undefined || noColor === "") &&
     !hasJsonOutputFlag(input.argv) &&
     (input.rendererMode === undefined || input.rendererMode === "lando")

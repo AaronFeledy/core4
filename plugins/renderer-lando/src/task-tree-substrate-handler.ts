@@ -2,6 +2,7 @@ import type { RendererNarrationIO } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { isRenderableTaskTreeEvent, renderLandoLine } from "./format.ts";
+import { capabilitiesForIO } from "./renderer-capabilities.ts";
 import { TaskTreeCollection } from "./task-tree-collection.ts";
 
 export interface LiveRegionHandle {
@@ -17,7 +18,11 @@ export interface LiveRegionHandle {
   dispose(): Promise<void>;
 }
 
-export const makeTaskTreeSubstrateHandler = (io: RendererNarrationIO, controller: LiveRegionHandle) => {
+export const makeTaskTreeSubstrateHandler = (
+  io: RendererNarrationIO,
+  controller: LiveRegionHandle,
+  color = capabilitiesForIO(io).color,
+) => {
   let terminalColumns = io.terminalColumns;
   let terminalRows = io.terminalRows;
   const output = {
@@ -27,6 +32,7 @@ export const makeTaskTreeSubstrateHandler = (io: RendererNarrationIO, controller
   };
   const viewModel = new TaskTreeCollection(
     {
+      color,
       getTerminalColumns: () => terminalColumns,
       getTerminalRows: () => terminalRows,
     },
@@ -52,7 +58,7 @@ export const makeTaskTreeSubstrateHandler = (io: RendererNarrationIO, controller
       renderFooter();
       return;
     }
-    const line = renderLandoLine(event, true, terminalColumns);
+    const line = renderLandoLine(event, true, terminalColumns, color);
     if (line !== null) controller.commitScrollback(line.endsWith("\n") ? line : `${line}\n`);
   };
   const resize = (width: number, height: number): void => {

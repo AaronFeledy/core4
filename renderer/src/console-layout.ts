@@ -29,6 +29,9 @@ const csi = {
   defaultFg: `${ESC}[39m`,
 } as const;
 
+const monochromeCsi = { ...csi, cyan: "", pink: "", green: "", amber: "", red: "" } as const;
+const palette = (color: boolean) => (color ? csi : monochromeCsi);
+
 export const hasC0OrDel = (value: string): boolean => {
   for (const ch of value) {
     const cp = ch.codePointAt(0);
@@ -53,17 +56,6 @@ export const hyperlink = (text: string, href: string): string => {
   if (!isSafeHref(href)) return text;
   const terminator = `${ESC}\\`;
   return `${ESC}]8;;${href}${terminator}${text}${ESC}]8;;${terminator}`;
-};
-
-/** True when stdout can take OSC 8: a TTY, an env snapshot is present, TERM is not dumb, and NO_COLOR is unset. */
-export const shouldEmitHyperlinks = (input: {
-  readonly isTTY: boolean;
-  readonly env?: Readonly<Record<string, string | undefined>>;
-}): boolean => {
-  if (!input.isTTY || input.env === undefined) return false;
-  const noColor = input.env.NO_COLOR;
-  if (noColor !== undefined && noColor !== "") return false;
-  return input.env.TERM !== "dumb";
 };
 
 const isHttpUrl = (url: string): boolean => url.startsWith("https://") || url.startsWith("http://");
@@ -388,7 +380,13 @@ const capLine = (left: string, title: string, right: string, width: number): str
 export const boxTop = (title: string, width: number): string => capLine("╭─", title, "╮", width);
 
 /** Bottom frame line: `╰─ TITLE ──────╯`, with optionally styled content. */
-export const boxBottom = (title: string, width: number, style?: (content: string) => string): string => {
+export const boxBottom = (
+  title: string,
+  width: number,
+  style?: (content: string) => string,
+  color = true,
+): string => {
+  const csi = palette(color);
   const innerBudget = Math.max(1, width - displayWidth("╰─") - displayWidth("╯") - 2);
   const fitted = truncateToWidth(title, innerBudget);
   const content = style === undefined ? ` ${fitted} ` : style(` ${fitted} `);
@@ -400,7 +398,13 @@ export const boxBottom = (title: string, width: number, style?: (content: string
 export const boxSeparator = (title: string, width: number): string => capLine("├─", title, "┤", width);
 
 /** Body line: `│ text<padding> │`, with pink borders and optionally styled content. */
-export const boxBody = (text: string, width: number, style?: (content: string) => string): string => {
+export const boxBody = (
+  text: string,
+  width: number,
+  style?: (content: string) => string,
+  color = true,
+): string => {
+  const csi = palette(color);
   const innerWidth = Math.max(1, width - 4);
   const fitted = truncateToWidth(text, innerWidth);
   const padding = repeat(" ", innerWidth - displayWidth(fitted));
@@ -526,16 +530,19 @@ export const wrapFieldToWidth = (
 };
 
 /** ANSI accents for the framed surfaces, mirroring the task-tree cockpit palette. */
-export const styleBoxTop = (line: string): string => `${csi.bold}${csi.pink}${line}${csi.reset}`;
-export const styleBoxBottom = (line: string): string => `${csi.cyan}${line}${csi.reset}`;
-export const styleBoxFooter = (line: string): string =>
-  `${csi.dim}${csi.pink}${line}${csi.dimReset}${csi.reset}`;
-export const styleBoxSeparator = (line: string): string => `${csi.pink}${line}${csi.reset}`;
+export const styleBoxTop = (line: string, color = true): string =>
+  `${csi.bold}${palette(color).pink}${line}${csi.reset}`;
+export const styleBoxBottom = (line: string, color = true): string =>
+  `${palette(color).cyan}${line}${csi.reset}`;
+export const styleBoxFooter = (line: string, color = true): string =>
+  `${csi.dim}${palette(color).pink}${line}${csi.dimReset}${csi.reset}`;
+export const styleBoxSeparator = (line: string, color = true): string =>
+  `${palette(color).pink}${line}${csi.reset}`;
 export const dimText = (text: string): string => `${csi.dim}${text}${csi.dimReset}${csi.reset}`;
 
 /** Color a whole line by tone; skipped/pending read dim so the chip text leads. */
-export const paintTone = (tone: SummaryTone, line: string): string => {
-  const color = TONE_COLOR[tone];
+export const paintTone = (tone: SummaryTone, line: string, enabled = true): string => {
+  const color = enabled || tone === "skipped" ? TONE_COLOR[tone] : "";
   return color === csi.dim ? `${csi.dim}${line}${csi.dimReset}${csi.reset}` : `${color}${line}${csi.reset}`;
 };
 
@@ -556,21 +563,23 @@ const TONE_GLYPH: Record<SummaryTone, string> = {
 export const toneGlyph = (tone: SummaryTone): string => TONE_GLYPH[tone];
 
 /** Pink rail/frame chrome shared with the task tree (`╭─`, `│`, `├─`, `╰─`). */
-export const paintRail = (text: string): string => `${csi.pink}${text}${csi.reset}`;
+export const paintRail = (text: string, color = true): string => `${palette(color).pink}${text}${csi.reset}`;
 
 /** Bold text in the tone color, for a summary title. */
-export const paintToneBold = (tone: SummaryTone, text: string): string =>
-  `${csi.bold}${TONE_COLOR[tone]}${text}${csi.reset}`;
+export const paintToneBold = (tone: SummaryTone, text: string, color = true): string =>
+  `${csi.bold}${color || tone === "skipped" ? TONE_COLOR[tone] : ""}${text}${csi.reset}`;
 
 /** Cyan text, the palette color for commands. */
-export const cyanText = (text: string): string => `${csi.cyan}${text}${csi.defaultFg}`;
+export const cyanText = (text: string, color = true): string =>
+  `${palette(color).cyan}${text}${csi.defaultFg}`;
 
 /**
  * Paint backtick-quoted spans cyan across already-wrapped lines. A span that
  * wraps stays painted on its continuation line; backticks stay visible so the
  * text still reads as code without color.
  */
-export const paintCodeSpans = (lines: ReadonlyArray<string>): ReadonlyArray<string> => {
+export const paintCodeSpans = (lines: ReadonlyArray<string>, color = true): ReadonlyArray<string> => {
+  const csi = palette(color);
   let inCode = false;
   return lines.map((line) => {
     let out = inCode ? csi.cyan : "";
