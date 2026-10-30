@@ -129,7 +129,7 @@ The profiler suppresses upload exceptions during shutdown, so an empty app log d
 
 ## Large profiles disappear without an error
 
-A request that calls many distinct functions can produce a profile of several megabytes. The upstream XHGui image limits uploads in two places: its nginx site config sets `client_max_body_size 5M`, and its PHP config keeps the default `post_max_size = 8M` and `memory_limit = 128M`. When an upload is too large, XHGui answers with an error, the profiler swallows the exception during shutdown, and the page still loads normally. No run appears and the app log stays empty.
+A request that calls many distinct functions can produce a profile of several megabytes. The upstream XHGui image limits uploads in two places: its nginx site config sets `client_max_body_size 5M`, and its PHP config keeps the default `post_max_size = 8M` and `memory_limit = 128M`. When an upload is too large, nginx or XHGui rejects it. Because the profiler suppresses upload exceptions, the page still loads normally, no run appears, and the app log stays empty. `upload_max_filesize` doesn't apply, because the profiler sends a raw JSON body rather than a file upload.
 
 To reproduce it, save this as `big.php` next to the Landofile. It defines and calls `n` small functions, so `n=120000` produces a profile of about 10 MB:
 
@@ -225,6 +225,7 @@ These checks exercise the declared services and tooling, with the large-profile 
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"app\":\\s*\\{[^}]*\"type\":\\s*\"php:8.3\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "pecl install xhprof" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"image\":\\s*\"xhgui/xhgui:0.23\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/etc/nginx/http.d/default.conf" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "/etc/php83/conf.d/zz-xhgui.ini" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"profiles\":\\s*\\{[^}]*\"type\":\\s*\"postgres\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
