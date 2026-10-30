@@ -88,6 +88,7 @@ const makeLifecycleModule = (
   Renderable: typeof LifecycleTestRenderable = LifecycleTestRenderable,
 ) =>
   ({
+    RGBA: openTui.RGBA,
     createCliRenderer: async () => renderer,
     BoxRenderable: Renderable,
     TextRenderable: Renderable,

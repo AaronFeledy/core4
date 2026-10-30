@@ -1,3 +1,5 @@
+import type { OpenTuiModuleLike, RendererLike } from "./prompt-driver-types.ts";
+
 /**
  * Prompt chrome tokens. `accent` is Lando's primary brand pink (`#df4090`).
  */
@@ -15,13 +17,38 @@ export const PROMPT_THEME = {
   inputFocusedBackground: "#1a1020",
 } as const;
 
-export const promptSelectColors = {
-  backgroundColor: PROMPT_THEME.background,
-  textColor: PROMPT_THEME.text,
-  focusedBackgroundColor: PROMPT_THEME.background,
-  focusedTextColor: PROMPT_THEME.focusedText,
-  selectedBackgroundColor: PROMPT_THEME.selectedBackground,
-  selectedTextColor: PROMPT_THEME.selectedText,
-  descriptionColor: PROMPT_THEME.muted,
-  selectedDescriptionColor: PROMPT_THEME.text,
-} as const;
+export type PromptTheme = { readonly [K in keyof typeof PROMPT_THEME]: string | object };
+
+export type PromptModuleLike<R extends RendererLike = RendererLike> = OpenTuiModuleLike<R> & {
+  readonly theme: PromptTheme;
+};
+
+export const createPromptTheme = (mod: OpenTuiModuleLike, noColor: boolean): PromptTheme => {
+  if (!noColor) return PROMPT_THEME;
+  const foreground = mod.RGBA.defaultForeground();
+  const background = mod.RGBA.defaultBackground();
+  return {
+    accent: foreground,
+    background,
+    text: foreground,
+    focusedText: foreground,
+    selectedBackground: background,
+    selectedText: foreground,
+    muted: foreground,
+    issue: foreground,
+    placeholder: foreground,
+    inputBackground: background,
+    inputFocusedBackground: background,
+  };
+};
+
+export const promptSelectColors = (theme: PromptTheme) => ({
+  backgroundColor: theme.background,
+  textColor: theme.text,
+  focusedBackgroundColor: theme.background,
+  focusedTextColor: theme.focusedText,
+  selectedBackgroundColor: theme.selectedBackground,
+  selectedTextColor: theme.selectedText,
+  descriptionColor: theme.muted,
+  selectedDescriptionColor: theme.text,
+});
