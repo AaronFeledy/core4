@@ -61,40 +61,42 @@ test("live JSON retains an event published while history replay is blocked on st
   }
 });
 
-test.each([false, true])("live JSON dedupes overlap, preserving later repeats (%s)", async (repeat) => {
-  // Given: only subscription acquisition is wrapped; delivery and history use the real service.
-  const io = createBufferedRendererIO();
-  const runtime = Layer.effect(
-    EventService,
-    Effect.gen(function* () {
-      const events = yield* EventService;
-      yield* events.publish(event("before"));
-      return EventService.of({
-        ...events,
-        subscribeQueue: events.subscribeQueue.pipe(
-          Effect.tap(() => events.publish(event("between-subscribe-and-snapshot")).pipe(Effect.orDie)),
-        ),
-      });
-    }),
-  ).pipe(Layer.provide(LandoEventService.layer));
-  // When
-  await runWithRendererHandling(
-    Effect.gen(function* () {
-      yield* (yield* EventService).publish(event("after-subscribe"));
-      if (repeat) yield* (yield* EventService).publish(event("between-subscribe-and-snapshot"));
-      return {};
-    }),
-    { ...options, runtime, io },
-  );
-  // Then
-  expect(io.stdoutLines().map(decodeFrame)).toMatchObject([
-    { _tag: "event", event: "message.info", payload: { body: "before" } },
-    { _tag: "event", event: "message.info", payload: { body: "between-subscribe-and-snapshot" } },
-    { _tag: "event", event: "message.info", payload: { body: "after-subscribe" } },
-    ...(repeat
-      ? [{ _tag: "event", event: "message.info", payload: { body: "between-subscribe-and-snapshot" } }]
-      : []),
-    { _tag: "result", envelope: { ok: true } },
-  ]);
-  expect(io.stderr()).toBe("");
-});
+test.each([false, true])(
+  "live JSON preserves publications at atomic subscription acquisition and later repeats (%s)",
+  async (repeat) => {
+    // Given: only subscription acquisition is wrapped; delivery and history use the real service.
+    const io = createBufferedRendererIO();
+    const runtime = Layer.effect(
+      EventService,
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* events.publish(event("before"));
+        return EventService.of({
+          ...events,
+          subscribeWithHistory: (options) =>
+            events
+              .subscribeWithHistory(options)
+              .pipe(Effect.tap(() => events.publish(event("at-subscription")).pipe(Effect.orDie))),
+        });
+      }),
+    ).pipe(Layer.provide(LandoEventService.layer));
+    // When
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        yield* (yield* EventService).publish(event("after-subscribe"));
+        if (repeat) yield* (yield* EventService).publish(event("at-subscription"));
+        return {};
+      }),
+      { ...options, runtime, io },
+    );
+    // Then
+    expect(io.stdoutLines().map(decodeFrame)).toMatchObject([
+      { _tag: "event", event: "message.info", payload: { body: "before" } },
+      { _tag: "event", event: "message.info", payload: { body: "at-subscription" } },
+      { _tag: "event", event: "message.info", payload: { body: "after-subscribe" } },
+      ...(repeat ? [{ _tag: "event", event: "message.info", payload: { body: "at-subscription" } }] : []),
+      { _tag: "result", envelope: { ok: true } },
+    ]);
+    expect(io.stderr()).toBe("");
+  },
+);

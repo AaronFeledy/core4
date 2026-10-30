@@ -54,6 +54,7 @@ import { dimBugReportDetails } from "./diagnostic-text";
 import { renderFailureEvidence } from "./failure-evidence";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat, isEnvelopeResultFormat } from "./format-flags";
 import { interruptOnAbort } from "./interrupt-on-abort";
+import { resolveOutputRouting } from "./output-routing";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
 import { startMachineEventConsumer } from "./renderer-machine-events";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
@@ -241,8 +242,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   );
   let brokenPipe = false;
   const brokenPipeSignal = Effect.callback<never>((resume) => {
-    const unsubscribe = onStdioBrokenPipe((destination) => {
-      if (destination !== "stdout") return;
+    const unsubscribe = onStdioBrokenPipe(() => {
       brokenPipe = true;
       unsubscribe();
       resume(Effect.interrupt);
@@ -260,16 +260,16 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     noColor: io.noColor === true,
   };
   const rendererLayer = RendererOutput.layerServiceForMode(options.rendererMode, landoRenderer, io);
-  const envelopeFormat = isEnvelopeResultFormat(renderContext.format);
+  const routing = resolveOutputRouting({
+    rendererMode: options.rendererMode,
+    format: renderContext.format,
+    declaresStreaming: options.streaming !== undefined,
+    live: options.streamingMode === "live",
+  });
+  const envelopeFormat = routing.stdout !== "human";
   const commandWarnings = makeCommandWarnings(envelopeFormat);
   const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
   const failureDiagnosticsLayer = Layer.mergeAll(rendererLayer, redactionLayer);
-  // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
-  const framedJson = options.streaming !== undefined && renderContext.format === "json";
-  const liveStreaming = options.streamingMode === "live";
-  // Live sinks are for human formats and JSON data frames only. YAML collects into one envelope.
-  const attachLiveSink = liveStreaming && renderContext.format !== "yaml";
-  const liveJsonFrames = attachLiveSink && renderContext.format === "json";
   const commandLayer = Layer.mergeAll(
     options.runtime.pipe(Layer.provide(redactionLayer)),
     rendererLayer,
@@ -304,28 +304,22 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   const program = Effect.gen(function* () {
     const initSpan = yield* initStage.start;
     const resultSchema = options.resultSchema ?? EmptyCommandResultSchema;
-    const {
-      jsonRedactor,
-      encodeEventFrame,
-      emitJsonResult,
-      emitStreamResult,
-      replayBufferedEvents,
-      emitStreamingSuccess,
-    } = makeMachineResultEmitters<A>({
-      command,
-      resultSchema,
-      commandWarnings,
-      sourceEnv,
-      extraRedactionTokens: extraTokens,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
-      ...(capture === undefined ? {} : { onRedactor: capture.setRedactor }),
-      ...(finishTrace === undefined ? {} : { trace: finishTrace }),
-      ...(options.streamFrames === undefined ? {} : { streamFrames: options.streamFrames }),
-      ...(options.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
-      ...(options.projectResultKeys === undefined ? {} : { projectResultKeys: options.projectResultKeys }),
-      ...(options.jqExpression === undefined ? {} : { jqExpression: options.jqExpression }),
-      ...(envelopeFormat ? { resultFormat: renderContext.format as "json" | "yaml" } : {}),
-    });
+    const { jsonRedactor, encodeEventFrame, emitJsonResult, emitStreamResult, emitStreamingSuccess } =
+      makeMachineResultEmitters<A>({
+        command,
+        resultSchema,
+        commandWarnings,
+        sourceEnv,
+        extraRedactionTokens: extraTokens,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        ...(capture === undefined ? {} : { onRedactor: capture.setRedactor }),
+        ...(finishTrace === undefined ? {} : { trace: finishTrace }),
+        ...(options.streamFrames === undefined ? {} : { streamFrames: options.streamFrames }),
+        ...(options.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
+        ...(options.projectResultKeys === undefined ? {} : { projectResultKeys: options.projectResultKeys }),
+        ...(options.jqExpression === undefined ? {} : { jqExpression: options.jqExpression }),
+        ...(envelopeFormat ? { resultFormat: renderContext.format as "json" | "yaml" } : {}),
+      });
     const setExitCode = (code: number): void => {
       (
         options.setExitCode ??
@@ -368,8 +362,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           additionalErrors,
         } as const;
         const emit = (next: typeof outcome) =>
-          framedJson || liveJsonFrames ? emitStreamResult(next) : emitJsonResult(next);
-        if (framedJson && !attachLiveSink) yield* replayBufferedEvents();
+          routing.stdout === "frames" ? emitStreamResult(next) : emitJsonResult(next);
         const emitted = yield* emit(outcome).pipe(Effect.result);
         if (emitted._tag === "Failure") {
           if (!(emitted.failure instanceof JqExpressionError)) {
@@ -392,6 +385,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       for (const notice of notices) yield* renderer.message.warn(notice);
       yield* setFailureExitCode(cause);
     });
+    let finishMachineEvents: Effect.Effect<void> = Effect.void;
     const executeCommand = Effect.gen(function* () {
       if (invocation === undefined) yield* initStage.end(Exit.void);
       const commandExit =
@@ -411,6 +405,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
                   ? 0
                   : commandInterruptionExitCode(options.signal),
             });
+      yield* finishMachineEvents;
       yield* finishCommandProgress();
       resultExit = commandExit;
       const renderSpan = yield* renderStage.start;
@@ -440,21 +435,15 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       const value = completed.value;
       completedExitCode = completed.exitCode;
       if (!envelopeFormat && options.renderEffect !== undefined) yield* options.renderEffect(completed);
-      if (attachLiveSink) {
-        if (envelopeFormat) {
-          const tokens = options.redactionTokens?.(value) ?? [];
-          // A live run already wrote frames, so its terminal result stays a frame
-          // under JSON even when the command declares no frame schema. YAML has no
-          // frame transport and emits the envelope document alone.
-          const emitTerminal =
-            renderContext.format === "json"
-              ? emitStreamResult(completed, tokens)
-              : emitJsonResult(completed, tokens);
-          yield* emitTerminal.pipe(Effect.catchCause((cause) => renderFailure(cause)));
+      if (routing.sink === "live") {
+        if (routing.stdout === "frames") {
+          yield* emitStreamResult(completed, options.redactionTokens?.(value) ?? []).pipe(
+            Effect.catchCause((cause) => renderFailure(cause)),
+          );
         }
         return { _tag: "handled-success" } as const;
       }
-      if (framedJson) {
+      if (routing.stdout === "frames") {
         yield* emitStreamingSuccess(value, completed).pipe(
           Effect.catchCause((cause) => renderFailure(cause)),
         );
@@ -464,17 +453,28 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       return { _tag: "success", value, completed, proxyDefaultDomain } as const;
     });
     let eventConsumerLayer: Layer.Layer<never, never, EventService> | undefined;
-    if (!liveJsonFrames && !framedJson) {
-      if (!envelopeFormat) {
+    switch (routing.events) {
+      case "mode-narration":
+      case "json-event-dump":
+      case "verbose-dump":
         eventConsumerLayer = RendererOutput.layerEventConsumerForMode(options.rendererMode, io, {
           landoRenderer,
         });
-      } else {
+        break;
+      case "notifications-only":
+      case "silent-lando-consumer":
         eventConsumerLayer = RendererOutput.layerNotificationConsumerForMode(
           options.rendererMode,
           landoRenderer,
           io,
         );
+        break;
+      case "frames":
+      case "none":
+        break;
+      default: {
+        const exhaustive: never = routing;
+        return exhaustive;
       }
     }
     const flushConfigWarnings = Effect.gen(function* () {
@@ -489,7 +489,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     });
     const executeWithLiveSink = Effect.andThen(
       flushConfigWarnings,
-      attachLiveSink
+      routing.sink === "live"
         ? Effect.gen(function* () {
             const owner = yield* RendererOutput.makeStreamFrameSink(renderContext.format);
             finishStream = owner.finish();
@@ -499,15 +499,24 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     );
     const executeWithEventConsumer = Effect.scoped(
       Effect.gen(function* () {
-        if (liveJsonFrames) {
+        if (routing.events === "frames") {
           const redactor = yield* jsonRedactor();
           const finish = yield* interruptOnAbort(
             startMachineEventConsumer(encodeEventFrame, redactor),
             options.signal,
           );
-          return yield* executeWithLiveSink.pipe(
-            Effect.provideService(FinishCommandProgress, interruptOnAbort(finish, options.signal)),
+          finishMachineEvents = interruptOnAbort(
+            Effect.gen(function* () {
+              const dropped = yield* finish;
+              if (dropped > 0)
+                yield* commandWarnings.add({
+                  code: "LANDO_EVENT_FRAMES_DROPPED",
+                  message: `${dropped} events were dropped because the output reader fell behind.`,
+                });
+            }),
+            options.signal,
           );
+          return yield* executeWithLiveSink;
         }
         if (eventConsumerLayer === undefined) return yield* executeWithLiveSink;
         const consumerScope = yield* Scope.fork(yield* Effect.scope, "sequential");
@@ -636,7 +645,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
   if (Exit.isFailure(exit) && !brokenPipe) {
     const redactor = await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv }));
     await renderTerminalFailure(exit.cause, options, redactor);
-  } else if (Exit.isSuccess(resultExit) && completedExitCode !== undefined) {
+  } else if (!brokenPipe && Exit.isSuccess(resultExit) && completedExitCode !== undefined) {
     (
       options.setExitCode ??
       ((code) => {

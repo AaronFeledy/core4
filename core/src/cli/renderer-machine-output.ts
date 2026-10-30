@@ -7,7 +7,7 @@
  * result lines. Behavior is frozen — the emitted bytes are a contract. The
  * orchestrator builds one emitter bundle per command run.
  */
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
 import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import {
@@ -20,7 +20,7 @@ import {
 import { JqExpressionError } from "@lando/sdk/errors";
 import type { CommandTrace } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { EventService, type LandoEvent } from "@lando/sdk/services";
+import type { LandoEvent } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { writeResultLine } from "@lando/renderer/output";
@@ -149,13 +149,6 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
   });
   const encodeEventFrame = (event: LandoEvent, redactor: Redactor) =>
     encodeStreamEventFrame({ event: event._tag, payload: event, redactor });
-  const replayBufferedEvents = Effect.fnUntraced(function* (redactionTokens: ReadonlyArray<string> = []) {
-    const redactor = yield* jsonRedactor(redactionTokens);
-    const events = yield* Effect.serviceOption(EventService).pipe(
-      Effect.flatMap((service) => (Option.isSome(service) ? service.value.query("*") : Effect.succeed([]))),
-    );
-    for (const event of events) yield* writeResultLine(yield* encodeEventFrame(event, redactor));
-  });
   const emitStreamingSuccess = Effect.fnUntraced(function* (
     value: A,
     outcome: CommandResultOutcome = { _tag: "success", value },
@@ -175,7 +168,6 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
           : yield* encodeStreamStderrFrame(streamFrameOptions);
       yield* writeResultLine(line);
     }
-    yield* replayBufferedEvents(tokens);
     yield* emitStreamResult(outcome, tokens);
   });
   return {
@@ -183,7 +175,6 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
     encodeEventFrame,
     emitJsonResult,
     emitStreamResult,
-    replayBufferedEvents,
     emitStreamingSuccess,
   };
 };
