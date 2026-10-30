@@ -15,6 +15,7 @@ import {
 import type { BuildStep } from "@lando/sdk/schema";
 import type { BuildAppOptions } from "@lando/sdk/services";
 
+import { validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { runAppBuildGate } from "./build-app-gates.ts";
 import { buildAppGraph } from "./build-app-graph.ts";
 import { type AppStep, appSteps } from "./build-app-plan.ts";
@@ -62,6 +63,7 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
   input: AppBuildInput,
   options: BuildAppOptions = {},
 ) {
+  yield* validateHealthcheckExecution(input.plan, input.hostProbeRunners ?? {});
   const steps = appSteps(input.plan);
   if (steps.length === 0) return;
   const graphPlan = buildAppGraph(input.plan, steps);

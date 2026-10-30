@@ -80,6 +80,7 @@ const makeMutators = (
   setReadiness: (readiness) => {
     recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "readiness", value: readiness });
     draft.readiness = { ...readiness };
+    draft.readinessSource = "contributed";
   },
   setCerts: (certs) => {
     recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "certs", value: certs });

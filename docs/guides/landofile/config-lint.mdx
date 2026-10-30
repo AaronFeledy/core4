@@ -148,6 +148,8 @@ A rejected Compose key keeps its full authored path, for example `["services", "
 
 `healthcheck.mixed-dialects` means different sources contributed surviving Lando-only and Compose-only healthcheck fields. Lando fields still win. Pick one dialect across layers rather than relying on that precedence. Discarded lower fields and shared `retries` or `disable` fields alone do not trigger the warning.
 
+The same checks apply independently to `readiness`, using `readiness.bare-compose-marker` and `readiness.mixed-dialects`. Native `healthcheck` cannot select a host target or an explicit probe user; move that command to `readiness` instead of changing monitoring through execution metadata. Use `lando app:cache:refresh --format=json` to validate the effective plan without starting services. See [Make start wait for your app](../services/wait-for-your-app.mdx) for defaults and disabling either policy.
+
 ## Fix a Landofile router bind
 
 `router.bind-address-global-only` means the Landofile set `router.bindAddress`. That key is installation-wide: set it in `config.yml` or `LANDO_ROUTER_BIND_ADDRESS`, then run `lando start`. The Landofile value is ignored so one app cannot widen the shared listener. The Landofile stays valid.

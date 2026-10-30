@@ -30,6 +30,7 @@ import type {
   GlobalAutoStartError,
   GpgAgentTransportError,
   GpgAgentUnavailableError,
+  HealthcheckTargetUnsupportedError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   Lando3LandofileDetected,
@@ -105,6 +106,7 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 // allow: SIZE_OK — independent verbatim union fixtures must stay in the requested single SDK test file.
 // Given: these member lists are frozen from the pre-refactor contracts, not derived from them.
 type LegacyAppPlannerChannel =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | LandofileValidationError

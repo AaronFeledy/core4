@@ -35,6 +35,8 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 `RuntimeProvider` is an Effect service. Scoped methods MUST acquire external resources in `Scope`; interruption MUST reach the underlying operation and finalizers MUST reap owned resources.
 
+Provider apply retains container creation, resource ownership, service-start/dependency graph scheduling, and partial-apply persistence. The engine supplies an invocation-scoped `ApplyOptions.executeReadinessAttempt` delegate for both service and host checks, bound to the actual plan, cancellation signal, and selected provider exec. Providers MUST invoke that delegate rather than choosing an independent attempt executor. Direct apply without it MAY execute service readiness, but MUST reject host readiness before resource mutation. The delegate transfers attempt execution only, not scheduling or ownership. Full engine scheduling remains deferred pending provider-neutral per-service lifecycle primitives and a reviewed partial-apply/cancellation contract (§6.7).
+
 | Member | Contract |
 |---|---|
 | `id`, `displayName`, `version`, `platform` | Stable provider identity and host metadata. |
@@ -225,7 +227,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `mounts` | Every container mount (binds including the `role: app` app source, named stores, tmpfs), unique targets ordered shallow to deep (§6.4). |
 | `endpoints`, `routes` | Service listeners and references to app routes. |
 | `dependsOn` | Planned service dependencies. |
-| `healthcheck`, `certs`, `hostAliases` | Health, certificate, and supported host-reachability intent. |
+| `healthcheck`, `readiness`, `readinessSource`, `certs`, `hostAliases` | Independent native health and lifecycle readiness, readiness provenance, certificate, and supported host-reachability intent. |
 | `metadata` | Provider-neutral planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |
 

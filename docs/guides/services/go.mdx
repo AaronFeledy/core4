@@ -63,7 +63,7 @@ lando exec web -- go run .
 
 Bind your HTTP server to port `8080` on an interface reachable from the app network, not only container loopback, so the proxy can reach it at the app URL.
 
-Go publishes its port endpoint but has no default healthcheck, even with an authored `command:`. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running.
+Go publishes its port endpoint but has no default healthcheck or readiness probe, even with an authored `command:`. Add `readiness:` when you want start to wait for application readiness; use `healthcheck:` separately for native ongoing monitoring. Without an effective readiness command, Lando checks that the process stays running.
 
 ## Pin a version
 

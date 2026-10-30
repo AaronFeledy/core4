@@ -4037,9 +4037,9 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("drops partial healthcheck override on a service type with no default rather than producing a commandless plan", async () => {
+  test("rejects a partial healthcheck without a default command rather than silently dropping it", async () => {
     await withTempCwd(async () => {
-      const appPlan = await plan({
+      const exit = await planExit({
         name: "myapp",
         runtime: 4,
         services: {
@@ -4052,7 +4052,11 @@ describe("AppPlannerLayer.layer", () => {
           },
         },
       });
-      expect(appPlan.services[ServiceName.make("db")]?.healthcheck).toBeUndefined();
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.issues[0]?.path).toEqual(["services", "db", "healthcheck", "command"]);
+      }
     });
   });
 
@@ -5077,10 +5081,10 @@ describe("AppPlannerLayer.layer", () => {
         "services.web.dependsOn",
       ]);
       expect(failure.message).toContain(
-        "Service web depends on service db with condition service_healthy, but service db has no enabled healthcheck.",
+        "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
       );
       expect(failure.message).toContain(
-        "Add a healthcheck with kind: command to service db, or relax the dependency condition to service_started.",
+        "Configure an enabled command readiness for service db, remove readiness: false to inherit its healthcheck, or use condition service_started.",
       );
     }
   });
@@ -5112,7 +5116,7 @@ describe("AppPlannerLayer.layer", () => {
         "services.web.dependsOn",
       ]);
       expect(failure.message).toContain(
-        "Service web depends on service db with condition service_healthy, but service db has no enabled healthcheck.",
+        "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
       );
       expect(failure.message).toContain(
         "Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.",

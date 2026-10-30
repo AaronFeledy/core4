@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import { ProcessExecError } from "@lando/sdk/errors";
 import type { ProcessSpawnOptions } from "@lando/sdk/services";
 import { createBunCommandEnv } from "./bun-command-env.ts";
 import { type CapturedHostExecutionContext, prepareHostExecutionContext } from "./host-execution-context.ts";
@@ -31,6 +32,13 @@ export const resolveProcessCgroup = (
 ): string | undefined => (platform === "linux" && cgroup !== undefined && cgroup !== "" ? cgroup : undefined);
 
 export const buildSpawnOptions = (input: ProcessSpawnOptions) => {
+  if (input.capture === true && input.inheritOutput === true) {
+    throw new ProcessExecError({
+      message: "Private capture cannot inherit stdout or stderr.",
+      cmd: input.cmd,
+      remediation: "Remove inheritOutput when requesting private capture.",
+    });
+  }
   const cgroup = resolveProcessCgroup(input.cgroup);
   const stdin: "pipe" | "inherit" | "ignore" =
     input.stdin !== undefined || input.stdinStream !== undefined

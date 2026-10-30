@@ -6,48 +6,51 @@ import { ProcessRunner, type ProcessStreamEvent } from "@lando/sdk/services";
 import { Effect, Stream } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
-test.skipIf(process.platform === "win32").each(["run", "stream", "streamWithExit"] as const)(
-  "%s traverses symlink parents before selecting cwd and PWD",
-  async (mode) => {
-    // Given: the lexical parent has a different marker from the native parent.
-    const root = await mkdtemp(join(tmpdir(), "lando-context-"));
-    try {
-      await mkdir(join(root, "physical", "inside"), { recursive: true });
-      await symlink("physical/inside", join(root, "link"));
-      await writeFile(join(root, "marker"), "wrong");
-      await writeFile(join(root, "physical", "marker"), "physical");
-      const expected = await realpath(join(root, "physical"));
-      const input = {
-        cmd: process.execPath,
-        args: [
-          "-e",
-          'process.stdout.write(JSON.stringify([process.cwd(), process.env.PWD, await Bun.file("marker").text()]))',
-        ],
-        cwd: `${root}/link/..`,
-      };
-      // When
-      const output = await Effect.runPromise(
-        Effect.flatMap(ProcessRunner, (runner) => {
-          if (mode === "run") return runner.run(input).pipe(Effect.map((result) => result.stdout));
-          const stream = mode === "stream" ? runner.stream(input) : runner.streamWithExit(input);
-          return Stream.runCollect(stream).pipe(
-            Effect.map((events) => {
-              const decoder = new TextDecoder();
-              return events
-                .filter((event) => "kind" in event && event.kind === "stdout")
-                .map((event) => ("kind" in event ? decoder.decode(event.chunk) : ""))
-                .join("");
-            }),
-          );
-        }).pipe(Effect.provide(BunProcessRunner.layer)),
-      );
-      // Then
-      expect(JSON.parse(output)).toEqual([expected, expected, "physical"]);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  },
-);
+for (const capture of [false, true]) {
+  test.skipIf(process.platform === "win32").each(["run", "stream", "streamWithExit"] as const)(
+    `${capture ? "private " : ""}%s traverses symlink parents before selecting cwd and PWD`,
+    async (mode) => {
+      // Given: the lexical parent has a different marker from the native parent.
+      const root = await mkdtemp(join(tmpdir(), "lando-context-"));
+      try {
+        await mkdir(join(root, "physical", "inside"), { recursive: true });
+        await symlink("physical/inside", join(root, "link"));
+        await writeFile(join(root, "marker"), "wrong");
+        await writeFile(join(root, "physical", "marker"), "physical");
+        const expected = await realpath(join(root, "physical"));
+        const input = {
+          cmd: process.execPath,
+          args: [
+            "-e",
+            'process.stdout.write(JSON.stringify([process.cwd(), process.env.PWD, await Bun.file("marker").text()]))',
+          ],
+          cwd: `${root}/link/..`,
+          capture,
+        };
+        // When
+        const output = await Effect.runPromise(
+          Effect.flatMap(ProcessRunner, (runner) => {
+            if (mode === "run") return runner.run(input).pipe(Effect.map((result) => result.stdout));
+            const stream = mode === "stream" ? runner.stream(input) : runner.streamWithExit(input);
+            return Stream.runCollect(stream).pipe(
+              Effect.map((events) => {
+                const decoder = new TextDecoder();
+                return events
+                  .filter((event) => "kind" in event && event.kind === "stdout")
+                  .map((event) => ("kind" in event ? decoder.decode(event.chunk) : ""))
+                  .join("");
+              }),
+            );
+          }).pipe(Effect.provide(BunProcessRunner.layer)),
+        );
+        // Then
+        expect(JSON.parse(output)).toEqual([expected, expected, "physical"]);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+}
 
 test.each(["run", "stream", "streamWithExit"] as const)(
   "%s replaces stale inherited PWD when cwd is omitted",

@@ -137,6 +137,7 @@ type CommandRuntimeServices = PluginRuntimeServices | LandofileService | Command
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
   | CommandRuntimeServices
+  | ShellRunner
   | RuntimeProvider
   | RuntimeProviderRegistry
   | CertificateAuthorityResolver
@@ -162,7 +163,6 @@ export type AppRuntimeServices =
   | AppPlanner
   | EventService
   | ToolingEngine
-  | ShellRunner
   | RouterService
   | RuntimeCwd
   | EventCommandExecutor;

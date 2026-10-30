@@ -5,6 +5,7 @@ import { commonContainerLabels } from "@lando/container-runtime/plan";
 import type { DockerApiClient, DockerHttpResponse } from "@lando/provider-docker";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServicePlan } from "@lando/sdk/schema";
+import { ContainerUser } from "@lando/sdk/schema";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 
 const providerId = ProviderId.make("docker");
@@ -75,6 +76,7 @@ const makeFakeApi = (
   failedStarts: ReadonlyArray<string> = [],
 ) => {
   const requests: string[] = [];
+  const execBodies: unknown[] = [];
   const labels = new Map<string, Readonly<Record<string, string>>>();
   const existingNames = new Set(existing);
   const runningNames = new Set<string>();
@@ -166,6 +168,7 @@ const makeFakeApi = (
     info: Effect.succeed({}),
     request: ({ method, path, body }) => {
       requests.push(`${method} ${path}`);
+      if (method === "POST" && path.endsWith("/exec")) execBodies.push(body);
       if (method === "POST" && path.startsWith("/containers/create?")) {
         const name = new URL(`http://localhost${path}`).searchParams.get("name") ?? "";
         const decoded = Schema.decodeUnknownSync(CreateBodyLabels)(body);
@@ -181,7 +184,7 @@ const makeFakeApi = (
       return Stream.empty;
     },
   };
-  return { api, requests, labels, existingNames, runningNames, failedStartNames, ids };
+  return { api, requests, execBodies, labels, existingNames, runningNames, failedStartNames, ids };
 };
 
 const apply = async (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal, reconcile = false) => {
@@ -197,6 +200,94 @@ const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
 };
 
 describe("provider-docker bringUp dependency order", () => {
+  test("service readiness fallback executes with the exact per-probe user and raw argv", async () => {
+    // Given
+    const db = {
+      ...healthyDb,
+      readiness: {
+        ...healthyDb.healthcheck,
+        kind: "command" as const,
+        command: ["id", "-u"],
+        user: ContainerUser.make("1234:5678"),
+        intervalSeconds: 0,
+        timeoutSeconds: 1,
+        retries: 1,
+      },
+    };
+    const web = service("web", {
+      dependsOn: [{ service: db.name, condition: "service_healthy", required: true }],
+    });
+    const fake = makeFakeApi(0);
+    // When
+    await apply(planWith([web, db]), fake.api);
+    // Then
+    expect(fake.execBodies).toHaveLength(1);
+    expect(fake.execBodies[0]).toMatchObject({ User: "1234:5678", Cmd: ["id", "-u"] });
+  });
+
+  test("host start gates delegate attempts instead of executing in the provider", async () => {
+    // Given
+    const db = {
+      ...healthyDb,
+      healthcheck: { kind: "none" as const, intervalSeconds: 0, timeoutSeconds: 1, retries: 1 },
+      readiness: {
+        kind: "command" as const,
+        command: ["ready", "literal argument", "$HOME"],
+        executionTarget: "host" as const,
+        intervalSeconds: 0,
+        timeoutSeconds: 1,
+        retries: 1,
+      },
+    };
+    const web = service("web", {
+      dependsOn: [{ service: db.name, condition: "service_healthy", required: true }],
+    });
+    const fake = makeFakeApi(99);
+    const seen: unknown[] = [];
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    // When
+    await Effect.runPromise(
+      Effect.scoped(
+        provider.apply(planWith([web, db]), {
+          reconcile: false,
+          executeReadinessAttempt: (service, probe) =>
+            Effect.sync(() => {
+              seen.push({ service, probe });
+              return { exitCode: 0, stdout: "", stderr: "" };
+            }),
+        }),
+      ),
+    );
+    // Then
+    expect(fake.execBodies).toEqual([]);
+    expect(seen).toEqual([{ service: db.name, probe: db.readiness }]);
+    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-web/start");
+  });
+
+  test("missing host delegate fails before any apply request", async () => {
+    // Given
+    const db = {
+      ...healthyDb,
+      readiness: {
+        kind: "command" as const,
+        command: ["ready"],
+        executionTarget: "host" as const,
+        intervalSeconds: 0,
+        timeoutSeconds: 1,
+        retries: 1,
+      },
+    };
+    const fake = makeFakeApi(0);
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    fake.requests.splice(0);
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(Effect.scoped(provider.apply(planWith([db]), { reconcile: false }))),
+    );
+    // Then
+    expect(error._tag).toBe("HealthcheckTargetUnsupportedError");
+    expect(fake.requests).toEqual([]);
+  });
   test("deletes then creates a pre-existing stopped container when reconcile is true", async () => {
     // Given
     const name = "lando-bring-up-order-app-web";
