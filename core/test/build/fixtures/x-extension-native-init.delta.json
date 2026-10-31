@@ -1,0 +1,19 @@
+{
+  "provenance": {
+    "commit": "618de04eebeb503c5f40ecd58fe84135baa187a5",
+    "sources": {
+      "sdk/src/schema/compose-knob-scalars.ts": "6e0864cc0ce187aa16193b489da9a7e1219b4e3f"
+    }
+  },
+  "pointer": "/properties/services/additionalProperties/properties/init",
+  "before": { "anyOf": [{ "type": "boolean" }, { "type": "string" }] },
+  "after": {
+    "anyOf": [
+      {
+        "pattern": "^(?:[Tt][Rr][Uu][Ee]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Nn]|[Oo][Ff][Ff]|[Yy][Ee][Ss]|[Nn][Oo]|[01])(?![\\s\\S])",
+        "type": "string"
+      },
+      { "type": "boolean" }
+    ]
+  }
+}
