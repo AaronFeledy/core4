@@ -137,6 +137,7 @@ const buildSelectedProxy = (
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(RouterServiceRegistry, RouterServiceRegistry.of(registry)),
+              stateStoreLayer,
               Layer.succeed(CertificateAuthorityResolver, CertificateAuthorityResolver.of(resolver)),
               Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/proxy-registry-test" })),
               provideTestRuntime({ bootstrap: "global" }),

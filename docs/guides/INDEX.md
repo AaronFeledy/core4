@@ -74,8 +74,8 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-04 | US-106 | HostProxyService (`lndo.site`-style hostnames) | `docs/guides/subsystems/host-proxy.mdx` | Shipped |
 | PRD-04 | US-106 | Open host URLs and reveal app files from containers | `docs/guides/subsystems/host-open.mdx` | Shipped |
 | PRD-04 | US-108 | `lando doctor` subsystem walkthrough | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
-| PRD-05 | US-111 | GlobalAppService + reserved id `global` | `docs/guides/global/install-and-bundled-services.mdx` | Shipped |
-| PRD-05 | US-116 | `meta:global:*` CLI namespace incl. uninstall | `docs/guides/global/uninstall-and-purge.mdx` | Shipped |
+| PRD-05 | US-111 | GlobalAppService + reserved id `global`, owned contribution policy and eligibility | `docs/guides/global/install-and-bundled-services.mdx` | Shipped |
+| PRD-05 | US-116 | `meta:global:*` enable, disable, reconcile, runtime stop, and explicit data purge | `docs/guides/global/uninstall-and-purge.mdx` | Shipped |
 | PRD-05 | US-119 | global-app integration with `lando doctor` | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
 | PRD-06 | US-122 | fork mode (`apps:scratch:start --fork`) | `docs/guides/scratch/fork-existing-app.mdx` | Shipped |
 | PRD-06 | US-123 | scratch mode (`apps:scratch:start --from=<recipe-ref>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Shipped |

@@ -1309,6 +1309,15 @@
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
+    "docs/guides/lando3-transition-options/fixtures/scoped-services": {
+      "before": {
+        "digest": "3df20fd7811e1e9ea9b8a5c766b11eb66788e7ff2453c7ab6b45609052643a74"
+      },
+      "after": {
+        "digest": "bc62146b254691eb416dadb3b16157a8253d6f3640d4bcb9deaf37c43f1199ad"
+      },
+      "reason": "The service-selection fixture now explicitly disables routing, so the encoded document includes that authored setting. Service identities, primary selection and dependency edges are unchanged."
+    },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {
         "invalid": {

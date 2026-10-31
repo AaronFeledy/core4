@@ -57,6 +57,8 @@ import {
 import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { resolveFileSyncMountPlan } from "./file-sync-plan.ts";
 import { hasExactFileSyncSessionCoverage } from "./file-sync.ts";
+import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
+import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishLowPortWarnings } from "./low-port-warning.ts";
 import { runPostStartScan, startupScanUrls } from "./post-start-scan.ts";
 import { prepareAcceleratedStart } from "./prepare-accelerated-start.ts";
@@ -306,60 +308,78 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 provider,
               );
               const serviceList = Object.values(builtPlan.services);
-              const { pendingStart } = yield* prepareAcceleratedStart(builtPlan, provider, {
-                app: ref,
-                events,
-                managed,
-                ...(execution.preparedTargets === undefined
-                  ? {}
-                  : { preparedTargets: execution.preparedTargets }),
-              });
+              const readyServices = yield* withGlobalConsumerAdmission(
+                {
+                  plan: builtPlan,
+                  ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                  ...(target.landofile?.document.router === undefined
+                    ? {}
+                    : { landofileRouter: target.landofile.document.router }),
+                },
+                Effect.gen(function* () {
+                  const { pendingStart } = yield* prepareAcceleratedStart(builtPlan, provider, {
+                    app: ref,
+                    events,
+                    managed,
+                    ...(execution.preparedTargets === undefined
+                      ? {}
+                      : { preparedTargets: execution.preparedTargets }),
+                  });
 
-              const initialRuntime = new Map<string, ServiceRuntimeInfo>();
-              if (pendingStart !== undefined) yield* pendingStart.advance("sessions-ready");
-              const applyAndInspect = Effect.gen(function* () {
-                yield* verifyActiveVolumeCoordination(provider);
-                if (pendingStart !== undefined) yield* pendingStart.advance("apply-intent");
-                yield* Effect.scoped(
-                  applyWithResolvedEnvironment(provider, builtPlan, {
-                    reconcile: resolvedOptions.reconcile ?? false,
-                    onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+                  const initialRuntime = new Map<string, ServiceRuntimeInfo>();
+                  if (pendingStart !== undefined) yield* pendingStart.advance("sessions-ready");
+                  const applyAndInspect = Effect.gen(function* () {
+                    yield* verifyActiveVolumeCoordination(provider);
+                    if (pendingStart !== undefined) yield* pendingStart.advance("apply-intent");
+                    yield* Effect.scoped(
+                      applyWithResolvedEnvironment(
+                        provider,
+                        builtPlan,
+                        {
+                          reconcile: resolvedOptions.reconcile ?? false,
+                          onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+                          ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
+                        },
+                        verifyGlobalConsumerAdmission,
+                      ),
+                    );
+                    if (pendingStart !== undefined) yield* pendingStart.complete;
+                    yield* prepareGpgHome;
+                    return yield* Effect.forEach(serviceList, (service) =>
+                      inspectAppliedService({ provider, plan: builtPlan, service: service.name }).pipe(
+                        Effect.map((runtime) => {
+                          initialRuntime.set(String(service.name), runtime);
+                          return observeService(builtPlan, runtime);
+                        }),
+                      ),
+                    );
+                  });
+                  yield* withApplyProgress({
+                    events,
+                    plan,
+                    services: serviceList,
+                    work: applyAndInspect,
+                  });
+
+                  return yield* completeStartup({
+                    policy: "user-start",
+                    builds,
+                    router: proxy,
+                    events,
+                    ...(target.landofile?.document.router === undefined
+                      ? {}
+                      : { landofileRouter: target.landofile.document.router }),
+                    ...(execution.forceAppBuild === undefined
+                      ? {}
+                      : { forceAppBuild: execution.forceAppBuild }),
+                    provider,
+                    plan: builtPlan,
+                    services: serviceList.map((service) => service.name),
+                    initial: initialRuntime,
                     ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-                  }),
-                );
-                if (pendingStart !== undefined) yield* pendingStart.complete;
-                yield* prepareGpgHome;
-                return yield* Effect.forEach(serviceList, (service) =>
-                  inspectAppliedService({ provider, plan: builtPlan, service: service.name }).pipe(
-                    Effect.map((runtime) => {
-                      initialRuntime.set(String(service.name), runtime);
-                      return observeService(builtPlan, runtime);
-                    }),
-                  ),
-                );
-              });
-              yield* withApplyProgress({
-                events,
-                plan,
-                services: serviceList,
-                work: applyAndInspect,
-              });
-
-              const readyServices = yield* completeStartup({
-                policy: "user-start",
-                builds,
-                router: proxy,
-                events,
-                ...(target.landofile?.document.router === undefined
-                  ? {}
-                  : { landofileRouter: target.landofile.document.router }),
-                ...(execution.forceAppBuild === undefined ? {} : { forceAppBuild: execution.forceAppBuild }),
-                provider,
-                plan: builtPlan,
-                services: serviceList.map((service) => service.name),
-                initial: initialRuntime,
-                ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
-              });
+                  });
+                }),
+              );
               const servicesStarted = startedServices(
                 yield* collectPlanConnections(builtPlan, readyServices),
               );

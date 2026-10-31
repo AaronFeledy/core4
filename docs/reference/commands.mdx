@@ -1032,6 +1032,45 @@ Flags:
 | `--purge` | Also remove global service data volumes. |
 | `--yes, -y` | Confirm destruction of global app provider resources. |
 
+## `lando meta:global:disable`
+
+Disable selected global contributions or a plugin's current and future contributions.
+
+Aliases: `lando global:disable`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `selector` | Contribution id or plugin package; repeat for related contributions. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--all` | Disable every known plugin's current and future global contributions. |
+| `--allow-disruption` | Acknowledge disruption to running apps or unknown consumer evidence. Volumes and resource ownership safeguards are preserved. |
+| `--dry-run` | Preview policy, dependencies, routes, and unresolved evidence without changing anything. |
+
+## `lando meta:global:enable`
+
+Enable selected global contributions or a plugin's current and future contributions.
+
+Aliases: `lando global:enable`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `selector` | Contribution id or plugin package; repeat for related contributions. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--all` | Enable every known plugin's current and future global contributions. |
+| `--dry-run` | Preview policy, dependencies, routes, and unresolved evidence without changing anything. |
+
 ## `lando meta:global:info`
 
 Print runtime information for the host-level global Lando app.
@@ -1043,24 +1082,6 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--service, -s` | Filter to a specific global service (repeatable). |
-
-## `lando meta:global:install`
-
-Materialize the host-level global Lando app Landofile stack.
-
-Aliases: `lando global:install`
-
-Arguments:
-
-| Argument | Description |
-| --- | --- |
-| `plugin` | Plugin name for future global-service enablement. |
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:global:list`
 
@@ -1094,6 +1115,19 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+
+## `lando meta:global:reconcile`
+
+Reconcile saved global policy and retry pending cleanup without starting services.
+
+Aliases: `lando global:reconcile`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--allow-disruption` | Acknowledge consumer disruption for this cleanup retry. This permission is not saved. |
+| `--dry-run` | Preview reconciliation without changing files or resources. |
 
 ## `lando meta:global:restart`
 
@@ -1136,25 +1170,6 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--service, -s` | Stop a specific global service (repeatable). |
-
-## `lando meta:global:uninstall`
-
-Clear generated services from the host-level global Lando app.
-
-Aliases: `lando global:uninstall`
-
-Arguments:
-
-| Argument | Description |
-| --- | --- |
-| `plugin` | Plugin name for future global-service disablement. |
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--purge` | Also remove global service provider resources and data volumes before clearing services. |
-| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:mcp`
 

@@ -57,7 +57,7 @@ const resolveIncludes = Effect.fn("Landofile.resolveIncludes")(function* (
     lockEntries: yield* session.existingPins,
     stagedLocks: session.selectedPins,
     walk: { selectors: session.selectors, issues: new Map(), complete: true },
-    noNetwork: false,
+    noNetwork: session.readOnly,
     loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
     ...(options.ports === undefined ? {} : { ports: options.ports }),
     ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),

@@ -11,11 +11,14 @@ import { makeLandoRuntime } from "@lando/core";
 import {
   ConfigResultSchema,
   config,
+  globalDisable,
+  globalEnable,
+  globalReconcile,
   invokeOperation,
   listServices,
   renderAppsListResult,
   renderConfigResult,
-  renderGlobalInstallResult,
+  renderGlobalPolicyChangeResult,
 } from "@lando/core/cli/operations";
 
 import corePackage from "../../package.json";
@@ -46,6 +49,31 @@ describe("@lando/core/cli/operations update exports", () => {
 });
 
 describe("@lando/core/cli/operations package export", () => {
+  test("exposes engine global lifecycle operations alongside CLI renderers", async () => {
+    const operations = await import("@lando/core/cli/operations");
+    const modules = await Promise.all([
+      import("@lando/engine/operations/global-start"),
+      import("@lando/engine/operations/global-stop"),
+      import("@lando/engine/operations/global-restart"),
+      import("@lando/engine/operations/global-rebuild"),
+      import("@lando/engine/operations/global-destroy"),
+      import("@lando/engine/operations/global-list"),
+    ]);
+    const [start, stop, restart, rebuild, destroy, list] = modules;
+    expect(operations.globalStart).toBe(start.globalStart);
+    expect(operations.globalStop).toBe(stop.globalStop);
+    expect(operations.globalRestart).toBe(restart.globalRestart);
+    expect(operations.globalRebuild).toBe(rebuild.globalRebuild);
+    expect(operations.globalDestroy).toBe(destroy.globalDestroy);
+    expect(operations.globalList).toBe(list.globalList);
+    expect(operations.renderGlobalStartResult).toBeFunction();
+    expect(operations.renderGlobalStopResult).toBeFunction();
+    expect(operations.renderGlobalRestartResult).toBeFunction();
+    expect(operations.renderGlobalRebuildResult).toBeFunction();
+    expect(operations.renderGlobalDestroyResult).toBeFunction();
+    expect(operations.renderGlobalListResult).toBeFunction();
+  });
+
   test("exposes the config operation and renderer contract", async () => {
     const operations = await import("@lando/core/cli/operations");
 
@@ -72,7 +100,10 @@ describe("@lando/core/cli/operations package export", () => {
 
     expect(operations.invokeOperation).toBeFunction();
     expect(operations.listServices).toBeFunction();
-    expect(operations.renderGlobalInstallResult).toBe(renderGlobalInstallResult);
+    expect(operations.globalEnable).toBe(globalEnable);
+    expect(operations.globalDisable).toBe(globalDisable);
+    expect(operations.globalReconcile).toBe(globalReconcile);
+    expect(operations.renderGlobalPolicyChangeResult).toBe(renderGlobalPolicyChangeResult);
     expect(corePackage.exports["./cli/operations"]).toEqual({
       types: "./src/cli/operations.ts",
       import: "./src/cli/operations.ts",

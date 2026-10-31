@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
-import { ProviderUnavailableError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
+import { GlobalAppError, ProviderUnavailableError, ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
-import { publishGlobalRoutes } from "../../src/operations/global-routes.ts";
+import { withGlobalActivationScope, withGlobalPolicyChange } from "../../src/global-app/activation-scope.ts";
+import { publishGlobalRoutes as publishGlobalRoutesEffect } from "../../src/operations/global-routes.ts";
+
+const publishGlobalRoutes = (...args: Parameters<typeof publishGlobalRoutesEffect>) =>
+  withGlobalActivationScope(publishGlobalRoutesEffect(...args));
 
 const mail = ServiceName.make("mailpit");
 const plan: AppPlan = {
@@ -309,4 +313,100 @@ describe("global route publication", () => {
     expect(result).toMatchObject({ _tag: "Failure", failure: error });
     expect(router.routesByApp.size).toBe(0);
   });
+});
+
+test("saved policy is checked after sibling observation immediately before route publication", async () => {
+  let admitted = true;
+  const calls: string[] = [];
+  const changed = new GlobalAppError({
+    operation: "startup-admission",
+    message: "Policy changed during observation.",
+    remediation: "Retry with the current policy.",
+  });
+  const result = await Effect.runPromise(
+    publishGlobalRoutes(
+      {
+        ...makeRouter(),
+        applyRoutes: () =>
+          Effect.sync(() => {
+            calls.push("apply");
+            return { app: plan.id, appliedRoutes: [], authorities: [] };
+          }),
+      },
+      {
+        list: () =>
+          Effect.sync(() => {
+            calls.push("list");
+            admitted = false;
+            return [observation];
+          }),
+      },
+      siblingPlan,
+      { started: new Set([mail]), failed: new Set() },
+      Effect.suspend(() => (admitted ? Effect.void : Effect.fail(changed))),
+    ).pipe(Effect.result),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") expect(result.failure).toBe(changed);
+  expect(calls).toEqual(["list"]);
+});
+
+test("changed policy also prevents stale empty-plan route withdrawal", async () => {
+  let removed = false;
+  const changed = new GlobalAppError({
+    operation: "startup-admission",
+    message: "Saved policy changed.",
+    remediation: "Retry with the current policy.",
+  });
+  const result = await Effect.runPromise(
+    publishGlobalRoutes(
+      {
+        ...makeRouter(),
+        removeRoutes: () =>
+          Effect.sync(() => {
+            removed = true;
+          }),
+      },
+      {
+        list: () => Effect.die("Empty plans must not inspect siblings"),
+      },
+      { ...plan, routes: [] },
+      { started: new Set(), failed: new Set() },
+      Effect.fail(changed),
+    ).pipe(Effect.result),
+  );
+  expect(result._tag).toBe("Failure");
+  if (result._tag === "Failure") expect(result.failure).toBe(changed);
+  expect(removed).toBe(false);
+});
+
+test("empty route removal owns publication until its router callback completes", async () => {
+  let policyChanged = false;
+  const result = await Effect.runPromise(
+    publishGlobalRoutes(
+      {
+        ...makeRouter(),
+        removeRoutes: () =>
+          Effect.gen(function* () {
+            const nested = yield* Effect.result(
+              withGlobalPolicyChange(
+                "disable",
+                Effect.sync(() => {
+                  policyChanged = true;
+                }),
+              ),
+            );
+            expect(nested).toMatchObject({
+              _tag: "Failure",
+              failure: { _tag: "GlobalAppError", operation: "policy-coordination" },
+            });
+          }).pipe(Effect.orDie),
+      },
+      { list: () => Effect.die("Empty publication must not list") },
+      { ...plan, routes: [] },
+      { started: new Set(), failed: new Set() },
+    ),
+  );
+  expect(result).toBeUndefined();
+  expect(policyChanged).toBe(false);
 });
