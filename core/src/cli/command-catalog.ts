@@ -179,11 +179,7 @@ export const buildCommandCatalog = (
     entries[entries.indexOf(entry)] = resolved;
     for (const token of resolved.tokens) byToken.set(token, resolved);
   };
-  for (const entry of [...entries].sort(
-    (a, b) =>
-      ({ "built-in": 0, tooling: 1, plugin: 2 })[a.source] -
-      { "built-in": 0, tooling: 1, plugin: 2 }[b.source],
-  )) {
+  for (const entry of [...entries]) {
     const aliases =
       entry.source === "built-in"
         ? (builtIns[entry.id]?.aliases ?? [])

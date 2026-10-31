@@ -16,6 +16,7 @@ import { buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { loadPluginSpec } from "./event-command-target";
 import { interruptOnAbort } from "./interrupt-on-abort";
+import { acquirePluginCommandMetadata } from "./plugin-command-discovery";
 import { pluginTopicRows } from "./root-help-topics";
 
 export const PluginCommandDiagnostic = Schema.Struct({
@@ -99,8 +100,6 @@ const diagnostic = Effect.fnUntraced(function* (error: unknown) {
       : {}),
   };
 });
-
-import { acquirePluginCommandMetadata } from "./plugin-command-discovery";
 
 /** One lazy graph and selected-spec memo per invocation, never shared between cwd/policies. */
 export const createPluginCommandCatalog = (

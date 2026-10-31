@@ -33,10 +33,8 @@ export const tryPluginCommandHelp = async (
     await renderHelpFailure(row.loadError);
     return true;
   }
-  const name = typeableName({
-    canonicalId: row.id,
-    builtInAliases: row.tokens?.filter((token) => token !== row.id) ?? [],
-  });
+  const aliases = row.tokens?.filter((token) => token !== row.id) ?? [];
+  const name = typeableName({ canonicalId: row.id, builtInAliases: aliases });
   if (isEnvelopeResultFormat(activeResultFormat)) {
     await printMachineHelpTarget(
       {
@@ -55,7 +53,7 @@ export const tryPluginCommandHelp = async (
     await emitResultLine(
       await redactHelpText(
         renderPluginOwnedCommandHelp(row.spec, {
-          aliases: row.tokens?.filter((token) => token !== row.id) ?? [],
+          aliases,
           styled: shouldStyleHelp({
             isTTY: process.stdout.isTTY === true,
             env: process.env,

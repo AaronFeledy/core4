@@ -39,7 +39,7 @@ import { attachToolingHostIo, toolingHostStdin } from "./exec-host-io";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
-import { type ToolingRoute, resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
+import { type ToolingRoute, toolingRouteError } from "./tooling-router";
 
 const dynamicToolingOptions = {
   resultSchema: ToolingResult,
@@ -206,21 +206,6 @@ export const renderAliasResolutionFailure = async (error: unknown): Promise<void
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
   });
-};
-
-export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<boolean> => {
-  const token = argv[0];
-  if (token === undefined) return false;
-  const name = toolingName(token);
-  if (name === undefined) return false;
-
-  const resolution = await Effect.runPromise(Effect.result(resolveToolingRoute(token)));
-  if (resolution._tag === "Failure") {
-    await runDynamicToolingFailure(name, resolution.failure);
-    return true;
-  }
-
-  return routeResolvedTooling(resolution.success, argv.slice(1));
 };
 
 export const routeResolvedTooling = async (
