@@ -69,6 +69,9 @@ service activation while an earlier policy command is checking or finishing its
 cleanup. Let that operation finish before running another mutation. Previews
 remain read-only and don't take ownership of the pending change.
 
+If a policy change is refused because a global route update is in progress,
+retry after that update finishes.
+
 A child `lando` process owns its own mutation lock. It cannot borrow a running
 parent command's lock. When Lando recognizes that parent ownership, it refuses
 the child mutation immediately;

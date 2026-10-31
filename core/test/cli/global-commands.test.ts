@@ -64,10 +64,12 @@ import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import * as AppCacheService from "@lando/engine/cache/service";
 import { readGlobalPolicy } from "@lando/engine/global-app/enablement";
+import { withGlobalMutation } from "@lando/engine/global-app/mutation";
 import { readGlobalReconciliation } from "@lando/engine/global-app/reconciliation";
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
 import { globalDisable, globalEnable, globalReconcile } from "@lando/engine/operations/global-policy";
+import { publishGlobalRoutes } from "@lando/engine/operations/global-routes";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
@@ -3726,4 +3728,60 @@ test("selected global start cannot republish a disabled retained sibling after i
     },
     { failRemoveServices: ["proxy"], beforeApply: Effect.suspend(() => beforeApply) },
   );
+});
+
+test("an awaited global route writer excludes sibling policy changes and competing publishers", async () => {
+  await withHarness(async (harness) => {
+    await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+    const plan = harness.calls.apply.at(-1)?.options.completionPlan;
+    if (plan === undefined) throw new Error("expected recorded global completion plan");
+    const writing = Deferred.makeUnsafe<void>();
+    const release = Deferred.makeUnsafe<void>();
+    const result = await Effect.runPromise(
+      withGlobalMutation(
+        Effect.gen(function* () {
+          const router = yield* RouterService;
+          const registry = yield* RuntimeProviderRegistry;
+          const provider = yield* registry.select(plan.provider);
+          const original = yield* readGlobalPolicy();
+          const paused = RouterService.of({
+            ...router,
+            applyRoutes: (routes, app) =>
+              Effect.gen(function* () {
+                yield* Deferred.succeed(writing, undefined);
+                yield* Deferred.await(release);
+                return yield* router.applyRoutes(routes, app);
+              }),
+          });
+          const fiber = yield* Effect.forkChild(
+            globalStart({ services: ["mail"] }).pipe(Effect.provideService(RouterService, paused)),
+          );
+          yield* Deferred.await(writing);
+          const disabling = yield* Effect.result(
+            globalDisable({ selectors: ["proxy"], allowDisruption: true }),
+          );
+          expect(disabling).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "GlobalAppError", operation: "policy-coordination" },
+          });
+          expect(yield* readGlobalPolicy()).toEqual(original);
+          const competing = yield* Effect.result(
+            publishGlobalRoutes(router, provider, plan, { started: new Set(["mail"]), failed: new Set() }),
+          );
+          expect(competing).toMatchObject({
+            _tag: "Failure",
+            failure: { _tag: "GlobalAppError", operation: "route-coordination" },
+          });
+          yield* Deferred.succeed(release, undefined);
+          const started = yield* Fiber.join(fiber);
+          expect(started.servicesStarted.map((service) => service.name)).toEqual(["mail"]);
+          const disabled = yield* globalDisable({ selectors: ["proxy"], allowDisruption: true });
+          expect(disabled.policySaved).toBe(true);
+          return yield* readGlobalPolicy();
+        }),
+      ).pipe(Effect.provide(harness.layer)),
+    );
+    expect(result.plugins["@lando/fake-global-command"]?.contributions.proxy?.enabled).toBe(false);
+    expect(harness.calls.publishedRoutes.at(-1)?.hostnames).not.toContain("proxy.global.lndo.site");
+  });
 });

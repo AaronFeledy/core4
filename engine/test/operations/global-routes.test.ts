@@ -6,7 +6,11 @@ import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lan
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 
-import { publishGlobalRoutes } from "../../src/operations/global-routes.ts";
+import { withGlobalActivationScope, withGlobalPolicyChange } from "../../src/global-app/activation-scope.ts";
+import { publishGlobalRoutes as publishGlobalRoutesEffect } from "../../src/operations/global-routes.ts";
+
+const publishGlobalRoutes = (...args: Parameters<typeof publishGlobalRoutesEffect>) =>
+  withGlobalActivationScope(publishGlobalRoutesEffect(...args));
 
 const mail = ServiceName.make("mailpit");
 const plan: AppPlan = {
@@ -374,4 +378,35 @@ test("changed policy also prevents stale empty-plan route withdrawal", async () 
   expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") expect(result.failure).toBe(changed);
   expect(removed).toBe(false);
+});
+
+test("empty route removal owns publication until its router callback completes", async () => {
+  let policyChanged = false;
+  const result = await Effect.runPromise(
+    publishGlobalRoutes(
+      {
+        ...makeRouter(),
+        removeRoutes: () =>
+          Effect.gen(function* () {
+            const nested = yield* Effect.result(
+              withGlobalPolicyChange(
+                "disable",
+                Effect.sync(() => {
+                  policyChanged = true;
+                }),
+              ),
+            );
+            expect(nested).toMatchObject({
+              _tag: "Failure",
+              failure: { _tag: "GlobalAppError", operation: "policy-coordination" },
+            });
+          }).pipe(Effect.orDie),
+      },
+      { list: () => Effect.die("Empty publication must not list") },
+      { ...plan, routes: [] },
+      { started: new Set(), failed: new Set() },
+    ),
+  );
+  expect(result).toBeUndefined();
+  expect(policyChanged).toBe(false);
 });

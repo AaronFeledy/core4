@@ -8,6 +8,7 @@ import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { plugin as serviceLando } from "@lando/service-lando";
 import { Effect, Layer, Schema } from "effect";
 
+import { withGlobalActivationScope } from "../../src/global-app/activation-scope.ts";
 import * as GlobalAppLayer from "../../src/global-app/service.ts";
 import { loadGlobalPlan } from "../../src/operations/global-plan.ts";
 import { publishGlobalRoutes } from "../../src/operations/global-routes.ts";
@@ -72,7 +73,7 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
       publishGlobalRoutes(router, TestRuntimeProvider, changed.plan, {
         started: new Set([mail]),
         failed: new Set(),
-      }),
+      }).pipe(withGlobalActivationScope),
     );
 
     // Then: planning and publication use the new domain without regenerating global YAML.
