@@ -1,9 +1,9 @@
 import type { ServiceShutdownObservation } from "@lando/sdk/schema";
 
 /**
- * Concatenate provider-contributed observation arrays.
+ * Merge provider-contributed observation arrays in action order.
  * Omits the field when no source supplied one; never invents ownership-only facts.
- * Empty arrays and absent-container observations are preserved when a source contributed them.
+ * Later absence placeholders cannot obscure facts captured before removal.
  */
 export const mergeShutdownObservations = (
   ...sources: ReadonlyArray<readonly ServiceShutdownObservation[] | undefined>
@@ -13,7 +13,22 @@ export const mergeShutdownObservations = (
   for (const source of sources) {
     if (source === undefined) continue;
     present = true;
-    out.push(...source);
+    for (const observation of source) {
+      if (
+        observation.status === "unknown" &&
+        observation.reason === "container-absent" &&
+        out.some(
+          (earlier) =>
+            !(earlier.status === "unknown" && earlier.reason === "container-absent") &&
+            earlier.appId === observation.appId &&
+            earlier.providerId === observation.providerId &&
+            earlier.service === observation.service &&
+            (observation.containerId === undefined || earlier.containerId === observation.containerId),
+        )
+      )
+        continue;
+      out.push(observation);
+    }
   }
   return present ? out : undefined;
 };

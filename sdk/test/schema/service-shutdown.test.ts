@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   DestroyAppResult,
   DestroyOutcome,
+  FileSyncQuiesceResult,
   ObservedServiceRemoval,
   ServiceShutdownObservation,
   StopAppResult,
@@ -116,6 +117,7 @@ describe("shutdown receipts", () => {
   ];
 
   test.each([
+    ["file sync quiescence", FileSyncQuiesceResult, {}],
     ["destroyed", DestroyOutcome, { kind: "destroyed" }],
     ["no-op", DestroyOutcome, { kind: "no-op", reason: "no-applied-plan" }],
     ["removed", ObservedServiceRemoval, { kind: "removed" }],

@@ -1749,14 +1749,14 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, LANDO_CTX
                 );
               }
               const physicalPlan = yield* physicalNetworkPlan(plan);
-              yield* runtimeBringDown(physicalPlan, {
+              return yield* runtimeBringDown(physicalPlan, {
                 ...(podmanApi === undefined ? {} : { api: podmanApi }),
                 ctx: LANDO_CTX,
                 volumes: false,
                 purgeCaches: false,
               }).pipe(
-                Effect.asVoid,
                 Effect.tap(() => reapRemovedExecConmons(runtimeBinDir, physicalPlan)),
+                Effect.map(({ shutdownObservations }) => ({ shutdownObservations })),
               );
             }),
           ),

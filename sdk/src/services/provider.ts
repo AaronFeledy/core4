@@ -64,8 +64,16 @@ import type {
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
 import type { MountObservation } from "../schema/service-mount.ts";
-import type { DestroyOutcome, ObservedServiceRemoval } from "../schema/service-shutdown.ts";
-export type { DestroyOutcome, ObservedServiceRemoval } from "../schema/service-shutdown.ts";
+import type {
+  DestroyOutcome,
+  FileSyncQuiesceResult,
+  ObservedServiceRemoval,
+} from "../schema/service-shutdown.ts";
+export type {
+  DestroyOutcome,
+  FileSyncQuiesceResult,
+  ObservedServiceRemoval,
+} from "../schema/service-shutdown.ts";
 import type { PrivilegeService, ProcessResult } from "./process.ts";
 
 export type ProviderError =
@@ -470,7 +478,9 @@ export class RuntimeProvider extends Context.Service<
       observed: ServiceRuntimeInfo,
     ) => Effect.Effect<ObservedServiceRemoval, ProviderError>;
     /** Stop app writers while keeping accelerated mount targets available for a final sync flush. */
-    readonly quiesceForFileSync?: (target: AppSelector) => Effect.Effect<void, ProviderError>;
+    readonly quiesceForFileSync?: (
+      target: AppSelector,
+    ) => Effect.Effect<FileSyncQuiesceResult, ProviderError>;
 
     /**
      * Read only requested environment names from existing service containers. Absent containers,

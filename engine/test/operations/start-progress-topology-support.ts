@@ -241,7 +241,7 @@ export const makeHarness = (
               };
             }),
         }),
-    quiesceForFileSync: () => Effect.void,
+    quiesceForFileSync: () => Effect.succeed({}),
     ...(options.quiesceRetainedFileSync === undefined
       ? {}
       : { quiesceRetainedFileSync: options.quiesceRetainedFileSync }),

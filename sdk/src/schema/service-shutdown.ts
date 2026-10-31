@@ -68,6 +68,11 @@ const shutdownObservations = Schema.optionalKey(Schema.Array(ServiceShutdownObse
 // ==== Provider teardown receipts
 // Successful resource actions can carry observations made before removal.
 
+export const FileSyncQuiesceResult = Schema.Struct({
+  shutdownObservations,
+}).annotate({ description: "Shutdown facts from quiescing file sync writers, without deleting app data." });
+export type FileSyncQuiesceResult = typeof FileSyncQuiesceResult.Type;
+
 export const DestroyOutcome = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("destroyed").annotate({ description: "The provider destroyed applied resources." }),

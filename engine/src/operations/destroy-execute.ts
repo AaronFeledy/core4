@@ -92,11 +92,15 @@ const executeLocked = Effect.fnUntraced(function* (plan: TeardownPlan) {
         );
         yield* tree.completeTask("snapshots");
       }
-      if (fileSync !== undefined)
-        yield* fileSync.dispose.pipe(Effect.tapError(() => tree.failTask("file-sync")));
+      const quiesced =
+        fileSync === undefined
+          ? undefined
+          : yield* fileSync.dispose.pipe(Effect.tapError(() => tree.failTask("file-sync")));
       if (fileSync?.applicable === true) yield* tree.completeTask("file-sync");
       const services = new Set<string>();
-      const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
+      const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [
+        quiesced?.shutdownObservations,
+      ];
       let volumesRemoved = false;
       let changed = snapshotsRemoved > 0;
       if (hasProvider) {

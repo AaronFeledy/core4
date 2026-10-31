@@ -298,7 +298,7 @@ const makeDestroyLayer = (
     apply: () => Effect.succeed({ changed: false }),
     ...(options.quiesceEffect === undefined
       ? {}
-      : { quiesceForFileSync: () => options.quiesceEffect ?? Effect.void }),
+      : { quiesceForFileSync: () => (options.quiesceEffect ?? Effect.void).pipe(Effect.as({})) }),
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
