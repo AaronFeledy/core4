@@ -7,6 +7,7 @@ import {
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
@@ -114,6 +115,10 @@ export const staticServiceFeature: ServiceFeatureDefinition = {
   id: STATIC_FEATURE_ID,
   schema: StaticFeatureConfigSchema as Schema.Codec<unknown>,
   priority: STATIC_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(STATIC_FEATURE_ID, (ctx) => {
+    const { docRoot } = Schema.decodeUnknownSync(StaticFeatureConfigSchema)(ctx.config);
+    return { handledServiceFields: docRoot.length > 0 ? ["webroot"] : [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),

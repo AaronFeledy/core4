@@ -29,6 +29,7 @@ import type {
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
+  ServiceFeatureValidationResult,
   TmpfsMountPlan,
   VolumeMountPlan,
 } from "../schema/index.ts";
@@ -192,6 +193,10 @@ export interface ServiceFeatureDefinition {
   readonly schema?: Schema.Codec<unknown>;
   readonly priority: number;
   readonly requires?: ReadonlyArray<keyof ProviderCapabilities>;
+  /** Validate final inherited facts with Original decoded config, no mutators or runtime IO. */
+  readonly validateEffective?: (
+    ctx: ServiceEndpointContext,
+  ) => Effect.Effect<ServiceFeatureValidationResult, ServiceFeatureError>;
   /** Declare listeners without applying features or acquiring runtime resources. */
   readonly declareEndpoints?: (
     ctx: ServiceEndpointContext,

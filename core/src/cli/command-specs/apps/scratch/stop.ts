@@ -23,5 +23,5 @@ export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
     id: Args.string({ description: "Scratch app id.", required: true }),
   },
   run: (input) => scratchStop(scratchIdFromInput(input)),
-  render: (result) => renderScratchStopResult(result as ScratchHandle),
+  render: (result) => renderScratchStopResult(result),
 };

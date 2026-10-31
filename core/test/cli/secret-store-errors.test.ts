@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
-import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
+import { startApp } from "@lando/engine/operations/start";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
@@ -11,7 +11,12 @@ import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { SecretStoreUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { CommandResultEnvelope, CurrentExecutableAppPlan, PluginManifest } from "@lando/sdk/schema";
+import {
+  CommandResultEnvelope,
+  CurrentExecutableAppPlan,
+  PluginManifest,
+  StartAppResult,
+} from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import {
@@ -161,7 +166,7 @@ const renderStartFailure = async (reference: string) => {
     rendererMode: "json",
     resultFormat: "json",
     command: "app:start",
-    resultSchema: StartAppResultSchema,
+    resultSchema: StartAppResult,
     formatError: ({ error }) => String(error),
     setExitCode: (code) => {
       exits.push(code);

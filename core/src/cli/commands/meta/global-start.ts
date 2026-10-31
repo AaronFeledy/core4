@@ -23,7 +23,7 @@ import type {
 } from "@lando/sdk/errors";
 import type { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import { StartedService } from "@lando/sdk/schema";
+import { StartAppResult } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildError,
@@ -55,8 +55,8 @@ export interface GlobalStartOptions {
 }
 
 export const GlobalStartResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStarted: Schema.Array(StartedService),
+  app: StartAppResult.fields.app,
+  servicesStarted: StartAppResult.fields.servicesStarted,
 });
 export type GlobalStartResult = typeof GlobalStartResultSchema.Type;
 

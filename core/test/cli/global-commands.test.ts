@@ -424,6 +424,7 @@ const makeHarness = async (
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<LandoEvent>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),
@@ -2235,7 +2236,7 @@ describe("meta:global command effects", () => {
         followGlobalLogs().pipe(Effect.provide(Layer.mergeAll(harness.layer, sinkLayer))),
       );
 
-      expect(result).toEqual({ app: "global", lines: [] });
+      expect(result).toEqual({ app: "global" });
       expect(emitted).toEqual([{ service: "proxy", chunk: "ready" }]);
     });
   });

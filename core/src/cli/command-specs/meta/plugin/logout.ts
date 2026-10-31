@@ -7,7 +7,7 @@ import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-
  * `lando meta:plugin:logout` — clear registry auth.
  */
 
-export const pluginLogoutSpec: LandoCommandSpec<never> = {
+export const pluginLogoutSpec: LandoCommandSpec<object> = {
   resultSchema: EmptyResultSchema,
   id: "meta:plugin:logout",
   summary: "Forget plugin source authentication.",

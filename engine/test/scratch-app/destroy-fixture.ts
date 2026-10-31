@@ -232,6 +232,7 @@ const makeFixture = async (root: string, options: DestroyFixtureOptions) => {
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused queue"),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),

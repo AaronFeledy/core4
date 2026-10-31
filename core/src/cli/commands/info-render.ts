@@ -17,19 +17,6 @@ import { probeFields } from "./info-probes-render.ts";
 import { homeFields, plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
 import { INFO_STATUS_TONES, summaryToneFromTable } from "./service-summary";
 
-type InfoResultWithHostProxy = InfoAppResult & {
-  readonly hostProxy?: {
-    readonly runLando: {
-      readonly availability: "available" | "unavailable";
-      readonly reason?: string;
-    };
-  };
-};
-
-const hasHostProxy = (result: InfoAppResult): result is InfoResultWithHostProxy => "hostProxy" in result;
-
-const hostProxyFor = (result: InfoAppResult) => (hasHostProxy(result) ? result.hostProxy : undefined);
-
 const infoStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
 
 const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<SummaryRow["fields"]> => {
@@ -87,7 +74,7 @@ const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string =>
 };
 
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
-  const hostProxy = hostProxyFor(result);
+  const hostProxy = result.hostProxy;
   const projectFiles = fileSyncSection(result.fileSync);
   const rows: SummaryRow[] = result.services.map((service) => {
     const remedy = storageRemedy(service);
@@ -150,7 +137,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
             : {}),
       },
       ...(projectFiles === undefined ? [] : [projectFiles]),
-      ...(hostProxy === undefined
+      ...(hostProxy?.runLando.availability !== "unavailable"
         ? []
         : [
             {
@@ -158,7 +145,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
               rows: [
                 {
                   label: "runLando",
-                  tone: (hostProxy.runLando.availability === "available" ? "ok" : "skipped") as SummaryTone,
+                  tone: "skipped" as const,
                   value: hostProxy.runLando.availability,
                   fields:
                     hostProxy.runLando.reason === undefined
@@ -181,8 +168,8 @@ const agentEnvLines = (result: InfoAppResult): ReadonlyArray<string> => {
 };
 
 const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
-  const hostProxy = hostProxyFor(result);
-  if (hostProxy === undefined) return [];
+  const hostProxy = result.hostProxy;
+  if (hostProxy?.runLando.availability !== "unavailable") return [];
   const reason = hostProxy.runLando.reason === undefined ? "" : `\t${hostProxy.runLando.reason}`;
   return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
 };

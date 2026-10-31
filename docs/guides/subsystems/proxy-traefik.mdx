@@ -67,6 +67,13 @@ The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name w
 
 Most apps skip `routes:`. A service with no `routes:` and no `proxy.<name>` entry gets the default hostname. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published host ports still work.
 
+Interactive `lando init` shows configured URL candidates after you answer the
+recipe questions. These come from explicit authored routes, which can omit the
+service prefix. They use the configured domain and preferred router ports, but
+cannot establish runtime fallback ports or reachability. No explicit candidate
+does not mean the app will have no automatic routes. Use `lando info` after
+starting the app for its published URLs.
+
 ## Change the default domain
 
 Set `proxy.defaultDomain` in global config, then restart the app:

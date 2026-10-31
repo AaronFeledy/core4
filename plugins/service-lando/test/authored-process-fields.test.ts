@@ -19,6 +19,7 @@ const planService = (serviceType: ServiceType, fields: ServiceConfig) =>
     service: {
       type: serviceType.id,
       ...(serviceType.id === "compose" || serviceType.id === "lando" ? { image: "alpine:3" } : {}),
+      ...(serviceType.id === "minio" ? { image: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z" } : {}),
       ...(serviceType.name === "varnish" ? { backend: "backend" } : {}),
       ...fields,
     },

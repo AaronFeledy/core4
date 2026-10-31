@@ -31,7 +31,8 @@ export const streamBunScript = Effect.fnUntraced(function* (
     ...(options?.capture === true ? { capture: true } : {}),
   };
   if (options?.capture === true) return yield* runner.run(input);
-  return yield* collectExecStream(runner.streamWithExit(input), sink);
+  const result = yield* collectExecStream(runner.streamWithExit(input), sink);
+  return { ...result, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }, Effect.scoped);
 
 export const streamBunCommand = Effect.fnUntraced(function* (
@@ -53,10 +54,11 @@ export const streamBunCommand = Effect.fnUntraced(function* (
     ...(options?.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
     ...(options?.capture === true ? { capture: true } : {}),
   };
-  return yield* BunProcessRunner.withProcessRedactionTokens(
+  const result = yield* BunProcessRunner.withProcessRedactionTokens(
     [source],
     options?.capture === true
       ? runner.run(input)
       : collectExecStream(runner.streamWithExit(input), execution.sink),
   );
+  return { ...result, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }, Effect.scoped);

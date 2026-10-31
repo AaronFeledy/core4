@@ -1,3 +1,6 @@
+import { RecipeManifestValidationError } from "@lando/sdk/errors";
+import { compileRecipeSource } from "@lando/sdk/recipes";
+import { parseValidationIssuePath, validationIssue } from "@lando/sdk/schema";
 import { Cause, Effect, Exit } from "effect";
 import type { InitAppOptions } from "../cli/commands/init";
 import { parseInitSourceFlags } from "../cli/commands/init-source";
@@ -23,9 +26,32 @@ export const parseResolvedRecipe = async (
   context: Partial<FlattenRecipeContext> = {},
 ) => {
   const resolution = await unwrap(resolveRecipeSource(resolved, context));
-  const { compileResolvedRecipe } = await import("./compiled-source");
-  const compiled = await unwrap(compileResolvedRecipe(resolution));
-  return { resolved, resolution, compiled, manifest: compiled.manifest };
+  const { files: _files, ...questionnaireSource } = resolution.source;
+  const origin = resolution.sources.at(-1)?.origin;
+  const questionnaire = await unwrap(
+    Effect.fromResult(
+      compileRecipeSource(questionnaireSource, {
+        sourceKind: origin?.kind === "bundled" ? "bundled" : "local",
+        packageName:
+          origin?.kind === "bundled"
+            ? `@lando/recipe-${questionnaireSource.id}`
+            : (questionnaireSource.package ?? "local"),
+        assets: [],
+        configLayers: resolution.configLayers,
+      }),
+    ).pipe(
+      Effect.mapError(
+        (error) =>
+          new RecipeManifestValidationError({
+            source: resolution.source.id,
+            message: error.message,
+            issues: [validationIssue(parseValidationIssuePath(error.path ?? "config") ?? [], error.message)],
+            remediation: error.remediation,
+          }),
+      ),
+    ),
+  );
+  return { resolved, resolution, questionnaire };
 };
 
 export const acquireInitRecipe = async (

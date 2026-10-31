@@ -156,6 +156,7 @@ test("opener failure retains its remediation and classification over the host-pr
         subscribeQueue: Effect.die("unused"),
         query: () => Effect.die("unused"),
         waitFor: () => Effect.die("unused"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("unused"),
       }),
     ),

@@ -286,7 +286,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
 | - | - | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
-| L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
+| L3-PARITY-03 | US-566 | MinIO BYO image/build, API and console listeners | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
 | L3-PARITY-03 | US-567 | app-scoped mailpit and deprecated mailhog | `docs/guides/services/mailpit.mdx` | Shipped |
 | L3-PARITY-03 | US-568 | tomcat service type | `docs/guides/services/tomcat.mdx` | Shipped |
@@ -307,7 +307,7 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | - | - | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
 | - | - | service locale via build step and `LANG` | `docs/guides/services/locale.mdx` | Shipped |
-| - | - | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |
+| - | - | router enablement, endpoint-aware URL scans and scanner overrides | `docs/guides/services/router-and-scanner.mdx` | Shipped |
 | - | - | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | - | - | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
 | - | - | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
