@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { makeProviderDataPlane, sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { dockerPullDialect } from "@lando/container-runtime/dialect";
 import { makeDockerApiClient } from "@lando/container-runtime/docker/api-client";
+import { compareDockerApiVersion } from "@lando/container-runtime/docker/api-version";
 import { pullImage } from "@lando/container-runtime/image-pull";
 import { standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { makeLandoPaths } from "@lando/paths";
@@ -116,6 +117,15 @@ test.skipIf(dockerHost === undefined)(
     const call = (input: Parameters<typeof request>[0]) => Effect.runPromise(request(input));
     try {
       await Effect.runPromise(client.info);
+      const versionResponse = await call({ method: "GET", path: "/version" });
+      expect(versionResponse.status).toBe(200);
+      const advertised = JSON.parse(versionResponse.body) as { ApiVersion?: unknown };
+      if (typeof advertised.ApiVersion !== "string")
+        throw new Error("Docker did not advertise its API version");
+      const observedApiVersion = advertised.ApiVersion;
+      const subpathCapability = compareDockerApiVersion(observedApiVersion, "1.45");
+      if (subpathCapability === undefined)
+        throw new Error(`Invalid Docker API version ${observedApiVersion}`);
       await Effect.runPromise(pullArtifact({ ref: sqliteHelperImage.ref, policy: "missing" }));
       expect((await call({ method: "POST", path: "/volumes/create", body: { Name: volume } })).status).toBe(
         201,
@@ -407,32 +417,22 @@ test.skipIf(dockerHost === undefined)(
           mount.type === "volume" ? { ...mount, subpath: "subpath" } : mount,
         ),
       };
+      const subpathDeps: SqlCommandDeps = {
+        ...deps,
+        plan: { ...deps.plan, services: { appserver: subpathService } },
+      };
       const nativeSubpath = await Effect.runPromiseExit(
-        executeSqliteCommand(
-          {
-            ...deps,
-            plan: { ...deps.plan, services: { appserver: subpathService } },
-          },
-          { action: "snapshot", yes: true },
-          target,
-        ),
+        executeSqliteCommand(subpathDeps, { action: "snapshot", yes: true }, target),
       );
-      // Keep the real client's default API negotiation. Older negotiated APIs must reject
-      // subpaths safely; a future supported API must capture the subpath's distinct data.
-      if (Exit.isFailure(nativeSubpath)) {
-        expect(Option.getOrUndefined(Cause.findErrorOption(nativeSubpath.cause))).toBeInstanceOf(
-          SqlRecoveryUnavailableError,
-        );
-        expect(
-          apiFailures.some(
-            (failure) =>
-              failure.status === 400 &&
-              failure.body.includes("VolumeOptions.Subpath needs API v1.45 or newer"),
-          ),
-        ).toBe(true);
-      } else {
+      if (subpathCapability >= 0) {
+        if (Exit.isFailure(nativeSubpath))
+          throw new Error(
+            `Docker advertises API ${observedApiVersion}, but the production subpath snapshot failed`,
+            { cause: nativeSubpath.cause },
+          );
         const id = nativeSubpath.value.snapshotId;
         expect(id).toBeString();
+        if (id === undefined) throw new Error("Expected the native subpath snapshot ID");
         const payload = join(root, "native-subpath.sqlite");
         expect(
           await unpackSqliteTarFile(
@@ -457,6 +457,83 @@ test.skipIf(dockerHost === undefined)(
         ]);
         expect(capturedData.exitCode).toBe(0);
         expect(capturedData.stdout.trim()).toBe("native-subpath-sentinel");
+        const subpathReset = await Effect.runPromise(
+          executeSqliteCommand(subpathDeps, { action: "reset", yes: true }, target),
+        );
+        expect(subpathReset.recoverySnapshotId).toBeString();
+        const subpathEmpty = await docker([
+          "run",
+          "--rm",
+          "--user",
+          "1001:1001",
+          "--entrypoint",
+          "sqlite3",
+          "--mount",
+          `type=volume,src=${volume},dst=/volume`,
+          sqliteHelperImage.ref,
+          "-readonly",
+          "-ifexists",
+          "/volume/subpath/site.sqlite",
+          "SELECT count(*) FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*';",
+        ]);
+        expect(subpathEmpty.exitCode).toBe(0);
+        expect(subpathEmpty.stdout.trim()).toBe("0");
+        const subpathBucket = await Effect.runPromise(
+          stateStore.open({
+            root: {
+              path: AbsolutePath.make(
+                join(paths.ownerSnapshotsDir(identity.ownerKey), sqliteSnapshotStore(target.path)),
+              ),
+            },
+            key: `${id}.json`,
+            schema: SnapshotInfo,
+            version: 1,
+            codec: "json",
+            onCorrupt: "fail",
+          }),
+        );
+        const subpathSource = await Effect.runPromise(subpathBucket.get);
+        if (subpathSource === null) throw new Error("Expected the native subpath snapshot catalog");
+        const subpathRestored = await Effect.runPromise(
+          executeSqliteCommand(
+            { ...subpathDeps, resolveSnapshot: () => Effect.succeed(subpathSource) },
+            {
+              action: "restore",
+              yes: true,
+              snapshotId: id,
+            },
+            target,
+          ),
+        );
+        expect(subpathRestored.recoverySnapshotId).toBeString();
+        const selectedData = await docker([
+          "run",
+          "--rm",
+          "--user",
+          "1001:1001",
+          "--entrypoint",
+          "sqlite3",
+          "--mount",
+          `type=volume,src=${volume},dst=/volume`,
+          sqliteHelperImage.ref,
+          "-readonly",
+          "-ifexists",
+          "/volume/subpath/site.sqlite",
+          "SELECT value FROM marker;",
+        ]);
+        expect(selectedData.exitCode).toBe(0);
+        expect(selectedData.stdout.trim()).toBe("native-subpath-sentinel");
+      } else {
+        expect(Exit.isFailure(nativeSubpath)).toBe(true);
+        if (!Exit.isFailure(nativeSubpath))
+          throw new Error(`Docker API ${observedApiVersion} unexpectedly accepted a subpath`);
+        const failure = Option.getOrUndefined(Cause.findErrorOption(nativeSubpath.cause));
+        expect(failure).toBeInstanceOf(SqlRecoveryUnavailableError);
+        if (!(failure instanceof SqlRecoveryUnavailableError))
+          throw new Error("Expected a visible SQL capability failure");
+        expect(failure.message).toContain("1.45");
+        expect(failure.remediation).toMatch(/upgrad|updat/iu);
+        expect(failure.remediation).toMatch(/subpath|whole.volume|volume.root/iu);
       }
       expect(await digest("/volume/site.sqlite")).toBe(restoredDbDigest);
       expect(await digest("/volume/other.sqlite")).toBe(originalRootDigest);

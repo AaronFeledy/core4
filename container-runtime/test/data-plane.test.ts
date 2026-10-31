@@ -1723,3 +1723,111 @@ test.each(["http", "typed", "defect", "interrupt"] as const)(
     }
   },
 );
+
+describe("ephemeral volume subpath API support", () => {
+  const runSubpath = async (rejection?: string | ProviderUnavailableError) => {
+    const requests: Parameters<NonNullable<DataPlaneApiClient["request"]>>[0][] = [];
+    const provider = makeProviderDataPlane({
+      providerId: "docker",
+      capabilities: { volumeSnapshot: "none" },
+      redactor: passthroughRedactor,
+      api: {
+        request: (request) => {
+          requests.push(request);
+          if (request.path.startsWith("/containers/create?") && rejection !== undefined)
+            return rejection instanceof ProviderUnavailableError
+              ? Effect.fail(rejection)
+              : Effect.succeed({ status: 400, body: JSON.stringify({ message: rejection }) });
+          return Effect.succeed(
+            request.path.endsWith("/json")
+              ? { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) }
+              : { status: request.method === "DELETE" ? 204 : 201, body: "{}" },
+          );
+        },
+        stream: () => Stream.empty,
+      },
+    });
+    const owned = {
+      ...plan,
+      identity: { appRoot: adoptedOwnerRoot, ownerKey: "owner" },
+      stores: [{ name: "data", scope: "app" as const, kind: "data" as const }],
+    };
+    const result = await Effect.runPromiseExit(
+      Effect.scoped(
+        provider.run({
+          owner: { app: appId, plan: owned },
+          image: "sqlite-helper",
+          command: ["true"],
+          remove: true,
+          mounts: [
+            {
+              type: "volume",
+              store: "data",
+              target: PortablePath.make("/data"),
+              readOnly: false,
+              subpath: "tenant",
+            },
+          ],
+        }),
+      ),
+    );
+    return { result, requests };
+  };
+
+  test("opts in only the subpath create request to API 1.45 without mounting the volume root", async () => {
+    const { result, requests } = await runSubpath();
+    expect(Exit.isSuccess(result)).toBe(true);
+    const create = requests.find((request) => request.path.startsWith("/containers/create?"));
+    expect(create?.minimumApiVersion).toBe("1.45");
+    expect(create?.body).toMatchObject({
+      HostConfig: {
+        Binds: [],
+        Mounts: [{ Type: "volume", Source: "data", Target: "/data", VolumeOptions: { Subpath: "tenant" } }],
+      },
+    });
+    expect(
+      requests
+        .filter((request) => request !== create)
+        .every((request) => request.minimumApiVersion === undefined),
+    ).toBe(true);
+  });
+
+  test("reports API 1.45 and safe alternatives without exposing the rejected response body", async () => {
+    const { result, requests } = await runSubpath(
+      "VolumeOptions.Subpath needs API v1.45 or newer private-response-marker",
+    );
+    expect(Exit.isFailure(result)).toBe(true);
+    if (!Exit.isFailure(result)) return;
+    const failure = Option.getOrUndefined(Cause.findErrorOption(result.cause));
+    expect(failure).toBeInstanceOf(ProviderCapabilityError);
+    if (!(failure instanceof ProviderCapabilityError)) return;
+    expect(failure.message).toContain("API v1.45");
+    expect(failure.remediation).toContain("volume root");
+    expect(failure.remediation).toContain("passthrough directory bind");
+    expect(failure.message).not.toContain("private-response-marker");
+    expect(failure.remediation).not.toContain("private-response-marker");
+    expect(requests.some((request) => request.path.endsWith("/start"))).toBe(false);
+    expect(requests.filter((request) => request.path.startsWith("/containers/create?"))).toHaveLength(1);
+  });
+
+  test("preserves an actionable version preflight failure before creating a helper", async () => {
+    const failure = new ProviderUnavailableError({
+      providerId: "docker",
+      operation: "volume-subpath",
+      message: "Docker volume subdirectory helpers require API v1.45 or newer.",
+      remediation: "Use a volume root or passthrough directory bind, or update the selected endpoint.",
+    });
+    const { result, requests } = await runSubpath(failure);
+    expect(Exit.isFailure(result)).toBe(true);
+    if (!Exit.isFailure(result)) return;
+    expect(Option.getOrUndefined(Cause.findErrorOption(result.cause))).toBe(failure);
+    expect(requests.some((request) => request.path.endsWith("/start"))).toBe(false);
+  });
+
+  test("does not misreport a missing subdirectory as an API version failure", async () => {
+    const { result } = await runSubpath("invalid mount config: subpath tenant does not exist");
+    expect(Exit.isFailure(result)).toBe(true);
+    if (!Exit.isFailure(result)) return;
+    expect(Option.getOrUndefined(Cause.findErrorOption(result.cause))).toBeInstanceOf(VolumeOperationError);
+  });
+});

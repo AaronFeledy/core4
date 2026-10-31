@@ -4,7 +4,12 @@ import { lstat, open, realpath, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
-import { SqlCommandFailedError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import {
+  ProviderCapabilityError,
+  ProviderUnavailableError,
+  SqlCommandFailedError,
+  SqlRecoveryUnavailableError,
+} from "@lando/sdk/errors";
 import { type AppPlan, type VolumeIdentity, planAppIdentity } from "@lando/sdk/schema";
 import type { EphemeralRunSpec, ExecResult, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Exit } from "effect";
@@ -429,11 +434,18 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
       Effect.mapError(
         (cause) =>
           new SqlRecoveryUnavailableError({
-            message: `Cannot inspect SQLite file ownership for ${target.name}.`,
+            message:
+              cause instanceof ProviderCapabilityError ||
+              (cause instanceof ProviderUnavailableError && cause.operation === "volume-subpath")
+                ? `Cannot access SQLite on ${target.name}: ${cause.message}`
+                : `Cannot inspect SQLite file ownership for ${target.name}.`,
             service: target.name,
             reason: String(cause),
             remediation:
-              "Confirm the SQLite file exists on the planned mount and the provider can inspect it, then retry.",
+              cause instanceof ProviderCapabilityError ||
+              (cause instanceof ProviderUnavailableError && cause.operation === "volume-subpath")
+                ? cause.remediation
+                : "Confirm the SQLite file exists on the planned mount and the provider can inspect it, then retry.",
           }),
       ),
     );
@@ -549,12 +561,20 @@ export const runSqliteHelper = Effect.fn("Sql.runSqliteHelper")(function* (
     Effect.mapError(
       (cause) =>
         new SqlCommandFailedError({
-          message: `SQLite helper failed for ${target.name}.`,
+          message:
+            cause instanceof ProviderCapabilityError ||
+            (cause instanceof ProviderUnavailableError && cause.operation === "volume-subpath")
+              ? `SQLite helper failed for ${target.name}: ${cause.message}`
+              : `SQLite helper failed for ${target.name}.`,
           service: target.name,
           command,
           reason: "provider",
           stderrTail: String(cause),
-          remediation: "Check provider runtime health with `lando doctor`, then retry.",
+          remediation:
+            cause instanceof ProviderCapabilityError ||
+            (cause instanceof ProviderUnavailableError && cause.operation === "volume-subpath")
+              ? cause.remediation
+              : "Check provider runtime health with `lando doctor`, then retry.",
         }),
     ),
   );

@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises";
 import type { Redactor } from "@lando/sdk/secrets";
 import { boundedDiagnostic, makeCompletionDiagnosticContext } from "./completion-diagnostic.ts";
 import { removeRuntimeContainer } from "./container-removal.ts";
+import type { EngineHttpRequest } from "./engine-api.ts";
 import { tryParseJson } from "./engine-json.ts";
 import {
   ephemeralDataHelperLabels,
@@ -90,6 +91,7 @@ export interface DataPlaneHttpRequest {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly minimumApiVersion?: NonNullable<EngineHttpRequest["minimumApiVersion"]>;
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;
@@ -439,7 +441,9 @@ const request = (options: ProviderDataPlaneOptions, operation: string, input: Da
         .request(input)
         .pipe(
           Effect.mapError((cause) =>
-            volumeError(options, operation, "Provider API request failed.", input, cause),
+            cause instanceof ProviderUnavailableError && cause.operation === "volume-subpath"
+              ? cause
+              : volumeError(options, operation, "Provider API request failed.", input, cause),
           ),
         );
 
@@ -617,10 +621,13 @@ const createEphemeralContainer = (
       ReadOnly: bind.readOnly === true,
     })),
   ];
+  const hasSubpath =
+    witnessSource === undefined && (spec.mounts?.some((entry) => entry.subpath !== undefined) ?? false);
   const attachStdin = spec.stdinStream !== undefined;
   return request(options, "run.create", {
     method: "POST",
     path: `/containers/create?name=${encodeURIComponent(name)}`,
+    ...(hasSubpath ? { minimumApiVersion: "1.45" as const } : {}),
     body: {
       Image: spec.image,
       Cmd: spec.command,
@@ -653,7 +660,27 @@ const createEphemeralContainer = (
       AttachStderr: true,
     },
   }).pipe(
-    Effect.tap((response) => ensure2xx(options, "run.create", response, mount?.store)),
+    Effect.tap(
+      (response): Effect.Effect<void, ProviderCapabilityError | VolumeOperationError> =>
+        hasSubpath &&
+        options.providerId === "docker" &&
+        response.status === 400 &&
+        /VolumeOptions\.Subpath needs API v1\.45 or newer/u.test(response.body)
+          ? Effect.fail(
+              new ProviderCapabilityError({
+                providerId: options.providerId,
+                operation: "run.create",
+                capability: "volume-subpath",
+                requiredValue: "Docker API v1.45 or newer",
+                actualValue: "The selected Docker API rejected VolumeOptions.Subpath.",
+                message:
+                  "Docker volume subdirectory helpers require API v1.45 or newer; the selected API cannot mount this subpath.",
+                remediation:
+                  "Use a volume root or a passthrough directory bind, or update Docker/Lando so the selected endpoint can use API v1.45 or newer. Lando will not substitute the volume root.",
+              }),
+            )
+          : ensure2xx(options, "run.create", response, mount?.store),
+    ),
     Effect.as(name),
   );
 };

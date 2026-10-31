@@ -14,7 +14,12 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
-import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
+import {
+  ProviderCapabilityError,
+  ProviderUnavailableError,
+  SqlCommandFailedError,
+  SqlRecoveryUnavailableError,
+} from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, type VolumeLocator } from "@lando/sdk/schema";
 import type { EphemeralRunSpec } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
@@ -510,4 +515,68 @@ test("uses one canonical bind source for proof, stat, and the database helper", 
   } finally {
     await Effect.runPromise(removeSqliteHelperScratch(helper.scratchHost));
   }
+});
+
+test("keeps subpath API requirements and remedies in user-visible SQLite errors", async () => {
+  const f = setup();
+  const capability = new ProviderCapabilityError({
+    providerId: "docker",
+    operation: "run.create",
+    capability: "volume-subpath",
+    requiredValue: "1.45",
+    actualValue: "1.43",
+    message: "Docker volume subdirectory helpers require API v1.45 or newer.",
+    remediation:
+      "Use a volume root or passthrough directory bind, or update Docker/Lando to use API v1.45 or newer.",
+  });
+  const deps = { ...f, run: () => Effect.fail(capability) };
+  const inspected = await Effect.runPromiseExit(prepareSqliteHelper(deps, f.service, f.target));
+  expect(Exit.isFailure(inspected)).toBe(true);
+  if (!Exit.isFailure(inspected)) return;
+  const error = Option.getOrUndefined(Cause.findErrorOption(inspected.cause));
+  expect(error).toBeInstanceOf(SqlRecoveryUnavailableError);
+  if (!(error instanceof SqlRecoveryUnavailableError)) return;
+  expect(error.message).toContain("API v1.45");
+  expect(error.remediation).toContain("volume root");
+  expect(error.remediation).toContain("update Docker/Lando");
+  const helper = await Effect.runPromise(
+    prepareSqliteHelper(
+      { ...f, run: () => Effect.succeed({ exitCode: 0, stdout: "100:200", stderr: "" }) },
+      f.service,
+      f.target,
+    ),
+  );
+  try {
+    const executed = await Effect.runPromiseExit(runSqliteHelper(deps, f.target, helper, ["true"]));
+    expect(Exit.isFailure(executed)).toBe(true);
+    if (!Exit.isFailure(executed)) return;
+    const commandError = Option.getOrUndefined(Cause.findErrorOption(executed.cause));
+    expect(commandError).toBeInstanceOf(SqlCommandFailedError);
+    if (!(commandError instanceof SqlCommandFailedError)) return;
+    expect(commandError.message).toContain("API v1.45");
+    expect(commandError.remediation).toContain("volume root");
+  } finally {
+    await Effect.runPromise(removeSqliteHelperScratch(helper.scratchHost));
+  }
+});
+
+test("exposes subpath version preflight guidance rather than only nested provider details", async () => {
+  const f = setup();
+  const failure = new ProviderUnavailableError({
+    providerId: "docker",
+    operation: "volume-subpath",
+    message: "Docker volume subdirectory helpers require API v1.45 or newer; support is unverified.",
+    remediation: "Use a volume root or a passthrough directory bind, or update the selected endpoint.",
+  });
+  const exit = await Effect.runPromiseExit(
+    prepareSqliteHelper({ ...f, run: () => Effect.fail(failure) }, f.service, f.target),
+  );
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (!Exit.isFailure(exit)) return;
+  const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+  expect(error).toBeInstanceOf(SqlRecoveryUnavailableError);
+  if (!(error instanceof SqlRecoveryUnavailableError)) return;
+  expect(error.message).toContain("API v1.45");
+  expect(error.remediation).toContain("volume root");
+  expect(error.remediation).toContain("passthrough directory bind");
 });
