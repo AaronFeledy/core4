@@ -111,12 +111,15 @@ test("source cache refresh preserves authored catalog endpoints, layer merging, 
     );
     expect(plan.services[ServiceName.make("cache")]?.endpoints).toEqual([cache]);
     expect(plan.services[ServiceName.make("php")]?.endpoints).toEqual([fpm]);
-    expect(plan.services[ServiceName.make("web")]?.endpoints).toEqual([http, metrics]);
+    expect(plan.services[ServiceName.make("web")]?.endpoints).toEqual([
+      { ...http, scan: { path: "/", okCodes: [] } },
+      metrics,
+    ]);
     expect(plan.services[ServiceName.make("hidden")]?.endpoints).toEqual([]);
     expect(plan.services[ServiceName.make("inbox")]?.endpoints).toEqual([]);
     expect(plan.services[ServiceName.make("inbox")]?.healthcheck?.command).toEqual(["/mailpit", "readyz"]);
     expect(plan.services[ServiceName.make("queue")]?.endpoints).toEqual([
-      endpoint("http", 15672, "dashboard"),
+      { ...endpoint("http", 15672, "dashboard"), scan: { path: "/", okCodes: [] } },
     ]);
     expect(plan.routes.find((route) => route.hostname === "authored.lndo.site")?.backend).toEqual({
       service: ServiceName.make("web"),
