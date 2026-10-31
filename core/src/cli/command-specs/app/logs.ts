@@ -2,9 +2,9 @@ import { Flags } from "../../spec/metadata";
 
 import { StreamFrame } from "@lando/sdk/schema";
 
-import { type LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
+import { LogsAppResult, followLogsApp, logsApp } from "@lando/engine/operations/logs";
 import { renderLogsAppResult } from "../../commands/logs";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import {
   logFollowFromInput,
@@ -37,7 +37,7 @@ export const logsOptionsFromInput = (input: unknown): Parameters<typeof logsApp>
 export const logsFollowFromInput = (input: unknown): boolean => logFollowFromInput(input);
 
 export const logsSpec: LandoCommandSpec<LogsAppResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: LogsAppResult,
   id: "app:logs",
   helpGroup: "common",
   mcpAllowed: true,
@@ -71,9 +71,6 @@ export const logsSpec: LandoCommandSpec<LogsAppResult> = {
     const signal = logSignalFromInput(input);
     return followLogsApp({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
   },
-  streamFrames: (value) => {
-    const result = value as LogsAppResult;
-    return logLinesToStreamFrames(result);
-  },
-  render: (result) => renderLogsAppResult(result as LogsAppResult),
+  streamFrames: logLinesToStreamFrames,
+  render: renderLogsAppResult,
 };

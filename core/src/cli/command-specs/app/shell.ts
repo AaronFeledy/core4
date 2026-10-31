@@ -1,12 +1,12 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Flags } from "../../spec/metadata";
 
-import { type ShellAppResult, renderShellAppResult, shellApp } from "../../commands/shell";
-import { EmptyResultSchema, type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
+import { ShellAppResult, renderShellAppResult, shellApp } from "../../commands/shell";
+import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ShellAppResult,
   id: "app:shell",
   summary: "Open an interactive host shell for the current app, or a service shell with --service.",
   namespace: "app",
@@ -42,5 +42,5 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
     });
   },
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderShellAppResult(result as ShellAppResult),
+  render: renderShellAppResult,
 };
