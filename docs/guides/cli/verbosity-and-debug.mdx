@@ -34,7 +34,7 @@ Set the mode three ways. First match wins:
 
 The default is `lando`.
 
-`--format=json` and `--format=yaml` change the command result shape. With the `lando`, `plain`, or `json` renderer they also keep progress off stderr (desktop notifications aside), so a script reads one clean result from stdout; `verbose` still dumps every event on stderr. `--renderer=json` defaults the result format to JSON, and an explicit `--format` wins. Streaming commands such as `lando exec` and `lando logs --follow` add one thing under `--format=json`: their events arrive on stdout as `event` frames in the same stream as the output. See [Stream tooling output](../tooling/output-streaming.mdx#pick-a-renderer-mode).
+`--format=json` and `--format=yaml` change the command result shape. With the `lando`, `plain`, or `json` renderer they also keep progress off stderr, so a script reads one clean result from stdout. Desktop notifications, explicit diagnostics, and deprecation warnings still use stderr, and `verbose` still dumps every event there. `--renderer=json` defaults the result format to JSON, and an explicit `--format` wins. Streaming commands such as `lando exec`, `lando logs --follow`, `lando start`, and `lando rebuild` change one thing under `--format=json`: their events arrive on stdout as `event` frames in the same stream as the output, for every renderer, including `verbose`. See [Stream tooling output](../tooling/output-streaming.mdx#pick-a-renderer-mode).
 
 ```sh
 lando info --format=json

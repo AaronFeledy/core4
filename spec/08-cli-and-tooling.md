@@ -961,9 +961,9 @@ One pure routing function decides where output goes from the renderer, result fo
 
 | Result format | stdout | Events |
 | --- | --- | --- |
-| `json`, frame schema declared or live | NDJSON frames ending in one `result` frame | `event` frames on stdout |
+| `json` (and `ndjson` once advertised, below), frame schema declared or live | NDJSON frames ending in one `result` frame | `event` frames on stdout |
 | `json` otherwise, and `yaml` | One envelope | `lando`: no narration (desktop notifications still realized); `plain`: none; `json`: `notify.desktop` records on stderr; `verbose`: full event dump on stderr |
-| `text`, `table`, command-owned `ndjson` | Rendered result and tool payload | Renderer narration on stderr: `lando` tree or lines, `plain` lines, `json` event lines, `verbose` dump |
+| `text`, `table`, and `ndjson` a command renders itself (`meta:doctor`) | Rendered result and tool payload | Renderer narration on stderr: `lando` tree or lines, `plain` lines, `json` event lines, `verbose` dump |
 
 A live sink attaches for live commands in every format except `yaml`.
 

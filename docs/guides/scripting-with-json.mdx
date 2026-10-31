@@ -17,7 +17,9 @@ lando version --json
 ```
 
 Every non-interactive command accepts `--format json` and emits one envelope
-on stdout. `--format=json` is equivalent. `-j` is the single-character
+on stdout, except streaming commands such as `lando exec`, `lando logs`,
+`lando start`, and `lando rebuild`, which emit newline-delimited frames that end
+in one result frame carrying that envelope (see below). `--format=json` is equivalent. `-j` is the single-character
 shorthand for that full envelope. Bare `--json` lists keys. `--json=key`
 projects that key inside `result`. `--jq` prints a raw jq selection.
 
