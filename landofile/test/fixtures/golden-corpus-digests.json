@@ -972,7 +972,7 @@
     },
     {
       "fixture": "docs/guides/sqlite-database/fixtures/sqlite-database-demo",
-      "digest": "2683d707e077c08e6b988ec1848259e68e5c623d3fbbbb8d88ec9b6d31cacac3"
+      "digest": "fd222af1ac3536b35a5e13600585a7c7780778d89d4fcc84fccddea04602b0d7"
     },
     {
       "fixture": "docs/guides/ssh-host-agent/fixtures/host-agent-1password",

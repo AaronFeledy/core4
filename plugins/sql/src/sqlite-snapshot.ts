@@ -24,6 +24,8 @@ import {
   sqliteScratchFile,
   withSqliteHelper,
 } from "./sqlite-helper.ts";
+import { requireSameSqliteTarget, resolveSqliteTargetIdentity } from "./sqlite-identity.ts";
+import { requireSqliteIntegrity } from "./sqlite-integrity.ts";
 import { sqliteSnapshotStore } from "./sqlite-path.ts";
 import type { SqlFileTarget } from "./target.ts";
 import { type SqlPlan, type SqlPlanService, sqlPlanIdentity } from "./views.ts";
@@ -44,9 +46,10 @@ export const sqliteSnapshotMetadata = (input: {
   readonly path: string;
   readonly version: string;
   readonly recoveryReason: SnapshotMetadata["recoveryReason"];
+  readonly targetIdentity: string;
 }): SnapshotMetadata => ({
   service: ServiceName.make(input.service),
-  volumeInstanceId: input.path,
+  volumeInstanceId: input.targetIdentity,
   family: "sqlite",
   version: input.version,
   imageIdentity: SQLITE_COMPAT_IDENTITY,
@@ -61,6 +64,7 @@ export const sqliteSnapshotsCompatible = (
     readonly service: string;
     readonly path: string;
     readonly version: string;
+    readonly targetIdentity: string;
   },
 ): boolean =>
   source?.metadata !== undefined &&
@@ -72,7 +76,7 @@ export const sqliteSnapshotsCompatible = (
   source.owner.ownerKey === context.ownerKey &&
   source.owner.appRoot === context.appRoot &&
   source.metadata.service === context.service &&
-  source.metadata.volumeInstanceId === context.path;
+  source.metadata.volumeInstanceId === context.targetIdentity;
 
 export const requireSqliteCompatibleSnapshot = (
   source: SnapshotInfo | undefined,
@@ -82,6 +86,7 @@ export const requireSqliteCompatibleSnapshot = (
     readonly service: string;
     readonly path: string;
     readonly version: string;
+    readonly targetIdentity: string;
   },
 ): Effect.Effect<void, SqlRecoveryUnavailableError> =>
   sqliteSnapshotsCompatible(source, context)
@@ -141,6 +146,7 @@ export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(functi
 ) {
   return yield* withSqliteHelper(deps, service, target, (helper) =>
     Effect.gen(function* () {
+      const targetIdentity = yield* resolveSqliteTargetIdentity(deps, helper, target);
       const version = yield* observeSqliteVersion(deps, target, helper);
       const staged = sqliteScratchFile(helper, ".sqlite");
       yield* runSqliteHelper(deps, target, helper, [
@@ -156,7 +162,16 @@ export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(functi
         target.name,
         `Backup did not produce a SQLite database for ${target.name}.`,
       );
-      return yield* persistSqliteSnapshot(deps, plan, target, staged.host, version, options);
+      yield* requireSqliteIntegrity(deps, target, helper, staged.target);
+      yield* requireSameSqliteTarget(
+        targetIdentity,
+        yield* resolveSqliteTargetIdentity(deps, helper, target),
+        target.name,
+      );
+      return yield* persistSqliteSnapshot(deps, plan, target, staged.host, version, {
+        ...options,
+        targetIdentity,
+      });
     }),
   );
 });
@@ -167,7 +182,8 @@ export const persistSqliteSnapshot = Effect.fn("Sql.persistSqliteSnapshot")(func
   target: SqlFileTarget,
   stagedHost: string,
   version: string,
-  options?: {
+  options: {
+    readonly targetIdentity: string;
     readonly id?: string;
     readonly label?: string;
     readonly recoveryReason?: SnapshotMetadata["recoveryReason"];
@@ -209,7 +225,8 @@ export const persistSqliteSnapshot = Effect.fn("Sql.persistSqliteSnapshot")(func
       service: target.name,
       path: target.path,
       version,
-      recoveryReason: options?.recoveryReason ?? "manual",
+      recoveryReason: options.recoveryReason ?? "manual",
+      targetIdentity: options.targetIdentity,
     }),
   };
   const bucket = yield* deps.stateStore

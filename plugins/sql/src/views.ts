@@ -22,8 +22,17 @@ export type SqlPlanMount =
       readonly target: string;
       readonly readOnly: boolean;
       readonly role?: "app";
+      readonly realization?: "passthrough" | "accelerated";
+      readonly mountKey?: string;
+      readonly fileMode?: number;
     }
-  | { readonly type: "volume"; readonly store: string; readonly target: string; readonly readOnly: boolean }
+  | {
+      readonly type: "volume";
+      readonly store: string;
+      readonly target: string;
+      readonly readOnly: boolean;
+      readonly subpath?: string;
+    }
   | { readonly type: "tmpfs"; readonly target: string };
 
 export type SqlPlanService = {
@@ -154,6 +163,11 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
             target: entry.target,
             readOnly: entry.readOnly === true,
             ...(entry.role === "app" ? { role: "app" as const } : {}),
+            ...(entry.realization === "passthrough" || entry.realization === "accelerated"
+              ? { realization: entry.realization }
+              : {}),
+            ...(typeof entry.mountKey === "string" ? { mountKey: entry.mountKey } : {}),
+            ...(typeof entry.fileMode === "number" ? { fileMode: entry.fileMode } : {}),
           },
         ];
       }
@@ -164,6 +178,7 @@ export const toSqlPlan = (value: unknown): SqlPlan => {
             store: entry.store,
             target: entry.target,
             readOnly: entry.readOnly === true,
+            ...(typeof entry.subpath === "string" ? { subpath: entry.subpath } : {}),
           },
         ];
       }

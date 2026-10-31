@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, chownSync, mkdirSync } from "node:fs";
-import { lstat, rm } from "node:fs/promises";
+import { lstat, open, realpath, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { SqlCommandFailedError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { type AppPlan, planAppIdentity } from "@lando/sdk/schema";
-import type { EphemeralRunSpec, ExecResult } from "@lando/sdk/services";
+import { type AppPlan, type VolumeIdentity, planAppIdentity } from "@lando/sdk/schema";
+import type { EphemeralRunSpec, ExecResult, RuntimeProviderShape } from "@lando/sdk/services";
 import { Effect, Exit } from "effect";
 
 import { SQLITE_HEADER_BYTES, isSqliteDatabaseHeader } from "./sqlite-header.ts";
 import {
+  type SqliteCoveringMount,
   requireSqliteCoveringMount,
   sqliteContainerPath,
   sqliteHelperAccess,
@@ -30,6 +31,7 @@ export type SqliteHelperDeps = {
   readonly applied: AppPlan;
   readonly run: SqliteHelperRun;
   readonly pullArtifact: SqliteHelperPull;
+  readonly locateVolume?: RuntimeProviderShape["locateVolume"];
   readonly paths: {
     readonly ownerSnapshotsDir: (ownerKey: string) => string;
   };
@@ -37,6 +39,8 @@ export type SqliteHelperDeps = {
 
 export type SqliteHelperContext = {
   readonly dbPath: string;
+  readonly covering: SqliteCoveringMount;
+  readonly volumeIdentity?: VolumeIdentity;
   readonly scratchHost: string;
   readonly scratchTarget: string;
   readonly user: string;
@@ -205,13 +209,187 @@ export const removeSqliteHelperScratch = (
       }),
   });
 
+const sqliteVolumeFailure = (target: SqlFileTarget, reason: string) =>
+  new SqlRecoveryUnavailableError({
+    message: `Cannot prove the named SQLite volume for ${target.name}.`,
+    service: target.name,
+    reason,
+    remediation:
+      "Keep the database unchanged. Inspect the selected app's volume ownership and generation before retrying; file uid/gid and --yes do not establish volume provenance.",
+  });
+
+const requireSqliteVolumeIdentity = Effect.fn("Sql.requireSqliteVolumeIdentity")(function* (
+  deps: SqliteHelperDeps,
+  target: SqlFileTarget,
+  store: string,
+) {
+  const locate = deps.locateVolume;
+  if (locate === undefined)
+    return yield* Effect.fail(
+      sqliteVolumeFailure(target, "The provider cannot locate the existing named volume."),
+    );
+  const located = yield* locate({ app: deps.applied.id, store }).pipe(
+    Effect.mapError((cause) =>
+      sqliteVolumeFailure(target, `Volume provenance inspection failed: ${String(cause)}`),
+    ),
+  );
+  const identity = located.identity;
+  if (
+    identity === undefined ||
+    identity.ownerRoot !== planAppIdentity(deps.applied).appRoot ||
+    located.nativeName !== store ||
+    identity.nativeName !== store ||
+    located.coordinationKey !== identity.coordinationKey ||
+    identity.coordinationKey.trim().length === 0 ||
+    identity.generation.trim().length === 0 ||
+    (identity.origin !== "created" && identity.origin !== "adopted")
+  )
+    return yield* Effect.fail(
+      sqliteVolumeFailure(
+        target,
+        "The named volume is missing, foreign, unknown, or does not match the selected plan's canonical identity.",
+      ),
+    );
+  return identity;
+});
+
+export const verifySqliteHelperVolume = Effect.fn("Sql.verifySqliteHelperVolume")(function* (
+  deps: SqliteHelperDeps,
+  target: SqlFileTarget,
+  helper: SqliteHelperContext,
+) {
+  const expected = helper.volumeIdentity;
+  if (expected === undefined) {
+    if ((helper.spec.mounts?.length ?? 0) > 0)
+      return yield* Effect.fail(
+        sqliteVolumeFailure(target, "The helper's named-volume mount has no verified identity."),
+      );
+    return;
+  }
+  const current = yield* requireSqliteVolumeIdentity(deps, target, expected.nativeName);
+  if (
+    current.coordinationKey !== expected.coordinationKey ||
+    current.generation !== expected.generation ||
+    current.nativeName !== expected.nativeName ||
+    current.ownerRoot !== expected.ownerRoot
+  )
+    return yield* Effect.fail(
+      sqliteVolumeFailure(target, "The named volume changed after the SQLite target was selected."),
+    );
+});
+
+const bindProofFailure = (target: SqlFileTarget, reason: string) =>
+  new SqlRecoveryUnavailableError({
+    message: `Cannot prove the host and helper share the SQLite bind source for ${target.name}.`,
+    service: target.name,
+    reason,
+    remediation:
+      "Use a writable directory bind shared by the host and selected provider. Lando must create, verify, and remove a temporary source proof before accessing SQLite; file-only or inaccessible binds are unsupported.",
+  });
+
+const verifySqliteBindSource = Effect.fn("Sql.verifySqliteBindSource")(function* (
+  deps: SqliteHelperDeps,
+  target: SqlFileTarget,
+  covering: Extract<SqliteCoveringMount, { readonly kind: "bind" }>,
+  image: string,
+  dbPath: string,
+) {
+  const create = Effect.tryPromise({
+    try: async () => {
+      const source = await realpath(covering.source);
+      if (!(await stat(source)).isDirectory())
+        throw new Error("The SQLite covering bind source is not a directory.");
+      const name = `.lando-sqlite-proof.${randomUUID()}`;
+      const path = join(source, name);
+      const token = randomUUID();
+      const handle = await open(path, "wx", 0o600);
+      try {
+        try {
+          await handle.writeFile(token);
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+      } catch (cause) {
+        await rm(path, { force: true }).catch(() => undefined);
+        throw cause;
+      }
+      return { path, target: `${covering.target === "/" ? "" : covering.target}/${name}`, token };
+    },
+    catch: (cause) =>
+      bindProofFailure(target, `Cannot create an owner-only bind source proof: ${String(cause)}`),
+  });
+  const remove = (path: string) =>
+    Effect.tryPromise({
+      try: () => rm(path),
+      catch: (cause) =>
+        bindProofFailure(target, `Cannot remove the bind source proof at ${path}: ${String(cause)}`),
+    });
+  yield* Effect.acquireUseRelease(
+    create,
+    (proof) =>
+      Effect.gen(function* () {
+        const result = yield* deps
+          .run({
+            image,
+            binds: [{ source: covering.source, target: covering.target, readOnly: true }],
+            user: "0:0",
+            entrypoint: [],
+            remove: true,
+            command: [
+              "sh",
+              "-eu",
+              "-c",
+              '[ ! -L "$1" ] && [ -f "$1" ] && [ "$(cat "$1")" = "$2" ]',
+              "sqlite-bind-proof",
+              proof.target,
+              proof.token,
+              dbPath,
+            ],
+          })
+          .pipe(
+            Effect.mapError(() =>
+              bindProofFailure(target, "The provider could not verify the bind source proof."),
+            ),
+          );
+        if (result.exitCode !== 0)
+          return yield* Effect.fail(
+            bindProofFailure(target, "The helper bind source did not contain the host's unique proof."),
+          );
+        // Cleanup must finish before the separate ownership helper can inspect the database.
+        yield* Effect.uninterruptible(remove(proof.path));
+      }),
+    (proof, exit) =>
+      Exit.isSuccess(exit)
+        ? Effect.void
+        : remove(proof.path).pipe(
+            Effect.catchCause(() =>
+              Effect.logWarning(
+                `Could not remove SQLite bind proof at ${proof.path}; preserving the operation failure.`,
+              ),
+            ),
+          ),
+  );
+});
+
 export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function* (
   deps: SqliteHelperDeps,
   service: SqlPlanService,
   target: SqlFileTarget,
 ) {
-  const covering = requireSqliteCoveringMount(service, target);
-  if (covering instanceof SqlRecoveryUnavailableError) return yield* Effect.fail(covering);
+  const configured = requireSqliteCoveringMount(service, target);
+  if (configured instanceof SqlRecoveryUnavailableError) return yield* Effect.fail(configured);
+  const covering =
+    configured.kind === "bind"
+      ? {
+          ...configured,
+          source: yield* Effect.tryPromise({
+            try: () => realpath(configured.source),
+            catch: (cause) =>
+              bindProofFailure(target, `Cannot canonicalize the SQLite bind source: ${String(cause)}`),
+          }),
+        }
+      : configured;
   const dbPath = sqliteContainerPath(service, target);
   if (dbPath === undefined) {
     return yield* Effect.fail(
@@ -223,7 +401,10 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
       }),
     );
   }
+  const volumeIdentity =
+    covering.kind === "volume" ? yield* requireSqliteVolumeIdentity(deps, target, covering.store) : undefined;
   const image = yield* resolveSqliteHelperImage(deps);
+  if (covering.kind === "bind") yield* verifySqliteBindSource(deps, target, covering, image, dbPath);
   const inspectionAccess = sqliteHelperAccess({ ...covering, readOnly: true }, deps.applied);
   const inspected = yield* deps
     .run({
@@ -256,6 +437,18 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
           }),
       ),
     );
+  if (volumeIdentity !== undefined) {
+    const current = yield* requireSqliteVolumeIdentity(deps, target, volumeIdentity.nativeName);
+    if (
+      current.coordinationKey !== volumeIdentity.coordinationKey ||
+      current.generation !== volumeIdentity.generation ||
+      current.ownerRoot !== volumeIdentity.ownerRoot ||
+      current.nativeName !== volumeIdentity.nativeName
+    )
+      return yield* Effect.fail(
+        sqliteVolumeFailure(target, "The named volume changed during SQLite file ownership inspection."),
+      );
+  }
   const user = inspected.exitCode === 0 ? sqliteHelperUser(inspected.stdout) : undefined;
   if (user === undefined) {
     return yield* Effect.fail(
@@ -291,6 +484,8 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
   });
   return {
     dbPath,
+    covering,
+    ...(volumeIdentity === undefined ? {} : { volumeIdentity }),
     scratchHost,
     scratchTarget: SQLITE_HELPER_SCRATCH_TARGET,
     user,
@@ -349,6 +544,7 @@ export const runSqliteHelper = Effect.fn("Sql.runSqliteHelper")(function* (
     ...(options?.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
     ...(options?.captureStdout === undefined ? {} : { captureStdout: options.captureStdout }),
   };
+  yield* verifySqliteHelperVolume(deps, target, context);
   const result = yield* deps.run(spec).pipe(
     Effect.mapError(
       (cause) =>
@@ -363,5 +559,6 @@ export const runSqliteHelper = Effect.fn("Sql.runSqliteHelper")(function* (
     ),
   );
   if (result.exitCode !== 0) return yield* Effect.fail(helperFailure(target, command, result));
+  yield* verifySqliteHelperVolume(deps, target, context);
   return result;
 });

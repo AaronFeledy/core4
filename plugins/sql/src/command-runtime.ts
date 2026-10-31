@@ -153,6 +153,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
       },
       sqlite: {
         applied: planned,
+        locateVolume: (volume) => provider.locateVolume(volume),
         run: (spec) => Effect.scoped(provider.run(spec)),
         pullArtifact: (spec) => provider.pullArtifact(spec),
         paths: {

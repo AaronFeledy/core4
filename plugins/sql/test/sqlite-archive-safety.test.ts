@@ -148,6 +148,14 @@ describe("SQLite snapshot archive validation", () => {
     const exit = await Effect.runPromiseExit(
       persistSqliteSnapshot(deps, { id: "app", name: "app", root, services: {} }, target, source, "3.54.1", {
         id: "retained",
+        targetIdentity: JSON.stringify([
+          "sqlite-target-v1",
+          "docker",
+          target.path,
+          "bind",
+          root,
+          "app.sqlite",
+        ]),
       }),
     );
     expect(Exit.isFailure(exit)).toBe(true);

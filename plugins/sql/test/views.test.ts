@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { toSqlLandofile, toSqlPlan } from "../src/views.ts";
+import { type SqlPlanService, toSqlLandofile, toSqlPlan } from "../src/views.ts";
 
 describe("toSqlPlan", () => {
   test("preserves volume mount destinations when projecting a service", () => {
@@ -16,6 +16,33 @@ describe("toSqlPlan", () => {
       { store: "data", target: "/var/lib/mysql" },
     ]);
   });
+  test("preserves SQLite volume subpaths and bind realization metadata", () => {
+    const mounts: SqlPlanService["mounts"] = [
+      {
+        type: "bind",
+        source: "/host/app",
+        target: "/app",
+        readOnly: false,
+        role: "app",
+        realization: "accelerated",
+        mountKey: "app-mount",
+      },
+      { type: "volume", store: "shared-data", target: "/app/data", readOnly: false, subpath: "tenant-a" },
+      {
+        type: "bind",
+        source: "/private/config",
+        target: "/app/private",
+        readOnly: true,
+        realization: "passthrough",
+        fileMode: 0o600,
+      },
+    ];
+    const plan = toSqlPlan({
+      services: { appserver: { type: "php:8.3", sqlite: { path: "data/site.sqlite" }, mounts } },
+    });
+    expect(plan.services.appserver?.mounts).toEqual(mounts);
+  });
+
   test("retains planner-owned app identity", () => {
     // Given: a planned app with canonical owner and repository-group identity.
     const planned = {

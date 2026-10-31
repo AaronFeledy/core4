@@ -5454,6 +5454,12 @@
     "justification": "Reviewed pre-release SQLite file target: info credentials reuse the ServiceCredsDisplay union so sqlite services publish engine and path instead of empty server creds. Existing mysql/mariadb/postgres/mongodb/mssql info payloads remain valid. Tests cover sqlite info encoding and secret-free server display."
   },
   {
+    "surface": "schema:InfoAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.creds.anyOf",
+    "justification": "Reviewed propagation of the SQLite ServiceCredsDisplay arm into the public app-info result. The existing server username, redacted password, database, and optional redacted root-password object is unchanged; SQLite adds engine and path without widening unrelated service or app-result fields. Strict aggregate round-trip tests cover both credential arms and reject mixed credentials, missing SQLite path, and unexpected app fields."
+  },
+  {
     "surface": "command:app:info",
     "changeKind": "unsupported-construct",
     "path": "$.services.items.creds.anyOf",

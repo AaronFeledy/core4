@@ -9,7 +9,7 @@ import { runProbe } from "@lando/sdk/probe";
 import { type Cause, DateTime, Duration, Effect, Fiber, Queue, Stream } from "effect";
 
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
-import { ServiceName, SnapshotId } from "@lando/sdk/schema";
+import { ServiceName } from "@lando/sdk/schema";
 import type { SqlCommandDeps } from "./command-types.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import {
@@ -17,8 +17,12 @@ import {
   requireSqliteDatabaseHeader,
   runSqliteHelper,
   sqliteScratchFile,
+  verifySqliteHelperVolume,
   withSqliteHelper,
 } from "./sqlite-helper.ts";
+import { requireSameSqliteTarget, resolveSqliteTargetIdentity } from "./sqlite-identity.ts";
+import { requireSqliteIntegrity, sqliteIntegritySql } from "./sqlite-integrity.ts";
+import { sqliteRetentionSelection } from "./sqlite-retention.ts";
 import { type SqliteSnapshotDeps, persistSqliteSnapshot, sqliteSnapshotVolume } from "./sqlite-snapshot.ts";
 import type { SqlFileTarget } from "./target.ts";
 import { type SqlPlanService, sqlPlanIdentity } from "./views.ts";
@@ -31,7 +35,7 @@ export const sqliteResetSql = (script: string): string => `
 PRAGMA foreign_keys=OFF;
 .output ${dotPath(script)}
 SELECT 'DROP VIEW IF EXISTS main.' || '"' || replace(name, '"', '""') || '";' FROM main.sqlite_schema WHERE type='view' AND name NOT GLOB 'sqlite_*';
-SELECT 'DROP TABLE IF EXISTS main.' || '"' || replace(name, '"', '""') || '";' FROM pragma_table_list WHERE schema='main' AND type IN ('table','virtual') AND name NOT GLOB 'sqlite_*' ORDER BY type DESC;
+SELECT 'DROP TABLE IF EXISTS main.' || '"' || replace(name, '"', '""') || '";' FROM pragma_table_list() WHERE schema='main' AND type IN ('table','virtual') AND name NOT GLOB 'sqlite_*' ORDER BY type DESC;
 .output stdout
 BEGIN EXCLUSIVE;
 .read ${dotPath(script)}
@@ -48,7 +52,7 @@ PRAGMA main.locking_mode=EXCLUSIVE;
 BEGIN EXCLUSIVE;
 COMMIT;
 CREATE TEMP TABLE lando_journal_check (mode TEXT CHECK (mode IN ('delete','truncate','persist','wal')));
-INSERT INTO temp.lando_journal_check SELECT journal_mode FROM pragma_journal_mode;
+INSERT INTO temp.lando_journal_check SELECT journal_mode FROM pragma_journal_mode();
 .output ${dotPath(version)}
 SELECT sqlite_version();
 .output stdout
@@ -93,12 +97,13 @@ export const mutateSqlite = Effect.fn("Sql.mutateSqlite")(function* (
   service: SqlPlanService,
   target: SqlFileTarget,
   operation: "reset" | "import" | "restore",
-  prepare?: (helper: SqliteHelperContext) => Effect.Effect<string, unknown>,
+  prepare?: (helper: SqliteHelperContext, targetIdentity: string) => Effect.Effect<string, unknown>,
   retainSnapshotId?: string,
 ) {
   const id = randomUUID();
   let captured = false;
   let recoveryScratch = "";
+  let capturedTargetIdentity = "";
   const result = yield* withSqliteHelper(
     sqlite,
     service,
@@ -108,7 +113,8 @@ export const mutateSqlite = Effect.fn("Sql.mutateSqlite")(function* (
       return Effect.scoped(
         Effect.gen(function* () {
           // Prepare and verify the source before acquiring the database lock.
-          const source = prepare === undefined ? undefined : yield* prepare(helper);
+          const targetIdentity = yield* resolveSqliteTargetIdentity(sqlite, helper, target);
+          const source = prepare === undefined ? undefined : yield* prepare(helper, targetIdentity);
           const backup = sqliteScratchFile(helper, ".sqlite");
           const version = sqliteScratchFile(helper, ".version");
           const ready = sqliteScratchFile(helper, ".ready");
@@ -163,7 +169,15 @@ export const mutateSqlite = Effect.fn("Sql.mutateSqlite")(function* (
             ),
           );
           yield* requireSqliteDatabaseHeader(backup.host, target.name, "SQLite recovery capture is invalid.");
+          yield* verifySqliteHelperVolume(sqlite, target, helper);
+          yield* requireSameSqliteTarget(
+            targetIdentity,
+            yield* resolveSqliteTargetIdentity(sqlite, helper, target),
+            target.name,
+          );
+          yield* requireSqliteIntegrity(sqlite, target, helper, backup.target);
           captured = true;
+          capturedTargetIdentity = targetIdentity;
           const engineVersion = yield* Effect.tryPromise({
             try: () => Bun.file(version.host).text(),
             catch: (cause) =>
@@ -177,12 +191,19 @@ export const mutateSqlite = Effect.fn("Sql.mutateSqlite")(function* (
           yield* persistSqliteSnapshot(sqlite, deps.plan, target, backup.host, engineVersion.trim(), {
             id,
             recoveryReason: operation,
+            targetIdentity,
           });
           yield* deps.publish(
             MessageInfoEvent.make({
               body: `Recovery snapshot ${id} covers only ${target.path} on ${target.name}. Restore with lando db:restore ${id} --service ${target.name}.`,
               timestamp: yield* DateTime.now,
             }),
+          );
+          yield* verifySqliteHelperVolume(sqlite, target, helper);
+          yield* requireSameSqliteTarget(
+            targetIdentity,
+            yield* resolveSqliteTargetIdentity(sqlite, helper, target),
+            target.name,
           );
           // The helper is still waiting for stdin with its exclusive engine lock held.
           const sql =
@@ -192,7 +213,7 @@ export const mutateSqlite = Effect.fn("Sql.mutateSqlite")(function* (
           yield* Queue.offer(
             input,
             new TextEncoder().encode(
-              `${sql}\n.output ${dotPath(completed.target)}\nSELECT ${sqlString(id)};\n.output stdout\n.quit\n`,
+              `${sql}\n${sqliteIntegritySql}\n.output ${dotPath(completed.target)}\nSELECT ${sqlString(id)};\n.output stdout\n.quit\n`,
             ),
           );
           yield* Queue.end(input);
@@ -229,33 +250,49 @@ export const mutateSqlite = Effect.fn("Sql.mutateSqlite")(function* (
 
   const owner = sqlPlanIdentity(deps.plan);
   const store = sqliteSnapshotVolume(deps.plan, target.path);
-  yield* deps
-    .pruneSnapshots({
-      filter: {
-        app: store.app,
-        store: store.store,
-        ownerKey: owner.ownerKey,
-        service: ServiceName.make(target.name),
-      },
-      recovery: true,
-      keepLatest: DEFAULT_SNAPSHOT_KEEP_LATEST,
-      retainSnapshotIds: [id, ...(retainSnapshotId === undefined ? [] : [retainSnapshotId])].map((value) =>
-        SnapshotId.make(value),
-      ),
-    })
-    .pipe(
-      Effect.catch(() =>
-        deps
-          .publish(
-            MessageWarnEvent.make({
-              body: `SQLite ${operation} completed. Recovery snapshot ${id} remains available, but older recovery snapshots could not be pruned.`,
-              timestamp: DateTime.nowUnsafe(),
-            }),
-          )
-          .pipe(
-            Effect.catch(() => Effect.logWarning("Could not publish SQLite recovery retention warning.")),
-          ),
-      ),
+  const filter = {
+    app: store.app,
+    store: store.store,
+    ownerKey: owner.ownerKey,
+    service: ServiceName.make(target.name),
+  };
+  yield* Effect.gen(function* () {
+    const snapshots = yield* deps.listSnapshots(filter);
+    if (!snapshots.some((snapshot) => snapshot.id === id))
+      return yield* Effect.fail(
+        new SqlRecoveryUnavailableError({
+          message: "Recovery retention cannot locate the newly captured snapshot.",
+          service: target.name,
+          reason: `The snapshot catalog did not return ${id}.`,
+          remediation: "Preserve the recovery files and inspect the snapshot catalog before pruning.",
+        }),
+      );
+    const selection = sqliteRetentionSelection(
+      snapshots,
+      capturedTargetIdentity,
+      DEFAULT_SNAPSHOT_KEEP_LATEST,
+      true,
+      [id, ...(retainSnapshotId === undefined ? [] : [retainSnapshotId])],
     );
+
+    yield* deps.pruneSnapshots({
+      filter,
+      recovery: true,
+      keepLatest: selection.keepLatest,
+      retainSnapshotIds: selection.retainSnapshotIds,
+    });
+  }).pipe(
+    Effect.catch(() =>
+      deps
+        .publish(
+          MessageWarnEvent.make({
+            body: `SQLite ${operation} completed. Recovery snapshot ${id} remains available, but older recovery snapshots could not be pruned.`,
+            timestamp: DateTime.nowUnsafe(),
+          }),
+        )
+        .pipe(Effect.catch(() => Effect.logWarning("Could not publish SQLite recovery retention warning."))),
+    ),
+  );
+
   return result;
 });

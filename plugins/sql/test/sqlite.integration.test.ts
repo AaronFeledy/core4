@@ -8,7 +8,12 @@ import { Cause, DateTime, Effect, Exit, Layer, Option } from "effect";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { makeLandoPaths } from "@lando/paths";
-import { SqlCommandFailedError, SqlRecoveryOperationError, StateStoreError } from "@lando/sdk/errors";
+import {
+  SqlCommandFailedError,
+  SqlRecoveryOperationError,
+  SqlRecoveryUnavailableError,
+  StateStoreError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -72,6 +77,14 @@ const runEphemeral = (spec: EphemeralRunSpec): Effect.Effect<ExecResult, unknown
     if (spec.user !== undefined) args.push("--user", spec.user);
     for (const bind of spec.binds ?? []) {
       args.push("-v", `${bind.source}:${bind.target}${bind.readOnly === true ? ":ro" : ""}`);
+    }
+    // This test adapter mounts planned names directly; production volume ownership checks
+    // remain the provider's responsibility and are covered by its contract tests.
+    for (const mount of spec.mounts ?? []) {
+      const options = ["type=volume", `src=${mount.store}`, `dst=${mount.target}`];
+      if (mount.readOnly) options.push("readonly");
+      if (mount.subpath !== undefined) options.push(`volume-subpath=${mount.subpath}`);
+      args.push("--mount", options.join(","));
     }
     if (spec.stdinStream !== undefined) args.push("-i");
     args.push(spec.image, ...spec.command);
@@ -454,6 +467,7 @@ test.skipIf(dockerHost === undefined)(
       expect(dumpError).toBeInstanceOf(SqlCommandFailedError);
       if (!(dumpError instanceof SqlCommandFailedError)) throw new Error("Expected isolated staging failure");
       expect(dumpError.recoverySnapshotId).toBeUndefined();
+      expect(Array.from(new Bun.Glob(".lando-sqlite-proof.*").scanSync({ cwd: appDir }))).toEqual([]);
       expect((await query("SELECT name FROM items;")).stdout.trim()).toBe("second");
       expect(
         Array.from(
@@ -690,6 +704,7 @@ test.skipIf(dockerHost === undefined)(
         expect(retained.exitCode).toBe(0);
         expect(retained.stdout.trim()).toBe("second");
       }
+      expect(Array.from(new Bun.Glob(".lando-sqlite-proof.*").scanSync({ cwd: appDir }))).toEqual([]);
     } finally {
       cleanupSqlTestDeps();
       await docker([
@@ -706,6 +721,252 @@ test.skipIf(dockerHost === undefined)(
         `${hostUid}:${hostGid}`,
         "/app/data",
       ]);
+      await rm(appDir, { recursive: true, force: true });
+      await rm(landoRoot, { recursive: true, force: true });
+    }
+  },
+  240_000,
+);
+
+test.skipIf(dockerHost === undefined)(
+  `SQLite named-volume subpath selects only the intended database${dockerHost === undefined ? " (SKIP: LANDO_TEST_DOCKER_SOCKET required)" : ""}`,
+  async () => {
+    if (dockerHost === undefined) throw new Error("LANDO_TEST_DOCKER_SOCKET required");
+    const appDir = await mkdtemp(join(tmpdir(), "lando-sqlite-subpath-app-"));
+    const landoRoot = await mkdtemp(join(tmpdir(), "lando-sqlite-subpath-data-"));
+    const volume = `lando-sqlite-subpath-${crypto.randomUUID()}`;
+    const harness = makeSqlTestDeps({ password: "secret", initiallyRunning: false });
+    try {
+      expect((await docker(["pull", sqliteHelperImage.ref])).exitCode).toBe(0);
+      expect((await docker(["volume", "create", volume])).exitCode).toBe(0);
+      const initialized = await docker([
+        "run",
+        "--rm",
+        "--user",
+        "0:0",
+        "--entrypoint",
+        "sh",
+        "-v",
+        `${volume}:/volume`,
+        sqliteHelperImage.ref,
+        "-eu",
+        "-c",
+        `
+          mkdir -p /volume/selected;
+          sqlite3 /volume/site.sqlite "CREATE TABLE marker(value TEXT); INSERT INTO marker VALUES('root-sentinel');";
+          sqlite3 /volume/selected/site.sqlite "CREATE TABLE marker(value TEXT); INSERT INTO marker VALUES('selected-sentinel');";
+          chown -R 1001:1001 /volume;
+        `,
+      ]);
+      expect(initialized.exitCode).toBe(0);
+      const query = (path: string, sql: string) =>
+        docker([
+          "run",
+          "--rm",
+          "--user",
+          "1001:1001",
+          "--entrypoint",
+          "sqlite3",
+          "--mount",
+          `type=volume,src=${volume},dst=/volume`,
+          sqliteHelperImage.ref,
+          "-ifexists",
+          path,
+          sql,
+        ]);
+      const rootDigest = async () => {
+        const hashed = await docker([
+          "run",
+          "--rm",
+          "--user",
+          "1001:1001",
+          "--entrypoint",
+          "sha256sum",
+          "--mount",
+          `type=volume,src=${volume},dst=/volume,readonly`,
+          sqliteHelperImage.ref,
+          "/volume/site.sqlite",
+        ]);
+        expect(hashed.exitCode).toBe(0);
+        return hashed.stdout.trim();
+      };
+      const originalRootDigest = await rootDigest();
+      const rootSentinel = async () => {
+        const queried = await query("/volume/site.sqlite", "SELECT value FROM marker;");
+        expect(queried.exitCode).toBe(0);
+        expect(queried.stdout.trim()).toBe("root-sentinel");
+        expect(await rootDigest()).toBe(originalRootDigest);
+      };
+      const paths = makeLandoPaths({
+        userConfRoot: join(landoRoot, "conf"),
+        userDataRoot: join(landoRoot, "data"),
+        userCacheRoot: join(landoRoot, "cache"),
+        env: {},
+      });
+      const stateStore = await Effect.runPromise(
+        StateStore.pipe(
+          Effect.provide(DiskStateStore.layer),
+          Effect.provide(Layer.succeed(PathsService, PathsService.of(paths))),
+        ),
+      );
+      const identity = planAppIdentity({ root: AbsolutePath.make(appDir) });
+      const applied = {
+        id: AppId.make("sqlite-subpath-it"),
+        name: "sqlite-subpath-it",
+        slug: "sqlite-subpath-it",
+        root: AbsolutePath.make(appDir),
+        provider: ProviderId.make("docker"),
+        services: {},
+        routes: [],
+        stores: [],
+        fileSync: [],
+        identity,
+        metadata: {
+          resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
+          source: "sqlite-subpath-it",
+          runtime: 4,
+        },
+        extensions: {},
+      } as AppPlan;
+      const service = {
+        name: "appserver",
+        type: "php:8.3",
+        environment: {},
+        sqlite: { path: "data/site.sqlite" },
+        mounts: [
+          { type: "bind" as const, source: appDir, target: "/app", readOnly: false, role: "app" as const },
+          {
+            type: "volume" as const,
+            store: volume,
+            target: "/app/data",
+            readOnly: false,
+            subpath: "selected",
+          },
+        ],
+        storage: [],
+      };
+      const coordinationKey = `sqlite-integration:${volume}`;
+      const volumeIdentity = {
+        coordinationKey,
+        nativeName: volume,
+        generation: crypto.randomUUID(),
+        ownerRoot: identity.appRoot,
+        origin: "created" as const,
+      };
+      const deps: SqlCommandDeps = {
+        ...harness.deps,
+        plan: { ...harness.deps.plan, root: appDir, identity, services: { appserver: service } },
+        sqlite: {
+          applied,
+          // Inject the provider identity contract for this raw-Docker fixture. This adapter
+          // does not validate production ownership labels or the provider's daemon namespace.
+          locateVolume: () =>
+            Effect.succeed({ coordinationKey, nativeName: volume, identity: volumeIdentity }),
+          run: runEphemeral,
+          pullArtifact: () => Effect.succeed({ digest: sqliteHelperImage.digest }),
+          paths: { ownerSnapshotsDir: paths.ownerSnapshotsDir },
+          stateStore,
+        },
+      };
+      const target = {
+        kind: "file" as const,
+        name: "appserver",
+        type: "php:8.3",
+        family: "sqlite" as const,
+        path: "data/site.sqlite",
+      };
+      const snapshot = await Effect.runPromise(
+        executeSqliteCommand(deps, { action: "snapshot", yes: true }, target),
+      );
+      expect(snapshot.snapshotId).toBeString();
+      await rootSentinel();
+      const reset = await Effect.runPromise(
+        executeSqliteCommand(deps, { action: "reset", yes: true }, target),
+      );
+      expect(reset.recoverySnapshotId).toBeString();
+      expect(
+        (
+          await query(
+            "/volume/selected/site.sqlite",
+            "SELECT count(*) FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*';",
+          )
+        ).stdout.trim(),
+      ).toBe("0");
+      await rootSentinel();
+      const importedSql = join(appDir, "replacement.sql");
+      await writeFile(
+        importedSql,
+        "CREATE TABLE marker(value TEXT); INSERT INTO marker VALUES('selected-imported');",
+      );
+      const imported = await Effect.runPromise(
+        executeSqliteCommand(deps, { action: "import", yes: true, file: importedSql }, target),
+      );
+      expect(imported.recoverySnapshotId).toBeString();
+      expect((await query("/volume/selected/site.sqlite", "SELECT value FROM marker;")).stdout.trim()).toBe(
+        "selected-imported",
+      );
+      await rootSentinel();
+      const snapshotId = snapshot.snapshotId ?? "";
+      const bucket = await Effect.runPromise(
+        stateStore.open({
+          root: {
+            path: AbsolutePath.make(
+              join(paths.ownerSnapshotsDir(identity.ownerKey), sqliteSnapshotStore(target.path)),
+            ),
+          },
+          key: `${snapshotId}.json`,
+          schema: SnapshotInfo,
+          version: 1,
+          codec: "json",
+          onCorrupt: "fail",
+        }),
+      );
+      const source = await Effect.runPromise(bucket.get);
+      if (source === null) throw new Error("Expected the named-volume snapshot catalog");
+      const restored = await Effect.runPromise(
+        executeSqliteCommand(
+          { ...deps, resolveSnapshot: () => Effect.succeed(source) },
+          {
+            action: "restore",
+            yes: true,
+            snapshotId,
+          },
+          target,
+        ),
+      );
+      expect(restored.recoverySnapshotId).toBeString();
+      expect((await query("/volume/selected/site.sqlite", "SELECT value FROM marker;")).stdout.trim()).toBe(
+        "selected-sentinel",
+      );
+      await rootSentinel();
+      const missingSubpathService = {
+        ...service,
+        mounts: service.mounts.map((mount) =>
+          mount.type === "volume" ? { ...mount, subpath: "missing" } : mount,
+        ),
+      };
+      const missing = await Effect.runPromiseExit(
+        executeSqliteCommand(
+          {
+            ...deps,
+            plan: { ...deps.plan, services: { appserver: missingSubpathService } },
+          },
+          { action: "reset", yes: true },
+          target,
+        ),
+      );
+      expect(Exit.isFailure(missing)).toBe(true);
+      if (!Exit.isFailure(missing))
+        throw new Error("Missing volume subpath must not fall back to the volume root");
+      const missingError = Option.getOrUndefined(Cause.findErrorOption(missing.cause));
+      expect(missingError).toBeInstanceOf(SqlRecoveryUnavailableError);
+      expect((await query("/volume/selected/site.sqlite", "SELECT value FROM marker;")).stdout.trim()).toBe(
+        "selected-sentinel",
+      );
+      await rootSentinel();
+    } finally {
+      cleanupSqlTestDeps();
+      await docker(["volume", "rm", "-f", volume]);
       await rm(appDir, { recursive: true, force: true });
       await rm(landoRoot, { recursive: true, force: true });
     }

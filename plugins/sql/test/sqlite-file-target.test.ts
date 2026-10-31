@@ -115,7 +115,14 @@ describe("sqlite snapshot compatibility", () => {
       createdAt: "2026-01-01T00:00:00.000Z" as never,
       metadata: {
         service: "appserver",
-        volumeInstanceId: "data/site.sqlite",
+        volumeInstanceId: JSON.stringify([
+          "sqlite-target-v1",
+          "docker",
+          "data/site.sqlite",
+          "bind",
+          "/app",
+          "data/site.sqlite",
+        ]),
         family: "sqlite",
         version: "3.54.1",
         imageIdentity: "sqlite",
@@ -124,6 +131,7 @@ describe("sqlite snapshot compatibility", () => {
     };
     expect(
       sqliteSnapshotsCompatible(source as never, {
+        targetIdentity: source.metadata.volumeInstanceId,
         ownerKey: "abc",
         appRoot: "/app",
         service: "appserver",
@@ -133,6 +141,7 @@ describe("sqlite snapshot compatibility", () => {
     ).toBe(true);
     expect(
       sqliteSnapshotsCompatible(source as never, {
+        targetIdentity: source.metadata.volumeInstanceId,
         ownerKey: "abc",
         appRoot: "/app",
         service: "appserver",
@@ -148,6 +157,7 @@ describe("sqlite snapshot compatibility", () => {
     ]) {
       expect(
         sqliteSnapshotsCompatible({ ...source, ...overrides } as never, {
+          targetIdentity: source.metadata.volumeInstanceId,
           ownerKey: "abc",
           appRoot: "/app",
           service: "appserver",
@@ -158,6 +168,7 @@ describe("sqlite snapshot compatibility", () => {
     }
     expect(
       sqliteSnapshotsCompatible(source as never, {
+        targetIdentity: source.metadata.volumeInstanceId,
         ownerKey: "abc",
         appRoot: "/app",
         service: "appserver",
@@ -428,6 +439,8 @@ describe("sqlite export dump", () => {
         applied,
         run: (spec: EphemeralRunSpec) => {
           commands.push(spec.command);
+          if (spec.command.includes("sqlite-bind-proof"))
+            return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
           if (spec.command.includes("sqlite-owner")) {
             return Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" });
           }

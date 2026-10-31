@@ -1,4 +1,4 @@
-import { DateTime, Effect, absurd } from "effect";
+import { Effect, absurd } from "effect";
 
 import { SqlRecoveryUnavailableError, SqlSeedSourceError } from "@lando/sdk/errors";
 import { SqlRecoveryOperationError } from "@lando/sdk/errors";
@@ -21,8 +21,11 @@ import {
   sqliteScratchFile,
   withSqliteHelper,
 } from "./sqlite-helper.ts";
+import { requireSameSqliteTarget, resolveSqliteTargetIdentity } from "./sqlite-identity.ts";
+import { requireSqliteIntegrity, sqliteScratchOnlyHelper } from "./sqlite-integrity.ts";
 import { mutateSqlite } from "./sqlite-mutation.ts";
 import { sqliteSidecarPaths } from "./sqlite-path.ts";
+import { sqliteRetentionSelection } from "./sqlite-retention.ts";
 import {
   type SqliteSnapshotDeps,
   copySqliteSnapshotArchive,
@@ -165,6 +168,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
 
   let prunePolicy: Parameters<SqlCommandDeps["pruneSnapshots"]>[0] | undefined;
   let pruneCandidates: ReadonlyArray<SnapshotInfo> | undefined;
+  let pruneTargetIdentity: string | undefined;
   if (input.action === "prune") {
     const filter = yield* resolveSnapshotSource({
       app: deps.plan.id,
@@ -180,12 +184,17 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
       canonicalizePath: deps.canonicalizeSourcePath,
     });
     const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
+    pruneTargetIdentity = yield* withSqliteHelper(sqlite, service, target, (helper) =>
+      resolveSqliteTargetIdentity(sqlite, helper, target),
+    );
     const snapshots = yield* deps.listSnapshots(filter);
-    prunePolicy = { filter, keepLatest };
-    pruneCandidates = [...snapshots]
-      .filter((snapshot) => snapshot.metadata?.recoveryReason === "manual")
-      .sort((left, right) => DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt))
-      .slice(keepLatest);
+    const selection = sqliteRetentionSelection(snapshots, pruneTargetIdentity, keepLatest, false);
+    prunePolicy = {
+      filter,
+      keepLatest: selection.keepLatest,
+      retainSnapshotIds: selection.retainSnapshotIds,
+    };
+    pruneCandidates = selection.candidates;
     if (input.preview !== true) {
       yield* confirmOrFail(
         input,
@@ -261,18 +270,17 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
                   const prefix = new Uint8Array(
                     yield* Effect.promise(() => Bun.file(stagedInput.host).slice(0, 16).arrayBuffer()),
                   );
-                  if (isSqliteDatabaseHeader(prefix)) return stagedInput.target;
+                  if (isSqliteDatabaseHeader(prefix)) {
+                    yield* requireSqliteDatabaseHeader(
+                      stagedInput.host,
+                      target.name,
+                      "Raw import did not produce a regular SQLite database.",
+                    );
+                    yield* requireSqliteIntegrity(sqlite, target, helper, stagedInput.target);
+                    return stagedInput.target;
+                  }
                   const database = sqliteScratchFile(helper, ".sqlite");
-                  const stagingHelper = {
-                    ...helper,
-                    spec: {
-                      image: helper.spec.image,
-                      binds: [{ source: helper.scratchHost, target: helper.scratchTarget }],
-                      user: helper.user,
-                      entrypoint: [],
-                      remove: true,
-                    },
-                  };
+                  const stagingHelper = sqliteScratchOnlyHelper(helper);
                   yield* runSqliteHelper(
                     sqlite,
                     target,
@@ -287,6 +295,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
                     target.name,
                     "SQL import did not produce a SQLite database.",
                   );
+                  yield* requireSqliteIntegrity(sqlite, target, helper, database.target);
                   return database.target;
                 }),
               );
@@ -338,7 +347,31 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
         break;
       }
       if (prunePolicy === undefined) return yield* Effect.die(new Error("retention policy was not resolved"));
-      prunedSnapshotIds = yield* deps.pruneSnapshots(prunePolicy);
+      const policy = prunePolicy;
+      const approved = new Set(pruneCandidates?.map((snapshot) => snapshot.id));
+      prunedSnapshotIds = yield* withSqliteLock(
+        Effect.gen(function* () {
+          const currentIdentity = yield* withSqliteHelper(sqlite, service, target, (helper) =>
+            resolveSqliteTargetIdentity(sqlite, helper, target),
+          );
+          yield* requireSameSqliteTarget(pruneTargetIdentity ?? "", currentIdentity, target.name);
+          const snapshots = yield* deps.listSnapshots(policy.filter ?? {});
+          const manual = snapshots.filter(
+            (snapshot) =>
+              snapshot.metadata?.recoveryReason === undefined ||
+              snapshot.metadata.recoveryReason === "manual",
+          );
+          const retained = manual.filter(
+            (snapshot) =>
+              !approved.has(snapshot.id) || snapshot.metadata?.volumeInstanceId !== pruneTargetIdentity,
+          );
+          return yield* deps.pruneSnapshots({
+            ...policy,
+            keepLatest: retained.length,
+            retainSnapshotIds: retained.map((snapshot) => snapshot.id),
+          });
+        }),
+      );
       retentionApplied = true;
       break;
     }
@@ -347,18 +380,6 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
       snapshotId = restoreSource.id;
       yield* withSqliteLock(
         Effect.gen(function* () {
-          const version = yield* withSqliteHelper(sqlite, service, target, (helper) =>
-            runSqliteHelper(sqlite, target, helper, ["sqlite3", helper.dbPath, "SELECT sqlite_version();"], {
-              captureStdout: true,
-            }).pipe(Effect.map((result) => result.stdout.trim())),
-          );
-          yield* requireSqliteCompatibleSnapshot(restoreSource, {
-            ownerKey: owner.ownerKey,
-            appRoot: owner.appRoot,
-            service: target.name,
-            path: target.path,
-            version,
-          });
           yield* refuseRunningSqliteWriter(deps, input, target);
           recoverySnapshotId = yield* mutateSqlite(
             deps,
@@ -366,12 +387,33 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
             service,
             target,
             "restore",
-            (helper) =>
+            (helper, targetIdentity) =>
               Effect.gen(function* () {
+                const version = (yield* runSqliteHelper(
+                  sqlite,
+                  target,
+                  helper,
+                  ["sqlite3", "-readonly", "-ifexists", helper.dbPath, "SELECT sqlite_version();"],
+                  { captureStdout: true },
+                )).stdout.trim();
+                yield* requireSqliteCompatibleSnapshot(restoreSource, {
+                  ownerKey: owner.ownerKey,
+                  appRoot: owner.appRoot,
+                  service: target.name,
+                  path: target.path,
+                  version,
+                  targetIdentity,
+                });
                 const archive = sqliteScratchFile(helper, ".tar");
                 const payload = sqliteScratchFile(helper, ".sqlite");
                 yield* copySqliteSnapshotArchive(sqlite, restoreSource, archive.host, target.name);
                 yield* extractSqliteSnapshotArchiveToFile(archive.host, payload.host, target.name);
+                yield* requireSqliteDatabaseHeader(
+                  payload.host,
+                  target.name,
+                  "Restore did not produce a regular SQLite database.",
+                );
+                yield* requireSqliteIntegrity(sqlite, target, helper, payload.target);
                 return payload.target;
               }),
             restoreSource.id,

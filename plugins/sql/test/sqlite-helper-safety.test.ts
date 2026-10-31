@@ -1,11 +1,21 @@
 import { afterEach, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppPlan } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, type VolumeLocator } from "@lando/sdk/schema";
 import type { EphemeralRunSpec } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
 
@@ -13,6 +23,8 @@ import {
   prepareSqliteHelper,
   removeSqliteHelperScratch,
   requireSqliteDatabaseHeader,
+  runSqliteHelper,
+  verifySqliteHelperVolume,
   withSqliteHelper,
 } from "../src/sqlite-helper.ts";
 import type { SqlPlanService } from "../src/views.ts";
@@ -49,7 +61,20 @@ const setup = () => {
   };
   const paths = { ownerSnapshotsDir: (key: string) => join(root, "snapshots", key) };
   const pullArtifact = () => Effect.succeed({ digest: sqliteHelperImage.digest });
-  return { root, applied, service, target, paths, pullArtifact };
+  const volumeIdentity = {
+    coordinationKey: JSON.stringify(["test-daemon", "appserver_data"]),
+    nativeName: "appserver_data",
+    generation: "generation-1",
+    ownerRoot: AbsolutePath.make(root),
+    origin: "created" as const,
+  };
+  const locateVolume = () =>
+    Effect.succeed({
+      coordinationKey: volumeIdentity.coordinationKey,
+      nativeName: volumeIdentity.nativeName,
+      identity: volumeIdentity,
+    });
+  return { root, applied, service, target, paths, pullArtifact, volumeIdentity, locateVolume };
 };
 
 test("inspects named-volume file ownership read-only and uses that identity for the helper", async () => {
@@ -125,7 +150,7 @@ test("ownership inspection rejects missing files and symlinked path components",
               new Response(process.stdout).text(),
               new Response(process.stderr).text(),
             ]);
-            seen.push({ path: file, exitCode });
+            if (spec.command.includes("sqlite-owner")) seen.push({ path: file, exitCode });
             return { exitCode, stdout, stderr };
           },
           catch: (cause) => cause,
@@ -198,5 +223,291 @@ test("reports cleanup failure without replacing a primary operation failure", as
     const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
     if (bodyFails) expect(error).toBe("primary mutation failure");
     else expect(error).toBeInstanceOf(SqlRecoveryUnavailableError);
+  }
+});
+
+test("refuses named-volume inspection without canonical existing-volume proof", async () => {
+  const setupData = setup();
+  const valid = {
+    coordinationKey: setupData.volumeIdentity.coordinationKey,
+    nativeName: "appserver_data",
+    identity: setupData.volumeIdentity,
+  };
+  const { locateVolume: _locateVolume, ...unsupported } = setupData;
+  let runs = 0;
+  const run = () => {
+    runs++;
+    return Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" });
+  };
+  const withoutCapability = await Effect.runPromiseExit(
+    prepareSqliteHelper({ ...unsupported, run }, setupData.service, setupData.target),
+  );
+  expect(Exit.isFailure(withoutCapability)).toBe(true);
+  for (const locator of [
+    { coordinationKey: valid.coordinationKey, nativeName: valid.nativeName },
+    { ...valid, identity: { ...valid.identity, ownerRoot: AbsolutePath.make("/foreign-app") } },
+    { ...valid, nativeName: "other-volume" },
+    { ...valid, identity: { ...valid.identity, nativeName: "other-volume" } },
+    { ...valid, coordinationKey: "different-daemon" },
+    { ...valid, coordinationKey: "", identity: { ...valid.identity, coordinationKey: "" } },
+    { ...valid, identity: { ...valid.identity, generation: "" } },
+  ] satisfies VolumeLocator[]) {
+    const exit = await Effect.runPromiseExit(
+      prepareSqliteHelper(
+        { ...setupData, run, locateVolume: () => Effect.succeed(locator) },
+        setupData.service,
+        setupData.target,
+      ),
+    );
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit))
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+        SqlRecoveryUnavailableError,
+      );
+  }
+  expect(runs).toBe(0);
+  expect(existsSync(join(setupData.paths.ownerSnapshotsDir("owner-key"), "sqlite-helper"))).toBe(false);
+});
+
+test("rejects volume generation changes during file ownership inspection", async () => {
+  const setupData = setup();
+  let locations = 0;
+  let runs = 0;
+  const exit = await Effect.runPromiseExit(
+    prepareSqliteHelper(
+      {
+        ...setupData,
+        locateVolume: () =>
+          Effect.succeed({
+            coordinationKey: setupData.volumeIdentity.coordinationKey,
+            nativeName: "appserver_data",
+            identity: {
+              ...setupData.volumeIdentity,
+              generation: ++locations === 1 ? "generation-1" : "replacement",
+            },
+          }),
+        run: () => {
+          runs++;
+          return Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" });
+        },
+      },
+      setupData.service,
+      setupData.target,
+    ),
+  );
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(runs).toBe(1);
+  expect(existsSync(join(setupData.paths.ownerSnapshotsDir("owner-key"), "sqlite-helper"))).toBe(false);
+});
+
+test("rechecks exact canonical volume identity before and after helper commands", async () => {
+  const setupData = setup();
+  let identity = setupData.volumeIdentity;
+  let runs = 0;
+  let replaceDuringCommand = false;
+  const deps = {
+    ...setupData,
+    locateVolume: () =>
+      Effect.succeed({
+        coordinationKey: identity.coordinationKey,
+        nativeName: identity.nativeName,
+        identity,
+      }),
+    run: () => {
+      runs++;
+      if (replaceDuringCommand) identity = { ...identity, generation: "replacement" };
+      return Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" });
+    },
+  };
+  const helper = await Effect.runPromise(prepareSqliteHelper(deps, setupData.service, setupData.target));
+  try {
+    expect(helper.volumeIdentity).toEqual(setupData.volumeIdentity);
+    expect(helper.covering.kind).toBe("volume");
+    identity = { ...identity, generation: "replacement" };
+    const before = runs;
+    const changedBefore = await Effect.runPromiseExit(
+      runSqliteHelper(deps, setupData.target, helper, ["true"]),
+    );
+    expect(Exit.isFailure(changedBefore)).toBe(true);
+    expect(runs).toBe(before);
+    identity = setupData.volumeIdentity;
+    replaceDuringCommand = true;
+    const changedAfter = await Effect.runPromiseExit(
+      runSqliteHelper(deps, setupData.target, helper, ["true"]),
+    );
+    expect(Exit.isFailure(changedAfter)).toBe(true);
+    expect(runs).toBe(before + 1);
+    const gap = await Effect.runPromiseExit(verifySqliteHelperVolume(deps, setupData.target, helper));
+    expect(Exit.isFailure(gap)).toBe(true);
+  } finally {
+    await Effect.runPromise(removeSqliteHelperScratch(helper.scratchHost));
+  }
+});
+
+test("proves a bind source through the helper view and removes the proof before database inspection", async () => {
+  const f = setup();
+  const service: SqlPlanService = {
+    ...f.service,
+    mounts: [{ type: "bind", source: f.root, target: f.root, role: "app", readOnly: false }],
+  };
+  const target = { ...f.target, path: "site.sqlite" };
+  let proofPath = "";
+  let statRuns = 0;
+  const deps = {
+    ...f,
+    run: (spec: EphemeralRunSpec) =>
+      Effect.tryPromise(async () => {
+        if (spec.command.includes("sqlite-bind-proof")) {
+          proofPath = spec.command[5] ?? "";
+          expect(spec.binds).toEqual([{ source: f.root, target: f.root, readOnly: true }]);
+          expect(spec.user).toBe("0:0");
+          expect(statSync(proofPath).mode & 0o777).toBe(0o600);
+          expect(readFileSync(proofPath, "utf8")).toBe(spec.command[6] ?? "");
+          const child = Bun.spawn([...spec.command], { stdout: "pipe", stderr: "pipe" });
+          const [exitCode, stdout, stderr] = await Promise.all([
+            child.exited,
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+          ]);
+          return { exitCode, stdout, stderr };
+        }
+        statRuns++;
+        expect(existsSync(proofPath)).toBe(false);
+        return { exitCode: 0, stdout: "100:200\n", stderr: "" };
+      }),
+  };
+  const helper = await Effect.runPromise(prepareSqliteHelper(deps, service, target));
+  expect(statRuns).toBe(1);
+  expect(readdirSync(f.root).some((name) => name.startsWith(".lando-sqlite-proof."))).toBe(false);
+  await Effect.runPromise(removeSqliteHelperScratch(helper.scratchHost));
+});
+
+test("refuses a split helper bind view before any database ownership or SQLite access", async () => {
+  for (const replica of ["missing", "wrong-token"]) {
+    const f = setup();
+    const remote = mkdtempSync(join(tmpdir(), "lando-sqlite-replica-"));
+    directories.push(remote);
+    const service: SqlPlanService = {
+      ...f.service,
+      mounts: [{ type: "bind", source: f.root, target: f.root, role: "app", readOnly: false }],
+    };
+    let statRuns = 0;
+    const deps = {
+      ...f,
+      run: (spec: EphemeralRunSpec) =>
+        Effect.tryPromise(async () => {
+          if (!spec.command.includes("sqlite-bind-proof")) {
+            statRuns++;
+            return { exitCode: 0, stdout: "100:200\n", stderr: "" };
+          }
+          const command = [...spec.command];
+          const replicaPath = join(remote, basename(command[5] ?? ""));
+          command[5] = replicaPath;
+          if (replica === "wrong-token")
+            writeFileSync(replicaPath, "replicated content is not the host's current proof");
+          const child = Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
+          const [exitCode, stdout, stderr] = await Promise.all([
+            child.exited,
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+          ]);
+          return { exitCode, stdout, stderr };
+        }),
+    };
+    const exit = await Effect.runPromiseExit(prepareSqliteHelper(deps, service, f.target));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit))
+      expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+        SqlRecoveryUnavailableError,
+      );
+    expect(statRuns).toBe(0);
+    expect(readdirSync(f.root).some((name) => name.startsWith(".lando-sqlite-proof."))).toBe(false);
+  }
+});
+
+test("fails closed on bind proof cleanup failure before inspecting the database", async () => {
+  const f = setup();
+  const service: SqlPlanService = {
+    ...f.service,
+    mounts: [{ type: "bind", source: f.root, target: f.root, role: "app", readOnly: false }],
+  };
+  let statRuns = 0;
+  const exit = await Effect.runPromiseExit(
+    prepareSqliteHelper(
+      {
+        ...f,
+        run: (spec: EphemeralRunSpec) => {
+          if (spec.command.includes("sqlite-bind-proof")) rmSync(spec.command[5] ?? "");
+          else statRuns++;
+          return Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" });
+        },
+      },
+      service,
+      f.target,
+    ),
+  );
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit))
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(
+      SqlRecoveryUnavailableError,
+    );
+  expect(statRuns).toBe(0);
+});
+
+test("rejects a file-only bind source before launching a helper", async () => {
+  const f = setup();
+  const file = join(f.root, "file.sqlite");
+  writeFileSync(file, "SQLite format 3\0");
+  const service: SqlPlanService = {
+    ...f.service,
+    mounts: [{ type: "bind", source: file, target: "/app", role: "app", readOnly: false }],
+  };
+  let runs = 0;
+  const exit = await Effect.runPromiseExit(
+    prepareSqliteHelper(
+      {
+        ...f,
+        run: () => {
+          runs++;
+          return Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" });
+        },
+      },
+      service,
+      f.target,
+    ),
+  );
+  expect(Exit.isFailure(exit)).toBe(true);
+  expect(runs).toBe(0);
+});
+
+test("uses one canonical bind source for proof, stat, and the database helper", async () => {
+  const f = setup();
+  const alias = join(f.root, "alias");
+  symlinkSync(f.root, alias);
+  const service: SqlPlanService = {
+    ...f.service,
+    mounts: [{ type: "bind", source: alias, target: "/app", role: "app", readOnly: false }],
+  };
+  const runs: EphemeralRunSpec[] = [];
+  const helper = await Effect.runPromise(
+    prepareSqliteHelper(
+      {
+        ...f,
+        run: (spec) => {
+          runs.push(spec);
+          return Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" });
+        },
+      },
+      service,
+      f.target,
+    ),
+  );
+  try {
+    expect(runs).toHaveLength(2);
+    for (const spec of runs) expect(spec.binds?.[0]?.source).toBe(realpathSync(f.root));
+    expect(helper.covering).toMatchObject({ kind: "bind", source: realpathSync(f.root) });
+    expect(helper.spec.binds?.[0]?.source).toBe(realpathSync(f.root));
+  } finally {
+    await Effect.runPromise(removeSqliteHelperScratch(helper.scratchHost));
   }
 });

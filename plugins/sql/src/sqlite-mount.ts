@@ -7,8 +7,22 @@ import type { SqlFileTarget } from "./target.ts";
 import type { SqlPlanMount, SqlPlanService } from "./views.ts";
 
 export type SqliteCoveringMount =
-  | { readonly kind: "bind"; readonly source: string; readonly target: string; readonly readOnly: boolean }
-  | { readonly kind: "volume"; readonly store: string; readonly target: string; readonly readOnly: boolean };
+  | {
+      readonly kind: "bind";
+      readonly source: string;
+      readonly target: string;
+      readonly readOnly: boolean;
+      readonly realization?: "passthrough" | "accelerated";
+      readonly mountKey?: string;
+      readonly fileMode?: number;
+    }
+  | {
+      readonly kind: "volume";
+      readonly store: string;
+      readonly target: string;
+      readonly readOnly: boolean;
+      readonly subpath?: string;
+    };
 
 const targetDepth = (target: string): number =>
   target.split("/").filter((segment) => segment.length > 0).length;
@@ -31,9 +45,23 @@ export const coveringSqliteMount = (
   if (match === undefined) return undefined;
   if (match.type === "tmpfs") return { kind: "tmpfs", target: match.target };
   if (match.type === "bind") {
-    return { kind: "bind", source: match.source, target: match.target, readOnly: match.readOnly };
+    return {
+      kind: "bind",
+      source: match.source,
+      target: match.target,
+      readOnly: match.readOnly,
+      ...(match.realization === undefined ? {} : { realization: match.realization }),
+      ...(match.mountKey === undefined ? {} : { mountKey: match.mountKey }),
+      ...(match.fileMode === undefined ? {} : { fileMode: match.fileMode }),
+    };
   }
-  return { kind: "volume", store: match.store, target: match.target, readOnly: match.readOnly };
+  return {
+    kind: "volume",
+    store: match.store,
+    target: match.target,
+    readOnly: match.readOnly,
+    ...(match.subpath === undefined ? {} : { subpath: match.subpath }),
+  };
 };
 
 export const requireSqliteCoveringMount = (
@@ -64,6 +92,20 @@ export const requireSqliteCoveringMount = (
       service: target.name,
       reason: "A memory-backed mount cannot hold a durable SQLite database.",
       remediation: "Move sqlite.path off the tmpfs mount, then retry.",
+    });
+  }
+  if (
+    covering.kind === "bind" &&
+    (covering.realization === "accelerated" ||
+      covering.mountKey !== undefined ||
+      covering.fileMode !== undefined)
+  ) {
+    return new SqlRecoveryUnavailableError({
+      message: `Cannot safely resolve the realized SQLite mount at ${covering.target}.`,
+      service: target.name,
+      reason: "Accelerated and privately copied binds can differ from their configured host source.",
+      remediation:
+        "Use a passthrough app bind or an owner-verified named volume for the SQLite file, then rebuild before retrying.",
     });
   }
   if (covering.readOnly) {
@@ -112,6 +154,7 @@ export const sqliteHelperAccess = (
         store: covering.store,
         target: PortablePath.make(covering.target),
         readOnly: covering.readOnly,
+        ...(covering.subpath === undefined ? {} : { subpath: covering.subpath }),
       },
     ],
     binds: scratchBinds,
