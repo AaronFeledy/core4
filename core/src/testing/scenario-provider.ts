@@ -7,7 +7,6 @@ import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/s
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { makeLandoRuntime, withRuntimeProviderRegistryOverride } from "../runtime/layer.ts";
-import "../runtime/bundled-plugins.ts";
 
 const canonicalPath = (path: string): Effect.Effect<string> =>
   Effect.tryPromise(() => realpath(path)).pipe(
@@ -77,7 +76,14 @@ export const makeScenarioProvider = () => {
   });
   const registryLayer = Layer.succeed(RuntimeProviderRegistry, registry);
   // The planner captures its registry at layer construction, before host overrides are merged.
-  const plannerDependencies = makeLandoRuntime({ bootstrap: "plugins", plugins: { policy: "bundled-only" } });
+  const plannerDependencies = Layer.unwrap(
+    Effect.promise(() =>
+      withRuntimeProviderRegistryOverride(registryLayer, async () => {
+        await import("../runtime/bundled-plugins.ts");
+        return makeLandoRuntime({ bootstrap: "plugins", plugins: { policy: "bundled-only" } });
+      }),
+    ),
+  );
   const layer = Layer.merge(
     registryLayer,
     AppPlannerLayer.layer.pipe(Layer.provide(Layer.merge(plannerDependencies, registryLayer)), Layer.orDie),
@@ -92,6 +98,7 @@ export const makeScenarioProvider = () => {
       return true;
     },
     remember: async (cwd: string) => {
+      await import("../runtime/bundled-plugins.ts");
       const previousCwd = process.cwd();
       try {
         process.chdir(cwd);
