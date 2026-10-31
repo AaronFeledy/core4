@@ -41,6 +41,7 @@ for (const platform of ["darwin", "win32"] as const) {
       start: (command, args) => {
         started.push({ command, args });
         return {
+          exited: Promise.resolve(0),
           waitReady: async () => {},
           close: async () => {
             closed = true;

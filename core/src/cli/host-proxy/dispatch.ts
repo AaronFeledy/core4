@@ -1,9 +1,6 @@
 import { Cause, Effect, Exit, Schema } from "effect";
 
-import type {
-  HostProxyRunLandoExecutorInput,
-  HostProxyRunLandoResult,
-} from "@lando/engine/subsystems/host-proxy/dispatch";
+import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { RedactionService } from "@lando/redaction/service";
 import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
@@ -28,7 +25,7 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
   plan: AppPlan,
   input: HostProxyRunLandoExecutorInput,
 ): Effect.fn.Return<
-  HostProxyRunLandoResult,
+  { readonly envelope: CommandResultEnvelope; readonly exitCode: number },
   never,
   ShellRunner | EventService | RedactionService | RouterService | RuntimeProviderRegistry
 > {

@@ -161,8 +161,8 @@ export const SCANNER_SPEC: SubsystemSpec = {
     "The endpoint scanner is not ready. Run `lando setup` to provision the runtime provider it depends on.",
 };
 
-export const HOST_PROXY_SPEC: SubsystemSpec = {
-  name: "host-proxy",
+export const HOST_DNS_SPEC: SubsystemSpec = {
+  name: "host-dns",
   recovery: "manual",
   manualCommand: null,
   manualRemediation:
@@ -175,7 +175,7 @@ const SUBSYSTEM_SPECS: ReadonlyArray<SubsystemSpec> = [
   SSH_SPEC,
   HEALTHCHECK_SPEC,
   SCANNER_SPEC,
-  HOST_PROXY_SPEC,
+  HOST_DNS_SPEC,
 ];
 
 const SPEC_BY_NAME: ReadonlyMap<string, SubsystemSpec> = new Map(

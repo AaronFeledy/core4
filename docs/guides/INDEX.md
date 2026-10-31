@@ -71,7 +71,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-04 | US-103 | SshService sidecar (default) plus host-agent forwarding opt-in | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
 | PRD-04 | US-104 | native health, lifecycle command readiness, attempt execution, and inspection truth | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
 | PRD-04 | US-105 | ScannerService endpoint discovery + port-collision detection | `docs/guides/subsystems/scanner-service.mdx` | Shipped |
-| PRD-04 | US-106 | HostProxyService (`lndo.site`-style hostnames) | `docs/guides/subsystems/host-proxy.mdx` | Shipped |
+| PRD-04 | US-106 | Host DNS for `lndo.site`-style hostnames | `docs/guides/subsystems/host-dns.mdx` | Shipped |
 | PRD-04 | US-106 | Open host URLs and reveal app files from containers | `docs/guides/subsystems/host-open.mdx` | Shipped |
 | PRD-04 | US-108 | `lando doctor` subsystem walkthrough | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
 | PRD-05 | US-111 | GlobalAppService + reserved id `global`, owned contribution policy and eligibility | `docs/guides/global/install-and-bundled-services.mdx` | Shipped |

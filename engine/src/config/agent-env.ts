@@ -1,4 +1,3 @@
-import { isHostProxyRunLandoEnvName } from "../subsystems/host-proxy/session-env.ts";
 import { type HostEnv, copyPresentHostEnv } from "./host-env-copy.ts";
 
 export type { HostEnv };
@@ -106,14 +105,14 @@ export const withAgentContextEnv = <Value = string>(
   return Object.keys(merged).length === 0 ? undefined : merged;
 };
 
-export const HOST_PROXY_ENV_PREFIXES: ReadonlyArray<string> = ["LANDO_", "LC_"];
+export const HOST_PROXY_ENV_PREFIXES: ReadonlyArray<string> = ["LC_"];
 export const HOST_PROXY_ENV_NAMES: ReadonlyArray<string> = ["LANG", "TERM"];
 
 export const isHostProxyForwardedEnvName = (
   name: string,
   allowlist: ReadonlyArray<string> = AGENT_CONTEXT_ENV_ALLOWLIST,
 ): boolean =>
-  !isHostProxyRunLandoEnvName(name) &&
+  !name.toUpperCase().startsWith("LANDO_") &&
   (HOST_PROXY_ENV_PREFIXES.some((prefix) => name.startsWith(prefix)) ||
     HOST_PROXY_ENV_NAMES.includes(name) ||
     allowlist.includes(name));

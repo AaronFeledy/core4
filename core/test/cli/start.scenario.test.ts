@@ -68,10 +68,7 @@ import { EventCommandExecutor } from "@lando/engine/services/event-command-execu
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
-import {
-  terminateOwnedHostProxyWorker,
-  terminateOwnedHostProxyWorkersInRoot,
-} from "@lando/engine/subsystems/host-proxy/worker";
+import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/host-proxy/worker";
 import { HostProxyWorkerRecord, probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -1566,7 +1563,12 @@ describe("lando start", () => {
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       const appliedDatabase = harness.applyPlans[0]?.services[ServiceName.make("database")];
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
-      expect(typeof appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBe("string");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_APP).toBeUndefined();
+      expect(appliedWeb?.mounts).toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+      );
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/run/lando/host-proxy.sock", readOnly: true }),
       );
@@ -1810,48 +1812,40 @@ describe("lando start", () => {
 
   test("win32 provider platform injects provider Desktop DNS endpoint during start", async () => {
     await withHostProxyArtifact(async ({ dataRoot }) => {
-      try {
-        const eligiblePlan = {
-          ...plan,
-          services: {
-            ...plan.services,
-            [web.name]: hostProxyEnabledWeb,
+      const eligiblePlan = {
+        ...plan,
+        services: {
+          ...plan.services,
+          [web.name]: hostProxyEnabledWeb,
+        },
+      };
+      const harness = makeStartLayer({
+        plannedApp: eligiblePlan,
+        providerPlatform: "win32",
+        providerCapabilities: {
+          ...capabilities,
+          hostProxy: {
+            containerTargets: capabilities.hostProxy?.containerTargets ?? [],
+            tcpHostGateway: "host.containers.internal",
           },
-        };
-        const harness = makeStartLayer({
-          plannedApp: eligiblePlan,
-          providerPlatform: "win32",
-          providerCapabilities: {
-            ...capabilities,
-            hostProxy: {
-              containerTargets: capabilities.hostProxy?.containerTargets ?? [],
-              tcpHostGateway: "host.containers.internal",
-            },
-          },
-        });
+        },
+      });
 
-        await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+      await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
-        const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
-        expect(appliedWeb?.environment.LANDO_HOST_PROXY_TRANSPORT).toBe("tcp-host-gateway");
-        expect(appliedWeb?.environment.LANDO_HOST_PROXY_URL).toStartWith("http://host.containers.internal:");
-        expect(typeof appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBe("string");
-        expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
-        expect(appliedWeb?.mounts).not.toContainEqual(
-          expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
-        );
-        expect(appliedWeb?.hostAliases).toEqual([]);
-        await stat(
-          makeLandoPaths({ platform: "win32", userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root),
-        );
-      } finally {
-        await Effect.runPromise(
-          terminateOwnedHostProxyWorker(
-            { id: plan.id, root: plan.root },
-            { paths: { userDataRoot: dataRoot, platform: "win32" }, privateFileAccess: ownerOnlyFileAccess },
-          ),
-        );
-      }
+      const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TRANSPORT).toBe("tcp-host-gateway");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_URL).toStartWith("http://host.containers.internal:");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(appliedWeb?.mounts).toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+      );
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
+      expect(appliedWeb?.mounts).not.toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
+      );
+      expect(appliedWeb?.hostAliases).toEqual([]);
+      await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
     });
   });
 
@@ -1882,7 +1876,9 @@ describe("lando start", () => {
       expect(persistedPlanJson).not.toContain("LANDO_HOST_PROXY_DEPTH");
       expect(persistedPlanJson).not.toContain("host-proxy.sock");
       expect(persistedPlanJson).not.toContain("/usr/local/bin/lando");
-      expect(appliedPlanJson).toContain("LANDO_HOST_PROXY_TOKEN");
+      expect(appliedPlanJson).not.toContain("LANDO_HOST_PROXY_TOKEN");
+      expect(appliedPlanJson).toContain("/run/lando/host-proxy/credentials");
+      expect(persistedPlanJson).not.toContain("/run/lando/host-proxy/credentials");
     });
   });
 

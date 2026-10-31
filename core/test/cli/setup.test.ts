@@ -16,7 +16,6 @@ import {
   EventService,
   FileSyncEngine,
   GlobalAppService,
-  HostProxyService,
   InteractionService,
   type InteractionServiceShape,
   PrivilegeService,
@@ -28,7 +27,6 @@ import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } f
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { hostProviderId } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
-import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
@@ -67,7 +65,6 @@ import {
   maybeSelectSetupProvider,
   setupDeferredFileSyncPath,
   setupSpec,
-  shouldDisableHostProxyForSetup,
 } from "../../src/cli/command-specs/meta/setup.ts";
 import {
   type ResolvedSetupNetworkTrust,
@@ -2774,55 +2771,6 @@ describe("meta:setup command", () => {
     expect(selectedProvider).toBe("podman");
     expect(setupCalls).toBe(1);
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("podman"));
-  });
-
-  test("host-proxy none remains honored when proxy setup is skipped", () => {
-    expect(shouldDisableHostProxyForSetup({ flags: { "skip-proxy": true, "host-proxy": "none" } })).toBe(
-      true,
-    );
-  });
-
-  test("host-proxy none uses the disabled no-op layer", async () => {
-    let setupCalls = 0;
-    const provider = {
-      ...TestRuntimeProvider,
-      id: "lando",
-      setup: () =>
-        Effect.sync(() => {
-          setupCalls += 1;
-        }),
-    };
-    const registry = {
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([ProviderId.make("lando")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    };
-
-    const result = await Effect.runPromise(
-      setupSpec
-        .run({ installDir: "/opt/lando", flags: { "host-proxy": "none" } })
-        .pipe(Effect.provide(buildSetupLayers(registry))),
-    );
-    const status = await Effect.runPromise(
-      Effect.gen(function* () {
-        const hostProxy = yield* HostProxyService;
-        yield* hostProxy.setup({ mode: "none" });
-        return yield* hostProxy.status();
-      }).pipe(Effect.provide(HostProxyServiceLayer.layerDisabled)),
-    );
-
-    expect(setupCalls).toBe(1);
-    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
-    expect(status).toEqual({
-      active: false,
-      mode: "none",
-      mechanism: "skipped",
-      baseDomain: "lndo.site",
-      loopback: "127.0.0.1",
-    });
   });
 
   test("invokes provider-lando setup with fake bundle and Podman API clients", async () => {

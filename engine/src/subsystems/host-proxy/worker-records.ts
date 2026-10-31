@@ -1,6 +1,16 @@
+import { HostPlatform } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
-export const HOST_PROXY_WORKER_PROTOCOL_VERSION = 2 as const;
+export const HOST_PROXY_WORKER_PROTOCOL_VERSION = 3 as const;
+
+// Private worker wire data. Never persist or include this secret-bearing payload in diagnostics.
+export const HostProxyWorkerPaths = Schema.Struct({
+  userConfRoot: Schema.String,
+  userCacheRoot: Schema.String,
+  userDataRoot: Schema.String,
+  systemPluginRoot: Schema.String,
+  platform: HostPlatform,
+});
 
 export const HostProxyControlRecord = Schema.Struct({
   appId: Schema.String,
@@ -40,5 +50,7 @@ export const HostProxyWorkerIdentity = Schema.Struct({
   protocolVersion: Schema.Number,
   configDigest: Schema.optionalKey(Schema.String),
   pid: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  /** Observed SSH reverse-forward liveness for tcp-host-gateway workers; none when no bridge. */
+  bridge: Schema.optionalKey(Schema.Literals(["none", "alive", "dead"])),
 });
 export type HostProxyWorkerIdentity = typeof HostProxyWorkerIdentity.Type;
