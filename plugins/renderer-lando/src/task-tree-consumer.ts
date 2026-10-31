@@ -95,6 +95,7 @@ export const layer = (
         const acquired = yield* Effect.tryPromise(() =>
           createLiveRegion({
             stdout,
+            noColor: !color,
             width: io.terminalColumns ?? 80,
             height: io.terminalRows ?? 24,
             onResize: (width, height) => handleResize(width, height),

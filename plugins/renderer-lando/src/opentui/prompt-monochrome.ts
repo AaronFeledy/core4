@@ -1,6 +1,9 @@
 import type { OpenTuiModuleLike, RendererLike } from "./prompt-driver-types.ts";
 
-export const installMonochromePromptAdapters = (mod: OpenTuiModuleLike, renderer: RendererLike): void => {
+export const installMonochromePromptAdapters = (
+  mod: Pick<OpenTuiModuleLike, "RGBA">,
+  renderer: Pick<RendererLike, "addPostProcessFn">,
+): void => {
   const foreground = mod.RGBA.defaultForeground().buffer;
   const background = mod.RGBA.defaultBackground().buffer;
   // Native clear/box-fill cells otherwise retain RGB white, even with a default-intent theme.
@@ -13,7 +16,9 @@ export const installMonochromePromptAdapters = (mod: OpenTuiModuleLike, renderer
   });
 };
 
-export const monochromePromptTerminal = (terminal: NodeJS.WriteStream): NodeJS.WriteStream => {
+export const monochromePromptTerminal = <T extends { write(chunk: string | Uint8Array): boolean }>(
+  terminal: T,
+): T => {
   let pending = "";
   const write = terminal.write.bind(terminal);
   let writeOverride: unknown;
