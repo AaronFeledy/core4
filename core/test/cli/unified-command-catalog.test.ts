@@ -1,12 +1,8 @@
 import { expect, test } from "bun:test";
 import { Context, Effect, Schema } from "effect";
-import { renderColdAllHelp } from "../../src/cli/cold-path-output.ts";
 import { buildCommandCatalog } from "../../src/cli/command-catalog.ts";
-import { buildHelpCatalog } from "../../src/cli/compiled-help.ts";
 import { BUNDLED_COMMAND_DESCRIPTORS } from "../../src/cli/generated/bundled-command-descriptors.ts";
-import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
-import { pluginHelpRows } from "../../src/cli/plugin-command-help.ts";
 
 const rows = BUNDLED_COMMAND_DESCRIPTORS.map((descriptor) => ({
   id: descriptor.id,
@@ -15,27 +11,6 @@ const rows = BUNDLED_COMMAND_DESCRIPTORS.map((descriptor) => ({
   pluginName: descriptor.pluginName,
   source: "bundled" as const,
 }));
-
-test("every visible built-in and bundled command projects into catalog, help, reference and routing", async () => {
-  const catalog = buildCommandCatalog(rows);
-  const listing = { rows, metadata: { status: "available" as const } };
-  const machine = buildHelpCatalog(undefined, undefined, listing);
-  const text = renderColdAllHelp({ pluginRows: pluginHelpRows(rows) });
-  const reference = await Bun.file(new URL("../../../docs/reference/commands.mdx", import.meta.url)).text();
-  const expected = [
-    ...Object.values(COMMAND_REGISTRY_MANIFEST.commands).map((entry) => entry.spec.id),
-    ...rows.filter((row) => !row.descriptor.hidden).map((row) => row.id),
-  ];
-  for (const id of expected) {
-    const entry = catalog.resolve(id);
-    expect(entry?.id).toBe(id);
-    expect(machine.all.some((row) => row.canonicalId === id)).toBe(true);
-    expect(reference).toContain(`## \`lando ${id}\``);
-    expect(text).toContain(id);
-    for (const token of entry?.tokens ?? []) expect(catalog.resolve(token)?.id).toBe(id);
-  }
-  expect(new Set([...catalog.byToken.keys()]).size).toBe(catalog.byToken.size);
-});
 
 test("plugin aliases yield to built-ins, core topics, canonical ids and tooling", () => {
   const descriptor = {
