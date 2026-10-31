@@ -48,28 +48,24 @@ export const runNativeOnlyBuiltIn = async (
                 ...(process.stderr.columns === undefined ? {} : { columns: process.stderr.columns }),
               });
               const sources = yield* retainedRecipeSources(options.registryUrl);
-              return yield* Effect.tryPromise({
-                try: () =>
-                  initApp({
-                    ...sources,
-                    ...options,
-                    nonInteractive,
-                    interaction,
-                    ...(onPrepared === undefined
-                      ? {}
-                      : {
-                          onPrepared: async (review, context) => {
-                            await onPrepared(review, context);
-                            reviewed = true;
-                          },
-                        }),
-                    signal,
-                    onWarn: postInitIO.err,
-                    postInitIO,
-                    events,
-                    privateFileAccess,
-                  }),
-                catch: (error) => error,
+              return yield* initApp({
+                ...sources,
+                ...options,
+                nonInteractive,
+                interaction,
+                ...(onPrepared === undefined
+                  ? {}
+                  : {
+                      onPrepared: async (review, context) => {
+                        await onPrepared(review, context);
+                        reviewed = true;
+                      },
+                    }),
+                signal,
+                onWarn: postInitIO.err,
+                postInitIO,
+                events,
+                privateFileAccess,
               });
             }),
             makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),

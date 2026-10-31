@@ -30,18 +30,25 @@ import {
   runHostScript as runHostScriptEffect,
   runHostToolingWith as runHostToolingWithEffect,
 } from "../../src/services/host-tooling-engine";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
 
 const runHostToolingWith = (...args: Parameters<typeof runHostToolingWithEffect>) =>
   runHostToolingWithEffect(...args).pipe(Effect.provide(testEnvironmentResolverLayer));
 const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
-  Layer.provide(Layer.mergeAll(PrivateFileAccessService.layer, testEnvironmentResolverLayer)),
+  Layer.provide(
+    Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer, testEnvironmentResolverLayer),
+  ),
 );
 const runHostScript = (...args: Parameters<typeof runHostScriptEffect>) =>
-  runHostScriptEffect(...args).pipe(Effect.provide(PrivateFileAccessService.layer));
+  runHostScriptEffect(...args).pipe(
+    Effect.provide(Layer.merge(BunProcessRunner.layer, PrivateFileAccessService.layer)),
+  );
 const evaluateHostVar = (...args: Parameters<typeof evaluateHostVarEffect>) =>
-  evaluateHostVarEffect(...args).pipe(Effect.provide(PrivateFileAccessService.layer));
+  evaluateHostVarEffect(...args).pipe(
+    Effect.provide(Layer.merge(BunProcessRunner.layer, PrivateFileAccessService.layer)),
+  );
 
 const providerId = ProviderId.make("lando");
 

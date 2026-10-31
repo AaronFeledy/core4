@@ -3,8 +3,8 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { EventService, type LandoEvent, ProcessRunner, ShellRunner } from "@lando/sdk/services";
 import { Effect, Layer, Queue, Stream } from "effect";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { ToolingBooleanEnvironment } from "../../src/services/tooling-input-environment.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const runners = ["process", "shell"] as const;
 const shellLayer = BunShellRunner.layer(() => {

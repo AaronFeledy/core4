@@ -12,7 +12,7 @@ import {
   createCollectingStreamFrameSink,
 } from "../../src/operations/stream-frame-sink.ts";
 import { landoLauncher } from "../../src/services/bun-command-env.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const frameText = (frame: StreamFrameSinkFrame) =>
   typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
@@ -95,7 +95,7 @@ test.each([true, false])(
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-script-stdin-"));
     const scriptPath = join(root, "count.bun.sh");
-    const runnerPath = resolve(import.meta.dirname, "../../src/services/shell-runner.ts");
+    const runnerPath = resolve(import.meta.dirname, "../shell-runner.ts");
     try {
       await writeFile(scriptPath, "wc -l\n");
       const helper = `
@@ -133,7 +133,7 @@ test("terminal host IO inherits input but routes output through the live sink", 
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-script-terminal-"));
   const scriptPath = join(root, "prompt.bun.sh");
-  const runnerPath = resolve(import.meta.dirname, "../../src/services/shell-runner.ts");
+  const runnerPath = resolve(import.meta.dirname, "../shell-runner.ts");
   try {
     await writeFile(scriptPath, "echo -n 'name? '\necho to-stderr 1>&2\ncat\n");
     const helper = `

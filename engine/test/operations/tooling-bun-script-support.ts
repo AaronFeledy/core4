@@ -2,7 +2,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
-import { Effect, Queue, Stream } from "effect";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Effect, Layer, Queue, Stream } from "effect";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
+
+export const scriptHostLayer = Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer);
 
 export const withBunScript = async <T>(content: string, run: (root: string) => Promise<T>): Promise<T> => {
   const root = await mkdtemp(join(tmpdir(), "lando-script-input-"));

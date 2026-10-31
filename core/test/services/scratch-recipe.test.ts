@@ -242,7 +242,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
   return Layer.mergeAll(
     scratchDeps,
     ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
-  ).pipe(Layer.provide(PrivateFileAccessService.layer));
+  ).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
 };
 
 const fileExists = async (path: string): Promise<boolean> => {
