@@ -3,7 +3,20 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-test("worker death closes the lease and aborts its surviving child", async () => {
+// Bun kills spawned children when their parent dies if BUN_FEATURE_FLAG_NO_ORPHANS is set (CI sets it),
+// so the lease path only runs when the flag is absent; with it present the child must still not survive.
+const withoutNoOrphans = (): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(process.env).filter(
+      (entry): entry is [string, string] =>
+        entry[0] !== "BUN_FEATURE_FLAG_NO_ORPHANS" && entry[1] !== undefined,
+    ),
+  );
+
+test.each([
+  { noOrphans: false, label: "lease aborts the surviving child" },
+  { noOrphans: true, label: "Bun's no-orphans mode leaves no surviving child" },
+])("worker death: $label", async ({ noOrphans }) => {
   const root = await mkdtemp(join(tmpdir(), "lando-hp-orphan-"));
   const call = {
     operation: "runLando",
@@ -26,7 +39,11 @@ test("worker death closes the lease and aborts its surviving child", async () =>
     workerEntry,
     `const child=Bun.spawn([process.execPath,${JSON.stringify(childEntry)}],{stdin:"pipe",stdout:"inherit",stderr:"inherit"}); child.stdin.write(${JSON.stringify(`${JSON.stringify(call)}\n`)}); await child.stdin.flush(); await child.exited;`,
   );
-  const worker = Bun.spawn([process.execPath, workerEntry], { stdout: "pipe", stderr: "pipe" });
+  const worker = Bun.spawn([process.execPath, workerEntry], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: noOrphans ? { ...withoutNoOrphans(), BUN_FEATURE_FLAG_NO_ORPHANS: "1" } : withoutNoOrphans(),
+  });
   try {
     const reader = worker.stdout.getReader();
     const ready = await reader.read();
@@ -39,7 +56,7 @@ test("worker death closes the lease and aborts its surviving child", async () =>
       if (next.done) break;
       output += new TextDecoder().decode(next.value);
     }
-    expect(output).toContain("aborted");
+    if (!noOrphans) expect(output).toContain("aborted");
     if (process.platform === "linux") {
       try {
         process.kill(pid, 0);

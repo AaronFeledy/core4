@@ -10,7 +10,6 @@ import {
   RendererSelectionError,
 } from "@lando/sdk/errors";
 
-import { realpath } from "node:fs/promises";
 import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
 import { AGENT_RELAY_WORKER_COMMAND } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import {
@@ -63,6 +62,7 @@ import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "./generated/host-proxy-allowlist"
 import {
   HOST_PROXY_CALL_COMMAND,
   type HostProxyLandoCall,
+  assertHostProxyAppContext,
   hostProxyCallCwd,
   hostProxyDenied,
 } from "./host-proxy/call-context";
@@ -421,13 +421,7 @@ const runCompiledCli = async (
   if (hostProxy !== undefined) {
     if (builtInCommand === undefined || !HOST_PROXY_RUNLANDO_ALLOWLIST.includes(canonicalCommandId))
       throw hostProxyDenied(canonicalCommandId);
-    const resolver = makeAppDiscoveryResolver();
-    const discovered = await resolver.resolve(process.cwd());
-    if (
-      discovered.kind !== "found" ||
-      (await realpath(discovered.directory)) !== (await realpath(hostProxy.app.root))
-    )
-      throw hostProxyDenied("cli:app-context");
+    await assertHostProxyAppContext(hostProxy, process.cwd());
   }
   if (builtInCommand !== undefined) argv = [canonicalCommandId, ...argv.slice(1)];
   if (canonicalCommandId === "apps:scratch:start" && argv[0] !== undefined) {

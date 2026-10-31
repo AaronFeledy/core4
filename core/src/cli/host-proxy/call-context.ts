@@ -1,6 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import { remapContainerCwd } from "@lando/engine/subsystems/host-proxy/api";
+import { makeAppDiscoveryResolver } from "@lando/landofile/traversal-policy";
 import { RedactionService } from "@lando/redaction/service";
 import { HostProxyCommandNotAllowedError } from "@lando/sdk/errors";
 import { PostHostProxyCallEvent, PreHostProxyCallEvent } from "@lando/sdk/events";
@@ -49,6 +50,16 @@ export const hostProxyCallCwd = async (call: HostProxyCall): Promise<string> => 
   if (rel === ".." || rel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) || isAbsolute(rel))
     throw hostProxyDenied("cli:app-context");
   return cwd;
+};
+
+/** The app discovered from the process cwd must be the session app, so a symlink or nested Landofile cannot retarget a call. */
+export const assertHostProxyAppContext = async (call: HostProxyLandoCall, cwd: string): Promise<void> => {
+  const discovered = await makeAppDiscoveryResolver().resolve(cwd);
+  if (
+    discovered.kind !== "found" ||
+    (await realpath(discovered.directory)) !== (await realpath(call.app.root))
+  )
+    throw hostProxyDenied("cli:app-context");
 };
 
 export const withHostProxyCall = Effect.fnUntraced(function* <A, E, R>(
