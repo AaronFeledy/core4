@@ -66,12 +66,12 @@ import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import * as LandoConfigService from "@lando/engine/services/config";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import * as BunFileSystem from "@lando/engine/services/file-system";
-import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/host-proxy/worker";
 import { HostProxyWorkerRecord, probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { ConfigTranslateSourceId, LANDOFILE_EDITOR_SCHEMA_URL } from "@lando/sdk/schema";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Result, Stream } from "effect";
-import { runRecipeInitPipeline } from "../../src/recipes/init-pipeline.ts";
 import { secretReference } from "../../src/recipes/init-pipeline/secrets.ts";
 import { type RecipeInitPreparationRequest, prepareRecipeInit } from "../../src/recipes/prepared-init.ts";
+import { runRecipeInitPipeline } from "../_support/recipe-pipeline.ts";
 import { pipelineSourceFixture } from "./fixtures/pipeline-source.ts";
 
 const roots: string[] = [];

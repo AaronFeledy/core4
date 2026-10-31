@@ -17,7 +17,7 @@ import {
 import { makeLandoPaths } from "@lando/paths";
 import type { ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
-import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
+import { ConfigService, PluginTrustStore, ProcessRunner } from "@lando/sdk/services";
 import {
   DEFAULT_NPM_REGISTRY_URL,
   type NpmPackument,
@@ -25,7 +25,6 @@ import {
 } from "../../recipes/npm-source";
 import { retainedRecipeSources } from "../../recipes/runtime-sources";
 import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../../recipes/tarball-source";
-import type { BunSelfSpawner } from "./bun-self-runner";
 import { pluginAdd } from "./plugin-add";
 
 export interface PluginUpdateAdapterOptions {
@@ -36,7 +35,6 @@ export interface PluginUpdateAdapterOptions {
   readonly registryClient?: NpmRegistryClient;
   readonly fetcher?: TarballRecipeFetcher;
   readonly extractor?: TarballRecipeExtractor;
-  readonly bunSelfSpawner?: BunSelfSpawner;
 }
 
 const advertisedMetadata = (packument: NpmPackument): PluginUpdateMetadata => {
@@ -103,9 +101,14 @@ const inventoryFor = Effect.fnUntraced(function* (
 
 export const makePluginUpdateRunner = Effect.fnUntraced(function* (
   options: PluginUpdateAdapterOptions = {},
-): Effect.fn.Return<PluginUpdateRunner, ConfigError | NotImplementedError, ConfigService | PluginTrustStore> {
+): Effect.fn.Return<
+  PluginUpdateRunner,
+  ConfigError | NotImplementedError,
+  ConfigService | PluginTrustStore | ProcessRunner
+> {
   const config = yield* ConfigService;
   const trustStore = yield* PluginTrustStore;
+  const runner = yield* ProcessRunner;
   let userDataRoot = options.userDataRoot;
   if (userDataRoot === undefined) userDataRoot = yield* config.get("userDataRoot");
   const paths = makeLandoPaths(userDataRoot === undefined ? {} : { userDataRoot });
@@ -162,7 +165,6 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
             registryClient,
             fetcher: options.fetcher ?? sources.tarballRecipeFetcher,
             ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
-            ...(options.bunSelfSpawner === undefined ? {} : { bunSelfSpawner: options.bunSelfSpawner }),
             trustStore: new Set(),
             requestedSelector: row.selector,
             expectedManifest: advertised,
@@ -172,6 +174,7 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
           }).pipe(
             Effect.provideService(ConfigService, config),
             Effect.provideService(PluginTrustStore, trustStore),
+            Effect.provideService(ProcessRunner, runner),
           ),
         );
         if (Exit.isSuccess(exit)) {

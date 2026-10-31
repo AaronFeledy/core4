@@ -1,6 +1,7 @@
 import { Effect, Layer } from "effect";
 
 import { ScratchInitAppPort } from "@lando/engine/scratch-app/service";
+import type { ProcessRunner } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { initApp } from "../cli/commands/init";
@@ -11,13 +12,17 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const privateFileAccess = yield* PrivateFileAccessService;
     const sources = yield* retainedRecipeSources();
+    const context = yield* Effect.context<ProcessRunner>();
+    const run = Effect.runPromiseWith(context);
     return ScratchInitAppPort.of({
       initApp: (options) =>
-        initApp({
-          ...sources,
-          ...options,
-          privateFileAccess,
-        }),
+        run(
+          initApp({
+            ...sources,
+            ...options,
+            privateFileAccess,
+          }),
+        ),
     });
   }),
 );

@@ -9,6 +9,7 @@ import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { makePluginUpdateRunner } from "../../src/cli/commands/update-plugins";
+import { withProcess } from "../_support/process-runner.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -88,13 +89,13 @@ async function fixture() {
             await writeFile(join(pkg, "index.js"), "export {};\n");
           },
         },
-        bunSelfSpawner: {
-          spawn: async (request) => {
-            await lifecycle(request.cwd);
-            return { exitCode: 0 };
-          },
-        },
-      }).pipe(Effect.provide(layer)),
+      }).pipe(
+        withProcess(async (request) => {
+          await lifecycle(request.cwd);
+          return { exitCode: 0 };
+        }),
+        Effect.provide(layer),
+      ),
     );
     return Effect.runPromise(
       runner({

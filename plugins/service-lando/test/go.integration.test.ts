@@ -21,9 +21,12 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { AppPlanner, LandofileService, RuntimeProvider, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Clock, DateTime, Effect, Layer, Schema } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 
@@ -199,8 +202,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           });
 
           const toolingLayer = Layer.mergeAll(
-            PrivateFileAccessService.layer,
-            toolingValueResolverLayer,
+            toolingExecutionLayer,
             Layer.succeed(
               LandofileService,
               LandofileService.of({ discover: Effect.succeed(compileTestLandofile(landofile)) }),
