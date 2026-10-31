@@ -75,6 +75,22 @@ export const makeGlobalLifecycleFixture = (
     appliedPlans: Effect.sync(plans),
     appliedStateInventory: Effect.sync(() => ({ plans: plans(), unreadable: [] })),
     list: () => Effect.sync(inventory),
+    inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) =>
+      Effect.sync((): ServiceRuntimeInfo => {
+        const observed = inventory().find((row) => row.app === target.app && row.service === target.service);
+        if (observed !== undefined) return observed;
+        const plan = plans().find((entry) => entry.id === target.app);
+        return {
+          app: target.app,
+          service: target.service,
+          providerId,
+          ...(plan === undefined ? {} : { appRoot: plan.root }),
+          status: "stopped",
+          state: "stopped",
+          publications: { status: "missing" },
+          mounts: { status: "missing" },
+        };
+      }),
     removeObservedService: (row: ServiceRuntimeInfo) =>
       Effect.sync(() => {
         const current = containers.get(row.service);

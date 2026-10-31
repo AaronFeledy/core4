@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appIdentityKey } from "@lando/sdk/schema";
+import { ServiceName, appIdentityKey } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { globalStop } from "../../src/operations/global-stop.ts";
@@ -32,6 +32,14 @@ test("selected stop withdraws missing service routes without removing its live s
     expect(fixture.removed).toEqual([]);
     expect(fixture.containers.get("sibling")?.containerId).toBe("global-sibling");
     expect(fixture.published).toEqual([["sibling"]]);
+    expect(
+      await Effect.runPromise(fixture.provider.inspect({ app: plan.id, service: ServiceName.make("mail") })),
+    ).toMatchObject({
+      status: "stopped",
+      state: "stopped",
+      publications: { status: "missing" },
+      mounts: { status: "missing" },
+    });
     expect(await Effect.runPromise(fixture.registry.resolveAppliedPlan(plan.root))).toEqual(plan);
   } finally {
     await rm(root, { recursive: true, force: true });
