@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { AppInfoResultSchema } from "@lando/engine/operations/info";
 import { StartAppResultSchema } from "@lando/engine/operations/start";
+import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { runProbe } from "@lando/sdk/probe";
 import type { LandofileShape, ServiceConnection } from "@lando/sdk/schema";
@@ -140,9 +141,9 @@ export const probeListener = (attempt: Effect.Effect<void, unknown>) =>
 
 export const listenerHttp = (url: string) =>
   Effect.tryPromise({
-    try: async (signal) => {
-      const response = await fetch(url, { signal, redirect: "manual" });
-      return { status: response.status, body: await response.text() };
+    try: async () => {
+      const response = await httpJsonFetch(url, { redirect: "manual", timeoutMs: 5000 });
+      return { status: response.status, body: new TextDecoder().decode(response.bytes) };
     },
     catch: (cause) => cause,
   }).pipe(Effect.timeout("5 seconds"));

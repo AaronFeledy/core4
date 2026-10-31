@@ -124,7 +124,7 @@ export const minioJourney = Effect.fnUntraced(function* (app: ListenerApp, moved
   const service = info.services.find((item) => item.service === "objects");
   if (service === undefined) return yield* Effect.fail(new Error("info omitted objects"));
   const api = publicationFor(service.connections, apiPort);
-  const console = publicationFor(service.connections, consolePort);
+  const consoleEndpoint = publicationFor(service.connections, consolePort);
   expect(
     service.connections
       .filter((item) => item.source === "listener")
@@ -138,7 +138,7 @@ export const minioJourney = Effect.fnUntraced(function* (app: ListenerApp, moved
     verdict: "ready",
     statusCode: 200,
   });
-  expect(scans.find((check) => check.url === new URL(console.url).href)).toMatchObject({
+  expect(scans.find((check) => check.url === new URL(consoleEndpoint.url).href)).toMatchObject({
     verdict: "ready",
     statusCode: 200,
   });
@@ -146,7 +146,7 @@ export const minioJourney = Effect.fnUntraced(function* (app: ListenerApp, moved
   expect(health.status).toBe(200);
   const root = yield* listenerHttp(api.url);
   expect(root.status).toBe(403);
-  const ui = yield* listenerHttp(console.url);
+  const ui = yield* listenerHttp(consoleEndpoint.url);
   expect(ui.status).toBe(200);
   expect(ui.body.toLowerCase()).toContain("<html");
   const bucket = `proof-${crypto.randomUUID()}`;
