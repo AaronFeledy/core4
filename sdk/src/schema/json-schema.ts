@@ -180,6 +180,7 @@ import {
 } from "./app-results.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
+import { CommandContribution } from "./command-contribution.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
 import {
   CompilationContext,
@@ -887,6 +888,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceState,
   RouteEvidence,
   EmbeddingPluginPolicy,
+  CommandContribution,
   ContributionRef,
   PluginSetupFlagContribution,
   PluginSetupContribution,

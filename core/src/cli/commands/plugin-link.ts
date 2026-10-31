@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
-import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import {
   applyPluginLink,
@@ -119,7 +119,7 @@ export const pluginLink = Effect.fn("PluginLink.link")(function* (
           });
         },
       });
-      yield* invalidatePluginCommandCache({
+      yield* invalidateAppToolingCaches({
         ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
       });
     }),

@@ -65,9 +65,9 @@ Subscribers SHOULD use the late priority band. Subscriber failure is logged and 
 | Surface kind | Canonical owner | Declaration mechanism |
 |---|---|---|
 | Built-in command | `LandoCommandSpec` | `deprecated` contract field |
-| Plugin command | Plugin command contribution and spec | Manifest plus contract field |
-| Top-level alias | `LandoCommandSpec.topLevelAlias` | Alias-scoped notice |
-| Namespaced alias | `LandoCommandSpec.aliases[]` | Per-alias notice |
+| Plugin command | Manifest command descriptor `deprecated` | Manifest field |
+| Top-level alias | `LandoCommandSpec.topLevelAlias` or plugin descriptor `topLevelAlias` | Alias-scoped notice |
+| Namespaced alias | `LandoCommandSpec.aliases[]` or plugin descriptor `aliases[]` | Per-alias notice |
 | Command flag | `FlagSpec` | `deprecated` contract field |
 | Command arg | `ArgSpec` | `deprecated` contract field |
 | Tooling task | Tooling schema | Task `deprecated` field |

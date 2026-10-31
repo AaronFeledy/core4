@@ -96,7 +96,7 @@ The service reuses the standard Landofile, planner, build, routing, certificate,
 
 `scratch` sits between `provider` and `app`, parallel to `global`, in the §3.2 ladder. It eagerly adds `ScratchAppService` and lazily adds arbitrary-root Landofile loading, planning, build, and required global-service access. It MUST NOT eagerly construct `GlobalAppService`.
 
-`bootstrap: scratch` is a valid `LandoCommandSpec` value. Plugins MAY use it in their own namespaces; `apps:scratch:*` remains reserved for core. Library hosts MAY request it through `makeLandoRuntime({ bootstrapLevel: "scratch" })`.
+`bootstrap: scratch` is a valid `LandoCommandSpec` and plugin `ExecutableCommandSpec` value. Plugins MAY use it in their own namespaces; `apps:scratch:*` remains reserved for core. Library hosts MAY request it through `makeLandoRuntime({ bootstrapLevel: "scratch" })`.
 
 #### 21.6.2 Lifecycle event scope
 

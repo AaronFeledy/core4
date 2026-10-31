@@ -1,31 +1,9 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { type CommandHelpEntry, renderCommandHelp } from "./cli-help";
-import { type OclifFlagDefinition, parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
+import { type CommandHelpEntry, type CommandHelpOptions, renderCommandHelp } from "./cli-help";
+import { parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
 import { normalizeCliFlagTokens, validateCommandCliFlags } from "./flag-value-validation";
-import { universalFormatFlagDefs } from "./format-flags";
-import { yesFlag } from "./spec/confirmation-flag";
+import { pluginFlagDefinitions } from "./plugin-flag-definitions";
 import type { ArgDefinitions } from "./spec/metadata";
-
-export const pluginFlagDefinitions = (
-  spec: Pick<ExecutableCommandSpec, "flags">,
-): Readonly<Record<string, OclifFlagDefinition>> => {
-  const flags: Record<string, OclifFlagDefinition> = { ...universalFormatFlagDefs };
-  for (const [name, definition] of Object.entries(spec.flags ?? {})) {
-    if (name === "yes") {
-      flags[name] = yesFlag(definition.description);
-      continue;
-    }
-    flags[name] = {
-      name,
-      type: definition.type === "boolean" ? "boolean" : "option",
-      ...(definition.valueType === undefined ? {} : { valueType: definition.valueType }),
-      ...(definition.description === undefined ? {} : { description: definition.description }),
-      ...(definition.multiple === undefined ? {} : { multiple: definition.multiple }),
-      ...(definition.options === undefined ? {} : { options: definition.options }),
-    };
-  }
-  return flags;
-};
 
 export const pluginOwnedCliFlagError = (
   spec: Pick<ExecutableCommandSpec, "id" | "flags" | "strict">,
@@ -71,7 +49,10 @@ export const pluginOwnedCommandInputFromArgv = (
   return { flags, args, raw };
 };
 
-export const renderPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): string => {
+export const renderPluginOwnedCommandHelp = (
+  spec: ExecutableCommandSpec,
+  options?: Pick<CommandHelpOptions, "styled"> & { readonly aliases?: readonly string[] },
+): string => {
   const args: ArgDefinitions = Object.fromEntries(
     Object.entries(spec.args ?? {}).map(([name, definition]) => [
       name,
@@ -85,12 +66,13 @@ export const renderPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): strin
   const entry: CommandHelpEntry = {
     spec: {
       id: spec.id,
-      summary: spec.summary,
+      summary: spec.summary ?? "",
+      ...(options?.aliases === undefined ? {} : { aliases: options.aliases }),
       args,
       flags: pluginFlagDefinitions(spec),
       ...(spec.strict === undefined ? {} : { strict: spec.strict }),
     },
     status: { kind: "implemented" },
   };
-  return renderCommandHelp(entry);
+  return renderCommandHelp(entry, options);
 };

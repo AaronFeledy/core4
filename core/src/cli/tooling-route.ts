@@ -18,6 +18,7 @@ interface ToolingRouteMetadata {
 export type ToolingRoute =
   | { readonly _tag: "not-tooling" }
   | { readonly _tag: "built-in"; readonly commandId: string; readonly entry: BuiltInCommandEntry }
+  | { readonly _tag: "plugin"; readonly commandId: string; readonly token: string }
   | { readonly _tag: "alias-disabled"; readonly token: string }
   | {
       readonly _tag: "cache-miss";
@@ -96,6 +97,7 @@ export const toolingHelpRequested = (
       return false;
     case "not-tooling":
     case "built-in":
+    case "plugin":
     case "alias-disabled":
     case "cache-miss":
     case "unknown-tooling":

@@ -8,7 +8,6 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { ConfigService, EventService, type LandoEvent, PluginTrustStore } from "@lando/sdk/services";
 
-import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import { pluginAddSpec } from "../../src/cli/command-specs/meta/plugin/add.ts";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
@@ -204,14 +203,16 @@ describe("meta:plugin:add command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(true);
   });
 
-  test("invalidates the plugin-command cache after installing a plugin", async () => {
+  test("invalidates app tooling caches after installing a plugin", async () => {
     const bytes = await makeNpmTarball({
       "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
       "index.js": "export {};\n",
     });
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-add-cache-"));
     try {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      const toolingCacheDir = join(cacheRoot, "apps", "tooling-addfixture");
+      await mkdir(toolingCacheDir, { recursive: true });
+      await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
 
       await Effect.runPromise(
         pluginAdd({
@@ -223,7 +224,7 @@ describe("meta:plugin:add command", () => {
         }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
       );
 
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await exists(toolingCacheDir)).toBe(false);
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }

@@ -13,7 +13,7 @@ Before going offline, start the app while connected so Lando can pull images and
 
 ## What works offline
 
-Starting an app you already ran before works offline, as long as its images were already pulled and its containers already built. `lando start` and `lando restart` reuse images already in your provider instead of pulling them again, including the images for global services like the proxy. Scratch apps, `lando global:start`, and `lando global:restart` work the same way. Command routing and plugin resolution read from the on-disk command cache under the user cache root (refreshed with `app:cache:refresh`), not the network.
+Starting an app you already ran before works offline, as long as its images were already pulled and its containers already built. `lando start` and `lando restart` reuse images already in your provider instead of pulling them again, including the images for global services like the proxy. Scratch apps, `lando global:start`, and `lando global:restart` work the same way. Command routing reads the on-disk command cache under the user cache root (refreshed with `app:cache:refresh`), and plugin commands resolve from the plugins already installed on disk; neither touches the network.
 
 The bundled SSH sidecar installs `openssh-client` and `socat` when the global app builds its image, not when the container starts. After that first online build, later starts reuse the image and cached build layers without network access. SSH agent forwarding can come back offline after a poweroff or reboot.
 

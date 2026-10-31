@@ -11,7 +11,7 @@ import {
   readFreshAppCommandCacheForCwd,
   writeAppCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
-import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache/command-index.ts";
+import { decodeAppCommandIndex } from "../../src/cache/command-index.ts";
 import { appPlanCachePath, appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
@@ -63,29 +63,25 @@ test.each([17, 18, 19, 28, 29, 30])("rejects matching revision-%i persisted plan
   }
 });
 
-for (const magic of ["LCAC", "LCPC"]) {
-  test(`rejects revision-3 ${magic} bytes when the old payload is otherwise valid`, () => {
-    const header = Buffer.alloc(12);
-    header.write(magic);
-    header.writeBigUInt64LE(3n, 4);
-    const bytes = Buffer.concat([
-      header,
-      serialize({
-        schemaVersion: 3,
-        landoVersion: CORE_VERSION,
-        appName: "app",
-        sourceFile: "/app/.lando.yml",
-        sourceMtimeMs: 0,
-        sourceSize: 0,
-        pluginNames: [],
-        generatedAtMs: 1,
-        entries: [],
-      }),
-    ]);
-    const decoded = magic === "LCAC" ? decodeAppCommandIndex(bytes) : decodePluginCommandIndex(bytes);
-    expect(decoded).toBeNull();
-  });
-}
+test("rejects revision-3 LCAC bytes when the old payload is otherwise valid", () => {
+  const header = Buffer.alloc(12);
+  header.write("LCAC");
+  header.writeBigUInt64LE(3n, 4);
+  const bytes = Buffer.concat([
+    header,
+    serialize({
+      schemaVersion: 3,
+      landoVersion: CORE_VERSION,
+      appName: "app",
+      sourceFile: "/app/.lando.yml",
+      sourceMtimeMs: 0,
+      sourceSize: 0,
+      generatedAtMs: 1,
+      entries: [],
+    }),
+  ]);
+  expect(decodeAppCommandIndex(bytes)).toBeNull();
+});
 
 test("fresh command reader rejects revision-3 artifacts without recomputing fingerprints", async () => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-canonical-command-"));

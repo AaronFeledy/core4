@@ -61,12 +61,18 @@ const stdinText = async (): Promise<string> => {
   return new TextDecoder().decode(Buffer.concat(chunks));
 };
 
+/** Detached workers build their own runtime, so they register bundled plugins themselves. */
+export const hostProxyWorkerRuntime = async () => {
+  await import("../../runtime/bundled-plugins");
+  return makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
+};
+
 export const runHostProxyWorkerProcess = async (): Promise<void> => {
   ensureHostProxyNoProxy("127.0.0.1");
   ensureHostProxyNoProxy("localhost");
   const input = Schema.decodeUnknownSync(WorkerInput)(JSON.parse(await stdinText()));
   const app = { kind: input.app.kind, id: input.app.id, root: input.app.root } as AppRef;
-  const runtime = makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }));
+  const runtime = await hostProxyWorkerRuntime();
   // Runtime Layer scope must outlive session create (EventService acquires scoped resources).
   const owner = makeRedactionOwner();
   const sourceEnv = { ...process.env };
