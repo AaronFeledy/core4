@@ -61,6 +61,27 @@ describe("Standard Schema views", () => {
     }
   });
 
+  test("reports a nested deprecation schedule error after applying its default", async () => {
+    const input = {
+      tooling: {
+        old: {
+          service: "web",
+          cmd: "echo old",
+          deprecated: { since: "4.0.0", note: "Use new instead." },
+        },
+      },
+    };
+    expect(await LandofileStandardSchema["~standard"].validate(input)).toEqual({
+      issues: [
+        {
+          path: ["tooling", "old", "deprecated"],
+          message:
+            "Notices from releases older than the active 4.1.0 deprecation window must declare removeIn.",
+        },
+      ],
+    });
+  });
+
   test("returns Standard Schema issue objects for every wrapper", async () => {
     // Given an excess property on each otherwise valid contract.
     for (const { schema, input } of contracts) {
