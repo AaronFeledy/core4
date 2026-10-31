@@ -194,6 +194,7 @@ describe("provider assembly", () => {
       subscribe: () => Stream.empty,
       subscribeQueue: Effect.die("unused"),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     });

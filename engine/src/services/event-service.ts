@@ -1,4 +1,16 @@
-import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Queue, Ref, Stream } from "effect";
+import {
+  Cause,
+  Context,
+  type Duration,
+  Effect,
+  Layer,
+  type MutableRef,
+  Option,
+  PubSub,
+  Queue,
+  Ref,
+  Stream,
+} from "effect";
 
 import type { EventError } from "@lando/sdk/errors";
 import { ConfigService, type EventFor, EventService, type LandoEvent } from "@lando/sdk/services";
@@ -9,7 +21,13 @@ import {
   createStandaloneRedactor,
 } from "@lando/redaction/service";
 import {
-  decodeDeliverableEvent,
+  EventDeliveryMetrics,
+  type EventDeliveryMetricsSnapshot,
+  type EventDeliveryState,
+  makeEventDelivery,
+} from "./event-delivery.ts";
+export { EventDeliveryMetrics, type EventDeliveryMetricsSnapshot } from "./event-delivery.ts";
+import {
   eventError,
   matchesName,
   matchesSpec,
@@ -21,34 +39,13 @@ const DEFAULT_HISTORY_CAP = 64;
 const DEFAULT_DELIVERY_QUEUE_CAPACITY = 64;
 const EMPTY_HISTORY: ReadonlyArray<LandoEvent> = Object.freeze([]);
 
-type EventServiceConfig = {
-  readonly subscribers: Set<PubSub.PubSub<LandoEvent>>;
-  readonly queueSubscribers: Set<Queue.Queue<LandoEvent>>;
-  readonly deliveryQueueCapacity: number;
-  readonly history: Ref.Ref<ReadonlyArray<LandoEvent>>;
-  readonly historyCap: number;
-  readonly droppedEvents: Ref.Ref<number>;
+type EventServiceConfig = EventDeliveryState & {
   readonly redaction: Option.Option<Context.Service.Shape<typeof RedactionService>>;
-  readonly instrumentation: EventServiceInstrumentation;
 };
 
 export interface EventServiceInstrumentation {
   readonly onPayloadDecode?: () => void;
   readonly onPubSubPublish?: () => void;
-}
-
-export interface EventDeliveryMetricsSnapshot {
-  readonly capacity: number;
-  /** Number of event deliveries rejected by full subscriber queues. */
-  readonly droppedEvents: number;
-}
-
-export class EventDeliveryMetrics extends Context.Service<
-  EventDeliveryMetrics,
-  { readonly snapshot: Effect.Effect<EventDeliveryMetricsSnapshot> }
->()("@lando/engine/EventDeliveryMetrics") {
-  static readonly layer = (service: Context.Service.Shape<typeof EventDeliveryMetrics>) =>
-    Layer.succeed(this, this.of(service));
 }
 
 export type EventDispatcher = (event: LandoEvent) => Effect.Effect<void, EventError>;
@@ -103,72 +100,9 @@ const makeEventService = (
   config: EventServiceConfig,
   getDispatch: () => EventDispatchRegistration,
 ): Context.Service.Shape<typeof EventService> => {
-  const {
-    subscribers,
-    queueSubscribers,
-    deliveryQueueCapacity,
-    history,
-    historyCap,
-    droppedEvents,
-    redaction,
-    instrumentation,
-  } = config;
-
-  const trackedSubscribe = Effect.gen(function* () {
-    const pubsub = yield* PubSub.dropping<LandoEvent>(deliveryQueueCapacity);
-    const queue = yield* PubSub.subscribe(pubsub);
-    yield* Effect.acquireRelease(
-      Effect.sync(() => {
-        subscribers.add(pubsub);
-      }),
-      () =>
-        Effect.sync(() => {
-          subscribers.delete(pubsub);
-        }).pipe(Effect.andThen(PubSub.shutdown(pubsub))),
-    );
-    return queue;
-  });
-
-  const trackedSubscribeQueue = Effect.acquireRelease(
-    Queue.dropping<LandoEvent>(deliveryQueueCapacity).pipe(
-      Effect.tap((queue) =>
-        Effect.sync(() => {
-          queueSubscribers.add(queue);
-        }),
-      ),
-    ),
-    (queue) =>
-      Effect.sync(() => {
-        queueSubscribers.delete(queue);
-      }).pipe(Effect.andThen(Queue.shutdown(queue))),
-  );
-
-  const appendHistory = Effect.fnUntraced(function* (event: LandoEvent): Effect.fn.Return<void> {
-    if (historyCap <= 0) return;
-    const redacted = yield* redactForHistory(redaction, event);
-    yield* Ref.update(history, (events) =>
-      events.length < historyCap ? [...events, redacted] : [...events.slice(1), redacted],
-    );
-  });
-
-  const publishToBus = (event: LandoEvent): Effect.Effect<void> =>
-    Effect.sync(() => {
-      instrumentation.onPubSubPublish?.();
-      let rejectedDeliveries = 0;
-      for (const pubsub of subscribers) {
-        if (!PubSub.publishUnsafe(pubsub, event)) rejectedDeliveries += 1;
-      }
-      for (const queue of queueSubscribers) {
-        if (!Queue.offerUnsafe(queue, event)) rejectedDeliveries += 1;
-      }
-      return rejectedDeliveries;
-    }).pipe(
-      Effect.flatMap((rejectedDeliveries) =>
-        rejectedDeliveries === 0
-          ? Effect.void
-          : Ref.update(droppedEvents, (total) => total + rejectedDeliveries),
-      ),
-    );
+  const { history, historyCap, redaction } = config;
+  const { trackedSubscribe, trackedSubscribeQueue, subscribeWithHistory, commitPublication } =
+    makeEventDelivery(config);
 
   const waitForMatch = <A>(
     label: string,
@@ -207,21 +141,11 @@ const makeEventService = (
           Effect.suspend(() => {
             const registration = getDispatch();
             const hasManifest = registration.hasSubscribers(eventName);
-            if (!hasManifest && subscribers.size === 0 && queueSubscribers.size === 0)
-              return redactForHistory(redaction, event).pipe(
-                Effect.flatMap((safe) => appendHistory(safe).pipe(Effect.andThen(observePublication(safe)))),
-              );
-            return Effect.sync(() => instrumentation.onPayloadDecode?.()).pipe(
-              Effect.andThen(decodeDeliverableEvent(event, eventName)),
-              Effect.flatMap((decoded) =>
-                redactForHistory(redaction, decoded).pipe(
-                  Effect.flatMap((safe) =>
-                    publishToBus(safe).pipe(
-                      Effect.andThen(appendHistory(safe)),
-                      Effect.andThen(observePublication(safe)),
-                      Effect.andThen(hasManifest ? registration.dispatch(safe) : Effect.void),
-                    ),
-                  ),
+            return redactForHistory(redaction, event).pipe(
+              Effect.flatMap((safe) =>
+                commitPublication(event, safe, hasManifest).pipe(
+                  Effect.andThen(observePublication(safe)),
+                  Effect.andThen(hasManifest ? registration.dispatch(safe) : Effect.void),
                 ),
               ),
             );
@@ -242,6 +166,7 @@ const makeEventService = (
         ),
       ),
     subscribeQueue: trackedSubscribeQueue,
+    subscribeWithHistory,
     waitFor: (name, options) =>
       waitForMatch<EventFor<typeof name>>(
         name,
@@ -282,9 +207,13 @@ export const layerWith = (
       };
       const subscribers = new Set<PubSub.PubSub<LandoEvent>>();
       const queueSubscribers = new Set<Queue.Queue<LandoEvent>>();
+      const historySubscribers = new Map<Queue.Queue<LandoEvent>, MutableRef.MutableRef<number>>();
       yield* Effect.addFinalizer(() => Effect.forEach(subscribers, PubSub.shutdown, { discard: true }));
       yield* Effect.addFinalizer(() => Effect.forEach(queueSubscribers, Queue.shutdown, { discard: true }));
-      const history = yield* Ref.make<ReadonlyArray<LandoEvent>>([]);
+      yield* Effect.addFinalizer(() =>
+        Effect.forEach(historySubscribers.keys(), Queue.shutdown, { discard: true }),
+      );
+      const history = yield* Ref.make<ReadonlyArray<LandoEvent>>(EMPTY_HISTORY);
       const droppedEvents = yield* Ref.make(0);
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = Layer.succeed(
@@ -293,6 +222,7 @@ export const layerWith = (
           {
             subscribers,
             queueSubscribers,
+            historySubscribers,
             deliveryQueueCapacity,
             history,
             historyCap,

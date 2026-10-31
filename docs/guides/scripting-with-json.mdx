@@ -17,7 +17,9 @@ lando version --json
 ```
 
 Every non-interactive command accepts `--format json` and emits one envelope
-on stdout. `--format=json` is equivalent. `-j` is the single-character
+on stdout, except streaming commands such as `lando exec`, `lando logs`,
+`lando start`, and `lando rebuild`, which emit newline-delimited frames that end
+in one result frame carrying that envelope (see below). `--format=json` is equivalent. `-j` is the single-character
 shorthand for that full envelope. Bare `--json` lists keys. `--json=key`
 projects that key inside `result`. `--jq` prints a raw jq selection.
 
@@ -33,7 +35,13 @@ need to parse that name from the human message. Other JSON-safe error fields sta
 structured too. Raw causes, stacks, and redaction-token lists are not emitted.
 
 Live commands such as `app:logs --follow` and `app:exec` emit `StreamFrame`
-frames under `--format json` and terminate with a single result frame.
+frames under `--format json`: `stdout` and `stderr` frames carry output,
+`event` frames carry progress and lifecycle events as they happen, and a
+single result frame comes last. `lando start --format=json` and
+`lando rebuild --format=json` stream their events the same way, so a script
+sees each service's progress while the command runs. If the reader falls far
+enough behind that Lando drops events instead of stalling, the result frame's
+`envelope.warnings` carries `LANDO_EVENT_FRAMES_DROPPED` with the count.
 Source and compiled `--format json` are identical because both use the same
 native registry and dispatcher.
 

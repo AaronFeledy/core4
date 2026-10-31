@@ -60,6 +60,7 @@ test.each(["live", "malformed", "redirect"] as const)(
               subscribe: () => Stream.empty,
               subscribeQueue: Effect.never,
               waitFor: () => Effect.never,
+              subscribeWithHistory: () => Effect.never,
               waitForAny: () => Effect.never,
               query: () => Effect.succeed([]),
             }),

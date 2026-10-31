@@ -57,6 +57,7 @@ const recordingEventLayer = (events: LandoEvent[]) => {
       return yield* Queue.unbounded<LandoEvent>();
     }),
     waitFor: () => Effect.never,
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   });

@@ -17,11 +17,12 @@
  * cli→core layering inversion.
  */
 
-import type { InteractivePromptDriver } from "@lando/sdk/renderer";
+import { hostDisablesColor } from "@lando/renderer";
+import type { InteractivePromptDriver, RendererContribution } from "@lando/sdk/renderer";
 import { PromptCancelledError, type PromptDriver } from "../recipes/prompts/driver";
 
 interface RendererPluginModule {
-  readonly loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>;
+  readonly loadInteractivePromptDriver?: RendererContribution["loadInteractivePromptDriver"];
 }
 
 export interface InteractiveDriverGate {
@@ -105,7 +106,7 @@ export const resolveInteractivePromptDriver = async (
       );
       return undefined;
     }
-    return adaptDriver(await loader(), gate);
+    return adaptDriver(await loader({ noColor: hostDisablesColor(env) }), gate);
   } catch (cause) {
     await degradeOpenTuiPrompts(
       gate,

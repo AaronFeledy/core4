@@ -299,6 +299,7 @@ const recordingEventLayer = (events: LandoEvent[]) =>
           ),
         subscribeQueue: Effect.succeed(queue),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       };

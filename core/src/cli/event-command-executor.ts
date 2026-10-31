@@ -173,7 +173,6 @@ export const makeEventCommandExecutor = (
                 format: "text",
                 ...(yield* ResultTerminal),
                 proxyDefaultDomain: yield* resolveProxyDefaultDomain,
-                env: process.env,
               });
               if (rendered !== undefined && rendered.length > 0) {
                 yield* withRedactedRenderer(
