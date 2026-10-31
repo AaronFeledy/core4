@@ -2,7 +2,7 @@ import { Effect, Schema } from "effect";
 
 import { canonicalJson, sha256Hex } from "@lando/sdk/digest";
 import { GlobalAppError } from "@lando/sdk/errors";
-import { AppId, type AppPlan, type ServiceConfig, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import { GlobalAppService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import {
@@ -15,6 +15,7 @@ import { commitGlobalPolicy, prepareGlobalPolicy } from "../global-app/enablemen
 import { GlobalPolicyReconciliationError } from "../global-app/errors.ts";
 import { withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId, resolveGlobalPlacement } from "../global-app/placement.ts";
+import { prepareGlobalConfiguration } from "../global-app/preparation.ts";
 import {
   GlobalReconciliationPending,
   type GlobalReconciliationTarget,
@@ -26,7 +27,6 @@ import {
   type GlobalResolution,
   assertGlobalResolution,
   projectEffectiveGlobalResolution,
-  readGlobalResolution,
 } from "../global-app/resolution.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
 import { readGlobalConsumerReservations } from "./global-consumer-lease.ts";
@@ -35,8 +35,9 @@ import {
   GlobalConsumerSchema,
   readGlobalConsumerImpact,
 } from "./global-consumers.ts";
-import { GlobalDistResultSchema, validateGlobalConfiguration } from "./global-install.ts";
-import { type GlobalTeardown, resolveGlobalStopSelection, resolveGlobalTeardown } from "./global-teardown.ts";
+import { GlobalDistResultSchema } from "./global-install.ts";
+import { dependencyError } from "./global-policy-cleanup-evidence.ts";
+import { cleanupDisabledGlobalResources } from "./global-policy-cleanup.ts";
 
 export type GlobalPolicyChangeOptions = {
   readonly selectors?: ReadonlyArray<string>;
@@ -116,19 +117,6 @@ const dependencyBlockers = (
   return [...blockers].sort();
 };
 
-const dependencyError = (blockers: ReadonlyArray<string>): GlobalAppError =>
-  new GlobalAppError({
-    operation: "disable",
-    message: `Global services still require the selected contribution: ${blockers.join(", ")}.`,
-    remediation:
-      "Select the dependent contributions as well, choose their owning plugin, or remove the authored dependency before disabling its service.",
-  });
-
-const providerOnline = Effect.fn("GlobalPolicy.providerOnline")(function* (resolved: GlobalTeardown) {
-  if (!(yield* resolved.provider.isAvailable)) return false;
-  return (yield* resolved.provider.getStatus).running;
-});
-
 const serviceFingerprint = (service: typeof ServicePlan.Type): string =>
   sha256Hex(canonicalJson({ ...Schema.encodeSync(ServicePlan)(service), routes: undefined }));
 
@@ -174,7 +162,22 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
   const previousReceiptResult = yield* Effect.result(readGlobalReconciliation());
   const previousReceipt =
     previousReceiptResult._tag === "Success" ? previousReceiptResult.success : { pending: [] };
-  const current = yield* readGlobalResolution();
+  const runtime = yield* Effect.result(
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      const providerId = yield* globalCreateProviderId();
+      return { providerId, provider: yield* registry.select(providerId) };
+    }),
+  );
+  const preparation = yield* prepareGlobalConfiguration(
+    runtime._tag === "Success"
+      ? {
+          providerId: runtime.success.providerId,
+          providerCapabilities: runtime.success.provider.capabilities,
+        }
+      : {},
+  );
+  const current = yield* preparation.resolve();
   const prepared = yield* prepareGlobalPolicy(
     current.policy,
     current.contributions,
@@ -186,13 +189,13 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           enabled: operation === "enable",
         },
   );
-  const candidate = yield* readGlobalResolution({ policy: prepared.policy });
+  const candidate = yield* preparation.resolve(prepared.policy);
   // Read applied metadata without constructing the runtime before calculating impact.
   const placement = yield* Effect.result(resolveGlobalPlacement());
   const applied = placement._tag === "Success" ? placement.success.plan : undefined;
-  const composition =
-    operation === "enable" ? undefined : yield* Effect.result(validateGlobalConfiguration(current));
-  const authored = composition?._tag === "Success" ? composition.success.services : undefined;
+  const composition = operation === "enable" ? undefined : yield* Effect.result(preparation.compile(current));
+  const authored =
+    composition?._tag === "Success" ? composition.success.landofile.document.services : undefined;
   const currentIds = new Set(candidate.entries.map((entry) => entry.id));
   const retiredTargets =
     operation === "reconcile"
@@ -339,17 +342,19 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       ? yield* Effect.result(
           Effect.gen(function* () {
             yield* assertGlobalResolution(candidate, ids, { directOnly: true });
-            return yield* validateGlobalConfiguration(candidate);
+            return yield* preparation.compile(candidate);
           }),
         )
       : undefined;
   const effectiveCandidate = projectEffectiveGlobalResolution(
     candidate,
-    validation?._tag === "Success" ? validation.success.services : (authored ?? candidate.composableServices),
     validation?._tag === "Success"
-      ? validation.success.pendingSites
+      ? (validation.success.landofile.document.services ?? {})
+      : (authored ?? candidate.composableServices),
+    validation?._tag === "Success"
+      ? validation.success.landofile.pendingSites
       : composition?._tag === "Success"
-        ? composition.success.pendingSites
+        ? composition.success.landofile.pendingSites
         : [],
   );
   const activationEpoch = yield* globalActivationEpoch;
@@ -500,6 +505,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
               "Wait for application startup to complete, then retry. --allow-disruption cannot invalidate an active startup admission.",
           }),
         );
+      if (validation?._tag === "Success") yield* validation.success.verify;
       return yield* commitGlobalPolicy(current.policy.revision, prepared.policy);
     }),
   );
@@ -513,7 +519,6 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
               .flatMap((entry) => entry.services.filter((id) => selected.has(id))),
           ),
         ];
-  let routesAttempted = false;
   let receipt: GlobalPolicyChangeResult = {
     dryRun: false,
     impact,
@@ -552,362 +557,36 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
   if (marked._tag === "Failure") return yield* Effect.fail(incomplete(receipt, [marked.failure]));
 
   if (operation !== "enable" && ids.length > 0) {
-    const cleanup = yield* Effect.result(resolveGlobalTeardown());
-    receipt = { ...receipt, pending: receipt.pending.filter((entry) => entry.phase !== "evidence") };
-    if (cleanup._tag === "Failure") {
-      causes.push(cleanup.failure);
-      receipt = {
-        ...receipt,
-        pending: [
-          ...receipt.pending,
-          pendingWork("evidence", ids, "Applied ownership could not be read; selected cleanup has not run."),
-        ],
-      };
-    } else {
-      const resolved = cleanup.success;
-      const online = yield* Effect.result(providerOnline(resolved));
-      if (online._tag === "Failure" || !online.success) {
-        if (online._tag === "Failure") causes.push(online.failure);
-        receipt = {
-          ...receipt,
-          pending: [
-            ...receipt.pending,
-            pendingWork(
-              "evidence",
-              ids,
-              "The applied provider is unreachable; selected containers and routes are unverified.",
-            ),
-          ],
-        };
-      } else if (resolved.evidence.kind === "applied") {
-        const appliedPlan = resolved.evidence.plan;
-        const appliedNames = new Set(
-          Object.values(resolved.evidence.plan.services).map((service) => String(service.name)),
-        );
-        const appliedIds = ids.filter((id) => appliedNames.has(id));
-        const inventory = yield* Effect.result(
-          resolved.provider.list({ app: AppId.make("global"), includeUnplanned: true }),
-        );
-        const uncertainSelected =
-          inventory._tag === "Failure" ||
-          inventory.success.some(
-            (service) =>
-              selected.has(String(service.service)) &&
-              service.app === AppId.make("global") &&
-              (service.appRoot === undefined ||
-                (service.appRoot === resolved.paths.root &&
-                  (service.providerId !== appliedPlan.provider ||
-                    service.containerId === undefined ||
-                    !appliedNames.has(String(service.service))))),
-          );
-        if (inventory._tag === "Failure") causes.push(inventory.failure);
-        const active = new Set(
-          inventory._tag === "Success"
-            ? inventory.success
-                .filter(
-                  (service) =>
-                    service.app === appliedPlan.id &&
-                    service.appRoot === resolved.paths.root &&
-                    service.providerId === appliedPlan.provider &&
-                    service.containerId !== undefined &&
-                    ["running", "paused", "restarting"].includes(service.status),
-                )
-                .map((service) => String(service.service))
-            : [],
-        );
-        const blockers = dependencyBlockers(
-          candidate,
-          selected,
-          {
-            ...appliedPlan,
-            services: Object.fromEntries(
-              Object.entries(appliedPlan.services).filter(([id]) => active.has(id)),
-            ),
-          },
-          authored,
-        );
-        const unknownObserved =
-          inventory._tag === "Success" &&
-          inventory.success.some(
-            (service) =>
-              service.app === appliedPlan.id &&
-              !selected.has(String(service.service)) &&
-              (service.appRoot === undefined ||
-                (service.appRoot === resolved.paths.root &&
-                  (service.providerId !== appliedPlan.provider ||
-                    service.containerId === undefined ||
-                    !appliedNames.has(String(service.service))))) &&
-              ["running", "paused", "restarting"].includes(service.status),
-          );
-        const unknownDependents = candidate.entries.filter(
-          (entry) =>
-            entry.enabled &&
-            !selected.has(entry.id) &&
-            entry.dependencyEvidence === "unavailable" &&
-            !appliedNames.has(entry.id) &&
-            inventory._tag === "Success" &&
-            inventory.success.some(
-              (service) =>
-                String(service.service) === entry.id &&
-                (service.appRoot === resolved.paths.root || service.appRoot === undefined),
-            ),
-        );
-        if (blockers.length > 0 || unknownDependents.length > 0 || uncertainSelected || unknownObserved) {
-          if (blockers.length > 0) causes.push(dependencyError(blockers));
-          receipt = {
-            ...receipt,
-            pending: [
-              ...receipt.pending,
-              pendingWork(
-                "evidence",
-                ids,
-                uncertainSelected || unknownObserved
-                  ? "Runtime ownership or dependency evidence is incomplete; restore matching applied state before selected cleanup."
-                  : unknownDependents.length > 0
-                    ? "Dependency evidence is unavailable for enabled contributions outside the applied plan; cleanup needs matching applied state."
-                    : "Applied dependents require an expanded selection before cleanup.",
-              ),
-            ],
-          };
-        } else if (appliedIds.length === 0) {
-          const observed = yield* Effect.result(
-            resolved.provider.list({ app: AppId.make("global"), includeUnplanned: true }),
-          );
-          if (
-            observed._tag === "Failure" ||
-            observed.success.some(
-              (service) =>
-                selected.has(String(service.service)) &&
-                (service.appRoot === resolved.paths.root ||
-                  (service.app === AppId.make("global") && service.appRoot === undefined)),
-            )
-          ) {
-            if (observed._tag === "Failure") causes.push(observed.failure);
-            receipt = {
-              ...receipt,
-              pending: [
-                ...receipt.pending,
-                pendingWork(
-                  "evidence",
-                  ids,
-                  "Selected resources cannot be matched to the applied plan; cleanup needs ownership recovery.",
-                ),
-              ],
-            };
-          }
-        } else {
-          const selection = yield* Effect.result(
-            resolveGlobalStopSelection(resolved, appliedIds, { requireOnline: true }),
-          );
-          if (selection._tag === "Failure") {
-            causes.push(selection.failure);
-            receipt = {
-              ...receipt,
-              pending: [
-                ...receipt.pending,
-                pendingWork("evidence", ids, "Selected owned containers could not be observed."),
-              ],
-            };
-          } else {
-            const remaining = new Map(
-              selection.success.services.map((service) => [service.containerId, String(service.service)]),
-            );
-            receipt = {
-              ...receipt,
-              pending: [
-                ...receipt.pending,
-                ...(remaining.size === 0
-                  ? []
-                  : [
-                      pendingWork(
-                        "containers",
-                        [...new Set(remaining.values())],
-                        "Selected containers have not all been removed.",
-                      ),
-                    ]),
-                ...(selection.success.routes === undefined ||
-                receipt.pending.some((entry) => entry.phase === "routes")
-                  ? []
-                  : [pendingWork("routes", appliedIds, "Selected routes have not yet been withdrawn.")]),
-              ],
-            };
-            const cleanupMarked = yield* Effect.result(recordProgress(receipt, targets));
-            if (cleanupMarked._tag === "Failure")
-              return yield* Effect.fail(incomplete(receipt, [...causes, cleanupMarked.failure]));
-            for (const service of selection.success.services) {
-              const removal = yield* Effect.result(resolved.provider.removeObservedService(service));
-              if (removal._tag === "Failure") causes.push(removal.failure);
-              else {
-                remaining.delete(service.containerId);
-                if (removal.success.kind === "removed")
-                  receipt = {
-                    ...receipt,
-                    servicesRemoved: [...receipt.servicesRemoved, String(service.service)],
-                  };
-              }
-              receipt = {
-                ...receipt,
-                pending: [
-                  ...receipt.pending.filter((entry) => entry.phase !== "containers"),
-                  ...(remaining.size === 0
-                    ? []
-                    : [
-                        pendingWork(
-                          "containers",
-                          [...new Set(remaining.values())],
-                          "Selected containers could not all be removed.",
-                        ),
-                      ]),
-                ],
-              };
-              const progress = yield* Effect.result(recordProgress(receipt, targets));
-              if (progress._tag === "Failure")
-                return yield* Effect.fail(incomplete(receipt, [...causes, progress.failure]));
-            }
-            if (selection.success.routePolicyError !== undefined) {
-              routesAttempted = true;
-              causes.push(selection.success.routePolicyError);
-            } else if (selection.success.routes !== undefined) {
-              const router = yield* RouterService;
-              const excluded = new Set(
-                candidate.entries.filter((entry) => !entry.enabled).map((entry) => entry.id),
-              );
-              const routes = selection.success.routes.filter((route) => !excluded.has(String(route.service)));
-              routesAttempted = true;
-              const withdrawn = yield* Effect.result(router.applyRoutes(routes, selection.success.plan.id));
-              if (withdrawn._tag === "Failure") causes.push(withdrawn.failure);
-              else
-                receipt = {
-                  ...receipt,
-                  pending: receipt.pending.filter((entry) => entry.phase !== "routes"),
-                };
-            }
-          }
-        }
-        if (
-          !routesAttempted &&
-          priorRouteIds.length > 0 &&
-          inventory._tag === "Success" &&
-          !receipt.pending.some((entry) => entry.phase === "evidence")
-        ) {
-          const disabled = new Set(
-            candidate.entries.filter((entry) => !entry.enabled).map((entry) => entry.id),
-          );
-          const routes = appliedPlan.routes.filter(
-            (route) =>
-              !selected.has(String(route.service)) &&
-              !disabled.has(String(route.service)) &&
-              active.has(String(route.service)),
-          );
-          const router = yield* RouterService;
-          routesAttempted = true;
-          const withdrawn = yield* Effect.result(router.applyRoutes(routes, appliedPlan.id));
-          if (withdrawn._tag === "Failure") causes.push(withdrawn.failure);
-          else receipt = { ...receipt, pending: receipt.pending.filter((entry) => entry.phase !== "routes") };
-        }
-      } else if (resolved.evidence.kind !== "absent") {
-        receipt = {
-          ...receipt,
-          pending: [
-            ...receipt.pending,
-            pendingWork(
-              "routes",
-              ids,
-              "Historical routes cannot be verified without a matching applied plan. Restore applied state or explicitly stop the whole global app before retrying.",
-            ),
-            pendingWork(
-              "evidence",
-              ids,
-              "Runtime resources lack a matching applied plan; ownership and routes need recovery before selected cleanup.",
-            ),
-          ],
-        };
-      } else {
-        if (
-          (resolved.materialized &&
-            (previousReceiptResult._tag !== "Success" ||
-              previousReceiptResult.success.routesClearedRevision !== policy.revision)) ||
-          previousReceipt.pending.some(
-            (entry) => entry.phase === "routes" && entry.services.some((id) => selected.has(id)),
-          )
-        ) {
-          receipt = {
-            ...receipt,
-            pending: [
-              ...receipt.pending,
-              pendingWork(
-                "routes",
-                ids,
-                "Historical routes cannot be verified without a matching applied plan. Restore applied state or explicitly stop the whole global app before retrying.",
-              ),
-            ],
-          };
-        }
-        const observed = yield* Effect.result(
-          resolved.provider.list({ app: AppId.make("global"), includeUnplanned: true }),
-        );
-        if (observed._tag === "Failure") {
-          causes.push(observed.failure);
-          receipt = {
-            ...receipt,
-            pending: [
-              ...receipt.pending,
-              pendingWork(
-                "evidence",
-                ids,
-                "Runtime observations are unavailable; cleanup cannot be confirmed.",
-              ),
-            ],
-          };
-        } else if (
-          observed.success.some(
-            (service) =>
-              selected.has(String(service.service)) &&
-              (service.appRoot === resolved.paths.root ||
-                (service.app === AppId.make("global") && service.appRoot === undefined)),
-          )
-        ) {
-          receipt = {
-            ...receipt,
-            pending: [
-              ...receipt.pending,
-              pendingWork(
-                "evidence",
-                ids,
-                "Selected runtime observations lack matching applied ownership; cleanup cannot be confirmed until their root and provider evidence are restored.",
-              ),
-            ],
-          };
-        }
-      }
-    }
+    const cleanup = yield* cleanupDisabledGlobalResources({
+      receipt,
+      candidate,
+      targets,
+      priorRouteIds,
+      ...(previousReceiptResult._tag === "Success" &&
+      previousReceiptResult.success.routesClearedRevision !== undefined
+        ? { routesClearedRevision: previousReceiptResult.success.routesClearedRevision }
+        : {}),
+      dependencyBlockers: (plan) => dependencyBlockers(candidate, selected, plan, authored),
+    });
+    receipt = cleanup.receipt;
+    causes.push(...cleanup.causes);
   }
 
   // Configuration errors in another contribution cannot prevent selected container cleanup.
   const generation = yield* Effect.result(
     Effect.gen(function* () {
-      const runtime = yield* Effect.result(
-        Effect.gen(function* () {
-          const registry = yield* RuntimeProviderRegistry;
-          const providerId = yield* globalCreateProviderId();
-          return { providerId, provider: yield* registry.select(providerId) };
-        }),
-      );
-      const resolved = yield* readGlobalResolution(
-        runtime._tag === "Success"
-          ? {
-              policy,
-              providerId: runtime.success.providerId,
-              providerCapabilities: runtime.success.provider.capabilities,
-            }
-          : { policy },
-      );
+      const resolved = candidate;
       yield* assertGlobalResolution(resolved, undefined, { directOnly: true });
       const globalApp = yield* GlobalAppService;
-      yield* Effect.scoped(globalApp.ensureRoot);
+      const generated =
+        validation?._tag === "Success" ? validation.success : yield* preparation.compile(resolved);
+      yield* generated.verify;
+      const dist = yield* globalApp.regenerateDist({
+        services: resolved.composableServices,
+        content: generated.content,
+      });
       yield* globalApp.ensureUserLandofile;
-      yield* validateGlobalConfiguration(resolved);
-      return yield* globalApp.regenerateDist({ services: resolved.composableServices });
+      return dist;
     }),
   );
   if (generation._tag === "Failure") causes.push(generation.failure);
