@@ -52,7 +52,7 @@ jobs:
           bun test core/test/container-helper/helper.integration.test.ts
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -516,7 +516,7 @@ jobs:
 
       - name: Upload provider matrix cell report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: provider-matrix-report-${{ matrix.cell }}
           path: provider-matrix-reports/${{ matrix.cell }}.json
@@ -557,7 +557,7 @@ jobs:
 
       - name: Upload provider matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: provider-matrix-diagnostics-${{ matrix.cell }}
           path: provider-matrix-diagnostics
@@ -864,7 +864,7 @@ jobs:
 
       - name: Upload provider matrix cell report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: provider-matrix-report-${{ matrix.cell }}
           path: provider-matrix-reports/${{ matrix.cell }}.json
@@ -905,7 +905,7 @@ jobs:
 
       - name: Upload provider matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: provider-matrix-diagnostics-${{ matrix.cell }}
           path: provider-matrix-diagnostics

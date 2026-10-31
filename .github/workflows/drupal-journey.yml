@@ -49,7 +49,7 @@ jobs:
           bun test core/test/container-helper/helper.integration.test.ts
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -200,7 +200,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: drupal-journey-linux-x64
           path: ${{ runner.temp }}/drupal-journey.json
@@ -352,7 +352,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: drupal-journey-linux-arm64
           path: ${{ runner.temp }}/drupal-journey.json
@@ -422,7 +422,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: drupal-journey-darwin-arm64
           path: ${{ runner.temp }}/drupal-journey.json
@@ -492,7 +492,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: drupal-journey-darwin-x64
           path: ${{ runner.temp }}/drupal-journey.json
@@ -571,7 +571,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: drupal-journey-windows-x64
           path: ${{ runner.temp }}/drupal-journey.json
@@ -650,7 +650,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: drupal-journey-windows-arm64
           path: ${{ runner.temp }}/drupal-journey.json
