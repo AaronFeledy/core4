@@ -210,23 +210,23 @@ const analyzeTemplate = (template: ExpressionTemplate) => {
 const slots = new Map<AuthoringExpressionExpectedType, Schema.Codec<AuthoringExpression, string>>();
 
 // JSON Schema approximates syntax only; parsed scope/type checks remain authoritative.
-const wholeTemplatePattern = /^\{\{-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])/;
+const wholeTemplatePattern = /^\{\{(?!#)-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])/;
+const compositeTemplatePattern =
+  /^(?:\{\{\{\{|\$\$\{|\{\{#[\s\S]*?#\}\}|(?!\{\{|\$\$\{|\$\{|\$[A-Za-z_])[\s\S])*(?:\{\{(?!#)(?:(?!\{\{|\}\})[\s\S])+\}\}|\$(?:[A-Za-z_][A-Za-z0-9_]*|\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\?|:\+)[^}]*)?)\}))/;
 
 export const authoringExpressionSlot = (
   expectedType: AuthoringExpressionExpectedType,
 ): Schema.Codec<AuthoringExpression, string> => {
   const cached = slots.get(expectedType);
   if (cached !== undefined) return cached;
-  const input =
-    expectedType === "string" || expectedType === "unknown"
-      ? Schema.String
-      : Schema.String.check(
-          Schema.makeFilter(() => true, {
-            "~structural": true,
-            toJsonSchema: () => ({ pattern: wholeTemplatePattern.source }),
-          }),
-        );
-  const slot = input.pipe(
+  const slot = Schema.String.check(
+    Schema.makeFilter(() => true, {
+      "~structural": true,
+      toJsonSchema: () => ({
+        pattern: (expectedType === "string" ? compositeTemplatePattern : wholeTemplatePattern).source,
+      }),
+    }),
+  ).pipe(
     Schema.decodeTo(
       Schema.toType(AuthoringExpression),
       SchemaTransformation.transformEffect<AuthoringExpression, string>({

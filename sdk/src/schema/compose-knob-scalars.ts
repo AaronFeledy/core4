@@ -142,6 +142,7 @@ export const ComposeInitField = Schema.Union([
   Schema.Boolean,
   Schema.String.check(
     Schema.isPattern(INIT_SPELLING_PATTERN, {
+      expected: "true, false, on, off, yes, no, 1, or 0 (ASCII case-insensitive)",
       toJsonSchema: () => ({ pattern: INIT_SPELLING_PATTERN.source }),
     }),
   ),
