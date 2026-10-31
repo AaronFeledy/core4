@@ -45,7 +45,7 @@ describe("PluginManifest", () => {
       version: "1.0.0",
       api: 4,
       contributes: {
-        commands: [{ id: "meta:legacy", deprecated: notice }],
+        commands: [{ id: "meta:legacy", summary: "Legacy command.", deprecated: notice }],
         serviceTypes: [{ id: "legacy:php", deprecated: notice }],
         serviceFeatures: [{ id: "legacy-feature", deprecated: notice }],
         providers: [{ id: "legacy-provider", deprecated: notice }],
@@ -82,7 +82,11 @@ describe("PluginManifest", () => {
       },
     });
 
-    expect(decoded.contributes?.commands?.[0]).toEqual({ id: "meta:legacy", deprecated: notice });
+    expect(decoded.contributes?.commands?.[0]).toEqual({
+      id: "meta:legacy",
+      summary: "Legacy command.",
+      deprecated: notice,
+    });
     expect(decoded.contributes?.globalServices?.[0]).toMatchObject({
       id: "legacy-global",
       deprecated: notice,
@@ -105,7 +109,7 @@ describe("PluginManifest", () => {
         version: "1.0.0",
         api: 4,
         contributes: {
-          commands: [{ id: "meta:bad", deprecated: { since: "next", note: "bad" } }],
+          commands: [{ id: "meta:bad", summary: "Bad command.", deprecated: { since: "next", note: "bad" } }],
         },
       },
       { onExcessProperty: "error" },
@@ -124,6 +128,7 @@ describe("PluginManifest", () => {
           commands: [
             {
               id: "meta:bad",
+              summary: "Bad command.",
               deprecated: { since: "4.2.0", severity: "warn", note: "bad", extra: true },
             },
           ],

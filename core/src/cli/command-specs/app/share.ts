@@ -16,6 +16,5 @@ export const shareSpec: LandoCommandSpec<TunnelSessionType> = {
   flags: shareFlags,
   resultSchema: TunnelSession,
   run: (input) => Effect.scoped(appShare(shareOptionsFromInput(input))),
-  render: (result, input, ctx) =>
-    renderShareResult(result as TunnelSessionType, shareFormatFromInput(input), ctx),
+  render: (result, input, ctx) => renderShareResult(result, shareFormatFromInput(input), ctx),
 };

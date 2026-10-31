@@ -8,7 +8,7 @@ import * as entry from "../src/index.ts";
 
 it("registers a valid optional descriptor and one lazy command", async () => {
   await Effect.runPromise(runPluginContract({ manifest: entry.manifest }));
-  expect(entry.manifest.contributes?.commands).toEqual(["github-actions:list"]);
+  expect(entry.manifest.contributes?.commands?.map((command) => command.id)).toEqual(["github-actions:list"]);
   const command = await entry.plugin.commands?.get("github-actions:list")?.();
   expect(command?.id).toBe("github-actions:list");
   expect(command?.bootstrap).toBe("minimal");

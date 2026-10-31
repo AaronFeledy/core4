@@ -30,6 +30,7 @@ export interface ComposeServiceInput {
   readonly appRoot: ServiceFeatureContext["appRoot"];
   readonly host?: ServiceFeatureContext["host"];
   readonly normalizedConfig: ServiceConfig;
+  readonly resolutionMetadata?: Readonly<NonNullable<ServicePlan["provenance"]>> | undefined;
   readonly features: ReadonlyArray<ComposeServiceFeature>;
 }
 
@@ -83,6 +84,7 @@ const makeContext = (
   },
   setReadiness: (readiness) => {
     draft.readiness = { ...readiness };
+    draft.readinessSource = "contributed";
   },
   setCerts: (certs) => {
     draft.certs = { ...certs };
@@ -144,6 +146,21 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
 export const composeServiceWithContributions = Effect.fn("ServiceFeature.composeServiceWithContributions")(
   function* (input: ComposeServiceInput) {
     const declared = yield* declarePreparedServiceEndpoints(prepareServiceComposition(input));
+    const firstError = declared.errors[0];
+    if (declared.errors.length === 1 && firstError !== undefined) return yield* Effect.fail(firstError);
+    if (declared.errors.length > 0)
+      return yield* Effect.fail(
+        new ServiceFeatureError({
+          feature: "composition",
+          message: declared.errors.map((error) => error.message).join("; "),
+          remediation: [...new Set(declared.errors.map((error) => error.remediation))].join(" "),
+          issues: declared.errors.flatMap((error) =>
+            error.issues?.length
+              ? error.issues
+              : [{ path: [], message: error.message, suggestion: error.remediation }],
+          ),
+        }),
+      );
     return yield* applyPreparedService({
       prepared: declared.prepared,
       endpointContributions: declared.contributions,

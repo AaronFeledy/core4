@@ -93,7 +93,7 @@ Required behavior:
 
 `global` sits between `provider` and `app` in the §3.2 ladder. It eagerly adds `GlobalAppService` and lazily adds the global app's planner, `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner`, and `HostProxyService` when the plan requires them. The `app` level includes lazy access to `GlobalAppService` for auto-start.
 
-`bootstrap: global` is a valid `LandoCommandSpec` value. Plugins MAY use it for commands in their own namespaces; `meta:global:*` remains reserved for core.
+`bootstrap: global` is a valid `LandoCommandSpec` and plugin `ExecutableCommandSpec` value. Plugins MAY use it for commands in their own namespaces; `meta:global:*` remains reserved for core.
 
 Library hosts MAY request this level through `makeLandoRuntime({ bootstrapLevel: "global" })` (§16.3).
 

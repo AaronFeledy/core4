@@ -12,6 +12,7 @@ import { appConfigMcpSpecs, appConfigSpec } from "../../src/cli/command-specs/ap
 import { execSpec } from "../../src/cli/command-specs/app/exec.ts";
 import { appConfigRedactionTokens } from "../../src/cli/commands/app-config.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 
 const JSON_CANARY = "env-file-json-canary";
 const CONFIG_CANARY = "config-canary";
@@ -189,7 +190,9 @@ describe("env_file machine-output redaction", () => {
 
   test("omits an authored landofile environment canary from the config view MCP envelope", async () => {
     // Given
-    const viewSpec = appConfigMcpSpecs.find((spec) => spec.id === "app:config:view");
+    const viewSpec: LandoCommandSpec | undefined = appConfigMcpSpecs.find(
+      (spec) => spec.id === "app:config:view",
+    );
     expect(viewSpec).toBeDefined();
     if (viewSpec === undefined) return;
     expect(viewSpec.redactionTokens).toBeFunction();

@@ -169,7 +169,11 @@ export const createConfigFingerprint = (
                     port: service.readiness.target.port,
                     transport: service.readiness.target.transport,
                   },
-            command: compileServiceProbe(service.readiness, plan, service),
+            command:
+              service.readiness.executionTarget === "host"
+                ? service.readiness.command
+                : compileServiceProbe(service.readiness, plan, service),
+            ...(service.readiness.executionTarget === "host" ? { hostRoot: plan.root } : {}),
           },
     exposedPorts: physicalListenerPorts(service.endpoints),
     publications: physicalPublications(service.endpoints).sort((a, b) =>

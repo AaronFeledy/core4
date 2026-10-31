@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, ManagedRuntime } from "effect";
 
 import * as LandoEventService from "@lando/engine/services/event-service";
+import { hostDisablesColor } from "@lando/renderer";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { NotifyDesktopEvent } from "@lando/sdk/events";
 import {
   RENDERER_CAPABILITIES_NONE,
@@ -28,6 +30,28 @@ const runService = async <A>(layer: Layer.Layer<Renderer>, effect: Effect.Effect
 };
 
 describe("RendererCapabilities matrix", () => {
+  test("resolves host color policy independently of the other TTY capabilities", async () => {
+    for (const [env, color] of [
+      [{}, true],
+      [{ NO_COLOR: "" }, true],
+      [{ NO_COLOR: "1" }, false],
+      [{ NO_COLOR: "0" }, false],
+      [{ TERM: "dumb" }, false],
+    ] as const) {
+      for (const isTTY of [true, false]) {
+        // Given
+        const io = createBufferedRendererIO({ isTTY, noColor: hostDisablesColor(env) });
+        // When
+        const caps = await runService(
+          makeLandoService(io),
+          Effect.map(Renderer, (r) => r.capabilities),
+        );
+        // Then
+        expect(caps).toEqual(isTTY ? { ...RENDERER_CAPABILITIES_TTY, color } : RENDERER_CAPABILITIES_NONE);
+        expect(Object.isFrozen(caps)).toBe(true);
+      }
+    }
+  });
   for (const isTTY of [true, false, undefined]) {
     test(`publishes synchronous capabilities when isTTY is ${String(isTTY)}`, async () => {
       const io = {
@@ -43,7 +67,7 @@ describe("RendererCapabilities matrix", () => {
         Effect.map(Renderer, (r) => r.capabilities),
       );
 
-      expect(caps).toBe(isTTY === true ? RENDERER_CAPABILITIES_TTY : RENDERER_CAPABILITIES_NONE);
+      expect(caps).toEqual(isTTY === true ? RENDERER_CAPABILITIES_TTY : RENDERER_CAPABILITIES_NONE);
       expect(Object.isFrozen(caps)).toBe(true);
     });
   }

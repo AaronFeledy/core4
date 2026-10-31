@@ -20,5 +20,5 @@ export const metaGlobalRebuildSpec: LandoCommandSpec<GlobalRebuildResult> = {
     const signal = extractSpecAbortSignal(input);
     return globalRebuild(signal === undefined ? {} : { signal });
   },
-  render: (result) => renderGlobalRebuildResult(result as GlobalRebuildResult),
+  render: (result) => renderGlobalRebuildResult(result),
 };

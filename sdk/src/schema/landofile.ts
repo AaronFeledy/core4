@@ -647,6 +647,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     port: Schema.optionalKey(PortNumber).annotate({
       description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
     }),
+    consolePort: Schema.optionalKey(PortNumber).annotate({
+      description:
+        "MinIO console TCP port number (integer 1-65535); defaults to 9001, independently of the API port.",
+    }),
     framework: Schema.optionalKey(Schema.String),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:
@@ -745,6 +749,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
 
     healthcheck: Schema.optionalKey(HealthcheckInput),
+    readiness: Schema.optionalKey(HealthcheckInput).annotate({
+      description:
+        "Lifecycle readiness probe, independent of native healthcheck; false explicitly disables command readiness, not process supervision.",
+    }),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optionalKey(Schema.Array(Schema.String)),

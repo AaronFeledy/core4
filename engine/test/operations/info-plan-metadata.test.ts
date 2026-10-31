@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, PortablePath, ServiceInfo, landoNetworkingPlan } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  InfoAppResult,
+  PortablePath,
+  ServiceInfo,
+  landoNetworkingPlan,
+} from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { AppInfoResultSchema } from "../../src/operations/info.ts";
 import { plan, runInfo, service } from "./info-storage-fixture.ts";
 
 test("projects selected artifact identity, user, and working directory without extra provider calls", async () => {
@@ -49,7 +54,7 @@ test("reports only safe build identity and omits absent plan metadata", async ()
   expect(json).not.toContain("private.example/secret-image");
   expect(json).not.toContain("/host/private/build");
   const commandJson = JSON.stringify(
-    Schema.encodeSync(AppInfoResultSchema)({ app: "storage-info", services: [row] }),
+    Schema.encodeSync(InfoAppResult)({ app: "storage-info", services: [row] }),
   );
   expect(commandJson).not.toContain("never-print-build-arg");
   expect(commandJson).not.toContain("private.example/secret-image");
@@ -124,14 +129,24 @@ test("reports planned health settings and observed health independently of lifec
   if (row === undefined) throw new Error("Expected a service info row");
   expect(row?.status).toBe("running");
   expect(row?.health).toEqual({
-    check: { kind: "command", intervalSeconds: 10, timeoutSeconds: 3, retries: 2, startPeriodSeconds: 4 },
+    check: {
+      kind: "command",
+      intervalSeconds: 10,
+      timeoutSeconds: 3,
+      retries: 2,
+      startPeriodSeconds: 4,
+      target: "service",
+      userSource: "image",
+      commandConfigured: true,
+      configPath: ["services", "web", "healthcheck"],
+    },
     state: "unhealthy",
   });
   const rawJson = JSON.stringify(row);
   expect(rawJson).not.toContain("secret-health-command");
   expect(rawJson).not.toContain("secret-health-url.test");
   const commandJson = JSON.stringify(
-    Schema.encodeSync(AppInfoResultSchema)({ app: "storage-info", services: [row] }),
+    Schema.encodeSync(InfoAppResult)({ app: "storage-info", services: [row] }),
   );
   expect(commandJson).not.toContain("secret-health-command");
   expect(commandJson).not.toContain("secret-health-url.test");
@@ -143,9 +158,11 @@ test("distinguishes an explicit none healthcheck, a readiness-only probe, and ab
   const explicit = await runInfo({ ...service, healthcheck: check });
   const readinessOnly = await runInfo({ ...service, readiness: check });
   const absent = await runInfo(service);
-  expect(explicit.row?.health).toEqual({ check, state: "unknown" });
-  expect(readinessOnly.row).not.toHaveProperty("health");
-  expect(absent.row).not.toHaveProperty("health");
+  expect(explicit.row?.health).toMatchObject({ check, state: "not-monitored" });
+  expect(readinessOnly.row?.health).toEqual({ state: "unknown" });
+  expect(readinessOnly.row?.readiness).toMatchObject({ state: "disabled", source: "unknown" });
+  expect(absent.row?.health).toEqual({ state: "unknown" });
+  expect(absent.row?.readiness).toEqual({ state: "not-configured", source: "none" });
 });
 
 test.each(["none", "custom"] as const)("projects private certificate provenance %s", async (state) => {

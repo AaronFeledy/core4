@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import type { InfoAppResult } from "@lando/engine/operations/info";
 import type { UninstallResult } from "@lando/engine/operations/uninstall";
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { formatSummary } from "@lando/renderer/summary";
+import type { InfoAppResult } from "@lando/sdk/app";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
@@ -31,6 +31,7 @@ const expectFramed = (text: string, width: number): void => {
 };
 
 const decorated = (columns: number): RenderContext => ({
+  noColor: false,
   mode: "lando",
   format: "text",
   columns,
@@ -573,7 +574,7 @@ describe("doctor summary", () => {
 });
 
 describe("setup summary via spec render", () => {
-  const ctx: RenderContext = { mode: "lando", format: "text", columns: 72, isTTY: true };
+  const ctx: RenderContext = { mode: "lando", format: "text", columns: 72, isTTY: true, noColor: false };
 
   test("decorates setup completion in lando TTY mode", () => {
     const out = setupSpec.render?.(
@@ -635,7 +636,7 @@ describe("setup summary via spec render", () => {
         networkCaInjectionConfigured: false,
       },
       undefined,
-      { mode: "plain", format: "text", columns: 80, isTTY: false },
+      { mode: "plain", format: "text", columns: 80, isTTY: false, noColor: false },
     );
     expect(stripAnsi(out ?? "")).toContain("setup complete: Lando runtime (podman)");
     expect(out ?? "").not.toContain("╭─");

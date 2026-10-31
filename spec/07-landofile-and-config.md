@@ -182,6 +182,8 @@ The top-level wrappers `compose:` and `recipes:` are forbidden and fail with `La
 
 `ConfigTranslator` remains authoring-fragment-only. Configuration-backed scratch uses the explicit input path in §21.4.3, not translation refresh; programmable execution adds no mandatory Landofile key (§22.9).
 
+The Lando 3 translator MUST map every supported API-4/raw-service top-level `healthcheck` form to lifecycle `readiness`, including false, strings, argv, and objects with container user/retry/delay. Nested Compose healthchecks MUST remain native `healthcheck`. Legacy catalog input that ignored healthcheck MUST remain ignored with a diagnostic, not silently become readiness. Native and lifecycle overrides remain independent after translation (§6.7).
+
 Translation is explicit conversion through `LandofileAuthoringShape` and recursively partial `LandofileAuthoringFragment`. `LandofileShape` is runtime input and `AppPlan` is provider-neutral output; frontends MUST NOT emit `AppPlan`, and text backends MUST NOT encode runtime or plan shapes. These public Effect Schemas share canonical field definitions and inferred types.
 
 Only `app:config:translate`, `app:config:explain`, `app:config:migrate`, `apps:init`, and the §7.4.2 refresh phase invoke translators (§8.2.1, §8.8). Translators MUST NOT run during discovery, normal loading, or tooling; the refresh phase is the single bounded lifecycle entry and applies only to declared `translate:` entries. Core owns bounded reads, ordering, containment, cumulative-prefix and final validation, encoding, and mutation. Frontends own foreign parsing and merge semantics, folding, diagnostics, and output ownership, but MUST NOT read or write files, follow references, plan, contact providers, install plugins, or mutate the app.

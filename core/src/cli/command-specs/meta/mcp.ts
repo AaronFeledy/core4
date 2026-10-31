@@ -38,5 +38,5 @@ export const metaMcpSpec: LandoCommandSpec<McpListResult, unknown, BuiltInComman
       mcpFlagsFromParsed(extractSpecFlags(input)),
     );
   }),
-  render: (result, _input, ctx) => renderMcpListResult(result as McpListResult, ctx),
+  render: (result, _input, ctx) => renderMcpListResult(result, ctx),
 };

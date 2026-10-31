@@ -122,7 +122,7 @@ test("reads a current cache containing the retired networks field", async () => 
   expect(read).not.toHaveProperty("networks");
 });
 
-test.each([6, 27, 28, 31, 38, 39])(
+test.each([6, 27, 28, 31, 38, 39, 44])(
   "ignores desired-plan revision %i without deleting it",
   async (revision) => {
     // Given
@@ -221,7 +221,7 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(41n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(45n);
   expect(key).not.toBe("52ac114b46244edd3741469e45ce9009aa2a3c67f99bc8c2983104e3f399b737");
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });

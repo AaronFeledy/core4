@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { serialize } from "node:v8";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
-import { Effect, Result } from "effect";
+import { Context, Effect, Result, Schema } from "effect";
 
 import {
   APP_COMMAND_MAGIC,
@@ -16,6 +16,7 @@ import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-wr
 import { appToolingCompilationCachePath } from "@lando/engine/cache/paths";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
+import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
 import {
   type ToolingRoute,
   resolveAppCommandHelpAliases,
@@ -641,4 +642,69 @@ test("Given a route that is not a normalized tooling task, when argv asks for he
 
   // Then
   expect(requests).toEqual([false, false, false]);
+});
+
+const countingCatalog = () => {
+  const state = { acquired: 0 };
+  const id = "fx:inspect";
+  const commands = [
+    {
+      id,
+      pluginName: "@example/fx",
+      source: "explicit" as const,
+      descriptor: { id, summary: "Inspect fixture.", topLevelAlias: "inspect" },
+      load: async () => ({
+        id,
+        namespace: "fx",
+        bootstrap: "plugins" as const,
+        resultSchema: Schema.String,
+        run: () => Effect.succeed(id),
+      }),
+    },
+  ];
+  const catalog = createPluginCommandCatalog(undefined, () =>
+    Effect.sync(() => {
+      state.acquired += 1;
+      return {
+        plugins: [],
+        globalPlugins: [],
+        commands,
+        certificateAuthorities: [],
+        hostContext: Context.empty(),
+      };
+    }),
+  );
+  return { state, catalog };
+};
+
+test("a fresh-cache built-in alias routes without acquiring plugin metadata", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given a fresh app command index and an invocation catalog
+    await writeFreshCache(root, cacheRoot, []);
+    const { state, catalog } = countingCatalog();
+    // When the built-in alias is routed
+    const route = await Effect.runPromise(resolveToolingRoute("start", { cwd: root, cacheRoot, catalog }));
+    // Then it resolves to the built-in and plugin metadata stays unacquired
+    expect(route).toMatchObject({ _tag: "built-in", commandId: "app:start" });
+    expect(state.acquired).toBe(0);
+  });
+});
+
+test("plugin alias routing reuses the invocation catalog", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given a fresh app command index and an invocation catalog that owns a plugin alias
+    await writeFreshCache(root, cacheRoot, []);
+    const { state, catalog } = countingCatalog();
+    // When the alias is routed twice
+    const routes = [
+      await Effect.runPromise(resolveToolingRoute("inspect", { cwd: root, cacheRoot, catalog })),
+      await Effect.runPromise(resolveToolingRoute("inspect", { cwd: root, cacheRoot, catalog })),
+    ];
+    // Then both resolve through the supplied catalog's single acquisition
+    expect(routes).toEqual([
+      { _tag: "plugin", commandId: "fx:inspect", token: "inspect" },
+      { _tag: "plugin", commandId: "fx:inspect", token: "inspect" },
+    ]);
+    expect(state.acquired).toBe(1);
+  });
 });

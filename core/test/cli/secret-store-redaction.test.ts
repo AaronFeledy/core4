@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { makeTestRuntime } from "@lando/core/testing";
 import { execApp } from "@lando/engine/operations/exec";
-import { StartAppResultSchema, startApp } from "@lando/engine/operations/start";
+import { startApp } from "@lando/engine/operations/start";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
@@ -17,6 +17,7 @@ import {
   PluginManifest,
   ProviderId,
   ServiceName,
+  StartAppResult,
 } from "@lando/sdk/schema";
 import { StreamFrame } from "@lando/sdk/schema";
 import {
@@ -179,7 +180,7 @@ test.each([
       rendererMode: "json",
       resultFormat: "json",
       command: "app:start",
-      resultSchema: StartAppResultSchema,
+      resultSchema: StartAppResult,
       formatError: ({ error }) => String(error),
       setExitCode: (code) => {
         exits.push(code);

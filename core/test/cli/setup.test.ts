@@ -680,6 +680,7 @@ describe("meta:setup command", () => {
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused subscription queue"),
         waitFor: () => Effect.die("unused event wait"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("unused event wait"),
         query: () => Effect.succeed([]),
       });
@@ -1339,11 +1340,12 @@ describe("meta:setup command", () => {
       setupSpec.render?.({
         providerId: "docker",
         installDir: "/opt/lando",
+        fileSyncStatus: "satisfied",
         networkCaInjectionConfigured: false,
         providerSwitch: {
           fromProviderId: "lando",
           toProviderId: "docker",
-          remainingApps: [{ kind: "user", id: "demo", root: "/apps/demo" }],
+          remainingApps: [{ kind: "user", id: "demo", root: AbsolutePath.make("/apps/demo") }],
         },
       }) ?? "";
     const commands = [...output.matchAll(/`lando ([^`]+)`/gu)].map((match) => match[1] ?? "");

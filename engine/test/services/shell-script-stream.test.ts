@@ -17,6 +17,37 @@ import * as BunShellRunner from "../../src/services/shell-runner.ts";
 const frameText = (frame: StreamFrameSinkFrame) =>
   typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
 
+test("private script capture retains output without forwarding it to an ambient sink", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-private-"));
+  const script = join(root, "private.bun.sh");
+  const frames: StreamFrameSinkFrame[] = [];
+  try {
+    await writeFile(script, "printf private; printf diagnostic 1>&2\n");
+    // When
+    const result = await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shell) => shell.runScript(script, { capture: true })).pipe(
+        Effect.provide(
+          BunShellRunner.layer(() => {
+            throw new TypeError("Interactive IO must not be opened");
+          }),
+        ),
+        Effect.provideService(StreamFrameSink, {
+          emit: (frame) =>
+            Effect.sync(() => {
+              frames.push(frame);
+            }),
+        }),
+      ),
+    );
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "private", stderr: "diagnostic" });
+    expect(frames).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("forwards unregistered assignments and binary script bytes without decoding", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-script-bytes-"));
@@ -422,6 +453,7 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<never>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),

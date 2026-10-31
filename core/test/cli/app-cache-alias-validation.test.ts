@@ -108,7 +108,7 @@ const withRefreshFixture = async <T>(
             version: "0.0.0",
             api: 4,
             bootstrap: "app",
-            contributes: { commands: ["db:seed"] },
+            contributes: { commands: [{ id: "db:seed", summary: "Seed database." }] },
           },
         ]),
         load: () => Effect.die("plugin load must not run"),

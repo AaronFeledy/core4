@@ -5,6 +5,8 @@ import * as PodmanProvider from "@lando/provider-podman";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { AbsolutePath, AppId, type AppPlan, LogSource, ProviderId, ServiceName } from "@lando/sdk/schema";
 
+const FileLogSource = LogSource.members[0];
+
 const app = AppId.make("bindingapp");
 const service = ServiceName.make("web");
 const providerId = ProviderId.make("podman");
@@ -13,7 +15,7 @@ const metadata = {
   source: "test",
   runtime: 4 as const,
 };
-const source = Schema.decodeUnknownSync(LogSource)({
+const source = Schema.decodeUnknownSync(FileLogSource)({
   id: "app-log",
   path: "/app.log",
   stream: "stdout",

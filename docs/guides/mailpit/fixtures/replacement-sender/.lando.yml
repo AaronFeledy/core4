@@ -1,0 +1,12 @@
+name: mailpit-replacement-sender
+services:
+  app:
+    type: php:8.3
+    home: false
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+  inbox:
+    type: mailpit
+    mailFrom:
+      - app

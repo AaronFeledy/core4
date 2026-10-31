@@ -1,6 +1,11 @@
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
+import {
+  HealthcheckError,
+  ProviderCapabilityError,
+  ProviderUnavailableError,
+  ServiceExecError,
+} from "@lando/sdk/errors";
 import type { LandoPluginContext, RuntimeProviderContribution } from "@lando/sdk/plugins";
 import type { AppPlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
@@ -14,12 +19,19 @@ import {
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type Context, Effect, type Option } from "effect";
 import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import {
+  type HostProbeRunners,
+  interruptOnAbort,
+  prepareHealthcheckAttempt,
+  validateHealthcheckExecution,
+} from "../subsystems/healthcheck/attempt.ts";
 import { withProviderErrorRedaction } from "./error-policy.ts";
 import { redactProviderError } from "./error-redaction.ts";
 import { withOutputRegistration } from "./output-policy.ts";
 import { registerProviderOutput } from "./output-redaction.ts";
 
 interface ProviderRuntimeContext {
+  readonly hostProbeRunners?: HostProbeRunners;
   readonly paths: Context.Service.Shape<typeof PathsService>;
   readonly downloader: Context.Service.Shape<typeof Downloader>;
   readonly containerHelperAssets: Context.Service.Shape<typeof ContainerHelperAssets>;
@@ -78,6 +90,7 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
               );
             }),
             apply: Effect.fnUntraced(function* (plan, options) {
+              yield* validateHealthcheckExecution(plan, services.hostProbeRunners ?? {});
               const tokens = [...collectAppPlanRedactionTokens(plan)];
               const redactorOptions = { sourceEnv: { ...process.env }, redactionTokens: tokens };
               const redactor =
@@ -87,7 +100,37 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
                       .pipe(Effect.andThen(redaction.value.forProfile("secrets", redactorOptions)))
                   : createStandaloneRedactor("secrets", redactorOptions);
               return yield* runtime
-                .apply(plan, options)
+                .apply(plan, {
+                  ...options,
+                  executeReadinessAttempt: (service, probe) =>
+                    interruptOnAbort(
+                      prepareHealthcheckAttempt({
+                        probe,
+                        service,
+                        app: plan.id,
+                        plan,
+                        exec: runtime.exec,
+                        ...(services.hostProbeRunners === undefined
+                          ? {}
+                          : { runners: services.hostProbeRunners }),
+                        ...(options.signal === undefined ? {} : { signal: options.signal }),
+                      }).pipe(
+                        Effect.mapError((error) =>
+                          error instanceof HealthcheckError
+                            ? new ServiceExecError({
+                                providerId: runtime.id,
+                                service: String(service),
+                                operation: "readiness",
+                                message: error.message,
+                                remediation: error.remediation,
+                              })
+                            : error,
+                        ),
+                        Effect.flatMap((attempt) => attempt.run),
+                      ),
+                      options.signal,
+                    ),
+                })
                 .pipe(Effect.provideService(StartFailureLogRedactor, redactor));
             }),
           },

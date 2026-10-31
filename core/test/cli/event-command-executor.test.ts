@@ -69,6 +69,7 @@ const makeHarness = (): Harness => {
       return queue;
     }),
     waitFor: () => Effect.never,
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   };
@@ -166,10 +167,12 @@ describe("EventCommandExecutorLayer.layer", () => {
       render: (
         _value: unknown,
         _input: unknown,
-        ctx?: { readonly isTTY: boolean; readonly columns: number | undefined },
-      ) => `${ctx?.isTTY}:${ctx?.columns}`,
+        ctx?: { readonly isTTY: boolean; readonly columns: number | undefined; readonly noColor: boolean },
+      ) => `${ctx?.isTTY}:${ctx?.columns}:${ctx?.noColor}`,
     } satisfies LandoCommandSpec;
-    const context = harness.context.pipe(Context.add(ResultTerminal, { isTTY: true, columns: 37 }));
+    const context = harness.context.pipe(
+      Context.add(ResultTerminal, { isTTY: true, columns: 37, noColor: true }),
+    );
     const executor = makeEventCommandExecutor(context, [entryFor(spec)]);
     await Effect.runPromise(
       executor.run({
@@ -180,7 +183,7 @@ describe("EventCommandExecutorLayer.layer", () => {
         cwd: "/workspace/demo",
       }),
     );
-    expect(harness.presentation).toContain("stdout:true:37\n");
+    expect(harness.presentation).toContain("stdout:true:37:true\n");
   });
 
   test("retains the executor when a canonical command enters another command-backed lifecycle event", async () => {
@@ -772,7 +775,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       name: "@example/commands",
       version: "1.0.0",
       api: 4,
-      contributes: { commands: ["meta:example:hello"] },
+      contributes: { commands: [{ id: "meta:example:hello", summary: "Hello from a plugin." }] },
     });
     const module = {
       name: manifest.name,
@@ -802,6 +805,7 @@ describe("EventCommandExecutorLayer.layer", () => {
         {
           id: "meta:example:hello",
           pluginName: String(manifest.name),
+          descriptor: { id: "meta:example:hello", summary: "Hello from a plugin." },
           source: "explicit",
           load:
             module.commands.get("meta:example:hello") ??

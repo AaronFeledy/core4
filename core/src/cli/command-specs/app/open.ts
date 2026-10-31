@@ -25,6 +25,5 @@ export const openSpec: LandoCommandSpec<OpenAppResult> = {
     qr: Flags.boolean({ description: "Print the resolved URL(s) and a QR instead of opening a browser." }),
   },
   run: (input) => openApp(openOptionsFromInput(input)),
-  render: (result, input, ctx) =>
-    renderOpenAppResult(result as OpenAppResult, ctx, openOptionsFromInput(input)),
+  render: (result, input, ctx) => renderOpenAppResult(result, ctx, openOptionsFromInput(input)),
 };

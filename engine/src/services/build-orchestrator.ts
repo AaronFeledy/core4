@@ -17,6 +17,7 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
+import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { collectAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
@@ -301,9 +302,11 @@ export const layer = Layer.effect(
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
     const stateStore = yield* StateStore;
+    const hostProbeRunners = yield* captureHostProbeRunners;
 
     return BuildOrchestrator.of({
       build: Effect.fn("BuildOrchestrator.build")(function* (plan, options) {
+        yield* validateHealthcheckExecution(plan, hostProbeRunners);
         const refresh = options?.refresh === true;
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const servicePlans = Object.values(plan.services);
@@ -367,7 +370,10 @@ export const layer = Layer.effect(
                 redactionTokens: collectAppPlanRedactionTokens(plan),
               })
             : identityRedactor;
-        yield* runAppBuild({ events, paths, provider, plan, redactor, stateStore }, options);
+        yield* runAppBuild(
+          { events, paths, provider, plan, redactor, stateStore, hostProbeRunners },
+          options,
+        );
       }),
     });
   }),

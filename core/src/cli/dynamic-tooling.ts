@@ -1,6 +1,6 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import type { ToolingInputDeclaration } from "@lando/sdk/schema";
-import { Effect, Layer, Schema } from "effect";
+import { type ToolingInputDeclaration, ToolingResult } from "@lando/sdk/schema";
+import { Effect, Layer } from "effect";
 
 import {
   type BunShellScriptEmptyError,
@@ -39,18 +39,10 @@ import { attachToolingHostIo, toolingHostStdin } from "./exec-host-io";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
-import { type ToolingRoute, resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
-
-const ToolingResultSchema = Schema.Struct({
-  tool: Schema.String,
-  service: Schema.String,
-  exitCode: Schema.Number,
-  stdout: Schema.String,
-  stderr: Schema.String,
-});
+import { type ToolingRoute, toolingRouteError } from "./tooling-router";
 
 const dynamicToolingOptions = {
-  resultSchema: ToolingResultSchema,
+  resultSchema: ToolingResult,
   redactionTokens: runToolingRedactionTokens,
   completion: (result: RunToolingResult) => commandCompletionFromExitCode(result.exitCode),
   failureExitCode: (error: unknown) => (error instanceof ToolingExecError ? error.exitCode : undefined),
@@ -92,7 +84,7 @@ export const runDynamicTooling = async (
   // The first separator belongs to Lando; subsequent separators belong to the task.
   const commandArgv = taskArgv[0] === "--" ? taskArgv.slice(1) : taskArgv;
   prepareDynamicToolingInvocation(name);
-  if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
+  if (await emitJsonListModeIfRequested(ToolingResult)) return;
   const { restore, ...hostIo } = attachToolingHostIo(
     !isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json",
   );
@@ -136,7 +128,7 @@ const runDynamicBunShellTooling = async (
   const { name, appRoot, relativePath, input } = route;
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
   prepareDynamicToolingInvocation(name);
-  if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
+  if (await emitJsonListModeIfRequested(ToolingResult)) return;
   const mode = toolingHostStdin(!isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json");
   return runWithProcessAbortSignal(
     (signal) => {
@@ -216,21 +208,6 @@ export const renderAliasResolutionFailure = async (error: unknown): Promise<void
   });
 };
 
-export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<boolean> => {
-  const token = argv[0];
-  if (token === undefined) return false;
-  const name = toolingName(token);
-  if (name === undefined) return false;
-
-  const resolution = await Effect.runPromise(Effect.result(resolveToolingRoute(token)));
-  if (resolution._tag === "Failure") {
-    await runDynamicToolingFailure(name, resolution.failure);
-    return true;
-  }
-
-  return routeResolvedTooling(resolution.success, argv.slice(1));
-};
-
 export const routeResolvedTooling = async (
   route: ToolingRoute,
   argv: ReadonlyArray<string>,
@@ -240,6 +217,7 @@ export const routeResolvedTooling = async (
   switch (route._tag) {
     case "not-tooling":
     case "built-in":
+    case "plugin":
     case "alias-disabled":
       return false;
     case "cache-miss":
@@ -247,11 +225,13 @@ export const routeResolvedTooling = async (
       await runDynamicToolingFailure(route.name, toolingRouteError(route));
       return true;
     case "bun-script":
+      await import("../runtime/bundled-plugins");
       // A tooling task renders its own streams and declares no opt-in format.
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
       await runDynamicBunShellTooling(route, argv, signal);
       return true;
     case "tooling":
+      await import("../runtime/bundled-plugins");
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
       await runDynamicTooling([route.name, ...argv], signal, route.input);
       return true;

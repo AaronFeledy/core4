@@ -20,11 +20,8 @@ import {
   APP_COMMAND_MAGIC,
   COMMAND_INDEX_HEADER_BYTES,
   COMMAND_INDEX_SCHEMA_VERSION,
-  PLUGIN_COMMAND_MAGIC,
   decodeAppCommandIndex,
-  decodePluginCommandIndex,
   encodeAppCommandIndex,
-  encodePluginCommandIndex,
 } from "@lando/engine/cache/command-index";
 import { appPlanCachePath } from "@lando/engine/cache/paths";
 import * as AppCacheService from "@lando/engine/cache/service";
@@ -41,14 +38,6 @@ const appCommandPayload = {
   versionConstraints: [],
   generatedAtMs: 1_700_000_100_000,
   entries: [{ id: "fixture:task", summary: "Fixture task", hidden: false, service: "appserver" }],
-};
-
-const pluginCommandPayload = {
-  schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
-  landoVersion: "0.0.0",
-  pluginNames: ["@lando/fixture"],
-  generatedAtMs: 1_700_000_200_000,
-  entries: [{ id: "meta:fixture", summary: "Fixture plugin command", hidden: false }],
 };
 
 const appPlanFixture: AppPlan = {
@@ -100,8 +89,6 @@ const makeFixtureBytes = async (name: string): Promise<Buffer> => {
   switch (name) {
     case "app-command":
       return Buffer.from(encodeAppCommandIndex(appCommandPayload));
-    case "plugin-command":
-      return Buffer.from(encodePluginCommandIndex(pluginCommandPayload));
     case "app-plan":
       return makeAppPlanBytes();
     default:
@@ -123,19 +110,6 @@ describe("binary cache encoding policy", () => {
         "app-command-v2.bin",
       ],
       decode: decodeAppCommandIndex,
-    },
-    {
-      name: "plugin-command",
-      magic: PLUGIN_COMMAND_MAGIC,
-      version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "plugin-command-v6.bin",
-      previousFixtures: [
-        "plugin-command-v5.bin",
-        "plugin-command-v4.bin",
-        "plugin-command-v3.bin",
-        "plugin-command-v2.bin",
-      ],
-      decode: decodePluginCommandIndex,
     },
   ] as const;
 
@@ -179,7 +153,9 @@ describe("binary cache encoding policy", () => {
   }
 
   test("app-plan fixture matches the encoder output", async () => {
-    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v41.bin")));
+    expect(await makeAppPlanBytes()).toEqual(
+      await readFile(join(fixtureRoot, `app-plan-v${APP_PLAN_CACHE_SCHEMA_VERSION}.bin`)),
+    );
   });
 
   test("app-plan rejects the previous schema fixture", async () => {

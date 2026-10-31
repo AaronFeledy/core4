@@ -43,7 +43,7 @@ export const pluginTrustSpec: LandoCommandSpec<PluginTrustCommandResult> = {
     return pluginTrust({ name: parsed.action });
   },
   render: (result) => {
-    const trustResult = result as PluginTrustCommandResult;
+    const trustResult = result;
     if (trustResult.kind === "list") return renderPluginTrustListResult(trustResult);
     if (trustResult.kind === "revoke") return renderPluginTrustRevokeResult(trustResult);
     return renderPluginTrustResult(trustResult);

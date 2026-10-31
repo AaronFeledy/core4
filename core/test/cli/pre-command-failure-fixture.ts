@@ -21,6 +21,7 @@ export const makeRecordingHarness = (): RecordingHarness => {
       return queue;
     }),
     waitFor: () => Effect.never,
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.never,
     query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
   });

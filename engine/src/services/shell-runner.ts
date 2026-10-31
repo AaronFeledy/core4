@@ -46,7 +46,7 @@ const shellError = (
     ...(output?.exitCode === undefined ? {} : { exitCode: output.exitCode }),
     ...(output?.stdout === undefined ? {} : { stdout: output.stdout }),
     ...(output?.stderr === undefined ? {} : { stderr: output.stderr }),
-    cause,
+    ...(options?.capture === true ? {} : { cause }),
     remediation:
       cause instanceof FileIoError || cause instanceof ProcessExecError
         ? cause.remediation
@@ -111,7 +111,7 @@ const shellEventShape = (command: string, options: ShellCommandOptions | undefin
   ...(options?.env === undefined ? {} : { env: { ...options.env } }),
 });
 
-const redactShellError = (redactor: Redactor, error: ShellExecError) =>
+const redactShellError = (redactor: Redactor, error: ShellExecError, capture: boolean) =>
   Effect.sync(
     () =>
       new ShellExecError({
@@ -121,7 +121,7 @@ const redactShellError = (redactor: Redactor, error: ShellExecError) =>
         ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
         ...(error.stdout === undefined ? {} : { stdout: redactor.redactString(error.stdout) }),
         ...(error.stderr === undefined ? {} : { stderr: redactor.redactString(error.stderr) }),
-        cause: redactor.redactValue(error.cause),
+        ...(capture ? {} : { cause: redactor.redactValue(error.cause) }),
         remediation: redactor.redactString(error.remediation),
       }),
   );
@@ -151,20 +151,24 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* <Options extends 
       ...collectSecretEnvValues(yield* environmentForRedaction({}, snapshot?.env)),
     ]);
   }
-  yield* publishRedactedShellEvent(redactor, {
-    _tag: "pre-shell-exec",
-    ...shellEventShape(command, snapshot),
-  });
+  if (snapshot?.capture !== true)
+    yield* publishRedactedShellEvent(redactor, {
+      _tag: "pre-shell-exec",
+      ...shellEventShape(command, snapshot),
+    });
   const result = yield* execute(snapshot, context).pipe(
-    Effect.catch((error) => Effect.flatMap(redactShellError(redactor, error), Effect.fail)),
+    Effect.catch((error) =>
+      Effect.flatMap(redactShellError(redactor, error, snapshot?.capture === true), Effect.fail),
+    ),
   );
-  yield* publishRedactedShellEvent(redactor, {
-    _tag: "post-shell-exec",
-    ...shellEventShape(command, snapshot),
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  });
+  if (snapshot?.capture !== true)
+    yield* publishRedactedShellEvent(redactor, {
+      _tag: "post-shell-exec",
+      ...shellEventShape(command, snapshot),
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
   return result;
 });
 
@@ -176,7 +180,10 @@ export const makeShellRunnerService = (
     exec: (command, options) =>
       execWithEvents(command, options, (snapshot, context) =>
         Effect.gen(function* () {
-          const sink = yield* Effect.serviceOption(StreamFrameSink);
+          const sink =
+            snapshot?.capture === true
+              ? Option.none<StreamFrameSink["Service"]>()
+              : yield* Effect.serviceOption(StreamFrameSink);
           const result = yield* streamBunCommand(command, snapshot, { sink, context }).pipe(
             Effect.mapError((cause) => shellError(command, snapshot, cause)),
           );
@@ -197,7 +204,10 @@ export const makeShellRunnerService = (
       const command = `bun ${quoteShellPath(path)}`;
       return yield* execWithEvents(command, options, (snapshot, context) =>
         Effect.gen(function* () {
-          const sink = yield* Effect.serviceOption(StreamFrameSink);
+          const sink =
+            snapshot?.capture === true
+              ? Option.none<StreamFrameSink["Service"]>()
+              : yield* Effect.serviceOption(StreamFrameSink);
           return yield* streamBunScript(path, snapshot, {
             sink: Option.getOrUndefined(sink),
             context,

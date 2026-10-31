@@ -225,20 +225,25 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
       expected: { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 },
     },
     { healthcheck: false, expected: { kind: "none" } },
-  ])("replaces both default probes with authored $healthcheck", async ({ healthcheck, expected }) => {
-    // Given
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "custom-probe",
-      services: { db: { type: "mongodb", home: false, healthcheck } },
-    });
-    // When
-    const plan = await planLandofile(landofile);
-    // Then
-    const service = plan.services[ServiceName.make("db")];
-    expect(service?.healthcheck).toMatchObject(expected);
-    expect(service?.readiness).toEqual(service?.healthcheck);
-    expect(service?.readiness?.target).toBeUndefined();
-  });
+  ])(
+    "replaces native health without losing MongoDB protocol readiness: $healthcheck",
+    async ({ healthcheck, expected }) => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "custom-probe",
+        services: { db: { type: "mongodb", home: false, healthcheck } },
+      });
+      // When
+      const plan = await planLandofile(landofile);
+      // Then
+      const service = plan.services[ServiceName.make("db")];
+      expect(service?.healthcheck).toMatchObject(expected);
+      expect(service?.readiness?.kind).toBe("command");
+      expect(service?.readiness?.command).not.toEqual(service?.healthcheck?.command);
+      expect(service?.readiness?.target?.port).toBe(27017);
+      expect(service?.readinessSource).toBe("contributed");
+    },
+  );
 
   test("`lando mongosh` tooling alias routes through provider.exec to the mongodb service", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({

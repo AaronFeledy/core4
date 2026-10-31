@@ -7,7 +7,7 @@
  * result lines. Behavior is frozen — the emitted bytes are a contract. The
  * orchestrator builds one emitter bundle per command run.
  */
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 
 import type { CommandResultEnvelopeFormat } from "@lando/sdk/command-result";
 import {
@@ -20,11 +20,12 @@ import {
 import { JqExpressionError } from "@lando/sdk/errors";
 import type { CommandTrace } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
-import { EventService } from "@lando/sdk/services";
+import type { LandoEvent } from "@lando/sdk/services";
 
 import { RedactionService } from "@lando/redaction/service";
 import { writeResultLine } from "@lando/renderer/output";
 import type { CommandWarningsShape } from "./command-warnings";
+import { interruptOnAbort } from "./interrupt-on-abort";
 import { applyJqToRedactedJsonLine } from "./jq/eval.ts";
 
 export interface StreamOutputFrame {
@@ -50,6 +51,7 @@ export interface MachineResultEmitterDeps<A> {
   readonly sourceEnv?: Readonly<Record<string, string | undefined>>;
   readonly extraRedactionTokens?: ReadonlyArray<string>;
   readonly onRedactor?: (redactor: Redactor) => void;
+  readonly signal?: AbortSignal;
 }
 
 export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) => {
@@ -65,10 +67,17 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
     !(outcome._tag === "failure" && outcome.error instanceof JqExpressionError);
   const envelopeFormat = (outcome: CommandResultOutcome): CommandResultEnvelopeFormat =>
     willRunJq(outcome) ? "json" : (deps.resultFormat ?? "json");
+  const writeTerminalLine = (line: string) =>
+    deps.signal === undefined
+      ? writeResultLine(line)
+      : Effect.raceFirst(
+          writeResultLine(line),
+          interruptOnAbort(Effect.never, deps.signal).pipe(Effect.exit, Effect.asVoid),
+        );
   const writeEncodedLine = Effect.fnUntraced(function* (line: string, outcome: CommandResultOutcome) {
     const expr = deps.jqExpression;
     if (expr === undefined || (outcome._tag === "failure" && outcome.error instanceof JqExpressionError)) {
-      yield* writeResultLine(line);
+      yield* writeTerminalLine(line);
       return;
     }
     const text = yield* Effect.tryPromise({
@@ -83,7 +92,7 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
         });
       },
     });
-    yield* writeResultLine(text);
+    yield* writeTerminalLine(text);
   });
   const jsonRedactor = Effect.fnUntraced(function* (redactionTokens: ReadonlyArray<string> = []) {
     const redaction = yield* RedactionService;
@@ -138,16 +147,8 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
         : yield* encodeCommandResult(args);
     yield* writeEncodedLine(line, outcome);
   });
-  const replayBufferedEvents = Effect.fnUntraced(function* (redactionTokens: ReadonlyArray<string> = []) {
-    const redactor = yield* jsonRedactor(redactionTokens);
-    const events = yield* Effect.serviceOption(EventService).pipe(
-      Effect.flatMap((service) => (Option.isSome(service) ? service.value.query("*") : Effect.succeed([]))),
-    );
-    for (const event of events) {
-      const line = yield* encodeStreamEventFrame({ event: event._tag, payload: event, redactor });
-      yield* writeResultLine(line);
-    }
-  });
+  const encodeEventFrame = (event: LandoEvent, redactor: Redactor) =>
+    encodeStreamEventFrame({ event: event._tag, payload: event, redactor });
   const emitStreamingSuccess = Effect.fnUntraced(function* (
     value: A,
     outcome: CommandResultOutcome = { _tag: "success", value },
@@ -167,8 +168,13 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
           : yield* encodeStreamStderrFrame(streamFrameOptions);
       yield* writeResultLine(line);
     }
-    yield* replayBufferedEvents(tokens);
     yield* emitStreamResult(outcome, tokens);
   });
-  return { jsonRedactor, emitJsonResult, emitStreamResult, replayBufferedEvents, emitStreamingSuccess };
+  return {
+    jsonRedactor,
+    encodeEventFrame,
+    emitJsonResult,
+    emitStreamResult,
+    emitStreamingSuccess,
+  };
 };

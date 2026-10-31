@@ -1,4 +1,5 @@
 import { Result, Schema } from "effect";
+import { HealthcheckTargetUnsupportedError } from "../errors/healthcheck.ts";
 import { LandofileValidationError } from "../errors/landofile.ts";
 import {
   type AppPlan,
@@ -7,9 +8,12 @@ import {
   landoServiceNetworkAliases,
   landoSharedNetworkName,
 } from "./app-plan.ts";
+import type { HealthcheckInput } from "./compose-healthcheck.ts";
 import { logicalEndpointIdentity } from "./endpoint-selection.ts";
 import type { EndpointRef } from "./endpoint.ts";
+import type { HealthcheckPlan } from "./healthcheck-plan.ts";
 import { ServiceConfig } from "./landofile.ts";
+import type { ServiceName } from "./primitives.ts";
 
 const decodeHostAliases = Schema.decodeUnknownResult(
   Schema.Struct({ extra_hosts: ServiceConfig.fields.extra_hosts }),
@@ -18,6 +22,51 @@ const decodeHostAliases = Schema.decodeUnknownResult(
 /** Startup and dependency readiness share exactly one defaulting rule. */
 export const effectiveReadiness = (service: Pick<ServicePlan, "readiness" | "healthcheck">) =>
   service.readiness ?? service.healthcheck;
+
+export const probeTargetError = (
+  probe: HealthcheckPlan,
+  service: ServiceName,
+  role: "healthcheck" | "readiness",
+): HealthcheckTargetUnsupportedError | undefined => {
+  const nativeUnsupported =
+    role === "healthcheck" && (probe.executionTarget === "host" || probe.user !== undefined);
+  const hostUnsupported =
+    probe.executionTarget === "host" &&
+    (probe.user !== undefined ||
+      probe.target !== undefined ||
+      (probe.kind !== "none" && (probe.kind !== "command" || probe.command === undefined)));
+  if (!nativeUnsupported && !hostUnsupported) return undefined;
+  return new HealthcheckTargetUnsupportedError({
+    service: String(service),
+    target: probe.executionTarget ?? "service",
+    message: nativeUnsupported
+      ? "Native healthcheck cannot select a host target or an explicit user."
+      : "Host readiness requires its own command without a container user or listener.",
+    remediation:
+      "Use readiness for host execution or an explicit container user. Host readiness requires its own command, application root, and host runner, with no user or listener target.",
+  });
+};
+
+export const authoredProbeTargetError = (
+  authored: HealthcheckInput,
+  service: ServiceName,
+  role: "healthcheck" | "readiness",
+) => {
+  if (authored === false) return undefined;
+  const { target, ...probe } = authored;
+  return probeTargetError(
+    {
+      ...probe,
+      kind: probe.kind ?? "command",
+      intervalSeconds: probe.intervalSeconds ?? 10,
+      timeoutSeconds: probe.timeoutSeconds ?? 5,
+      retries: probe.retries ?? 5,
+      ...(target === undefined ? {} : { executionTarget: target }),
+    },
+    service,
+    role,
+  );
+};
 
 /** Resolve only declared listeners on managed DNS, never interface addresses or loopback. */
 export const serviceListenerTarget = (

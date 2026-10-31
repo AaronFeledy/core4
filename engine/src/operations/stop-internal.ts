@@ -1,4 +1,4 @@
-import { DateTime, Effect, Option, Schema } from "effect";
+import { DateTime, Effect, Option } from "effect";
 
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
@@ -46,11 +46,6 @@ import { resolveLandofileEventPlan } from "./landofile-events.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
-
-export const StopAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStopped: Schema.Array(Schema.String),
-});
 
 type StopAppServices =
   | AppPlanner

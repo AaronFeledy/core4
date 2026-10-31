@@ -11,10 +11,12 @@ import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
+import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import {
@@ -78,29 +80,34 @@ const evolvedTypedCache = new Map<
 const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
-  const evolved = evolveHistoricalToolingSensitivity(
-    evolveHistoricalAppMountAcceleration(
-      evolveHistoricalToolingShorthand(
-        evolveHistoricalEnvironment(
-          evolveHistoricalEndpointMetadata(
-            evolveHistoricalIncludeChecksum(
-              evolveHistoricalTimestamps(
-                evolveHistoricalShorthand(
-                  evolveHistoricalNetworks(
-                    normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+  const evolved = evolveHistoricalConsolePort(
+    evolveHistoricalToolingSensitivity(
+      evolveHistoricalAppMountAcceleration(
+        evolveHistoricalToolingShorthand(
+          evolveHistoricalEnvironment(
+            evolveHistoricalEndpointMetadata(
+              evolveHistoricalIncludeChecksum(
+                evolveHistoricalTimestamps(
+                  evolveHistoricalReadiness(
+                    evolveHistoricalShorthand(
+                      evolveHistoricalNetworks(
+                        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+                        "authoring",
+                      ),
+                    ),
                     "authoring",
                   ),
+                  "authoring",
                 ),
-                "authoring",
               ),
             ),
+            "authoring",
           ),
           "authoring",
         ),
-        "authoring",
       ),
+      "authoring",
     ),
-    "authoring",
   );
   evolvedTypedCache.set(source, evolved);
   return evolved;
@@ -143,20 +150,25 @@ describe("embedded wire closed x-* artifact repair", () => {
   }, 120_000);
 
   test("collapses an identifier-only local ref onto the same normalized graph", async () => {
-    const repaired = evolveHistoricalAppMountAcceleration(
-      evolveHistoricalEnvironment(
-        evolveHistoricalEndpointMetadata(
-          evolveHistoricalTimestamps(
-            evolveHistoricalShorthand(
-              evolveHistoricalNetworks(
-                normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+    const repaired = evolveHistoricalConsolePort(
+      evolveHistoricalAppMountAcceleration(
+        evolveHistoricalEnvironment(
+          evolveHistoricalEndpointMetadata(
+            evolveHistoricalTimestamps(
+              evolveHistoricalReadiness(
+                evolveHistoricalShorthand(
+                  evolveHistoricalNetworks(
+                    normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+                    "authoring",
+                  ),
+                ),
                 "authoring",
               ),
+              "authoring",
             ),
-            "authoring",
           ),
+          "authoring",
         ),
-        "authoring",
       ),
     );
     const current = schemaAt(

@@ -63,7 +63,7 @@ contributes:
         note: "Switch callers to php."
 ```
 
-`globalServices`, `proxyServices`, `setup.flags`, and string-or-object contribution lists (`serviceTypes`, `renderers`, `commands`) register through the same notice type.
+`globalServices`, `proxyServices`, `setup.flags`, the string-or-object contribution lists (`serviceTypes`, `renderers`), and the command descriptors under `commands` register through the same notice type. A command descriptor can also deprecate one alias: write the alias as an object with `name` and `deprecated` instead of a bare token.
 
 ## Verify
 

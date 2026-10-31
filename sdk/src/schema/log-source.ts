@@ -36,15 +36,15 @@ export type LogSourceId = typeof LogSourceId.Type;
 export const LogSourceStream = Schema.Literals(["stdout", "stderr"]);
 export type LogSourceStream = typeof LogSourceStream.Type;
 
-/** How a declared source is reified: build-time redirect, or a runtime follower. */
-export const LogSourceStrategy = Schema.Literals(["redirect", "follow"]);
+/** Collection strategy: build-time file redirect, runtime file follower, or native pipe alias. */
+export const LogSourceStrategy = Schema.Literals(["redirect", "follow", "console"]);
 export type LogSourceStrategy = typeof LogSourceStrategy.Type;
 
 /**
  * A declared log source — a statement that a service also produces logs at an
  * in-container file path, plus how Lando should surface them.
  */
-export const LogSource = Schema.Struct({
+const FileLogSource = Schema.Struct({
   /** Unique within the service; `console` is reserved. */
   id: LogSourceId.annotate({
     description: "Unique source id within the service; `console` is reserved for the implicit engine stream.",
@@ -62,7 +62,7 @@ export const LogSource = Schema.Struct({
     description: "Render and exit classification for this source's lines.",
   }),
   /** How the source is reified: build-time redirect, or a runtime follower. */
-  strategy: LogSourceStrategy.annotate({
+  strategy: Schema.Literals(["redirect", "follow"]).annotate({
     description: "How Lando reifies the declared source: build-time redirect or runtime follower.",
   }),
   /** When true, an unavailable source fails planning instead of degrading. */
@@ -74,6 +74,21 @@ export const LogSource = Schema.Struct({
     description: "Whether lines carry parseable leading timestamps so `--since` filtering can apply.",
   }),
 });
+/** Runtime sources include real files and pathless native console aliases. */
+export const LogSource = Schema.Union([
+  FileLogSource,
+  Schema.Struct({
+    id: FileLogSource.fields.id,
+    label: FileLogSource.fields.label,
+    stream: LogSourceStream.annotate({ description: "Native daemon pipe selected by this alias." }),
+    strategy: Schema.Literal("console").annotate({
+      description: "A pathless alias for native console logs.",
+    }),
+    path: Schema.optionalKey(Schema.Never),
+    required: Schema.optionalKey(Schema.Never),
+    timestamps: Schema.optionalKey(Schema.Never),
+  }),
+]);
 export type LogSource = typeof LogSource.Type;
 
 /** The Landofile-facing input shape for a user-declared source. */
@@ -112,8 +127,8 @@ const LogSourceInputFields = Schema.Struct({
  */
 export const LogSourceInput = LogSourceInputFields.pipe(
   Schema.decodeTo(
-    LogSource,
-    SchemaTransformation.transformEffect<typeof LogSource.Encoded, typeof LogSourceInputFields.Type>({
+    FileLogSource,
+    SchemaTransformation.transformEffect<typeof FileLogSource.Encoded, typeof LogSourceInputFields.Type>({
       decode: (input) =>
         Effect.succeed({
           id: input.id ?? posix.basename(input.path),
@@ -124,7 +139,7 @@ export const LogSourceInput = LogSourceInputFields.pipe(
           required: false,
           timestamps: input.timestamps,
         }),
-      encode: (source: typeof LogSource.Encoded) => {
+      encode: (source: typeof FileLogSource.Encoded) => {
         if (source.strategy !== "follow" || source.required !== false) {
           return Effect.fail(
             new SchemaIssue.InvalidValue(
