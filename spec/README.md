@@ -84,7 +84,7 @@ If you are looking for a public surface or policy:
 | Early volume creation receipts and seed eligibility after failed apply | 05 + 11 | §5.3 + §10.7 |
 | Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
-| Shutdown observations: `ServiceShutdownObservation`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
+| Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |

@@ -99,8 +99,8 @@ lando rebuild
 | Reported | What the runtime said |
 | --- | --- |
 | `exit 0` | The process exited with status 0. |
-| `exit 143` | The process ended after SIGTERM (128 + 15). |
-| `exit 137` | The process was killed with SIGKILL (128 + 9). The grace period may have run out, the kernel's OOM killer may have acted, or something else sent the signal. Lando does not pick one. |
+| `exit 143` | Conventionally 128 + 15 for SIGTERM, but an application can also return 143 itself. The code alone does not prove how it ended. |
+| `exit 137` | Conventionally 128 + 9 for SIGKILL, but an application can also return 137 itself. The code alone cannot distinguish an expired grace period, an OOM kill, an external signal, or an application-selected status. |
 | `exit 137, OOMKilled` | The runtime explicitly reported an out-of-memory kill. Lando also prints a warning on stderr. |
 | `container absent`, `state unavailable`, `not exited`, `inspect failed` | No terminal state was available: the container was already gone, its state could not be read, it was not in an exited state, or inspection failed. Only `inspect failed` prints a warning. Removal still proceeds. |
 
