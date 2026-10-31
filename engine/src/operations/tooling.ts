@@ -253,8 +253,18 @@ export const runTooling = Effect.fn("AppOperation.tooling")(function* (
     tool: result.tool,
     service: String(result.service),
     exitCode: result.exitCode,
-    stdout: compiled.redactionTokens.length === 0 ? result.stdout : inputRedactor.redactString(result.stdout),
-    stderr: compiled.redactionTokens.length === 0 ? result.stderr : inputRedactor.redactString(result.stderr),
+    ...(result.stdout === undefined
+      ? {}
+      : {
+          stdout:
+            compiled.redactionTokens.length === 0 ? result.stdout : inputRedactor.redactString(result.stdout),
+        }),
+    ...(result.stderr === undefined
+      ? {}
+      : {
+          stderr:
+            compiled.redactionTokens.length === 0 ? result.stderr : inputRedactor.redactString(result.stderr),
+        }),
     redactionTokens,
   };
 });

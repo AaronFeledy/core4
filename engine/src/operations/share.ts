@@ -219,5 +219,5 @@ export const appShareStop = Effect.fn("AppOperation.shareStop")(function* (
   const service = yield* resolveTunnelService(stopRequest.provider);
   yield* service.stop(stopRequest);
   yield* removeTunnelSession(stopRequest.sessionId);
-  return { sessionId: stopRequest.sessionId, provider: service.id, status: "stopped" };
+  return { sessionId: stopRequest.sessionId, provider: service.id };
 });

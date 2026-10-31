@@ -82,9 +82,9 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   streamFrames: (value) => {
     const result = value;
     const frames = [];
-    if (result.stdout.length > 0)
+    if (result.stdout !== undefined && result.stdout.length > 0)
       frames.push({ _tag: "stdout" as const, service: result.service, chunk: result.stdout });
-    if (result.stderr.length > 0)
+    if (result.stderr !== undefined && result.stderr.length > 0)
       frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
     return frames;
   },

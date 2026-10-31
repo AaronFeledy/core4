@@ -123,7 +123,6 @@ export const ShareStopAppResult = Schema.Struct({
   provider: Schema.optionalKey(Schema.String).annotate({
     description: "Tunnel provider that owned the stopped session, when known.",
   }),
-  status: Schema.Literal("stopped").annotate({ description: "Final status of the stopped sharing session." }),
 }).annotate({ description: "Confirmation that an app sharing session has stopped." });
 export type ShareStopAppResult = typeof ShareStopAppResult.Type;
 

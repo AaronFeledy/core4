@@ -1,12 +1,118 @@
 import { expect, test } from "bun:test";
-import { JSON_SCHEMA_NAMES } from "@lando/sdk/schema";
+import { ExecAppResult, JSON_SCHEMA_NAMES } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { classifySchemaChange } from "../../../scripts/schema-compatibility/classifier.ts";
-import type { JsonSchema, SchemaPolarity } from "../../../scripts/schema-compatibility/model.ts";
+import {
+  type JsonSchema,
+  type SchemaPolarity,
+  isJsonObject,
+} from "../../../scripts/schema-compatibility/model.ts";
 import { schemaPolarity } from "../../../scripts/schema-compatibility/polarity.ts";
 
 const oldMembers = [{ type: "boolean" }, { type: "object", properties: { command: { type: "string" } } }];
 const newMembers = [{ type: "string" }, ...oldMembers];
+
+test("proves the published ObjectKeyword to ExecAppResult output narrowing", () => {
+  // Given
+  const before = Schema.toJsonSchemaDocument(Schema.ObjectKeyword).schema;
+  const after = Schema.toJsonSchemaDocument(ExecAppResult).schema;
+  if (!isJsonObject(before) || !isJsonObject(after)) throw new Error("Expected object schema documents.");
+  // When
+  const findings = classifySchemaChange(before, after, "output");
+  // Then
+  expect(findings).toMatchObject([{ verdict: "compatible", changeKind: "union-narrowed", path: "$.anyOf" }]);
+  expect(findings).toHaveLength(1);
+});
+
+const bareObject = { type: "object" };
+const objectUnion = { anyOf: [{ type: "array" }, bareObject] };
+test.each([
+  ["collapsed single member", objectUnion, { anyOf: [bareObject] }, "output", "compatible", "union-narrowed"],
+  [
+    "closed output struct",
+    objectUnion,
+    {
+      ...bareObject,
+      additionalProperties: false,
+      properties: { app: { type: "string" } },
+      required: ["app"],
+    },
+    "output",
+    "compatible",
+    "union-narrowed",
+  ],
+  ["input widening", bareObject, objectUnion, "input", "compatible", "union-widened"],
+  ["output widening", bareObject, objectUnion, "output", "unknown", "unsupported-construct"],
+  ["input narrowing", objectUnion, bareObject, "input", "unknown", "unsupported-construct"],
+  ["strict narrowing", objectUnion, bareObject, "strict", "unknown", "unsupported-construct"],
+  [
+    "constrained output wrapper",
+    { ...objectUnion, maxProperties: 0 },
+    bareObject,
+    "output",
+    "unknown",
+    "unsupported-construct",
+  ],
+  [
+    "constrained input wrapper",
+    bareObject,
+    { ...objectUnion, maxProperties: 0 },
+    "input",
+    "unknown",
+    "unsupported-construct",
+  ],
+  [
+    "closed branch",
+    { anyOf: [{ type: "array" }, { ...bareObject, additionalProperties: false }] },
+    { ...bareObject, additionalProperties: false, properties: { app: { type: "string" } } },
+    "output",
+    "unknown",
+    "unsupported-construct",
+  ],
+  [
+    "unresolved reference",
+    { anyOf: [{ type: "array" }, { $ref: "missing" }] },
+    { $ref: "missing" },
+    "output",
+    "unknown",
+    "unsupported-construct",
+  ],
+  [
+    "inconclusive branch",
+    { anyOf: [{ type: "array" }, { ...bareObject, maxProperties: 0 }] },
+    bareObject,
+    "output",
+    "unknown",
+    "unsupported-construct",
+  ],
+  [
+    "input property restriction",
+    bareObject,
+    { anyOf: [{ type: "array" }, { ...bareObject, properties: { app: { type: "string" } } }] },
+    "input",
+    "unknown",
+    "unsupported-construct",
+  ],
+] satisfies ReadonlyArray<readonly [string, JsonSchema, JsonSchema, SchemaPolarity, string, string]>)(
+  "%s uses only conclusive branch proofs",
+  (_name, before, after, polarity, verdict, changeKind) => {
+    // Given / When
+    const findings = classifySchemaChange(before, after, polarity);
+    // Then
+    expect(findings).toMatchObject([{ verdict, changeKind, path: "$.anyOf" }]);
+    expect(findings).toHaveLength(1);
+  },
+);
+
+test("proves unchanged closed branches without opening their property set", () => {
+  // Given
+  const closed = { type: "object", additionalProperties: false };
+  // When
+  const findings = classifySchemaChange({ anyOf: [{ type: "array" }, closed] }, closed, "output");
+  // Then
+  expect(findings).toMatchObject([{ verdict: "compatible", changeKind: "union-narrowed" }]);
+});
 
 const unionCases = (["anyOf", "oneOf"] as const).flatMap((keyword) => {
   const before: JsonSchema = { [keyword]: oldMembers };

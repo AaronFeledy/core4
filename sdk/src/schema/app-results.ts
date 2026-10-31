@@ -39,14 +39,23 @@ export const StartAppResult = Schema.Struct({
 }).annotate({ description: "Services and optional readiness checks returned after starting an app." });
 export type StartAppResult = typeof StartAppResult.Type;
 
+export const StopAppOutcome = Schema.Literals(["stopped", "unchanged"]).annotate({
+  description:
+    "`stopped` when the operation stopped or removed anything, or `unchanged` when there was nothing to stop.",
+});
+export type StopAppOutcome = typeof StopAppOutcome.Type;
+
+export const DestroyAppOutcome = Schema.Literals(["destroyed", "unchanged"]).annotate({
+  description:
+    "`destroyed` when the operation removed anything, or `unchanged` when there was nothing to remove.",
+});
+export type DestroyAppOutcome = typeof DestroyAppOutcome.Type;
+
 export const StopAppResult = Schema.Struct({
   app: Schema.String.annotate({
     description: "Name of the stopped app; when only applied state remains, its app id or root.",
   }),
-  outcome: Schema.optionalKey(Schema.Literals(["stopped", "unchanged"])).annotate({
-    description:
-      "`stopped` when the operation stopped or removed anything, or `unchanged` when there was nothing to stop.",
-  }),
+  outcome: Schema.optionalKey(StopAppOutcome),
   servicesStopped: Schema.Array(Schema.String).annotate({
     description: "Names of the services stopped by the operation.",
   }),
@@ -79,10 +88,7 @@ export const DestroyAppResult = Schema.Struct({
   app: Schema.String.annotate({
     description: "Name of the destroyed app; when only applied state remains, its app id or root.",
   }),
-  outcome: Schema.optionalKey(Schema.Literals(["destroyed", "unchanged"])).annotate({
-    description:
-      "`destroyed` when the operation removed anything, or `unchanged` when there was nothing to remove.",
-  }),
+  outcome: Schema.optionalKey(DestroyAppOutcome),
   servicesDestroyed: Schema.Array(Schema.String).annotate({
     description: "Names of the services destroyed by the operation.",
   }),
@@ -117,13 +123,16 @@ export type InfoAppAgentEnv = typeof InfoAppAgentEnv.Type;
 export const InfoAppHostProxy = Schema.Struct({
   runLando: Schema.Struct({
     availability: Schema.Literals(["available", "unavailable"]).annotate({
-      description: "Whether services can invoke Lando through the host proxy.",
+      description:
+        "Whether the selected services have a configured, provider-supported Lando command bridge; not worker health.",
     }),
     reason: Schema.optionalKey(Schema.String).annotate({
       description: "Explanation of host-proxy command availability.",
     }),
   }).annotate({ description: "Availability of the in-container Lando command bridge." }),
-}).annotate({ description: "Host-proxy capabilities reported by app introspection." });
+}).annotate({
+  description: "Configured host-proxy capability for selected eligible services, not worker liveness.",
+});
 export type InfoAppHostProxy = typeof InfoAppHostProxy.Type;
 
 export const InfoAppResult = Schema.Struct({
@@ -135,7 +144,8 @@ export const InfoAppResult = Schema.Struct({
     description: "Agent environment forwarding details, when configured.",
   }),
   hostProxy: Schema.optionalKey(InfoAppHostProxy).annotate({
-    description: "In-container host-proxy command availability, when the plan records it.",
+    description:
+      "In-container Lando command capability, present only when a selected service is host-proxy eligible; not worker health.",
   }),
   fileSync: Schema.optionalKey(FileSyncInfo).annotate({
     description: "File synchronization status, when available.",
@@ -153,11 +163,13 @@ export const ExecAppResult = Schema.Struct({
     description: "Executed command and its ordered arguments.",
   }),
   exitCode: Schema.Number.annotate({ description: "Exit code returned by the command process." }),
-  stdout: Schema.String.annotate({
-    description: "Captured standard output; empty when the output was streamed as it ran.",
+  stdout: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Captured standard output, including an empty string for an empty capture; omitted when a live sink received the bytes.",
   }),
-  stderr: Schema.String.annotate({
-    description: "Captured standard error; empty when the output was streamed as it ran.",
+  stderr: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Captured standard error, including an empty string for an empty capture; omitted when a live sink received the bytes.",
   }),
 }).annotate({
   description: "Captured output and exit status returned after executing a command in an app service.",
@@ -168,7 +180,7 @@ export const ToolingResult = Schema.Struct({
   tool: Schema.String.annotate({ description: "Identifier of the tooling task that ran." }),
   service: Schema.String.annotate({ description: "Service that executed the tooling task." }),
   exitCode: Schema.Number.annotate({ description: "Exit code returned by the tooling task." }),
-  stdout: Schema.String.annotate({ description: "Captured standard output from the tooling task." }),
-  stderr: Schema.String.annotate({ description: "Captured standard error from the tooling task." }),
+  stdout: ExecAppResult.fields.stdout,
+  stderr: ExecAppResult.fields.stderr,
 }).annotate({ description: "Captured output and exit status returned after invoking an app tooling task." });
 export type ToolingResult = typeof ToolingResult.Type;

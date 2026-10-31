@@ -30,6 +30,7 @@ import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
 import { observedAppPlan } from "../providers/app-placement.ts";
 import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
+import { hostProxyEligibleServices } from "../subsystems/host-proxy/worker-service-plan.ts";
 import { resolveAppliedStateTarget } from "./applied-state-target.ts";
 import { collectObservedConnections, collectPlanObservations } from "./connection-collector.ts";
 import { projectFileSyncInfo } from "./info-file-sync.ts";
@@ -137,7 +138,10 @@ export const infoForPlan = Effect.fn("AppOperation.infoForPlan")(function* (
     };
   });
 
-  const hostProxy = hostProxyPlanExtension(plan);
+  const hostProxy =
+    hostProxyEligibleServices(plan).length === 0
+      ? undefined
+      : (hostProxyPlanExtension(plan) ?? { runLando: { availability: "available" as const } });
   const applied = yield* registry.resolveAppliedPlan(completionPlan.identity?.appRoot ?? completionPlan.root);
   // selectInfoPlan returns the original plan only for an unscoped view.
   const selectedServices = plan === completionPlan ? undefined : Object.keys(plan.services);

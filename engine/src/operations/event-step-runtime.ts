@@ -258,7 +258,12 @@ const runTask = Effect.fnUntraced(function* (
       String(options.plan.root),
     ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
     if (script !== undefined) {
-      return { leaf, result: script, startedAt, redactor: variableRedaction.redactor };
+      return {
+        leaf,
+        result: { ...script, stdout: script.stdout ?? "", stderr: script.stderr ?? "" },
+        startedAt,
+        redactor: variableRedaction.redactor,
+      };
     }
     return yield* Effect.fail(
       stepFailure(
