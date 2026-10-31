@@ -1,16 +1,23 @@
 import { Effect, Schema } from "effect";
 
-import {
-  type AppPlacementError,
+import type {
+  AppPlacementError,
   GlobalAppError,
-  type GlobalDistConflictError,
-  type GlobalLandofilePathConflictError,
-  type GlobalServiceCollisionError,
-  type PluginManifestError,
+  GlobalDistConflictError,
+  GlobalLandofilePathConflictError,
+  GlobalServiceCollisionError,
+  PluginManifestError,
 } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { GlobalAppPaths, GlobalDistResult, ProviderSelectionError } from "@lando/sdk/services";
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
+
+import {
+  seedGlobalEnablement,
+  selectGlobalContributions,
+  withGlobalMutation,
+} from "../global-app/enablement.ts";
+import { resolveGlobalServiceContributions } from "../services/global-services.ts";
 
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { bundledFirstGlobalServiceLoader } from "../services/bundled-global-service-loader.ts";
@@ -44,51 +51,49 @@ export const GlobalInstallResultSchema = Schema.Struct({
   userLandofileCreated: Schema.Boolean,
 });
 
-const pluginInstallError = (plugin: string): GlobalAppError =>
-  new GlobalAppError({
-    message: `Global service plugin installation for ${plugin} is not available yet.`,
-    operation: "install",
-    remediation:
-      "Plugin global-service enablement is a later deliverable; run `lando global:install` with no argument to materialize the global app.",
-  });
+export const globalInstall = Effect.fn("AppOperation.globalInstall")(
+  function* (
+    options: GlobalInstallOptions = {},
+  ): Effect.fn.Return<
+    GlobalInstallResult,
+    | GlobalAppError
+    | AppPlacementError
+    | GlobalDistConflictError
+    | GlobalLandofilePathConflictError
+    | GlobalServiceCollisionError
+    | PluginManifestError
+    | ProviderSelectionError,
+    GlobalAppService | PluginRegistry | RuntimeProviderRegistry | import("@lando/sdk/services").StateStore
+  > {
+    const globalApp = yield* GlobalAppService;
+    const pluginRegistry = yield* PluginRegistry;
+    const registry = yield* RuntimeProviderRegistry;
+    const manifests = yield* pluginRegistry.list;
+    const contributions = yield* resolveGlobalServiceContributions(manifests);
+    const selected = yield* selectGlobalContributions(contributions, options.plugin);
+    const enablement = yield* seedGlobalEnablement(
+      contributions,
+      options.plugin ? { ids: selected.map((entry) => entry.contribution.id), enabled: true } : undefined,
+    );
+    const provider = yield* registry.select(yield* globalCreateProviderId());
+    const services = yield* materializeGlobalServices({
+      manifests,
+      enablement,
+      providerCapabilities: provider.capabilities,
+      providerId: provider.id,
+      loadServiceConfig: bundledFirstGlobalServiceLoader.load,
+    });
 
-export const globalInstall = Effect.fn("AppOperation.globalInstall")(function* (
-  options: GlobalInstallOptions = {},
-): Effect.fn.Return<
-  GlobalInstallResult,
-  | GlobalAppError
-  | AppPlacementError
-  | GlobalDistConflictError
-  | GlobalLandofilePathConflictError
-  | GlobalServiceCollisionError
-  | PluginManifestError
-  | ProviderSelectionError,
-  GlobalAppService | PluginRegistry | RuntimeProviderRegistry
-> {
-  if (options.plugin !== undefined && options.plugin !== "") {
-    return yield* Effect.fail(pluginInstallError(options.plugin));
-  }
+    yield* Effect.scoped(globalApp.ensureRoot);
+    const user = yield* globalApp.ensureUserLandofile;
+    const dist = yield* globalApp.regenerateDist({ services });
+    const paths = yield* globalApp.paths;
 
-  const globalApp = yield* GlobalAppService;
-  const pluginRegistry = yield* PluginRegistry;
-  const registry = yield* RuntimeProviderRegistry;
-  const manifests = yield* pluginRegistry.list;
-  const provider = yield* registry.select(yield* globalCreateProviderId());
-  const services = yield* materializeGlobalServices({
-    manifests,
-    providerCapabilities: provider.capabilities,
-    providerId: provider.id,
-    loadServiceConfig: bundledFirstGlobalServiceLoader.load,
-  });
-
-  yield* Effect.scoped(globalApp.ensureRoot);
-  const user = yield* globalApp.ensureUserLandofile;
-  const dist = yield* globalApp.regenerateDist({ services });
-  const paths = yield* globalApp.paths;
-
-  return {
-    paths,
-    dist,
-    userLandofileCreated: user.created,
-  };
-});
+    return {
+      paths,
+      dist,
+      userLandofileCreated: user.created,
+    };
+  },
+  (effect, _options: GlobalInstallOptions = {}) => withGlobalMutation(effect),
+);

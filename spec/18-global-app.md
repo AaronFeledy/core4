@@ -48,10 +48,19 @@ The root is created on demand. With no contributions, the generated layer names 
 
 `<userConfRoot>/global.config.yml` stores only the enabled state of each contribution.
 
-- `enabledByDefault` defaults to `true`; an explicit user value wins.
-- `meta:global:install` enables all contributions owned by the selected plugin, and `meta:global:uninstall` disables them.
-- Disabled services are omitted from the generated plan. Their `scope: global` volumes survive and are reused if re-enabled.
+- Each entry maps a contribution id to a boolean. Service configuration and state-version envelopes MUST NOT be written into this map. Invalid entries MUST fail with `GlobalAppError` rather than discard saved choices.
+- `enabledByDefault` defaults to `true` and seeds an absent entry on the contribution's first install. A saved value wins across subsequent installs and plugin updates. Entries for absent plugins MUST be preserved.
+- `meta:global:install <selection>` enables the selected contribution or every contribution owned by the selected plugin. With no selection, install seeds missing defaults and regenerates from saved choices; it MUST NOT enable a saved-disabled contribution. Automatic installation and `ensureRunning` follow this same rule.
+- `meta:global:uninstall <selection>` disables the selected contribution or every contribution owned by the selected plugin. With no selection, uninstall disables every contribution in the current catalog. It MUST NOT disable or remove authored services under other ids.
+- Disabled services are omitted from the generated and effective global plan, even when authored layers or includes override that id or an expression produces its configuration. Excluded authored service entries MUST NOT be runtime-validated or have their deferred expression sites evaluated. Authored files stay unchanged; re-enabling restores their effect.
+- Uninstall stops and removes only selected observed containers and withdraws their routes while preserving unselected services and active routes, applied state, shared networks, and all named volumes. Re-enabling reuses retained volumes and MUST NOT start containers by itself. Anonymous volumes follow their container (§6.5).
 - Service configuration belongs in the global Landofile layers (§20.3), not the enablement map.
+
+Selection validation, evidence acquisition, and any required ownership checks precede enablement mutation. Unknown or ambiguous selections MUST fail before state, generated files, or provider resources change. A contribution with no applied service can still be disabled. Existing orphaned containers without matching applied state MUST cause uninstall to fail before saving enablement, with remediation to stop those containers before retrying.
+
+Once saved, enablement is desired intent rather than a receipt for completed runtime work. If regeneration, selected container removal, or route withdrawal fails, uninstall MUST return `GlobalAppError` that states disablement was saved, retains the underlying cause, and tells the caller to fix the cause and repeat the command. Automatic startup MUST respect saved disablement even while stale generated files remain. A retry MUST finish reconciliation, including selected route withdrawal after containers have already gone. Install failures likewise MUST NOT silently undo saved choices.
+
+Install, uninstall, selected router setup, and global service application for one data root MUST serialize through the same per-global-app mutation lock so a stale concurrent startup cannot reapply a disabled contribution. The enablement map's read-modify-write MUST also be advisory-locked and atomically replaced, preserving independent contribution updates.
 
 #### 20.3.2 Discovery rules
 
@@ -67,7 +76,7 @@ The root is created on demand. With no contributions, the generated layer names 
 | `module` | Required contained plugin module that returns a `ServiceConfig` through `GlobalServiceContext`. It MUST NOT consume the active provider. |
 | `enabledByDefault` | Optional, default `true`; seeds enablement only on first install. |
 | `requires.providerCapabilities` | Optional required capabilities. Unsatisfied requirements block materialization with `GlobalServiceCapabilityError`. Cross-app DNS services require `sharedCrossAppNetwork`. |
-| `conflicts` | Optional incompatible global service ids; enabled conflicts raise `GlobalServiceConflictError`. |
+| `conflicts` | Optional incompatible global service ids; enabled conflicts raise `GlobalAppError` with operation `regenerateDist`, identifying the contributions and how to disable one. |
 | `summary` | Optional catalog description. |
 | `commands` | Optional canonical command ids for discovery. Each id MUST also exist in that plugin's `provides.commands`; ids remain in their declared namespace and MUST NOT move under `meta:global:*`. |
 | `deprecated` | Optional `DeprecationNotice` recorded under §18. |
@@ -150,7 +159,7 @@ Bootstrap levels for these commands are declared once in the §8.1 command regis
 | `meta:global:config` | `global:config` | Read or write the canonical global Landofile and enablement map; `set`, `unset`, and `edit` follow the §8.2.1 shared mutation workflow, including its format-preserving, fail-closed write and no-op rules. The generated layer is read-only. |
 | `meta:global:destroy` | `global:destroy` | Destroy services and resources; requires confirmation unless `--yes`. `--provider=<id>` restricts applied evidence and cleanup to that provider. `--purge` follows §20.9. |
 | `meta:global:info` | `global:info` | Report service information; supports `--service` and `--format`. |
-| `meta:global:install` | `global:install` | Enable a plugin's contributions and regenerate without starting. |
+| `meta:global:install` | `global:install` | Enable a selected contribution or plugin's contributions and regenerate without starting. Without a selection, reconcile saved choices and seed missing defaults (§20.3.1). |
 | `meta:global:list` | `global:list` | Report catalog state, source plugin, and declared command ids. JSON is the canonical machine shape. |
 | `meta:global:logs` | `global:logs` | Stream logs with standard service, follow, tail, and since filters. |
 | `meta:global:rebuild` | `global:rebuild` | Regenerate, destroy, build, apply, then publish routes, followed by router revalidation (§20.6.5); referenced artifacts refresh under §6.13.3 and build results follow §6.13.5. |
@@ -158,11 +167,13 @@ Bootstrap levels for these commands are declared once in the §8.1 command regis
 | `meta:global:start` | `global:start` | Start all enabled services or repeated `--service` selections with their dependencies, then publish routes (§20.6.5). |
 | `meta:global:status` | `global:status` | Report live runtime status. |
 | `meta:global:stop` | `global:stop` | Stop all running services or repeated `--service` selections. |
-| `meta:global:uninstall` | `global:uninstall` | Disable a plugin's contributions, regenerate, and stop affected services. |
+| `meta:global:uninstall` | `global:uninstall` | Disable selected contributions, regenerate, and stop affected services while preserving named volumes. Without a selection, disable the current catalog (§20.3.1). No confirmation or purge flag. |
 
 `meta:global:stop` with no selection is the §5.3.1 teardown. `--service`/`-s` is repeatable and stops and removes exactly the observed containers of the named services, with no dependency expansion. It MUST retain applied state, all named volumes, the shared network, and unselected containers and their active routes. With no applied plan and no owned runtime resources it reports `unchanged`, even with selections. When an applied plan exists, unknown or empty service names MUST fail before any mutation. An otherwise valid selected orphan request (orphaned resources, no applied plan) fails closed with `AppResolveError` (§5.3.1). A retry reconciles the selected services' routes even when their containers were already removed, while `servicesStopped` lists only containers actually removed, so an `unchanged` container receipt MAY accompany route reconciliation. Later app starts MAY start a stopped global service again (§20.6.3).
 
 `meta:global:start` and auto-start refuse an absent generated layer when no contribution can materialize it. Install and uninstall accept a plugin package name or contribution id; ambiguity is rejected. `meta:global:config` MUST reject generated-layer writes with `GlobalDistReadOnlyError`. `apps:poweroff` stops the global app by default; `--keep-global` leaves it running.
+
+Enablement and service configuration are independent: `meta:global:config` view, validation, and writes MUST use the same disabled-service exclusions as startup. Editing an override MUST NOT enable its contribution. Data deletion belongs to `meta:global:destroy --yes --purge` under §20.9, never to contribution disablement.
 
 #### 20.7.1 Top-level alias reservation
 
@@ -235,7 +246,6 @@ All errors are tagged and include remediation where applicable:
 - `AppIdReservedError`
 - `GlobalServiceCollisionError`
 - `GlobalServiceCapabilityError`
-- `GlobalServiceConflictError`
 - `GlobalServiceConfigError`
 - `GlobalServiceUnknownTypeError`
 - `GlobalServiceMissingError`
@@ -244,7 +254,7 @@ All errors are tagged and include remediation where applicable:
 - `ProxyContributionPairError`
 - `LegacyProxyContainerDetected`, informational and non-blocking
 - `LegacyProxyContainerConflictError`, blocking global proxy start while the conflict exists
-- `GlobalAppError`, the umbrella for global state-transition failures. Partial start or rebuild failure MUST carry operation `start` or `rebuild`, identify failed and running services, preserve the first underlying failure as `cause`, and provide global-scoped recovery remediation. If no group succeeds, the first original failure MUST be returned unchanged.
+- `GlobalAppError`, the umbrella for global state-transition failures and contribution enablement validation. Enabled contribution conflicts use operation `regenerateDist`; unknown or ambiguous selections and invalid enablement state use operation `enablement`. Partial uninstall uses operation `uninstall` and the durable-intent recovery contract in §20.3.1. Partial start or rebuild failure MUST carry operation `start` or `rebuild`, identify failed and running services, preserve the first underlying failure as `cause`, and provide global-scoped recovery remediation. If no group succeeds, the first original failure MUST be returned unchanged.
 - `AppPlacementError`, with `app`, `desiredProviderId`, `realizedProviderId`, message, and remediation. Start and setup MUST propagate it as the top-level failure for required global services and routing, never wrapped by `GlobalAppError`, `GlobalAutoStartError`, or `ProxySetupError`. Explicit global lifecycle commands MUST also preserve it at top level. Best-effort SSH sidecar acquisition (§10.4, §20.6.3) is exempt: its placement failure warns and MUST NOT abort the caller.
 - `ServiceNotReadyError`, the shared post-commit readiness verdict. It participates in group outcomes and partial-failure aggregation; if no group succeeds the first original failure remains unchanged. Remediation uses `lando global:logs -s <service>` and `lando global:start`, except `inspect-failed`, which prescribes `lando doctor`. Established resources and published routes remain available for diagnosis and convergence on retry (§20.6.5).
 - `ProxyError` and `RouterWatcherError`, added to the `meta:global:restart` and `meta:global:rebuild` error channels by `RouterService.revalidateStartup` (§10.2, §20.6.5)

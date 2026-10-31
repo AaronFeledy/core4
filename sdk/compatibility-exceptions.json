@@ -1,5 +1,11 @@
 [
   {
+    "surface": "command:meta:global:uninstall",
+    "changeKind": "property-removed",
+    "path": "$.purged",
+    "justification": "Pre-release #1257 contribution disablement always preserves named volumes. Uninstall no longer accepts --purge; deliberate data deletion belongs to global:destroy --yes --purge. The obsolete purged receipt is removed, contributionsDisabled records saved intent, and servicesRemoved reports only observed container removals. Focused lifecycle tests and a live Docker disable/re-enable proof cover retained volume data and unaffected siblings."
+  },
+  {
     "surface": "schema:LogSourceStrategy",
     "changeKind": "enum-widened",
     "path": "$",

@@ -1,6 +1,7 @@
+import { globalContributionEnabled, readGlobalEnablement } from "@lando/engine/global-app/enablement";
 import { Effect, Layer, Schema } from "effect";
 
-import type { PluginManifestError } from "@lando/sdk/errors";
+import type { GlobalAppError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 import { type Logger, PluginRegistry } from "@lando/sdk/services";
 
@@ -41,16 +42,17 @@ const stateOf = (enabled: boolean): GlobalServiceListState => (enabled ? "enable
 
 export const globalList = Effect.fn("GlobalList.list")(function* (): Effect.fn.Return<
   GlobalListResult,
-  PluginManifestError,
-  PluginRegistry
+  PluginManifestError | GlobalAppError,
+  PluginRegistry | import("@lando/sdk/services").StateStore
 > {
   const registry = yield* PluginRegistry;
   const manifests = yield* registry.list;
 
+  const enablement = yield* readGlobalEnablement();
   const entries: GlobalServiceListEntry[] = [];
   for (const manifest of manifests) {
     for (const contribution of manifest.contributes?.globalServices ?? []) {
-      const enabled = contribution.enabledByDefault !== false;
+      const enabled = globalContributionEnabled({ contribution, plugin: manifest.name }, enablement);
       entries.push({
         id: contribution.id,
         plugin: String(manifest.name),

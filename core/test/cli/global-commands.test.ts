@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
+import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } from "effect";
 
 import { publicationObservationFromInspect } from "@lando/container-runtime/podman/inspect";
 import { invokeOperation } from "@lando/core/cli/operations";
@@ -103,6 +103,7 @@ interface ProviderCalls {
   readonly build: Array<AppPlan>;
   readonly buildOptions: Array<BuildOptions | undefined>;
   readonly destroy: Array<DestroyCall>;
+  readonly removed: string[];
   readonly inspect: Array<InspectCall>;
   readonly routes: Array<{ readonly app: string; readonly hostnames: ReadonlyArray<string> }>;
   readonly routerSetups: number[];
@@ -131,6 +132,10 @@ type HarnessLayer = Layer.Layer<
 interface HarnessOptions {
   readonly providerId?: ProviderId;
   readonly failDestroy?: boolean;
+  readonly failRemove?: boolean;
+  readonly beforeApply?: Effect.Effect<void>;
+  readonly offline?: boolean;
+  readonly vanishedServices?: ReadonlyArray<string>;
   readonly failInspect?: boolean;
   readonly exitedServices?: ReadonlyArray<string>;
   readonly completedServices?: ReadonlyArray<string>;
@@ -256,6 +261,7 @@ const makeHarness = async (
     build: [],
     buildOptions: [],
     destroy: [],
+    removed: [],
     inspect: [],
     routes: [],
     routerSetups: [],
@@ -269,25 +275,29 @@ const makeHarness = async (
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
+    getStatus: Effect.sync(() => ({ running: !options.offline })),
     appliedPlans: Effect.sync(() => (appliedPlan === undefined ? [] : [appliedPlan])),
     list: () =>
       Effect.sync(() => {
         const plan = appliedPlan;
         return plan === undefined
           ? []
-          : [...runningServices].map((service) => ({
-              app: plan.id,
-              appRoot: plan.root,
-              providerId,
-              service,
-              containerId: `test-${service}`,
-              status: "running" as const,
-              state: "running",
-              publications: { status: "unknown" as const },
-            }));
+          : [...runningServices]
+              .filter((service) => !options.vanishedServices?.includes(service))
+              .map((service) => ({
+                app: plan.id,
+                appRoot: plan.root,
+                providerId,
+                service,
+                containerId: `test-${service}`,
+                status: "running" as const,
+                state: "running",
+                publications: { status: "unknown" as const },
+              }));
       }),
     apply: (plan, applyOptions) =>
       Effect.gen(function* () {
+        yield* options.beforeApply ?? Effect.void;
         calls.actions.push("apply");
         const resolve = applyOptions.resolveServiceEnvironment;
         const environments = Object.fromEntries(
@@ -342,6 +352,21 @@ const makeHarness = async (
             runningServices.clear();
             if (destroyOptions.removeState) appliedPlan = undefined;
             return { kind: "destroyed" as const };
+          }),
+    removeObservedService: (service) =>
+      options.failRemove
+        ? Effect.fail(
+            new ProviderUnavailableError({
+              providerId: "lando",
+              operation: "removeObservedService",
+              message: "remove failed",
+              remediation: "Restart provider.",
+            }),
+          )
+        : Effect.sync(() => {
+            calls.removed.push(String(service.service));
+            runningServices.delete(service.service);
+            return { kind: "removed" as const };
           }),
     inspect: (target) => {
       calls.inspect.push({ target });
@@ -1634,7 +1659,7 @@ describe("meta:global command effects", () => {
     });
   });
 
-  test("uninstall rejects plugin arguments before provider or dist mutation", async () => {
+  test("uninstall rejects unknown plugin arguments before provider or dist mutation", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness);
 
@@ -1656,24 +1681,151 @@ describe("meta:global command effects", () => {
       const result = await Effect.runPromise(globalUninstall({}).pipe(Effect.provide(harness.layer)));
       const parsed = await parseDist(distPath(harness.dataRoot));
 
-      expect(result.servicesRemoved).toEqual(["proxy"]);
+      expect(result.contributionsDisabled).toEqual(["mail", "proxy"]);
+      expect(result.servicesRemoved).toEqual([]);
       expect(parsed.services).toEqual({});
       expect(harness.calls.destroy).toEqual([]);
     });
   });
 
-  test("uninstall --purge destroys provider resources before clearing services", async () => {
+  test("a concurrent start finishes before uninstall removes the disabled service", async () => {
+    const entered = Deferred.makeUnsafe<void>();
+    const release = Deferred.makeUnsafe<void>();
+    await withHarness(
+      async (harness) => {
+        const result = await Effect.runPromise(
+          Effect.gen(function* () {
+            const starting = yield* Effect.forkChild(globalStart());
+            yield* Deferred.await(entered);
+            const disabling = yield* Effect.forkChild(globalUninstall({ plugin: "mail" }));
+            yield* Effect.yieldNow;
+            yield* Deferred.succeed(release, undefined);
+            yield* Fiber.join(starting);
+            return yield* Fiber.join(disabling);
+          }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(result.servicesRemoved).toEqual(["mail"]);
+        expect(result.dist.serviceIds).toEqual(["proxy"]);
+        expect(harness.calls.removed).toEqual(["mail"]);
+      },
+      { beforeApply: Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(release))) },
+    );
+  });
+
+  test("uninstall disables one contribution, stops only its container and keeps siblings", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      const result = await Effect.runPromise(
+        globalUninstall({ plugin: "mail" }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.contributionsDisabled).toEqual(["mail"]);
+      expect(result.servicesRemoved).toEqual(["mail"]);
+      expect(result.dist.serviceIds).toEqual(["proxy"]);
+      expect(harness.calls.removed).toEqual(["mail"]);
+      expect(harness.calls.destroy).toEqual([]);
+      const list = await Effect.runPromise(globalList().pipe(Effect.provide(harness.layer)));
+      expect(list.services.find((s) => s.id === "mail")?.state).toBe("disabled");
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      expect(Object.keys(harness.calls.apply.at(-1)?.plan.services ?? {})).toEqual(["proxy"]);
+    });
+  });
+
+  test("uninstall saves disabled intent on cleanup failure and retries safely", async () => {
+    const options = { failRemove: true };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      const exit = await Effect.runPromiseExit(
+        globalUninstall({ plugin: "mail" }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(exit)).toMatchObject({
+        _tag: "GlobalAppError",
+        operation: "uninstall",
+        message: expect.stringContaining("saved"),
+      });
+      const list = await Effect.runPromise(globalList().pipe(Effect.provide(harness.layer)));
+      expect(list.services.find((s) => s.id === "mail")?.enabled).toBe(false);
+      expect(harness.calls.destroy).toEqual([]);
+      options.failRemove = false;
+      const result = await Effect.runPromise(
+        globalUninstall({ plugin: "mail" }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.servicesRemoved).toEqual(["mail"]);
+      const repeated = await Effect.runPromise(
+        globalUninstall({ plugin: "mail" }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(repeated.servicesRemoved).toEqual([]);
+    }, options);
+  });
+
+  test("uninstall cannot report completed cleanup when the applied provider is offline", async () => {
+    const options = { offline: false };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.offline = true;
+      const exit = await Effect.runPromiseExit(
+        globalUninstall({ plugin: "mail" }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(exit)).toMatchObject({
+        _tag: "GlobalAppError",
+        message: expect.stringContaining("saved"),
+      });
+      const list = await Effect.runPromise(globalList().pipe(Effect.provide(harness.layer)));
+      expect(list.services.find((s) => s.id === "mail")?.enabled).toBe(false);
+      expect(harness.calls.removed).toEqual([]);
+    }, options);
+  });
+
+  test("uninstall withdraws selected routes even when its container is already absent", async () => {
+    await withHarness(
+      async (harness) => {
+        await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+        await writeFile(
+          join(harness.dataRoot, "global", ".lando.local.yml"),
+          "services:\n  mail:\n    routes: [mail.global.test]\n  proxy:\n    routes: [proxy.global.test]\n",
+        );
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        const result = await Effect.runPromise(
+          globalUninstall({ plugin: "mail" }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(result.servicesRemoved).toEqual([]);
+        expect(harness.calls.routes.at(-1)?.hostnames).toEqual(["proxy.global.test"]);
+      },
+      { vanishedServices: ["mail"] },
+    );
+  });
+
+  test("uninstall of an owning package disables all its contributions durably", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(
+        globalUninstall({ plugin: "@lando/fake-global-command" }).pipe(Effect.provide(harness.layer)),
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      expect(harness.calls.apply).toEqual([]);
+      const list = await Effect.runPromise(globalList().pipe(Effect.provide(harness.layer)));
+      expect(list.services.every((s) => !s.enabled)).toBe(true);
+    });
+  });
+
+  test("disabled invalid overrides stay editable and absent from effective config", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness);
-
-      const result = await Effect.runPromise(
-        globalUninstall({ purge: true }).pipe(Effect.provide(harness.layer)),
+      await Effect.runPromise(globalUninstall({ plugin: "mail" }).pipe(Effect.provide(harness.layer)));
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.yml"),
+        'services:\n  mail:\n    home: "{{ env.NOT_SET_FOR_DISABLED_SERVICE }}"\n',
       );
-      const parsed = await parseDist(distPath(harness.dataRoot));
-
-      expect(harness.calls.destroy[0]?.options).toEqual({ volumes: true, removeState: true });
-      expect(result.purged).toBe(true);
-      expect(parsed.services).toEqual({});
+      await Effect.runPromise(
+        globalConfig({ subcommand: "set", key: "services.proxy.environment.KEPT", value: "yes" }).pipe(
+          Effect.provide(harness.layer),
+        ),
+      );
+      await Effect.runPromise(globalConfig({ subcommand: "validate" }).pipe(Effect.provide(harness.layer)));
+      const result = await Effect.runPromise(globalConfig().pipe(Effect.provide(harness.layer)));
+      expect(result.landofile?.services).not.toHaveProperty("mail");
+      expect(result.landofile?.services?.[ServiceName.make("proxy")]?.environment?.KEPT).toBe("yes");
+      expect(await readFile(join(harness.dataRoot, "global", ".lando.yml"), "utf8")).toContain(
+        "NOT_SET_FOR_DISABLED_SERVICE",
+      );
     });
   });
 

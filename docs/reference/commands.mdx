@@ -914,7 +914,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `plugin` | Plugin name for future global-service enablement. |
+| `plugin` | Plugin package name or contribution id to enable; omit to reconcile saved choices. |
 
 Flags:
 
@@ -999,7 +999,7 @@ Flags:
 
 ## `lando meta:global:uninstall`
 
-Clear generated services from the host-level global Lando app.
+Disable global service contributions and stop their containers, preserving named volumes.
 
 Aliases: `lando global:uninstall`
 
@@ -1007,14 +1007,7 @@ Arguments:
 
 | Argument | Description |
 | --- | --- |
-| `plugin` | Plugin name for future global-service disablement. |
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--purge` | Also remove global service provider resources and data volumes before clearing services. |
-| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+| `plugin` | Plugin package name or contribution id to disable; omit to disable all contributions. |
 
 ## `lando meta:mcp`
 

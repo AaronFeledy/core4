@@ -374,7 +374,7 @@ Run `lando config validate`, then `lando config --format=json` to check the resu
 
 ## Configure the shared global app
 
-`lando global:config` reads and writes the shared global app, the always-on app that runs host-wide services such as the proxy, Mailpit, and the SSH agent. Lando starts Traefik for you as part of that app. It's a Landofile stack, not `config.yml`: `lando config` owns host settings such as `appEnv` or `router`, and `lando global:config` owns the global app's services.
+`lando global:config` reads and writes the shared global app, which runs host-wide services such as the proxy, Mailpit, and the SSH agent when needed. Lando starts Traefik for you as part of that app. It's a Landofile stack, not `config.yml`: `lando config` owns host settings such as `appEnv` or `router`, and `lando global:config` owns the global app's services.
 
 Install the global app first, then override a bundled service, check the effective result, and apply it:
 
@@ -418,6 +418,20 @@ A layer takes one form, not both. A root with `.lando.yml` and `.lando.ts` side 
 Every layer resolves its `includes:` before precedence applies, with `<userDataRoot>/global/.lando.lock.yml` as the lockfile that pins remote fragments. See [Includes and the lockfile](../landofile/includes-and-lockfile.mdx).
 
 The generated file sits below your canonical Landofile, so your overrides beat plugin defaults. The merged app is always named `global` and runs on the host provider, whatever the layers say. A `name:` or `provider:` key in these layers does not rename or move it. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs).
+
+Contribution enablement is separate from service configuration. Use
+`lando global:uninstall mailpit` to disable Mailpit, and
+`lando global:install mailpit` to re-enable it. Lando saves those choices in
+`<userConfRoot>/global.config.yml`; `lando global:list --format=json` reports them.
+Install without an argument preserves saved choices and records defaults only for
+new contributions.
+
+A disabled contribution is omitted from the effective Landofile, including any
+overrides for its id in the six layers or their includes. Those overrides stay on
+disk and take effect again when you re-enable it. Editing an override does not
+enable a service. Authored services under other names remain available. See
+[Disable a shared service](../global/uninstall-and-purge.mdx#disable-a-shared-service)
+for the stop, data-retention, and recovery behavior.
 
 ### Write the canonical layer as TypeScript
 

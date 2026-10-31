@@ -17,17 +17,42 @@ with `lando global:*` (aliases of `lando meta:global:*`). The name `global` is
 reserved: a project Landofile with `name: global` fails with `AppIdReservedError`
 before Lando builds a plan.
 
-## Materialize the stack
+## Install the global configuration
 
-Starting an app that needs Traefik, Mailpit, or the SSH sidecar provisions the global app. To materialize it now:
+Starting an app that needs Traefik, Mailpit, or the SSH sidecar provisions the global app. To create its configuration ahead of time:
 
 ```sh
 lando global:install
+lando global:list --format=json
 ```
 
 `--yes` is accepted for consistency with `lando setup --yes`. Global install does not prompt.
 
-Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik and the SSH agent sidecar when an app start needs them, including after `lando poweroff` or a reboot. You do not start them by hand. An app with no routes never starts the router, so a database-only or worker app comes up on a host where the router cannot.
+Install creates configuration without starting containers. The list reports each contribution's `id`, source `plugin`, and saved `enabled` choice. An enabled entry is eligible to start; it doesn't mean a container is running.
+
+Bundled plugins contribute `traefik`, its `traefik-diagnostics` service, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts the shared services an app needs, including after `lando poweroff` or a reboot. An app with no routes never starts the router, so a database-only or worker app comes up on a host where the router cannot.
+
+## Enable a shared service
+
+Use a contribution id from the list to enable one service, or its plugin package name to enable all of that plugin's global contributions:
+
+```sh
+lando global:install mailpit
+lando global:list --format=json
+```
+
+Check that the `mailpit` entry reports `enabled: true`. For example, `lando global:install @lando/proxy-traefik` enables both the router and its diagnostics service. Unknown names fail without changing enablement; a name that matches a plugin and a different contribution is rejected as ambiguous. Use an unambiguous package name or contribution id from the list.
+
+Lando saves these choices in `<userConfRoot>/global.config.yml`. The first install records each contribution's default. Later installs and plugin updates preserve that saved choice; a newly discovered contribution gets its own default. Running `lando global:install` without an argument reconciles the saved choices and does not re-enable a disabled service. Automatic startup follows the same choices. Use [Disable a shared service](./uninstall-and-purge.mdx#disable-a-shared-service) to turn one off persistently.
+
+Re-enabling restores the service's generated configuration and any overrides you kept in the global Landofile layers. It doesn't start the service. An app that needs it can start it automatically, or you can run:
+
+```sh
+lando global:start --service mailpit
+lando global:status --service mailpit --format=json
+```
+
+Check that the service reports `running` in `result.services[].status` before using it. If install reports an error after saving enablement, fix the reported cause and repeat the same install command to finish generating the configuration.
 
 ## Where the global app runs
 
@@ -79,6 +104,13 @@ lando doctor
     <Step name="check-start-flags">
       <Run command="lando global:start --help" />
       <Verify command="lando global:start --help" expect={{ stdout: { regex: "--service" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="global-contribution-catalog" tags={["scenario"]} render={false} reason="Verify contribution discovery without installing or starting shared services">
+    <Step name="list-contributions">
+      <Run command="lando global:list --format=json" />
+      <Verify command="lando global:list --format=json" expect={{ stdout: { regex: "\"services\":\\s*\\[" } }} />
+      <Verify command="lando global:list --format=json" expect={{ stdout: { regex: "\"id\":\\s*\"mailpit\"[\\s\\S]*\"enabled\":\\s*(true|false)" } }} />
     </Step>
   </Scenario>
 </Guide>

@@ -16,6 +16,7 @@ import {
 
 import type { LandofileFinalizeOverrides } from "@lando/landofile/service";
 
+import { readGlobalEnablement } from "../global-app/enablement.ts";
 import { globalCreateProviderId, resolveGlobalPlacement } from "../global-app/placement.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
 import { loadLandofileLayers } from "../services/landofile-live.ts";
@@ -50,10 +51,15 @@ export type LoadGlobalPlanServices =
   | RuntimeProviderRegistry
   | StateStore;
 
-export const globalLandofileOverrides = Effect.map(
-  hostProviderId,
-  (provider): LandofileFinalizeOverrides => ({ name: "global", provider }),
-);
+export const globalLandofileOverrides = Effect.gen(function* () {
+  const provider = yield* hostProviderId;
+  const enablement = yield* readGlobalEnablement();
+  return {
+    name: "global",
+    provider,
+    excludedServices: Object.entries(enablement).flatMap(([id, enabled]) => (enabled ? [] : [id])),
+  } satisfies LandofileFinalizeOverrides;
+});
 
 const withProcessCwd = <A, E, R>(
   cwd: string,

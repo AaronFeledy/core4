@@ -1,97 +1,19 @@
-import { Effect, Schema } from "effect";
+import type { GlobalUninstallResult } from "@lando/engine/operations/global-uninstall";
 
-import { GlobalAppError, type GlobalDistConflictError } from "@lando/sdk/errors";
-import { AbsolutePath } from "@lando/sdk/schema";
-import type { GlobalDistResult } from "@lando/sdk/services";
-import {
-  type AppPlanner,
-  type FileSystem,
-  GlobalAppService,
-  type ProviderError,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
-
-import {
-  type LoadObservedGlobalPlanError,
-  loadObservedGlobalPlan,
-} from "@lando/engine/operations/global-plan";
-
-export interface GlobalUninstallOptions {
-  readonly plugin?: string;
-  readonly purge?: boolean;
-}
-
-export interface GlobalUninstallResult {
-  readonly app: string;
-  readonly materialized: boolean;
-  readonly purged: boolean;
-  readonly dist: GlobalDistResult;
-  readonly servicesRemoved: ReadonlyArray<string>;
-}
-
-const GlobalDistResultSchema = Schema.Struct({
-  path: AbsolutePath,
-  status: Schema.Literals(["created", "updated", "unchanged"]),
-  serviceIds: Schema.Array(Schema.String),
-});
-
-export const GlobalUninstallResultSchema = Schema.Struct({
-  app: Schema.String,
-  materialized: Schema.Boolean,
-  purged: Schema.Boolean,
-  dist: GlobalDistResultSchema,
-  servicesRemoved: Schema.Array(Schema.String),
-});
-
-type GlobalUninstallError = LoadObservedGlobalPlanError | GlobalDistConflictError | ProviderError;
-
-type GlobalUninstallServices =
-  | AppPlanner
-  | FileSystem
-  | GlobalAppService
-  | RuntimeProviderRegistry
-  | import("@lando/sdk/services").StateStore;
-
-const pluginUninstallError = (plugin: string): GlobalAppError =>
-  new GlobalAppError({
-    message: `Global service plugin uninstall for ${plugin} is not available yet.`,
-    operation: "uninstall",
-    remediation:
-      "Plugin global-service disablement is a later deliverable; run `lando global:uninstall` with no argument to clear the generated global services.",
-  });
+export {
+  type GlobalUninstallOptions,
+  type GlobalUninstallResult,
+  GlobalUninstallResultSchema,
+  globalUninstall,
+} from "@lando/engine/operations/global-uninstall";
 
 export const renderGlobalUninstallResult = (result: GlobalUninstallResult): string => {
-  const services = result.servicesRemoved.length === 0 ? "none" : result.servicesRemoved.join(", ");
-  const purge = result.purged ? "provider resources and volumes removed" : "provider resources preserved";
+  const services =
+    result.contributionsDisabled.length === 0 ? "none" : result.contributionsDisabled.join(", ");
   return [
-    "Global app generated services cleared.",
+    "Global service contributions disabled.",
     `Generated dist Landofile: ${result.dist.path} (${result.dist.status})`,
-    `Services removed: ${services}`,
-    purge,
+    `Services disabled: ${services}`,
+    "Named volumes preserved.",
   ].join("\n");
 };
-
-export const globalUninstall = Effect.fn("GlobalUninstall.uninstall")(function* (
-  options: GlobalUninstallOptions = {},
-): Effect.fn.Return<GlobalUninstallResult, GlobalUninstallError, GlobalUninstallServices> {
-  if (options.plugin !== undefined && options.plugin !== "") {
-    return yield* Effect.fail(pluginUninstallError(options.plugin));
-  }
-
-  const loaded = yield* loadObservedGlobalPlan();
-  const globalApp = yield* GlobalAppService;
-  const purged = options.purge ?? false;
-  const servicesRemoved = loaded.materialized
-    ? Object.values(loaded.plan.services).map((service) => String(service.name))
-    : [];
-
-  if (purged && loaded.materialized) {
-    const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select(loaded.plan);
-    yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes: true, removeState: true });
-  }
-
-  const dist = yield* globalApp.regenerateDist({ services: {} });
-
-  return { app: "global", materialized: loaded.materialized, purged, dist, servicesRemoved };
-});

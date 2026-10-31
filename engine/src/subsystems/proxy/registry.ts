@@ -1,7 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
-import { ProxyError } from "@lando/sdk/errors";
+import { ProxyError, ProxySetupError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AbsolutePath, type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 import {
@@ -12,7 +12,7 @@ import {
   type GlobalAppService,
   ManagedFileService,
   PathsService,
-  type RouterService,
+  RouterService,
   StateStore,
 } from "@lando/sdk/services";
 
@@ -20,6 +20,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { bundledPluginModules } from "../../composition.ts";
+import { withGlobalMutation } from "../../global-app/enablement.ts";
 import { makePublishRender } from "../../lifecycle/publish-render.ts";
 import { indexContributions, selectRegistration } from "../../plugins/capability-registry.ts";
 import { makeLandoPluginContext } from "../../plugins/context.ts";
@@ -205,13 +206,38 @@ export const layerSelected = Layer.unwrap(
     Effect.flatMap(registry.list, (ids) =>
       ids.length === 0
         ? Effect.succeed(UnavailableRouterService.layerUnavailable)
-        : registry
-            .select()
-            .pipe(
-              Effect.map((selected) =>
-                selected.layer.pipe(Layer.provide(DeferredCertificateAuthority.layer)),
+        : registry.select().pipe(
+            Effect.flatMap((selected) =>
+              Effect.map(StateStore, (store) =>
+                Layer.effect(
+                  RouterService,
+                  Effect.gen(function* () {
+                    const router = yield* RouterService;
+                    return RouterService.of({
+                      ...router,
+                      // Router plugins may hold a route lock while ensuring global services.
+                      // Acquire the global lock first, as explicit global lifecycle commands do.
+                      setup: Effect.fn("RouterService.setupWithGlobalMutation")((config, options) =>
+                        withGlobalMutation(router.setup(config, options)).pipe(
+                          Effect.provideService(StateStore, store),
+                          Effect.catchTag("GlobalAppError", (cause) =>
+                            Effect.fail(
+                              new ProxySetupError({
+                                proxyId: router.id,
+                                message: "Unable to coordinate router setup with global service changes.",
+                                remediation: cause.remediation,
+                                cause,
+                              }),
+                            ),
+                          ),
+                        ),
+                      ),
+                    });
+                  }),
+                ).pipe(Layer.provide(selected.layer.pipe(Layer.provide(DeferredCertificateAuthority.layer)))),
               ),
             ),
+          ),
     ),
   ),
 );

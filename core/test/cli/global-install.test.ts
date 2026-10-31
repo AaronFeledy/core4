@@ -2,9 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
-import { GlobalAppError } from "@lando/core/errors";
 import { AbsolutePath, LandofileShape, PluginManifest, ProviderId, ServiceName } from "@lando/core/schema";
 import { PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -16,6 +15,7 @@ import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
 import { renderGlobalInstallResult } from "../../src/cli/commands/meta/global-install.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
 const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<T> => {
   const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-install-data-"));
@@ -57,6 +57,7 @@ const layerWithFakeGlobalService = (modulePath: string) => {
   };
 
   return Layer.mergeAll(
+    testStateStoreLayer,
     GlobalAppServiceLayer.layer.pipe(
       Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
     ),
@@ -146,25 +147,12 @@ describe("global:install command operation", () => {
     });
   });
 
-  test("rejects plugin argument with tagged remediation", async () => {
+  test("enables an exact contribution id or owning plugin without starting services", async () => {
     await withTempRoots(async () => {
-      const exit = await Effect.runPromiseExit(
-        globalInstall({ plugin: "@lando/proxy-traefik" }).pipe(
-          Effect.provide(makeLandoRuntime({ bootstrap: "global", plugins: { policy: "discovery" } })),
-        ),
-      );
-
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.findErrorOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(GlobalAppError);
-          if (failure.value instanceof GlobalAppError) {
-            expect(failure.value.operation).toBe("install");
-            expect(failure.value.remediation).toContain("lando global:install");
-          }
-        }
+      const runtime = makeLandoRuntime({ bootstrap: "global", plugins: { policy: "discovery" } });
+      for (const plugin of ["mailpit", "@lando/proxy-traefik"]) {
+        const result = await Effect.runPromise(globalInstall({ plugin }).pipe(Effect.provide(runtime)));
+        expect(result.dist.serviceIds).toContain(plugin === "mailpit" ? "mailpit" : "traefik");
       }
     });
   });
@@ -183,6 +171,7 @@ describe("global:install command operation", () => {
         capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
       };
       const layer = Layer.mergeAll(
+        testStateStoreLayer,
         GlobalAppServiceLayer.layer.pipe(
           Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
         ),

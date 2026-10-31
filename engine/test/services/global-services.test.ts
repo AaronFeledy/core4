@@ -155,6 +155,54 @@ describe("global service contribution resolution", () => {
 });
 
 describe("global service materialization", () => {
+  test("recorded intent overrides both enabled defaults without loading disabled modules", async () => {
+    const loaded: string[] = [];
+    const services = await Effect.runPromise(
+      materializeGlobalServices({
+        manifests: [
+          manifest("@lando/mail", [
+            { id: "mailpit", enabledByDefault: true },
+            { id: "mailhog", enabledByDefault: false },
+          ]),
+        ],
+        providerCapabilities: capabilities(),
+        providerId: "lando",
+        enablement: { mailpit: false, mailhog: true },
+        loadServiceConfig: (entry) => {
+          loaded.push(entry.contribution.id);
+          return Effect.succeed({ api: 4, type: "lando" });
+        },
+      }),
+    );
+    expect(loaded).toEqual(["mailhog"]);
+    expect(Object.keys(services)).toEqual(["mailhog"]);
+  });
+
+  test("rejects enabled contribution conflicts before loading modules, and allows disabling either side", async () => {
+    const manifests = [
+      manifest("@lando/mail", [{ id: "mailpit", conflicts: ["mailhog"] }, { id: "mailhog" }]),
+    ];
+    let loads = 0;
+    const input = {
+      manifests,
+      providerCapabilities: capabilities(),
+      providerId: "lando",
+      loadServiceConfig: () => {
+        loads++;
+        return Effect.succeed({ api: 4 as const, type: "lando" });
+      },
+    };
+    const result = await Effect.runPromise(Effect.result(materializeGlobalServices(input)));
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(GlobalAppError);
+    expect(loads).toBe(0);
+    for (const enablement of [{ mailpit: false }, { mailhog: false }]) {
+      expect(
+        Object.keys(await Effect.runPromise(materializeGlobalServices({ ...input, enablement }))),
+      ).toHaveLength(1);
+    }
+  });
+
   test("accepts service log source contributions only when the provider advertises serviceLogSources", () => {
     const contribution = {
       contribution: {

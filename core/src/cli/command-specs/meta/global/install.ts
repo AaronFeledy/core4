@@ -30,7 +30,7 @@ export const metaGlobalInstallSpec: LandoCommandSpec<GlobalInstallResult> = {
   },
   args: {
     plugin: Args.string({
-      description: "Plugin name for future global-service enablement.",
+      description: "Plugin package name or contribution id to enable; omit to reconcile saved choices.",
       required: false,
     }),
   },

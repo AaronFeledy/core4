@@ -1,3 +1,4 @@
+import { withGlobalMutation } from "@lando/engine/global-app/enablement";
 import { DateTime, Effect, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
@@ -95,88 +96,91 @@ export const renderGlobalStartResult = (result: GlobalStartResult): string => {
   return lifecycleLine("ready", result.app, services);
 };
 
-export const globalStart = Effect.fn("GlobalStart.start")(function* (
-  options: GlobalStartOptions = {},
-): Effect.fn.Return<GlobalStartResult, GlobalStartError, GlobalStartServices> {
-  yield* globalInstall({});
-  const loaded = yield* loadGlobalPlan();
-  if (!loaded.materialized) return { app: "global", servicesStarted: [] };
+export const globalStart = Effect.fn("GlobalStart.start")(
+  function* (
+    options: GlobalStartOptions = {},
+  ): Effect.fn.Return<GlobalStartResult, GlobalStartError, GlobalStartServices> {
+    yield* globalInstall({});
+    const loaded = yield* loadGlobalPlan();
+    if (!loaded.materialized) return { app: "global", servicesStarted: [] };
 
-  const router = yield* RouterService;
-  let services = yield* selectGlobalServices({
-    commandId: "meta:global:start",
-    services: loaded.plan.services,
-    requested: options.services,
-    expandDependencies: true,
-  });
-  const available = Object.values(loaded.plan.services);
-  if (
-    (options.services?.length ?? 0) > 0 &&
-    routerEnabled(loaded.plan) &&
-    available.some((service) => service.name === router.id) &&
-    loaded.plan.routes.some((route) => services.some((service) => service.name === route.service))
-  ) {
-    const selected = includeAvailableDependencies(
-      [...services.map((service) => service.name), router.id],
-      available,
-    );
-    services = available.filter((service) => selected.has(service.name));
-  }
-  const events = yield* EventService;
-  const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(loaded.plan.provider);
+    const router = yield* RouterService;
+    let services = yield* selectGlobalServices({
+      commandId: "meta:global:start",
+      services: loaded.plan.services,
+      requested: options.services,
+      expandDependencies: true,
+    });
+    const available = Object.values(loaded.plan.services);
+    if (
+      (options.services?.length ?? 0) > 0 &&
+      routerEnabled(loaded.plan) &&
+      available.some((service) => service.name === router.id) &&
+      loaded.plan.routes.some((route) => services.some((service) => service.name === route.service))
+    ) {
+      const selected = includeAvailableDependencies(
+        [...services.map((service) => service.name), router.id],
+        available,
+      );
+      services = available.filter((service) => selected.has(service.name));
+    }
+    const events = yield* EventService;
+    const registry = yield* RuntimeProviderRegistry;
+    const provider = yield* registry.select(loaded.plan.provider);
 
-  return yield* withGlobalLifecycleEvents(
-    {
-      pre: () =>
-        events.publish(
-          PreGlobalStartEvent.make({
-            scope: "global",
-            app: globalAppRef(loaded.plan),
-            plan: loaded.plan,
-            triggeredBy: "meta:global:start",
-            ensuringServices: [],
-            cached: false,
-            timestamp: now(),
-          }),
-        ),
-      post: () =>
-        events.publish(
-          PostGlobalStartEvent.make({
-            scope: "global",
-            app: globalAppRef(loaded.plan),
-            plan: loaded.plan,
-            cached: false,
-            timestamp: now(),
-          }),
-        ),
-    },
-    Effect.gen(function* () {
-      const builds = yield* BuildOrchestrator;
-      const applied = yield* applyGlobalServiceGroups(
-        loaded.plan,
-        {
-          provider,
-          services,
-          options: {
-            reconcile: false,
-            ...(options.signal === undefined ? {} : { signal: options.signal }),
+    return yield* withGlobalLifecycleEvents(
+      {
+        pre: () =>
+          events.publish(
+            PreGlobalStartEvent.make({
+              scope: "global",
+              app: globalAppRef(loaded.plan),
+              plan: loaded.plan,
+              triggeredBy: "meta:global:start",
+              ensuringServices: [],
+              cached: false,
+              timestamp: now(),
+            }),
+          ),
+        post: () =>
+          events.publish(
+            PostGlobalStartEvent.make({
+              scope: "global",
+              app: globalAppRef(loaded.plan),
+              plan: loaded.plan,
+              cached: false,
+              timestamp: now(),
+            }),
+          ),
+      },
+      Effect.gen(function* () {
+        const builds = yield* BuildOrchestrator;
+        const applied = yield* applyGlobalServiceGroups(
+          loaded.plan,
+          {
+            provider,
+            services,
+            options: {
+              reconcile: false,
+              ...(options.signal === undefined ? {} : { signal: options.signal }),
+            },
           },
-        },
-        (plan) => withBuildProvider(builds.build(plan), provider),
-      );
-      const outcome = yield* completeStartup({
-        policy: "global-groups",
-        operation: "start",
-        provider,
-        router,
-        outcome: applied,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      });
-      const servicesStarted = startedServices(
-        yield* collectObservedConnections(outcome.builtPlan, outcome.ready),
-      );
-      return { app: loaded.plan.name, servicesStarted };
-    }),
-  );
-});
+          (plan) => withBuildProvider(builds.build(plan), provider),
+        );
+        const outcome = yield* completeStartup({
+          policy: "global-groups",
+          operation: "start",
+          provider,
+          router,
+          outcome: applied,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        });
+        const servicesStarted = startedServices(
+          yield* collectObservedConnections(outcome.builtPlan, outcome.ready),
+        );
+        return { app: loaded.plan.name, servicesStarted };
+      }),
+    );
+  },
+  (effect, _options: GlobalStartOptions = {}) => withGlobalMutation(effect),
+);

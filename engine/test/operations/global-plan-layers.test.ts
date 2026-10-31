@@ -9,6 +9,7 @@ import { AppPlanner, GlobalAppService, RuntimeProviderRegistry } from "@lando/sd
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { globalEnablementBucket } from "../../src/global-app/enablement.ts";
 import { type LoadGlobalPlanResult, loadGlobalPlan } from "../../src/operations/global-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -17,6 +18,7 @@ const withGlobalFiles = async <A>(
   use: (fixture: {
     readonly root: string;
     readonly load: () => Promise<LoadGlobalPlanResult>;
+    readonly setEnablement: (enabled: Record<string, boolean>) => Promise<void>;
   }) => Promise<A>,
 ): Promise<A> => {
   const root = await mkdtemp(join(tmpdir(), "lando-global-layers-"));
@@ -84,12 +86,19 @@ const withGlobalFiles = async <A>(
     ),
   );
   const load = () => Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(layer)));
+  const setEnablement = (enabled: Record<string, boolean>) =>
+    Effect.runPromise(
+      globalEnablementBucket().pipe(
+        Effect.flatMap((bucket) => bucket.set(enabled)),
+        Effect.provide(layer),
+      ),
+    );
   try {
     await writeFile(
       dist,
       "name: global\nruntime: 4\nservices:\n  mailpit:\n    type: lando\n    environment:\n      KEEP: generated\n      CHANGE: generated\n    command: [generated, command]\n",
     );
-    return await use({ root, load });
+    return await use({ root, load, setEnablement });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -371,5 +380,107 @@ test("reads edited overlay content on repeated global loads", async () => {
     expect(loaded.landofile.document.services?.[ServiceName.make("mailpit")]?.environment?.CHANGE).toBe(
       "second",
     );
+  });
+});
+
+for (const name of [
+  ".lando.base.yml",
+  ".lando.dist.yml",
+  ".lando.upstream.yml",
+  ".lando.yml",
+  ".lando.local.yml",
+  ".lando.user.yml",
+]) {
+  test(`disabled service overrides in ${name} are omitted before expression evaluation and validation`, async () => {
+    await withGlobalFiles(async ({ root, load, setEnablement }) => {
+      await setEnablement({ mailpit: false });
+      await writeFile(
+        join(root, name),
+        [
+          "services:",
+          "  mailpit:",
+          '    primary: "{{ eq(recipe.missing, true) }}"',
+          "    home: invalid",
+          "  custom:",
+          "    type: lando",
+          "    environment:",
+          "      RETAIN: custom",
+          "",
+        ].join("\n"),
+      );
+
+      const loaded = await load();
+
+      if (!loaded.materialized) throw new Error("Expected global Landofile");
+      expect(loaded.landofile.document.services).not.toHaveProperty("mailpit");
+      expect(loaded.landofile.document.services).toHaveProperty("custom.environment.RETAIN", "custom");
+      expect(
+        loaded.landofile.pendingSites.some(
+          (site) => site.path[0] === "services" && site.path[1] === "mailpit",
+        ),
+      ).toBe(false);
+    });
+  });
+}
+
+test("disabled TypeScript include overrides stay omitted without removing authored content", async () => {
+  await withGlobalFiles(async ({ root, load, setEnablement }) => {
+    await setEnablement({ mailpit: false });
+    await writeFile(
+      join(root, "included.yml"),
+      [
+        "services:",
+        "  mailpit:",
+        '    primary: "{{ eq(recipe.missing, true) }}"',
+        "    home: false",
+        "  custom:",
+        "    type: lando",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(join(root, ".lando.local.ts"), 'export default { includes: ["included.yml"] };\n');
+
+    const disabled = await load();
+    if (!disabled.materialized) throw new Error("Expected global Landofile");
+    expect(disabled.landofile.document.services).not.toHaveProperty("mailpit");
+    expect(disabled.landofile.document.services).toHaveProperty("custom");
+
+    await setEnablement({ mailpit: true });
+    await expect(load()).rejects.toMatchObject({ _tag: "ConfigExpressionError" });
+  });
+});
+
+test("re-enabling restores the generated service and its preserved authored overrides", async () => {
+  await withGlobalFiles(async ({ root, load, setEnablement }) => {
+    await writeFile(
+      join(root, ".lando.yml"),
+      "services:\n  mailpit:\n    environment:\n      CHANGE: authored\n",
+    );
+    await setEnablement({ mailpit: false });
+    const disabled = await load();
+    if (!disabled.materialized) throw new Error("Expected global Landofile");
+    expect(disabled.landofile.document.services).not.toHaveProperty("mailpit");
+
+    await setEnablement({ mailpit: true });
+    const enabled = await load();
+    if (!enabled.materialized) throw new Error("Expected global Landofile");
+    expect(enabled.landofile.document.services?.[ServiceName.make("mailpit")]?.environment).toEqual({
+      KEEP: "generated",
+      CHANGE: "authored",
+    });
+  });
+});
+
+test("service-map expressions cannot restore disabled services", async () => {
+  await withGlobalFiles(async ({ root, load, setEnablement }) => {
+    await setEnablement({ mailpit: false });
+    await writeFile(
+      join(root, ".lando.yml"),
+      "services: \"{{ { mailpit: { type: 'lando' }, custom: { type: 'lando' } } }}\"\n",
+    );
+    const loaded = await load();
+    if (!loaded.materialized) throw new Error("Expected global Landofile");
+    expect(loaded.landofile.document.services).not.toHaveProperty("mailpit");
+    expect(loaded.landofile.document.services).toHaveProperty("custom");
   });
 });

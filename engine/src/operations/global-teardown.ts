@@ -57,6 +57,7 @@ export type GlobalTeardown = Effect.Success<ReturnType<typeof resolveGlobalTeard
 export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelection")(function* (
   resolved: GlobalTeardown,
   requested: ReadonlyArray<string>,
+  options?: { readonly requireOnline?: boolean },
 ) {
   const evidence = resolved.evidence;
   let services: ReadonlyArray<{ readonly name: string }>;
@@ -110,7 +111,25 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
       return unreachable;
     }
   }
-  const online = yield* runtimeOnline(resolved.provider);
+  const online = options?.requireOnline
+    ? yield* resolved.provider.isAvailable.pipe(
+        Effect.flatMap((available) =>
+          available
+            ? Effect.map(resolved.provider.getStatus, (status) => status.running)
+            : Effect.succeed(false),
+        ),
+      )
+    : yield* runtimeOnline(resolved.provider);
+  if (options?.requireOnline && !online)
+    return yield* Effect.fail(
+      new AppResolveError({
+        message:
+          "The applied global provider is offline; selected containers and routes could not be removed.",
+        reason: "mismatch",
+        detail: "provider-resources",
+        remediation: "Start the applied provider and repeat this uninstall command.",
+      }),
+    );
   const observed = online
     ? yield* resolved.provider.list({ app: evidence.plan.id, includeUnplanned: true })
     : [];

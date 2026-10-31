@@ -9,6 +9,8 @@ import {
   ServiceConfig,
 } from "@lando/sdk/schema";
 
+import { globalContributionEnabled } from "../global-app/enablement.ts";
+
 export interface PendingGlobalServiceContribution {
   readonly contribution: GlobalServiceContribution;
   readonly plugin: string;
@@ -227,13 +229,27 @@ export interface GlobalServiceMaterializationInput {
   readonly providerCapabilities: ProviderCapabilities;
   readonly providerId: string;
   readonly loadServiceConfig: GlobalServiceModuleLoader["load"];
+  readonly enablement?: Readonly<Record<string, boolean>>;
 }
 
 export const materializeGlobalServices = Effect.fnUntraced(function* (
   input: GlobalServiceMaterializationInput,
 ): Effect.fn.Return<Record<string, ServiceConfig>, GlobalServiceCollisionError | GlobalAppError> {
   const resolved = yield* resolveGlobalServiceContributions(input.manifests);
-  const enabled = resolved.filter((entry) => entry.contribution.enabledByDefault !== false);
+  const enabled = resolved.filter((entry) => globalContributionEnabled(entry, input.enablement ?? {}));
+  const enabledIds = new Set(enabled.map((entry) => entry.contribution.id));
+  for (const entry of enabled) {
+    const conflict = entry.contribution.conflicts?.find((id) => enabledIds.has(id));
+    if (conflict !== undefined) {
+      return yield* Effect.fail(
+        new GlobalAppError({
+          message: `Global service ${entry.contribution.id} conflicts with enabled service ${conflict}.`,
+          operation: "regenerateDist",
+          remediation: `Disable one contribution with \`lando global:uninstall ${entry.contribution.id}\` or \`lando global:uninstall ${conflict}\`, then retry.`,
+        }),
+      );
+    }
+  }
   const validation = validateGlobalServiceContributions({
     contributions: enabled,
     providerCapabilities: input.providerCapabilities,
