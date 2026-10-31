@@ -44,9 +44,15 @@ export const completeGlobalGroups = Effect.fn("StartupCompletion.globalGroups")(
     completed,
   );
   if (error !== undefined) return yield* Effect.fail(error);
-  yield* publishGlobalRoutes(request.router, provider, outcome.builtPlan, {
-    started: new Set(completed.services.map((service) => service.name)),
-    failed: new Set(),
-  });
+  yield* publishGlobalRoutes(
+    request.router,
+    provider,
+    outcome.builtPlan,
+    {
+      started: new Set(completed.services.map((service) => service.name)),
+      failed: new Set(),
+    },
+    request.beforeRoutes,
+  );
   return completed;
 });

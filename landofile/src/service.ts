@@ -15,6 +15,7 @@ import { evaluateLandofileRootLayers } from "./root-compile.ts";
 
 export { LandofileService } from "@lando/sdk/services";
 export { validateLandofileReplacement } from "./replacement.ts";
+export { acquireLandofileReplacement, prepareLandofileReplacement } from "./prepared-replacement.ts";
 export type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 export {
   acquireLandofileRootLayers,

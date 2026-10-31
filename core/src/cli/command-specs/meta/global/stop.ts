@@ -3,8 +3,8 @@ import {
   type GlobalStopResult,
   GlobalStopResultSchema,
   globalStop,
-  renderGlobalStopResult,
-} from "../../../commands/meta/global-stop";
+} from "@lando/engine/operations/global-stop";
+import { renderGlobalStopResult } from "../../../commands/meta/global-stop";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specFlagsOf, stringArrayFlag } from "../../../spec/input-coercion";
 import { Flags } from "../../../spec/metadata";

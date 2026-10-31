@@ -41,6 +41,11 @@ import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
+import {
+  type GlobalConsumerAdmissionServices,
+  withGlobalConsumerAdmission,
+} from "./global-consumer-admission.ts";
+import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
@@ -92,6 +97,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   | PrivateFileAccessService
   | ShellRunner
   | RedactionService
+  | GlobalConsumerAdmissionServices
 > {
   const { signal, managed } = options;
   const registry = yield* RuntimeProviderRegistry;
@@ -111,52 +117,69 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   const initial = new Map<string, import("@lando/sdk/services").ServiceRuntimeInfo>();
   const gpgIntent = yield* resolveStartGpgAgentIntent({ ...target, plan: builtPlan });
   const intent = yield* resolveStartSshAgentIntent({ ...target, plan: builtPlan });
-  yield* withStartedGpgAgent(builtPlan, target.app, provider.capabilities, gpgIntent, {
-    exec: provider.exec,
-    ...(managed === undefined ? {} : { managed }),
-    use: (gpgPlan, prepareGpgHome) =>
-      withStartedSshAgent(gpgPlan, target.app, provider.capabilities, intent, {
+  return yield* withGlobalConsumerAdmission(
+    {
+      plan: readinessPlan,
+      setupRouter: true,
+      ...(signal === undefined ? {} : { signal }),
+      ...(target.landofile?.document.router === undefined
+        ? {}
+        : { landofileRouter: target.landofile.document.router }),
+    },
+    Effect.gen(function* () {
+      yield* withStartedGpgAgent(builtPlan, target.app, provider.capabilities, gpgIntent, {
+        exec: provider.exec,
         ...(managed === undefined ? {} : { managed }),
-        use: (agentPlan) =>
-          withStartedHostProxy(agentPlan, target.app, provider.capabilities, {
-            platform: provider.platform,
-            workerPlan: target.plan,
-            reusePolicy: "adopt",
+        use: (gpgPlan, prepareGpgHome) =>
+          withStartedSshAgent(gpgPlan, target.app, provider.capabilities, intent, {
             ...(managed === undefined ? {} : { managed }),
-            use: Effect.fnUntraced(function* (applyPlan) {
-              yield* Effect.scoped(
-                applyWithResolvedEnvironment(provider, applyPlan, {
-                  reconcile: true,
-                  completionPlan: readinessPlan,
-                  recordedPlan: {
-                    ...target.plan,
-                    services: { ...target.plan.services, ...builtPlan.services },
-                  },
-                  ...(signal === undefined ? {} : { signal }),
-                  onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
+            use: (agentPlan) =>
+              withStartedHostProxy(agentPlan, target.app, provider.capabilities, {
+                platform: provider.platform,
+                workerPlan: target.plan,
+                reusePolicy: "adopt",
+                ...(managed === undefined ? {} : { managed }),
+                use: Effect.fnUntraced(function* (applyPlan) {
+                  yield* Effect.scoped(
+                    applyWithResolvedEnvironment(
+                      provider,
+                      applyPlan,
+                      {
+                        reconcile: true,
+                        completionPlan: readinessPlan,
+                        recordedPlan: {
+                          ...target.plan,
+                          services: { ...target.plan.services, ...builtPlan.services },
+                        },
+                        ...(signal === undefined ? {} : { signal }),
+                        onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
+                      },
+                      verifyGlobalConsumerAdmission,
+                    ),
+                  );
+                  yield* prepareGpgHome;
+                  yield* Effect.forEach(services, (service) =>
+                    inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
+                      Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
+                    ),
+                  );
                 }),
-              );
-              yield* prepareGpgHome;
-              yield* Effect.forEach(services, (service) =>
-                inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
-                  Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
-                ),
-              );
-            }),
+              }),
           }),
-      }),
-  });
-  const ready = yield* completeStartup({
-    policy: "selected-rebuild",
-    builds,
-    selectedPlan: builtPlan,
-    provider,
-    plan: readinessPlan,
-    services: services.map((service) => service.name),
-    initial,
-    ...(signal === undefined ? {} : { signal }),
-  });
-  return startedServices(yield* collectPlanConnections(readinessPlan, ready));
+      });
+      const ready = yield* completeStartup({
+        policy: "selected-rebuild",
+        builds,
+        selectedPlan: builtPlan,
+        provider,
+        plan: readinessPlan,
+        services: services.map((service) => service.name),
+        initial,
+        ...(signal === undefined ? {} : { signal }),
+      });
+      return startedServices(yield* collectPlanConnections(readinessPlan, ready));
+    }),
+  );
 });
 
 export const rebuildApp = Effect.fn("AppOperation.rebuild")(

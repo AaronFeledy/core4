@@ -15,6 +15,7 @@ import { loadObservedGlobalPlan } from "../../src/operations/global-plan.ts";
 import { HostProviderOverride, hostProviderId } from "../../src/providers/host-provider.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { globalPolicyFixture } from "./global-policy-fixture.ts";
 
 const root = AbsolutePath.make("/tmp/global-placement/global");
 const plan = (provider: string): AppPlan => ({
@@ -34,6 +35,7 @@ const plan = (provider: string): AppPlan => ({
 const layers = (plans: ReadonlyArray<AppPlan>, globalRoot: AbsolutePath = root) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "docker" });
   return Layer.mergeAll(
+    globalPolicyFixture,
     makeTestStateStore().layer,
     BunFileSystem.layer,
     Layer.succeed(

@@ -7,8 +7,8 @@ import { AbsolutePath, type AppPlan, ServiceName } from "@lando/sdk/schema";
 import { RouterService, RuntimeProviderRegistry, type ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { Effect } from "effect";
-import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
-import { globalPlanAt, globalTeardownHarness } from "../_support/global-teardown-harness.ts";
+import { globalStop } from "../../src/operations/global-stop.ts";
+import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 
 test("selected global stop retries failed route cleanup after its container was removed", async () => {
   // Given applied routes and containers, with the first route publication failing after removal.
