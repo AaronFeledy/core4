@@ -1212,7 +1212,11 @@ describe("meta:global command effects", () => {
         expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
         const recorded = harness.calls.apply[2]?.options.recordedPlan;
         if (recorded === undefined) throw new Error("expected full recorded plan");
-        expect(artifactRefs(recorded)).toEqual(independentGlobalServices.map((name) => `built:${name}`));
+        expect(artifactRefs(recorded)).toEqual(
+          independentGlobalServices.map((name) =>
+            name === "ssh-agent" ? "lando-global-service:test" : `built:${name}`,
+          ),
+        );
       },
       {
         serviceNames: independentGlobalServices,

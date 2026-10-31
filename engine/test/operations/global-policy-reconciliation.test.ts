@@ -202,7 +202,10 @@ test("recorded advancement preserves sibling volume and network ownership", asyn
   const recorded = await Effect.runPromise(advanceGlobalRecordedPlan(prior, selected, []));
   expect(recorded.stores).toEqual(prior.stores);
   expect(recorded.services[sibling.name]?.mounts).toEqual(prior.services[sibling.name]?.mounts);
-  expect(recorded.networking?.sharedNetworkMembership?.aliases[sibling.name]).toEqual(["prior-sibling"]);
+  expect(Object.entries(recorded.networking?.sharedNetworkMembership?.aliases ?? {})).toContainEqual([
+    sibling.name,
+    ["prior-sibling"],
+  ]);
 });
 
 test("recorded advancement rejects incompatible shared volume definitions", async () => {
