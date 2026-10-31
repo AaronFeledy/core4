@@ -14,8 +14,9 @@ import { Effect, Layer } from "effect";
 import { makeLandoRuntime } from "../../../src/runtime/layer.ts";
 
 const originalRuntime = makeLandoRuntime;
+const eventsFlag = process.argv.indexOf("--test-events");
 const eventPath =
-  process.env.LANDO_TEST_HOST_PROXY_EVENTS ?? process.argv[process.argv.indexOf("--test-events") + 1];
+  process.env.LANDO_TEST_HOST_PROXY_EVENTS ?? (eventsFlag === -1 ? undefined : process.argv[eventsFlag + 1]);
 if (eventPath === undefined) throw new TypeError("Missing test event path");
 const provider = {
   ...TestRuntimeProvider,

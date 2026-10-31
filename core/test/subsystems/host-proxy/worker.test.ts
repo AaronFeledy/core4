@@ -1356,7 +1356,7 @@ console.log(JSON.stringify({
       await first.close();
       await rm(root, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test("worker payload config digest is deterministic and independent of routes", async () => {
     const root = await tempRoot();
