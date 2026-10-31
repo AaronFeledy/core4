@@ -46,7 +46,7 @@ const installLocalPlugin = async (
     api: 4,
     entry: "index.ts",
     description: "Local fixture commands.",
-    contributes: { commands: [id] },
+    contributes: { commands: [{ id, summary: options.summary ?? "Inspect local fixture." }] },
   };
   await writeFile(join(path, "package.json"), JSON.stringify({ landoPlugin: manifest }));
   await writeFile(
@@ -239,7 +239,7 @@ test("cold root, built-in target and core topic help do not acquire plugin entri
     }
     const warm = await f.invoke(["help", "--all"]);
     expect(warm.exit, warm.stderr).toBe(0);
-    expect(await Bun.file(marker).exists()).toBe(true);
+    expect(await Bun.file(marker).exists()).toBe(false);
   } finally {
     await f.cleanup();
   }
@@ -277,27 +277,31 @@ for (const cwd of ${JSON.stringify([f.root, tmpdir()])}) await runCli({ argv: ["
   }
 }, 15000);
 
-test("unavailable plugin discovery is reported by help instead of an unknown command", async () => {
+test("invalid plugin manifests produce diagnostics without collapsing discovery", async () => {
   const f = await fixture();
   try {
     await writeFile(join(f.root, ".lando.yml"), "name: unavailable-discovery\n");
     await installLocalPlugin(f.root, join(f.root, "imported"));
-    // A loader the manifest does not declare fails graph acquisition for every plugin command.
     const manifestPath = join(f.root, ".lando/plugins/fixture/package.json");
     const packageJson = await Bun.file(manifestPath).json();
-    packageJson.landoPlugin.contributes.commands = [];
+    packageJson.landoPlugin.contributes.commands = ["local:inspect"];
     await writeFile(manifestPath, JSON.stringify(packageJson));
 
     const target = await f.invoke(["help", "local:inspect", "--format", "json"]);
     expect(target.exit).not.toBe(0);
     const targetError = JSON.parse(target.stdout).error;
-    expect(targetError._tag).not.toBe("UnknownCommandError");
-    expect(targetError.message).toContain("@example/local-help");
+    expect(targetError._tag).toBe("UnknownCommandError");
 
     const catalog = await f.invoke(["help", "--format", "json"]);
     expect(catalog.exit, catalog.stderr).toBe(0);
     const result = JSON.parse(catalog.stdout).result;
-    expect(result.pluginMetadata.status).toBe("unavailable");
+    expect(result.pluginMetadata.status).toBe("available");
+    expect(result.pluginMetadata.diagnostics).toContainEqual(
+      expect.objectContaining({
+        _tag: "PluginManifestError",
+        loser: { pluginName: "@example/local-help", source: "app" },
+      }),
+    );
     expect(result.all).toContainEqual(
       expect.objectContaining({ canonicalId: "app:start", source: "built-in" }),
     );

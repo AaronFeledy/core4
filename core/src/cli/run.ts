@@ -18,6 +18,7 @@ import {
   resolveBuiltInCommand,
 } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
+import { isHelpTopic } from "./cold-path-output";
 import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
 import { scratchRunHasCommandTail } from "./commands/scratch-run";
@@ -301,6 +302,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
 
   if (await rejectJsonControlConflicts()) return;
 
+  if (isHelpTopic(argv[0] ?? "") && argv.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
+    await dispatchHelpTarget(argv[0] ?? "", catalog, signal);
+    return;
+  }
+
   let builtInCommand = resolveBuiltInCommand(argv[0]);
   if (builtInCommand?.spec.id !== argv[0]) builtInCommand = undefined;
   if (
@@ -314,6 +320,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       return;
     }
     const route = aliasResolution.success;
+    if (route._tag === "plugin") {
+      if (argvTail.includes("--help") || argvTail.includes("-h"))
+        await dispatchHelpTarget(route.token, catalog, signal);
+      else await tryPluginOwnedCommand(route.token, argvTail, signal, catalog);
+      return;
+    }
     if (route._tag === "unknown-tooling" || (route._tag === "cache-miss" && !argv[0]?.startsWith("app:"))) {
       if (argvTail.includes("--help") || argvTail.includes("-h")) {
         await dispatchHelpTarget(argv[0] ?? "", catalog, signal);
@@ -321,8 +333,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       }
       if (
         route._tag === "unknown-tooling" &&
-        argv[0]?.includes(":") &&
-        (await tryPluginOwnedCommand(argv[0], argvTail, signal, catalog))
+        (await tryPluginOwnedCommand(argv[0] ?? "", argvTail, signal, catalog))
       )
         return;
       const hint = await catalog.remediation(argv[0] ?? "");
@@ -346,8 +357,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
       else await printToolingHelp({ ...route, id: route.commandId }, route.aliasPolicy);
       return;
-    } else if (await routeResolvedTooling(route, argvTail, signal)) {
-      return;
+    } else {
+      if (await routeResolvedTooling(route, argvTail, signal)) return;
     }
     if (builtInCommand === undefined) builtInCommand = resolveBuiltInCommand(argv[0]);
   }
@@ -450,10 +461,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
   }
 
   if (builtInCommand?.status.kind === "embedding-exempt") {
+    await import("../runtime/bundled-plugins");
     await runNativeOnlyBuiltIn(builtInCommand, argv.slice(1), signal);
     return;
   }
   if (builtInCommand !== undefined) {
+    await import("../runtime/bundled-plugins");
     await runBuiltInCommand(builtInCommand, argv.slice(1), signal);
     return;
   }

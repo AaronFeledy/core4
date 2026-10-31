@@ -772,7 +772,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       name: "@example/commands",
       version: "1.0.0",
       api: 4,
-      contributes: { commands: ["meta:example:hello"] },
+      contributes: { commands: [{ id: "meta:example:hello", summary: "Hello from a plugin." }] },
     });
     const module = {
       name: manifest.name,
@@ -802,6 +802,7 @@ describe("EventCommandExecutorLayer.layer", () => {
         {
           id: "meta:example:hello",
           pluginName: String(manifest.name),
+          descriptor: { id: "meta:example:hello", summary: "Hello from a plugin." },
           source: "explicit",
           load:
             module.commands.get("meta:example:hello") ??

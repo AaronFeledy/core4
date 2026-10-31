@@ -1,5 +1,8 @@
 import { resolveCommandCompletion } from "@lando/sdk/command-result";
-import { Effect, Layer } from "effect";
+import type { DeprecationNotice } from "@lando/sdk/schema";
+import { DeprecationService } from "@lando/sdk/services";
+import { DateTime, Effect, Layer } from "effect";
+import { commandDescriptorNotice } from "./command-catalog";
 
 import type { RendererIO } from "@lando/renderer/io";
 import type { CommandInputValidationError, ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -11,8 +14,10 @@ import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { makeLandoRuntime } from "../runtime/layer";
 import {
   emitJsonListModeIfRequested,
+  resetActiveCommandInvocation,
   runCompiledCommand,
   runWithProcessAbortSignal,
+  setActiveCommandId,
 } from "./compiled-runtime";
 import { validateEventCommandInput } from "./event-command-input";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
@@ -35,6 +40,7 @@ export const isPluginOwnedCommandId = (token: string): boolean => PLUGIN_OWNED_C
 export interface RunPluginOwnedCommandOptions {
   readonly io?: RendererIO;
   readonly signal?: AbortSignal;
+  readonly deprecation?: { readonly id: string; readonly notice: DeprecationNotice };
 }
 
 type PluginOwnedRuntime = Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
@@ -112,6 +118,7 @@ const runPluginOwnedCommand = (
 ): Promise<void> =>
   runWithProcessAbortSignal(
     async (signal) => {
+      await import("../runtime/bundled-plugins");
       const flagError = pluginOwnedCliFlagError(spec, argv);
       if (flagError !== undefined) {
         await renderPluginOwnedPreCommandFailure(flagError, options.io);
@@ -123,7 +130,19 @@ const runPluginOwnedCommand = (
       const operation = validateEventCommandInput(spec, parsed).pipe(
         Effect.flatMap((input) => {
           normalizedInput = input;
-          return withRedactedRenderer(spec.run(input));
+          return Effect.gen(function* () {
+            if (options.deprecation !== undefined) {
+              const service = yield* Effect.serviceOption(DeprecationService);
+              if (service._tag === "Some")
+                yield* service.value.use({
+                  kind: "command",
+                  id: options.deprecation.id,
+                  notice: options.deprecation.notice,
+                  timestamp: DateTime.nowUnsafe(),
+                });
+            }
+            return yield* withRedactedRenderer(spec.run(input));
+          });
         }),
       );
       const cwd = await Effect.runPromise(discoveryCwd());
@@ -167,6 +186,8 @@ const dispatchPluginOwnedCommand = async (
   if (signal?.aborted) return "dispatched";
   const spec = row.spec;
   if (spec === undefined) return "not-found";
+  setActiveCommandId(spec.id);
+  resetActiveCommandInvocation(spec.id, argv);
   if (argv.includes("--help") || argv.includes("-h")) {
     await tryPluginCommandHelp(commandId, catalog);
     return "dispatched";
@@ -180,7 +201,11 @@ const dispatchPluginOwnedCommand = async (
     return "dispatched";
   }
   if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
-  await runPluginOwnedCommand(spec, argv, signal === undefined ? {} : { signal });
+  const notice = commandDescriptorNotice(row.descriptor, commandId);
+  await runPluginOwnedCommand(spec, argv, {
+    ...(signal === undefined ? {} : { signal }),
+    ...(notice === undefined ? {} : { deprecation: { id: commandId, notice } }),
+  });
   return "dispatched";
 };
 
@@ -189,6 +214,4 @@ export const tryPluginOwnedCommand = async (
   argv: ReadonlyArray<string>,
   signal?: AbortSignal,
   catalog: PluginCommandCatalog = createPluginCommandCatalog(signal),
-): Promise<boolean> =>
-  isPluginOwnedCommandId(token) &&
-  (await dispatchPluginOwnedCommand(token, argv, signal, catalog)) === "dispatched";
+): Promise<boolean> => (await dispatchPluginOwnedCommand(token, argv, signal, catalog)) === "dispatched";

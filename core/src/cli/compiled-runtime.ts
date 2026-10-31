@@ -8,7 +8,6 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
 import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
-import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
 import type { RendererIO } from "@lando/renderer/io";

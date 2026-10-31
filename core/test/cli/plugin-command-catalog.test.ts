@@ -20,6 +20,7 @@ const spec = (id: string): ExecutableCommandSpec => ({
 });
 const candidate = (id: string, load = async () => spec(id)): GraphCommandCandidate => ({
   id,
+  descriptor: { id, summary: `Run ${id}.` },
   load,
   pluginName: "@example/catalog",
   source: "explicit",
@@ -81,9 +82,9 @@ test("catalog acquires once, matches ids without loading, and loads only a selec
   expect(loaded).toEqual([]);
   const listing = await catalog.list("fixture");
   expect(listing.rows.map((row) => row.id)).toEqual(["fixture:first", "fixture:second"]);
-  expect(loaded.toSorted()).toEqual(["fixture:first", "fixture:second"]);
+  expect(loaded).toEqual([]);
   await catalog.resolve("fixture:first");
-  expect(loaded).toHaveLength(2);
+  expect(loaded).toEqual(["fixture:first"]);
   expect(acquisitions).toBe(1);
 });
 
@@ -97,13 +98,14 @@ test("catalog isolates loader rejection without hiding healthy commands", async 
     ),
   );
   const listing = await catalog.list();
-  expect(listing.metadata).toEqual({ status: "available" });
-  expect(listing.rows[0]).toMatchObject({
+  expect(listing.metadata).toEqual({ status: "available", implementation: "discovered", diagnostics: [] });
+  const broken = await catalog.resolve("fixture:broken");
+  expect(broken).toMatchObject({
     id: "fixture:broken",
-    summary: "unavailable",
+    summary: "Run fixture:broken.",
     loadError: { _tag: "PluginLoadError" },
   });
-  expect(listing.rows[1]?.spec?.id).toBe("fixture:healthy");
+  expect(await catalog.resolve("fixture:healthy")).toMatchObject({ spec: { id: "fixture:healthy" } });
 });
 
 test.each([
@@ -117,8 +119,9 @@ test.each([
       graph([candidate("fixture:invalid", async () => Object.assign(spec("fixture:invalid"), invalid))]),
     ),
   );
-  const listing = await catalog.list();
-  expect(listing.rows[0]?.loadError?._tag).toBe("PluginDescriptorMismatchError");
+  expect(await catalog.resolve("fixture:invalid")).toMatchObject({
+    loadError: { _tag: "PluginDescriptorMismatchError" },
+  });
 });
 
 test("graph failure becomes bounded redacted discovery metadata", async () => {
@@ -152,9 +155,11 @@ test("row diagnostics use the redaction service before projection", async () => 
         ]),
       ),
     );
-    const listing = await catalog.list();
-    expect(listing.rows[0]?.loadError?._tag).toBe("PluginLoadError");
-    expect(JSON.stringify(listing.rows[0]?.loadError)).not.toContain(secret);
+    const row = await catalog.resolve("fixture:bad");
+    expect(row).toMatchObject({ loadError: { _tag: "PluginLoadError" } });
+    expect(
+      JSON.stringify(row !== undefined && !("unavailable" in row) ? row.loadError : undefined),
+    ).not.toContain(secret);
   });
 });
 
@@ -170,7 +175,7 @@ test("cancellation interrupts loader work rather than marking metadata unavailab
       ]),
     ),
   );
-  await expect(catalog.list()).rejects.toBeDefined();
+  await expect(catalog.resolve("fixture:pending")).rejects.toBeDefined();
 });
 
 test("suffix ambiguity includes built-ins and plugins without loading modules", async () => {

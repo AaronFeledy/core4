@@ -19,6 +19,8 @@ export const HelpCommandDescriptor = Schema.Union([
     ...fields,
     source: Schema.Literal("plugin"),
     plugin: Schema.String,
+    provenance: Schema.optionalKey(Schema.Literals(["bundled", "system", "user", "app", "explicit"])),
+    implementation: Schema.optionalKey(Schema.Literals(["discovered", "validated"])),
     loadError: Schema.optionalKey(PluginCommandDiagnostic),
   }),
 ]);

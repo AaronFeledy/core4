@@ -64,6 +64,7 @@ const withPlugin = (context: Context.Context<unknown>, spec: ExecutableCommandSp
     commands: [
       {
         id: spec.id,
+        descriptor: { id: spec.id, summary: spec.summary ?? "Plugin command." },
         pluginName: "event-command-regression-plugin",
         source: "explicit",
         load: () => Promise.resolve(spec),

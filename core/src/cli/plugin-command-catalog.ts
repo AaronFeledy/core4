@@ -1,20 +1,19 @@
-import {
-  type GraphCommandCandidate,
-  PluginContributionGraph,
-  type PluginContributionGraphShape,
+import { readAppCommandCacheForCwdDetailed } from "@lando/engine/cache/command-index-writer";
+import type {
+  GraphCommandCandidate,
+  PluginContributionGraphShape,
 } from "@lando/engine/plugins/contribution-graph";
-import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
-import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Effect, Exit, Schema } from "effect";
-import { makeLandoRuntime } from "../runtime/layer";
 import {
   isReservedNamespaceHead,
   resolveBuiltInCommand,
   suggestCommandForSuffix,
 } from "./built-in-command-registry";
 import { isHelpTopic } from "./cold-path-output";
+import { buildCommandCatalog } from "./command-catalog";
+import { escapeDiagnosticText } from "./diagnostic-text";
 import { loadPluginSpec } from "./event-command-target";
 import { interruptOnAbort } from "./interrupt-on-abort";
 
@@ -22,10 +21,16 @@ export const PluginCommandDiagnostic = Schema.Struct({
   _tag: Schema.String,
   message: Schema.String,
   remediation: Schema.optionalKey(Schema.String),
+  winner: Schema.optionalKey(Schema.Struct({ pluginName: Schema.String, source: Schema.String })),
+  loser: Schema.optionalKey(Schema.Struct({ pluginName: Schema.String, source: Schema.String })),
 });
 export type PluginCommandDiagnostic = typeof PluginCommandDiagnostic.Type;
 export const PluginMetadata = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("available") }),
+  Schema.Struct({
+    status: Schema.Literal("available"),
+    diagnostics: Schema.optionalKey(Schema.Array(PluginCommandDiagnostic)),
+    implementation: Schema.optionalKey(Schema.Literal("discovered")),
+  }),
   Schema.Struct({ status: Schema.Literal("unavailable"), ...PluginCommandDiagnostic.fields }),
 ]);
 export type PluginMetadata = typeof PluginMetadata.Type;
@@ -34,6 +39,8 @@ export type PluginCommandRow = {
   readonly pluginName: string;
   readonly source: GraphCommandCandidate["source"];
   readonly summary: string;
+  readonly descriptor: import("@lando/sdk/schema").CommandContribution;
+  readonly tokens?: readonly string[];
   readonly spec?: ExecutableCommandSpec;
   readonly loadError?: PluginCommandDiagnostic;
 };
@@ -48,28 +55,38 @@ const diagnostic = Effect.fnUntraced(function* (error: unknown) {
   const tagged = Schema.is(PluginCommandDiagnostic)(error);
   return {
     _tag: tagged ? error._tag : "PluginLoadError",
-    message: redactor.redactString(tagged ? error.message : String(error)).slice(0, 2048),
+    message: escapeDiagnosticText(redactor.redactString(tagged ? error.message : String(error))).slice(
+      0,
+      2048,
+    ),
     ...(tagged && error.remediation !== undefined
-      ? { remediation: redactor.redactString(error.remediation).slice(0, 2048) }
+      ? { remediation: escapeDiagnosticText(redactor.redactString(error.remediation)).slice(0, 2048) }
+      : {}),
+    ...(tagged && error.winner !== undefined
+      ? {
+          winner: {
+            pluginName: redactor.redactString(error.winner.pluginName).slice(0, 512),
+            source: error.winner.source,
+          },
+        }
+      : {}),
+    ...(tagged && error.loser !== undefined
+      ? {
+          loser: {
+            pluginName: redactor.redactString(error.loser.pluginName).slice(0, 512),
+            source: error.loser.source,
+          },
+        }
       : {}),
   };
 });
 
-const acquirePluginCommandGraph = Effect.fnUntraced(function* () {
-  const cwd = yield* discoveryCwd();
-  return yield* Effect.scoped(
-    PluginContributionGraph.pipe(
-      Effect.provide(
-        makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", cwd, plugins: { policy: "discovery" } })),
-      ),
-    ),
-  );
-});
+import { acquirePluginCommandMetadata } from "./plugin-command-discovery";
 
 /** One lazy graph and selected-spec memo per invocation, never shared between cwd/policies. */
 export const createPluginCommandCatalog = (
   signal?: AbortSignal,
-  acquireGraph: () => Effect.Effect<PluginContributionGraphShape, unknown> = acquirePluginCommandGraph,
+  acquireGraph: () => Effect.Effect<PluginContributionGraphShape, unknown> = acquirePluginCommandMetadata,
 ) => {
   const run = async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
     const exit = await Effect.runPromiseExit(interruptOnAbort(effect, signal));
@@ -102,6 +119,20 @@ export const createPluginCommandCatalog = (
     return acquisition;
   };
   const specs = new Map<string, Promise<PluginCommandRow>>();
+  const index = async (result: Extract<Awaited<ReturnType<typeof graph>>, { status: "available" }>) => {
+    const receipt = await run(readAppCommandCacheForCwdDetailed());
+    const cache = receipt.status === "fresh" ? receipt.payload : undefined;
+    return buildCommandCatalog(
+      result.graph.commands.map((candidate) => ({
+        id: candidate.id,
+        pluginName: candidate.pluginName,
+        source: candidate.source,
+        descriptor: candidate.descriptor,
+        summary: candidate.descriptor.summary,
+      })),
+      cache,
+    );
+  };
   const load = (candidate: GraphCommandCandidate): Promise<PluginCommandRow> => {
     const cached = specs.get(candidate.id);
     if (cached !== undefined) return cached;
@@ -109,12 +140,21 @@ export const createPluginCommandCatalog = (
       Effect.scoped(
         Effect.gen(function* () {
           const result = yield* Effect.result(
-            loadPluginSpec(candidate.id, candidate.pluginName, candidate.load),
+            loadPluginSpec(candidate.id, candidate.pluginName, candidate.load, candidate.descriptor),
           );
-          const identity = { id: candidate.id, pluginName: candidate.pluginName, source: candidate.source };
+          const identity = {
+            id: candidate.id,
+            pluginName: candidate.pluginName,
+            source: candidate.source,
+            descriptor: candidate.descriptor,
+          };
           return result._tag === "Success"
             ? { ...identity, summary: result.success.summary, spec: result.success }
-            : { ...identity, summary: "unavailable", loadError: yield* diagnostic(result.failure) };
+            : {
+                ...identity,
+                summary: candidate.descriptor.summary,
+                loadError: yield* diagnostic(result.failure),
+              };
         }).pipe(Effect.provide(RedactionService.layer)),
       ),
     );
@@ -125,11 +165,22 @@ export const createPluginCommandCatalog = (
     async list(namespace?: string): Promise<PluginCommandListing> {
       const result = await graph();
       if (result.status === "unavailable") return { rows: [], metadata: result };
-      const candidates = result.graph.commands.filter(
-        (candidate) => namespace === undefined || candidate.id.startsWith(`${namespace}:`),
+      const catalog = await index(result);
+      const rows = catalog.entries.flatMap((entry) =>
+        entry.plugin === undefined || (namespace !== undefined && !entry.id.startsWith(`${namespace}:`))
+          ? []
+          : [{ ...entry.plugin, tokens: entry.tokens }],
       );
-      const rows = await Promise.all(candidates.map(load));
-      return { rows: rows.sort((a, b) => a.id.localeCompare(b.id)), metadata: { status: "available" } };
+      const diagnostics = await run(
+        Effect.forEach(
+          [...(result.graph.diagnostics ?? []), ...catalog.diagnostics].slice(0, 100),
+          diagnostic,
+        ).pipe(Effect.provide(RedactionService.layer)),
+      );
+      return {
+        rows: rows.sort((a, b) => a.id.localeCompare(b.id)),
+        metadata: { status: "available", implementation: "discovered", diagnostics },
+      };
     },
     async resolve(
       id: string,
@@ -139,17 +190,19 @@ export const createPluginCommandCatalog = (
         const { status: _status, ...unavailable } = result;
         return { unavailable };
       }
-      const candidate = result.graph.commands.find((candidate) => candidate.id === id);
-      return candidate === undefined ? undefined : load(candidate);
+      const entry = (await index(result)).resolve(id);
+      if (entry?.source !== "plugin") return undefined;
+      const candidate = result.graph.commands.find((candidate) => candidate.id === entry.id);
+      return candidate === undefined ? undefined : { ...(await load(candidate)), tokens: entry.tokens };
     },
     async topic(token: string) {
       if (isHelpTopic(token) || isReservedNamespaceHead(token) || token.includes(":")) return undefined;
       const result = await graph();
       if (result.status === "unavailable") return undefined;
       const owners = new Set(
-        result.graph.commands
-          .filter((candidate) => candidate.id.startsWith(`${token}:`))
-          .map((candidate) => candidate.pluginName),
+        (await index(result)).entries
+          .filter((entry) => !entry.hidden && entry.plugin !== undefined && entry.id.startsWith(`${token}:`))
+          .map((entry) => entry.plugin?.pluginName),
       );
       if (owners.size === 0) return undefined;
       const descriptions = result.graph.plugins
@@ -166,7 +219,10 @@ export const createPluginCommandCatalog = (
       const head = token.split(":", 1)[0] ?? token;
       if (isHelpTopic(head)) return `Run \`lando help ${head}\` to list commands.`;
       const result = await graph();
-      const ids = result.status === "available" ? result.graph.commands.map((candidate) => candidate.id) : [];
+      const ids =
+        result.status === "available"
+          ? (await index(result)).entries.filter((entry) => !entry.hidden).map((entry) => entry.id)
+          : [];
       if (!isReservedNamespaceHead(head) && ids.some((id) => id.startsWith(`${head}:`)))
         return `Run \`lando help ${head}\` to list commands.`;
       const suggestion = suggestCommandForSuffix(token, ids);

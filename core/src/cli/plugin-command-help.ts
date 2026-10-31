@@ -1,6 +1,7 @@
 import { renderPluginTopicHelp } from "./cold-path-output";
 import { activeRendererMode, activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { isEnvelopeResultFormat } from "./format-flags";
+import { typeableName } from "./help-names";
 import { redactHelpText } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
 import { printMachineHelpTarget } from "./help-target";
@@ -32,15 +33,21 @@ export const tryPluginCommandHelp = async (
     await renderHelpFailure(row.loadError);
     return true;
   }
+  const name = typeableName({
+    canonicalId: row.id,
+    builtInAliases: row.tokens?.filter((token) => token !== row.id) ?? [],
+  });
   if (isEnvelopeResultFormat(activeResultFormat)) {
     await printMachineHelpTarget(
       {
         canonicalId: row.id,
-        typeable: row.id,
-        extras: [],
+        typeable: name.primary,
+        extras: name.extras,
         summary: row.summary,
         source: "plugin",
         plugin: row.pluginName,
+        provenance: row.source,
+        implementation: "validated",
       },
       activeResultFormat,
     );
@@ -48,6 +55,7 @@ export const tryPluginCommandHelp = async (
     await emitResultLine(
       await redactHelpText(
         renderPluginOwnedCommandHelp(row.spec, {
+          aliases: row.tokens?.filter((token) => token !== row.id) ?? [],
           styled: shouldStyleHelp({
             isTTY: process.stdout.isTTY === true,
             env: process.env,
@@ -62,7 +70,16 @@ export const tryPluginCommandHelp = async (
 };
 
 export const pluginHelpRows = (rows: Awaited<ReturnType<PluginCommandCatalog["list"]>>["rows"]) =>
-  rows.map((row) => ({ canonicalId: row.id, primary: row.id, extras: [], summary: row.summary }));
+  rows
+    .filter((row) => row.descriptor.hidden !== true)
+    .map((row) => ({
+      canonicalId: row.id,
+      ...typeableName({
+        canonicalId: row.id,
+        builtInAliases: row.tokens?.filter((token) => token !== row.id) ?? [],
+      }),
+      summary: row.summary,
+    }));
 
 export const printPluginTopicHelp = async (
   token: string,

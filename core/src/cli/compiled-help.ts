@@ -10,13 +10,8 @@ import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
-import {
-  MORE_ROWS,
-  type ThisAppHelpRow,
-  commonRows,
-  renderColdRootHelp,
-  visibleHelpRows,
-} from "./cold-path-output";
+import { MORE_ROWS, type ThisAppHelpRow, commonRows, renderColdRootHelp } from "./cold-path-output";
+import { buildCommandCatalog } from "./command-catalog";
 import { activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { isEnvelopeResultFormat } from "./format-flags";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
@@ -128,9 +123,9 @@ export const pluginRowsForCache = (
   rows: PluginCommandListing["rows"],
   cache?: AppCommandIndexPayload | null,
 ): PluginCommandListing["rows"] => {
-  if (cache == null) return rows;
-  const cachedIds = new Set(cache.entries.map((entry) => entry.id));
-  return rows.filter((row) => !cachedIds.has(row.id));
+  return buildCommandCatalog(rows, cache).entries.flatMap((entry) =>
+    entry.plugin === undefined || entry.hidden ? [] : [{ ...entry.plugin, tokens: entry.tokens }],
+  );
 };
 
 export const buildHelpCatalog = (
@@ -149,7 +144,7 @@ export const buildHelpCatalog = (
     summary: row.summary,
     source: "built-in" as const,
   }));
-  const builtIns = visibleHelpRows(aliasPolicy).map((row) => toCatalogRow(row, "built-in"));
+  const catalog = buildCommandCatalog(plugins?.rows ?? [], cache);
   return {
     version: CORE_VERSION,
     platform: process.platform,
@@ -157,21 +152,27 @@ export const buildHelpCatalog = (
     toolingMetadata: metadata ?? { status: cache == null ? "not-app" : "fresh" },
     pluginMetadata: plugins?.metadata ?? { status: "available" },
     sections: { common, thisApp, more },
-    all: [
-      ...builtIns,
-      ...thisApp,
-      ...pluginRowsForCache(plugins?.rows ?? [], cache).map(
-        (row): HelpCatalogRow => ({
-          canonicalId: row.id,
-          typeable: row.id,
-          extras: [],
-          summary: row.summary,
-          source: "plugin",
-          plugin: row.pluginName,
-          ...(row.loadError === undefined ? {} : { loadError: row.loadError }),
-        }),
-      ),
-    ].toSorted(byTypeable),
+    all: catalog.entries
+      .filter((entry) => !entry.hidden)
+      .map((entry): HelpCatalogRow => {
+        const row = {
+          canonicalId: entry.id,
+          typeable: entry.primary,
+          extras: entry.extras,
+          summary: entry.summary,
+        };
+        if (entry.plugin !== undefined)
+          return {
+            ...row,
+            source: "plugin",
+            plugin: entry.plugin.pluginName,
+            provenance: entry.plugin.source,
+            implementation: entry.plugin.spec === undefined ? "discovered" : "validated",
+            ...(entry.plugin.loadError === undefined ? {} : { loadError: entry.plugin.loadError }),
+          };
+        return { ...row, source: entry.source === "tooling" ? "tooling" : "built-in" };
+      })
+      .toSorted(byTypeable),
   };
 };
 

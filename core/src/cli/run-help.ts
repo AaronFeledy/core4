@@ -68,7 +68,11 @@ export const printAllHelp = async (
           ? {
               pluginNotice: `Plugin commands unavailable: ${plugins.metadata.message} ${plugins.metadata.remediation ?? ""}`,
             }
-          : {}),
+          : (plugins.metadata.diagnostics?.length ?? 0) > 0
+            ? {
+                pluginNotice: `Plugin command metadata has ${plugins.metadata.diagnostics?.length} diagnostic(s); use --format=json for details.`,
+              }
+            : {}),
         ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
       }),
     ),
@@ -156,6 +160,9 @@ export const dispatchHelpTarget = async (
           });
         case "built-in":
           return printCommandHelp(route.entry);
+        case "plugin":
+          await tryPluginCommandHelp(route.token, catalog);
+          return;
         case "cache-miss":
         case "unknown-tooling":
           if (route._tag === "unknown-tooling" || !token.startsWith("app:")) {

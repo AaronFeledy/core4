@@ -85,7 +85,7 @@ const makeDbImportPlugin = () => {
     name: "@example/db-fixture",
     version: "1.0.0",
     api: 4,
-    contributes: { commands: ["db:import"] },
+    contributes: { commands: [{ id: "db:import", summary: spec.summary ?? "Import database." }] },
   });
   return definePlugin({
     name: manifest.name,
@@ -101,7 +101,15 @@ const graphContextForPlugin = (plugin: ReturnType<typeof makeDbImportPlugin>): C
     plugins: [],
     globalPlugins: [],
     certificateAuthorities: [],
-    commands: [{ id: "db:import", pluginName: plugin.name, source: "explicit", load }],
+    commands: [
+      {
+        id: "db:import",
+        descriptor: { id: "db:import", summary: makeDbImportSpec().summary ?? "Import database." },
+        pluginName: plugin.name,
+        source: "explicit",
+        load,
+      },
+    ],
     hostContext: Context.empty(),
   });
 };
@@ -111,7 +119,6 @@ describe("plugin-owned command dispatch", () => {
     // Given
     const spec = {
       id: "db:import",
-      summary: "Import a dump.",
       namespace: "db",
       bootstrap: "app",
       resultSchema: Schema.Boolean,
@@ -128,7 +135,7 @@ describe("plugin-owned command dispatch", () => {
       pluginOwnedCommandEffect(spec, ["-y"], false).pipe(Effect.provideService(Renderer, silentRenderer)),
     );
     // Then
-    expect(target.spec).toBe(spec);
+    expect(target.spec).toMatchObject({ ...spec, summary: makeDbImportSpec().summary });
     expect(result).toBe(true);
   });
 

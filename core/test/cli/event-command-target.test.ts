@@ -52,7 +52,15 @@ const makeRuntimeContext = (id: string, load: ExecutableCommandLoader): Context.
     plugins: [],
     globalPlugins: [],
     certificateAuthorities: [],
-    commands: [{ id, pluginName: "example-plugin", source: "system", load }],
+    commands: [
+      {
+        id,
+        descriptor: { id, summary: "Import a database dump." },
+        pluginName: "example-plugin",
+        source: "system",
+        load,
+      },
+    ],
     hostContext: Context.empty(),
   });
 

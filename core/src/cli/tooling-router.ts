@@ -24,7 +24,9 @@ import {
   resolveBuiltInCommand,
 } from "./built-in-command-registry";
 import { activeCommandAliases, commandAliasPolicyError } from "./command-alias-policy";
+import { buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
+import { createPluginCommandCatalog } from "./plugin-command-catalog";
 import { toolingCacheRecovery } from "./tooling-cache-status";
 import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./tooling-route";
 
@@ -53,9 +55,11 @@ export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   }).pipe(Effect.catchTag("LandofileFormConflictError", () => Effect.succeed(null)));
   if (cache === null) return undefined;
-  const policyError = commandAliasPolicyError(cache);
+  const plugins = (yield* Effect.promise(() => createPluginCommandCatalog().list())).rows;
+  const pluginIds = plugins.map((entry) => entry.id);
+  const policyError = commandAliasPolicyError(cache, pluginIds);
   if (policyError !== undefined) return yield* Effect.fail(policyError);
-  return activeCommandAliases(cache);
+  return activeCommandAliases(cache, plugins);
 });
 
 export const toolingName = (token: string): string | undefined => {
@@ -127,12 +131,16 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
 
   const policy = cache.aliasPolicy;
   const aliasesEnabled = policy?.enabled !== false;
-  const policyError = commandAliasPolicyError(cache);
+  const plugins = (yield* Effect.promise(() => createPluginCommandCatalog().list())).rows;
+  const catalog = buildCommandCatalog(plugins, cache);
+  const pluginIds = plugins.map((entry) => entry.id);
+  const policyError = commandAliasPolicyError(cache, pluginIds);
   if (policyError !== undefined) return yield* Effect.fail(policyError);
 
   const custom =
     policy?.custom !== undefined && Object.hasOwn(policy.custom, token) ? policy.custom[token] : undefined;
   if (aliasesEnabled && custom !== undefined) {
+    if (pluginIds.includes(custom)) return { _tag: "plugin", commandId: custom, token } as const;
     const builtInTarget = canonicalBuiltIn(custom);
     if (builtInTarget !== undefined) {
       return {
@@ -158,8 +166,11 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
 
   if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
 
-  const registeredAlias = resolveBuiltInCommand(token);
-  const isKnownAlias = custom !== undefined || registeredAlias !== undefined;
+  const catalogEntry = catalog.resolve(token);
+  if (catalogEntry?.source === "plugin" && catalogEntry.id !== token)
+    return { _tag: "plugin", commandId: catalogEntry.id, token } as const;
+  const registeredAlias = catalogEntry?.source === "built-in" ? canonicalBuiltIn(catalogEntry.id) : undefined;
+  const isKnownAlias = custom !== undefined || resolveBuiltInCommand(token) !== undefined;
   if (aliasesEnabled && registeredAlias !== undefined) {
     return {
       _tag: "built-in",

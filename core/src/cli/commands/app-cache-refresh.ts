@@ -88,14 +88,15 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
       throw cause;
     },
   });
+  const manifests = yield* pluginRegistry.list;
   const aliasError = commandAliasRegistrationError(
     landofile.document.commandAliases,
     entries.map((entry) => entry.id),
     entries,
+    manifests.flatMap((manifest) => (manifest.contributes?.commands ?? []).map((command) => command.id)),
   );
   if (aliasError !== undefined) yield* Effect.fail(aliasError);
 
-  const manifests = yield* pluginRegistry.list;
   yield* makeSubscriberRegistrationClosure(manifests).close({
     builtIns: BUILT_IN_COMMAND_IDS,
     appCommandIds: entries.map((entry) => entry.id),

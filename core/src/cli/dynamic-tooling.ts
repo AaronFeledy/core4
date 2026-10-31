@@ -240,6 +240,7 @@ export const routeResolvedTooling = async (
   switch (route._tag) {
     case "not-tooling":
     case "built-in":
+    case "plugin":
     case "alias-disabled":
       return false;
     case "cache-miss":
@@ -247,11 +248,13 @@ export const routeResolvedTooling = async (
       await runDynamicToolingFailure(route.name, toolingRouteError(route));
       return true;
     case "bun-script":
+      await import("../runtime/bundled-plugins");
       // A tooling task renders its own streams and declares no opt-in format.
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
       await runDynamicBunShellTooling(route, argv, signal);
       return true;
     case "tooling":
+      await import("../runtime/bundled-plugins");
       if (await rejectUnsupportedResultFormat(`app:${route.name}`, undefined)) return true;
       await runDynamicTooling([route.name, ...argv], signal, route.input);
       return true;

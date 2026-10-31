@@ -12,7 +12,12 @@ import type {
   ExecutableCommandNamespace,
   ExecutableCommandSpec,
 } from "@lando/sdk/plugins";
-import { type AppPlan, BootstrapLevel, type ToolingTaskShape } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  BootstrapLevel,
+  type CommandContribution,
+  type ToolingTaskShape,
+} from "@lando/sdk/schema";
 
 import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-command";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
@@ -33,13 +38,13 @@ const commandDeclaration = Schema.Struct({
   options: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 const commandMetadata = Schema.Struct({
-  summary: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  summary: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isPattern(/\S/u))),
   flags: Schema.optionalKey(Schema.Record(Schema.String, commandDeclaration)),
   args: Schema.optionalKey(Schema.Record(Schema.String, commandDeclaration)),
 });
 const executableSpecRemediation =
   "Return a spec with a nonempty summary, a run function, valid flags/args, and id, namespace, bootstrap, and resultSchema matching the manifest declaration. Declare any `yes` flag as a plain boolean; the CLI owns --yes/-y.";
-const destructiveCommandVerbs = new Set([
+export const destructiveCommandVerbs = new Set([
   "destroy",
   "remove",
   "uninstall",
@@ -52,6 +57,9 @@ const destructiveCommandVerbs = new Set([
 ]);
 
 const canonicalCommandIdPattern = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
+export type ResolvedPluginCommandSpec = ExecutableCommandSpec & { readonly summary: string };
+export const isDestructivePluginCommand = (spec: Pick<ExecutableCommandSpec, "id" | "flags">): boolean =>
+  destructiveCommandVerbs.has(spec.id.slice(spec.id.lastIndexOf(":") + 1)) || spec.flags?.yes !== undefined;
 const coreNamespaces = new Set<ExecutableCommandNamespace>(["app", "apps", "meta"]);
 
 const isToolingTarget = (command: string): boolean => command.startsWith("app:") && command.length > 4;
@@ -67,7 +75,8 @@ export const loadPluginSpec = (
   id: string,
   pluginName: string,
   load: ExecutableCommandLoader,
-): Effect.Effect<ExecutableCommandSpec, PluginDescriptorMismatchError | PluginLoadError> =>
+  descriptor?: CommandContribution,
+): Effect.Effect<ResolvedPluginCommandSpec, PluginDescriptorMismatchError | PluginLoadError> =>
   Effect.tryPromise({
     try: async () => {
       const cached = loaderCache.get(load);
@@ -82,6 +91,10 @@ export const loadPluginSpec = (
       }
       if (!Schema.is(commandMetadata)(spec) || typeof spec.run !== "function")
         issues.push("summary, run, flags, or args metadata is invalid");
+      if (descriptor !== undefined && spec.summary !== undefined && spec.summary !== descriptor.summary)
+        issues.push("module summary differs from the manifest summary");
+      const summary = descriptor?.summary ?? spec.summary;
+      if (summary === undefined) issues.push("manifest summary is missing");
       if (Object.values(spec.args ?? {}).some((arg) => arg.type !== "option" && arg.type !== "string"))
         issues.push("args must use option or string declarations");
       if (Object.values(spec.flags ?? {}).some((flag) => "parse" in flag && typeof flag.parse !== "function"))
@@ -130,7 +143,7 @@ export const loadPluginSpec = (
         });
       }
       if (cached === undefined) loaderCache.set(load, Promise.resolve(spec));
-      return spec;
+      return { ...spec, summary: summary ?? "" };
     },
     catch: (cause) =>
       cause instanceof PluginDescriptorMismatchError || cause instanceof PluginLoadError
@@ -271,7 +284,7 @@ export const resolveEventCommandTarget = (
     ? graph.value.commands.find((candidate) => candidate.id === command)
     : undefined;
   if (plugin !== undefined) {
-    return loadPluginSpec(plugin.id, plugin.pluginName, plugin.load).pipe(
+    return loadPluginSpec(plugin.id, plugin.pluginName, plugin.load, plugin.descriptor).pipe(
       Effect.map((spec) => ({ kind: "plugin", spec })),
     );
   }
