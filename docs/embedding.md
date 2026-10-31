@@ -137,3 +137,12 @@ and runtime setup.
 Interruptions are excluded. Primary-error selection prefers the first unannotated typed failure, then the first unannotated defect, then the first typed failure or defect.
 
 This matches CLI and MCP projection, but the helper does not serialize or automatically redact the values. Handle them accordingly before displaying or recording them. `renderError` receives only the primary failure. A projected defect or interruption propagates as a defect with the original cause attached instead of returning the result object.
+
+### Bun and plugin child exits
+
+Commands that run Bun for the user (`meta:bun`, `meta:x`, the plugin authoring and management commands, `meta:update`, and recipe `postInit` actions) share one observable contract, documented for CLI consumers in [Script Lando with JSON](./guides/scripting-with-json.mdx#capture-bun-backed-commands). The short version for hosts:
+
+- A child that ran and exited nonzero is data, not a failure: `ok: false`, `result.exitCode`, and a projected `LandoCommandError`. Managed plugin operations that fail report `PluginPackageOperationError` with `operation` (`resolve`, `download`, `verify`, `extract`, `postinstall`, `remove`) and an `exitCode` only when a child actually exited nonzero. Preparation failures are `FileIoError`; startup, I/O, and capture-overflow failures are `ProcessExecError`; timeouts are `ProcessTimeoutError`; recursive entry is `BunSelfReentryError`. Don't derive an offline classification from child stderr.
+- Direct `invokeOperation` and event-driven execution collect child output; they never attach the host's stdin, stdout, or stderr on their own. Collected output is capped at 1 MiB of raw bytes per channel for the invocation, and exceeding it fails rather than truncating.
+- Every Bun child is spawned through the `ProcessRunner` you provide. If your host overrides that service, the override is used for `lando bun`, plugin operations, `app:shell`, and `lando init` alike; there is no fallback to a concrete runner, and there is no public Bun runner service, layer, or plugin contribution to replace.
+- Recipe `postInit` failures reach you as `RecipeInitPostInitError` with the failed action and committed-file context. `rolledBack: false` means the generated scaffold remains. Don't expect the command completion envelope or a child exit field from initialization.

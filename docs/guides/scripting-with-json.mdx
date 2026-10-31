@@ -58,8 +58,8 @@ its single result document. `lando global:logs` uses the same result fields.
 Project scripts from `.lando/scripts/*.bun.sh` emit the same envelope. With
 `--format=json` or `--format=yaml`, `result` carries the script's `stdout`,
 `stderr`, and `exitCode`, and Lando exits with the script's own code. A nonzero
-script exit sets `ok: false`, retains `result`, and includes a tagged `error`.
-Writing those scripts is covered in
+script exit sets `ok: false`, retains `result`, and includes a tagged
+`LandoCommandError`. Writing those scripts is covered in
 [Add project commands with Bun Shell scripts](../tooling/bun-shell-scripts/).
 
 Diagnostic reports are different from failed processes. A completed lint report
@@ -73,6 +73,83 @@ After adding the `stamp.bun.sh` example from that guide to your app, run these c
 lando app:cache:refresh
 lando stamp abc1234 --format=json
 ```
+
+## Capture Bun-backed commands
+
+`lando bun` and `lando x` (aliases of `meta:bun` and `meta:x`) run Bun through
+the Lando executable you invoked, never a `bun` found on `PATH`. Without a
+format flag they hand the child your terminal: stdin, stdout, and stderr pass
+straight through, byte for byte and without redaction, so an interactive Bun
+command behaves as if you had typed `bun`. Put Lando's own flags before `bun`
+or `x`. Everything after the command id is Bun's argv and is forwarded
+unchanged:
+
+```sh
+lando --format=json bun -e 'console.log(2)'
+lando --format=json x cowsay moo
+```
+
+With `--format=json` or `--format=yaml` these commands emit one envelope when
+the child exits, not a frame stream. The child still reads your stdin, but its
+output is collected instead of printed, so the envelope is the only document on
+stdout:
+
+| Key | What it holds |
+| --- | --- |
+| `ok` | `true` only when the child exited `0` |
+| `result.exitCode` | The child's exit code; Lando exits with the same code |
+| `output` | The child's collected output, split into `stdout` and `stderr` chunks, redacted |
+| `error` | On a nonzero exit, a `LandoCommandError` naming the command and that exit code |
+
+Collection keeps up to 1 MiB of raw bytes per channel for the whole
+invocation, across every child the command starts. Going past that limit is a
+`ProcessExecError`, not a truncated success, and the command runs no later
+stage. Order within one channel is preserved; don't read exact interleaving
+between `stdout` and `stderr` from collected output.
+
+The plugin and recipe commands that run Bun for you emit the same envelope
+under `--format=json` or `--format=yaml`: `meta:plugin:test`,
+`meta:plugin:build`, `meta:plugin:publish`, `plugin:add`, `plugin:remove`,
+`update`, and `lando init` with recipe `postInit` Bun actions. Without a format
+flag those managed commands show live progress through the renderer and keep
+their completion summaries, except `plugin:remove`, which collects quietly in
+both modes. Managed children don't read your stdin. A recipe `postInit` Bun or
+command action can instead receive input explicitly bound by the recipe;
+that input takes precedence over the default closed stdin.
+
+### Which error a Bun-backed command reports
+
+A nonzero child keeps its own exit code. Every other row is a tagged failure
+with Lando's usual nonzero exit.
+
+| Situation | Tag and fields |
+| --- | --- |
+| Child ran and exited nonzero (`bun`, `x`, direct `meta:plugin:test` or `meta:plugin:build`, the final `meta:plugin:publish` child) | `ok: false`, `result.exitCode`, `error._tag: LandoCommandError` |
+| A managed plugin operation failed: `resolve`, `download`, `verify`, `extract`, `postinstall`, or `remove` | `PluginPackageOperationError` with `operation`, the package spec, and `exitCode` only when a child exited nonzero; the CLI exits `1` |
+| Publish's prerequisite rebuild or retest exited nonzero | `PluginPublishValidationError`, before any publish result exists |
+| A recipe `postInit` action failed during `lando init` | `RecipeInitPostInitError` with the failed action, scaffold context, and `rolledBack: false` |
+| Working directory or launcher could not be prepared | `FileIoError`, before any child starts |
+| Child never started, I/O failed, or a channel passed 1 MiB | `ProcessExecError`, with no invented exit code |
+| Child ran past its timeout | `ProcessTimeoutError` |
+| `lando bun` ran inside a Bun child that Lando started | `BunSelfReentryError`, before spawn |
+
+Lando doesn't guess at causes. A `bun install` that failed because the network
+was down is still a nonzero exit, not an offline error; read the `stderr`
+chunks in `output` for Bun's own message. When a managed operation fails after
+collecting output, its error carries at most 8 KiB of that output as redacted
+UTF-8 detail, `stderr` first and then `stdout`, with an explicit marker when
+clipped. When the output already streamed to your terminal, the error points
+you back to it instead of repeating it.
+
+Redaction runs before anything reaches the envelope, events, or logs. Registry
+credentials such as the `BUN_AUTH_TOKEN` that `meta:plugin:publish` passes to
+its child are protected. The human `lando bun` and `lando x` passthrough is the
+exception: that output is yours, unchanged.
+
+A failed managed operation stops the Lando side of the work: no plugin
+activation, deletion, registry refresh, or cache mutation follows it. It
+doesn't undo what the Bun child already did on disk. Trust you granted with
+`--trust` or `lando plugin:trust` stays granted.
 
 <Guide>
   <Scenario id="capture-project-script-output" render>
@@ -90,6 +167,18 @@ lando stamp abc1234 --format=json
     </Step>
     <Step name="cleanup-project-script">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="capture-bun-child-exit" layer="e2e" render>
+    <Step name="capture-bun-json">
+      <UseFixture name="bun-child-output" />
+      <Run command="lando --format=json bun print-number.js" />
+      <Verify command="lando --format=json bun print-number.js" expect={{ stdout: { regex: "\"_tag\":\\s*\"stdout\"[\\s\\S]*\"chunk\":\\s*\"2" } }} />
+    </Step>
+    <Step name="keep-nonzero-bun-exit">
+      <Run command="lando --format=json bun fail.js" expectExit={3} />
+      <Verify errorTag="LandoCommandError" />
     </Step>
   </Scenario>
 
