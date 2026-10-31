@@ -17,6 +17,14 @@ export const MCP_ALLOWLIST_FORBIDDEN_IDS: ReadonlyArray<string> = [
 
 const FORBIDDEN_ID_SET = new Set(MCP_ALLOWLIST_FORBIDDEN_IDS);
 
+/**
+ * Ids MCP never exposes, whatever their provenance, descriptor, or explicit allowance.
+ * Tether is an interactive-only foreground session; no programmatic entry may start it.
+ */
+export const MCP_NEVER_ALLOWED_IDS: ReadonlySet<string> = new Set(["app:remote:tether"]);
+
+export const isMcpNeverAllowed = (id: string): boolean => MCP_NEVER_ALLOWED_IDS.has(id);
+
 export const destructiveCommandVerbs: ReadonlySet<string> = new Set([
   "destroy",
   "remove",
@@ -61,7 +69,7 @@ export const computeMcpDefaultAllowlist = (
 ): ReadonlyArray<string> => {
   const ids = new Set<string>();
   for (const spec of specs) {
-    if (spec.mcpAllowed !== true) continue;
+    if (spec.mcpAllowed !== true || isMcpNeverAllowed(spec.id)) continue;
     assertMcpAllowlistSafe(spec);
     ids.add(spec.id);
   }
@@ -79,6 +87,7 @@ export const filterMcpDefaultAllowlist = (
     .filter(
       (entry) =>
         defaults.includes(entry.spec.id) &&
+        !isMcpNeverAllowed(entry.spec.id) &&
         (entry.plugin === undefined ||
           (entry.plugin.source === "bundled" &&
             entry.spec.mcpAllowed === true &&

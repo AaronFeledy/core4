@@ -2,6 +2,7 @@ import {
   assertMcpAllowlistSafe,
   filterMcpDefaultAllowlist,
   isAppConfigMcpUnsafeId,
+  isMcpNeverAllowed,
 } from "@lando/mcp/allowlist";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
@@ -30,6 +31,7 @@ export const mcpRegistryFromBuiltIns = (
   entries: ReadonlyArray<{ readonly spec: McpCommandSpec }>,
 ): McpCommandRegistry => ({
   commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
+    if (isMcpNeverAllowed(spec.id)) return [];
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
     if (spec.id === "app:config") return appConfigMcpSpecs.map((spec: LandoCommandSpec) => ({ spec }));
@@ -61,6 +63,15 @@ export const validateMcpAllowlistIds = (
   knownIds: ReadonlySet<string>,
 ): Effect.Effect<void, McpToolInputError> => {
   for (const id of options.allow) {
+    if (isMcpNeverAllowed(id))
+      return Effect.fail(
+        new McpToolInputError({
+          message: `Command id "${id}" in mcp.allow can never be exposed through MCP.`,
+          toolId: id,
+          path: "flags.allow",
+          remediation: `Remove ${id} from mcp.allow/--allow and run \`lando ${id}\` interactively from a terminal.`,
+        }),
+      );
     if (!knownIds.has(id))
       return Effect.fail(
         new McpToolInputError({

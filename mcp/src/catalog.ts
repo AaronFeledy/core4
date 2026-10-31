@@ -8,7 +8,7 @@
  */
 import type { McpCatalog, McpCatalogOptions, McpToolDescriptor } from "@lando/sdk/schema";
 
-import { isMcpDestructiveCommand } from "./allowlist";
+import { isMcpDestructiveCommand, isMcpNeverAllowed } from "./allowlist";
 import type { McpCommandSpec } from "./registry";
 import { type McpCommandEntry, deriveToolInputSchema } from "./registry";
 
@@ -26,13 +26,13 @@ export interface EffectiveAllowlist {
 
 /**
  * Compute the effective tool allowlist: defaults ∪ allow, minus deny. Deny wins
- * over allow, so an id in both is excluded.
+ * over allow, so an id in both is excluded; never-allowed ids are always excluded.
  */
 export const computeEffectiveAllowlist = (input: EffectiveAllowlistInput): EffectiveAllowlist => {
   const deny = new Set(input.deny ?? []);
   const ids = new Set<string>();
-  for (const id of input.defaults) if (!deny.has(id)) ids.add(id);
-  for (const id of input.allow ?? []) if (!deny.has(id)) ids.add(id);
+  for (const id of [...input.defaults, ...(input.allow ?? [])])
+    if (!deny.has(id) && !isMcpNeverAllowed(id)) ids.add(id);
   const parts = ["defaults"];
   if ((input.allow ?? []).length > 0) parts.push("allow");
   if (deny.size > 0) parts.push("deny");

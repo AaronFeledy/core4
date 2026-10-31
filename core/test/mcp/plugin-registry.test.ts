@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import { dispatchTool } from "@lando/mcp/dispatch";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
+import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { buildMcpListResult } from "../../src/cli/commands/meta/mcp-list";
 import { defaultIdsOf, knownIdsOf, validateMcpAllowlistIds } from "../../src/cli/commands/meta/mcp-registry";
@@ -119,4 +121,57 @@ test("a failing loader is excluded and reported without losing sibling commands"
   );
   expect(registry.commandEntries.map((entry) => entry.spec.id)).toEqual([spec.id]);
   expect(registry.diagnostics).toContainEqual(expect.objectContaining({ _tag: "PluginLoadError" }));
+});
+
+const tether = "app:remote:tether";
+
+test("a plugin declaring app:remote:tether is never admitted to the MCP registry", async () => {
+  // Given a plugin that declares tether as an MCP-allowed command
+  // When the MCP registry admits plugin commands
+  const registry = await Effect.runPromise(registryFor({ ...spec, id: tether, namespace: "app" }));
+  // Then tether is absent and the refusal is reported
+  expect(knownIdsOf(registry).has(tether)).toBe(false);
+  expect(registry.diagnostics).toContainEqual(
+    expect.objectContaining({ _tag: "McpAllowlistConflictError", message: expect.stringContaining(tether) }),
+  );
+});
+
+test("--allow rejects app:remote:tether even when the id is otherwise known", async () => {
+  // Given an allow list naming tether and a registry that knows the id
+  // When the allow ids are validated
+  const result = await Effect.runPromise(
+    Effect.result(validateMcpAllowlistIds({ allow: [tether], deny: [], tooling: false }, new Set([tether]))),
+  );
+  // Then validation fails before the session starts
+  expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "McpToolInputError", toolId: tether } });
+});
+
+test("dispatch refuses app:remote:tether even when registered and allowed", async () => {
+  // Given a registry and effective allowlist that both contain tether
+  let executed = 0;
+  const entry = { spec: { ...spec, id: tether, summary: "Tether fixture" } };
+  // When a client calls the tool
+  const exit = await Effect.runPromise(
+    Effect.exit(
+      dispatchTool(
+        { toolId: tether },
+        {
+          registry: new Map([[tether, entry]]),
+          effective: new Set([tether]),
+          allowlistSource: "allow",
+          redactor: createRedactor("secrets", { values: [] }),
+          resultRedactor: () => Effect.succeed(createRedactor("secrets", { values: [] })),
+          execute: () =>
+            Effect.sync(() => {
+              executed++;
+              return { _tag: "success" as const, value: "ran" };
+            }),
+        },
+      ),
+    ),
+  );
+  // Then the call is rejected without executing
+  expect(exit).toMatchObject({ _tag: "Failure" });
+  expect(JSON.stringify(exit)).toContain("McpToolNotAllowedError");
+  expect(executed).toBe(0);
 });

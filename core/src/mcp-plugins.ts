@@ -4,11 +4,11 @@ import {
   type PluginContributionGraphShape,
 } from "@lando/engine/plugins/contribution-graph";
 import { resolvePluginManifests } from "@lando/engine/plugins/manifest-resolution";
-import { assertMcpAllowlistSafe, isMcpDestructiveCommand } from "@lando/mcp/allowlist";
+import { assertMcpAllowlistSafe, isMcpDestructiveCommand, isMcpNeverAllowed } from "@lando/mcp/allowlist";
 import type { McpRunInput } from "@lando/mcp/dispatch";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { RedactionService } from "@lando/redaction/service";
-import { McpToolInputError } from "@lando/sdk/errors";
+import { McpAllowlistConflictError, McpToolInputError } from "@lando/sdk/errors";
 import { Effect, Option, Schema } from "effect";
 import type { McpCommandRegistry } from "./cli/commands/meta/mcp-registry";
 import { escapeDiagnosticText } from "./cli/diagnostic-text";
@@ -123,6 +123,16 @@ export const mcpRegistryWithPlugins = Effect.fn("Mcp.resolvePluginRegistry")(fun
   const knownIds = new Set(commandEntries.map((entry) => entry.spec.id));
   for (const candidate of graph.commands) {
     if (knownIds.has(candidate.id)) continue;
+    if (isMcpNeverAllowed(candidate.id)) {
+      addDiagnostic(
+        new McpAllowlistConflictError({
+          message: `Plugin command ${candidate.id} (${candidate.pluginName}) can never be exposed through MCP.`,
+          commandId: candidate.id,
+          remediation: `Run \`lando ${candidate.id}\` interactively from a terminal; MCP and --allow cannot expose it.`,
+        }),
+      );
+      continue;
+    }
     const loaded = yield* Effect.result(
       loadPluginSpec(candidate.id, candidate.pluginName, candidate.load, candidate.descriptor),
     );

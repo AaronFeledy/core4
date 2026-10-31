@@ -26,6 +26,7 @@ import {
   normalizeDefect,
 } from "@lando/sdk/command-result";
 import { Logger } from "@lando/sdk/services";
+import { isMcpNeverAllowed } from "./allowlist";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import { boundedEventString, postEvent, preEvent } from "./call-events";
 import { OutputCapture } from "./output-capture";
@@ -192,6 +193,15 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
           "Enable MCP tooling for tooling-backed ids, or remove the id from mcp.allow/--allow for this session.",
       });
 
+    if (isMcpNeverAllowed(request.toolId)) {
+      return yield* new McpToolNotAllowedError({
+        message: `Tool ${request.toolId} can never run through MCP.`,
+        toolId: request.toolId,
+        effectiveAllowlist: [...deps.effective].sort((a, b) => a.localeCompare(b)),
+        source: deps.allowlistSource,
+        remediation: `Run \`lando ${request.toolId}\` interactively from a terminal; MCP cannot start it.`,
+      });
+    }
     if (!deps.effective.has(request.toolId)) {
       const error = rejectNotAllowed();
       return yield* Effect.fail(error);
