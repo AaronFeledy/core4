@@ -1,4 +1,4 @@
-import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
+import type { LandofileShape } from "@lando/sdk/schema";
 import { Result } from "effect";
 
 import type { DiscoveredBunShellScript } from "@lando/landofile/bun-sh-discovery";
@@ -8,8 +8,6 @@ import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import type { EffectiveTooling } from "../planner/effective-tooling.ts";
 import type { CommandIndexEntry } from "./command-index.ts";
 
-const contributionId = (entry: string | { readonly id: string }): string =>
-  typeof entry === "string" ? entry : entry.id;
 const compareOrdinal = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
 
 export const compileToolingCommands = (
@@ -79,20 +77,4 @@ export const compileAppCommands = (
     merged.push(entry);
   }
   return merged.sort((a, b) => compareOrdinal(a.id, b.id));
-};
-
-export const compilePluginCommands = (
-  manifests: ReadonlyArray<PluginManifest>,
-): ReadonlyArray<CommandIndexEntry> => {
-  const seen = new Set<string>();
-  const entries: CommandIndexEntry[] = [];
-  for (const manifest of manifests) {
-    for (const command of manifest.contributes?.commands ?? []) {
-      const id = contributionId(command);
-      if (seen.has(id)) continue;
-      seen.add(id);
-      entries.push({ id, summary: "", hidden: false });
-    }
-  }
-  return entries.sort((a, b) => a.id.localeCompare(b.id));
 };

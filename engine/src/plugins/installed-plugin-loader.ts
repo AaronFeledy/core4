@@ -19,7 +19,7 @@ export interface ExternalPluginModule {
   readonly [key: string]: unknown;
 }
 
-const loadExternalPluginEntry = async (
+export const loadInstalledPluginEntry = async (
   packageRoot: string,
   manifest: PluginManifest,
 ): Promise<ExternalPluginModule | undefined> => {
@@ -297,6 +297,6 @@ export const loadInstalledPlugin = async (
 ): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
   const packageRoot = packageRootPath(packageRootInput);
   const manifest = await loadInstalledPluginManifest(packageRoot);
-  const module = await loadExternalPluginEntry(packageRoot, manifest);
+  const module = await loadInstalledPluginEntry(packageRoot, manifest);
   return { manifest, ...(module === undefined ? {} : { module }) };
 };

@@ -112,7 +112,7 @@ const writeCommandSubscriberPlugin = async (
         version: plugin.version,
         api: 4,
         entry: "index.js",
-        contributes: { commands: [plugin.commandId] },
+        contributes: { commands: [{ id: plugin.commandId, summary: "Release plugin." }] },
         subscribers: [
           {
             id: "terminal-marker",
@@ -422,7 +422,7 @@ describe("subscriber runtime integration", () => {
     // Then: app behavior wins selector expansion, while only the global command remains notify-valid.
     expect(observed.effectiveManifest).toMatchObject({
       version: "2.0.0",
-      contributes: { commands: [appCommandId] },
+      contributes: { commands: [{ id: appCommandId, summary: "Release plugin." }] },
     });
     expect(observed.markerValue).toBe("app");
     expect(Exit.isFailure(observed.invalidExit)).toBe(true);

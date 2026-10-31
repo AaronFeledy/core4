@@ -7,7 +7,7 @@ import { Effect, Schema } from "effect";
 import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
 
-import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import { removeInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { findLandofilePath } from "@lando/landofile/discovery";
@@ -288,7 +288,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       const hasVersionedDir = existsSync(versionedDir);
       if (!hasModuleDir && !hasVersionedDir) {
         yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
-        yield* invalidatePluginCommandCache({
+        yield* invalidateAppToolingCaches({
           ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
         });
         return { pluginName: options.name, removed: false };
@@ -323,7 +323,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
 
       const trustStore = options.trustStore;
       if (trustStore !== undefined) trustStore.delete(options.name);
-      yield* invalidatePluginCommandCache({
+      yield* invalidateAppToolingCaches({
         ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
       });
       return { pluginName: options.name, removed: true };

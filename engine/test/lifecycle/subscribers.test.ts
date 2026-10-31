@@ -17,7 +17,12 @@ const observer = (subscribers: ReadonlyArray<typeof SubscriberManifestEntry.Enco
     name: "@example/observer",
     version: "1.0.0",
     api: 4,
-    contributes: { commands: ["example:release", { id: "example:inspect", module: "./inspect.ts" }] },
+    contributes: {
+      commands: [
+        { id: "example:release", summary: "Release example." },
+        { id: "example:inspect", summary: "Inspect example." },
+      ],
+    },
     subscribers,
   });
   const module: LandoPluginModule = {

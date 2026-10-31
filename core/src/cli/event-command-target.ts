@@ -12,19 +12,43 @@ import type {
   ExecutableCommandNamespace,
   ExecutableCommandSpec,
 } from "@lando/sdk/plugins";
-import { type AppPlan, BootstrapLevel, type ToolingTaskShape } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  BootstrapLevel,
+  type CommandContribution,
+  type ToolingTaskShape,
+} from "@lando/sdk/schema";
 
 import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-command";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { type NormalizedToolingTask, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import { destructiveCommandVerbs } from "@lando/mcp/allowlist";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { resolveEventScriptTarget } from "./event-script-target";
 import type { LandoCommandSpec } from "./spec/command-spec";
+export { destructiveCommandVerbs } from "@lando/mcp/allowlist";
 
 const loaderCache = new WeakMap<ExecutableCommandLoader, Promise<ExecutableCommandSpec>>();
+const commandDeclaration = Schema.Struct({
+  type: Schema.Literals(["boolean", "option", "string", "number"]),
+  description: Schema.optionalKey(Schema.String),
+  required: Schema.optionalKey(Schema.Boolean),
+  multiple: Schema.optionalKey(Schema.Boolean),
+  valueType: Schema.optionalKey(Schema.Literals(["string", "integer"])),
+  default: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number, Schema.Boolean, Schema.Undefined])),
+  options: Schema.optionalKey(Schema.Array(Schema.String)),
+});
+const commandMetadata = Schema.Struct({
+  summary: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isPattern(/\S/u))),
+  flags: Schema.optionalKey(Schema.Record(Schema.String, commandDeclaration)),
+  args: Schema.optionalKey(Schema.Record(Schema.String, commandDeclaration)),
+});
+const executableSpecRemediation =
+  "Return a spec with a nonempty summary, a run function, valid flags/args, and id, namespace, bootstrap, and resultSchema matching the manifest declaration. Declare any `yes` flag as a plain boolean; the CLI owns --yes/-y.";
 
 const canonicalCommandIdPattern = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
+export type ResolvedPluginCommandSpec = ExecutableCommandSpec & { readonly summary: string };
 const coreNamespaces = new Set<ExecutableCommandNamespace>(["app", "apps", "meta"]);
 
 const isToolingTarget = (command: string): boolean => command.startsWith("app:") && command.length > 4;
@@ -36,17 +60,36 @@ const lookupTargetKind = (command: string): ToolingCommandLookupError["targetKin
   return "plugin";
 };
 
-const loadPluginSpec = (
+export const loadPluginSpec = (
   id: string,
   pluginName: string,
   load: ExecutableCommandLoader,
-): Effect.Effect<ExecutableCommandSpec, PluginDescriptorMismatchError | PluginLoadError> =>
+  descriptor?: CommandContribution,
+): Effect.Effect<ResolvedPluginCommandSpec, PluginDescriptorMismatchError | PluginLoadError> =>
   Effect.tryPromise({
     try: async () => {
       const cached = loaderCache.get(load);
       const spec = await (cached ?? load());
       const issues: string[] = [];
+      if (typeof spec !== "object" || spec === null) {
+        throw new PluginLoadError({
+          pluginName,
+          message: `Plugin ${pluginName} command ${id} has invalid summary, run, flags, or args metadata.`,
+          remediation: executableSpecRemediation,
+        });
+      }
+      if (!Schema.is(commandMetadata)(spec) || typeof spec.run !== "function")
+        issues.push("summary, run, flags, or args metadata is invalid");
+      if (descriptor !== undefined && spec.summary !== undefined && spec.summary !== descriptor.summary)
+        issues.push("module summary differs from the manifest summary");
+      const summary = descriptor?.summary ?? spec.summary;
+      if (summary === undefined) issues.push("manifest summary is missing");
+      if (Object.values(spec.args ?? {}).some((arg) => arg.type !== "option" && arg.type !== "string"))
+        issues.push("args must use option or string declarations");
+      if (Object.values(spec.flags ?? {}).some((flag) => "parse" in flag && typeof flag.parse !== "function"))
+        issues.push("flag parse must be a function when present");
       const namespace = id.split(":", 1)[0] ?? id;
+      if (!canonicalCommandIdPattern.test(spec.id)) issues.push("id must be a canonical command id");
       if (spec.id !== id) issues.push(`id ${String(spec.id)} does not match ${id}`);
       if (spec.namespace !== namespace)
         issues.push(`namespace ${String(spec.namespace)} does not match ${namespace}`);
@@ -54,6 +97,8 @@ const loadPluginSpec = (
         issues.push(`bootstrap ${String(spec.bootstrap)} is not valid`);
       if (!Schema.isSchema(spec.resultSchema)) issues.push("resultSchema is not a schema instance");
       const yes = spec.flags?.yes;
+      if (destructiveCommandVerbs.has(spec.id.slice(spec.id.lastIndexOf(":") + 1)) && yes === undefined)
+        issues.push("destructive commands must declare a yes flag");
       const compatibleYes =
         yes === undefined ||
         (yes.type === "boolean" &&
@@ -83,15 +128,14 @@ const loadPluginSpec = (
             `flags.yes=${yesDeclaration}`,
           ],
           message: `Plugin ${pluginName} command loader ${id} returned an invalid executable command spec: ${issues.join("; ")}.`,
-          remediation:
-            "Return a spec whose id, namespace, bootstrap, and resultSchema match the manifest declaration, and declare any `yes` flag as a plain boolean; the CLI owns --yes/-y.",
+          remediation: executableSpecRemediation,
         });
       }
       if (cached === undefined) loaderCache.set(load, Promise.resolve(spec));
-      return spec;
+      return { ...spec, summary: summary ?? "" };
     },
     catch: (cause) =>
-      cause instanceof PluginDescriptorMismatchError
+      cause instanceof PluginDescriptorMismatchError || cause instanceof PluginLoadError
         ? cause
         : new PluginLoadError({
             pluginName,
@@ -99,7 +143,19 @@ const loadPluginSpec = (
             cause,
             remediation: `Repair plugin ${pluginName} so command loader ${id} succeeds.`,
           }),
-  });
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: "5 seconds",
+      orElse: () =>
+        Effect.fail(
+          new PluginLoadError({
+            pluginName,
+            message: `Plugin ${pluginName} command loader ${id} timed out.`,
+            remediation: `Repair plugin ${pluginName} so its asynchronous command loader completes.`,
+          }),
+        ),
+    }),
+  );
 
 const toolingSpec = (
   declaration: NormalizedToolingTask,
@@ -217,7 +273,7 @@ export const resolveEventCommandTarget = (
     ? graph.value.commands.find((candidate) => candidate.id === command)
     : undefined;
   if (plugin !== undefined) {
-    return loadPluginSpec(plugin.id, plugin.pluginName, plugin.load).pipe(
+    return loadPluginSpec(plugin.id, plugin.pluginName, plugin.load, plugin.descriptor).pipe(
       Effect.map((spec) => ({ kind: "plugin", spec })),
     );
   }

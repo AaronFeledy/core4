@@ -6,7 +6,6 @@ import { WorkflowInspection } from "./schema.ts";
 
 export const spec = {
   id: "github-actions:list",
-  summary: "Inspect local GitHub Actions workflows without executing or fetching anything.",
   namespace: "github-actions",
   bootstrap: "minimal",
   strict: true,

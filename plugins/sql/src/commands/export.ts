@@ -5,7 +5,6 @@ import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "
 
 export const spec = {
   id: "db:export",
-  summary: "Export a database dump from a service.",
   namespace: "db",
   bootstrap: "app",
   flags: {

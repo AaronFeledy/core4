@@ -2,6 +2,8 @@ import { Effect } from "effect";
 import { Schema } from "effect";
 
 import { CertificateAuthorityContribution } from "./certificate-authority-contribution.ts";
+import { CommandContribution } from "./command-contribution.ts";
+export { CommandContribution } from "./command-contribution.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
 import { FileSyncEngineCapabilities } from "./file-sync-engine.ts";
@@ -304,7 +306,14 @@ export const PluginContribution = Schema.Struct({
   certificateAuthorities: Schema.optionalKey(Schema.Array(CertificateAuthorityContribution)).annotate({
     description: "CertificateAuthority implementations registered by this plugin.",
   }),
-  commands: Schema.optionalKey(Schema.Array(ContributionRef)),
+  commands: Schema.optionalKey(
+    Schema.Array(CommandContribution).check(
+      Schema.makeFilter(
+        (commands) => new Set(commands.map((command) => command.id)).size === commands.length,
+        { message: "Command ids must be unique within a plugin manifest." },
+      ),
+    ),
+  ),
   configTranslators: Schema.optionalKey(Schema.Array(ConfigTranslatorContribution)).annotate({
     description:
       "ConfigTranslator implementations registered by this plugin; loaded only on explicit conversion.",

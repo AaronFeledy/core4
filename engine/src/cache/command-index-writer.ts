@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile, readdir, rm } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
 import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
 import {
@@ -37,13 +37,30 @@ export {
   readAppCommandCacheForCwdDetailed,
   readFreshAppCommandCacheForCwd,
 } from "./command-index-reader.ts";
-export {
-  type WritePluginCommandCacheOptions,
-  invalidatePluginCommandCache,
-  readPluginCommandCache,
-  writePluginCommandCache,
-  writePluginCommandCacheStrict,
-} from "./plugin-command-index.ts";
+/**
+ * Drop app tooling-compilation caches under `<userCacheRoot>/apps/tooling-*`.
+ * Plugin-set changes (install/link/unlink/remove/trust) call this so the next
+ * tooling path rebuilds against the current contribution set.
+ */
+export const invalidateAppToolingCaches = (
+  options: { readonly cacheRoot?: string } = {},
+): Effect.Effect<void, never> =>
+  Effect.tryPromise({
+    try: async () => {
+      const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
+      const appsRoot = join(cacheRoot, "apps");
+      const entries = await readdir(appsRoot, { withFileTypes: true }).catch((cause) => {
+        if (isMissingFile(cause)) return [];
+        throw cause;
+      });
+      await Promise.all(
+        entries
+          .filter((entry) => entry.isDirectory() && entry.name.startsWith("tooling-"))
+          .map((entry) => rm(join(appsRoot, entry.name), { recursive: true, force: true })),
+      );
+    },
+    catch: () => undefined,
+  }).pipe(Effect.ignore);
 
 export interface WriteAppCommandCacheOptions {
   readonly landofile: LandofileShape;
