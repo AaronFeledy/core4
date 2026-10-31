@@ -3,13 +3,22 @@
  * Refresh committed `.bun-test-timings.json` from the collected shard file set.
  *
  * Native `bun test --shard` balances from this file.
- * The collector excludes integration tests except the three fake-client provider contract suites, plus suites owned by dedicated jobs and the nightly tier.
+ * The ownership inventory supplies the same unit file set to local and CI runs.
  */
 import { resolve } from "node:path";
 
-import { TEST_TIMINGS_FILE, collectShardedTestFiles } from "./test-shards.ts";
+import { TEST_TIMINGS_FILE, collectShardedTestFiles, testFileArguments } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
+
+export const timingRefreshCommand = (files: readonly string[]): readonly string[] => [
+  process.execPath,
+  "--no-orphans",
+  "test",
+  `--timings=${TEST_TIMINGS_FILE}`,
+  "--update-timings",
+  ...testFileArguments(files),
+];
 
 const main = async (): Promise<never> => {
   const files = await collectShardedTestFiles();
@@ -18,14 +27,7 @@ const main = async (): Promise<never> => {
   }
   console.error(`[update-test-timings] measuring ${files.length} files -> ${TEST_TIMINGS_FILE}`);
   const proc = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "--no-orphans",
-      "test",
-      `--timings=${TEST_TIMINGS_FILE}`,
-      "--update-timings",
-      ...files,
-    ],
+    cmd: [...timingRefreshCommand(files)],
     cwd: REPO_ROOT,
     stdout: "inherit",
     stderr: "inherit",

@@ -16,9 +16,15 @@ bun run test:unit                     # whole-suite count
 bun --no-orphans test <path>          # per-file reproduction
 ```
 
-`test:unit` excludes only `**/*.integration.test.ts`. It does **not** apply the
-CI shard exclusions, so it also runs the generated guide scenarios that CI gives
-their own job family. Expect it to take roughly 25 minutes.
+The current `test:unit` command uses the same collected unit file set as CI
+shards. It includes reviewed local integration suites and excludes dedicated
+library, recipe, docs, generated-guide and nightly suites. Use the [CI
+runbook](./ci.md) for those suites and for focused checks.
+
+The 2026-09-20 measurement below used an older collector that excluded only
+`**/*.integration.test.ts`, also ran generated guide scenarios, and took roughly
+25 minutes. Current `test:unit` results are not directly comparable with that
+historical collection; the dated measurements below have not been rerun.
 
 A file that fails under `test:unit` but passes on its own is not a defect in
 that file. It is a victim of something earlier in the run, and the cause belongs

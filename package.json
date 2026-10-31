@@ -43,7 +43,7 @@
   "scripts": {
     "build": "bun run --filter='*' build",
     "test": "bun run scripts/test-shards.ts",
-    "test:unit": "bun --no-orphans test --path-ignore-patterns='**/*.integration.test.ts'",
+    "test:unit": "bun run scripts/test-shards.ts --local",
     "test:affected": "bun run scripts/test-affected.ts",
     "test:unit:isolation": "bun --no-orphans test core/test/cli/doctor.test.ts core/test/cli/doctor-report.test.ts core/test/cli/doctor-plugin-metadata.test.ts core/test/codegen/guide-scenarios.test.ts core/test/plugins/bundled.test.ts plugins/provider-lando/test/plugin-descriptor.test.ts plugins/provider-lando/test/package.test.ts",
     "test:unit:shard": "bun run scripts/test-shards.ts --run",
@@ -64,7 +64,7 @@
     "clean": "bun run --filter='*' clean && rm -rf dist .tsbuildinfo",
     "codegen": "bun run scripts/codegen.ts",
     "codegen:check": "bun run codegen && bun run check:codegen-drift",
-    "gate:pr": "bun run check:types && bun run typecheck && bun run lint && bun run codegen:check && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
+    "gate:pr": "bun run check:types && bun run typecheck && bun run lint && bun run codegen:check && bun run check:test-ownership && bun run check:boundaries && GUIDE_DRIFT_BASE_REF=origin/main bun run check:guide-drift",
     "codegen:guide-scenarios": "bun run scripts/build-guide-scenarios.ts",
     "docs:scenario": "bun run scripts/docs-scenario.ts",
     "docs:build": "bun run codegen && bun run --filter='@lando/docs' build",
@@ -113,7 +113,9 @@
     "codegen:compose-fixtures": "bun run scripts/build-compose-fixtures.ts",
     "codegen:compose-fixture-manifest": "bun run scripts/build-compose-fixture-manifest.ts",
     "codegen:opentui-native-stubs": "bun run scripts/build-opentui-native-stubs.ts",
-    "release": "bun run scripts/release.ts"
+    "release": "bun run scripts/release.ts",
+    "test:inventory": "bun run scripts/test-ownership.ts",
+    "check:test-ownership": "bun run scripts/test-ownership.ts --check"
   },
   "dependencies": {
     "@mdx-js/mdx": "^3.1.1",
