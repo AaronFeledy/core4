@@ -1740,6 +1740,7 @@ jobs:
           set -euo pipefail
           UBUNTU_SNAPSHOT=20261019T000000Z
           printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
+          printf 'Package: *\nPin: origin snapshot.ubuntu.com\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/50lando-runtime-bundle-snapshot
           for DELAY in 0 5 15 45; do
             if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
             if sudo apt-get update --error-on=any; then break; fi

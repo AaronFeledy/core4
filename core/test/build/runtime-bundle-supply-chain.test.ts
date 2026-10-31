@@ -37,12 +37,15 @@ const runPrerequisiteScript = async (
 
   try {
     await Bun.write(resolve(fakeBin, "updates"), "");
+    await Bun.write(resolve(fakeBin, "preferences"), "");
     await Bun.write(resolve(fakeBin, "sleeps"), "");
     await Bun.write(resolve(fakeBin, "install-arguments"), "");
     await Bun.write(resolve(fakeBin, "verified-packages"), "");
     await writeCommand(
       "sudo",
-      `if [ "$1" = "tee" ]; then
+      `if [ "$1" = "tee" ] && [ "$2" = "/etc/apt/preferences.d/50lando-runtime-bundle-snapshot" ]; then
+  cat >"$APT_TEST_ROOT/preferences"
+elif [ "$1" = "tee" ]; then
   cat >"$APT_TEST_ROOT/config"
 elif [ "$1" = "apt-get" ] && [ "$2" = "update" ]; then
   shift 2
@@ -75,6 +78,7 @@ fi`,
       exitCode,
       output: stdout + stderr,
       config: await Bun.file(resolve(fakeBin, "config")).text(),
+      preferences: await Bun.file(resolve(fakeBin, "preferences")).text(),
       updates: await Bun.file(resolve(fakeBin, "updates")).text(),
       sleeps: await Bun.file(resolve(fakeBin, "sleeps")).text(),
       installed: await Bun.file(resolve(fakeBin, "installed")).exists(),
@@ -170,6 +174,24 @@ POLICY`;
     }
     expect(result.installArguments).not.toContain("libglib2.0-dev-bin-linux");
     expect(result.verifiedPackages).not.toContain("libglib2.0-dev-bin-linux");
+  });
+
+  test("pins the snapshot above newer runner packages before installing", async () => {
+    // Given: a runner image whose installed GLib runtime is newer than the snapshot.
+    const aptCacheBody = `cat <<'POLICY'
+  Candidate: 1.0
+  Version table:
+ *** 1.0 1001
+       1001 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble-updates/main amd64 Packages
+POLICY`;
+    // When: execute the generated install and verification script.
+    const result = await runPrerequisiteScript(aptCacheBody, "1.0");
+    const workflow = await renderWorkflow();
+    // Then: APT may downgrade to snapshot versions, and the pin precedes installation.
+    expect(result.exitCode, result.output).toBe(0);
+    expect(result.preferences).toBe("Package: *\nPin: origin snapshot.ubuntu.com\nPin-Priority: 1001\n");
+    expect(workflow.indexOf("Pin-Priority: 1001")).toBeGreaterThan(-1);
+    expect(workflow.indexOf("Pin-Priority: 1001")).toBeLessThan(workflow.indexOf("sudo apt-get install"));
   });
 
   test("rejects a live candidate when only another version comes from the snapshot", async () => {
