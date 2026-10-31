@@ -7,7 +7,12 @@
  */
 import { resolve } from "node:path";
 
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import { Effect } from "effect";
+import { loadPluginSpec } from "../core/src/cli/event-command-target.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../core/src/cli/generated/command-registry-manifest.ts";
+import { pluginFlagDefinitions } from "../core/src/cli/plugin-owned-command-input.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "docs/reference/commands.mdx");
@@ -29,6 +34,7 @@ interface ManifestFlag {
 }
 
 interface ManifestCommand {
+  readonly plugin?: string;
   readonly description?: string;
   readonly hidden?: boolean;
   readonly aliases?: ReadonlyArray<string>;
@@ -39,6 +45,23 @@ interface ManifestCommand {
 
 const manifestCommands = (): ReadonlyArray<ManifestCommand> =>
   Object.values(COMMAND_REGISTRY_MANIFEST.commands);
+
+export const bundledPluginCommands = async (
+  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
+): Promise<ReadonlyArray<ManifestCommand>> =>
+  Promise.all(
+    modules.flatMap((plugin) =>
+      [...(plugin.commands ?? [])].map(async ([id, load]) => {
+        const spec = await Effect.runPromise(loadPluginSpec(id, plugin.name, load));
+        return {
+          spec,
+          plugin: plugin.name,
+          flags: pluginFlagDefinitions(spec),
+          ...(spec.args === undefined ? {} : { args: spec.args }),
+        };
+      }),
+    ),
+  );
 
 // Conformance guard: documented universal flags must stay present on public commands.
 const assertUniversalFlags = (commands: ReadonlyArray<ManifestCommand>): void => {
@@ -106,6 +129,7 @@ const renderCommand = (command: ManifestCommand): string => {
   const lines: Array<string> = [`## \`lando ${command.spec.id}\``, ""];
   const summary = summaryOf(command);
   if (summary.length > 0) lines.push(summary, "");
+  if (command.plugin !== undefined) lines.push(`Provided by \`${command.plugin}\`.`);
   const aliases = (command.aliases ?? []).filter((alias) => alias.length > 0);
   if (aliases.length > 0) {
     lines.push(`Aliases: ${aliases.map((alias) => `\`lando ${alias}\``).join(", ")}`);
@@ -115,8 +139,8 @@ const renderCommand = (command: ManifestCommand): string => {
   return `${lines.join("\n").trimEnd()}\n`;
 };
 
-const renderPage = (): string => {
-  const commands = manifestCommands()
+const renderPage = (plugins: ReadonlyArray<ManifestCommand> = []): string => {
+  const commands = [...manifestCommands(), ...plugins]
     .filter((command) => command.hidden !== true)
     .sort((left, right) => left.spec.id.localeCompare(right.spec.id));
   assertUniversalFlags(commands);
@@ -124,15 +148,16 @@ const renderPage = (): string => {
   const header = [
     "---",
     "title: Command Reference",
-    "description: Generated reference for every public Lando command and its flags.",
+    "description: Generated reference for built-in and bundled plugin Lando commands and their flags.",
     "---",
     "",
     "{/* GENERATED FILE — do not hand-edit. Regenerate via `bun run codegen:command-reference`. */}",
     "",
     "# Command Reference",
     "",
-    "Find public Lando commands, aliases, arguments, and flags below. Hidden and",
-    "internal commands are omitted. This page is generated from command metadata.",
+    "Find built-in and bundled plugin commands, aliases, arguments, and flags below.",
+    "Optional plugins document their own commands. Hidden and internal commands are",
+    "omitted. This page is generated from command metadata.",
     "",
     "## Machine-readable output",
     "",
@@ -176,7 +201,7 @@ const renderPage = (): string => {
 };
 
 const main = async (): Promise<void> => {
-  await Bun.write(OUTPUT, renderPage());
+  await Bun.write(OUTPUT, renderPage(await bundledPluginCommands()));
   console.log(`[build-command-reference] wrote ${OUTPUT}`);
 };
 

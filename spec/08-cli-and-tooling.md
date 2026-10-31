@@ -16,7 +16,7 @@ Every command has exactly one kind and one namespace.
 | Kind | Source | Registry representation |
 |---|---|---|
 | Built-in | Core | Static `LandoCommandSpec` entry adapting Effect command logic |
-| Plugin | Plugin manifest `provides.commands` | Lazy-loaded `LandoCommandSpec` |
+| Plugin | Plugin manifest command contributions (§9.4) | Lazily loaded `ExecutableCommandSpec`, validated at load and resolved through the plugin contribution graph (§9.7) |
 | Tooling | Landofile `tooling:` | Generated registry shim from the app command index |
 | Management | Core or plugin with `hidden: true` | Hidden registry entry |
 
@@ -242,7 +242,7 @@ The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-c
 
 ### 8.3 Command contract
 
-Every built-in and plugin command conforms to `LandoCommandSpec`; invocation conforms to `CommandInput`.
+Every built-in command conforms to `LandoCommandSpec`; invocation conforms to `CommandInput`. Plugin commands conform to `ExecutableCommandSpec` from `@lando/sdk/plugins`, the executable subset `LandoCommandSpec` extends: `id`, `namespace`, `summary`, `bootstrap`, optional `flags`, `args`, and `strict`, `run`, `resultSchema`, and optional `completion`, `render`, and `redactionTokens`. Loading validates the id against the manifest, the namespace against the id prefix, the bootstrap level, a non-empty summary, `run`, `resultSchema`, flag and arg declaration shapes, and §8.3.1 `yes`; a mismatch fails that command with `PluginDescriptorMismatchError` or `PluginLoadError` (§9.7). Registry-only fields (aliases, `helpGroup`, docs and acceptance metadata, allowlist membership, `streaming`) do not apply to plugin commands.
 
 Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends LandoCommandError>`, `CommandInput`, `FlagSpec`, `ArgSpec`, `CommandDocsMetadata`, `AcceptanceCheckId`, `StreamFrameSchema`, and `LandoCommandRequirements`.
 
@@ -312,13 +312,13 @@ Source mode and the compiled `$bunfs` binary share one registry and `runCli` dis
 - Each `LandoCommandSpec` is registered once. Deferred ids live in the deferred-command plan table (`core/src/cli/deferred-commands.ts`) and return phase-tagged `NotImplementedError`.
 - Cross-cutting CLI helpers live under `core/src/cli/` and MUST NOT be duplicated by entry mode.
 - Source and relocated binary MUST have identical exit codes, tagged-error fields, and §8.11 output.
-- Help, version, unknown-command, topics, and aliases derive from the registry.
+- Help, version, unknown-command, topics, and aliases derive from the registry; help listings, plugin topics, and unknown-command suggestions also project plugin commands from the plugin contribution graph (§8.4.2, §9.7).
 - Canonical ids and aliases are colon-form tokens. Compatibility normalization is limited to `apps scratch run`; `scratch <start|stop|destroy|list|info|logs|gc|run>`; `meta recipes` and `recipes` with `list|describe|validate`; `share <list|stop>`; `meta global` and `global` with `config|destroy|info|install|list|logs|rebuild|restart|start|status|stop|uninstall`; global config `set|unset|edit|validate`; `app includes <update|verify>`; and `app config` with `translate|lint|set|unset|edit|validate`. Unsupported `apps list` and `app start` remain unknown.
 - Level-`none` files MUST NOT import OCLIF, heavy Effect graphs, `@lando/sdk`, renderers, or plugins (§1.2).
 - `@lando/core/oclif` is not exported; embedding uses `@lando/core/cli` (§16.2).
 - `SIGINT` interrupts the active Effect fiber and finalizes scoped resources. Foreground tooling/scripts MAY use an abort signal; while a keyboard-attached container PTY owns the terminal, Ctrl+C reaches that PTY rather than Lando. The shared core interruption projection owns `CommandInterruptedError` with optional `signal: SIGINT|SIGTERM`, message `Command interrupted.`, and retry remediation. An interruption-only CLI failure MUST use exit 130 for SIGINT and 143 for SIGTERM, based on the signal observed at failure time, never generic internal Effect interruption text. An absent or unrecognized signal reason uses status 1 and MUST NOT expose the reason value. This is one core-local contract, not a parallel SDK error tag. Mixed typed failures, defects, interruption, and cleanup failures MUST retain the existing cause projection and roles; cancellation MUST NOT erase them. Scope finalizers, broken-pipe silence, and MCP request-cancellation/session-close suppression remain unchanged. This contract does not add container process joining, provider supervision, or graceful signal forwarding to arbitrary script grandchildren.
 
-The historical OCLIF manifest is replaced by the registry-derived embedded manifest plus `plugin-command` and `app-command` indexes (§12.1). Router bootstrap MUST NOT parse Landofiles, resolve includes, contact plugin sources, import command modules, or initialize providers.
+The historical OCLIF manifest is replaced by the registry-derived embedded manifest plus the `app-command` index (§12.1). Router bootstrap MUST NOT parse Landofiles, resolve includes, contact plugin sources, import command modules, or initialize providers. Plugin commands resolve only after routing finds no built-in or tooling owner, in the separate plugin-resolution phase (§3.2, §9.7).
 
 #### 8.4.2 Help projection
 
@@ -331,6 +331,10 @@ The locked **COMMON** ids are `app:start`, `app:stop`, `app:restart`, `app:rebui
 Color requires TTY stdout, renderer `lando`, non-JSON format, and no `NO_COLOR`; cold help MUST NOT import a renderer. Machine help uses `encodeCommandResult` with command `cli:help`. Topic pages cover registered namespaces and command tokens and show aliases, deferred status, flags, and args.
 
 Root, all-command, and topic machine help return the catalog with structural `toolingMetadata` availability. An explicit command target returns a `target` descriptor with canonical identity, typeable token, summary, source, and the shared input declaration/revision for tooling. Missing/stale/invalid tooling metadata and unknown targets MUST produce their precise tagged recovery failures rather than silently returning a root catalog. Disabled-target help MUST refuse without entering command execution. Enabled internal tasks remain absent from listings but support explicit direct help; task-owned help-token policy remains unchanged. JSON/YAML help flags MUST NOT emit human help text.
+
+Plugin commands appear in help from the plugin contribution graph and their validated `ExecutableCommandSpec` (§9.7), never from the embedded manifest. Level-`none` root help, built-in target help, and core topic text pages MUST NOT acquire plugin metadata; the full catalog (`lando help --all`) and every machine catalog do, and a plugin topic or plugin target acquires only the specs it shows. A plugin command row uses its canonical id as the typeable token and its spec summary; machine rows and targets carry `source: "plugin"` and the contributing `plugin` name. A command whose module fails to load stays listed with a bounded, redacted `loadError` (`_tag`, `message`, optional `remediation`); its own help and invocation report that failure. Machine catalogs carry `pluginMetadata`: `available` when the graph was acquired, otherwise `unavailable` with the redacted discovery failure, while built-in and tooling rows still render.
+
+A namespace head owned by plugin command ids and not a core namespace or topic is a plugin topic for `lando help <ns>` and `lando <ns> --help`; its description is the contributing plugin's manifest description when exactly one contributing plugin supplies one, otherwise a generic namespace description. Plugin commands shadowed by a built-in id or alias, or by a positively resolved tooling task, are omitted from listings, topics, and suggestions, matching dispatch. `lando help <token>` resolution prefers a core topic, then a built-in, then a positively resolved tooling task, alias, or script, then a plugin command, then a plugin topic. A tooling cache miss or unknown tooling task on a help route defers its failure until plugin lookup also misses; an explicit `app:<task>` token defers only when a fresh tooling index positively lacks the task, and a missing or stale index keeps its tooling recovery failure. Invocation follows the same rule: a colon token, including `app:<task>`, reaches plugin dispatch after a fresh-index tooling miss. Bare invocation of a token that tooling cannot resolve still fails closed with the tooling error, with remediation naming the matching plugin topic or command. Unknown-command remediation names `lando help <topic>` for a core topic head, a plugin topic head, or a colon token under a plugin topic, otherwise the one built-in or plugin command whose id minus its namespace equals the token, otherwise `lando help --all`.
 
 ### 8.5 Tooling schema
 

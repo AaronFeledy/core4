@@ -1,5 +1,5 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import { type CommandHelpEntry, renderCommandHelp } from "./cli-help";
+import { type CommandHelpEntry, type CommandHelpOptions, renderCommandHelp } from "./cli-help";
 import { type OclifFlagDefinition, parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
 import { normalizeCliFlagTokens, validateCommandCliFlags } from "./flag-value-validation";
 import { universalFormatFlagDefs } from "./format-flags";
@@ -71,7 +71,10 @@ export const pluginOwnedCommandInputFromArgv = (
   return { flags, args, raw };
 };
 
-export const renderPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): string => {
+export const renderPluginOwnedCommandHelp = (
+  spec: ExecutableCommandSpec,
+  options?: Pick<CommandHelpOptions, "styled">,
+): string => {
   const args: ArgDefinitions = Object.fromEntries(
     Object.entries(spec.args ?? {}).map(([name, definition]) => [
       name,
@@ -92,5 +95,5 @@ export const renderPluginOwnedCommandHelp = (spec: ExecutableCommandSpec): strin
     },
     status: { kind: "implemented" },
   };
-  return renderCommandHelp(entry);
+  return renderCommandHelp(entry, options);
 };

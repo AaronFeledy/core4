@@ -170,7 +170,7 @@ The error also carries `commandId`, `tool`, and `remediation`, with `staleReason
 lando help --format=json
 ```
 
-Read `result.toolingMetadata.status`: `fresh`, `not-app`, or `unavailable`. An unavailable result includes the recovery reason and remediation instead of stale tooling declarations. Human help shows the same recovery guidance. After refreshing successfully, inspect help again before retrying the command.
+Read `result.toolingMetadata.status`: `fresh`, `not-app`, or `unavailable`. An unavailable result includes the recovery reason and remediation instead of stale tooling declarations. Human help shows the same recovery guidance. After refreshing successfully, inspect help again before retrying the command. `toolingMetadata` covers only scripts and Landofile tooling; plugin commands report through the separate `result.pluginMetadata` and don't depend on this cache.
 
 For a newly added script with declared inputs, `lando <name> --help` can show those inputs before an inventory refresh, provided the existing cache is otherwise fresh. Scripts without input declarations receive `--help` as a raw argument. If any declared flag is named `help` or aliased to `h`, Lando leaves both help spellings to the script's input parser instead of showing its own help.
 
@@ -182,7 +182,7 @@ Run `lando --help` inside the app after refreshing. Enabled scripts show up unde
 lando --help
 ```
 
-`lando help --all` prints the same list after every built-in command.
+`lando help --all` prints the same list after every built-in and plugin command. In `--format=json`, your scripts are the `all[]` rows with `source: "tooling"`; plugin commands carry `source: "plugin"`.
 
 ## Pass arguments
 

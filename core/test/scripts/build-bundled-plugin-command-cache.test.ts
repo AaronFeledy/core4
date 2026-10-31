@@ -4,12 +4,10 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
 
-import type { PluginManifest } from "@lando/sdk/schema";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 
-import { decodePluginCommandIndex } from "@lando/engine/cache/command-index";
-import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
+import { bundledPluginCommands, renderPage } from "../../../scripts/build-command-reference.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixtureFiles = [
@@ -23,9 +21,7 @@ const fixtureFiles = [
 const fixturePluginName = "@lando/command-cache-fixture";
 const fixtureCommandId = "fixture:ship-proof";
 
-type BundledPluginModule = {
-  readonly manifest: PluginManifest;
-};
+type BundledPluginModule = LandoPluginModule;
 
 const isBundledPluginTable = (
   value: unknown,
@@ -54,7 +50,7 @@ const readBundledModules = async (generatedPath: string): Promise<ReadonlyArray<
   return imported.BUNDLED_PLUGIN_MODULES;
 };
 
-test("plugin-command cache omits a bundled command after ship-list removal and regeneration", async () => {
+test("command reference omits a bundled command after ship-list removal and regeneration", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-bundled-command-cache-"));
   try {
@@ -72,14 +68,19 @@ test("plugin-command cache omits a bundled command after ship-list removal and r
     await mkdir(dirname(fixturePluginPath), { recursive: true });
     await writeFile(
       fixturePluginPath,
-      `export const manifest = {
+      `import { Effect, Schema } from "effect";
+export const manifest = {
   name: "${fixturePluginName}",
   version: "0.0.0",
   api: 4,
   bootstrap: "app",
   contributes: { commands: ["${fixtureCommandId}"] },
 };
-export const plugin = { name: manifest.name, manifest };
+export const plugin = { name: manifest.name, manifest,
+  commands: new Map([["${fixtureCommandId}", async () => ({
+    id: "${fixtureCommandId}", namespace: "fixture", bootstrap: "plugins",
+    summary: "Fixture shipping proof.", resultSchema: Schema.Void, run: () => Effect.void,
+  })]]) };
 `,
       "utf8",
     );
@@ -99,12 +100,9 @@ export const plugin = { name: manifest.name, manifest };
     const includedGeneratedPath = resolve(root, "core/src/plugins/generated/bundled-included.ts");
     await cp(generatedPath, includedGeneratedPath);
     const includedModules = await readBundledModules(includedGeneratedPath);
-    const includedCachePath = await Effect.runPromise(
-      writePluginCommandCacheStrict({ modules: includedModules, cacheRoot: resolve(root, "cache-included") }),
-    );
-    const included = decodePluginCommandIndex(new Uint8Array(await readFile(includedCachePath)));
-    expect(included?.pluginNames).toContain(fixturePluginName);
-    expect(included?.entries.map((entry) => entry.id)).toContain(fixtureCommandId);
+    const included = renderPage(await bundledPluginCommands(includedModules));
+    expect(included).toContain(`lando ${fixtureCommandId}`);
+    expect(included).toContain(fixturePluginName);
 
     // When
     await writeFile(buildConfigPath, originalBuildConfig, "utf8");
@@ -112,14 +110,11 @@ export const plugin = { name: manifest.name, manifest };
     const removedGeneratedPath = resolve(root, "core/src/plugins/generated/bundled-removed.ts");
     await cp(generatedPath, removedGeneratedPath);
     const removedModules = await readBundledModules(removedGeneratedPath);
-    const removedCachePath = await Effect.runPromise(
-      writePluginCommandCacheStrict({ modules: removedModules, cacheRoot: resolve(root, "cache-removed") }),
-    );
-    const removed = decodePluginCommandIndex(new Uint8Array(await readFile(removedCachePath)));
+    const removed = renderPage(await bundledPluginCommands(removedModules));
 
     // Then
-    expect(removed?.pluginNames).not.toContain(fixturePluginName);
-    expect(removed?.entries.map((entry) => entry.id)).not.toContain(fixtureCommandId);
+    expect(removed).not.toContain(fixturePluginName);
+    expect(removed).not.toContain(`lando ${fixtureCommandId}`);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

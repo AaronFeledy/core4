@@ -216,6 +216,8 @@ describe("plugin-owned command dispatch", () => {
     expect(help).not.toContain("\n  --format");
     expect(help).not.toContain("$ lando");
     expect(help).not.toContain("\nSTATUS\n");
+    expect(renderPluginOwnedCommandHelp(spec, { styled: true })).toContain("\u001b[");
+    expect(renderPluginOwnedCommandHelp(spec, { styled: false })).not.toContain("\u001b[");
   });
 
   test("preserves strict-false single-argument usage and repeated flag occurrences", () => {

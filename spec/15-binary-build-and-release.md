@@ -61,7 +61,7 @@ The deprecation gate runs immediately after codegen. It MUST fail if a `removeIn
 | `host-proxy-allowlist` | Command registry metadata | Host-proxy command allowlist | Derived drift and contract tests |
 | `command-registry-manifest` | Built-in command registry and topics | Embedded manifest and command-id list | Derived drift and registry completeness |
 | `compiled-decoders` | The fixed hot-path schema AST list in `core/src/cli/compiled-decoder-targets.ts` and the pinned Effect version | Gitignored generated decoder module plus declaration under `core/src/cli/generated/` (§12.5.1) | Derived regeneration, compiled-decoder parity, perf gates |
-| `command-reference` | Command registry and manifest | CLI command reference | Derived regeneration and docs build |
+| `command-reference` | Command registry, manifest, and bundled plugin command specs | CLI command reference for built-in and bundled plugin commands | Derived regeneration and docs build |
 | `compose-key-matrix` | Compose dispositions | Compose compatibility reference | Derived regeneration and docs build |
 | `opentui-native-stubs` | Native-root catalog, release targets, installed OpenTUI metadata, lockfile | Target mapping and non-target stubs | Derived drift and per-target relocated smoke |
 | `php-base-images` | PHP prerequisites and supported versions | Versioned PHP Dockerfiles | Derived drift and image tests |

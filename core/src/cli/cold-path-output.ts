@@ -19,6 +19,8 @@ export type ColdHelpStyle = {
   readonly thisAppRows?: ReadonlyArray<ThisAppHelpRow>;
   readonly aliasPolicy?: HelpAliasPolicy;
   readonly toolingMetadata?: ToolingMetadataStatus;
+  readonly pluginRows?: ReadonlyArray<ThisAppHelpRow>;
+  readonly pluginNotice?: string;
 };
 
 export const HELP_TOPICS = ["app", "apps", "plugin", "global", "recipes", "scratch"] as const;
@@ -220,21 +222,33 @@ export const renderColdRootHelp = (
   ].join("\n");
 };
 
+const topicPageLines = (
+  topic: string,
+  description: string,
+  rows: readonly ThisAppHelpRow[],
+  style: StyleFns,
+): string[] => [
+  titleLine(style),
+  "",
+  ...usageBlock(`lando help ${topic}`, style),
+  "",
+  style.bold(topic.toUpperCase()),
+  description,
+  ...formatSection(rows.toSorted(byPrimary), style),
+];
+
+export const renderPluginTopicHelp = (
+  topic: string,
+  description: string,
+  rows: readonly ThisAppHelpRow[],
+  options?: ColdHelpStyle,
+): string => topicPageLines(topic, description, rows, resolveStyle(options)).join("\n");
+
 export const renderColdTopicHelp = (topic: string, options?: ColdHelpStyle): string => {
   if (!isHelpTopic(topic)) return "";
   const style = resolveStyle(options);
-  const rows = topicEntries(topic)
-    .map((entry) => toRow(entry, options?.aliasPolicy))
-    .toSorted(byPrimary);
-  const lines = [
-    titleLine(style),
-    "",
-    ...usageBlock(`lando help ${topic}`, style),
-    "",
-    style.bold(topic.toUpperCase()),
-    COMMAND_TOPICS[topic].description,
-    ...formatSection(rows, style),
-  ];
+  const rows = topicEntries(topic).map((entry) => toRow(entry, options?.aliasPolicy));
+  const lines = topicPageLines(topic, COMMAND_TOPICS[topic].description, rows, style);
   if (topic === "plugin") {
     lines.push("", style.bold("AUTHORING"), ...formatSection(authoringRows(options?.aliasPolicy), style));
   }
@@ -243,7 +257,7 @@ export const renderColdTopicHelp = (topic: string, options?: ColdHelpStyle): str
 
 export const renderColdAllHelp = (options?: ColdHelpStyle): string => {
   const style = resolveStyle(options);
-  const rows = visibleHelpRows(options?.aliasPolicy).toSorted(byPrimary);
+  const rows = [...visibleHelpRows(options?.aliasPolicy), ...(options?.pluginRows ?? [])].toSorted(byPrimary);
   const thisAppRows = options?.thisAppRows ?? [];
   return [
     titleLine(style),
@@ -254,6 +268,7 @@ export const renderColdAllHelp = (options?: ColdHelpStyle): string => {
     ...formatSection(rows, style),
     ...(thisAppRows.length === 0 ? [] : ["", style.bold("THIS APP"), ...formatSection(thisAppRows, style)]),
     ...toolingMetadataNotice(options?.toolingMetadata),
+    ...(options?.pluginNotice === undefined ? [] : [options.pluginNotice]),
   ].join("\n");
 };
 

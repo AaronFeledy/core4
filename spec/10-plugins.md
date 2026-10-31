@@ -182,13 +182,13 @@ App-declared plugins install only into their app-scoped store, use the same trus
 - Bundled modules are statically included; external modules use absolute file URLs. Cwd-relative imports and paths escaping the plugin root are forbidden.
 - External entries and contribution modules MUST use the host-owned SDK and Effect instances in §7.1.1, including when a contribution loads before its entry. Plugin-local peer copies MUST NOT override them; other bare packages resolve beside the importing file. Host ownership does not waive manifest compatibility checks.
 - App-scoped plugins load only from their lockfile-selected local copy.
-- The validated plugin-command cache is the sole command-metadata owner. It follows discovery precedence, invalidates on plugin-set or manifest change, and MUST NOT be treated as an executable registry.
+- The plugin contribution graph, acquired at the `plugins` bootstrap level with ordinary discovery precedence, roots, app-local plugins, and disables, is the sole owner of plugin command identity. Command metadata comes from the command's validated `ExecutableCommandSpec`; there is no persisted plugin-command cache. One invocation-scoped metadata catalog acquires the graph at most once, shares it across help, remediation, and dispatch resolution, and loads only the specs it needs (§8.4.2); command execution separately constructs its declared bootstrap runtime from the same discovery inputs.
 - Duplicate command ids retain the first occurrence in resolved manifest order. Executable plugin command loaders remain lazy and keyed by canonical id.
-- Native top-level dispatch of plugin-contributed commands is deferred until a public command implementation contract exists; command steps MAY invoke their lazy implementation.
+- Native top-level dispatch resolves a colon-form token that no built-in or tooling task owns through the graph, loads and validates its `ExecutableCommandSpec` (§8.3), and runs it under the declared `bootstrap` level. Event command steps MAY invoke the same lazy implementation. A command module that fails to load or validate fails only that command.
 - Each contribution module loads on first use. Config translators load only for explicit translation or the declared local-snapshot refresh phase (§7.4.2), never ordinary discovery/loading.
 - Layer results compose into the runtime; plain objects are wrapped as Layers.
-- A throwing module becomes `PluginLoadError`, marks that plugin unhealthy, and MUST NOT prevent unrelated plugins from loading.
-- Experimental-source runtime loading is not implemented; when added, it MUST join the same cache at final discovery precedence.
+- A throwing module becomes `PluginLoadError`, marks that plugin unhealthy, and MUST NOT prevent unrelated plugins from loading. A command module that throws or fails validation fails only that command; the plugin's other commands stay available.
+- Experimental-source runtime loading is not implemented; when added, it MUST join the same contribution graph at final discovery precedence.
 
 ### 9.8 The `LandoPluginContext`
 

@@ -23,10 +23,7 @@ import { loadUserLandofile } from "../app-resolution";
 import { commandAliasRegistrationError } from "../command-alias-policy";
 
 import { compileAppCommands } from "@lando/engine/cache/command-compiler";
-import {
-  writeAppCommandCacheStrict,
-  writePluginCommandCacheStrict,
-} from "@lando/engine/cache/command-index-writer";
+import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import {
@@ -45,14 +42,12 @@ export interface AppCacheRefreshResult {
   readonly app: string;
   readonly commandsCompiled: number;
   readonly appCommandCachePath?: string;
-  readonly pluginCommandCachePath?: string;
 }
 
 export const AppCacheRefreshResultSchema = Schema.Struct({
   app: Schema.String,
   commandsCompiled: Schema.Number,
   appCommandCachePath: Schema.optionalKey(Schema.String),
-  pluginCommandCachePath: Schema.optionalKey(Schema.String),
 });
 
 type AppCacheRefreshError =
@@ -112,15 +107,10 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
     cwd,
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   });
-  const pluginCachePath = yield* writePluginCommandCacheStrict({
-    manifests,
-    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-  });
 
   return {
     app: plan.name,
     commandsCompiled: entries.length,
     ...(appCachePath === undefined ? {} : { appCommandCachePath: appCachePath }),
-    pluginCommandCachePath: pluginCachePath,
   };
 });

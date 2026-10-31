@@ -139,6 +139,28 @@ contributes:
 
 That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fallbacks.
 
+## Contribute commands
+
+List each command id under `contributes.commands` in the manifest, then give
+`definePlugin` a `commands` map from the same ids to lazy loaders that resolve
+an `ExecutableCommandSpec` from `@lando/sdk/plugins`. The bundled `@lando/sql`
+plugin is the shape to copy:
+
+```ts
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  commands: new Map([
+    ["db:export", () => import("./commands/export.ts").then((module) => module.spec)],
+  ]),
+});
+```
+
+Once the plugin is installed or linked, its commands appear in `lando help --all`
+next to the built-ins, and `lando help <namespace>` (here, `lando help db`) lists
+them under the manifest `description`. A command whose module fails to load still
+shows up in `lando help --format=json`, with a `loadError` naming the problem.
+
 ## Verify
 
 Check your generated service and package before you start replacing the example.

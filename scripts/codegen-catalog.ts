@@ -192,7 +192,7 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-command-reference.ts",
     workspace: "repo",
-    dependsOn: ["command-registry-manifest"],
+    dependsOn: ["command-registry-manifest", "bundled-plugins"],
   },
   {
     id: "compose-key-matrix",

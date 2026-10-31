@@ -159,7 +159,10 @@ If discovery reports `ToolingCommandUnavailableError`, inspect its `reason`:
 and aliases. `lando help --format=json` exposes `result.toolingMetadata` with
 `status` and, when unavailable, `reason` and `remediation`. Neither help nor a
 failed lookup repairs metadata by planning or starting a provider. You do not
-need `lando start` or `lando rebuild` just to repair discovery.
+need `lando start` or `lando rebuild` just to repair discovery. The same help
+JSON lists plugin commands as `result.all[]` rows with `source: "plugin"` and
+reports plugin discovery in `result.pluginMetadata`; those commands are not
+MCP tools, and `lando mcp --allow` accepts built-in ids only.
 
 ## Protect sensitive tooling values
 

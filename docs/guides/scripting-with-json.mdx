@@ -437,5 +437,7 @@ with code `LANDO_CONFIG_OTHER_SOURCE_INVALID`, whose `message` and
 command as warning code `LANDO_MESSAGE_WARN` from every command, `lando
 config` and `lando doctor` included. Text mode prints warnings once.
 
-The generated command reference lists every public command and documents the
-universal `--format json` flag once in its machine-readable output section.
+The generated command reference lists every built-in and bundled plugin command
+and documents the universal `--format json` flag once in its machine-readable
+output section. Optional plugins document their own commands; after installing
+one, `lando help --all` and `lando help <namespace>` list them.

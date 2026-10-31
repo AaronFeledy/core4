@@ -247,6 +247,7 @@ Public surfaces MUST have one canonical registry. Narrative sections may explain
 Canonical owners:
 
 - Built-in commands, aliases, flags, args, bootstrap levels, completion policies, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
+- Plugin commands: the plugin contribution graph plus each command's validated `ExecutableCommandSpec` (§8.3, §9.7).
 - Public schemas, event payload schemas, tagged errors, and plugin-facing contract metadata: the `@lando/sdk` schema, error, and event registries (§7.8, §13.2).
 - Core service tags and public service exports: §3.4 plus `@lando/core/services` (§16.2).
 - Secret and PII redaction: `@lando/sdk/secrets` owns the value layer, pattern-class catalog, `secrets`/`telemetry`/`transcript` profiles, and `[redacted]` sentinel, surfaced through `RedactionService` (§3.7, §3.4). This invariant is non-replaceable, has no `redactors:` plugin surface (§4.2), composes into every sensitive emitter, and is protected by the §13.4 boundary gate.
