@@ -1,10 +1,20 @@
+import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
+import {
+  recordGlobalResourceCleanup,
+  recordGlobalRouteCleanup,
+} from "@lando/engine/global-app/reconciliation";
 import { Effect, Schema } from "effect";
 
 import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
 
-import { executeGlobalTeardown, resolveGlobalTeardown } from "@lando/engine/operations/global-teardown";
+import {
+  executeGlobalTeardown,
+  globalTeardownAppRef,
+  resolveGlobalTeardown,
+} from "@lando/engine/operations/global-teardown";
 import { TeardownProvider } from "@lando/engine/providers/app-placement";
 import { DestroyAppOutcome, DestroyAppResult, type ProviderId } from "@lando/sdk/schema";
+import { RouterService } from "@lando/sdk/services";
 import { teardownLine, volumesTrailer } from "../service-summary";
 
 export interface GlobalDestroyOptions {
@@ -28,11 +38,15 @@ export type GlobalDestroyResult = typeof GlobalDestroyResultSchema.Type;
 type GlobalDestroyError =
   | Effect.Error<ReturnType<typeof resolveGlobalTeardown>>
   | Effect.Error<ReturnType<typeof executeGlobalTeardown>>
-  | GlobalDestroyConfirmationError;
+  | GlobalDestroyConfirmationError
+  | import("@lando/sdk/errors").ProxyError
+  | import("@lando/sdk/errors").GlobalAppError;
 
 type GlobalDestroyServices =
+  | GlobalMutationServices
   | Effect.Services<ReturnType<typeof resolveGlobalTeardown>>
-  | Effect.Services<ReturnType<typeof executeGlobalTeardown>>;
+  | Effect.Services<ReturnType<typeof executeGlobalTeardown>>
+  | Effect.Services<ReturnType<typeof recordGlobalResourceCleanup>>;
 
 const confirmationError = (): GlobalDestroyConfirmationError =>
   new GlobalDestroyConfirmationError({
@@ -54,27 +68,37 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
 ): Effect.fn.Return<GlobalDestroyResult, GlobalDestroyError, GlobalDestroyServices> {
   if (options.yes !== true) return yield* Effect.fail(confirmationError());
 
-  const loaded = yield* resolveGlobalTeardown().pipe(
-    Effect.provideService(TeardownProvider, options.providerId),
+  return yield* withGlobalMutation(
+    Effect.gen(function* () {
+      const loaded = yield* resolveGlobalTeardown().pipe(
+        Effect.provideService(TeardownProvider, options.providerId),
+      );
+      const volumes = options.purge ?? false;
+      if (loaded.evidence.kind === "absent") {
+        if (options.providerId === undefined) {
+          const router = yield* RouterService;
+          yield* router.removeRoutes(globalTeardownAppRef(loaded).id);
+          yield* recordGlobalRouteCleanup();
+        }
+        return {
+          app: "global",
+          outcome: "unchanged" as const,
+          materialized: loaded.materialized,
+          servicesDestroyed: [],
+          volumesRemoved: false,
+        };
+      }
+
+      const receipt = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
+      if (options.providerId === undefined) yield* recordGlobalResourceCleanup();
+
+      return {
+        app: "global",
+        outcome: receipt.changed ? ("destroyed" as const) : ("unchanged" as const),
+        materialized: loaded.materialized,
+        servicesDestroyed: receipt.services,
+        volumesRemoved: receipt.volumesRemoved,
+      };
+    }),
   );
-  const volumes = options.purge ?? false;
-  if (loaded.evidence.kind === "absent") {
-    return {
-      app: "global",
-      outcome: "unchanged",
-      materialized: loaded.materialized,
-      servicesDestroyed: [],
-      volumesRemoved: false,
-    };
-  }
-
-  const receipt = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
-
-  return {
-    app: "global",
-    outcome: receipt.changed ? "destroyed" : "unchanged",
-    materialized: loaded.materialized,
-    servicesDestroyed: receipt.services,
-    volumesRemoved: receipt.volumesRemoved,
-  };
 });

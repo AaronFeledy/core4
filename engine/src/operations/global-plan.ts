@@ -14,9 +14,17 @@ import {
   type StateStore,
 } from "@lando/sdk/services";
 
+import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { copyLandofileProvenance } from "@lando/landofile/copy-provenance";
 import type { LandofileFinalizeOverrides } from "@lando/landofile/service";
 
 import { globalCreateProviderId, resolveGlobalPlacement } from "../global-app/placement.ts";
+import {
+  type GlobalResolution,
+  projectEffectiveGlobalResolution,
+  readGlobalResolution,
+  withGlobalResolutionCapabilities,
+} from "../global-app/resolution.ts";
 import { hostProviderId } from "../providers/host-provider.ts";
 import { loadLandofileLayers } from "../services/landofile-live.ts";
 
@@ -41,19 +49,27 @@ export type LoadGlobalPlanError =
   | ProviderSelectionError
   | FileSystemError
   | GlobalAppError
-  | LandofileParseError;
+  | LandofileParseError
+  | Effect.Error<ReturnType<typeof readGlobalLandofile>>;
 
 export type LoadGlobalPlanServices =
   | AppPlanner
   | FileSystem
   | GlobalAppService
   | RuntimeProviderRegistry
-  | StateStore;
+  | StateStore
+  | import("@lando/sdk/services").PathsService
+  | import("@lando/sdk/services").PluginRegistry;
 
-export const globalLandofileOverrides = Effect.map(
-  hostProviderId,
-  (provider): LandofileFinalizeOverrides => ({ name: "global", provider }),
-);
+export const globalLandofileOverrides = Effect.gen(function* () {
+  const provider = yield* hostProviderId;
+  const resolution = yield* readGlobalResolution({ providerId: provider });
+  return {
+    name: "global",
+    provider,
+    excludedServices: resolution.directlyExcludedIds,
+  } satisfies LandofileFinalizeOverrides;
+});
 
 const withProcessCwd = <A, E, R>(
   cwd: string,
@@ -78,36 +94,62 @@ const withProcessCwd = <A, E, R>(
     (original) => Effect.sync(() => process.chdir(original)),
   );
 
-export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function* (): Effect.fn.Return<
-  MissingGlobalPlanResult | Omit<LoadedGlobalPlanResult, "plan">,
-  GlobalAppError | FileSystemError | Effect.Error<ReturnType<typeof loadLandofileLayers>>,
-  FileSystem | GlobalAppService | StateStore
-> {
+export const readGlobalLandofile = Effect.fn("GlobalApp.readLandofile")(function* (
+  options: { readonly resolution?: GlobalResolution; readonly services?: ReadonlyArray<string> } = {},
+) {
   const globalApp = yield* GlobalAppService;
   const fileSystem = yield* FileSystem;
   const paths = yield* globalApp.paths;
   const exists = yield* fileSystem.exists(paths.distLandofile);
-  if (!exists) return { materialized: false, paths };
+  if (!exists) return { materialized: false as const, paths };
 
-  const landofile = yield* loadLandofileLayers(
-    paths.root,
-    paths.userLandofile,
-    yield* globalLandofileOverrides,
+  const resolution = options.resolution ?? (yield* readGlobalResolution());
+  const landofile = yield* loadLandofileLayers(paths.root, paths.userLandofile, {
+    name: "global",
+    provider: yield* hostProviderId,
+    excludedServices: resolution.directlyExcludedIds,
+  });
+  const effective = projectEffectiveGlobalResolution(
+    resolution,
+    landofile.document.services ?? {},
+    landofile.pendingSites,
   );
-  return { materialized: true, paths, landofile };
+  const issue = effective.errors.find(
+    (issue) =>
+      (issue.kind === "dependency" || issue.kind === "cycle") &&
+      (!options.services?.length || options.services.includes(issue.id)),
+  );
+  if (issue !== undefined) return yield* Effect.fail(issue.cause);
+  const excluded = new Set(effective.excludedIds);
+  const admitted = rememberLandofileAppRoot(
+    copyLandofileProvenance(landofile, {
+      ...landofile,
+      document: copyLandofileProvenance(landofile.document, {
+        ...landofile.document,
+        services: effective.services,
+      }),
+      pendingSites: landofile.pendingSites.filter(
+        (site) => site.path[0] !== "services" || !excluded.has(String(site.path[1])),
+      ),
+    }),
+    paths.root,
+  );
+  return { materialized: true as const, paths, landofile: admitted, resolution: effective };
 });
 
-export const loadGlobalPlan = Effect.fnUntraced(function* (): Effect.fn.Return<
-  LoadGlobalPlanResult,
-  LoadGlobalPlanError,
-  LoadGlobalPlanServices
-> {
-  yield* globalCreateProviderId();
-  const loaded = yield* readGlobalLandofile();
+export const loadGlobalPlan = Effect.fnUntraced(function* (
+  options: { readonly services?: ReadonlyArray<string> } = {},
+): Effect.fn.Return<LoadGlobalPlanResult, LoadGlobalPlanError, LoadGlobalPlanServices> {
+  const providerId = yield* globalCreateProviderId();
+  const registry = yield* RuntimeProviderRegistry;
+  const provider = yield* registry.select(providerId);
+  const loaded = yield* withGlobalResolutionCapabilities(
+    providerId,
+    provider.capabilities,
+    readGlobalLandofile(options),
+  );
   if (!loaded.materialized) return loaded;
   const { paths, landofile } = loaded;
-  const registry = yield* RuntimeProviderRegistry;
-  const provider = yield* registry.select(landofile.document.provider);
   const planner = yield* AppPlanner;
   const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofile, provider.capabilities));
 

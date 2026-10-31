@@ -20,6 +20,7 @@ import {
   FileSystem,
   GlobalAppService,
   PathsService,
+  PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
@@ -29,6 +30,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import { join } from "node:path";
 import * as BunFileSystem from "@lando/engine/services/file-system";
+import { testStateStoreLayer } from "./landofile-layer.ts";
 
 export const globalPlanAt = (root: AbsolutePath): AppPlan => ({
   id: AppId.make("global"),
@@ -160,6 +162,17 @@ export const globalTeardownHarness = async (
   };
   const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(BunFileSystem.layer)));
   const layer = Layer.mergeAll(
+    testStateStoreLayer,
+    Layer.succeed(
+      PluginRegistry,
+      PluginRegistry.of({
+        list: Effect.succeed([]),
+        load: () => Effect.die("no plugin load during teardown"),
+        loadServiceType: () => Effect.die("no service type load during teardown"),
+        loadServiceFeature: () => Effect.die("no service feature load during teardown"),
+        loadAppFeature: () => Effect.die("no app feature load during teardown"),
+      }),
+    ),
     PrivateFileAccessService.layer,
     Layer.succeed(PathsService, paths),
     Layer.succeed(FileSystem, { ...fileSystem, readText: () => Effect.die("desired YAML must not be read") }),

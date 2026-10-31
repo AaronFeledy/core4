@@ -2,7 +2,7 @@
  * `@lando/proxy-traefik` — Traefik-backed RouterService + bundled global service.
  *
  * The `globalServices` map is the compiled-binary-safe contribution surface:
- * `meta:global:install`'s bundled-first loader reads it instead of dynamically
+ * `global configuration reconciliation`'s bundled-first loader reads it instead of dynamically
  * importing the manifest `module:` path (which cannot resolve in a
  * `bun build --compile` binary).
  */

@@ -5,7 +5,7 @@
  * Packaging note: Mailpit ships from `@lando/service-lando` as a
  * `globalServices:` contribution. The module default-exports an `Effect`
  * producing a provider-neutral `ServiceConfig`, consumed by
- * `meta:global:install` when materializing
+ * `global configuration reconciliation` when materializing
  * `<userDataRoot>/global/.lando.dist.yml`.
  *
  * Mailpit's default entrypoint binds SMTP on `0.0.0.0:1025` and the web UI / API

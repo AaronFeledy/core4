@@ -6,7 +6,6 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 
-import type { StateStore } from "@lando/sdk/services";
 import {
   globalConfigEdit,
   globalConfigSet,
@@ -14,16 +13,17 @@ import {
   globalConfigValidate,
 } from "../../../src/cli/commands/meta/global-config.ts";
 import type { EditorRunner } from "../../../src/recipes/prompts/editor-command.ts";
-import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
+import { type GlobalConfigTestServices, globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 let dir = "";
 const filePath = (): string => join(dir, ".lando.yml");
 const seed = (content: string): Promise<void> => writeFile(filePath(), content, "utf8");
 const readFileText = (): Promise<string> => readFile(filePath(), "utf8");
 
-const run = <A, E>(effect: Effect.Effect<A, E, StateStore>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provide(testStateStoreLayer)));
-const runExit = <A, E>(effect: Effect.Effect<A, E, StateStore>) => run(effect.pipe(Effect.exit));
+const run = <A, E>(effect: Effect.Effect<A, E, GlobalConfigTestServices>): Promise<A> =>
+  Effect.runPromise(effect.pipe(Effect.provide(globalConfigLayer(dir))));
+const runExit = <A, E>(effect: Effect.Effect<A, E, GlobalConfigTestServices>) =>
+  run(effect.pipe(Effect.exit));
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "lando-gcfg-"));
@@ -247,6 +247,24 @@ describe("meta global config edit via injected editor seam", () => {
     );
     expect(result.changed).toBe(true);
     expect(await readFileText()).toContain("php");
+  });
+
+  test("refuses to overwrite a concurrent config update made while the editor is open", async () => {
+    await seed("name: global\nruntime: 4\n");
+    const current = "name: global\nruntime: 4\nrouter:\n  httpPort: 8081\n";
+    const result = await run(
+      globalConfigEdit(
+        {
+          editorRunner: async ({ content }) => {
+            await seed(current);
+            return { kind: "edited", content: `${content}router:\n  httpPort: 8080\n` };
+          },
+        },
+        filePath(),
+      ).pipe(Effect.result),
+    );
+    expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileWriteValidationError" } });
+    expect(await readFileText()).toBe(current);
   });
 
   test("invokes the editor runner with the user Landofile's parent directory as cwd", async () => {

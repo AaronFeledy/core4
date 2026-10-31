@@ -105,7 +105,7 @@ const emitServices = (services: Readonly<Record<string, ServiceConfig>>): Readon
 const buildDistBody = (services: Readonly<Record<string, ServiceConfig>>): string =>
   ["name: global", "runtime: 4", "services:", ...emitServices(services), ""].join("\n");
 
-const buildDistContent = (services: Readonly<Record<string, ServiceConfig>>): string => {
+export const renderGlobalDist = (services: Readonly<Record<string, ServiceConfig>>): string => {
   const body = buildDistBody(services);
   return [distMarker, distOverrideHint, `${distHashPrefix}${sha256Hex(body)}`, body].join("\n");
 };
@@ -150,7 +150,7 @@ const embeddedDistHash = (content: string): string | undefined =>
     ?.slice(distHashPrefix.length)
     .trim();
 
-const makeGlobalAppService = (
+export const makeGlobalAppService = (
   configService: Context.Service.Shape<typeof ConfigService>,
   fileSystem: Context.Service.Shape<typeof FileSystem>,
 ): Context.Service.Shape<typeof GlobalAppService> => {
@@ -218,7 +218,7 @@ const makeGlobalAppService = (
           "ensureUserLandofile",
           `Unable to inspect the global app overlay path at ${resolved.userLandofile}.`,
           cause,
-          `Ensure ${resolved.userLandofile} is accessible, then retry \`lando global:install\`.`,
+          `Ensure ${resolved.userLandofile} is accessible, then retry \`lando global:reconcile\`.`,
         ),
       ),
     );
@@ -232,7 +232,7 @@ const makeGlobalAppService = (
               "ensureUserLandofile",
               `Unable to create the global app overlay file at ${resolved.userLandofile}.`,
               cause,
-              `Ensure the parent of ${resolved.userLandofile} is writable, then retry \`lando global:install\`.`,
+              `Ensure the parent of ${resolved.userLandofile} is writable, then retry \`lando global:reconcile\`.`,
             ),
           ),
         );
@@ -277,7 +277,7 @@ const makeGlobalAppService = (
         );
     }
     const serviceIds = Object.keys(services).sort((left, right) => left.localeCompare(right));
-    const nextContent = buildDistContent(services);
+    const nextContent = renderGlobalDist(services);
     const exists = yield* fileSystem
       .exists(resolved.distLandofile)
       .pipe(
@@ -286,7 +286,7 @@ const makeGlobalAppService = (
             "regenerateDist",
             `Unable to check the generated global app Landofile at ${resolved.distLandofile}.`,
             cause,
-            `Ensure ${resolved.distLandofile} is accessible, then retry \`lando global:install\`.`,
+            `Ensure ${resolved.distLandofile} is accessible, then retry \`lando global:reconcile\`.`,
           ),
         ),
       );
@@ -300,7 +300,7 @@ const makeGlobalAppService = (
               "regenerateDist",
               `Unable to write the generated global app Landofile at ${resolved.distLandofile}.`,
               cause,
-              `Ensure ${resolved.distLandofile} is writable, then retry \`lando global:install\`.`,
+              `Ensure ${resolved.distLandofile} is writable, then retry \`lando global:reconcile\`.`,
             ),
           ),
         );
@@ -315,7 +315,7 @@ const makeGlobalAppService = (
             "regenerateDist",
             `Unable to read the generated global app Landofile at ${resolved.distLandofile}.`,
             cause,
-            `Ensure ${resolved.distLandofile} is readable, then retry \`lando global:install\`.`,
+            `Ensure ${resolved.distLandofile} is readable, then retry \`lando global:reconcile\`.`,
           ),
         ),
       );
@@ -357,7 +357,7 @@ const makeGlobalAppService = (
             "regenerateDist",
             `Unable to write the generated global app Landofile at ${resolved.distLandofile}.`,
             cause,
-            `Ensure ${resolved.distLandofile} is writable, then retry \`lando global:install\`.`,
+            `Ensure ${resolved.distLandofile} is writable, then retry \`lando global:reconcile\`.`,
           ),
         ),
       );

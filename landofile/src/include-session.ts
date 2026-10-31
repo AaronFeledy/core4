@@ -8,12 +8,14 @@ export const createIncludeResolutionSession = Effect.fnUntraced(function* (input
   readonly appRoot: string;
   readonly lockfilePath?: string;
   readonly stateStore?: StateStoreShape;
+  readonly readOnly?: boolean;
 }) {
   const lockfilePath = input.lockfilePath ?? join(input.appRoot, ".lando.lock.yml");
   const existingPins = yield* Effect.cached(parseLockEntries(input.stateStore, input.appRoot, lockfilePath));
   return {
     appRoot: input.appRoot,
     lockfilePath,
+    readOnly: input.readOnly === true,
     existingPins,
     selectors: new Map<string, string | undefined>(),
     selectedPins: new Map<string, LockEntry>(),
@@ -26,7 +28,7 @@ export const publishIncludeProposals = (
   session: IncludeResolutionSession,
   stateStore: StateStoreShape | undefined,
 ) =>
-  session.selectedPins.size === 0
+  session.readOnly || session.selectedPins.size === 0
     ? Effect.void
     : writeLockEntries(stateStore, {
         appRoot: session.appRoot,

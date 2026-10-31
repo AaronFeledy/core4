@@ -110,16 +110,17 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `plugins` | Read or write the global app Landofile without an eager provider runtime |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
+| `meta:global:disable` | `global:disable` | `global` | Save disabled policy for selectors or `--all`; protect running/unknown consumers unless invocation-scoped `--allow-disruption`; ownership-verified selected cleanup and generation; named volumes retained; `--dry-run` previews without writes |
+| `meta:global:enable` | `global:enable` | `global` | Enable contribution/package selectors or `--all`; regenerate without starting; `--dry-run` previews without writes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |
-| `meta:global:install` | `global:install` | `global` | Enable `globalServices:`, write `global.config.yml`, regenerate `dist`; does not start |
-| `meta:global:list` | `global:list` | `minimal` | List global services, enablement, source, status |
+| `meta:global:list` | `global:list` | `plugins` | List current contribution eligibility, policy source, capability evidence, and retained policies without provider runtime construction |
 | `meta:global:logs` | `global:logs` | `global` | Stream global logs |
 | `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then revalidate the router (§20.6.5) |
+| `meta:global:reconcile` | `global:reconcile` | `global` | Preserve policy, repeat consumer protection, retry pending cleanup, and generate eligible config without starting; invocation-scoped `--allow-disruption`; `--dry-run` previews without writes |
 | `meta:global:restart` | `global:restart` | `global` | Global stop, then start, then router startup revalidation (§20.6.5) |
 | `meta:global:start` | `global:start` | `global` | Start all or repeated `--service` subset |
-| `meta:global:status` | `global:status` | `global` | Report global app status |
+| `meta:global:status` | `global:status` | `global` | Report desired policy, observed state, and pending work without requiring a valid desired Landofile |
 | `meta:global:stop` | `global:stop` | `global` | Stop global services |
-| `meta:global:uninstall` | `global:uninstall` | `global` | Disable contributions and stop affected services |
 | `meta:mcp` | `mcp` | `plugins` | MCP over stdio; `--allow`, `--deny`, `--tooling`, `--list` |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install plugin |
 | `meta:plugin:build` | none | `minimal` | Build (including declarations) through the private Bun self-execution wrapper |
@@ -293,6 +294,8 @@ The adapter supplies universal format flags and IO bindings.
 Process-backed commands explicitly classify their typed process exit code: nonzero completion produces `ok: false`, a `LandoCommandError` with command id, exit code, and remediation, and the completed typed value. Successfully produced diagnostic reports MAY remain `ok: true` while returning a nonzero shell code for findings, independently of result format. Actual Effect failures retain their original Cause and do not invoke a completion policy; pure interruption remains cancellation. Completion-policy defects MUST NOT silently default to success.
 
 Read-only and non-destructive commands MAY set `mcpAllowed`; destructive commands MUST NOT. A command is destructive for MCP when it is on the core forbidden list, its id ends in a §8.3.1 destructive verb, or it declares `yes`. `mcpAllowed` nominates a command for the default set; omitting it does not prevent explicit allowance of a validated command. MCP's destructive classification and confirmation apply even when a command's `yes` declaration is a no-op on the direct CLI. A destructive built-in self-allow returns `McpAllowlistConflictError` at registration; a destructive plugin descriptor with `mcpAllowed` is excluded from defaults and reported as an `McpAllowlistConflictError` diagnostic, and stays explicitly allowable with confirmation through `yes` or elicitation. Host-proxy lifecycle commands MUST NOT self-allow; denied requests return `HostProxyCommandNotAllowedError`. Missing required registry metadata or `resultSchema` returns `CommandRegistrationError`.
+
+The core forbidden list includes `meta:global:disable` and `meta:global:reconcile` because they can remove containers and routes. Their explicitly allowed MCP tools MUST report `destructive: true`. These policy commands retain their separate acknowledgement contract (§20.3.1): no `yes` flag or generic elicitation is added; `allow-disruption` acknowledges consumer impact for that invocation only and never bypasses ownership, dependency, or active-admission safeguards.
 
 Command registration and invocation preserve these schema-backed `_tag` values:
 

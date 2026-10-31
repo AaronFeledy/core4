@@ -13,6 +13,7 @@ import type { RouterServiceShape } from "@lando/sdk/services";
 
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
+import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 
 export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   proxy: RouterServiceShape,
@@ -26,6 +27,7 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   | RouterPortPinMismatch
   | RouterWatcherError
   | ProxyApplyError
+  | Effect.Error<typeof verifyGlobalConsumerAdmission>
 > {
   if (!routerEnabled(plan) || plan.routes.length === 0) {
     // Best-effort: a disabled or route-free plan must withdraw previously published hostnames.
@@ -35,6 +37,7 @@ export const applyAppRoutes = Effect.fn("Lifecycle.applyAppRoutes")(function* (
   const defaultDomain = yield* resolveProxyDefaultDomain;
   const { router, routerPin } = yield* resolveRouterConfigForApp(landofileRouter);
   return yield* Effect.scoped(proxy.setup({ defaultDomain, router, routerPin })).pipe(
+    Effect.andThen(verifyGlobalConsumerAdmission),
     Effect.andThen(proxy.applyRoutes(plan.routes, plan.id)),
   );
 });
