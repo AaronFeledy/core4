@@ -6,7 +6,7 @@ import { makeLandoPaths } from "@lando/paths";
 
 import { FileNotFoundError, GlobalAppError } from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ProviderId } from "@lando/sdk/schema";
 import {
   CertificateAuthority,
   FileSystem,
@@ -188,12 +188,13 @@ for (const operation of ["read", "remove"] as const) {
 }
 
 test.each([false, true])(
-  "the production layer isolates its embedded root (path failure: %s)",
+  "the production layer defers global paths and isolates its embedded root (path failure: %s)",
   async (pathFailure) => {
     const embeddedRoot = "/embedded/global";
     const defaultPaths = makeLandoPaths({ userDataRoot: "/different-data", platform: "linux", env: {} });
     const embeddedMarker = `${embeddedRoot}/proxy-traefik/dynamic/.lando-routing-state`;
     const foreignMarker = `${defaultPaths.globalAppRoot}/proxy-traefik/dynamic/.lando-routing-state`;
+    let pathReads = 0;
     const files = new Map([
       [embeddedMarker, "old embedded readiness"],
       [foreignMarker, "foreign readiness"],
@@ -222,19 +223,22 @@ test.each([false, true])(
       id: "global",
       providerId: Effect.succeed(ProviderId.make("lando")),
       root: Effect.succeed(AbsolutePath.make(embeddedRoot)),
-      paths: pathFailure
-        ? Effect.fail(
-            new GlobalAppError({
-              operation: "paths",
-              message: "Embedded root is unavailable.",
-              remediation: "Repair the embedded global root.",
-            }),
-          )
-        : Effect.succeed({
-            root: AbsolutePath.make(embeddedRoot),
-            distLandofile: AbsolutePath.make(`${embeddedRoot}/.lando.dist.yml`),
-            userLandofile: AbsolutePath.make(`${embeddedRoot}/.lando.yml`),
-          }),
+      paths: Effect.suspend(() => {
+        pathReads += 1;
+        return pathFailure
+          ? Effect.fail(
+              new GlobalAppError({
+                operation: "paths",
+                message: "Embedded root is unavailable.",
+                remediation: "Repair the embedded global root.",
+              }),
+            )
+          : Effect.succeed({
+              root: AbsolutePath.make(embeddedRoot),
+              distLandofile: AbsolutePath.make(`${embeddedRoot}/.lando.dist.yml`),
+              userLandofile: AbsolutePath.make(`${embeddedRoot}/.lando.yml`),
+            });
+      }),
       ensureRoot: Effect.void,
       ensureUserLandofile: Effect.die("unused"),
       ensureRunning: () => Effect.die("status must not start services"),
@@ -248,9 +252,25 @@ test.each([false, true])(
       Layer.succeed(CertificateAuthority, makeTestCertificateAuthority()),
       Layer.succeed(HttpClient.HttpClient, makeApplyRuntime(files).httpClient),
     );
-    const program = Effect.flatMap(RouterService, (router) => router.status).pipe(
-      Effect.provide(layer(stateStore).pipe(Layer.provide(dependencies))),
-    );
+    const program = Effect.gen(function* () {
+      const router = yield* RouterService;
+      expect(pathReads).toBe(0);
+      expect(router.id).toBe("traefik");
+      expect(router.capabilities.tls).toBe(true);
+      if (pathFailure) {
+        expect(
+          yield* Effect.result(Effect.scoped(router.setup({ defaultDomain: "lndo.site" }))),
+        ).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "ProxySetupError", cause: { _tag: "ProxyError" } },
+        });
+        expect(yield* Effect.result(router.applyRoutes([], AppId.make("example")))).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "ProxyApplyError", app: "example", cause: { _tag: "ProxyError" } },
+        });
+      }
+      return yield* router.status;
+    }).pipe(Effect.provide(layer(stateStore).pipe(Layer.provide(dependencies))));
     if (pathFailure) {
       expect(await Effect.runPromise(Effect.result(program))).toMatchObject({
         _tag: "Failure",
@@ -263,11 +283,13 @@ test.each([false, true])(
       });
       expect(files.get(embeddedMarker)).toBe("old embedded readiness");
       expect(files.get(foreignMarker)).toBe("foreign readiness");
+      expect(pathReads).toBe(3);
       return;
     }
     const status = await Effect.runPromise(program);
     expect(status.state).toBe("stopped");
     expect(files.has(embeddedMarker)).toBe(false);
     expect(files.get(foreignMarker)).toBe("foreign readiness");
+    expect(pathReads).toBe(1);
   },
 );

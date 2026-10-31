@@ -29,6 +29,7 @@ import {
 
 import { makeRouteApplication } from "./apply-routes.ts";
 import { ensureDashboardFile } from "./dashboard.ts";
+import { deferredRouter } from "./deferred-router.ts";
 import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
 import { makeRouteObserver } from "./observe-routes.ts";
 import { fingerprintsEqual } from "./port-acquisition-helpers.ts";
@@ -77,6 +78,10 @@ import {
 export { renderTraefikDynamicConfig } from "./routing.ts";
 
 const TRAEFIK_PROXY_ID = "traefik";
+const ROUTER_IDENTITY = {
+  id: TRAEFIK_PROXY_ID,
+  capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+};
 const ROUTE_RELOAD_LOCK_WAIT_MS = 120_000;
 const TRAEFIK_DYNAMIC_CONFIG_SOURCE = "./proxy-traefik/dynamic";
 
@@ -297,8 +302,7 @@ export const makeTraefikRouterService = (
   });
   return {
     ...RouterService.of({
-      id: TRAEFIK_PROXY_ID,
-      capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+      ...ROUTER_IDENTITY,
       observeRoutes: makeRouteObserver(dependencies, pendingReload),
       prepare: Effect.fn("RouterService.prepare")(
         (config) =>
@@ -484,87 +488,97 @@ export const layer = (stateStore: PluginStateStore) =>
       const fileSystem = yield* FileSystem;
       const paths = yield* PathsService;
       const globalApp = yield* GlobalAppService;
-      const globalRoot = (yield* globalApp.paths.pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProxyError({
-              message: "Unable to resolve the global router's storage root.",
-              proxyId: TRAEFIK_PROXY_ID,
-              remediation: cause.remediation,
-              cause,
-            }),
-        ),
-      )).root;
       const certificateAuthority = yield* CertificateAuthority;
       const events = yield* Effect.serviceOption(EventService);
       const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
       const socketProxy = yield* resolveLiveSocketProxy;
       const httpClient = yield* HttpClient.HttpClient;
-      return makeTraefikRouterService({
-        httpClient,
-        certificateAuthority,
-        fileSystem: {
-          ...fileSystem,
-          writeSecretAtomic: (path, content) =>
-            Effect.uninterruptible(Effect.tryPromise(() => writeSecretAtomic(path, content))),
-        },
-        paths: { platform: paths.platform, globalAppRoot: globalRoot },
-        globalApp,
-        stateStore,
-        ...(socketProxy === undefined ? {} : { socketProxy }),
-        ...(events._tag === "Some" ? { events: events.value } : {}),
-        ...Option.match(registry, {
-          onNone: () => ({}),
-          onSome: (registry) => ({
-            readTraefikState: Effect.fn("TraefikRouter.readTraefikState")(function* () {
-              const provider = yield* registry.select(yield* globalApp.providerId);
-              if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running)
-                return "unknown" as const;
-              const root = (yield* globalApp.paths).root;
-              const services = yield* provider.list({ app: AppId.make("global"), includeUnplanned: true });
-              const owned = services.find(
-                (service) =>
-                  service.app === "global" &&
-                  service.service === "traefik" &&
-                  service.providerId === provider.id &&
-                  service.appRoot !== undefined &&
-                  sameRealpath(service.appRoot, root),
-              );
-              return owned === undefined
-                ? ("stopped" as const)
-                : (owned.state ?? owned.status).toLowerCase() === "running"
-                  ? ("running" as const)
-                  : ("stopped" as const);
+      return yield* deferredRouter(
+        ROUTER_IDENTITY,
+        globalApp.paths.pipe(
+          Effect.mapError(
+            (cause) =>
+              new ProxyError({
+                message: "Unable to resolve the global router's storage root.",
+                proxyId: TRAEFIK_PROXY_ID,
+                remediation: cause.remediation,
+                cause,
+              }),
+          ),
+          Effect.map(({ root: globalRoot }) =>
+            makeTraefikRouterService({
+              httpClient,
+              certificateAuthority,
+              fileSystem: {
+                ...fileSystem,
+                writeSecretAtomic: (path, content) =>
+                  Effect.uninterruptible(Effect.tryPromise(() => writeSecretAtomic(path, content))),
+              },
+              paths: { platform: paths.platform, globalAppRoot: globalRoot },
+              globalApp,
+              stateStore,
+              ...(socketProxy === undefined ? {} : { socketProxy }),
+              ...(events._tag === "Some" ? { events: events.value } : {}),
+              ...Option.match(registry, {
+                onNone: () => ({}),
+                onSome: (registry) => ({
+                  readTraefikState: Effect.fn("TraefikRouter.readTraefikState")(function* () {
+                    const provider = yield* registry.select(yield* globalApp.providerId);
+                    if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running)
+                      return "unknown" as const;
+                    const root = (yield* globalApp.paths).root;
+                    const services = yield* provider.list({
+                      app: AppId.make("global"),
+                      includeUnplanned: true,
+                    });
+                    const owned = services.find(
+                      (service) =>
+                        service.app === "global" &&
+                        service.service === "traefik" &&
+                        service.providerId === provider.id &&
+                        service.appRoot !== undefined &&
+                        sameRealpath(service.appRoot, root),
+                    );
+                    return owned === undefined
+                      ? ("stopped" as const)
+                      : (owned.state ?? owned.status).toLowerCase() === "running"
+                        ? ("running" as const)
+                        : ("stopped" as const);
+                  }),
+                  readTraefikPublications: Effect.fn("TraefikRouter.readTraefikPublications")(function* () {
+                    const provider = yield* registry.select(yield* globalApp.providerId);
+                    const service = yield* provider.inspect({
+                      app: AppId.make("global"),
+                      service: ServiceName.make("traefik"),
+                    });
+                    return (service.state ?? service.status).toLowerCase() === "running"
+                      ? service.publications
+                      : { status: "unknown" as const };
+                  }),
+                  readTraefikLogs: Effect.fn("TraefikRouter.readTraefikLogs")(function* () {
+                    const provider = yield* registry.select(yield* globalApp.providerId);
+                    if (provider.capabilities.serviceLogs !== true) {
+                      return yield* Effect.fail(
+                        proxyError("log observation", "Service logs are unavailable."),
+                      );
+                    }
+                    const chunks = yield* provider
+                      .logs(
+                        { app: AppId.make("global"), service: ServiceName.make("traefik") },
+                        { follow: false, tail: 200 },
+                      )
+                      .pipe(Stream.runCollect);
+                    return {
+                      providerId: provider.id,
+                      text: Array.from(chunks, (chunk) => chunk.line).join("\n"),
+                    };
+                  }),
+                }),
+              }),
             }),
-            readTraefikPublications: Effect.fn("TraefikRouter.readTraefikPublications")(function* () {
-              const provider = yield* registry.select(yield* globalApp.providerId);
-              const service = yield* provider.inspect({
-                app: AppId.make("global"),
-                service: ServiceName.make("traefik"),
-              });
-              return (service.state ?? service.status).toLowerCase() === "running"
-                ? service.publications
-                : { status: "unknown" as const };
-            }),
-            readTraefikLogs: Effect.fn("TraefikRouter.readTraefikLogs")(function* () {
-              const provider = yield* registry.select(yield* globalApp.providerId);
-              if (provider.capabilities.serviceLogs !== true) {
-                return yield* Effect.fail(proxyError("log observation", "Service logs are unavailable."));
-              }
-              const chunks = yield* provider
-                .logs(
-                  { app: AppId.make("global"), service: ServiceName.make("traefik") },
-                  { follow: false, tail: 200 },
-                )
-                .pipe(Stream.runCollect);
-              return {
-                providerId: provider.id,
-                text: Array.from(chunks, (chunk) => chunk.line).join("\n"),
-              };
-            }),
-          }),
-        }),
-      });
+          ),
+        ),
+      );
     }),
   );
 
