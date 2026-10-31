@@ -1,6 +1,11 @@
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
-import { addEnvRecord, loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  addEnvRecord,
+  loopbackTcpHealthcheck,
+  serviceFeatureApply,
+  serviceFeatureValidateEffective,
+} from "./_feature-helpers.ts";
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
@@ -91,6 +96,10 @@ export const phpServiceFeature: ServiceFeatureDefinition = {
   id: PHP_FEATURE_ID,
   schema: PhpFeatureConfig,
   priority: PHP_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(PHP_FEATURE_ID, (ctx) => {
+    const { webroot } = Schema.decodeUnknownSync(PhpFeatureConfig)(ctx.config);
+    return { handledServiceFields: webroot.length > 0 ? ["webroot"] : [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() => {
       const { via } = Schema.decodeUnknownSync(PhpFeatureConfig)(ctx.config);

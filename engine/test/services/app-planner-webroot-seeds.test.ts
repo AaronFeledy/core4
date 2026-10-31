@@ -44,7 +44,15 @@ test.each([false, true])(
           planner.plan(literalTestLandofile(landofile, process.cwd()), TestRuntimeProvider.capabilities),
         ).pipe(
           Effect.provide(AppPlannerLayer.layer),
-          Effect.provideService(PluginRegistry, { ...registry, loadServiceType: () => Effect.succeed(type) }),
+          Effect.provideService(PluginRegistry, {
+            ...registry,
+            loadServiceType: () => Effect.succeed(type),
+            loadServiceFeature: (id) => id === "lando.ssh-agent" ? Effect.succeed({
+              id, priority: 100, schema: Schema.Unknown,
+              validateEffective: () => Effect.succeed({ handledServiceFields: ["webroot"] }),
+              apply: () => Effect.void,
+            }) : registry.loadServiceFeature(id),
+          }),
         );
       }).pipe(Effect.provide(PluginRegistryLayer.layer)),
     );

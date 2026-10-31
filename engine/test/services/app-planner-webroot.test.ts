@@ -97,7 +97,7 @@ test.each(["php:8.3", "nginx", "apache", "static:nginx", "tomcat"])(
   },
 );
 
-test.each([undefined, null, 7, ""])("does not accept invalid feature declaration %j", async (webroot) => {
+test.each([undefined, null, 7, "", "public"])("does not infer support from feature config %j", async (webroot) => {
   // Given a custom type, not a built-in language identifier.
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
@@ -180,6 +180,7 @@ test.each(["python:3.12", "ruby:3.3"])(
                     id,
                     priority: 900,
                     schema: Schema.Unknown,
+                    validateEffective: () => Effect.succeed({ handledServiceFields: ["webroot"] }),
                     apply: (ctx) =>
                       Effect.sync(() => {
                         const config = Schema.decodeUnknownSync(
@@ -206,4 +207,11 @@ test.each(["python:3.12", "ruby:3.3"])(
     expect(web?.extensions["custom.root"]).toEqual({ webroot: "/srv/public" });
   },
 );
+test("a custom Tomcat image without a mount cannot claim image-owned root configuration", async () => {
+  // Given / When / Then
+  await expect(Effect.runPromise(plan({ type: "tomcat", image: "example.test/tomcat:fixture", appMount: false, webroot: "/srv/public" }).pipe(Effect.provide(PluginRegistryLayer.layer)))).rejects.toMatchObject({
+    _tag: "LandofileValidationError",
+    issues: [expect.objectContaining({ path: ["services", "web", "webroot"], suggestion: expect.any(String) })],
+  });
+});
 import { serviceAppMount } from "@lando/sdk/schema";
