@@ -1808,7 +1808,7 @@ describe("meta:global command effects", () => {
   });
 
   for (const missingAppliedState of [false, true]) {
-    test(`status preserves unknown runtime ownership (applied state missing: ${missingAppliedState})`, async () => {
+    test(`status keeps ownership unknown (missing applied state: ${missingAppliedState})`, async () => {
       const options = { incompleteObservationOwnership: false, missingAppliedState: false };
       await withHarness(async (harness) => {
         await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
