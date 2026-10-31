@@ -36,11 +36,18 @@ export const servicePlanError = (appRoot: string, serviceName: string, cause: un
       (cause instanceof ServiceTypeError || cause instanceof ServiceFeatureError) &&
       cause.issues !== undefined &&
       cause.issues.length > 0
-        ? cause.issues.map((issue) => ({ ...issue, path: ["services", serviceName, ...issue.path] }))
+        ? cause.issues.map((issue) => ({
+            ...issue,
+            path: ["services", serviceName, ...issue.path],
+            suggestion: issue.suggestion ?? cause.remediation,
+          }))
         : [
             validationIssue(
               ["services", serviceName],
               cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
+              cause instanceof ServiceTypeError || cause instanceof ServiceFeatureError
+                ? cause.remediation
+                : undefined,
             ),
           ],
   });
