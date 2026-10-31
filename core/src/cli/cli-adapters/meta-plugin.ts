@@ -59,7 +59,7 @@ export const runMetaMcp = async (argv: ReadonlyArray<string>, signal?: AbortSign
     ConfigError | LandoRuntimeBootstrapError
   >;
   const retainedRuntime = makeLandoRuntime(
-    cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" }, interaction: "non-interactive" }),
   ).pipe(Layer.orDie) as Layer.Layer<unknown>;
   return dispatchMcpCommand({
     flags,

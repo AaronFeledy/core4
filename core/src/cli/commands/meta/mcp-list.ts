@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { isMcpDestructiveCommand } from "@lando/mcp/allowlist";
 import { computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
@@ -8,10 +9,21 @@ export const McpListToolSchema = Schema.Struct({
   id: Schema.String,
   summary: Schema.String,
   source: Schema.String,
+  plugin: Schema.optionalKey(
+    Schema.Struct({ name: Schema.String, source: Schema.Literals(["bundled", "external"]) }),
+  ),
+  destructive: Schema.optionalKey(Schema.Boolean),
 });
 
 export const McpListResultSchema = Schema.Struct({
   tools: Schema.Array(McpListToolSchema),
+  diagnostics: Schema.Array(
+    Schema.Struct({
+      _tag: Schema.String,
+      message: Schema.String,
+      remediation: Schema.optionalKey(Schema.String),
+    }),
+  ),
 });
 
 export type McpListTool = typeof McpListToolSchema.Type;
@@ -21,10 +33,12 @@ interface McpListEntrySpec {
   readonly id: string;
   readonly summary: string;
   readonly description?: string | undefined;
+  readonly flags?: Readonly<Record<string, unknown>>;
 }
 
 interface McpListEntry {
   readonly spec: McpListEntrySpec;
+  readonly plugin?: { readonly name: string; readonly source: "bundled" | "external" };
 }
 
 export interface BuildMcpListResultInput {
@@ -34,6 +48,7 @@ export interface BuildMcpListResultInput {
   readonly allow?: ReadonlyArray<string> | undefined;
   readonly deny?: ReadonlyArray<string> | undefined;
   readonly tooling?: boolean | undefined;
+  readonly diagnostics?: McpListResult["diagnostics"];
 }
 
 const sourceFor = (id: string, input: BuildMcpListResultInput, toolingIds: ReadonlySet<string>): string => {
@@ -57,11 +72,21 @@ export const buildMcpListResult = (input: BuildMcpListResultInput): McpListResul
   for (const entry of [...input.commandEntries, ...toolingEntries]) {
     const id = entry.spec.id;
     if (effective.ids.has(id) && !toolsById.has(id)) {
-      toolsById.set(id, { id, summary: entry.spec.summary, source: sourceFor(id, input, toolingIds) });
+      toolsById.set(id, {
+        id,
+        summary: entry.spec.summary,
+        source: sourceFor(id, input, toolingIds),
+        ...(entry.plugin === undefined
+          ? {}
+          : { plugin: entry.plugin, destructive: isMcpDestructiveCommand(entry.spec) }),
+      });
     }
   }
 
-  return { tools: [...toolsById.values()].sort((left, right) => left.id.localeCompare(right.id)) };
+  return {
+    tools: [...toolsById.values()].sort((left, right) => left.id.localeCompare(right.id)),
+    diagnostics: input.diagnostics ?? [],
+  };
 };
 
 const buildMcpListSummary = (result: McpListResult): SummaryDocument => {
@@ -80,6 +105,15 @@ const buildMcpListSummary = (result: McpListResult): SummaryDocument => {
         rows,
         ...(rows.length === 0 ? { notes: ["No MCP tools are allowed."] } : {}),
       },
+      ...(result.diagnostics.length === 0
+        ? []
+        : [
+            {
+              title: "diagnostics",
+              rows: [],
+              notes: result.diagnostics.map((diagnostic) => `${diagnostic._tag}: ${diagnostic.message}`),
+            },
+          ]),
     ],
     footer: `${result.tools.length} tools`,
   };
@@ -87,7 +121,10 @@ const buildMcpListSummary = (result: McpListResult): SummaryDocument => {
 
 export const renderMcpListResult = (result: McpListResult, ctx?: RenderContext): string => {
   if (isDecoratedContext(ctx)) return formatSummary(buildMcpListSummary(result), summaryPaintOptions(ctx));
-  if (result.tools.length === 0) return "(no MCP tools)";
   const rows = result.tools.map((tool) => `${tool.id}\t${tool.source}\t${tool.summary}`);
-  return ["tool\tsource\tsummary", ...rows].join("\n");
+  const tools = rows.length === 0 ? ["(no MCP tools)"] : ["tool\tsource\tsummary", ...rows];
+  return [
+    ...tools,
+    ...result.diagnostics.map((diagnostic) => `${diagnostic._tag}: ${diagnostic.message}`),
+  ].join("\n");
 };
