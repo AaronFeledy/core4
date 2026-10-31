@@ -19,6 +19,10 @@ The bundled SSH sidecar installs `openssh-client` and `socat` when the global ap
 
 `lando rebuild` and `lando global:rebuild` re-pull the images your services reference so updated tags take effect, then rerun the build. If the registry can't be reached, Lando warns and rebuilds from the local copies. With `--format=json`, that warning is in the result's `warnings` array with code `LANDO_ARTIFACT_REFRESH_FAILED`. Only an image that was never pulled needs network access.
 
+Stopping, inspecting, and removing an app you already started never needs the network. `lando stop`, `lando logs`, `lando info`, and `lando destroy` talk to the runtime that is already running and do not start it, rewrite its configuration, or download anything, so an interrupted upgrade or a missing download cannot block you from reading logs or tearing an app down.
+
+On Linux with the default `lando` provider, the init process that Lando runs in front of each service command ships inside the runtime payload. A runtime installed before that helper was part of the payload fetches the pinned helper once, during `lando setup` or the first `lando start` of a service that uses init, and reuses the verified copy offline from then on. Services with `init: false` never need it.
+
 Runtime bundle, tool, npm and tarball recipe downloads, and git recipes pinned to a full commit SHA first check the local cache. A cache hit never touches the network. A git recipe on a branch, tag, or default branch is fetched again on every init; `lando init --source=git` warns and uses the cached commit when that fetch fails. When a download is actually required and the network is unavailable, the download fails with `DownloadOfflineError` instead of hanging or silently retrying.
 
 Once a remote include has a lockfile entry and a cached copy, loading the app reads that copy instead of the network. `lando start`, `lando app:config`, tooling, `lando app:includes:verify`, and `lando app:includes:update --no-network` all work offline from then on. See [Pin a remote include](../landofile/includes-and-lockfile.mdx#pin-a-remote-include).
