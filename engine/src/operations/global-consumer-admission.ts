@@ -22,6 +22,7 @@ import { resolveRouterConfigForApp, routerEnabled } from "../config/router-confi
 import { withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { withGlobalResolutionCapabilities } from "../global-app/resolution.ts";
+import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
 import { ensureGlobalServicesRunning } from "./ensure-global-services.ts";
@@ -152,13 +153,13 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
               yield* Effect.scoped(router.setup(config));
             yield* verify;
             return yield* withGlobalConsumerAdmissionCheck(
-              verify.pipe(Effect.mapError(failure), Effect.provide(context)),
+              verify.pipe(mapFailureErrors(failure), Effect.provide(context)),
               Effect.exit(body),
             );
           }),
         );
       }),
-    ).pipe(Effect.mapError(failure)),
+    ).pipe(mapFailureErrors(failure)),
     signal,
   );
   return yield* outcome;
