@@ -33,6 +33,7 @@ import {
   withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
 import { configOutputLandofile } from "./x-extension-config-output.ts";
+import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
@@ -60,27 +61,29 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalToolingSensitivity(
-    evolveHistoricalAppMountAcceleration(
-      evolveHistoricalToolingShorthand(
-        evolveHistoricalEnvironment(
-          evolveHistoricalEndpointMetadata(
-            evolveHistoricalServicePort(
-              evolveHistoricalTimestamps(
-                evolveHistoricalContainerUser(
-                  evolveHistoricalReadiness(
-                    evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+  evolveHistoricalConsolePort(
+    evolveHistoricalToolingSensitivity(
+      evolveHistoricalAppMountAcceleration(
+        evolveHistoricalToolingShorthand(
+          evolveHistoricalEnvironment(
+            evolveHistoricalEndpointMetadata(
+              evolveHistoricalServicePort(
+                evolveHistoricalTimestamps(
+                  evolveHistoricalContainerUser(
+                    evolveHistoricalReadiness(
+                      evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+                    ),
                   ),
+                  "bare",
                 ),
-                "bare",
               ),
             ),
           ),
+          "bare",
         ),
-        "bare",
       ),
+      "bare",
     ),
-    "bare",
   );
 
 describe("closed x-* extension artifact repair", () => {

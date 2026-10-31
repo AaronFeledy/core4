@@ -106,12 +106,15 @@ If you are looking for a public surface or policy:
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
+| Final effective feature validation, explicit field claims and structured feature issues | 06 | §6.11.0 + §6.11.4 |
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
+| MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
+| Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
@@ -170,6 +173,7 @@ If you are looking for a public surface or policy:
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
 | SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
+| Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
 | Accelerated-start journal, resume, and stop/destroy from any phase | 11 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |

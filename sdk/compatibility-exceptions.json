@@ -4827,13 +4827,13 @@
     "surface": "schema:EndpointPlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+    "justification": "Approved plan extensions add optional primary:true and opaque appProtocol to network endpoints and sparse plan-only scan path/okCodes metadata to endpoint variants. No existing field becomes required; historical ownership-bearing applied plans remain decodable without migration. Scan defaults do not add authoring syntax or readiness semantics."
   },
   {
     "surface": "schema:InternalEndpoint",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved internal network endpoint extension adds optional primary:true and opaque appProtocol. The Unix-socket variant is unchanged, neither field becomes required, and existing applied endpoints remain decodable."
+    "justification": "Approved internal endpoint extensions add optional primary:true and opaque appProtocol to network listeners and optional sparse plan-only scan path/okCodes metadata to endpoint variants. No field becomes required; historical applied endpoints remain decodable. Authoring and readiness semantics remain separate."
   },
   {
     "surface": "schema:LocalStackServiceConfig",
@@ -5440,6 +5440,12 @@
     "changeKind": "enum-narrowed",
     "path": "$.composeKnobs.supported.items",
     "justification": "Pre-release: Compose tmpfs is no longer a preserved runtime knob; service tmpfs and volumes tmpfs normalize into tmpfs mount entries every bundled provider realizes, so providers no longer declare tmpfs knob support."
+  },
+  {
+    "surface": "schema:EndpointInvariantIssue",
+    "changeKind": "enum-widened",
+    "path": "$.kind",
+    "justification": "Approved pre-release effective service contracts add scan-conflict for contradictory defined path or status defaults on one logical endpoint. Omitted defaults inherit and equivalent status sets remain valid; consumers must handle the additional diagnostic kind."
   },
   {
     "surface": "command:app:share:stop",

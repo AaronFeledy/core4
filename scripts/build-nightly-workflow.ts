@@ -6,6 +6,7 @@ import {
   renderContainerHelperJob,
 } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { serviceListenerNightlyJob } from "./_service-listener-nightly.ts";
 
 import {
   landoManagedPodmanTeardownCommands,
@@ -490,6 +491,7 @@ export const renderNightlyWorkflow = (): string => {
     renderContainerHelperJob(),
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
+    serviceListenerNightlyJob,
     publishedManifestSetupJob,
     mysqlArmClientLinuxArm64Job,
     nightlyTierUnitTestsJob,

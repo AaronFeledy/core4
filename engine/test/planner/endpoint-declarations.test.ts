@@ -179,8 +179,8 @@ test("planning consumes the projected declarations once before applying features
   // Then
   expect(calls).toEqual(["service-declaration", "app-declaration", "service-apply", "app-apply"]);
   expect(result.services[ServiceName.make("web")]?.endpoints).toEqual([
-    listener(8080),
-    { ...listener(9000), name: "late" },
+    { ...listener(8080), scan: { path: "/", okCodes: [] } },
+    { ...listener(9000), name: "late", scan: { path: "/", okCodes: [] } },
   ]);
   expect(result.routes[0]?.backend.port).toBe(9000);
 });

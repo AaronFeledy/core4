@@ -83,6 +83,7 @@ export {
   ObservedPublication,
   PublicationObservation,
   EndpointPublication,
+  EndpointScan,
   InternalEndpointInput,
   PublishedEndpointInput,
 } from "./endpoint.ts";
@@ -160,6 +161,7 @@ export * from "./service-info.ts";
 export * from "./service-mount.ts";
 export * from "./service-connection.ts";
 export * from "./service-dependency.ts";
+export * from "./service-feature-validation.ts";
 export * from "./services/index.ts";
 export * from "./template.ts";
 export * from "./tool-manifest.ts";

@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { PortNumber, PortablePath } from "./primitives.ts";
+import { scanFields } from "./scan-fields.ts";
 
 const NETWORK_PROTOCOL = Schema.Literals(["http", "https", "tcp", "udp"]);
 const IPV4_PATTERN = /^(?:0|[1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){3}$/u;
@@ -97,18 +98,34 @@ export const EndpointInput = Schema.Union([InternalEndpointInput, PublishedEndpo
 });
 export type EndpointInput = typeof EndpointInput.Type;
 
+export const EndpointScan = Schema.Struct(scanFields).annotate({
+  identifier: "EndpointScan",
+  description:
+    "Sparse plan-only startup scan defaults for a logical listener; omitted fields inherit policy.",
+  examples: [{}, { path: "/health", okCodes: [200, 204] }],
+});
+export type EndpointScan = typeof EndpointScan.Type;
+
+const scanField = {
+  scan: Schema.optionalKey(EndpointScan).annotate({
+    description: "Plan-only startup HTTP scan defaults; not endpoint authoring or readiness settings.",
+  }),
+};
+
 const InternalNetworkEndpoint = Schema.Struct({
   _tag: internalTag,
   protocol: networkProtocol,
   port: PortNumber,
   ...commonFields,
   ...applicationProtocolField,
+  ...scanField,
 });
 const InternalUnixEndpoint = Schema.Struct({
   _tag: internalTag,
   protocol: unixProtocol,
   socketPath: PortablePath,
   ...commonFields,
+  ...scanField,
 });
 export const InternalEndpoint = Schema.Union([InternalNetworkEndpoint, InternalUnixEndpoint]);
 export type InternalEndpoint = typeof InternalEndpoint.Type;
@@ -120,6 +137,7 @@ export const PublishedEndpoint = Schema.Struct({
   publication: publicationField,
   ...commonFields,
   ...applicationProtocolField,
+  ...scanField,
 });
 export type PublishedEndpoint = typeof PublishedEndpoint.Type;
 
