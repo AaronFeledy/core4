@@ -16,6 +16,7 @@ import {
 } from "@lando/core/schema";
 import {
   AppPlanner,
+  BuildOrchestrator,
   GlobalAppService,
   LandofileService,
   PathsService,
@@ -29,6 +30,7 @@ import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 
 import * as BunDataMover from "@lando/data-mover/service";
 import * as AppCacheService from "@lando/engine/cache/service";
+import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import { HostProviderOverride } from "@lando/engine/providers/host-provider";
 import * as ScratchRegistryLayer from "@lando/engine/scratch-app/registry";
@@ -44,6 +46,7 @@ import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
@@ -115,7 +118,8 @@ const capabilities: ProviderCapabilities = {
   rootless: true,
   privilegedServices: false,
   architectureEmulation: false,
-  composeSpec: "portable",
+  composeSpec: "native",
+  composeKnobs: { supported: ["cap_add"] },
   providerExtensions: [],
 };
 
@@ -243,6 +247,7 @@ const makeScratchForkLayer = (
     readonly requiredGlobalServices?: ReadonlyArray<string>;
   } = {},
 ) => {
+  let appliedGlobalPlan: AppPlan | undefined;
   const provider: RuntimeProviderShape = RuntimeProvider.of({
     ...TestRuntimeProvider,
     id: String(providerId),
@@ -259,7 +264,19 @@ const makeScratchForkLayer = (
     removeArtifact: () => Effect.void,
     apply: (plan) =>
       Effect.sync(() => {
-        appliedPlans.push(plan);
+        if (plan.id === "global") appliedGlobalPlan = plan;
+        else {
+          const required = new Set(plan.requires?.globalServices ?? []);
+          if (plan.router?.enabled !== false && plan.routes.length > 0) required.add("traefik");
+          if (required.size > 0) {
+            expect(appliedGlobalPlan?.root).toBe(
+              AbsolutePath.make(join(makeLandoPaths().roots.userDataRoot, "global")),
+            );
+            expect(appliedGlobalPlan?.provider).toBe(providerId);
+            for (const id of required) expect(appliedGlobalPlan?.services).toHaveProperty(id);
+          }
+          appliedPlans.push(plan);
+        }
         return { changed: true };
       }),
     start: () => die("start"),
@@ -284,11 +301,30 @@ const makeScratchForkLayer = (
         app: target.app,
         service: target.service,
         providerId,
+        ...(target.app === "global" && appliedGlobalPlan !== undefined
+          ? { appRoot: appliedGlobalPlan.root, containerId: `global-${target.service}` }
+          : {}),
         status: "running",
+        health: "healthy",
         lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
         publications: { status: "present", bindings: [] },
       }),
-    list: () => Effect.succeed([]),
+    list: () =>
+      Effect.sync(() => {
+        const plan = appliedGlobalPlan;
+        return plan === undefined
+          ? []
+          : Object.values(plan.services).map((service) => ({
+              app: plan.id,
+              appRoot: plan.root,
+              providerId,
+              service: service.name,
+              containerId: `global-${service.name}`,
+              status: "running" as const,
+              health: "healthy" as const,
+              publications: { status: "present" as const, bindings: [] },
+            }));
+      }),
   });
 
   const basePlanner = AppPlannerLayer.layer.pipe(
@@ -314,10 +350,14 @@ const makeScratchForkLayer = (
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveAppliedPlan: (root) =>
+        Effect.sync(() => (appliedGlobalPlan?.root === root ? appliedGlobalPlan : undefined)),
       resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
       appliedPlansFor: (root) =>
-        Effect.succeed(options.globalPlan?.root === root ? [options.globalPlan] : []),
+        Effect.sync(() => {
+          const plan = options.globalPlan ?? appliedGlobalPlan;
+          return plan?.root === root ? [plan] : [];
+        }),
       list: Effect.succeed([providerId]),
       capabilities: Effect.sync(() => {
         options.onCapabilities?.();
@@ -363,36 +403,45 @@ const makeScratchForkLayer = (
       ),
     ),
   );
-  const routeRecorder = options.routes;
-  const proxyLayers =
-    routeRecorder === undefined
-      ? []
-      : [
-          Layer.succeed(
-            RouterService,
-            RouterService.of({
-              id: "recording",
-              capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-              setup: () => options.setupRouter ?? Effect.void,
-              revalidateStartup: Effect.void,
-              observeRoutes: () =>
-                Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
-              applyRoutes: (routes, app) =>
-                (options.applyRoutes ?? Effect.void).pipe(
-                  Effect.andThen(
-                    Effect.sync(() => {
-                      routeRecorder.applied.push(String(app));
-                      return { app, appliedRoutes: routes, authorities: [] };
-                    }),
-                  ),
-                ),
-              removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(String(app))),
-              status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
-              stop: Effect.void,
-            }),
+  const routeRecorder = options.routes ?? { applied: [], removed: [] };
+  const proxyLayers = [
+    Layer.succeed(
+      RouterService,
+      RouterService.of({
+        id: "traefik",
+        capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+        setup: () => options.setupRouter ?? Effect.void,
+        revalidateStartup: Effect.void,
+        observeRoutes: () =>
+          Effect.succeed({ configuredAuthorities: [], observation: { status: "unknown" } }),
+        applyRoutes: (routes, app) =>
+          (options.applyRoutes ?? Effect.void).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                routeRecorder.applied.push(String(app));
+                return { app, appliedRoutes: routes, authorities: [] };
+              }),
+            ),
           ),
-        ];
+        removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(String(app))),
+        status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
+        stop: Effect.void,
+      }),
+    ),
+  ];
   const scratchDeps = Layer.mergeAll(
+    stateStoreLayer,
+    PrivateFileAccessService.layer,
+    Layer.succeed(PathsService, makeLandoPaths()),
+    LandoConfigService.layer,
+    pluginRegistryLive,
+    Layer.succeed(
+      BuildOrchestrator,
+      BuildOrchestrator.of({
+        build: (plan) => Effect.succeed(plan),
+        buildApp: () => Effect.void,
+      }),
+    ),
     environmentResolverLayer(),
     LandoEventService.layer,
     BunFileSystem.layer,
@@ -405,7 +454,11 @@ const makeScratchForkLayer = (
     dataMoverLive,
     ...proxyLayers,
     ...(options.globalPlan === undefined
-      ? []
+      ? [
+          GlobalAppServiceLayer.layer.pipe(
+            Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
+          ),
+        ]
       : [
           Layer.succeed(
             GlobalAppService,

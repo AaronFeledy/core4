@@ -9,6 +9,7 @@ import type {
 import type { AppPlan, InfoAppResult } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { selectGlobalServices } from "@lando/engine/operations/global-common";
 import {
   type LoadGlobalPlanServices,
   type LoadObservedGlobalPlanError,
@@ -17,7 +18,6 @@ import {
 import { infoForPlan } from "@lando/engine/operations/info";
 import type { RenderContext } from "../../renderer-boundary";
 import { renderInfoAppResult } from "../info-render";
-import { selectGlobalServices } from "./global-common";
 
 export interface GlobalInfoOptions {
   readonly services?: ReadonlyArray<string>;

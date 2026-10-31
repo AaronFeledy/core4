@@ -24,6 +24,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import { withToolingOutput } from "../../src/operations/tooling-output.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
@@ -168,7 +169,9 @@ const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer) =>
   Effect.runPromise(
     ToolingEngine.pipe(Effect.provide(live.pipe(Layer.provide(testEnvironmentResolverLayer)))),
   );
-const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
+const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
+  Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)),
+);
 
 const captureOutput: NonNullable<ToolingEngineContractHarness["captureOutput"]> = (run) =>
   withToolingOutput(run).pipe(

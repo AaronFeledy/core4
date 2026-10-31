@@ -92,6 +92,8 @@ export type TraefikLogObservation = {
 };
 
 export interface TraefikProxyDependencies {
+  /** Fresh ownership-verified service observation; absent evidence never proves running ingress. */
+  readonly readTraefikState?: () => Effect.Effect<"running" | "stopped" | "unknown", unknown>;
   readonly readTraefikPublications?: () => Effect.Effect<PublicationObservation, unknown>;
   readonly httpClient?: HttpClient.HttpClient;
   readonly readTraefikLogs?: () => Effect.Effect<TraefikLogObservation, unknown>;

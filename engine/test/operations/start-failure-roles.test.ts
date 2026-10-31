@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { failureOutcomeFromCause } from "@lando/sdk/command-result";
 import { GlobalAppError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
@@ -53,18 +54,18 @@ test("a failed user start preserves the primary tag without rollback-role errors
   expect(destroyed).toBe(0);
 });
 
-// Placement reads the global paths before any global mutation, so the stub returns real paths.
-const globalPaths = {
-  root: AbsolutePath.make("/tmp/start-failure-roles/global"),
-  distLandofile: AbsolutePath.make("/tmp/start-failure-roles/global/.lando.dist.yml"),
-  userLandofile: AbsolutePath.make("/tmp/start-failure-roles/global/.lando.yml"),
-};
+const fixtureGlobalPaths = (harness: ReturnType<typeof makeHarness>) => ({
+  root: harness.globalAdmission.root,
+  distLandofile: AbsolutePath.make(join(harness.globalAdmission.root, ".lando.dist.yml")),
+  userLandofile: AbsolutePath.make(join(harness.globalAdmission.root, ".lando.yml")),
+});
 
 test("startForTarget global error mapping preserves secondary roles and reasons", async () => {
   const primary = new GlobalAppError({ message: "global start", remediation: "repair" });
   const rollback = new GlobalAppError({ message: "global rollback", remediation: "undo" });
   const cause = mergeFailure(Cause.fail(primary), Cause.fail(rollback), "rollback");
-  const harness = makeHarness();
+  const harness = makeHarness({ globalServiceIds: ["traefik"] });
+  const globalPaths = fixtureGlobalPaths(harness);
   const plannedApp = { ...plan, requires: { globalServices: ["traefik"] } };
   const exit = await Effect.runPromiseExit(
     startAppForTarget(
@@ -78,11 +79,11 @@ test("startForTarget global error mapping preserves secondary roles and reasons"
       Effect.provideService(GlobalAppService, {
         id: "global",
         providerId: Effect.succeed(plan.provider),
-        root: Effect.succeed(plan.root),
+        root: Effect.succeed(globalPaths.root),
         paths: Effect.succeed(globalPaths),
-        ensureRoot: Effect.failCause(cause),
+        ensureRoot: Effect.die("unused"),
         ensureUserLandofile: Effect.die("unused"),
-        regenerateDist: () => Effect.die("unused"),
+        regenerateDist: () => Effect.failCause(cause),
         ensureRunning: () => Effect.die("unused"),
       }),
       Effect.provide(harness.layer),
@@ -186,7 +187,8 @@ test("a provider apply failure records the left-in-place inventory notice", asyn
 test("a failure before any app mutation records the no-change notice", async () => {
   // Given: global auto-start fails before any app-owned acquisition or provider apply.
   const warnings = makeCommandWarnings(false);
-  const harness = makeHarness();
+  const harness = makeHarness({ globalServiceIds: ["traefik"] });
+  const globalPaths = fixtureGlobalPaths(harness);
   const plannedApp = { ...plan, requires: { globalServices: ["traefik"] } };
   // When: the start fails under the CLI notice wrapper.
   const exit = await Effect.runPromiseExit(
@@ -194,11 +196,12 @@ test("a failure before any app mutation records the no-change notice", async () 
       Effect.provideService(GlobalAppService, {
         id: "global",
         providerId: Effect.succeed(plan.provider),
-        root: Effect.succeed(plan.root),
+        root: Effect.succeed(globalPaths.root),
         paths: Effect.succeed(globalPaths),
-        ensureRoot: Effect.fail(new GlobalAppError({ message: "global start", remediation: "repair" })),
+        ensureRoot: Effect.die("unused"),
         ensureUserLandofile: Effect.die("unused"),
-        regenerateDist: () => Effect.die("unused"),
+        regenerateDist: () =>
+          Effect.fail(new GlobalAppError({ message: "global start", remediation: "repair" })),
         ensureRunning: () => Effect.die("unused"),
       }),
       Effect.provideService(CommandWarnings, warnings),

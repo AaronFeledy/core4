@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
+import { GlobalDestroyResultSchema } from "@lando/engine/operations/global-destroy";
+import { GlobalStopResultSchema } from "@lando/engine/operations/global-stop";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { StopAppResult } from "@lando/sdk/app";
 import {
@@ -13,11 +15,8 @@ import {
 } from "@lando/sdk/schema";
 
 import { renderDestroyAppResult } from "../../src/cli/commands/destroy.ts";
-import {
-  GlobalDestroyResultSchema,
-  renderGlobalDestroyResult,
-} from "../../src/cli/commands/meta/global-destroy.ts";
-import { GlobalStopResultSchema, renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
+import { renderGlobalDestroyResult } from "../../src/cli/commands/meta/global-destroy.ts";
+import { renderGlobalStopResult } from "../../src/cli/commands/meta/global-stop.ts";
 import {
   publishShutdownWarnings,
   receiptShutdownObservations,

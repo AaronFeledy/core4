@@ -54,6 +54,30 @@ const fixture = () => {
   };
 };
 
+test.each(["load", "candidate"] as const)(
+  "read-only %s never acquires or publishes an unpinned remote include",
+  async (entry) => {
+    const { inputs, acquisitions, publications } = fixture();
+    const file = join(root, ".lando.yml");
+    const content = `name: preview\n${source}`;
+    await writeFile(file, content);
+    const readOnly = { ...inputs, readOnly: true };
+    const result =
+      entry === "load"
+        ? await Effect.runPromise(loadLandofileLayers(root, file, readOnly).pipe(Effect.result))
+        : await Effect.runPromise(
+            validateLandofileReplacement({ appRoot: root, targetFile: file, content }, readOnly).pipe(
+              Effect.result,
+            ),
+          );
+    expect(result._tag).toBe("Failure");
+    expect(acquisitions).toEqual([]);
+    expect(publications).toEqual([]);
+    expect(await Bun.file(join(root, ".lando.lock.yml")).exists()).toBe(false);
+    expect(await Bun.file(join(root, "cache")).exists()).toBe(false);
+  },
+);
+
 test.each([false, true])(
   "shares provisional revisions across candidate layers without attempting publication (invalid=%s)",
   async (invalid) => {

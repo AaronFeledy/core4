@@ -59,9 +59,9 @@ export class GlobalAppService extends Context.Service<
       service: ServiceName,
       ports: ReadonlyArray<PortNumber>,
     ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError>;
-    readonly regenerateDist: (input?: { readonly services?: Record<string, ServiceConfig> }) => Effect.Effect<
-      GlobalDistResult,
-      GlobalAppError | GlobalDistConflictError
-    >;
+    readonly regenerateDist: (input?: {
+      readonly services?: Record<string, ServiceConfig>;
+      readonly content?: string;
+    }) => Effect.Effect<GlobalDistResult, GlobalAppError | GlobalDistConflictError>;
   }
 >()("@lando/core/GlobalAppService") {}

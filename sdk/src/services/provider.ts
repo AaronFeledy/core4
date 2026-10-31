@@ -32,6 +32,7 @@ import type {
   AgentSocketBridgeResult,
   AppId,
   AppPlan,
+  AppliedStateInventory,
   DoctorResourceNameQuery,
   FileSyncSessionSpec,
   HealthcheckPlan,
@@ -347,6 +348,11 @@ export class RuntimeProviderRegistry extends Context.Service<
     readonly appliedPlansFor: (
       root: AbsolutePath,
     ) => Effect.Effect<ReadonlyArray<AppPlan>, ProviderUnavailableError | NoProviderInstalledError>;
+    /** Strict host-wide inventory for one provider, preserving unreadable ownership records.
+     * Filesystem-only: never constructs, initializes, or contacts a runtime. */
+    readonly appliedStateInventory?: (
+      providerId: ProviderId,
+    ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError | NoProviderInstalledError>;
     readonly assertAppliedStateReadable?: (
       plan: Pick<AppPlan, "id" | "provider">,
     ) => Effect.Effect<void, ProviderUnavailableError | NoProviderInstalledError>;

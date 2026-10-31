@@ -3,8 +3,6 @@ import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { installEngineComposition } from "@lando/engine/composition";
-import { StateStore } from "@lando/sdk/services";
-import { makeStateStore } from "@lando/state-store/service";
 import { Effect } from "effect";
 import { compileGlobalConfigDocument } from "../../../src/cli/commands/meta/global-config-document.ts";
 import {
@@ -12,17 +10,15 @@ import {
   globalConfigSet,
   globalConfigUnset,
 } from "../../../src/cli/commands/meta/global-config.ts";
+import { type GlobalConfigTestServices, globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 const previous = globalThis.__landoEngineCompositionInputs;
 let root = "";
 let app = "";
 const original = "name: global\nruntime: 4\n";
 const remote = "includes:\n  - source: github:acme/shared\n    path: fragment.yml\n";
-const store = makeStateStore({
-  privateFileAccess: { enforce: async () => undefined, verify: async () => undefined },
-});
-const run = <A, E>(effect: Effect.Effect<A, E, StateStore>) =>
-  Effect.runPromise(effect.pipe(Effect.provideService(StateStore, store)));
+const run = <A, E>(effect: Effect.Effect<A, E, GlobalConfigTestServices>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(globalConfigLayer(root))));
 
 beforeEach(async () => {
   if (previous === undefined) throw new Error("Test preload must install engine composition");

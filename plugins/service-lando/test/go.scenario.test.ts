@@ -22,11 +22,14 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
 const providerId = ProviderId.make("lando");
@@ -193,8 +196,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,

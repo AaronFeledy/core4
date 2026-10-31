@@ -54,6 +54,7 @@ import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
@@ -1241,6 +1242,7 @@ describe("Landofile events on applied-state teardown", () => {
     });
   const eventRuntime = (executed: string[]) =>
     Layer.mergeAll(
+      BunProcessRunner.layer,
       Layer.succeed(ToolingEngine, recordingEngine(executed)),
       testEnvironmentResolverLayerFor(makeRedactionService()),
     );

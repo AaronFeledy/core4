@@ -197,7 +197,7 @@
       "ownedPublishPorts?:(service:ServiceName,ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,GlobalAppError>",
       "paths:Effect.Effect<GlobalAppPaths,GlobalAppError>",
       "providerId:Effect.Effect<ProviderId,GlobalAppError>",
-      "regenerateDist:(input?:{ services?:Record<string,ServiceConfig>}) => Effect.Effect<GlobalDistResult,GlobalAppError|GlobalDistConflictError>",
+      "regenerateDist:(input?:{ services?:Record<string,ServiceConfig>; content?:string;}) => Effect.Effect<GlobalDistResult,GlobalAppError|GlobalDistConflictError>",
       "restartRunningService?:(service:ServiceName) => Effect.Effect<boolean,GlobalAppError>",
       "root:Effect.Effect<AbsolutePath,GlobalAppError>"
     ],
@@ -405,6 +405,7 @@
     "RuntimeProviderRegistry": [
       "assertAppliedStateReadable?:(plan:Pick<AppPlan,\"id\" | \"provider\">) => Effect.Effect<void,ProviderUnavailableError | NoProviderInstalledError>",
       "appliedPlansFor:(root:AbsolutePath) => Effect.Effect<ReadonlyArray<AppPlan>,ProviderUnavailableError|NoProviderInstalledError>",
+      "appliedStateInventory?:(providerId:ProviderId) => Effect.Effect<AppliedStateInventory,ProviderUnavailableError|NoProviderInstalledError>",
       "capabilities:Effect.Effect<ProviderCapabilities,ProviderSelectionError>",
       "list:Effect.Effect<ReadonlyArray<ProviderId>,ProviderUnavailableError>",
       "observeRuntime?:Effect.Effect<ReadonlyArray<ProviderRuntimeSnapshot>,AppResolveError|ProviderError|NoProviderInstalledError>",
@@ -590,6 +591,7 @@
       "ArtifactTransferError",
       "BuildPhaseFailedError",
       "BuildStepFailedError",
+      "BunSelfReentryError",
       "BunShellScriptEmptyError",
       "BunShellScriptFrontMatterError",
       "CaError",
@@ -713,6 +715,7 @@
       "PluginDescriptorMismatchError",
       "PluginLoadError",
       "PluginManifestError",
+      "PluginPackageOperationError",
       "PortCollisionError",
       "ProcessExecError",
       "ProcessTimeoutError",

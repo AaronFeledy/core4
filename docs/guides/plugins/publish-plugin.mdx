@@ -20,6 +20,15 @@ lando meta:plugin:publish --dry-run
 Confirm that the command exits successfully and lists the artifact you intend
 to release. This verifies the dry run, not a registry publication.
 
+If the rebuild or retest that runs first exits nonzero, publication stops with
+`PluginPublishValidationError` before anything is published. Fix the build or
+test, or run [test or build directly](./test-and-build-plugin.mdx) to see the
+failure on its own. If the `bun publish` child itself exits nonzero, Lando
+exits with that code and, under `--format=json`, reports it as
+`result.exitCode` with the child's output in the envelope. The registry token
+Lando hands the child is redacted everywhere it could appear. Details are in
+[Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-commands).
+
 ## Flags that work
 
 ```sh

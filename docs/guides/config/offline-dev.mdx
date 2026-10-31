@@ -33,6 +33,13 @@ A successful config or cache check does not prove that every build step can run 
 
 An image that was never pulled has nothing in the local cache, so the first `lando start` for that image still needs network access. A remote include can only be resolved offline once it already has a lockfile entry and a cached copy from a prior online run. Changing an include's `version:` also needs network access, because the next load fetches the new version. There is no global `--offline` flag. Offline behavior is scoped per command, such as `--no-network` on `app:includes:update`.
 
+Bun controls package resolution and cache use for `lando bun` and `lando x`.
+When one of them fails offline you get Bun's exit code and Bun's message, not
+an offline error from Lando. Pass the Bun flag for the behavior you want and
+read Bun's `stderr` to tell a cache miss from a broken package. Under
+`--format=json` that output sits in the envelope, described in
+[Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-commands).
+
 <Guide>
   <Scenario id="update-includes-without-network" render>
     <Step name="scaffold">

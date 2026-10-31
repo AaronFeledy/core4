@@ -53,6 +53,7 @@ test("the generated runtime plans and acquires an explicit engine without resurr
     ]),
   });
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultFileSyncEngine: "explicit-sync" });
+  expect(config.userDataRoot).toBeUndefined();
   const configLayer = Layer.succeed(
     ConfigService,
     ConfigService.of({

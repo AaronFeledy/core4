@@ -27,10 +27,11 @@ const transactionGuard = Effect.fnUntraced(function* (
 
 export const ensureConsistentRoot = Effect.fnUntraced(function* (
   appRoot: string,
-  inputs?: Pick<LandofileRuntimeInputs, "transactionGuard">,
+  inputs?: Pick<LandofileRuntimeInputs, "transactionGuard" | "readOnly">,
 ) {
   const guard = yield* transactionGuard(inputs);
-  if (guard !== undefined) yield* guard.ensureConsistent(appRoot);
+  if (guard !== undefined)
+    yield* inputs?.readOnly ? guard.assertReadable(appRoot) : guard.ensureConsistent(appRoot);
 });
 
 export const assertReadableRoot = Effect.fnUntraced(function* (

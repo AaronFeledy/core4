@@ -3,6 +3,7 @@ import { runTooling } from "@lando/engine/operations/tooling";
 import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as LandoEventService from "@lando/engine/services/event-service";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { configTranslators } from "@lando/lando3";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
@@ -133,6 +134,7 @@ const run = (landofile: LandofileShape, failOn?: string) => {
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     LandoEventService.layer,
     Layer.succeed(RedactionService, makeRedactionService()),
     Layer.succeed(PrivateFileAccessService, PrivateFileAccessService.of(ownerOnlyFileAccess)),

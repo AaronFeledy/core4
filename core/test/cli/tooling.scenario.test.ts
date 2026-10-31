@@ -30,6 +30,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 
 import {
   deriveAppPlanCacheKey,
@@ -225,6 +226,7 @@ const makeLayer = (options: {
     }),
   );
   return Layer.mergeAll(
+    BunProcessRunner.layer,
     PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,
