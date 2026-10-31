@@ -15,6 +15,8 @@ export const RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT = [
   "set -euo pipefail",
   `UBUNTU_SNAPSHOT=${RUNTIME_BUNDLE_UBUNTU_SNAPSHOT}`,
   `printf 'APT::Snapshot "%s";\\nAcquire::Retries "3";\\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot`,
+  "# Prefer snapshot dependencies even when the runner has newer versions installed.",
+  `printf 'Package: *\\nPin: origin "snapshot.ubuntu.com"\\nPin-Priority: 1001\\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot`,
   "for DELAY in 0 5 15 45; do",
   '  if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi',
   "  if sudo apt-get update --error-on=any; then break; fi",
