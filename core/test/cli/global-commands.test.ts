@@ -2079,6 +2079,153 @@ describe("meta:global command effects", () => {
     }, options);
   });
 
+  test("enable cancels selected failed withdrawal without restoring containers or routes", async () => {
+    const options = { failRoutes: false };
+    await withHarness(async (harness) => {
+      await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.local.yml"),
+        "services:\n  mail:\n    routes: [mail.global.test]\n  proxy:\n    routes: [proxy.global.test]\n",
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.failRoutes = true;
+      const disabled = await Effect.runPromiseExit(
+        globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(disabled)).toMatchObject({
+        servicesRemoved: ["mail"],
+        pending: [expect.objectContaining({ phase: "routes", services: ["mail"] })],
+      });
+      const pending = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+      const policy = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+      const canonical = join(harness.dataRoot, "global", ".lando.yml");
+      const original = await readFile(canonical, "utf8");
+      await writeFile(canonical, "services:\n  mail:\n    home: 17\n");
+      const invalid = await Effect.runPromiseExit(
+        globalEnable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(invalid)).toMatchObject({ _tag: "LandofileWriteValidationError" });
+      expect(await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).toEqual(policy);
+      expect(await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)))).toEqual(
+        pending,
+      );
+      await writeFile(canonical, original);
+      const before = {
+        apply: harness.calls.apply.length,
+        removed: [...harness.calls.removed],
+        routes: harness.calls.routes.length,
+        routesRemoved: harness.calls.routesRemoved.length,
+      };
+      const enabled = await Effect.runPromise(
+        globalEnable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(enabled).toMatchObject({ policySaved: true, servicesRemoved: [], pending: [] });
+      expect(enabled.dist?.serviceIds).toContain("mail");
+      const saved = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+      expect(saved.pending).toEqual([]);
+      expect(saved.targets).toEqual([]);
+      expect(
+        (await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).plugins[
+          "@lando/fake-global-command"
+        ]?.contributions.mail?.enabled,
+      ).toBe(true);
+      const reconciled = await Effect.runPromise(globalReconcile().pipe(Effect.provide(harness.layer)));
+      expect(reconciled).toMatchObject({ servicesRemoved: [], pending: [] });
+      expect(harness.calls.apply).toHaveLength(before.apply);
+      expect(harness.calls.removed).toEqual(before.removed);
+      expect(harness.calls.routes).toHaveLength(before.routes);
+      expect(harness.calls.routesRemoved).toHaveLength(before.routesRemoved);
+    }, options);
+  });
+
+  test("enable cancels only its selection while unrelated withdrawal remains pending", async () => {
+    const options = { failRoutes: false };
+    await withHarness(async (harness) => {
+      await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.local.yml"),
+        "services:\n  mail:\n    routes: [mail.global.test]\n  proxy:\n    routes: [proxy.global.test]\n",
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.failRoutes = true;
+      await Effect.runPromiseExit(globalDisable({ all: true }).pipe(Effect.provide(harness.layer)));
+      const before = {
+        apply: harness.calls.apply.length,
+        removed: [...harness.calls.removed],
+        routes: harness.calls.routes.length,
+      };
+      const enabled = await Effect.runPromiseExit(
+        globalEnable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(enabled)).toMatchObject({
+        _tag: "GlobalPolicyReconciliationError",
+        policySaved: true,
+        contributions: ["mail"],
+        servicesRemoved: [],
+        pending: [expect.objectContaining({ phase: "routes", services: ["proxy"] })],
+      });
+      const saved = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+      expect(saved.pending).toEqual([expect.objectContaining({ phase: "routes", services: ["proxy"] })]);
+      expect(saved.targets?.map((target) => target.id)).toEqual(["proxy"]);
+      expect(harness.calls.apply).toHaveLength(before.apply);
+      expect(harness.calls.removed).toEqual(before.removed);
+      expect(harness.calls.routes).toHaveLength(before.routes);
+      options.failRoutes = false;
+      const reconciled = await Effect.runPromise(globalReconcile().pipe(Effect.provide(harness.layer)));
+      expect(reconciled).toMatchObject({ contributions: ["proxy"], servicesRemoved: [], pending: [] });
+      expect(harness.calls.removed).toEqual(before.removed);
+      expect(harness.calls.apply).toHaveLength(before.apply);
+      expect(harness.calls.publishedRoutes.at(-1)?.hostnames).toEqual([]);
+    }, options);
+  });
+
+  test("enable generation failure keeps only current generation work for its selection", async () => {
+    const options = { failRoutes: false };
+    await withHarness(async (harness) => {
+      await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.local.yml"),
+        "services:\n  mail:\n    routes: [mail.global.test]\n",
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.failRoutes = true;
+      await Effect.runPromiseExit(globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      const before = {
+        apply: harness.calls.apply.length,
+        removed: [...harness.calls.removed],
+        routes: harness.calls.routes.length,
+      };
+      const globalApp = await Effect.runPromise(GlobalAppService.pipe(Effect.provide(harness.layer)));
+      const failed = await Effect.runPromiseExit(
+        globalEnable({ selectors: ["mail"] }).pipe(
+          Effect.provideService(GlobalAppService, {
+            ...globalApp,
+            regenerateDist: () =>
+              Effect.fail(
+                new GlobalAppError({
+                  operation: "regenerateDist",
+                  message: "Generation failed.",
+                  remediation: "Repair generated configuration storage.",
+                }),
+              ),
+          }),
+          Effect.provide(harness.layer),
+        ),
+      );
+      expect(failureOf(failed)).toMatchObject({
+        _tag: "GlobalPolicyReconciliationError",
+        policySaved: true,
+        pending: [expect.objectContaining({ phase: "generation", services: ["mail"] })],
+      });
+      const saved = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+      expect(saved.pending).toEqual([expect.objectContaining({ phase: "generation", services: ["mail"] })]);
+      expect(saved.targets).toEqual([]);
+      expect(harness.calls.apply).toHaveLength(before.apply);
+      expect(harness.calls.removed).toEqual(before.removed);
+      expect(harness.calls.routes).toHaveLength(before.routes);
+    }, options);
+  });
+
   for (const scope of ["selected", "whole"] as const) {
     test(`reconcile retries durable route withdrawal after a failed ${scope} start replaces applied metadata`, async () => {
       const options = { failRoutes: false };

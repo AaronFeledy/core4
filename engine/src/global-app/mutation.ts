@@ -60,16 +60,16 @@ export const withGlobalMutation = Effect.fnUntraced(function* <A, E, R>(
             "Finish the current global operation before mutating another global policy or app root.",
         }),
       );
-    // Capturing the body result keeps its failures outside coordination-error mapping.
+    // Capturing the full body exit preserves failure roles outside coordination-error mapping.
     return yield* withAppMutationLock(
       { id: "global-policy", root: policy },
       withGlobalActivationScope(
-        withAppMutationLock({ id: "global", root: paths.root }, Effect.result(body)),
+        withAppMutationLock({ id: "global", root: paths.root }, Effect.exit(body)),
       ).pipe(Effect.provideService(HeldGlobalPolicy, { policy, root })),
       { lockRoot: dirname(policy) },
     );
   });
-  const result = yield* coordinate.pipe(
+  const outcome = yield* coordinate.pipe(
     Effect.mapError(
       (cause) =>
         new GlobalAppError({
@@ -83,5 +83,5 @@ export const withGlobalMutation = Effect.fnUntraced(function* <A, E, R>(
         }),
     ),
   );
-  return yield* Effect.fromResult(result);
+  return yield* outcome;
 });

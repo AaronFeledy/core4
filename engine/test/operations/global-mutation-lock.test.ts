@@ -2,9 +2,10 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Deferred, Effect, Fiber, Layer } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
+import { failureOutcomeFromCause, mergeFailure } from "@lando/sdk/command-result";
 import { GlobalAppError, StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { GlobalAppService, PathsService, StateStore } from "@lando/sdk/services";
@@ -405,6 +406,125 @@ test("policy coordination follows the bound StateStore bucket instead of overrid
     expect(result).toBe("same captured policy");
     expect(await Bun.file(join(otherPaths.roots.userConfRoot, "operation-locks")).exists()).toBe(false);
   } finally {
+    await rm(isolated.directory, { recursive: true, force: true });
+  }
+});
+
+test("global coordination preserves merged body errors and their secondary roles", async () => {
+  const isolated = await fixture();
+  const primary = new StateStoreError({
+    reason: "io",
+    operation: "primary",
+    path: "/primary",
+    remediation: "Repair primary.",
+  });
+  const secondary = new StateStoreError({
+    reason: "io",
+    operation: "secondary",
+    path: "/secondary",
+    remediation: "Repair secondary.",
+  });
+  try {
+    const outcome = await Effect.runPromiseExit(
+      withGlobalMutation(
+        Effect.failCause(mergeFailure(Cause.fail(primary), Cause.fail(secondary), "rollback")),
+      ).pipe(Effect.provide(isolated.layer)),
+    );
+    expect(Exit.isFailure(outcome)).toBe(true);
+    if (Exit.isFailure(outcome)) {
+      const failure = failureOutcomeFromCause(outcome.cause);
+      expect(failure.error).toBe(primary);
+      expect(failure.additionalErrors).toEqual([{ role: "rollback", error: secondary }]);
+    }
+    expect(
+      await Effect.runPromise(
+        withGlobalMutation(Effect.succeed("released")).pipe(Effect.provide(isolated.layer)),
+      ),
+    ).toBe("released");
+  } finally {
+    await rm(isolated.directory, { recursive: true, force: true });
+  }
+});
+
+test("global coordination preserves body defect identity and releases both leases", async () => {
+  const isolated = await fixture();
+  const defect = new Error("body defect");
+  try {
+    const outcome = await Effect.runPromiseExit(
+      withGlobalMutation(Effect.die(defect)).pipe(Effect.provide(isolated.layer)),
+    );
+    expect(Exit.isFailure(outcome)).toBe(true);
+    if (Exit.isFailure(outcome)) {
+      const defects = outcome.cause.reasons.filter(Cause.isDieReason);
+      expect(defects).toHaveLength(1);
+      expect(defects[0]?.defect).toBe(defect);
+    }
+    expect(await Bun.file(isolated.lockPath(isolated.root)).exists()).toBe(false);
+    expect(
+      await Effect.runPromise(
+        withGlobalMutation(Effect.succeed("released")).pipe(Effect.provide(isolated.layer)),
+      ),
+    ).toBe("released");
+  } finally {
+    await rm(isolated.directory, { recursive: true, force: true });
+  }
+});
+
+test("interruption retains both global leases until an admitted native write settles", async () => {
+  const isolated = await fixture();
+  const admitted = Deferred.makeUnsafe<void>();
+  let settle: () => void = () => undefined;
+  const native = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  let completed = false;
+  let joined = false;
+  const policyPath = join(isolated.paths.roots.userConfRoot, "global.config.yml");
+  const policyLock = join(
+    isolated.paths.roots.userConfRoot,
+    "operation-locks",
+    `${appMutationLockKey("global-policy", policyPath)}.lock`,
+  );
+  const owner = Effect.runFork(
+    withGlobalMutation(
+      Deferred.succeed(admitted, undefined).pipe(
+        Effect.andThen(Effect.promise(() => native)),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            completed = true;
+          }),
+        ),
+        Effect.uninterruptible,
+      ),
+    ).pipe(Effect.provide(isolated.layer)),
+  );
+  try {
+    await Effect.runPromise(Deferred.await(admitted));
+    const interrupted = Effect.runFork(
+      Fiber.interrupt(owner).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            joined = true;
+          }),
+        ),
+      ),
+    );
+    await Effect.runPromise(Effect.yieldNow);
+    expect(joined).toBe(false);
+    expect(completed).toBe(false);
+    expect(await Bun.file(isolated.lockPath(isolated.root)).exists()).toBe(true);
+    expect(await Bun.file(policyLock).exists()).toBe(true);
+    settle();
+    await Effect.runPromise(Fiber.join(interrupted));
+    const exit = await Effect.runPromise(Fiber.await(owner));
+    expect(Exit.hasInterrupts(exit)).toBe(true);
+    expect(completed).toBe(true);
+    expect(joined).toBe(true);
+    expect(await Bun.file(isolated.lockPath(isolated.root)).exists()).toBe(false);
+    expect(await Bun.file(policyLock).exists()).toBe(false);
+  } finally {
+    settle();
+    await Effect.runPromise(Fiber.interrupt(owner));
     await rm(isolated.directory, { recursive: true, force: true });
   }
 });

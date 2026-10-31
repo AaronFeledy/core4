@@ -138,7 +138,7 @@ const recordProgress = (
 ) =>
   recordGlobalReconciliation({
     revision: receipt.revision,
-    targets,
+    targets: receipt.operation === "enable" ? [] : targets,
     operation: receipt.operation,
     contributions: receipt.contributions,
     servicesRemoved: receipt.servicesRemoved,
@@ -467,13 +467,16 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       return yield* commitGlobalPolicy(current.policy.revision, prepared.policy);
     }),
   );
-  const priorRouteIds = [
-    ...new Set(
-      previousReceipt.pending
-        .filter((entry) => entry.phase === "routes")
-        .flatMap((entry) => entry.services.filter((id) => selected.has(id))),
-    ),
-  ];
+  const priorRouteIds =
+    operation === "enable"
+      ? []
+      : [
+          ...new Set(
+            previousReceipt.pending
+              .filter((entry) => entry.phase === "routes")
+              .flatMap((entry) => entry.services.filter((id) => selected.has(id))),
+          ),
+        ];
   let routesAttempted = false;
   let receipt: GlobalPolicyChangeResult = {
     dryRun: false,

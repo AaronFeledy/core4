@@ -88,7 +88,7 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
             "Run `lando global:list`, repair or enable the required services, then retry application startup.",
           cause,
         });
-  const result = yield* interruptOnAbort(
+  const outcome = yield* interruptOnAbort(
     withGlobalMutation(
       Effect.gen(function* () {
         const router = routed ? yield* RouterService : undefined;
@@ -153,7 +153,7 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
             yield* verify;
             return yield* withGlobalConsumerAdmissionCheck(
               verify.pipe(Effect.mapError(failure), Effect.provide(context)),
-              Effect.result(body),
+              Effect.exit(body),
             );
           }),
         );
@@ -161,5 +161,5 @@ export const withGlobalConsumerAdmission = Effect.fnUntraced(function* <A, E, R>
     ).pipe(Effect.mapError(failure)),
     signal,
   );
-  return yield* Effect.fromResult(result);
+  return yield* outcome;
 });
