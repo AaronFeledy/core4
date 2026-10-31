@@ -164,6 +164,7 @@ import {
   ServicePlan,
 } from "./app-plan.ts";
 import {
+  DestroyAppOutcome,
   DestroyAppResult,
   ExecAppResult,
   InfoAppAgentEnv,
@@ -173,6 +174,7 @@ import {
   RebuildAppResult,
   RestartAppResult,
   StartAppResult,
+  StopAppOutcome,
   StopAppResult,
   ToolingResult,
 } from "./app-results.ts";
@@ -847,10 +849,12 @@ const basePublicSchemaRegistry = schemaRegistry({
   StartedService,
   LandofileEventsOutcome,
   StartAppResult,
+  StopAppOutcome,
   StopAppResult,
   RestartAppResult,
   RebuildAppResult,
   DestroyAppResult,
+  DestroyAppOutcome,
   InfoAppAgentEnv,
   InfoAppHostProxy,
   InfoAppResult,

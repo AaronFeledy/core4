@@ -39,14 +39,23 @@ export const StartAppResult = Schema.Struct({
 }).annotate({ description: "Services and optional readiness checks returned after starting an app." });
 export type StartAppResult = typeof StartAppResult.Type;
 
+export const StopAppOutcome = Schema.Literals(["stopped", "unchanged"]).annotate({
+  description:
+    "`stopped` when the operation stopped or removed anything, or `unchanged` when there was nothing to stop.",
+});
+export type StopAppOutcome = typeof StopAppOutcome.Type;
+
+export const DestroyAppOutcome = Schema.Literals(["destroyed", "unchanged"]).annotate({
+  description:
+    "`destroyed` when the operation removed anything, or `unchanged` when there was nothing to remove.",
+});
+export type DestroyAppOutcome = typeof DestroyAppOutcome.Type;
+
 export const StopAppResult = Schema.Struct({
   app: Schema.String.annotate({
     description: "Name of the stopped app; when only applied state remains, its app id or root.",
   }),
-  outcome: Schema.optionalKey(Schema.Literals(["stopped", "unchanged"])).annotate({
-    description:
-      "`stopped` when the operation stopped or removed anything, or `unchanged` when there was nothing to stop.",
-  }),
+  outcome: Schema.optionalKey(StopAppOutcome),
   servicesStopped: Schema.Array(Schema.String).annotate({
     description: "Names of the services stopped by the operation.",
   }),
@@ -79,10 +88,7 @@ export const DestroyAppResult = Schema.Struct({
   app: Schema.String.annotate({
     description: "Name of the destroyed app; when only applied state remains, its app id or root.",
   }),
-  outcome: Schema.optionalKey(Schema.Literals(["destroyed", "unchanged"])).annotate({
-    description:
-      "`destroyed` when the operation removed anything, or `unchanged` when there was nothing to remove.",
-  }),
+  outcome: Schema.optionalKey(DestroyAppOutcome),
   servicesDestroyed: Schema.Array(Schema.String).annotate({
     description: "Names of the services destroyed by the operation.",
   }),
