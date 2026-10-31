@@ -150,6 +150,7 @@ export interface RendererContribution {
   readonly id: string;
   readonly makeService: (io: RendererIO) => Layer.Layer<Renderer>;
   readonly makeEventConsumer: (io: RendererNarrationIO) => Layer.Layer<never, never, EventService>;
+  readonly makeNotificationConsumer?: (io: RendererNarrationIO) => Layer.Layer<never, never, EventService>;
   readonly loadInteractivePromptDriver?: (options?: {
     readonly noColor?: boolean;
   }) => Promise<InteractivePromptDriver>;

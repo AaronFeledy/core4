@@ -122,6 +122,12 @@ export const makeLandoEventConsumer = (
 export const landoRendererContribution: RendererContribution = {
   id: "lando",
   makeService: makeLandoService,
+  makeNotificationConsumer: (io) =>
+    layerNotificationConsumer(
+      () => capabilitiesForIO(io),
+      bindIoDesktopNotificationTrigger(io),
+      flushPendingNotifications,
+    ),
   makeEventConsumer: (io) =>
     makeLandoEventConsumer(io, {
       triggerNotification: bindIoDesktopNotificationTrigger(io),
