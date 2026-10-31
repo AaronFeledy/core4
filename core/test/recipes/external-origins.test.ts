@@ -2,8 +2,10 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Effect } from "effect";
 import { RAILS_GEMFILE } from "../../src/recipes/builtin/rails/scaffold.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
+import { processRunnerFor } from "../_support/process-runner.ts";
 import { externalRecipeSource, externalRecipeYaml } from "./fixtures/external-source.ts";
 
 const roots: string[] = [];
@@ -42,16 +44,18 @@ test("inherited files and scripts read their declaring parent rather than child 
   await Bun.write(join(recipe, "recipe.yml"), `${externalRecipeYaml(child)}extends: ../parent\n`);
   const commands: ReadonlyArray<string>[] = [];
   // When
-  const result = await initApp({
-    ...options,
-    recipe,
-    postInitSpawner: {
-      spawn: async ({ cmd }) => {
-        commands.push(cmd);
-        return { exitCode: 0, stdout: "", stderr: "" };
-      },
+  const result = await initApp(
+    {
+      ...options,
+      recipe,
     },
-  });
+    processRunnerFor((input) =>
+      Effect.sync(() => {
+        commands.push([input.cmd, ...input.args]);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      }),
+    ),
+  );
   // Then
   expect(await Bun.file(join(result.directory, "notice.txt")).text()).toBe("parent bytes");
   expect(commands.some((cmd) => cmd.includes(join(root, "parent/assets/setup.ts")))).toBe(true);

@@ -113,6 +113,7 @@ describe("acquisition authority ports", () => {
     const store = memoryFiles();
     const runtime = makeApplyRuntime(store.files);
     const service = makeTraefikRouterService({
+      readTraefikState: () => Effect.succeed("running"),
       httpClient: runtime.httpClient,
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
@@ -162,6 +163,7 @@ describe("acquisition authority ports", () => {
     const runtime = makeApplyRuntime(store.files);
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikRouterService({
+      readTraefikState: () => Effect.succeed("running"),
       httpClient: runtime.httpClient,
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
@@ -227,6 +229,7 @@ describe("stale socketsActive restart", () => {
     const privilege = makePrivilege();
     const first = PROXYD_CANDIDATES[0] ?? "/usr/lib/systemd/systemd-socket-proxyd";
     const service = makeTraefikRouterService({
+      readTraefikState: () => Effect.succeed("running"),
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: store.fileSystem,

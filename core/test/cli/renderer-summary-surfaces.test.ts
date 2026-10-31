@@ -224,9 +224,16 @@ describe("scratch list summary", () => {
 });
 
 describe("global status summary", () => {
+  const quality = {
+    policyState: "available",
+    runtimeState: "available",
+    pending: [],
+    diagnostics: [],
+  } as const;
   test("frames materialized global services", () => {
     const out = formatSummary(
       buildGlobalStatusSummary({
+        ...quality,
         app: "global",
         materialized: true,
         services: [
@@ -238,6 +245,8 @@ describe("global status summary", () => {
             provider: "lando",
             primary: true,
             status: "running",
+            desired: "enabled",
+            pending: [],
             connections: connections(["http://localhost:80"]),
           },
         ],
@@ -250,6 +259,7 @@ describe("global status summary", () => {
 
   test("rolls non-running global service states up to a warning header", () => {
     const summary = buildGlobalStatusSummary({
+      ...quality,
       app: "global",
       materialized: true,
       services: [
@@ -261,6 +271,8 @@ describe("global status summary", () => {
           provider: "lando",
           primary: true,
           status: "stopped",
+          desired: "disabled",
+          pending: [],
           connections: [],
         },
       ],
@@ -270,11 +282,12 @@ describe("global status summary", () => {
 
   test("frames a not-installed global app", () => {
     const out = formatSummary(
-      buildGlobalStatusSummary({ app: "global", materialized: false, services: [] }),
+      buildGlobalStatusSummary({ ...quality, app: "global", materialized: false, services: [] }),
       { columns: 48 },
     );
     expectFramed(out, 48);
-    expect(stripAnsi(out)).toContain("Global app is not installed.");
+    expect(stripAnsi(out)).toContain("Global configuration is not");
+    expect(stripAnsi(out)).toContain("materialized.");
   });
 });
 

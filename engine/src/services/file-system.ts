@@ -171,10 +171,12 @@ const fileSystemService: Context.Service.Shape<typeof FileSystem> = FileSystem.o
       catch: mapFileError(path, `Failed to write ${path}`),
     }),
   writeAtomic: (path, content) =>
-    Effect.tryPromise({
-      try: () => writeAtomicFile(path, content),
-      catch: mapFileError(path, `Failed to write ${path}`),
-    }),
+    Effect.uninterruptible(
+      Effect.tryPromise({
+        try: () => writeAtomicFile(path, content),
+        catch: mapFileError(path, `Failed to write ${path}`),
+      }),
+    ),
   exists: (path) =>
     Effect.tryPromise({
       try: async () => {

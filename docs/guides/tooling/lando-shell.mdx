@@ -62,7 +62,7 @@ Each line starts in the app root with `$PWD` identifying that directory, not the
 
 Lines run independently. A `cd` or variable assignment affects only that line; it does not change the next prompt's directory or environment. Put dependent commands on one line or save them in a [project script](./bun-shell-scripts.mdx).
 
-`lando` in a line runs Lando. `bun` uses your host Bun on `PATH`, or Lando's embedded Bun if none is installed. You don't need a separate Bun installation.
+`lando` in a line runs Lando when you call it by name. `bun` uses your host Bun on `PATH`, or the Bun Lando ships if none is installed. You don't need a separate Bun installation. A path-qualified Lando binary in a project script still hits the Bun Shell export limitation described in [Call `lando` from a script](./bun-shell-scripts.mdx#call-lando-from-a-script).
 
 A `${secret:<id>}` or `${secret:<scheme>://path}` reference (for example `${secret:DB_PASSWORD}` from `LANDO_SECRET_DB_PASSWORD`, or `${secret:op://Vault/Item/field}` from 1Password) resolves only when that line runs, through the same routed secret stores as `lando start`. The REPL never preloads secrets into the environment. Resolved secret values are redacted before they reach stdout, stderr, lifecycle events, or history.
 

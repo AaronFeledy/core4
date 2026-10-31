@@ -1,4 +1,5 @@
-import { EnvironmentValueResolver } from "@lando/sdk/services";
+// allow: SIZE_OK - the lifecycle bracket owns admission, execution, and failure compensation as one scoped coordinator.
+import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
 import { DateTime, Effect, Option } from "effect";
 
 import { LandofileEventStepFailedError, ToolingCompileError } from "@lando/sdk/errors";
@@ -296,6 +297,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
       ).pipe(mapFailureErrors((error) => eventError(error, event, first.step, redactor, first.source)));
       const context: ExpressionContext = payload === undefined ? {} : { event: payload };
       const environmentResolver = yield* Effect.serviceOption(EnvironmentValueResolver);
+      const processRunner = yield* Effect.serviceOption(ProcessRunner);
       yield* runToolingStepProgram(
         program,
         context,
@@ -305,6 +307,7 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           events: eventsOption.value,
           privateFileAccess: privateFileAccess.value,
           environmentResolver,
+          ...(Option.isSome(processRunner) ? { processRunner: processRunner.value } : {}),
           ...(Option.isSome(shellRunner) ? { hostRunner: shellRunner.value } : {}),
           redactor,
           redactorFor,

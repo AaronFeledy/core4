@@ -3,7 +3,6 @@ import { makeTestRuntime } from "@lando/core/testing";
 import { startApp } from "@lando/engine/operations/start";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
-import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { makeLandoPaths } from "@lando/paths";
@@ -31,6 +30,7 @@ import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect, Layer, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 
 const unavailable = new SecretStoreUnavailableError({
   storeId: "fake-vault",

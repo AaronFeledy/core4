@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { validateRecipeManifestObject } from "../../src/recipes/manifest/service";
 import { runPostInit } from "../../src/recipes/post-init/runtime";
 import type { ChoicesCommandInput } from "../../src/recipes/prompts/choices-command";
+import { unexpectedBun } from "../_support/process-runner.ts";
 
 test("accepts a manifest with a canonical translation action", async () => {
   const manifest = {
@@ -46,6 +47,7 @@ test("rejects an opt-in prompt that starts services by default", async () => {
 test("evaluates a pure condition before a message action", async () => {
   const lines: string[] = [];
   const result = await runPostInit({
+    runBun: unexpectedBun,
     actions: [{ type: "message", text: "visible", when: "{{ options.count > 2 }}" }],
     destination: "/tmp",
     recipeId: "test",
@@ -68,6 +70,7 @@ for (const cmd of ["start", "config:translate", "app:destroy", "meta:setup", "gi
     const calls: ChoicesCommandInput[] = [];
     // When the action reaches the execution boundary.
     const result = runPostInit({
+      runBun: unexpectedBun,
       actions: [{ type: "command", cmd }],
       destination: "/tmp",
       recipeId: "test",
@@ -107,6 +110,7 @@ for (const start of [undefined, false, "false", true, "true"]) {
     const calls: ChoicesCommandInput[] = [];
     // When post-init evaluates the guard.
     await runPostInit({
+      runBun: unexpectedBun,
       actions: [{ type: "command", cmd: "app:start", when: "{{ options.start }}" }],
       destination: "/tmp",
       recipeId: "test",
@@ -126,6 +130,7 @@ test("denies unconditional start even with an affirmative answer", async () => {
   // Given an action without an explicit answer guard.
   // When executed directly rather than through manifest validation.
   const result = runPostInit({
+    runBun: unexpectedBun,
     actions: [{ type: "command", cmd: "app:start" }],
     destination: "/tmp",
     recipeId: "test",
@@ -141,6 +146,7 @@ test("runs canonical translation independently of host runs grants", async () =>
   const calls: ChoicesCommandInput[] = [];
   // When a canonical authorized action executes.
   await runPostInit({
+    runBun: unexpectedBun,
     actions: [{ type: "command", cmd: "app:config:translate", args: ["--help"] }],
     destination: "/tmp",
     recipeId: "test",

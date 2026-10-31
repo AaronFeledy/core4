@@ -13,6 +13,8 @@ export const MCP_ALLOWLIST_FORBIDDEN_IDS: ReadonlyArray<string> = [
   "app:destroy",
   "apps:poweroff",
   "meta:uninstall",
+  "meta:global:disable",
+  "meta:global:reconcile",
 ];
 
 const FORBIDDEN_ID_SET = new Set(MCP_ALLOWLIST_FORBIDDEN_IDS);

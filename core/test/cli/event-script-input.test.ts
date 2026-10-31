@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { Renderer } from "@lando/sdk/services";
@@ -33,6 +34,7 @@ test("event script maps preserve sparse identity and false without requiring a p
       metadata: { resolvedAt: DateTime.makeUnsafe(0), source: join(root, ".lando.yml"), runtime: 4 },
     };
     const layer = Layer.mergeAll(
+      BunProcessRunner.layer,
       PrivateFileAccessService.layer,
       environmentResolverLayer(),
       Layer.succeed(

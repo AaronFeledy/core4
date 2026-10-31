@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer } from "effect";
@@ -32,7 +33,11 @@ test.each(["alpha\nbeta\n", "no-newline"])(
           }),
         ),
         {
-          runtime: Layer.mergeAll(PrivateFileAccessService.layer, environmentResolverLayer()),
+          runtime: Layer.mergeAll(
+            BunProcessRunner.layer,
+            PrivateFileAccessService.layer,
+            environmentResolverLayer(),
+          ),
           rendererMode: "lando",
           streamingMode: "live",
           io,

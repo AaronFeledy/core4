@@ -17,7 +17,6 @@ import {
   EventService,
   PathsService,
   RuntimeProvider,
-  RuntimeProviderRegistry,
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
@@ -45,6 +44,7 @@ const stateStoreLayer = StateStoreLayer.layer.pipe(
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as ScratchInitAppPortLayer from "../../src/runtime/scratch-init-port.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
+import { scratchGlobalAdmissionFixture } from "../_support/scratch-global-admission.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -205,18 +205,9 @@ const makeLayer = (
   const plannerLive = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
-  const registryLive = Layer.succeed(
-    RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-  );
+  const { registryLayer: registryLive, admissionLayer } = scratchGlobalAdmissionFixture(provider);
   const scratchDeps = Layer.mergeAll(
+    admissionLayer,
     environmentResolverLayer(),
     LandoEventService.layer,
     BunFileSystem.layer,
@@ -245,7 +236,7 @@ const makeLayer = (
   return Layer.mergeAll(
     scratchDeps,
     ScratchAppServiceLayer.layerWith(landofileRuntimeInputs).pipe(Layer.provide(scratchDeps)),
-  ).pipe(Layer.provide(PrivateFileAccessService.layer));
+  ).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
 };
 
 const primaryService = (plan: AppPlan): ServicePlan => {

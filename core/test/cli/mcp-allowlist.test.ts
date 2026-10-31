@@ -8,6 +8,7 @@ import {
   computeMcpDefaultAllowlist,
   isMcpAllowlistForbidden,
 } from "@lando/mcp/allowlist";
+import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandSpec } from "@lando/mcp/registry";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
@@ -108,6 +109,32 @@ describe("assertMcpAllowlistSafe", () => {
 });
 
 describe("MCP default allowlist derivation", () => {
+  test.each(["meta:global:disable", "meta:global:reconcile"])(
+    "explicitly allowed %s reports destructive cleanup with invocation-only acknowledgement",
+    (id) => {
+      const registry = mcpRegistryFromBuiltIns(builtInCommandEntries);
+      const catalog = buildCatalog({
+        commandEntries: registry.commandEntries,
+        effective: computeEffectiveAllowlist({ defaults: MCP_DEFAULT_ALLOWLIST, allow: [id] }),
+      });
+      expect(MCP_DEFAULT_ALLOWLIST).not.toContain(id);
+      expect(catalog.tools.find((tool) => tool.commandId === id)).toMatchObject({
+        destructive: true,
+        inputSchema: {
+          properties: {
+            flags: {
+              properties: { "allow-disruption": { type: "boolean" } },
+            },
+          },
+        },
+      });
+      expect(specFor(id).flags?.yes).toBeUndefined();
+      expect(() => assertMcpAllowlistSafe({ ...specFor(id), mcpAllowed: true })).toThrow(
+        McpAllowlistConflictError,
+      );
+    },
+  );
+
   test("derives exactly the shipped opt-ins, sorted", () => {
     const specs = [
       ...mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.map((entry) => entry.spec),
