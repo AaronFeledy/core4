@@ -407,7 +407,7 @@ export const makeTraefikRouterService = (
             if (dependencies.paths.platform === "win32" && dependencies.stateStore !== undefined) {
               yield* invalidateAcknowledgement(dependencies.stateStore, app);
             }
-            yield* dependencies.fileSystem.remove(file);
+            yield* Effect.uninterruptible(dependencies.fileSystem.remove(file));
             yield* removeAppCertificates(dependencies, app);
             routes.delete(appKey);
             if (hadRouteFile) pendingReload.add(appKey);
@@ -505,7 +505,8 @@ export const layer = (stateStore: PluginStateStore) =>
         certificateAuthority,
         fileSystem: {
           ...fileSystem,
-          writeSecretAtomic: (path, content) => Effect.tryPromise(() => writeSecretAtomic(path, content)),
+          writeSecretAtomic: (path, content) =>
+            Effect.uninterruptible(Effect.tryPromise(() => writeSecretAtomic(path, content))),
         },
         paths: { platform: paths.platform, globalAppRoot: globalRoot },
         globalApp,

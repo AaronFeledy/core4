@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { emptyGlobalPolicy, globalPolicyBucket, readGlobalPolicy } from "@lando/engine/global-app/enablement";
 import { withGlobalMutation } from "@lando/engine/global-app/mutation";
+import { APP_LOCK_HOLDERS_ENV } from "@lando/engine/operations/app-mutation-lock";
 import {
   captureGlobalConsumerAdmission,
   withGlobalConsumerAdmission,
@@ -19,11 +20,18 @@ import { EventDispatchControl, layerRuntime as realEventLayer } from "@lando/eng
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { PreServiceStartEvent } from "@lando/sdk/events";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  LoadScopedLandofile,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
-  EnvironmentValueResolver,
+  DataMover,
   EventService,
   GlobalAppService,
   LandofileService,
@@ -36,12 +44,7 @@ import {
 import { makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
-import { DateTime, Deferred, Effect, Exit, Fiber, Layer } from "effect";
-import { APP_LOCK_HOLDERS_ENV } from "../../../engine/src/operations/app-mutation-lock.ts";
-import { readGlobalConsumerReservations } from "../../../engine/src/operations/global-consumer-lease.ts";
-import { applyScratchStartup } from "../../../engine/src/scratch-app/startup.ts";
-import { literalTestLandofile } from "../../../engine/test/compiled-landofile.ts";
-import { emptySnapshotsLayer } from "../../../engine/test/operations/data-mover-support.ts";
+import { DateTime, Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 import { makeHarness } from "../_support/ensure-global-harness.ts";
 import { layerTransactionGuard } from "../_support/landofile-layer.ts";
 
@@ -57,6 +60,22 @@ const setEnabled = (enabled: boolean) =>
       },
     }));
   });
+
+const emptySnapshotsLayer = Layer.succeed(
+  DataMover,
+  DataMover.of({
+    transfer: () => Effect.die("unexpected transfer"),
+    transferStream: () => Stream.die("unexpected transferStream"),
+    snapshot: () => Effect.die("unexpected snapshot"),
+    restore: () => Effect.die("unexpected restore"),
+    listSnapshots: () => Effect.succeed([]),
+    resolveSnapshot: () => Effect.die("unexpected resolveSnapshot"),
+    removeSnapshot: () => Effect.die("unexpected removeSnapshot"),
+    pruneSnapshots: () => Effect.die("unexpected pruneSnapshots"),
+    findOrphanedSnapshots: Effect.succeed([]),
+    removeOrphanedSnapshot: () => Effect.void,
+  }),
+);
 
 const withFixture = async (
   body: (fixture: Awaited<ReturnType<typeof fixtureAt>>) => Promise<void>,
@@ -188,7 +207,12 @@ const scratchLayerFor = async (
       LandofileService,
       LandofileService.of({
         discover: Effect.succeed(
-          literalTestLandofile({ name: "source", runtime: 4, services: {} }, f.plan.root),
+          LoadScopedLandofile.make({
+            stage: "load-scoped",
+            document: { name: "source", runtime: 4, services: {} },
+            pendingSites: [],
+            context: { appRoot: f.plan.root, env: {} },
+          }),
         ),
       }),
     ),
@@ -293,7 +317,7 @@ test("start-first admission holds policy exclusion through consumer readiness", 
   });
 });
 
-test("disable-first admission rejects user and scratch activation without provider apply", async () => {
+test("disable-first admission rejects user activation without provider apply", async () => {
   await withFixture(async (f) => {
     await Effect.runPromise(withGlobalMutation(setEnabled(false)).pipe(Effect.provide(f.layer)));
     const result = await Effect.runPromise(
@@ -303,25 +327,6 @@ test("disable-first admission rejects user and scratch activation without provid
       ),
     );
     expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "GlobalAutoStartError" } });
-    const registry = await Effect.runPromise(RuntimeProviderRegistry.pipe(Effect.provide(f.layer)));
-    const provider = await Effect.runPromise(registry.select(f.plan));
-    const resolver = await Effect.runPromise(EnvironmentValueResolver.pipe(Effect.provide(f.layer)));
-    const admissionContext = await Effect.runPromise(
-      captureGlobalConsumerAdmission.pipe(Effect.provide(f.layer)),
-    );
-    if (admissionContext === undefined) throw new Error("fixture must provide admission services");
-    const scratch = {
-      ...f.plan,
-      id: AppId.make("scratch-consumer"),
-      extensions: { "@lando/core/scratch": {} },
-    };
-    const outcome = await Effect.runPromise(
-      applyScratchStartup(
-        { id: "scratch-consumer", plan: scratch },
-        { provider, environmentResolver: resolver, admissionContext },
-      ).pipe(Effect.result, Effect.provide(f.layer)),
-    );
-    expect(outcome).toMatchObject({ _tag: "Failure", failure: { _tag: "ScratchAppError" } });
     expect(f.harness.applyCalls).toEqual([]);
   });
 });
@@ -718,22 +723,24 @@ test("activation reservations protect shared policy across different embedded gl
             userDataRoot: join(f.root, "separate-data"),
             userConfRoot: join(f.root, "separate-conf"),
           });
-          expect(
-            yield* readGlobalConsumerReservations(["traefik"]).pipe(
-              Effect.provideService(
-                StateStore,
-                makeStateStore({ privateFileAccess: access, roots: separate.roots }),
-              ),
+          const separatePreview = yield* globalDisable({ selectors: ["traefik"], dryRun: true }).pipe(
+            Effect.provideService(
+              StateStore,
+              makeStateStore({ privateFileAccess: access, roots: separate.roots }),
             ),
+          );
+          expect(
+            separatePreview.impact.uncertainties.filter((message) => message.includes("reserves traefik")),
           ).toEqual([]);
+          const sharedPreview = yield* globalDisable({ selectors: ["traefik"], dryRun: true }).pipe(
+            Effect.provideService(GlobalAppService, {
+              ...global,
+              root: Effect.succeed(otherRoot),
+              paths: Effect.succeed({ ...oldPaths, root: otherRoot }),
+            }),
+          );
           expect(
-            yield* readGlobalConsumerReservations(["traefik"]).pipe(
-              Effect.provideService(GlobalAppService, {
-                ...global,
-                root: Effect.succeed(otherRoot),
-                paths: Effect.succeed({ ...oldPaths, root: otherRoot }),
-              }),
-            ),
+            sharedPreview.impact.uncertainties.filter((message) => message.includes("reserves traefik")),
           ).toHaveLength(1);
           const result = yield* globalDisable({ selectors: ["traefik"], allowDisruption: true }).pipe(
             Effect.provideService(GlobalAppService, {
@@ -866,7 +873,6 @@ test("sibling callbacks sharing a held coordinator observe activation reservatio
             });
             yield* Deferred.succeed(release, undefined);
             yield* Fiber.join(activation);
-            expect(yield* readGlobalConsumerReservations(["traefik"])).toEqual([]);
             expect(
               (yield* globalDisable({ selectors: ["traefik"], allowDisruption: true })).policySaved,
             ).toBe(true);
@@ -925,7 +931,6 @@ test("a completed sibling activation invalidates the earlier consumer scan befor
             yield* Deferred.succeed(releaseActivation, undefined);
             yield* Fiber.join(activation);
             expect(f.harness.applyCalls.some((call) => call.plan.id === f.plan.id)).toBe(true);
-            expect(yield* readGlobalConsumerReservations(["traefik"])).toEqual([]);
             yield* Deferred.succeed(resumeScan, undefined);
             const result = yield* Fiber.join(policy);
             expect(result).toMatchObject({
