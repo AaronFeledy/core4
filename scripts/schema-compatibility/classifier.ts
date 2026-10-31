@@ -140,10 +140,8 @@ const compareProperties = (
         before.additionalProperties !== undefined ||
         before.unevaluatedProperties !== undefined)
         ? "unknown"
-        : context.polarity === "input" || context.polarity === "strict"
-          ? required
-            ? "breaking"
-            : "compatible"
+        : required && (context.polarity === "input" || context.polarity === "strict")
+          ? "breaking"
           : "compatible";
     findings.push(
       finding(

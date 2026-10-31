@@ -9,7 +9,7 @@ import {
 import { Predicate, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 
-type JsonRecord = { readonly [key: PropertyKey]: unknown };
+type JsonRecord = { readonly [key: string]: unknown };
 
 const DEFINITION_REF = "#/$defs/";
 

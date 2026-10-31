@@ -25,11 +25,7 @@ export const mcpRegistryFromBuiltIns = (
   commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
-    if (spec.id === "app:config")
-      return appConfigMcpSpecs.map((projection) => {
-        const spec: LandoCommandSpec = projection;
-        return { spec };
-      });
+    if (spec.id === "app:config") return appConfigMcpSpecs.map((spec: LandoCommandSpec) => ({ spec }));
     return [{ spec }];
   }),
 });

@@ -145,7 +145,7 @@ export const makeAppHandle = (
     exec: (options: ExecAppOptions) =>
       ops.execApp(options, target).pipe(
         Effect.tap((result) =>
-          result.stderr === undefined || result.stderr.length === 0
+          !result.stderr
             ? Effect.void
             : Effect.gen(function* () {
                 const redaction = yield* RedactionService;

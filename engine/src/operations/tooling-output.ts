@@ -31,7 +31,7 @@ export const withToolingOutput = Effect.fnUntraced(function* <
     }),
     Effect.tap((returned) =>
       Effect.forEach(["stdout", "stderr"] as const, (channel) =>
-        !emitted[channel] && returned[channel] !== undefined && returned[channel].length > 0
+        !emitted[channel] && returned[channel]
           ? sink.emit({ _tag: channel, chunk: returned[channel], kind: "bytes" })
           : Effect.void,
       ),

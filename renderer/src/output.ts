@@ -94,11 +94,10 @@ export const withOptionalStderrOutput = <A extends { readonly stderr?: string },
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> =>
   effect.pipe(
-    Effect.tap((result) =>
-      result.stderr === undefined || result.stderr.length === 0
-        ? Effect.void
-        : emitOptionalStderr(result.stderr),
-    ),
+    Effect.tap((result) => {
+      if (result.stderr) return emitOptionalStderr(result.stderr);
+      return Effect.void;
+    }),
   );
 
 const requireRenderer = Effect.serviceOption(Renderer).pipe(

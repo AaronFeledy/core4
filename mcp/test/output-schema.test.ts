@@ -102,7 +102,7 @@ test.each(fixtures)(
     for (const [index, envelope] of envelopes.entries()) {
       expect(envelope.ok).toBe(index === 0);
       expect(envelope).not.toMatchObject({ error: { _tag: "CommandResultEncodeError" } });
-      expect(conforms(projected, Schema.decodeUnknownSync(Schema.Json)(envelope))).toBe(true);
+      expect(conforms(projected, envelope)).toBe(true);
       expect(envelope).toMatchObject({ output: { truncated: true } });
     }
     expect(envelopes[2]?.result).toEqual(value);
@@ -149,9 +149,10 @@ test("preserves result union shape and only names exact public subtrees", () => 
     },
   });
   expect(JSON.stringify(toolOutputSchema(InfoAppResult))).toContain("lando://schemas/ServiceInfo");
-  expect(JSON.stringify(projected)).not.toContain('"trace"');
-  expect(JSON.stringify(projected)).not.toContain('"$ref"');
-  expect(JSON.stringify(projected)).not.toContain('"additionalProperties":false');
+  const projectedJson = JSON.stringify(projected);
+  expect(projectedJson).not.toContain('"trace"');
+  expect(projectedJson).not.toContain('"$ref"');
+  expect(projectedJson).not.toContain('"additionalProperties":false');
   const custom = toolOutputSchema(
     Schema.Struct({
       services: Schema.Array(Schema.Struct({ ...ServiceInfo.fields, custom: Schema.String })),

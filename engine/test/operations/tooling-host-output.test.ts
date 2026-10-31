@@ -163,10 +163,8 @@ test("keeps a registered secret masked across separately executed host commands"
   const result = await h.run({ payload: true });
   // Then
   expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
-  if (result._tag === "Success") {
-    expect(result.success).not.toHaveProperty("stdout");
-    expect(result.success).not.toHaveProperty("stderr");
-  }
+  expect(result).not.toHaveProperty("success.stdout");
+  expect(result).not.toHaveProperty("success.stderr");
   expect(joined(h.frames, "stdout")).toBe("[redacted]");
   expect(joined(h.frames, "stderr")).toBe("[redacted]");
 });
@@ -203,7 +201,7 @@ test("delivers a host partial line before the body is allowed to finish", async 
     ]);
     // Then
     expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
-    if (result._tag === "Success") expect(result.success).not.toHaveProperty("stdout");
+    expect(result).not.toHaveProperty("success.stdout");
     expect(joined(h.frames, "stdout")).toBe("onetwo");
   } finally {
     clearTimeout(timer);
@@ -229,11 +227,9 @@ test("streams host channels through the sink without collecting the body", async
     _tag: "Success",
     success: { exitCode: 0 },
   });
-  if (result._tag === "Success") {
-    expect(result.success).not.toHaveProperty("stdout");
-    expect(result.success).not.toHaveProperty("stderr");
-    expect("rendered" in result.success).toBe(false);
-  }
+  expect(result).not.toHaveProperty("success.stdout");
+  expect(result).not.toHaveProperty("success.stderr");
+  expect(result).not.toHaveProperty("success.rendered");
 });
 
 test("emits failure stderr before returning the body exit code", async () => {
@@ -250,7 +246,7 @@ test("emits failure stderr before returning the body exit code", async () => {
     _tag: "Success",
     success: { exitCode: 7 },
   });
-  if (result._tag === "Success") expect(result.success).not.toHaveProperty("stderr");
+  expect(result).not.toHaveProperty("success.stderr");
 });
 
 test.each(["pre", "post"] as const)(

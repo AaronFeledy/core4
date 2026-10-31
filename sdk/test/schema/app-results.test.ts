@@ -108,6 +108,21 @@ describe("StopAppResult", () => {
 });
 
 describe("DestroyAppResult", () => {
+  test("preserves landofileEvents when present", () => {
+    // Given
+    const value = {
+      app: "demo",
+      servicesDestroyed: ["web"],
+      volumesRemoved: false,
+      snapshotsRemoved: 0,
+      landofileEvents: { status: "skipped" as const, reason: "landofile load failed" },
+    };
+    // When
+    const decoded = roundTrip(DestroyAppResult, value);
+    // Then
+    expect(decoded).toStrictEqual(value);
+  });
+
   test("outcome may be omitted or present", () => {
     const omitted = {
       app: "demo",
@@ -164,14 +179,10 @@ describe("ShareStopAppResult", () => {
   test("round-trips session acknowledgement without a redundant status", () => {
     const withProvider = { sessionId: "sess-1", provider: "ngrok" };
     expect(roundTrip(ShareStopAppResult, withProvider)).toEqual(withProvider);
+  });
 
-    expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "ready" }))).toBe(true);
-    expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "stopped" }))).toBe(
-      true,
-    );
-    expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "starting" }))).toBe(
-      true,
-    );
+  test.each(["ready", "stopped", "starting"])("rejects redundant status %s", (status) => {
+    expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status }))).toBe(true);
   });
 
   test("rejects excess properties", () => {

@@ -64,9 +64,6 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   readonly streamFrames?: {
     bivarianceHack(result: A): ReadonlyArray<StreamOutputFrame>;
   }["bivarianceHack"];
-  readonly redactionTokens?: {
-    bivarianceHack(result: A): ReadonlyArray<string>;
-  }["bivarianceHack"];
   /**
    * Core CLI string render hook. Omitted from the SDK Effect union and
    * redeclared here so built-in call sites keep `RenderContext` and a

@@ -46,6 +46,18 @@ test("rejects a render hook for an unrelated result", () => {
   expect(rejected).toBe(false);
 });
 
+test("rejects a redaction hook for an unrelated result", () => {
+  // Given / When
+  const rejected: Assignable<
+    Omit<LandoCommandSpec<Result>, "redactionTokens"> & {
+      readonly redactionTokens: (result: number) => ReadonlyArray<string>;
+    },
+    LandoCommandSpec<Result>
+  > = false;
+  // Then
+  expect(rejected).toBe(false);
+});
+
 test("preserves branded, readonly, optional results through registry erasure", () => {
   const spec = {
     id: "meta:typed",

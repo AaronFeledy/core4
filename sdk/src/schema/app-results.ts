@@ -99,9 +99,7 @@ export const DestroyAppResult = Schema.Struct({
     description:
       "Number of app snapshots removed; only a snapshot purge (`lando destroy --purge`) removes them.",
   }),
-  landofileEvents: Schema.optionalKey(LandofileEventsOutcome).annotate({
-    description: "Lifecycle-step outcome when the app teardown could run Landofile events.",
-  }),
+  landofileEvents: StopAppResult.fields.landofileEvents,
 }).annotate({
   description: "Resources removed and lifecycle-step outcomes returned after destroying an app.",
 });
