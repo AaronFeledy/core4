@@ -36,5 +36,5 @@ export const metaGlobalInfoSpec: LandoCommandSpec<GlobalInfoResult> = {
     }),
   },
   run: (input) => globalInfo(globalInfoOptionsFromInput(input)),
-  render: (result, _input, ctx) => renderGlobalInfoResult(result as GlobalInfoResult, ctx),
+  render: (result, _input, ctx) => renderGlobalInfoResult(result, ctx),
 };

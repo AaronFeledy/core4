@@ -95,5 +95,5 @@ export const updateSpec: LandoCommandSpec<UpdateResult> = {
     }),
   },
   run: runUpdateCommand,
-  render: (result) => renderUpdateResult(result as UpdateResult),
+  render: (result) => renderUpdateResult(result),
 };

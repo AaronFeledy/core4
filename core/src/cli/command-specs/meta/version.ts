@@ -21,8 +21,5 @@ export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   hidden: false,
   bootstrap: "none",
   run: () => version,
-  render: (result) => {
-    if (typeof result !== "object" || result === null || !("core" in result)) return undefined;
-    return (result as VersionResult).core;
-  },
+  render: (result) => result.core,
 };

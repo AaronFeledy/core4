@@ -31,5 +31,5 @@ export const metaGlobalStopSpec: LandoCommandSpec<GlobalStopResult> = {
     }),
   },
   run: (input) => globalStop(globalStopOptionsFromInput(input)),
-  render: (result) => renderGlobalStopResult(result as GlobalStopResult),
+  render: (result) => renderGlobalStopResult(result),
 };
