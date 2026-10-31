@@ -22,8 +22,20 @@ export const PluginCommandDiagnostic = Schema.Struct({
   _tag: Schema.String,
   message: Schema.String,
   remediation: Schema.optionalKey(Schema.String),
-  winner: Schema.optionalKey(Schema.Struct({ pluginName: Schema.String, source: Schema.String })),
-  loser: Schema.optionalKey(Schema.Struct({ pluginName: Schema.String, source: Schema.String })),
+  winner: Schema.optionalKey(
+    Schema.Struct({
+      source: Schema.String,
+      pluginName: Schema.optionalKey(Schema.String),
+      commandId: Schema.optionalKey(Schema.String),
+    }),
+  ),
+  loser: Schema.optionalKey(
+    Schema.Struct({
+      source: Schema.String,
+      pluginName: Schema.String,
+      commandId: Schema.optionalKey(Schema.String),
+    }),
+  ),
 });
 export type PluginCommandDiagnostic = typeof PluginCommandDiagnostic.Type;
 export const PluginMetadata = Schema.Union([
@@ -55,6 +67,7 @@ const diagnostic = Effect.fnUntraced(function* (error: unknown) {
   const service = yield* RedactionService;
   const redactor = yield* service.forProfile("secrets", { sourceEnv: process.env });
   const tagged = Schema.is(PluginCommandDiagnostic)(error);
+  const bounded = (text: string) => escapeDiagnosticText(redactor.redactString(text)).slice(0, 512);
   return {
     _tag: tagged ? error._tag : "PluginLoadError",
     message: escapeDiagnosticText(redactor.redactString(tagged ? error.message : String(error))).slice(
@@ -67,16 +80,20 @@ const diagnostic = Effect.fnUntraced(function* (error: unknown) {
     ...(tagged && error.winner !== undefined
       ? {
           winner: {
-            pluginName: redactor.redactString(error.winner.pluginName).slice(0, 512),
             source: error.winner.source,
+            ...(error.winner.pluginName === undefined
+              ? {}
+              : { pluginName: bounded(error.winner.pluginName) }),
+            ...(error.winner.commandId === undefined ? {} : { commandId: bounded(error.winner.commandId) }),
           },
         }
       : {}),
     ...(tagged && error.loser !== undefined
       ? {
           loser: {
-            pluginName: redactor.redactString(error.loser.pluginName).slice(0, 512),
             source: error.loser.source,
+            pluginName: bounded(error.loser.pluginName),
+            ...(error.loser.commandId === undefined ? {} : { commandId: bounded(error.loser.commandId) }),
           },
         }
       : {}),

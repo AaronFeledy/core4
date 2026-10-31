@@ -31,8 +31,8 @@ test("later sources replace a plugin name before first-owner command selection",
   expect(selected.commands.map((entry) => entry.id)).toEqual(["new:run", "x:run"]);
   expect(selected.diagnostics).toContainEqual(
     expect.objectContaining({
-      winner: { pluginName: "@example/first", source: "bundled" },
-      loser: { pluginName: "@example/second", source: "user" },
+      winner: { pluginName: "@example/first", source: "bundled", commandId: "x:run" },
+      loser: { pluginName: "@example/second", source: "user", commandId: "x:run" },
     }),
   );
 });

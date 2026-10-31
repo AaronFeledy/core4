@@ -55,6 +55,16 @@ const readHelpCache = async () => {
   }
 };
 
+const pluginConflictNotice = (diagnostics: readonly { readonly message: string }[]): string => {
+  const shown = diagnostics.slice(0, 3).map((diagnostic) => `  ${diagnostic.message}`);
+  const more = diagnostics.length - shown.length;
+  return [
+    "Plugin command conflicts:",
+    ...shown,
+    ...(more > 0 ? [`  ...and ${more} more. Run \`lando help --format=json\` for details.`] : []),
+  ].join("\n");
+};
+
 export const printAllHelp = async (
   catalog: PluginCommandCatalog = createPluginCommandCatalog(),
 ): Promise<void> => {
@@ -74,9 +84,7 @@ export const printAllHelp = async (
               pluginNotice: `Plugin commands unavailable: ${plugins.metadata.message} ${plugins.metadata.remediation ?? ""}`,
             }
           : (plugins.metadata.diagnostics?.length ?? 0) > 0
-            ? {
-                pluginNotice: `Plugin command metadata has ${plugins.metadata.diagnostics?.length} diagnostic(s); use --format=json for details.`,
-              }
+            ? { pluginNotice: pluginConflictNotice(plugins.metadata.diagnostics ?? []) }
             : {}),
         ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
       }),

@@ -14,11 +14,13 @@ export interface ManifestDiagnostic {
   readonly _tag: string;
   readonly message: string;
   readonly remediation: string;
+  /** The owner that kept the contested id or token; built-in, tooling, and core owners have no plugin. */
   readonly winner?: {
-    readonly pluginName: string;
-    readonly source: PluginManifestSource | "built-in" | "tooling";
+    readonly source: PluginManifestSource | "built-in" | "tooling" | "core";
+    readonly pluginName?: string;
+    readonly commandId?: string;
   };
-  readonly loser?: CommandProvenance;
+  readonly loser?: CommandProvenance & { readonly commandId?: string };
 }
 export interface PluginCommandEntry extends CommandProvenance {
   readonly id: string;
@@ -44,8 +46,8 @@ export const selectPluginManifests = <T extends PluginManifestEntry>(
             _tag: "PluginDescriptorMismatchError",
             message: `Command ${descriptor.id} from ${provenance.pluginName} is shadowed by ${winner.pluginName}.`,
             remediation: "Rename the duplicate command or disable the unwanted plugin.",
-            winner: { pluginName: winner.pluginName, source: winner.source },
-            loser: provenance,
+            winner: { pluginName: winner.pluginName, source: winner.source, commandId: descriptor.id },
+            loser: { ...provenance, commandId: descriptor.id },
           });
         continue;
       }

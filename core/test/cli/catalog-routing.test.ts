@@ -51,9 +51,14 @@ test("scenario 4: descriptor aliases route and reserved aliases report their own
     expect(help.pluginMetadata.diagnostics).toContainEqual(
       expect.objectContaining({
         _tag: "CommandAliasConflictError",
-        winner: { pluginName: "app:start", source: "built-in" },
-        loser: { pluginName: "@example/first", source: "app" },
+        message: "Alias start for fx:blocked (@example/first) is ignored because app:start owns it.",
+        winner: { source: "built-in", commandId: "app:start" },
+        loser: { pluginName: "@example/first", source: "app", commandId: "fx:blocked" },
       }),
+    );
+    const all = await f.invoke(["help", "--all"]);
+    expect(all.stdout).toContain(
+      "Plugin command conflicts:\n  Alias start for fx:blocked (@example/first) is ignored because app:start owns it.",
     );
     expect(
       JSON.parse((await f.invoke(["start", "--help", "--format=json"])).stdout).result.target.canonicalId,
@@ -79,7 +84,7 @@ test("scenario 5: tooling keeps a plugin alias without failing refresh", async (
     expect(help.pluginMetadata.diagnostics).toContainEqual(
       expect.objectContaining({
         _tag: "CommandAliasConflictError",
-        winner: { pluginName: "app:inspect", source: "tooling" },
+        winner: { source: "tooling", commandId: "app:inspect" },
       }),
     );
   } finally {
@@ -152,8 +157,8 @@ test("scenario 8: duplicate ids retain their first owner and missing loaders are
     const help = JSON.parse((await f.invoke(["help", "--format=json"])).stdout).result;
     expect(help.pluginMetadata.diagnostics).toContainEqual(
       expect.objectContaining({
-        winner: { pluginName: "@example/first", source: "app" },
-        loser: { pluginName: "@example/second", source: "app" },
+        winner: { pluginName: "@example/first", source: "app", commandId: "fx:inspect" },
+        loser: { pluginName: "@example/second", source: "app", commandId: "fx:inspect" },
       }),
     );
     const missing = await f.invoke(["fx:missing", "--help", "--format=json"]);

@@ -140,13 +140,21 @@ export const buildCommandCatalog = (
         if (entry.plugin !== undefined && diagnostics.length < 100)
           diagnostics.push({
             _tag: "CommandAliasConflictError",
-            message: `Alias ${token} from ${entry.plugin.pluginName} is owned by ${winner?.id ?? "core"}.`,
-            remediation: "Choose another plugin alias; the canonical command remains available.",
-            winner: {
-              pluginName: winner?.plugin?.pluginName ?? winner?.id ?? "core",
-              source: winner?.plugin?.source ?? (winner?.source === "tooling" ? "tooling" : "built-in"),
-            },
-            loser: { pluginName: entry.plugin.pluginName, source: entry.plugin.source },
+            message: `Alias ${token} for ${entry.id} (${entry.plugin.pluginName}) is ignored because ${
+              winner === undefined ? "Lando reserves it" : `${winner.id} owns it`
+            }.`,
+            remediation: `Run \`lando ${entry.id}\`, or give the plugin command a different alias.`,
+            winner:
+              winner === undefined
+                ? { source: "core" }
+                : winner.plugin === undefined
+                  ? { source: winner.source === "tooling" ? "tooling" : "built-in", commandId: winner.id }
+                  : {
+                      source: winner.plugin.source,
+                      pluginName: winner.plugin.pluginName,
+                      commandId: winner.id,
+                    },
+            loser: { pluginName: entry.plugin.pluginName, source: entry.plugin.source, commandId: entry.id },
           });
         continue;
       }
