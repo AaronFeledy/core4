@@ -6,7 +6,7 @@ import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
-import { logsAppForTarget } from "@lando/engine/operations/logs";
+import { LogsAppResult, logsAppForTarget } from "@lando/engine/operations/logs";
 import { StreamFrame } from "@lando/sdk/schema";
 
 import {
@@ -24,7 +24,6 @@ import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/co
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
-import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -553,7 +552,7 @@ describe("lando logs", () => {
       rendererMode: "json",
       resultFormat: "json",
       command: "app:logs",
-      resultSchema: EmptyResultSchema,
+      resultSchema: LogsAppResult,
       streaming: StreamFrame,
       streamingMode: "live",
       io,
@@ -680,7 +679,7 @@ describe("lando logs", () => {
       followLogsApp({ follow: true }).pipe(Effect.provide(Layer.merge(harness.layer, sink))),
     );
 
-    expect(result.lines).toEqual([]);
+    expect(result).toEqual({ app: harness.currentPlan.name });
     expect(harness.logCalls.every((call) => call.options.follow === true)).toBe(true);
     expect(harness.logCalls.every((call) => call.target.plan === harness.currentPlan)).toBe(true);
     expect(emitted.map((frame) => `${frame.service}/${frame._tag}/${frame.chunk}`).sort()).toEqual(
@@ -701,7 +700,7 @@ describe("lando logs", () => {
       rendererMode: "json",
       resultFormat: "json",
       command: "app:logs",
-      resultSchema: EmptyResultSchema,
+      resultSchema: LogsAppResult,
       streaming: StreamFrame,
       streamingMode: "live",
       io,
@@ -713,6 +712,10 @@ describe("lando logs", () => {
     expect(tags.filter((tag) => tag === "stdout").length).toBe(2);
     expect(tags.filter((tag) => tag === "stderr").length).toBe(2);
     expect(tags[tags.length - 1]).toBe("result");
+    const terminal = Schema.decodeUnknownSync(StreamFrame)(JSON.parse(io.stdoutLines().at(-1) ?? "null"));
+    if (terminal._tag !== "result") throw new Error("expected terminal result frame");
+    expect(terminal.envelope.result).toEqual({ app: harness.currentPlan.name });
+    expect(Schema.is(LogsAppResult)(terminal.envelope.result)).toBe(true);
   });
 
   test("follow mode interrupts the provider stream and runs Scope cleanup on abort", async () => {
@@ -747,7 +750,7 @@ describe("lando logs", () => {
       ),
     );
 
-    expect(result.lines).toEqual([]);
+    expect(result).toEqual({ app: harness.currentPlan.name });
     expect(seen).toBeGreaterThanOrEqual(3);
     expect(released).toBe(true);
   });
@@ -796,7 +799,7 @@ describe("lando logs", () => {
       rendererMode: "plain",
       resultFormat: "text",
       command: "app:logs",
-      resultSchema: EmptyResultSchema,
+      resultSchema: LogsAppResult,
       streaming: StreamFrame,
       streamingMode: "live",
       io,

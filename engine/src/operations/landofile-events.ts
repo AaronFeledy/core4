@@ -1,9 +1,8 @@
-import { DateTime, Effect, Option, Result, Schema } from "effect";
+import { DateTime, Effect, Option, Result } from "effect";
 
-import type { LandofileEventsOutcome } from "@lando/sdk/app";
 import { LandofileEventsSkippedError } from "@lando/sdk/errors";
 import { MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
-import type { AppPlan } from "@lando/sdk/schema";
+import type { AppPlan, LandofileEventsOutcome } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
@@ -87,11 +86,6 @@ const planLandofileEvents = Effect.fnUntraced(function* (
   }
   return planned;
 });
-
-export const LandofileEventsOutcomeSchema = Schema.Union([
-  Schema.Struct({ status: Schema.Literal("ran") }),
-  Schema.Struct({ status: Schema.Literal("skipped"), reason: Schema.String }),
-]);
 
 export interface LandofileEventPlan {
   /** The plan whose steps the operation runs; carries no events when they were skipped. */

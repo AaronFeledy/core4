@@ -597,9 +597,10 @@ describe("dispatchTool", () => {
       redactionTokens: [canary],
     };
     expect(execSpec.redactionTokens?.(execResult)).toContain(canary);
+    const registrySpec: LandoCommandSpec = execSpec;
     const entry: McpCommandEntry = {
       spec: {
-        ...execSpec,
+        ...registrySpec,
         resultSchema: Schema.Struct({
           stdout: Schema.String,
           stderr: Schema.String,

@@ -160,6 +160,7 @@ export const makeEventCommandExecutor = (
           ...(completion === undefined ? {} : { completion: (value) => completion(value, input) }),
         }).pipe(Effect.provideService(RedactionService, lifecycleRedaction));
         if (exit._tag === "Success") {
+          // Hooks only receive the value produced by this same spec's run.
           const completed = exit.value;
           const exitCode = completed.exitCode;
           const value = completed.value;

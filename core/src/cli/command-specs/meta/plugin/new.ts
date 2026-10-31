@@ -59,5 +59,5 @@ export const pluginNewSpec: LandoCommandSpec<PluginNewResult> = {
     }),
   },
   run: (input) => pluginNew(extractInput(input)),
-  render: (result) => renderPluginNewResult(result as PluginNewResult),
+  render: (result) => renderPluginNewResult(result),
 };

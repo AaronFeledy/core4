@@ -5440,5 +5440,11 @@
     "changeKind": "enum-narrowed",
     "path": "$.composeKnobs.supported.items",
     "justification": "Pre-release: Compose tmpfs is no longer a preserved runtime knob; service tmpfs and volumes tmpfs normalize into tmpfs mount entries every bundled provider realizes, so providers no longer declare tmpfs knob support."
+  },
+  {
+    "surface": "command:app:share:stop",
+    "changeKind": "property-removed",
+    "path": "$.status",
+    "justification": "Pre-release stop acknowledgement drops the constant status; successful completion plus sessionId and optional provider already acknowledge the completed stop."
   }
 ]

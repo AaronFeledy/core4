@@ -1,4 +1,4 @@
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect } from "effect";
 
 import type {
   RebuildAppOptions,
@@ -51,19 +51,12 @@ import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
 import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
 import { withStartedSshAgent } from "./start-ssh-agent.ts";
-import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
+import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
 export type RebuildAppError = SdkRebuildAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
-
-export const RebuildAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesRebuilt: Schema.Array(Schema.String),
-  servicesStarted: StartAppResultSchema.fields.servicesStarted,
-  checks: StartAppResultSchema.fields.checks,
-});
 
 type RebuildAppServices =
   | EnvironmentValueResolver

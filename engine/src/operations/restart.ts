@@ -1,4 +1,4 @@
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect } from "effect";
 
 import type {
   RestartAppOptions,
@@ -57,18 +57,12 @@ import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
-import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
+import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
 export type RestartAppError = SdkRestartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
-
-export const RestartAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStarted: StartAppResultSchema.fields.servicesStarted,
-  checks: StartAppResultSchema.fields.checks,
-});
 
 type RestartAppServices =
   | EnvironmentValueResolver

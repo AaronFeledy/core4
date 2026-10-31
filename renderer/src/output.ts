@@ -90,11 +90,14 @@ export const emitOptionalStderr = (chunk: string | Uint8Array): Effect.Effect<vo
     Effect.flatMap((option) => (Option.isSome(option) ? option.value.output.stderr(chunk) : Effect.void)),
   );
 
-export const withOptionalStderrOutput = <A extends { readonly stderr: string }, E, R>(
+export const withOptionalStderrOutput = <A extends { readonly stderr?: string }, E, R>(
   effect: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E, R> =>
   effect.pipe(
-    Effect.tap((result) => (result.stderr.length === 0 ? Effect.void : emitOptionalStderr(result.stderr))),
+    Effect.tap((result) => {
+      if (result.stderr) return emitOptionalStderr(result.stderr);
+      return Effect.void;
+    }),
   );
 
 const requireRenderer = Effect.serviceOption(Renderer).pipe(

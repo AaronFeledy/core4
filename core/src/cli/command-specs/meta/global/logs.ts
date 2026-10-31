@@ -1,5 +1,6 @@
 import { Flags } from "../../../spec/metadata";
 
+import { LogsAppResult } from "@lando/engine/operations/logs";
 import { StreamFrame } from "@lando/sdk/schema";
 
 import {
@@ -8,7 +9,7 @@ import {
   globalLogs,
   renderGlobalLogsResult,
 } from "../../../commands/meta/global-logs";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-base";
+import type { LandoCommandSpec } from "../../../spec/command-base";
 import {
   logFollowFromInput,
   logLinesToStreamFrames,
@@ -29,7 +30,7 @@ export const globalLogsOptionsFromInput = (input: unknown): Parameters<typeof gl
 export const globalLogsFollowFromInput = (input: unknown): boolean => logFollowFromInput(input);
 
 export const globalLogsSpec: LandoCommandSpec<GlobalLogsResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: LogsAppResult,
   id: "meta:global:logs",
   summary: "Stream logs from the host-level global Lando app.",
   description: "Stream logs from the host-level global Lando app.",
@@ -52,9 +53,6 @@ export const globalLogsSpec: LandoCommandSpec<GlobalLogsResult> = {
     const signal = logSignalFromInput(input);
     return followGlobalLogs({ ...options, follow: true, ...(signal === undefined ? {} : { signal }) });
   },
-  streamFrames: (value) => {
-    const result = value as GlobalLogsResult;
-    return logLinesToStreamFrames(result);
-  },
-  render: (result) => renderGlobalLogsResult(result as GlobalLogsResult),
+  streamFrames: logLinesToStreamFrames,
+  render: renderGlobalLogsResult,
 };

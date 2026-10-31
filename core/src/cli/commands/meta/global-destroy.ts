@@ -4,7 +4,7 @@ import { GlobalDestroyConfirmationError } from "@lando/sdk/errors";
 
 import { executeGlobalTeardown, resolveGlobalTeardown } from "@lando/engine/operations/global-teardown";
 import { TeardownProvider } from "@lando/engine/providers/app-placement";
-import type { ProviderId } from "@lando/sdk/schema";
+import { DestroyAppOutcome, DestroyAppResult, type ProviderId } from "@lando/sdk/schema";
 import { teardownLine, volumesTrailer } from "../service-summary";
 
 export interface GlobalDestroyOptions {
@@ -14,11 +14,13 @@ export interface GlobalDestroyOptions {
 }
 
 export const GlobalDestroyResultSchema = Schema.Struct({
-  app: Schema.String,
-  outcome: Schema.Literals(["destroyed", "unchanged"]),
-  materialized: Schema.Boolean,
-  servicesDestroyed: Schema.Array(Schema.String),
-  volumesRemoved: Schema.Boolean,
+  app: DestroyAppResult.fields.app,
+  outcome: DestroyAppOutcome,
+  materialized: Schema.Boolean.annotate({
+    description: "Whether the global app has a materialized Landofile.",
+  }),
+  servicesDestroyed: DestroyAppResult.fields.servicesDestroyed,
+  volumesRemoved: DestroyAppResult.fields.volumesRemoved,
 });
 
 export type GlobalDestroyResult = typeof GlobalDestroyResultSchema.Type;

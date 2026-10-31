@@ -74,6 +74,12 @@ Ctrl+C aborts only the currently running line. The REPL prompt returns. An inter
 
 Ctrl+D at an empty prompt ends the REPL with the exit status of the last executed line. Typing `exit` does the same. `exit <code>` ends it with that status. On both paths, the REPL restores the terminal before `lando shell` returns.
 
+The JSON result for a completed shell session contains `mode` (`host` or
+`service`), `app`, `shell`, `cwd`, and `exitCode`. Service mode also includes
+`service`; host mode omits it. Selecting JSON does not make the shell
+non-interactive. Use `lando shell --json` to list the result keys without
+opening a session, or `lando exec` to run a command without a terminal.
+
 `lando shell --no-interactive`, a non-TTY stdin/stdout, or a redirected invocation never opens the REPL. The command fails fast with tagged `ShellRequiresTtyError` instead of hanging. The error points at the scriptable equivalent:
 
 ```sh

@@ -8,10 +8,12 @@ import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
-import { listSpec } from "../../src/cli/command-specs/apps/list.ts";
+import { listSpec as typedListSpec } from "../../src/cli/command-specs/apps/list.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { Flags } from "../../src/cli/spec/metadata.ts";
+
+const listSpec: LandoCommandSpec = typedListSpec;
 
 const spec = (id: string, extra: Partial<LandoCommandSpec> = {}): LandoCommandSpec => ({
   id,
@@ -30,7 +32,7 @@ const entry = (id: string, extra: Partial<LandoCommandSpec> = {}): McpCommandEnt
 describe("deriveToolInputSchema", () => {
   test("projects repeatable service arrays for app info and rebuild", () => {
     // Given
-    const specs = [infoSpec, rebuildSpec];
+    const specs: ReadonlyArray<LandoCommandSpec> = [infoSpec, rebuildSpec];
 
     // When
     const schemas = specs.map(deriveToolInputSchema);
