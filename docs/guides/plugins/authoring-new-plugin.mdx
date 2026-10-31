@@ -162,10 +162,32 @@ That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fa
 
 ## Contribute commands
 
-List each command id under `contributes.commands` in the manifest, then give
-`definePlugin` a `commands` map from the same ids to lazy loaders that resolve
-an `ExecutableCommandSpec` from `@lando/sdk/plugins`. The bundled `@lando/sql`
-plugin is the shape to copy:
+Describe each command under `contributes.commands` in the manifest. Every entry
+is an object with an `id` and a `summary`; `hidden`, `aliases`, `topLevelAlias`,
+`mcpAllowed`, and `deprecated` are optional. The bundled `@lando/sql` plugin is
+the shape to copy. This entry also gives `db:export` the shortcut `db:dump`:
+
+```yaml
+contributes:
+  commands:
+    - id: db:export
+      summary: Export a database dump from a service.
+      aliases: [db:dump]
+```
+
+Lando reads help, routing, aliases, and MCP eligibility from this manifest
+without running any plugin code, so the summary you write here is the one
+`lando help` shows. The command module may omit its own `summary`; if it sets
+one, it must match the manifest or the command fails validation when it runs.
+`aliases` take the colon form. `topLevelAlias: true` also registers the id
+without its first namespace segment (`db:export` as `export`); give it a token or
+a list of tokens to choose the bare names yourself. An alias that collides with
+a built-in command, a core help topic, a reserved word, or the current app's
+tooling is dropped while the id keeps working, and `lando help --format=json`
+reports the conflict in `result.pluginMetadata.diagnostics`.
+
+Then give `definePlugin` a `commands` map from the same ids to lazy loaders
+that resolve an `ExecutableCommandSpec` from `@lando/sdk/plugins`:
 
 ```ts
 export const plugin = definePlugin({
@@ -178,9 +200,13 @@ export const plugin = definePlugin({
 ```
 
 Once the plugin is installed or linked, its commands appear in `lando help --all`
-next to the built-ins, and `lando help <namespace>` (here, `lando help db`) lists
-them under the manifest `description`. A command whose module fails to load still
-shows up in `lando help --format=json`, with a `loadError` naming the problem.
+next to the built-ins, `lando help <namespace>` (here, `lando help db`) lists
+them under the manifest `description`, and the root `lando --help` adds that
+topic to its MORE section. In `lando help --format=json`, each plugin row carries
+`source: "plugin"` plus the `plugin` name and its `provenance`. Lando loads the
+module only when someone runs the command or asks for its `--help`, so a module
+that fails to load still appears in listings; the load error surfaces at that
+point, naming the problem.
 
 ## Verify
 
