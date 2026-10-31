@@ -1,7 +1,6 @@
 import { Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import type { RendererContribution, RendererIO, RendererNarrationIO } from "@lando/sdk/renderer";
-import { RENDERER_CAPABILITIES_NONE, RENDERER_CAPABILITIES_TTY } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, type Renderer } from "@lando/sdk/services";
 
 import { sanitizeNotificationText } from "./notify-sanitize.ts";
@@ -10,6 +9,7 @@ import type { LiveRegionControllerOptions } from "./opentui/live-region-controll
 import { createLiveRegionController } from "./opentui/live-region-controller.ts";
 import { prefetchLiveRegionModule } from "./opentui/live-region-substrate.ts";
 import type { OpenTuiLiveRegionModuleLike } from "./opentui/live-region-types.ts";
+import { capabilitiesForIO } from "./renderer-capabilities.ts";
 import { makeLineModeConsumer, makeLandoService as makeRendererService } from "./renderer-service.ts";
 import * as TaskTreeConsumer from "./task-tree-consumer.ts";
 import type { LiveRegionHandle } from "./task-tree-substrate-handler.ts";
@@ -74,7 +74,7 @@ const layerNotificationConsumer = (
   );
 
 export const makeLandoService = (io: RendererIO): Layer.Layer<Renderer> => {
-  const capabilities = io.isTTY === true ? RENDERER_CAPABILITIES_TTY : RENDERER_CAPABILITIES_NONE;
+  const capabilities = capabilitiesForIO(io);
   return makeRendererService(io, () => capabilities);
 };
 
@@ -82,15 +82,15 @@ export const makeLandoEventConsumer = (
   io: RendererNarrationIO,
   deps: LandoEventConsumerDeps = {},
 ): Layer.Layer<never, never, EventService> => {
-  const capabilities = io.isTTY === true ? RENDERER_CAPABILITIES_TTY : RENDERER_CAPABILITIES_NONE;
+  const capabilities = capabilitiesForIO(io);
   const notifications = layerNotificationConsumer(
     () => capabilities,
     deps.triggerNotification,
     deps.flushNotifications,
   );
-  if (io.isTTY !== true) return Layer.merge(makeLineModeConsumer(io), notifications);
+  if (io.isTTY !== true) return Layer.merge(makeLineModeConsumer(io, capabilities.color), notifications);
   const stdout = io.externalOutputStream;
-  if (stdout === undefined) return Layer.merge(makeLineModeConsumer(io), notifications);
+  if (stdout === undefined) return Layer.merge(makeLineModeConsumer(io, capabilities.color), notifications);
   const loadModule = deps.loadModule;
   const createLiveRegion =
     deps.createLiveRegion ??
@@ -114,6 +114,7 @@ export const makeLandoEventConsumer = (
     createLiveRegion,
     raiseInterrupt,
     prefetchLiveRegion,
+    capabilities.color,
   ).pipe(Layer.provide(readerLayer));
   return Layer.merge(taskTree, notifications);
 };
@@ -121,6 +122,12 @@ export const makeLandoEventConsumer = (
 export const landoRendererContribution: RendererContribution = {
   id: "lando",
   makeService: makeLandoService,
+  makeNotificationConsumer: (io) =>
+    layerNotificationConsumer(
+      () => capabilitiesForIO(io),
+      bindIoDesktopNotificationTrigger(io),
+      flushPendingNotifications,
+    ),
   makeEventConsumer: (io) =>
     makeLandoEventConsumer(io, {
       triggerNotification: bindIoDesktopNotificationTrigger(io),

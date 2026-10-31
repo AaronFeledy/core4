@@ -30,6 +30,7 @@ const session = (over: Partial<TunnelSession> = {}): TunnelSession => ({
 });
 
 const ctx = (over: Partial<RenderContext> = {}): RenderContext => ({
+  noColor: false,
   mode: "lando",
   format: "text",
   columns: 80,

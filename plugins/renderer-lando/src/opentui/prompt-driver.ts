@@ -8,6 +8,8 @@ import type {
   RendererLike,
 } from "./prompt-driver-types.ts";
 import { type PromptDisposer, removeListener } from "./prompt-listeners.ts";
+import { installMonochromePromptAdapters, monochromePromptTerminal } from "./prompt-monochrome.ts";
+import { createPromptTheme } from "./prompt-theme.ts";
 import { getOpenTuiSubstrateAvailability, recordOpenTuiSubstrateFailure } from "./substrate-availability.ts";
 
 export type {
@@ -99,7 +101,7 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
         renderer = await (deps.createRenderer?.(mod) ??
           mod.createCliRenderer({
             stdin: deps.stdin,
-            stdout: terminal,
+            stdout: deps.noColor === true ? monochromePromptTerminal(terminal) : terminal,
             remote: false,
             exitOnCtrlC: false,
             screenMode: "main-screen",
@@ -117,6 +119,7 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
       }
 
       const onResize = (): void => renderer.resize?.(terminal.columns, terminal.rows);
+      if (deps.noColor === true) installMonochromePromptAdapters(mod, renderer);
       terminal.on("resize", onResize);
       if (terminal === process.stderr) process.on("SIGWINCH", onResize);
       let cancelListener: ((key: KeyEventLike) => void) | undefined;
@@ -160,7 +163,12 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
             }
           }
           renderer.keyInput.on("keypress", cancelListener);
-          disposePrompt = buildPrompt(mod, renderer, typedRequest, done);
+          disposePrompt = buildPrompt(
+            { ...mod, theme: createPromptTheme(mod, deps.noColor === true) },
+            renderer,
+            typedRequest,
+            done,
+          );
           renderer.requestRender?.();
         });
         promptOutcome = { ok: true, value };

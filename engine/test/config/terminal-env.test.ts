@@ -3,6 +3,43 @@ import { describe, expect, test } from "bun:test";
 import { withTerminalEnv } from "../../src/config/terminal-env.ts";
 
 describe("withTerminalEnv", () => {
+  test.each([
+    [true, true, "1"],
+    [true, false, undefined],
+    [true, undefined, undefined],
+    [false, true, undefined],
+  ] as const)("forwards color opt-out with tty=%j and noColor=%j", (tty, noColor, expected) => {
+    // Given
+    const hostTerminal = noColor === undefined ? {} : { noColor };
+    // When
+    const env = withTerminalEnv({ tty, hostTerminal });
+    // Then
+    expect(env?.NO_COLOR).toBe(expected);
+  });
+
+  test.each(["", "0", "service-value"])("preserves service NO_COLOR=%j", (value) => {
+    // Given
+    const serviceEnv = { NO_COLOR: value };
+    // When
+    const env = withTerminalEnv({ tty: true, hostTerminal: { noColor: true }, serviceEnv });
+    // Then: the service already owns this key, so no exec override is emitted.
+    expect(env).not.toHaveProperty("NO_COLOR");
+  });
+
+  test.each(["", "0", "explicit-value"])("preserves explicit NO_COLOR=%j", (value) => {
+    // Given
+    const env = { NO_COLOR: value };
+    // When
+    const result = withTerminalEnv({
+      tty: true,
+      hostTerminal: { noColor: true },
+      serviceEnv: { NO_COLOR: "service-value" },
+      env,
+    });
+    // Then
+    expect(result?.NO_COLOR).toBe(value);
+  });
+
   test.each([undefined, {}])("uses host dimensions without attached dimensions (%j)", (hostTerminal) => {
     // Given
     const hostEnv = { COLUMNS: "117", LINES: "39", TERM: "host-term", COLORTERM: "truecolor" };

@@ -226,6 +226,7 @@ export const globalTeardownHarness = async (
         subscribe: () => Stream.die("unused subscription"),
         subscribeQueue: Effect.die("unused queue"),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),
