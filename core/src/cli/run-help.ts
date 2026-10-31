@@ -159,7 +159,7 @@ export const dispatchHelpTarget = async (
   const helpCommand = resolveBuiltInCommand(token);
   if (helpCommand?.spec.id === token) return printCommandHelp(helpCommand);
   const resolutionExit = await Effect.runPromiseExit(
-    interruptOnAbort(Effect.result(resolveToolingRoute(token)), signal),
+    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal),
   );
   if (Exit.isFailure(resolutionExit)) throw resolutionExit.cause;
   const resolution = resolutionExit.value;

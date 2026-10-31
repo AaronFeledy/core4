@@ -136,9 +136,13 @@ const rejectJsonControlConflicts = async (): Promise<boolean> => {
   return true;
 };
 
-const resolveToolingRouteExit = async (token: string | undefined, signal?: AbortSignal) => {
+const resolveToolingRouteExit = async (
+  token: string | undefined,
+  catalog: PluginCommandCatalog,
+  signal?: AbortSignal,
+) => {
   const exit = await Effect.runPromiseExit(
-    interruptOnAbort(Effect.result(resolveToolingRoute(token)), signal),
+    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal),
   );
   if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
@@ -170,7 +174,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
     rawEntry?.spec.id !== rawHead &&
     !rawHead.startsWith("-") &&
     (rawEntry !== undefined || !isReservedNamespaceHead(rawHead))
-      ? await resolveToolingRouteExit(rawHead, signal)
+      ? await resolveToolingRouteExit(rawHead, catalog, signal)
       : undefined;
   const isBunOrXAlias =
     passthroughAliasResolution?._tag === "Success" &&
@@ -317,7 +321,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
     (passthroughAliasResolution !== undefined || !isReservedNamespaceHead(argv[0]))
   ) {
     const argvTail = argv.slice(1);
-    const aliasResolution = passthroughAliasResolution ?? (await resolveToolingRouteExit(argv[0], signal));
+    const aliasResolution =
+      passthroughAliasResolution ?? (await resolveToolingRouteExit(argv[0], catalog, signal));
     if (aliasResolution._tag === "Failure") {
       await renderAliasResolutionFailure(aliasResolution.failure);
       return;

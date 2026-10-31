@@ -225,6 +225,14 @@ test("cold root, built-in target and core topic help do not acquire plugin entri
   const f = await fixture();
   try {
     await writeFile(join(f.root, ".lando.yml"), "name: help-import\n");
+    await Effect.runPromise(
+      writeAppCommandCacheStrict({
+        landofile: { name: "help-import" },
+        entries: [],
+        cwd: f.root,
+        cacheRoot: f.env.LANDO_USER_CACHE_ROOT,
+      }),
+    );
     const marker = join(f.root, "imported");
     await installLocalPlugin(f.root, marker);
     await mkdir(f.env.LANDO_USER_DATA_ROOT, { recursive: true });
@@ -232,7 +240,13 @@ test("cold root, built-in target and core topic help do not acquire plugin entri
     const cold = await f.invoke(["--help"], tmpdir());
     expect(cold.exit, cold.stderr).toBe(0);
     expect(await Bun.file(marker).exists()).toBe(false);
-    for (const args of [["--help"], ["help", "app:start"], ["app:start", "--help"], ["help", "app"]]) {
+    for (const args of [
+      ["--help"],
+      ["help", "app:start"],
+      ["app:start", "--help"],
+      ["start", "--help"],
+      ["help", "app"],
+    ]) {
       const result = await f.invoke(args);
       expect(result.exit, result.stderr).toBe(0);
       expect(await Bun.file(marker).exists()).toBe(false);
