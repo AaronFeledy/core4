@@ -49,8 +49,8 @@ import { collectPlanConnections, startedServices } from "./connection-collector.
 
 import { withOrdinaryMounts } from "./file-sync-plan.ts";
 import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
-import { globalInstall } from "./global-install.ts";
-import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
+import { type globalInstall, installAndLoadGlobalPlan } from "./global-install.ts";
+import type { LoadGlobalPlanError } from "./global-plan.ts";
 import { advanceGlobalRecordedPlan, retainGlobalPlanSiblings } from "./global-retained-plan.ts";
 
 const now = () => DateTime.nowUnsafe();
@@ -210,13 +210,8 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       }
       forgetGlobalEnsure(registry, root);
     }
-    yield* globalInstall({ services: requested });
-    const loaded = yield* loadGlobalPlan({ services: requested });
+    const loaded = yield* installAndLoadGlobalPlan({ services: requested });
     const events = yield* EventService;
-
-    if (!loaded.materialized) {
-      return yield* Effect.fail(missingServiceError(requested, requested, []));
-    }
 
     const plan = loaded.plan;
     const planServices = Object.values(plan.services);

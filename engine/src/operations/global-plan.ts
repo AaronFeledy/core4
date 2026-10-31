@@ -71,7 +71,7 @@ export const globalLandofileOverrides = Effect.gen(function* () {
   } satisfies LandofileFinalizeOverrides;
 });
 
-const withProcessCwd = <A, E, R>(
+export const withProcessCwd = <A, E, R>(
   cwd: string,
   use: () => Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | GlobalAppError, R> =>

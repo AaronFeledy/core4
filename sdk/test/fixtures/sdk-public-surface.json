@@ -197,7 +197,7 @@
       "ownedPublishPorts?:(service:ServiceName,ports:ReadonlyArray<PortNumber>) => Effect.Effect<ReadonlyArray<PortNumber>,GlobalAppError>",
       "paths:Effect.Effect<GlobalAppPaths,GlobalAppError>",
       "providerId:Effect.Effect<ProviderId,GlobalAppError>",
-      "regenerateDist:(input?:{ services?:Record<string,ServiceConfig>}) => Effect.Effect<GlobalDistResult,GlobalAppError|GlobalDistConflictError>",
+      "regenerateDist:(input?:{ services?:Record<string,ServiceConfig>; content?:string;}) => Effect.Effect<GlobalDistResult,GlobalAppError|GlobalDistConflictError>",
       "restartRunningService?:(service:ServiceName) => Effect.Effect<boolean,GlobalAppError>",
       "root:Effect.Effect<AbsolutePath,GlobalAppError>"
     ],

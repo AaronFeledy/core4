@@ -23,6 +23,7 @@ import {
   findDiscoveredLandofilePath,
   loadLandofileFile as loadLandofileFilePackage,
   loadLandofileLayers as loadLandofileLayersPackage,
+  prepareLandofileReplacement as prepareLandofileReplacementPackage,
   validateLandofileReplacement as validateLandofileReplacementPackage,
 } from "@lando/landofile/service";
 import * as LandofileServiceLayer from "@lando/landofile/service";
@@ -130,6 +131,14 @@ export const validateLandofileReplacement = (
 ) =>
   Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
     validateLandofileReplacementPackage(replacement, { ...inputs, overrides }),
+  );
+
+export const prepareLandofileReplacement = (
+  replacement: Parameters<typeof prepareLandofileReplacementPackage>[0],
+  overrides?: LandofileFinalizeOverrides,
+) =>
+  Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+    prepareLandofileReplacementPackage(replacement, { ...inputs, overrides }),
   );
 
 export const loadLandofileFile = (

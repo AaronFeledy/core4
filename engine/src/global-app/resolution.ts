@@ -36,7 +36,7 @@ export const withGlobalResolutionCapabilities = <A, E, R>(
 ): Effect.Effect<A, E, R> =>
   body.pipe(Effect.provideService(RuntimeGlobalCapabilities, { providerId, capabilities }));
 
-export const readGlobalResolution = Effect.fn("GlobalApp.readResolution")(function* (
+export const captureGlobalResolution = Effect.fn("GlobalApp.captureResolution")(function* (
   options: {
     readonly policy?: GlobalPolicy;
     readonly providerCapabilities?: ProviderCapabilities;
@@ -55,7 +55,7 @@ export const readGlobalResolution = Effect.fn("GlobalApp.readResolution")(functi
   const capabilities =
     runtimeCapabilities ??
     registry.declaredProviderCapabilities?.(ProviderId.make(providerId), paths.platform);
-  return yield* resolveGlobalServices({
+  return {
     manifests,
     policy,
     providerId,
@@ -66,5 +66,11 @@ export const readGlobalResolution = Effect.fn("GlobalApp.readResolution")(functi
           capabilitySource: runtimeCapabilities === undefined ? ("declared" as const) : ("runtime" as const),
         }),
     loadServiceConfig: bundledFirstGlobalServiceLoader.load,
-  });
+  };
+});
+
+export const readGlobalResolution = Effect.fn("GlobalApp.readResolution")(function* (
+  options: Parameters<typeof captureGlobalResolution>[0] = {},
+) {
+  return yield* resolveGlobalServices(yield* captureGlobalResolution(options));
 });
