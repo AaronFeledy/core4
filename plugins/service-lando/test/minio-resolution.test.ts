@@ -5,13 +5,15 @@ import { Effect, Schema } from "effect";
 import { MINIO_FEATURE_ID, minioServiceType } from "../src/services/minio.ts";
 
 const resolve = (service: Record<string, unknown>) =>
-  Effect.runPromise(minioServiceType.resolve({
-    name: "storage",
-    service: Schema.decodeUnknownSync(ServiceConfig)(service),
-    appRoot: "/srv/apps/myapp",
-    appName: "myapp",
-    metadata: { resolvedAt: "2026-08-18T00:00:00Z", source: "minio-resolution", runtime: 4 },
-  }));
+  Effect.runPromise(
+    minioServiceType.resolve({
+      name: "storage",
+      service: Schema.decodeUnknownSync(ServiceConfig)(service),
+      appRoot: "/srv/apps/myapp",
+      appName: "myapp",
+      metadata: { resolvedAt: "2026-08-18T00:00:00Z", source: "minio-resolution", runtime: 4 },
+    }),
+  );
 
 test("resolves tooling, feature, and catalog schema before effective artifact validation", async () => {
   // Given / When

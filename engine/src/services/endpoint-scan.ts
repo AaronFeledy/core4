@@ -6,7 +6,9 @@ import {
   logicalEndpointIdentity,
 } from "@lando/sdk/schema";
 
-export const endpointScanPolicies = (endpoints: readonly EndpointPlan[]): ReadonlyMap<string, EndpointScan> => {
+export const endpointScanPolicies = (
+  endpoints: readonly EndpointPlan[],
+): ReadonlyMap<string, EndpointScan> => {
   const policies = new Map<string, EndpointScan>();
   for (const endpoint of endpoints) {
     if (endpoint.scan === undefined) continue;

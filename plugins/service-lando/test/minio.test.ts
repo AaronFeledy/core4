@@ -269,5 +269,4 @@ describe("minio ServiceType", () => {
     expect(String(plan.workingDirectory)).toBe("/data");
     expect(plan.user).toBe("1000:1000");
   });
-
 });

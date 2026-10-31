@@ -50,7 +50,9 @@ test.each([
   const urls = startupScanUrls(plan, [
     { name: "web", state: "running", connections: [host(wildcard), host("https://web.demo.test/files/*")] },
   ]);
-  expect(urls).toEqual([{ service: web.name, url: "https://web.demo.test/files/*/", endpoint: host(wildcard).endpoint }]);
+  expect(urls).toEqual([
+    { service: web.name, url: "https://web.demo.test/files/*/", endpoint: host(wildcard).endpoint },
+  ]);
 });
 
 test("preserves route prefixes when appending a configured scanner path", () => {
@@ -72,7 +74,13 @@ test("preserves route prefixes when appending a configured scanner path", () => 
       ],
     },
   ]);
-  expect(urls).toEqual([{ service: web.name, url: "https://web.demo.test/api/ready", endpoint: host("https://web.demo.test/api").endpoint }]);
+  expect(urls).toEqual([
+    {
+      service: web.name,
+      url: "https://web.demo.test/api/ready",
+      endpoint: host("https://web.demo.test/api").endpoint,
+    },
+  ]);
 });
 
 test("never probes disabled or non-HTTP targets", async () => {

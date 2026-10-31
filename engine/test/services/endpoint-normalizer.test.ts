@@ -98,18 +98,21 @@ test("publications inherit sparse scan defaults from every matching facet", () =
   const endpoints = normalizeEndpoints(contributions, config);
   // Then
   expect(endpoints.slice(3).map((endpoint) => endpoint.scan)).toEqual([
-    { path: "/minio/health/live", okCodes: [204] }, { path: "/" },
+    { path: "/minio/health/live", okCodes: [204] },
+    { path: "/" },
   ]);
 });
 
 test.each([{ endpoints: [] }, { endpoints: [{ _tag: "internal", protocol: "http", port: 9000 }] }])(
-  "explicit endpoints replace discovery scan metadata: %j", ({ endpoints }) => {
+  "explicit endpoints replace discovery scan metadata: %j",
+  ({ endpoints }) => {
     // Given
     const config = Schema.decodeUnknownSync(ServiceConfig)({ endpoints, ports: ["19000:9000"] });
     // When
-    const result = normalizeEndpoints([
-      { _tag: "internal", protocol: "http", port: 9000, scan: { path: "/health" } },
-    ], config);
+    const result = normalizeEndpoints(
+      [{ _tag: "internal", protocol: "http", port: 9000, scan: { path: "/health" } }],
+      config,
+    );
     // Then
     expect(result).toEqual([...endpoints]);
   },
@@ -127,7 +130,10 @@ test.each([
     { _tag: "published", protocol: "http", port: 9000, publication: {}, scan: second },
   ];
   // When
-  const normalized = normalizeEndpoints(contributions, Schema.decodeUnknownSync(ServiceConfig)({ ports: ["19000:9000"] }));
+  const normalized = normalizeEndpoints(
+    contributions,
+    Schema.decodeUnknownSync(ServiceConfig)({ ports: ["19000:9000"] }),
+  );
   const errors = [contributions, normalized].map((endpoints) =>
     endpointValidationError(endpoints, { appRoot: "/app", serviceName: "storage" }),
   );

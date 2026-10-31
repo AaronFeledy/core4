@@ -13,10 +13,15 @@ const endpoints: readonly EndpointPlan[] = [
 ];
 const planned: AppPlan = {
   ...plan,
-  services: { [service]: {
-    ...web, name: service, type: "minio", endpoints,
-    scanner: { enabled: true, path: "/fallback", okCodes: [403], retries: 0, timeoutMs: 1000 },
-  } },
+  services: {
+    [service]: {
+      ...web,
+      name: service,
+      type: "minio",
+      endpoints,
+      scanner: { enabled: true, path: "/fallback", okCodes: [403], retries: 0, timeoutMs: 1000 },
+    },
+  },
 };
 const connections = [9000, 9001].map((port) => ({
   ...publishedEndpoint(service, "http", port + 10000),
@@ -32,7 +37,8 @@ test("startup and discovered scans use logical per-port paths and status codes",
   const discovered = await drive(scanner.scan(plan.id, { plan: planned }));
   // Then
   expect(startup.map(({ url }) => url)).toEqual([
-    "http://localhost:19000/minio/health/live", "http://localhost:19001/",
+    "http://localhost:19000/minio/health/live",
+    "http://localhost:19001/",
   ]);
   expect(discovered.endpoints.map(({ url, verdict }) => ({ url, verdict }))).toEqual([
     { url: "http://localhost:19000/minio/health/live", verdict: "ready" },
@@ -45,10 +51,14 @@ test("post-start passes endpoint refs through to status-policy selection", async
   const http = requestSequence([httpStatus(418)]);
   const scanner = makeUrlScanner({ http: http.http, ...endpointsOf([]) });
   // When
-  const checks = await drive(runPostStartScan({
-    scanner, plan: planned, events: { publish: () => Effect.void },
-    urls: startupScanUrls(planned, [{ name: service, state: "running", connections }]),
-  }));
+  const checks = await drive(
+    runPostStartScan({
+      scanner,
+      plan: planned,
+      events: { publish: () => Effect.void },
+      urls: startupScanUrls(planned, [{ name: service, state: "running", connections }]),
+    }),
+  );
   // Then
   expect(checks.map(({ verdict }) => verdict)).toEqual(["ready", "app-error"]);
 });
@@ -57,10 +67,17 @@ test("endpoint defaults never enable a plan-disabled service", async () => {
   // Given
   const http = requestSequence([httpStatus(200)]);
   const scanner = makeUrlScanner({ http: http.http, ...endpointsOf(connections) });
-  const disabled: AppPlan = { ...planned, services: { [service]: {
-    ...web, name: service, endpoints,
-    scanner: { enabled: false, path: "/", okCodes: [], retries: 0, timeoutMs: 1000 },
-  } } };
+  const disabled: AppPlan = {
+    ...planned,
+    services: {
+      [service]: {
+        ...web,
+        name: service,
+        endpoints,
+        scanner: { enabled: false, path: "/", okCodes: [], retries: 0, timeoutMs: 1000 },
+      },
+    },
+  };
   // When
   const result = await drive(scanner.scan(plan.id, { plan: disabled }));
   const startup = startupScanUrls(disabled, [{ name: service, state: "running", connections }]);
@@ -81,7 +98,8 @@ test("supplied refs select status policy without appending a second path or gues
   // Then
   expect(result.endpoints.map(({ verdict }) => verdict)).toEqual(["ready", "app-error"]);
   expect(http.requests.map(({ url }) => url)).toEqual([
-    "http://localhost:19000/minio/health/live", "http://localhost:19001/",
+    "http://localhost:19000/minio/health/live",
+    "http://localhost:19001/",
   ]);
   expect(source.calls).toEqual([]);
 });
@@ -91,10 +109,25 @@ test("route prefixes are included exactly once with endpoint-specific paths", ()
   const connection = connections[0];
   if (connection === undefined) throw new Error("missing fixture");
   // When
-  const urls = startupScanUrls(planned, [{ name: service, state: "running", connections: [{
-    ...connection, scope: "host", binding: "assigned", protocol: "https", port: 443, alternateUrls: [],
-    source: "route", pathPrefix: "/storage", url: "https://storage.test/storage",
-  }] }]);
+  const urls = startupScanUrls(planned, [
+    {
+      name: service,
+      state: "running",
+      connections: [
+        {
+          ...connection,
+          scope: "host",
+          binding: "assigned",
+          protocol: "https",
+          port: 443,
+          alternateUrls: [],
+          source: "route",
+          pathPrefix: "/storage",
+          url: "https://storage.test/storage",
+        },
+      ],
+    },
+  ]);
   // Then
   expect(urls.map(({ url }) => url)).toEqual(["https://storage.test/storage/minio/health/live"]);
 });
@@ -104,9 +137,12 @@ test("missing endpoint refs use service policy even when the URL resembles a kno
   const http = requestSequence([httpStatus(403)]);
   const scanner = makeUrlScanner({ http: http.http, ...endpointsOf([]) });
   // When
-  const result = await drive(scanner.scan(plan.id, { plan: planned, urls: [
-    { service, url: "http://localhost:9000/already-complete" },
-  ] }));
+  const result = await drive(
+    scanner.scan(plan.id, {
+      plan: planned,
+      urls: [{ service, url: "http://localhost:9000/already-complete" }],
+    }),
+  );
   // Then
   expect(result.endpoints[0]?.verdict).toBe("ready");
   expect(http.requests.map(({ url }) => url)).toEqual(["http://localhost:9000/already-complete"]);
@@ -116,11 +152,18 @@ test("historical plans without endpoint scan metadata use service fallback witho
   // Given
   const http = requestSequence([httpStatus(403)]);
   const scanner = makeUrlScanner({ http: http.http, ...endpointsOf(connections) });
-  const historical: AppPlan = { ...planned, services: { [service]: {
-    ...web, name: service, type: "minio",
-    scanner: { enabled: true, path: "/legacy", okCodes: [403], retries: 0, timeoutMs: 1000 },
-    endpoints: endpoints.map(({ scan: _scan, ...endpoint }) => endpoint),
-  } } };
+  const historical: AppPlan = {
+    ...planned,
+    services: {
+      [service]: {
+        ...web,
+        name: service,
+        type: "minio",
+        scanner: { enabled: true, path: "/legacy", okCodes: [403], retries: 0, timeoutMs: 1000 },
+        endpoints: endpoints.map(({ scan: _scan, ...endpoint }) => endpoint),
+      },
+    },
+  };
   // When
   const result = await drive(scanner.scan(plan.id, { plan: historical }));
   // Then

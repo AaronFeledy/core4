@@ -97,39 +97,42 @@ test.each(["php:8.3", "nginx", "apache", "static:nginx", "tomcat"])(
   },
 );
 
-test.each([undefined, null, 7, "", "public"])("does not infer support from feature config %j", async (webroot) => {
-  // Given a custom type, not a built-in language identifier.
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const registry = yield* PluginRegistry;
-      const type: ServiceType = {
-        id: "custom-context",
-        name: "custom-context",
-        base: "l337",
-        schema: Schema.Unknown,
-        resolve: (input) =>
-          Effect.succeed({
-            base: "l337",
-            normalizedConfig: input.service,
-            features: [{ id: "custom.marker", config: { webroot } }],
+test.each([undefined, null, 7, "", "public"])(
+  "does not infer support from feature config %j",
+  async (webroot) => {
+    // Given a custom type, not a built-in language identifier.
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const registry = yield* PluginRegistry;
+        const type: ServiceType = {
+          id: "custom-context",
+          name: "custom-context",
+          base: "l337",
+          schema: Schema.Unknown,
+          resolve: (input) =>
+            Effect.succeed({
+              base: "l337",
+              normalizedConfig: input.service,
+              features: [{ id: "custom.marker", config: { webroot } }],
+            }),
+        };
+        // When
+        return yield* plan({ type: type.id, image: "busybox", webroot: "public" }).pipe(
+          Effect.provideService(PluginRegistry, {
+            ...registry,
+            loadServiceType: () => Effect.succeed(type),
+            loadServiceFeature: () =>
+              Effect.succeed({ id: "custom.marker", priority: 900, apply: () => Effect.void }),
           }),
-      };
-      // When
-      return yield* plan({ type: type.id, image: "busybox", webroot: "public" }).pipe(
-        Effect.provideService(PluginRegistry, {
-          ...registry,
-          loadServiceType: () => Effect.succeed(type),
-          loadServiceFeature: () =>
-            Effect.succeed({ id: "custom.marker", priority: 900, apply: () => Effect.void }),
-        }),
-      );
-    }).pipe(Effect.provide(PluginRegistryLayer.layer)),
-  );
-  // Then
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (!Exit.isFailure(exit)) throw new Error("Expected declaration rejection");
-  expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(LandofileValidationError);
-});
+        );
+      }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    );
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("Expected declaration rejection");
+    expect(Option.getOrUndefined(Cause.findErrorOption(exit.cause))).toBeInstanceOf(LandofileValidationError);
+  },
+);
 
 test.each(["python:3.12", "ruby:3.3"])(
   "an inherited supporting feature handles a %s root without changing language policy",
@@ -209,9 +212,20 @@ test.each(["python:3.12", "ruby:3.3"])(
 );
 test("a custom Tomcat image without a mount cannot claim image-owned root configuration", async () => {
   // Given / When / Then
-  await expect(Effect.runPromise(plan({ type: "tomcat", image: "example.test/tomcat:fixture", appMount: false, webroot: "/srv/public" }).pipe(Effect.provide(PluginRegistryLayer.layer)))).rejects.toMatchObject({
+  await expect(
+    Effect.runPromise(
+      plan({
+        type: "tomcat",
+        image: "example.test/tomcat:fixture",
+        appMount: false,
+        webroot: "/srv/public",
+      }).pipe(Effect.provide(PluginRegistryLayer.layer)),
+    ),
+  ).rejects.toMatchObject({
     _tag: "LandofileValidationError",
-    issues: [expect.objectContaining({ path: ["services", "web", "webroot"], suggestion: expect.any(String) })],
+    issues: [
+      expect.objectContaining({ path: ["services", "web", "webroot"], suggestion: expect.any(String) }),
+    ],
   });
 });
 import { serviceAppMount } from "@lando/sdk/schema";

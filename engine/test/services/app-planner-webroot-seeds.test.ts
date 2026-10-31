@@ -47,11 +47,16 @@ test.each([false, true])(
           Effect.provideService(PluginRegistry, {
             ...registry,
             loadServiceType: () => Effect.succeed(type),
-            loadServiceFeature: (id) => id === "lando.ssh-agent" ? Effect.succeed({
-              id, priority: 100, schema: Schema.Unknown,
-              validateEffective: () => Effect.succeed({ handledServiceFields: ["webroot"] }),
-              apply: () => Effect.void,
-            }) : registry.loadServiceFeature(id),
+            loadServiceFeature: (id) =>
+              id === "lando.ssh-agent"
+                ? Effect.succeed({
+                    id,
+                    priority: 100,
+                    schema: Schema.Unknown,
+                    validateEffective: () => Effect.succeed({ handledServiceFields: ["webroot"] }),
+                    apply: () => Effect.void,
+                  })
+                : registry.loadServiceFeature(id),
           }),
         );
       }).pipe(Effect.provide(PluginRegistryLayer.layer)),
