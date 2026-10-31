@@ -2,7 +2,14 @@ import { Effect, absurd } from "effect";
 
 import { SqlRecoveryUnavailableError, SqlSeedSourceError } from "@lando/sdk/errors";
 import { SqlRecoveryOperationError } from "@lando/sdk/errors";
-import type { DataTransferResult, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
+import {
+  type DataTransferResult,
+  ServiceName,
+  type SnapshotFilter,
+  type SnapshotId,
+  type SnapshotInfo,
+  snapshotHandle,
+} from "@lando/sdk/schema";
 import { physicalVolumeLockKey } from "@lando/sdk/services";
 
 import { hostFile } from "./command-input.ts";
@@ -21,11 +28,10 @@ import {
   sqliteScratchFile,
   withSqliteHelper,
 } from "./sqlite-helper.ts";
-import { requireSameSqliteTarget, resolveSqliteTargetIdentity } from "./sqlite-identity.ts";
 import { requireSqliteIntegrity, sqliteScratchOnlyHelper } from "./sqlite-integrity.ts";
 import { mutateSqlite } from "./sqlite-mutation.ts";
 import { sqliteSidecarPaths } from "./sqlite-path.ts";
-import { sqliteRetentionSelection } from "./sqlite-retention.ts";
+import { sqliteManualPruneSelection, sqliteSnapshotCatalogKey } from "./sqlite-retention.ts";
 import {
   type SqliteSnapshotDeps,
   copySqliteSnapshotArchive,
@@ -166,11 +172,10 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
     restoreSource = yield* deps.resolveSnapshot(input.snapshotId ?? "", scope);
   }
 
-  let prunePolicy: Parameters<SqlCommandDeps["pruneSnapshots"]>[0] | undefined;
+  let pruneFilter: SnapshotFilter | undefined;
   let pruneCandidates: ReadonlyArray<SnapshotInfo> | undefined;
-  let pruneTargetIdentity: string | undefined;
   if (input.action === "prune") {
-    const filter = yield* resolveSnapshotSource({
+    const sourceFilter = yield* resolveSnapshotSource({
       app: deps.plan.id,
       store: store.store,
       ownerKey: owner.ownerKey,
@@ -183,25 +188,28 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
       hostCwd: input.hostCwd ?? process.cwd(),
       canonicalizePath: deps.canonicalizeSourcePath,
     });
+    const filter = { ...sourceFilter, service: ServiceName.make(target.name) };
     const keepLatest = input.keepLatest ?? DEFAULT_SNAPSHOT_KEEP_LATEST;
-    pruneTargetIdentity = yield* withSqliteHelper(sqlite, service, target, (helper) =>
-      resolveSqliteTargetIdentity(sqlite, helper, target),
-    );
     const snapshots = yield* deps.listSnapshots(filter);
-    const selection = sqliteRetentionSelection(snapshots, pruneTargetIdentity, keepLatest, false);
-    prunePolicy = {
-      filter,
-      keepLatest: selection.keepLatest,
-      retainSnapshotIds: selection.retainSnapshotIds,
-    };
-    pruneCandidates = selection.candidates;
+    pruneFilter = filter;
+    pruneCandidates = sqliteManualPruneSelection(snapshots, keepLatest).candidates;
+    if (input.preview !== true && sqlite.removeSnapshot === undefined)
+      return yield* Effect.fail(
+        new SqlRecoveryUnavailableError({
+          message: "SQLite snapshot removal is unavailable.",
+          service: target.name,
+          reason: "The snapshot catalog runtime did not provide exact snapshot removal.",
+          remediation:
+            "Use the standard database command runtime to remove the confirmed snapshot IDs safely.",
+        }),
+      );
     if (input.preview !== true) {
       yield* confirmOrFail(
         input,
         deps.confirm,
         target.name,
         steps,
-        `Retention will delete ${pruneCandidates.length} snapshot(s) for ${target.name}.`,
+        `Retention will delete ${pruneCandidates.length} manual SQLite snapshot(s) for ${target.name} from ${input.fromPath ?? input.fromApp ?? owner.appRoot}, keeping ${keepLatest} per recorded physical target.`,
       );
     }
   }
@@ -346,30 +354,29 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
         retentionApplied = false;
         break;
       }
-      if (prunePolicy === undefined) return yield* Effect.die(new Error("retention policy was not resolved"));
-      const policy = prunePolicy;
-      const approved = new Set(pruneCandidates?.map((snapshot) => snapshot.id));
+      if (pruneFilter === undefined || sqlite.removeSnapshot === undefined)
+        return yield* Effect.die(new Error("retention was not prepared"));
+      const filter = pruneFilter;
+      const remove = sqlite.removeSnapshot;
+      const approved = new Map(
+        (pruneCandidates ?? []).map((snapshot) => [sqliteSnapshotCatalogKey(snapshot), snapshot]),
+      );
       prunedSnapshotIds = yield* withSqliteLock(
         Effect.gen(function* () {
-          const currentIdentity = yield* withSqliteHelper(sqlite, service, target, (helper) =>
-            resolveSqliteTargetIdentity(sqlite, helper, target),
-          );
-          yield* requireSameSqliteTarget(pruneTargetIdentity ?? "", currentIdentity, target.name);
-          const snapshots = yield* deps.listSnapshots(policy.filter ?? {});
-          const manual = snapshots.filter(
-            (snapshot) =>
-              snapshot.metadata?.recoveryReason === undefined ||
-              snapshot.metadata.recoveryReason === "manual",
-          );
-          const retained = manual.filter(
-            (snapshot) =>
-              !approved.has(snapshot.id) || snapshot.metadata?.volumeInstanceId !== pruneTargetIdentity,
-          );
-          return yield* deps.pruneSnapshots({
-            ...policy,
-            keepLatest: retained.length,
-            retainSnapshotIds: retained.map((snapshot) => snapshot.id),
+          const current = yield* deps.listSnapshots(filter);
+          const confirmed = current.filter((snapshot) => {
+            const previous = approved.get(sqliteSnapshotCatalogKey(snapshot));
+            return (
+              previous !== undefined &&
+              snapshot.metadata?.family === "sqlite" &&
+              snapshot.metadata.recoveryReason === "manual" &&
+              snapshot.digest === previous.digest &&
+              snapshot.metadata.volumeInstanceId === previous.metadata?.volumeInstanceId
+            );
           });
+          return yield* Effect.forEach(confirmed, (snapshot) =>
+            remove(snapshotHandle(snapshot)).pipe(Effect.as(snapshot.id)),
+          );
         }),
       );
       retentionApplied = true;

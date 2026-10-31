@@ -31,3 +31,42 @@ export const sqliteRetentionSelection = (
     candidates: matching.filter((snapshot) => !retain.has(snapshot.id)),
   };
 };
+
+/** Manual cleanup follows the selected catalog scope without opening its database. */
+export const sqliteSnapshotCatalogKey = (snapshot: SnapshotInfo): string =>
+  JSON.stringify([
+    snapshot.owner.appRoot,
+    snapshot.owner.ownerKey,
+    snapshot.store.app,
+    snapshot.store.store,
+    snapshot.id,
+  ]);
+
+export const sqliteManualPruneSelection = (snapshots: ReadonlyArray<SnapshotInfo>, keepLatest: number) => {
+  const groups = new Map<string, SnapshotInfo[]>();
+  for (const snapshot of snapshots) {
+    if (snapshot.metadata?.family !== "sqlite" || snapshot.metadata.recoveryReason !== "manual") continue;
+    const key = JSON.stringify([
+      snapshot.owner.appRoot,
+      snapshot.owner.ownerKey,
+      snapshot.store.app,
+      snapshot.store.store,
+      snapshot.metadata.service,
+      snapshot.metadata.volumeInstanceId,
+    ]);
+    const group = groups.get(key) ?? [];
+    group.push(snapshot);
+    groups.set(key, group);
+  }
+  return {
+    candidates: [...groups.values()].flatMap((group) =>
+      group
+        .sort(
+          (left, right) =>
+            DateTime.toEpochMillis(right.createdAt) - DateTime.toEpochMillis(left.createdAt) ||
+            left.id.localeCompare(right.id),
+        )
+        .slice(keepLatest),
+    ),
+  };
+};

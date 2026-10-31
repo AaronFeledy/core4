@@ -417,6 +417,11 @@ test("manual prune preserves snapshots created during confirmation and applies u
         paths: { ownerSnapshotsDir: paths.ownerSnapshotsDir },
         pullArtifact: () => Effect.succeed({}),
         run: () => Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" }),
+        removeSnapshot: (handle) =>
+          Effect.gen(function* () {
+            expect(locked).toBe(true);
+            yield* f.mover.removeSnapshot(handle);
+          }),
       };
       const targetIdentity = yield* withSqliteHelper(sqlite, service, target, (helper) =>
         resolveSqliteTargetIdentity(sqlite, helper, target),
@@ -449,11 +454,6 @@ test("manual prune preserves snapshots created during confirmation and applies u
               newForeign = yield* seed("different-physical-target");
               newCurrent = yield* seed(targetIdentity);
               return true;
-            }),
-          pruneSnapshots: (policy) =>
-            Effect.gen(function* () {
-              expect(locked).toBe(true);
-              return yield* f.mover.pruneSnapshots(policy);
             }),
         },
         { action: "prune", yes: false, keepLatest: 1 },

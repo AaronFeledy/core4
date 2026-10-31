@@ -68,11 +68,23 @@ Lando obtains SQLite's exclusive database lock and holds it from recovery captur
 
 Before changing data, reset saves a recovery snapshot for this app folder, service, and path. The result identifies that snapshot. Failures after capture retain its ID and recovery guidance; if cataloguing failed, the error identifies the retained recovery file instead. Keep that evidence and follow the reported guidance before retrying. Restore a catalogued snapshot with `lando db:restore <id> --service appserver --yes`. A failure is not a successful reset, even when part of the operation completed.
 
+## Prune saved snapshots
+
+Snapshot pruning reads the catalog without opening the database. It works when the database file or volume is missing or read-only. The current app still needs an applied plan to select the SQLite service. `--from-path` selects another app folder; `--from-app` selects a sibling app in the same repository group.
+
+Preview manual snapshot cleanup from the app directory:
+
+```sh
+lando db:snapshots:prune --service appserver --keep-latest=3 --preview
+```
+
+The keep count applies separately to each recorded physical database in the selected catalog scope. Automatic recovery snapshots are preserved. `--keep-latest=0` selects all manual SQLite snapshots in that scope. Review the candidate IDs before applying the command without `--preview`; `--yes` skips confirmation. Only the confirmed IDs are removed, so snapshots added while you confirm remain intact.
+
 ## Use supported storage
 
 Use an ordinary writable directory bind shared by the host and provider, or a named volume whose ownership Lando can verify. Before accessing a bind-backed database, Lando creates a temporary proof file at the canonical source, verifies it through a read-only helper, and removes it. This refuses a remote replica at the same pathname. The host must be able to write the source directory; file-only binds are unsupported. Accelerated mounts and binds realized as private copies are refused before the helper starts, because their configured host source may differ from the file the application uses. For an app bind, set `appMount.accelerate: false` and rebuild before retrying. Tmpfs and read-only covering mounts are unsupported.
 
-If `appMount.excludes` puts the database directory on a named volume, Lando verifies the provider's recorded owner and physical volume generation before inspecting the file owner. It rechecks that identity around capture and mutation, and preserves any mounted subdirectory. Matching file uid/gid alone does not prove that the volume belongs to this app. A missing, foreign, or unverifiable volume stops the command before data changes.
+If `appMount.excludes` puts the database directory on a named volume, Lando verifies the provider's recorded owner and physical volume generation before inspecting the file owner. It rechecks that identity around capture and mutation, and preserves any mounted subdirectory. The provider must support helper mounts of that subdirectory; an unsupported mount fails before SQLite access. Matching file uid/gid alone does not prove that the volume belongs to this app. A missing, foreign, or unverifiable volume stops the command before data changes.
 
 If safe access cannot be established, fix the reported mount or ownership problem before retrying. A database that needs an extension absent from the pinned helper also fails safely; the helper does not currently include FTS5.
 

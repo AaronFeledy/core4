@@ -11,7 +11,7 @@ import {
   type SnapshotMetadata,
   snapshotHandle,
 } from "@lando/sdk/schema";
-import type { StateStoreShape } from "@lando/sdk/services";
+import type { DataMover, StateStoreShape } from "@lando/sdk/services";
 import { persistVerifiedStream } from "@lando/sdk/verified-stream";
 import { DateTime, Effect, Stream } from "effect";
 
@@ -34,6 +34,7 @@ const SQLITE_COMPAT_IDENTITY = "sqlite";
 
 export type SqliteSnapshotDeps = SqliteHelperDeps & {
   readonly stateStore: StateStoreShape;
+  readonly removeSnapshot?: DataMover["Service"]["removeSnapshot"];
 };
 
 export const sqliteSnapshotVolume = (plan: SqlPlan, path: string) => ({
