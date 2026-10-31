@@ -126,7 +126,7 @@ describe("doctor provider-bootstrap failure", () => {
       expect(
         report.subsystems.checks.find((check) => check.name === "accelerated-start")?.context.attemptId,
       ).toBe("host-attempt");
-      expect(report.subsystems.checks.find((check) => check.name === "host-proxy")).toMatchObject({
+      expect(report.subsystems.checks.find((check) => check.name === "host-dns")).toMatchObject({
         status: "pass",
         context: { dnsResolved: "true", dnsAddresses: "127.0.0.1" },
       });

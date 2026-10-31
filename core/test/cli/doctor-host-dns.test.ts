@@ -12,15 +12,15 @@ test.each([
   { addresses: ["192.0.2.1"], status: "warn" },
   { addresses: [], status: "warn" },
   { addresses: ["127.0.0.1", "192.0.2.1"], status: "warn" },
-])("inspects host DNS without a host-proxy service: $addresses", async ({ addresses, status }) => {
-  // Given only a host DNS resolver, not a host-proxy service.
+])("inspects host DNS with only a resolver: $addresses", async ({ addresses, status }) => {
+  // Given only a host DNS resolver.
   const resolver = HostDnsResolver.of({ lookup: () => Effect.succeed(addresses) });
   // When doctor inspects the host.
   const result = await Effect.runPromise(
     subsystemDoctor().pipe(Effect.provideService(HostDnsResolver, resolver)),
   );
   // Then the verdict reflects DNS alone, without fabricated service status.
-  const check = result.checks.find((entry) => entry.name === "host-proxy");
+  const check = result.checks.find((entry) => entry.name === "host-dns");
   expect(check).toMatchObject({
     status,
     context: {
@@ -40,7 +40,7 @@ test.each([
   ]) {
     expect(check?.context).not.toHaveProperty(key);
   }
-  expect(result.skipped?.some((entry) => entry.section === "host-proxy")).toBe(false);
+  expect(result.skipped?.some((entry) => entry.section === "host-dns")).toBe(false);
   if (status === "warn") {
     expect(check?.solutions[0]?.description).toContain("DNS-rebinding protection");
     expect(check?.solutions[0]?.description).toContain("Add a local DNS rule");
@@ -52,9 +52,9 @@ test("skips host DNS when no resolver is provided", async () => {
   // When doctor inspects the available context.
   const result = await Effect.runPromise(subsystemDoctor());
   // Then it explains the missing inspection capability.
-  expect(result.checks.some((entry) => entry.name === "host-proxy")).toBe(false);
+  expect(result.checks.some((entry) => entry.name === "host-dns")).toBe(false);
   expect(result.skipped).toContainEqual({
-    section: "host-proxy",
+    section: "host-dns",
     status: "skipped",
     reason: "Host DNS resolver was not provided; no host DNS inspection was performed.",
   });
@@ -91,7 +91,7 @@ test.each(["lndo.test", "LNDO.Test"])(
 
     // Then
     expect(hostnames).toEqual(["lando-doctor-probe.lndo.test"]);
-    const check = result.checks.find((entry) => entry.name === "host-proxy");
+    const check = result.checks.find((entry) => entry.name === "host-dns");
     expect(check).toMatchObject({
       status: "warn",
       recovery: "manual",
@@ -101,7 +101,7 @@ test.each(["lndo.test", "LNDO.Test"])(
   },
 );
 
-test("does not run host-proxy checks when config construction fails", async () => {
+test("does not run host DNS checks when config construction fails", async () => {
   // Given
   const failure = new ConfigError({
     message: "config unavailable",
