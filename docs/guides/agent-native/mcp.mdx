@@ -174,8 +174,8 @@ and aliases. `lando help --format=json` exposes `result.toolingMetadata` with
 failed lookup repairs metadata by planning or starting a provider. You do not
 need `lando start` or `lando rebuild` just to repair discovery. The same help
 JSON lists plugin commands as `result.all[]` rows with `source: "plugin"` and
-reports plugin discovery in `result.pluginMetadata`; those commands are not
-MCP tools, and `lando mcp --allow` accepts built-in ids only.
+reports plugin discovery in `result.pluginMetadata`. Plugin commands can be MCP
+tools too; see [Expose plugin commands](#expose-plugin-commands).
 
 ## Protect sensitive tooling values
 
@@ -245,8 +245,12 @@ stays applied. Progress notifications you already received remain valid.
 
 `app:rebuild` asks before it recreates containers. It is not in the default
 allowlist; expose it with `--allow app:rebuild` or `mcp.allow`. `app:destroy`
-stays forbidden unless you allowlist it explicitly the same way. Once exposed,
-either command proceeds without a question when the call sends `flags.yes: true`.
+stays forbidden unless you allowlist it explicitly the same way. Plugin commands
+follow the same rule: Lando treats a command as destructive when its id ends in
+`destroy`, `remove`, `uninstall`, `prune`, `gc`, `reset`, `restore`, `rebuild`,
+or `poweroff`, or when the command declares a `yes` flag, so `db:reset` and
+`db:import` are never on by default. Once exposed, any of these commands
+proceeds without a question when the call sends `flags.yes: true`.
 
 Without `yes`, what happens depends on the client. A client that advertised the
 `elicitation` capability in `initialize` gets an `elicitation/create` request
@@ -261,6 +265,25 @@ allowlist is still unknown to the session.
 ```json
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"app:rebuild","arguments":{"flags":{"yes":true}}}}
 ```
+
+## Expose plugin commands
+
+Commands that plugins contribute are MCP tools under the same allowlist as the
+built-ins. A bundled plugin command whose manifest sets `mcpAllowed: true`, today
+`db:snapshots`, is on by default. Every other plugin command needs an explicit
+`mcp.allow` entry or `--allow`, including commands from plugins you install
+yourself, even when their manifest declares `mcpAllowed`. Destructive plugin
+commands are never on by default and ask for confirmation as described above.
+
+```sh
+lando mcp --list --allow db:export --format=json
+```
+
+Each plugin tool in that list carries `plugin.name`, `plugin.source` (`bundled`
+or `external`), and `destructive`. The `diagnostics` array names plugin commands
+the catalog left out and why: a module that failed to load, a descriptor or
+alias conflict, or a destructive command that tried to self-allow. An unknown id
+passed to `--allow` fails with `McpToolInputError` before the server starts.
 
 ## Read resources and complete schema names
 
@@ -287,6 +310,14 @@ can tab through the public schema registry instead of guessing names.
 ```
 
 <Guide>
+  <Scenario id="plugin-tools" render={false} reason="Bundled plugin tools list with plugin provenance and allow source">
+    <Step name="list-plugin-tools">
+      <Run command="lando mcp --list --allow db:export --format=json" />
+      <Verify command="lando mcp --list --allow db:export --format=json" expect={{ stdout: { regex: "\"id\":\"db:export\",[^}]*\"source\":\"allow\",\"plugin\":\\{\"name\":\"@lando/sql\",\"source\":\"bundled\"\\}" } }} />
+      <Verify command="lando mcp --list --format=json" expect={{ stdout: { regex: "\"id\":\"db:snapshots\",[^}]*\"source\":\"default\"" } }} />
+    </Step>
+  </Scenario>
+
   <Scenario id="named-script-sparse-boolean-input" render={false} reason="MCP preserves explicit false and a later named argument without synthesizing argv">
     <Step name="prepare-named-script">
       <UseFixture name="named-inputs" />
