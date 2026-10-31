@@ -15,6 +15,13 @@ services:
     type: compose
     image: xhgui/xhgui:0.23
     appMount: false
+    mounts:
+      - source: "./xhgui-nginx.conf"
+        target: "/etc/nginx/http.d/default.conf"
+        readOnly: true
+      - source: "./xhgui-php.ini"
+        target: "/etc/php83/conf.d/zz-xhgui.ini"
+        readOnly: true
     environment:
       XHGUI_SAVE_HANDLER: pdo
       XHGUI_PDO_DSN: "pgsql:host=profiles;dbname=xhgui"
