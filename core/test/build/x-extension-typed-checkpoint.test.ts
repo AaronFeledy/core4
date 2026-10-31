@@ -8,6 +8,11 @@ import {
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
+import {
+  REVIEWED_COMPOSITE_EXPRESSION_PATTERN,
+  REVIEWED_WHOLE_EXPRESSION_PATTERN,
+  evolveHistoricalAuthoringProjection,
+} from "./x-extension-authoring-projection-proof.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
@@ -19,7 +24,7 @@ import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
-const expected = evolveHistoricalConsolePort(
+const historicalExpected = evolveHistoricalConsolePort(
   evolveHistoricalAppMountAcceleration(
     evolveHistoricalEnvironment(
       evolveHistoricalEndpointMetadata(
@@ -40,6 +45,7 @@ const expected = evolveHistoricalConsolePort(
     ),
   ),
 );
+const expected = evolveHistoricalAuthoringProjection(historicalExpected, "services");
 
 const mutateFirst = (value: JsonValue, change: (schema: JsonSchema) => JsonSchema | undefined): JsonValue => {
   if (isJsonObject(value)) {
@@ -67,6 +73,17 @@ test("pins the separate immutable typed-grammar checkpoint to its verified produ
 
 const mutations: readonly [string, (schema: JsonSchema) => JsonSchema | undefined][] = [
   [
+    "composite-expression plain-text exclusion",
+    (schema) => (schema.pattern === REVIEWED_COMPOSITE_EXPRESSION_PATTERN ? { type: "string" } : undefined),
+  ],
+  [
+    "native init value type",
+    (schema) =>
+      isJsonObject(schema.properties) && isJsonObject(schema.properties.init)
+        ? { ...schema, properties: { ...schema.properties, init: { type: "number" } } }
+        : undefined,
+  ],
+  [
     "log-source timestamps value type",
     (schema) =>
       isJsonObject(schema.properties) && isJsonObject(schema.properties.timestamps)
@@ -75,7 +92,8 @@ const mutations: readonly [string, (schema: JsonSchema) => JsonSchema | undefine
   ],
   [
     "whole-template expression grammar",
-    (schema) => (schema.pattern === TYPED_EXPRESSION_PATTERN ? { ...schema, pattern: "^.*$" } : undefined),
+    (schema) =>
+      schema.pattern === REVIEWED_WHOLE_EXPRESSION_PATTERN ? { ...schema, pattern: "^.*$" } : undefined,
   ],
   [
     "prototype-key rejection",
@@ -94,6 +112,21 @@ const mutations: readonly [string, (schema: JsonSchema) => JsonSchema | undefine
         : undefined,
   ],
 ];
+
+test.each(["constrained", "moved"] as const)(
+  "rejects an unreviewed %s historical expression node before replay",
+  (mutation) => {
+    const changed = mutateFirst(historicalExpected, (schema) =>
+      schema.pattern === TYPED_EXPRESSION_PATTERN
+        ? mutation === "constrained"
+          ? { ...schema, minLength: 999 }
+          : { type: "string", anyOf: [schema] }
+        : undefined,
+    );
+    expect(changed).not.toBe(historicalExpected);
+    expect(() => evolveHistoricalAuthoringProjection(wireObject(changed), "services")).toThrow(TypeError);
+  },
+);
 
 test("does not evolve a log-source object with an extra property", () => {
   // Given a closed object outside the exact reviewed historical key set.
