@@ -32,52 +32,10 @@ operation. Missing ownership evidence is uncertainty, not permission to delete a
 resource. The result reports `dryRun: true` and `policySaved: false`; it doesn't
 reserve the state it inspected. The real command checks current state again.
 
-A preview run from another CLI process reports the policy and runtime evidence it
-can observe. It doesn't see an active startup's private in-process reservation.
-The real command must acquire its own mutation lock and check current admission
-before making changes. A preview invoked inside the startup's in-process command
-or SDK context also reports any reserved ids it would affect.
-
-By default, disable and reconcile refuse before saving policy if a running user or
-scratch app needs the selected service, or if Lando cannot verify whether such an
-app is running. `GlobalConsumerProtectionError` reports `policySaved: false` and
-the affected apps or inspection uncertainty. In the preview, each `impact.consumers`
-entry identifies the app's `id`, `name`, `kind`, `root`, `provider`, active
-`services`, required `globalServices`, and `routes`.
-
-Stop or reconfigure the affected apps if that's what you intend, and restore any
-unavailable inspection before retrying. If you deliberately want to disable the
-dependency while leaving those apps running, add `--allow-disruption` to that
-invocation. For example, `lando global:disable mailpit --allow-disruption` can
-interrupt their mail capture. The flag acknowledges only that consumer impact;
-it doesn't bypass global-service dependency checks, ownership checks, or volume
-retention, and it never stops the affected apps for you.
-
-An active startup has a separate protection. While a global service, user app, or
-scratch app is applying services that need a selected global id, disable and
-reconcile refuse for that id even with `--allow-disruption`. This also covers an
-in-process command invoked by that startup's service hook, before its new
-containers appear as running consumers. Policy stays unchanged for the refused invocation
-(`policySaved: false`). Finish the active operation, then retry as a separate
-command; disruption acknowledgement cannot cancel an in-flight admission.
-
-This protection follows the saved policy file. Embedded hosts using different
-global runtime roots still share it when they share `global.config.yml`.
-
-Within the same process, Lando also refuses a second policy change or a new
-service activation while an earlier policy command is checking or finishing its
-cleanup. Let that operation finish before running another mutation. Previews
-remain read-only and don't take ownership of the pending change.
-
-If a policy change is refused because a global route update is in progress,
-retry after that update finishes.
-
-A child `lando` process owns its own mutation lock. It cannot borrow a running
-parent command's lock. When Lando recognizes that parent ownership, it refuses
-the child mutation immediately;
-other lock contention follows the normal bounded wait. Run the policy command
-separately after the parent finishes. In-process command and SDK calls retain
-nested operation support and still obey the active-startup protection above.
+If the preview identifies running apps that need Mailpit, stop or reconfigure
+those apps first. Disable refuses before saving your choice when a consumer is
+running or cannot be inspected. See [Handle a protected service](#handle-a-protected-service)
+for the refusal details and the explicit disruption option.
 
 When the proposed change is what you want, disable Mailpit and check the result:
 
@@ -92,6 +50,11 @@ Disable saves your choice, stops and removes its owned containers, withdraws its
 routes, and regenerates configuration. Other contributions keep their configuration
 and active routes. Named volumes remain available for reuse. Check status for any
 pending work before treating cleanup as complete.
+
+Repeating disable is safe when Lando can confirm the container is already gone:
+it finishes any remaining route cleanup without claiming another container
+removal. A missing container id alone isn't enough evidence; uncertain ownership
+still leaves work pending.
 
 The argument accepts a contribution id or a plugin package name from
 `global:list`. You can pass several ids in one command. A package name disables
@@ -122,6 +85,53 @@ Check both `enabled: true` and `state: enabled` in the list. A `blocked` or
 doesn't start containers; start an app that needs
 Mailpit, or run `lando global:start --service mailpit` and inspect
 `lando global:status --service mailpit --format=json`.
+
+## Handle a protected service
+
+By default, disable and reconcile refuse before saving policy if a running user or
+scratch app needs the selected service, or if Lando cannot verify whether such an
+app is running. `GlobalConsumerProtectionError` reports `policySaved: false` and
+the affected apps or inspection uncertainty. Each preview `impact.consumers` entry
+identifies the app's `id`, `name`, `kind`, `root`, `provider`, active `services`,
+required `globalServices`, and `routes`.
+
+Stop or reconfigure the affected apps if that's what you intend, and restore any
+unavailable inspection before retrying. If you deliberately want to disable the
+dependency while leaving those apps running, add `--allow-disruption` to that
+invocation. For example, `lando global:disable mailpit --allow-disruption` can
+interrupt their mail capture. The flag acknowledges only that consumer impact;
+it doesn't bypass global-service dependency checks, ownership checks, or volume
+retention, and it never stops the affected apps for you.
+
+An active startup has a separate protection. While a global service, user app, or
+scratch app is applying services that need a selected global id, disable and
+reconcile refuse for that id even with `--allow-disruption`. This also covers an
+in-process command invoked by that startup's service hook, before its new
+containers appear as running consumers. Policy stays unchanged for the refused
+invocation (`policySaved: false`). Finish the active operation, then retry as a
+separate command; disruption acknowledgement cannot cancel an in-flight admission.
+
+This protection follows the saved policy file. Embedded hosts using different
+global runtime roots still share it when they share `global.config.yml`.
+
+A preview run from another CLI process reports the policy and runtime evidence it
+can observe. It doesn't see an active startup's private in-process reservation.
+The real command acquires its own mutation lock and checks current admission
+before making changes. A preview invoked inside the startup's in-process command
+or SDK context also reports any reserved ids it would affect.
+
+Within the same process, Lando also refuses a second policy change or a new
+service activation while an earlier policy command is checking or finishing its
+cleanup. Let that operation finish before running another mutation. Previews
+remain read-only and don't take ownership of the pending change. If a global route
+update blocks a policy change, retry after the update finishes.
+
+A child `lando` process owns its own mutation lock. It cannot borrow a running
+parent command's lock. When Lando recognizes that parent ownership, it refuses
+the child mutation immediately; other lock contention follows the normal bounded
+wait. Run the policy command separately after the parent finishes. In-process
+command and SDK calls retain nested operation support and still obey the
+active-startup protection above.
 
 ## Finish pending cleanup
 

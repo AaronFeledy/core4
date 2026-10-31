@@ -1,22 +1,17 @@
+import { canonicalJson } from "@lando/sdk/digest";
+import { GlobalAppError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
 
 import { AbsolutePath } from "@lando/sdk/schema";
-import { FileSystem, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { AppPlanner, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { commitGlobalPolicy, prepareGlobalPolicy } from "../global-app/enablement.ts";
 import { withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
+import { prepareGlobalConfiguration } from "../global-app/preparation.ts";
 import { recordGlobalGeneration } from "../global-app/reconciliation.ts";
-import {
-  type GlobalResolution,
-  assertEffectiveGlobalServices,
-  assertGlobalResolution,
-  projectEffectiveGlobalResolution,
-  readGlobalResolution,
-} from "../global-app/resolution.ts";
-import { renderGlobalDist } from "../global-app/service.ts";
-import { hostProviderId } from "../providers/host-provider.ts";
-import { validateLandofileReplacement } from "../services/landofile-live.ts";
+import { assertGlobalResolution } from "../global-app/resolution.ts";
+import { withProcessCwd } from "./global-plan.ts";
 
 export interface GlobalInstallOptions {
   readonly services?: ReadonlyArray<string>;
@@ -41,70 +36,68 @@ export const GlobalInstallResultSchema = Schema.Struct({
 });
 export type GlobalInstallResult = typeof GlobalInstallResultSchema.Type;
 
-/** Validate proposed defaults with the real authored layers without writing generated files. */
-export const validateGlobalConfiguration = Effect.fn("GlobalApp.validateConfiguration")(function* (
-  resolution: GlobalResolution,
-  options: GlobalInstallOptions = {},
-) {
-  const globalApp = yield* GlobalAppService;
-  const paths = yield* globalApp.paths;
-  const fileSystem = yield* FileSystem;
-  const compiled = (yield* fileSystem.exists(paths.root))
-    ? yield* validateLandofileReplacement(
-        {
-          appRoot: paths.root,
-          targetFile: paths.distLandofile,
-          content: renderGlobalDist(resolution.composableServices),
-        },
-        { name: "global", provider: yield* hostProviderId, excludedServices: resolution.directlyExcludedIds },
-      )
-    : undefined;
-  const services = compiled?.document.services ?? resolution.composableServices;
-  const pendingSites = compiled?.pendingSites ?? [];
-  yield* assertEffectiveGlobalServices(
-    resolution,
-    services,
-    options.services?.length ? options.services : undefined,
-    pendingSites,
-  );
-  return {
-    services,
-    pendingSites,
-    resolution: projectEffectiveGlobalResolution(resolution, services, pendingSites),
-  };
-});
-
 /** Reconcile defaults and generated configuration without changing explicit user policy. */
-export const globalInstall = Effect.fn("AppOperation.reconcileGlobalConfiguration")(
+const installPreparedConfiguration = Effect.fn("AppOperation.installPreparedConfiguration")(
   function* (_options: GlobalInstallOptions = {}) {
     const globalApp = yield* GlobalAppService;
     const providers = yield* RuntimeProviderRegistry;
     const providerId = yield* globalCreateProviderId();
     const provider = yield* providers.select(providerId);
-    const current = yield* readGlobalResolution({
+    const preparation = yield* prepareGlobalConfiguration({
       providerId,
       providerCapabilities: provider.capabilities,
     });
+    const current = yield* preparation.resolve();
     const prepared = yield* prepareGlobalPolicy(current.policy, current.contributions);
-    const policy = yield* commitGlobalPolicy(current.policy.revision, prepared.policy);
-    const resolved = yield* readGlobalResolution({
-      policy,
-      providerId,
-      providerCapabilities: provider.capabilities,
-    });
+    const resolved = yield* preparation.resolve(prepared.policy);
     yield* assertGlobalResolution(resolved, _options.services?.length ? _options.services : undefined, {
       directOnly: true,
     });
-    yield* Effect.scoped(globalApp.ensureRoot);
+    const candidate = yield* preparation.compile(resolved, _options.services);
+    yield* candidate.verify;
+    const policy = yield* commitGlobalPolicy(current.policy.revision, prepared.policy);
+    yield* candidate.verify;
+    const dist = yield* globalApp.regenerateDist({
+      services: resolved.composableServices,
+      content: candidate.content,
+    });
     const user = yield* globalApp.ensureUserLandofile;
-    const validated = yield* validateGlobalConfiguration(resolved, _options);
-    const dist = yield* globalApp.regenerateDist({ services: resolved.composableServices });
-    if (validated.resolution.errors.length === 0) yield* recordGlobalGeneration(policy.revision);
+    yield* candidate.publishIncludes;
+    if (candidate.resolution.errors.length === 0) yield* recordGlobalGeneration(policy.revision);
     return {
-      paths: yield* globalApp.paths,
-      dist,
-      userLandofileCreated: user.created,
-    } satisfies GlobalInstallResult;
+      candidate,
+      result: {
+        paths: yield* globalApp.paths,
+        dist,
+        userLandofileCreated: user.created,
+      } satisfies GlobalInstallResult,
+    };
+  },
+  (effect, _options: GlobalInstallOptions = {}) => withGlobalMutation(effect),
+);
+
+export const globalInstall = Effect.fn("AppOperation.reconcileGlobalConfiguration")(
+  (options: GlobalInstallOptions = {}) =>
+    installPreparedConfiguration(options).pipe(Effect.map(({ result }) => result)),
+);
+
+export const installAndLoadGlobalPlan = Effect.fn("GlobalApp.installAndLoadPlan")(
+  function* (options: GlobalInstallOptions = {}) {
+    const { candidate } = yield* installPreparedConfiguration(options);
+    const provider = yield* (yield* RuntimeProviderRegistry).select(candidate.landofile.document.provider);
+    if (canonicalJson(provider.capabilities) !== canonicalJson(candidate.providerCapabilities))
+      return yield* Effect.fail(
+        new GlobalAppError({
+          operation: "loadPlan",
+          message: "Provider capabilities changed after global configuration preparation.",
+          remediation: "Retry explicitly to prepare and validate the current provider configuration.",
+        }),
+      );
+    const planner = yield* AppPlanner;
+    const plan = yield* withProcessCwd(candidate.paths.root, () =>
+      planner.plan(candidate.landofile, provider.capabilities),
+    );
+    return { materialized: true as const, paths: candidate.paths, landofile: candidate.landofile, plan };
   },
   (effect, _options: GlobalInstallOptions = {}) => withGlobalMutation(effect),
 );

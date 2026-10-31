@@ -2,8 +2,8 @@ import {
   type GlobalRestartResult,
   GlobalRestartResultSchema,
   globalRestart,
-  renderGlobalRestartResult,
-} from "../../../commands/meta/global-restart";
+} from "@lando/engine/operations/global-restart";
+import { renderGlobalRestartResult } from "../../../commands/meta/global-restart";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../../spec/command-base";
 
 export const metaGlobalRestartSpec: LandoCommandSpec<GlobalRestartResult> = {

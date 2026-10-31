@@ -13,7 +13,7 @@ import {
 } from "@lando/sdk/services";
 
 import { globalObserveProviderId } from "../global-app/placement.ts";
-import { readGlobalResolution } from "../global-app/resolution.ts";
+import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
@@ -58,7 +58,7 @@ export type GlobalTeardown = Effect.Success<ReturnType<typeof resolveGlobalTeard
 export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelection")(function* (
   resolved: GlobalTeardown,
   requested: ReadonlyArray<string>,
-  options?: { readonly requireOnline?: boolean },
+  options?: { readonly requireOnline?: boolean; readonly resolution?: GlobalResolution },
 ) {
   const evidence = resolved.evidence;
   let services: ReadonlyArray<{ readonly name: string }>;
@@ -156,7 +156,11 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
   );
   // Applied routes may outlive a failed disable; blocked but enabled siblings still own their routes.
   const routePolicy =
-    updateRoutes && retainedRoutes.length > 0 ? yield* readGlobalResolution().pipe(Effect.result) : undefined;
+    updateRoutes && retainedRoutes.length > 0
+      ? yield* (
+          options?.resolution === undefined ? readGlobalResolution() : Effect.succeed(options.resolution)
+        ).pipe(Effect.result)
+      : undefined;
   const disabled = new Set(
     routePolicy?._tag === "Success"
       ? routePolicy.success.entries.filter((entry) => !entry.enabled).map((entry) => entry.id)
