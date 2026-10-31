@@ -10,6 +10,7 @@ import {
   RendererSelectionError,
 } from "@lando/sdk/errors";
 
+import { realpath } from "node:fs/promises";
 import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
 import { AGENT_RELAY_WORKER_COMMAND } from "@lando/engine/subsystems/ssh-agent/worker-protocol";
 import {
@@ -58,6 +59,14 @@ import {
   resolveResultFormat,
 } from "./format-flags";
 import { install as installCompiledDecoders } from "./generated/compiled-decoders.mjs";
+import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "./generated/host-proxy-allowlist";
+import {
+  HOST_PROXY_CALL_COMMAND,
+  type HostProxyLandoCall,
+  hostProxyCallCwd,
+  hostProxyDenied,
+} from "./host-proxy/call-context";
+import { runHostProxyCallProcess } from "./host-proxy/call-runtime";
 import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import { resolveLogLevel } from "./log-level-selection";
@@ -151,10 +160,36 @@ const resolveToolingRouteExit = async (
 // Help and listing paths stay free of bundled plugin modules; command dispatch registers them before building a runtime.
 const registerBundledPlugins = () => import("../runtime/bundled-plugins");
 
-const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
+const runCompiledCli = async (
+  rawArgv: ReadonlyArray<string>,
+  signal?: AbortSignal,
+  hostProxy?: HostProxyLandoCall,
+): Promise<void> => {
   if (signal?.aborted) return;
   const catalog = createPluginCommandCatalog(signal);
   installCompiledDecoders(COMPILED_DECODER_ASTS);
+  if (hostProxy !== undefined && rawArgv.some((arg) => arg.startsWith("__internal:")))
+    throw hostProxyDenied("cli:internal");
+  if (hostProxy === undefined && rawArgv[0] === HOST_PROXY_CALL_COMMAND) {
+    await runHostProxyCallProcess(async (call, callSignal) => {
+      switch (call.operation) {
+        case "runLando":
+          await runCli({ argv: call.argv, rootUrl: "", signal: callSignal, hostProxy: call });
+          return;
+        case "openUrl":
+        case "openPath": {
+          const { runHostProxyOpenProcess } = await import("./host-proxy/call-open");
+          await runHostProxyOpenProcess(call, callSignal);
+          return;
+        }
+        default: {
+          const exhaustive: never = call;
+          return exhaustive;
+        }
+      }
+    });
+    return;
+  }
   if (rawArgv[0] === AGENT_RELAY_WORKER_COMMAND) {
     setActiveLogLevel("none");
     const { runAgentRelayWorkerProcess } = await import("./agent-relay/worker-runtime");
@@ -287,6 +322,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
   argv = normalizeCompiledCommandArgv(argv);
 
   if (argv[0] === "help") {
+    if (hostProxy !== undefined) {
+      const target = argv[1];
+      if (target === undefined || argv.includes("--all")) throw hostProxyDenied("cli:help");
+      await runCompiledCli([target, "--help", ...argv.slice(2)], signal, hostProxy);
+      return;
+    }
     const helpArgv = argv.slice(1);
     if (await rejectUnknownHelpFlags(helpArgv)) return;
     const target = helpArgv.find((arg) => !arg.startsWith("-"));
@@ -309,7 +350,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
 
   if (await rejectJsonControlConflicts()) return;
 
-  if (isHelpTopic(argv[0] ?? "") && argv.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
+  if (
+    hostProxy === undefined &&
+    isHelpTopic(argv[0] ?? "") &&
+    argv.slice(1).some((arg) => arg === "--help" || arg === "-h")
+  ) {
     await dispatchHelpTarget(argv[0] ?? "", catalog, signal);
     return;
   }
@@ -328,6 +373,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       return;
     }
     const route = aliasResolution.success;
+    if (hostProxy !== undefined && route._tag !== "built-in") throw hostProxyDenied("cli:route");
     if (route._tag === "plugin") {
       if (argvTail.includes("--help") || argvTail.includes("-h"))
         await dispatchHelpTarget(route.token, catalog, signal);
@@ -372,6 +418,17 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
   }
   if (signal?.aborted) return;
   const canonicalCommandId = builtInCommand?.spec.id ?? argv[0] ?? "cli:unknown";
+  if (hostProxy !== undefined) {
+    if (builtInCommand === undefined || !HOST_PROXY_RUNLANDO_ALLOWLIST.includes(canonicalCommandId))
+      throw hostProxyDenied(canonicalCommandId);
+    const resolver = makeAppDiscoveryResolver();
+    const discovered = await resolver.resolve(process.cwd());
+    if (
+      discovered.kind !== "found" ||
+      (await realpath(discovered.directory)) !== (await realpath(hostProxy.app.root))
+    )
+      throw hostProxyDenied("cli:app-context");
+  }
   if (builtInCommand !== undefined) argv = [canonicalCommandId, ...argv.slice(1)];
   if (canonicalCommandId === "apps:scratch:start" && argv[0] !== undefined) {
     argv = [argv[0], ...normalizeScratchStartArgv(argv.slice(1))];
@@ -421,6 +478,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
     !isBunOrX &&
     !scratchRunHasToolCommand
   ) {
+    if (hostProxy !== undefined) throw hostProxyDenied("meta:version");
     const versionSpec = resolveBuiltInCommand("meta:version")?.spec;
     if (await rejectUnsupportedResultFormat("meta:version", versionSpec)) return;
     if (await emitJsonListModeIfRequested(versionSpec?.resultSchema)) return;
@@ -475,7 +533,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
   }
   if (builtInCommand !== undefined) {
     await registerBundledPlugins();
-    await runBuiltInCommand(builtInCommand, argv.slice(1), signal);
+    await runBuiltInCommand(builtInCommand, argv.slice(1), signal, hostProxy);
     return;
   }
 
@@ -487,14 +545,16 @@ export interface RunCliOptions {
   readonly rootUrl: string;
   readonly discovery?: DiscoveryOperation;
   readonly signal?: AbortSignal;
+  readonly hostProxy?: HostProxyLandoCall;
 }
 
 export const runCli = async (options: RunCliOptions): Promise<void> => {
   if (options.signal?.aborted) return;
   try {
+    if (options.hostProxy !== undefined) process.chdir(await hostProxyCallCwd(options.hostProxy));
     await runDiscoveryOperation(
       options.discovery ?? { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() },
-      () => runCompiledCli(options.argv, options.signal),
+      () => runCompiledCli(options.argv, options.signal, options.hostProxy),
     );
   } catch (error) {
     const cause = Cause.isCause(error) ? error : Cause.die(error);

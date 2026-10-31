@@ -18,10 +18,14 @@ export interface HostExecutionContext {
 }
 
 export const captureHostExecutionContext = (
-  input: { readonly cwd?: string; readonly env?: Readonly<Record<string, string>> },
+  input: {
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string>>;
+    readonly replaceEnv?: boolean;
+  },
   host = { cwd: process.cwd(), env: process.env, platform: process.platform },
 ): CapturedHostExecutionContext => {
-  const parent = { ...host.env };
+  const parent = input.replaceEnv === true ? {} : { ...host.env };
   const overrides = { ...input.env };
   const keyOf = (key: string) => (host.platform === "win32" ? key.toUpperCase() : key);
   const env: Record<string, string> = {};

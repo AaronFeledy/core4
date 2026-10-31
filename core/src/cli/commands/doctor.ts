@@ -320,20 +320,23 @@ export const doctor = Effect.fn("Doctor.collect")(
         selection,
         sourceEnv,
       }).pipe(Effect.provide(HostProxyDoctorFileSystem.layer)),
-      fallback: [] as ReadonlyArray<DoctorCheck>,
+      fallback: { checks: [] } as DoctorResult,
       redact,
     });
     if (hostProxyOutcome.self !== undefined) selfChecks.push(hostProxyOutcome.self);
 
-    return withSelfChecks([
-      diagnosis.check,
-      ...pluginChecks,
-      ...setupReadinessChecks,
-      ...runtimeServiceChecks,
-      execUmaskOutcome.value,
-      ...hostProxyOutcome.value,
-      ...oomChecks,
-    ]);
+    return {
+      ...withSelfChecks([
+        diagnosis.check,
+        ...pluginChecks,
+        ...setupReadinessChecks,
+        ...runtimeServiceChecks,
+        execUmaskOutcome.value,
+        ...hostProxyOutcome.value.checks,
+        ...oomChecks,
+      ]),
+      ...(hostProxyOutcome.value.skipped === undefined ? {} : { skipped: hostProxyOutcome.value.skipped }),
+    };
   },
   (effect, options?: DoctorOptions, _modules?: ReadonlyArray<LandoPluginModule>) =>
     interruptOnAbort(effect, options?.signal),

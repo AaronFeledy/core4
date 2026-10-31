@@ -1417,7 +1417,12 @@ describe("lando start", () => {
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       const appliedDatabase = harness.applyPlans[0]?.services[ServiceName.make("database")];
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
-      expect(typeof appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBe("string");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_APP).toBeUndefined();
+      expect(appliedWeb?.mounts).toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+      );
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/run/lando/host-proxy.sock", readOnly: true }),
       );
@@ -1685,15 +1690,16 @@ describe("lando start", () => {
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TRANSPORT).toBe("tcp-host-gateway");
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_URL).toStartWith("http://host.containers.internal:");
-      expect(typeof appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBe("string");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(appliedWeb?.mounts).toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+      );
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
         expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
       );
       expect(appliedWeb?.hostAliases).toEqual([]);
-      await stat(
-        makeLandoPaths({ platform: "win32", userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root),
-      );
+      await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
     });
   });
 
@@ -1724,7 +1730,9 @@ describe("lando start", () => {
       expect(persistedPlanJson).not.toContain("LANDO_HOST_PROXY_DEPTH");
       expect(persistedPlanJson).not.toContain("host-proxy.sock");
       expect(persistedPlanJson).not.toContain("/usr/local/bin/lando");
-      expect(appliedPlanJson).toContain("LANDO_HOST_PROXY_TOKEN");
+      expect(appliedPlanJson).not.toContain("LANDO_HOST_PROXY_TOKEN");
+      expect(appliedPlanJson).toContain("/run/lando/host-proxy/credentials");
+      expect(persistedPlanJson).not.toContain("/run/lando/host-proxy/credentials");
     });
   });
 
