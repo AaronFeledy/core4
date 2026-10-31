@@ -48,11 +48,11 @@ const events = {
 
 for (const rendererMode of RENDERER_MODES) {
   for (const format of RESULT_FORMATS) {
-    for (const [index, declaresStreaming, live] of [
-      [0, false, false],
-      [1, false, true],
-      [2, true, false],
-      [3, true, true],
+    for (const [index, declaresStreaming, live, sink] of [
+      [0, false, false, "none"],
+      [1, false, true, "live"],
+      [2, true, false, "none"],
+      [3, true, true, "live"],
     ] as const) {
       test(`routes ${rendererMode}/${format}, streaming=${declaresStreaming}, live=${live}`, () => {
         // Given
@@ -62,9 +62,7 @@ for (const rendererMode of RENDERER_MODES) {
         // Then
         expect(routing.stdout).toBe(stdout[format][index]);
         expect(routing.events).toBe(events[rendererMode][format][index]);
-        expect(routing.sink).toBe(
-          format === "yaml" ? "none" : (["none", "live", "none", "live"] as const)[index],
-        );
+        expect(routing.sink).toBe(format === "yaml" ? "none" : sink);
       });
     }
   }

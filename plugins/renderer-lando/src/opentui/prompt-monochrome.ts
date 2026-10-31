@@ -19,6 +19,7 @@ export const monochromePromptTerminal = (terminal: NodeJS.WriteStream): NodeJS.W
   let writeOverride: unknown;
   const esc = String.fromCharCode(27);
   const bell = String.fromCharCode(7);
+  const cursorColorPrefix = `${esc}]12;`;
   const cursorColor = new RegExp(`${esc}\\]12;[^${bell}${esc}]*(?:${bell}|${esc}\\\\)`, "g");
   return new Proxy(terminal, {
     get(target, property) {
@@ -31,10 +32,11 @@ export const monochromePromptTerminal = (terminal: NodeJS.WriteStream): NodeJS.W
         // Native cursor output ignores RGBA intent. Suppress only OSC 12, including split writes.
         const bytes = pending + Buffer.from(chunk).toString("latin1");
         const filtered = bytes.replace(cursorColor, "");
-        const osc = filtered.lastIndexOf("\x1b]12;");
+        const osc = filtered.lastIndexOf(cursorColorPrefix);
         const escapeIndex = osc === -1 ? filtered.lastIndexOf("\x1b") : osc;
         const suffix = escapeIndex === -1 ? "" : filtered.slice(escapeIndex);
-        const incomplete = suffix !== "" && ("\x1b]12;".startsWith(suffix) || suffix.startsWith("\x1b]12;"));
+        const incomplete =
+          suffix !== "" && (cursorColorPrefix.startsWith(suffix) || suffix.startsWith(cursorColorPrefix));
         pending = incomplete ? suffix : "";
         const output = incomplete ? filtered.slice(0, escapeIndex) : filtered;
         return Reflect.apply(write, target, [Buffer.from(output, "latin1"), ...args]);

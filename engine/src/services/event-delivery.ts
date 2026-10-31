@@ -85,7 +85,7 @@ export const makeEventDelivery = (state: EventDeliveryState) => {
     safe: LandoEvent,
     hasManifest: boolean,
   ): Effect.Effect<void, EventError> =>
-    Effect.sync(() => {
+    Effect.suspend(() => {
       const hasDelivery =
         hasManifest ||
         state.subscribers.size > 0 ||
@@ -125,7 +125,7 @@ export const makeEventDelivery = (state: EventDeliveryState) => {
       }
       MutableRef.set(state.droppedEvents.ref, Ref.getUnsafe(state.droppedEvents) + rejectedDeliveries);
       return Effect.void;
-    }).pipe(Effect.flatten);
+    });
 
   return { trackedSubscribe, trackedSubscribeQueue, subscribeWithHistory, commitPublication };
 };

@@ -44,7 +44,7 @@ export const makeTestEventService = (recorded: LandoEvent[], deliveryCapacity = 
       Effect.flatMap(
         Option.match({
           onNone: () => Effect.fail(eventError(label, `Event stream ended before receiving event: ${label}`)),
-          onSome: (event) => Effect.succeed(event),
+          onSome: Effect.succeed,
         }),
       ),
     );

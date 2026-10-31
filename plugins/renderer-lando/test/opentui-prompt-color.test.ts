@@ -137,7 +137,7 @@ for (const kind of cases) {
   });
 }
 
-test("cursor adapter preserves payload and non-color controls across split OSC writes", async () => {
+test("cursor adapter preserves payload and non-color controls across split OSC writes", () => {
   // Given
   const root = mkdtempSync(join(tmpdir(), "lando-cursor-color-"));
   const path = join(root, "output");

@@ -17,7 +17,11 @@ export const PROMPT_THEME = {
   inputFocusedBackground: "#1a1020",
 } as const;
 
-export type PromptTheme = { readonly [K in keyof typeof PROMPT_THEME]: string | object };
+export type PromptTheme = {
+  readonly [K in keyof typeof PROMPT_THEME]:
+    | string
+    | ReturnType<OpenTuiModuleLike["RGBA"]["defaultForeground"]>;
+};
 
 export type PromptModuleLike<R extends RendererLike = RendererLike> = OpenTuiModuleLike<R> & {
   readonly theme: PromptTheme;

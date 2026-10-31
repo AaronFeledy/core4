@@ -361,8 +361,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           error,
           additionalErrors,
         } as const;
-        const emit = (next: typeof outcome) =>
-          routing.stdout === "frames" ? emitStreamResult(next) : emitJsonResult(next);
+        const emit = routing.stdout === "frames" ? emitStreamResult : emitJsonResult;
         const emitted = yield* emit(outcome).pipe(Effect.result);
         if (emitted._tag === "Failure") {
           if (!(emitted.failure instanceof JqExpressionError)) {
