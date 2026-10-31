@@ -146,8 +146,10 @@ credentials such as the `BUN_AUTH_TOKEN` that `meta:plugin:publish` passes to
 its child are protected. The human `lando bun` and `lando x` passthrough is the
 exception: that output is yours, unchanged.
 
-A failed managed operation stops the Lando side of the work: no plugin
-activation, deletion, registry refresh, or cache mutation follows it. It
+A failed managed operation stops later activation, deletion, registry refresh,
+or cache mutation for that plugin. A batch update can continue after ordinary
+package failures, but process execution, timeout, and output-limit failures
+abort the batch. It
 doesn't undo what the Bun child already did on disk. Trust you granted with
 `--trust` or `lando plugin:trust` stays granted.
 

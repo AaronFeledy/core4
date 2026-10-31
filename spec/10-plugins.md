@@ -170,6 +170,8 @@ Bundled stores:
 
 Install scripts are disabled by default. They MAY run only for explicitly trusted package identities or authoring roots; Git installs require per-install trust. Grants remain until removed by `meta:plugin:trust:revoke`, and `meta:plugin:trust:list` exposes current grants. Registry, Git, and local trust domains MUST NOT imply one another. Install lifecycle events MUST be observable, cancellable, and redacted.
 
+For batch updates, the no-later-mutation rule applies to the failed plugin, not a rollback of earlier successful candidates. Ordinary package failures may remain per-row results. Process execution, capture-overflow, and timeout failures abort the invocation before any later candidate or core replacement runs (§8.2.4).
+
 `meta:update` (`lando update`) checks plugin channels `stable`, `next`, and `dev` through `UpdateService`, honors manifest channel constraints, and updates plugins through the same install path. Binary self-update remains the separate §17.6 protocol.
 
 Plugin login/logout stores registry credentials in the plugin-auth store. Tokens MUST travel only through child environment, MUST NOT appear in argv, and MUST be redacted from lifecycle events and non-debug logs.
