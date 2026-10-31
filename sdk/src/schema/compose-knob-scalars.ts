@@ -134,14 +134,23 @@ export const ComposePullPolicyField = Schema.Union([
 
 export const ComposeBooleanOrStringField = Schema.Union([Schema.Boolean, Schema.String]);
 
+// JSON Schema has no regex flags; the end assertion also rejects trailing line breaks.
+const INIT_SPELLING_PATTERN =
+  /^(?:[Tt][Rr][Uu][Ee]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Nn]|[Oo][Ff][Ff]|[Yy][Ee][Ss]|[Nn][Oo]|[01])(?![\s\S])/;
+
 export const ComposeInitField = Schema.Union([
   Schema.Boolean,
-  Schema.String.check(Schema.isPattern(/^(?:true|false|on|off|1|0|yes|no)$/iu)),
+  Schema.String.check(
+    Schema.isPattern(INIT_SPELLING_PATTERN, {
+      toJsonSchema: () => ({ pattern: INIT_SPELLING_PATTERN.source }),
+    }),
+  ),
 ]).pipe(
   Schema.decodeTo(
     Schema.Boolean,
     SchemaTransformation.transform({
-      decode: (input) => (typeof input === "boolean" ? input : /^(?:true|on|1|yes)$/iu.test(input)),
+      decode: (input) =>
+        typeof input === "boolean" ? input : ["true", "on", "1", "yes"].includes(input.toLowerCase()),
       encode: (input) => input,
     }),
   ),

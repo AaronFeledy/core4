@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { SchemaIssue } from "effect";
-import { Result, Schema } from "effect";
+import { JsonSchema, Result, Schema, SchemaRepresentation } from "effect";
 
-import { ServiceConfig } from "@lando/sdk/schema";
+import { ServiceConfig, getJsonSchema } from "@lando/sdk/schema";
+import { importableNode } from "./landofile-parity-json-schema-fixup.ts";
 
 describe("Compose map input contracts", () => {
   test.each([
@@ -189,6 +190,44 @@ const decodeStrict = (input: unknown) =>
   Schema.decodeUnknownSync(ServiceConfig)(input, { onExcessProperty: "error" });
 
 describe("Compose service runtime knobs", () => {
+  const published = Schema.make<Schema.Codec<unknown>>(
+    SchemaRepresentation.fromJsonSchemaDocument(
+      JsonSchema.fromSchemaDraft2020_12(getJsonSchema("ServiceConfigInput")),
+      { patterns: "apply", onEnter: importableNode },
+    ).ast,
+  );
+  test.each([
+    [true, true],
+    [false, true],
+    ["true", true],
+    ["FALSE", true],
+    ["TrUe", true],
+    ["oFf", true],
+    ["yes", true],
+    ["YeS", true],
+    ["nO", true],
+    ["ON", true],
+    ["1", true],
+    ["0", true],
+    ["sometimes", false],
+    [" true", false],
+    ["false ", false],
+    ["true\n", false],
+    ["", false],
+    [1, false],
+    [0, false],
+    [null, false],
+  ] as const)("published and runtime init acceptance agree for %j", (init, accepted) => {
+    // Given
+    const input = { init };
+    // When
+    const wire = Schema.decodeUnknownResult(published)(input, { onExcessProperty: "error" });
+    const runtime = Schema.decodeUnknownResult(ServiceConfig)(input, { onExcessProperty: "error" });
+    // Then
+    expect(Result.isSuccess(wire)).toBe(accepted);
+    expect(Result.isSuccess(runtime)).toBe(accepted);
+  });
+
   test.each([
     [true, true],
     [false, false],
