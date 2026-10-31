@@ -162,7 +162,11 @@ test("keeps a registered secret masked across separately executed host commands"
   // When
   const result = await h.run({ payload: true });
   // Then
-  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, stdout: "", stderr: "" } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+  if (result._tag === "Success") {
+    expect(result.success).not.toHaveProperty("stdout");
+    expect(result.success).not.toHaveProperty("stderr");
+  }
   expect(joined(h.frames, "stdout")).toBe("[redacted]");
   expect(joined(h.frames, "stderr")).toBe("[redacted]");
 });
@@ -198,7 +202,8 @@ test("delivers a host partial line before the body is allowed to finish", async 
       }),
     ]);
     // Then
-    expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, stdout: "" } });
+    expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+    if (result._tag === "Success") expect(result.success).not.toHaveProperty("stdout");
     expect(joined(h.frames, "stdout")).toBe("onetwo");
   } finally {
     clearTimeout(timer);
@@ -216,15 +221,19 @@ test("streams host channels through the sink without collecting the body", async
   });
   // When the body runs with a live sink.
   const result = await h.run();
-  // Then channels stream as authored and the collected result stays empty under a live sink.
+  // Then channels stream as authored and the result omits uncaptured output.
   expect(joined(h.frames, "stdout")).toBe("split-host-secret");
   expect(joined(h.frames, "stderr")).toBe("split-host-secret");
   expect(h.frames.every((frame) => frame.kind === "bytes")).toBe(true);
   expect(result).toMatchObject({
     _tag: "Success",
-    success: { stdout: "", stderr: "", exitCode: 0 },
+    success: { exitCode: 0 },
   });
-  if (result._tag === "Success") expect("rendered" in result.success).toBe(false);
+  if (result._tag === "Success") {
+    expect(result.success).not.toHaveProperty("stdout");
+    expect(result.success).not.toHaveProperty("stderr");
+    expect("rendered" in result.success).toBe(false);
+  }
 });
 
 test("emits failure stderr before returning the body exit code", async () => {
@@ -239,8 +248,9 @@ test("emits failure stderr before returning the body exit code", async () => {
   expect(joined(h.frames, "stderr")).toBe("diagnostic");
   expect(result).toMatchObject({
     _tag: "Success",
-    success: { exitCode: 7, stderr: "" },
+    success: { exitCode: 7 },
   });
+  if (result._tag === "Success") expect(result.success).not.toHaveProperty("stderr");
 });
 
 test.each(["pre", "post"] as const)(

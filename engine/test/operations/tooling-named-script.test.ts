@@ -29,7 +29,7 @@ test("sparse named scripts preserve false, empty and omission without synthesize
         ).pipe(Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer))),
       );
       // Then
-      const [values, env] = result?.stdout.trimEnd().split("\n") ?? [];
+      const [values, env] = result?.stdout?.trimEnd().split("\n") ?? [];
       expect(JSON.parse(values ?? "")).toEqual({
         flags: { loud: false, empty: "" },
         args: { second: "later" },

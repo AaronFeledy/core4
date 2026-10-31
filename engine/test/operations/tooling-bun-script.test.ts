@@ -75,9 +75,9 @@ test("emits both output streams before the script can finish", async () => {
     // Then
     expect(result).toMatchObject({
       exitCode: 3,
-      stdout: "",
-      stderr: "",
     });
+    expect(result).not.toHaveProperty("stdout");
+    expect(result).not.toHaveProperty("stderr");
     expect(
       frames
         .filter((frame) => frame._tag === "stdout")

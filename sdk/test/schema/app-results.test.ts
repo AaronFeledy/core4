@@ -3,12 +3,14 @@ import {
   AppRemoteEntry,
   AppRemoteMutationResult,
   DestroyAppResult,
+  ExecAppResult,
   InfoAppResult,
   LandofileEventsOutcome,
   ServiceName,
   ShareStopAppResult,
   StartAppResult,
   StopAppResult,
+  ToolingResult,
 } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
@@ -174,6 +176,21 @@ describe("ShareStopAppResult", () => {
 
   test("rejects excess properties", () => {
     expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", extra: 1 }))).toBe(true);
+  });
+});
+
+describe("execution result capture", () => {
+  const exec = { app: "demo", service: "web", command: ["true"], exitCode: 0 };
+  const tooling = { tool: "check", service: "web", exitCode: 0 };
+  test.each([
+    ["exec", ExecAppResult, exec],
+    ["tooling", ToolingResult, tooling],
+  ] as const)("%s preserves absent, empty and nonempty capture", (_name, schema, metadata) => {
+    // Given / When / Then
+    for (const output of [{}, { stdout: "", stderr: "" }, { stdout: "ok", stderr: "failed" }]) {
+      const value = { ...metadata, ...output };
+      expect(roundTrip<unknown, unknown>(schema, value)).toStrictEqual(value);
+    }
   });
 });
 

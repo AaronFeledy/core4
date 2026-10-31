@@ -1,15 +1,22 @@
+import type { ToolingResult } from "@lando/sdk/schema";
 import { Effect, Option } from "effect";
 import { StreamFrameSink, createCollectingStreamFrameSink } from "./stream-frame-sink.ts";
 
 export const withToolingOutput = Effect.fnUntraced(function* <
-  A extends { readonly stdout: string; readonly stderr: string },
+  A extends Pick<ToolingResult, "stdout" | "stderr">,
   E,
   R,
->(effect: Effect.Effect<A, E, R>): Effect.fn.Return<A, E, Exclude<R, StreamFrameSink>> {
+>(
+  effect: Effect.Effect<A, E, R>,
+): Effect.fn.Return<
+  Omit<A, "stdout" | "stderr"> & Pick<ToolingResult, "stdout" | "stderr">,
+  E,
+  Exclude<R, StreamFrameSink>
+> {
   const provided = yield* Effect.serviceOption(StreamFrameSink);
   const output = Option.match(provided, {
     onNone: createCollectingStreamFrameSink,
-    onSome: (sink) => ({ sink, finish: () => Effect.void, result: () => ({ stdout: "", stderr: "" }) }),
+    onSome: (sink) => ({ sink, finish: () => Effect.void, result: () => ({}) }),
   });
   const sink = output.sink;
   const emitted = { stdout: false, stderr: false };
@@ -24,7 +31,7 @@ export const withToolingOutput = Effect.fnUntraced(function* <
     }),
     Effect.tap((returned) =>
       Effect.forEach(["stdout", "stderr"] as const, (channel) =>
-        !emitted[channel] && returned[channel].length > 0
+        !emitted[channel] && returned[channel] !== undefined && returned[channel].length > 0
           ? sink.emit({ _tag: channel, chunk: returned[channel], kind: "bytes" })
           : Effect.void,
       ),
@@ -32,5 +39,6 @@ export const withToolingOutput = Effect.fnUntraced(function* <
     Effect.scoped,
     Effect.ensuring(output.finish()),
   );
-  return { ...result, ...output.result() };
+  const { stdout: _stdout, stderr: _stderr, ...metadata } = result;
+  return { ...metadata, ...output.result() };
 });

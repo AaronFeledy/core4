@@ -163,11 +163,13 @@ export const ExecAppResult = Schema.Struct({
     description: "Executed command and its ordered arguments.",
   }),
   exitCode: Schema.Number.annotate({ description: "Exit code returned by the command process." }),
-  stdout: Schema.String.annotate({
-    description: "Captured standard output; empty when the output was streamed as it ran.",
+  stdout: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Captured standard output, including an empty string for an empty capture; omitted when a live sink received the bytes.",
   }),
-  stderr: Schema.String.annotate({
-    description: "Captured standard error; empty when the output was streamed as it ran.",
+  stderr: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Captured standard error, including an empty string for an empty capture; omitted when a live sink received the bytes.",
   }),
 }).annotate({
   description: "Captured output and exit status returned after executing a command in an app service.",
@@ -178,7 +180,7 @@ export const ToolingResult = Schema.Struct({
   tool: Schema.String.annotate({ description: "Identifier of the tooling task that ran." }),
   service: Schema.String.annotate({ description: "Service that executed the tooling task." }),
   exitCode: Schema.Number.annotate({ description: "Exit code returned by the tooling task." }),
-  stdout: Schema.String.annotate({ description: "Captured standard output from the tooling task." }),
-  stderr: Schema.String.annotate({ description: "Captured standard error from the tooling task." }),
+  stdout: ExecAppResult.fields.stdout,
+  stderr: ExecAppResult.fields.stderr,
 }).annotate({ description: "Captured output and exit status returned after invoking an app tooling task." });
 export type ToolingResult = typeof ToolingResult.Type;
