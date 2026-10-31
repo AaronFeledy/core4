@@ -17,6 +17,18 @@ export const MCP_ALLOWLIST_FORBIDDEN_IDS: ReadonlyArray<string> = [
 
 const FORBIDDEN_ID_SET = new Set(MCP_ALLOWLIST_FORBIDDEN_IDS);
 
+export const destructiveCommandVerbs: ReadonlySet<string> = new Set([
+  "destroy",
+  "remove",
+  "uninstall",
+  "prune",
+  "gc",
+  "reset",
+  "restore",
+  "rebuild",
+  "poweroff",
+]);
+
 export const isAppConfigMcpUnsafeId = (id: string): boolean => APP_CONFIG_MCP_UNSAFE_IDS.has(id);
 
 export const isMcpAllowlistForbidden = (id: string): boolean =>
@@ -25,10 +37,16 @@ export const isMcpAllowlistForbidden = (id: string): boolean =>
 interface McpAllowlistSpecView {
   readonly id: string;
   readonly mcpAllowed?: boolean;
+  readonly flags?: Readonly<Record<string, unknown>>;
 }
 
+export const isMcpDestructiveCommand = (spec: McpAllowlistSpecView): boolean =>
+  isMcpAllowlistForbidden(spec.id) ||
+  destructiveCommandVerbs.has(spec.id.slice(spec.id.lastIndexOf(":") + 1)) ||
+  spec.flags?.yes !== undefined;
+
 export const assertMcpAllowlistSafe = (spec: McpAllowlistSpecView): void => {
-  if (spec.mcpAllowed === true && isMcpAllowlistForbidden(spec.id)) {
+  if (spec.mcpAllowed === true && isMcpDestructiveCommand(spec)) {
     throw new McpAllowlistConflictError({
       message: `Command ${spec.id} is a destructive surface and must not set mcpAllowed: true.`,
       commandId: spec.id,
@@ -49,3 +67,21 @@ export const computeMcpDefaultAllowlist = (
   }
   return [...ids].sort((left, right) => left.localeCompare(right));
 };
+
+export const filterMcpDefaultAllowlist = (
+  defaults: readonly string[],
+  entries: readonly {
+    readonly spec: McpAllowlistSpecView;
+    readonly plugin?: { readonly name: string; readonly source: "bundled" | "external" };
+  }[],
+): readonly string[] =>
+  entries
+    .filter(
+      (entry) =>
+        defaults.includes(entry.spec.id) &&
+        (entry.plugin === undefined ||
+          (entry.plugin.source === "bundled" &&
+            entry.spec.mcpAllowed === true &&
+            !isMcpDestructiveCommand(entry.spec))),
+    )
+    .map((entry) => entry.spec.id);

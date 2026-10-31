@@ -23,9 +23,11 @@ import { runEventToolingCommand } from "@lando/engine/operations/event-tooling-c
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { type NormalizedToolingTask, normalizeToolingTask } from "@lando/landofile/tooling-normalize";
+import { destructiveCommandVerbs, isMcpDestructiveCommand } from "@lando/mcp/allowlist";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
 import { resolveEventScriptTarget } from "./event-script-target";
 import type { LandoCommandSpec } from "./spec/command-spec";
+export { destructiveCommandVerbs } from "@lando/mcp/allowlist";
 
 const loaderCache = new WeakMap<ExecutableCommandLoader, Promise<ExecutableCommandSpec>>();
 const commandDeclaration = Schema.Struct({
@@ -44,22 +46,11 @@ const commandMetadata = Schema.Struct({
 });
 const executableSpecRemediation =
   "Return a spec with a nonempty summary, a run function, valid flags/args, and id, namespace, bootstrap, and resultSchema matching the manifest declaration. Declare any `yes` flag as a plain boolean; the CLI owns --yes/-y.";
-export const destructiveCommandVerbs = new Set([
-  "destroy",
-  "remove",
-  "uninstall",
-  "prune",
-  "gc",
-  "reset",
-  "restore",
-  "rebuild",
-  "poweroff",
-]);
 
 const canonicalCommandIdPattern = /^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/u;
 export type ResolvedPluginCommandSpec = ExecutableCommandSpec & { readonly summary: string };
 export const isDestructivePluginCommand = (spec: Pick<ExecutableCommandSpec, "id" | "flags">): boolean =>
-  destructiveCommandVerbs.has(spec.id.slice(spec.id.lastIndexOf(":") + 1)) || spec.flags?.yes !== undefined;
+  isMcpDestructiveCommand(spec);
 const coreNamespaces = new Set<ExecutableCommandNamespace>(["app", "apps", "meta"]);
 
 const isToolingTarget = (command: string): boolean => command.startsWith("app:") && command.length > 4;

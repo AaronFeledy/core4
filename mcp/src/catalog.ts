@@ -8,7 +8,7 @@
  */
 import type { McpCatalog, McpCatalogOptions, McpToolDescriptor } from "@lando/sdk/schema";
 
-import { isMcpAllowlistForbidden } from "./allowlist";
+import { isMcpDestructiveCommand } from "./allowlist";
 import type { McpCommandSpec } from "./registry";
 import { type McpCommandEntry, deriveToolInputSchema } from "./registry";
 
@@ -44,7 +44,7 @@ const toDescriptor = (spec: McpCommandSpec): McpToolDescriptor => ({
   commandId: spec.id,
   title: spec.summary,
   description: spec.description ?? spec.summary,
-  destructive: isMcpAllowlistForbidden(spec.id),
+  destructive: isMcpDestructiveCommand(spec),
   inputSchema: deriveToolInputSchema(spec),
 });
 
