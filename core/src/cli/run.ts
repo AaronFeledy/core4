@@ -16,9 +16,9 @@ import {
   isReservedNamespaceHead,
   notImplementedErrorForCommand,
   resolveBuiltInCommand,
-  suggestBuiltInCommandForSuffix,
 } from "./built-in-command-registry";
 import { runMetaVersion } from "./cli-adapters/meta-plugin";
+import { isHelpTopic } from "./cold-path-output";
 import type { ScratchStartOptions } from "./commands/scratch";
 import { normalizeScratchStartArgv, scratchStartOptionsFromInput } from "./commands/scratch";
 import { scratchRunHasCommandTail } from "./commands/scratch-run";
@@ -62,6 +62,7 @@ import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
 import { interruptOnAbort } from "./interrupt-on-abort";
 import { resolveLogLevel } from "./log-level-selection";
 import { runNativeOnlyBuiltIn } from "./native-only-built-in-adapters";
+import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
 import { applyDebugRendererFlip, readConfigCliGlobals } from "./renderer-mode-resolution";
 import { setActiveLogLevel } from "./renderer-mode-state";
@@ -76,7 +77,7 @@ import {
 } from "./run-help";
 import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
 import { preCommandOutputMode, renderPreCommandFailure } from "./spec/command-boundary";
-import { resolveToolingRoute, toolingHelpRequested } from "./tooling-router";
+import { resolveToolingRoute, toolingHelpRequested, toolingRouteError } from "./tooling-router";
 import { resolveTrace, setActiveTrace } from "./trace-selection";
 import { unknownCommandError } from "./unknown-command-error";
 
@@ -88,10 +89,13 @@ export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
 export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions =>
   scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));
 
-const failUnknownCommand = (token: string, suggestCanonicalId = true) =>
+const failUnknownCommand = async (token: string, catalog: PluginCommandCatalog, suggestCanonicalId = true) =>
   renderPreCommandFailure({
     commandId: "cli:unknown-command",
-    error: unknownCommandError(token, suggestCanonicalId ? suggestBuiltInCommandForSuffix(token) : undefined),
+    error: unknownCommandError(
+      token,
+      suggestCanonicalId ? await catalog.unknownCommandRemediation(token) : undefined,
+    ),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
   });
@@ -132,16 +136,24 @@ const rejectJsonControlConflicts = async (): Promise<boolean> => {
   return true;
 };
 
-const resolveToolingRouteExit = async (token: string | undefined, signal?: AbortSignal) => {
+const resolveToolingRouteExit = async (
+  token: string | undefined,
+  catalog: PluginCommandCatalog,
+  signal?: AbortSignal,
+) => {
   const exit = await Effect.runPromiseExit(
-    interruptOnAbort(Effect.result(resolveToolingRoute(token)), signal),
+    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal),
   );
   if (Exit.isFailure(exit)) throw exit.cause;
   return exit.value;
 };
 
+// Help and listing paths stay free of bundled plugin modules; command dispatch registers them before building a runtime.
+const registerBundledPlugins = () => import("../runtime/bundled-plugins");
+
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (signal?.aborted) return;
+  const catalog = createPluginCommandCatalog(signal);
   installCompiledDecoders(COMPILED_DECODER_ASTS);
   if (rawArgv[0] === AGENT_RELAY_WORKER_COMMAND) {
     setActiveLogLevel("none");
@@ -162,7 +174,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
     rawEntry?.spec.id !== rawHead &&
     !rawHead.startsWith("-") &&
     (rawEntry !== undefined || !isReservedNamespaceHead(rawHead))
-      ? await resolveToolingRouteExit(rawHead, signal)
+      ? await resolveToolingRouteExit(rawHead, catalog, signal)
       : undefined;
   const isBunOrXAlias =
     passthroughAliasResolution?._tag === "Success" &&
@@ -279,23 +291,28 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
     if (await rejectUnknownHelpFlags(helpArgv)) return;
     const target = helpArgv.find((arg) => !arg.startsWith("-"));
     if (target !== undefined && !helpArgv.includes("--all")) {
-      await dispatchHelpTarget(target);
+      await dispatchHelpTarget(target, catalog, signal);
       return;
     }
     if (isEnvelopeResultFormat(activeResultFormat)) {
       setActiveCommandId("cli:help");
-      await printHelpCatalogPage();
+      await printHelpCatalogPage(catalog);
       return;
     }
     if (helpArgv.includes("--all")) {
-      await printAllHelp();
+      await printAllHelp(catalog);
       return;
     }
-    await printRootHelpPage();
+    await printRootHelpPage(catalog);
     return;
   }
 
   if (await rejectJsonControlConflicts()) return;
+
+  if (isHelpTopic(argv[0] ?? "") && argv.slice(1).some((arg) => arg === "--help" || arg === "-h")) {
+    await dispatchHelpTarget(argv[0] ?? "", catalog, signal);
+    return;
+  }
 
   let builtInCommand = resolveBuiltInCommand(argv[0]);
   if (builtInCommand?.spec.id !== argv[0]) builtInCommand = undefined;
@@ -304,21 +321,48 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
     (passthroughAliasResolution !== undefined || !isReservedNamespaceHead(argv[0]))
   ) {
     const argvTail = argv.slice(1);
-    const aliasResolution = passthroughAliasResolution ?? (await resolveToolingRouteExit(argv[0], signal));
+    const aliasResolution =
+      passthroughAliasResolution ?? (await resolveToolingRouteExit(argv[0], catalog, signal));
     if (aliasResolution._tag === "Failure") {
       await renderAliasResolutionFailure(aliasResolution.failure);
       return;
     }
     const route = aliasResolution.success;
+    if (route._tag === "plugin") {
+      if (argvTail.includes("--help") || argvTail.includes("-h"))
+        await dispatchHelpTarget(route.token, catalog, signal);
+      else await tryPluginOwnedCommand(route.token, argvTail, signal, catalog);
+      return;
+    }
+    if (route._tag === "unknown-tooling" || (route._tag === "cache-miss" && !argv[0]?.startsWith("app:"))) {
+      if (argvTail.includes("--help") || argvTail.includes("-h")) {
+        await dispatchHelpTarget(argv[0] ?? "", catalog, signal);
+        return;
+      }
+      if (
+        route._tag === "unknown-tooling" &&
+        (await tryPluginOwnedCommand(argv[0] ?? "", argvTail, signal, catalog))
+      )
+        return;
+      const hint = await catalog.remediation(argv[0] ?? "");
+      if (hint !== undefined) {
+        return renderPreCommandFailure({
+          commandId: route.commandId,
+          error: toolingRouteError({ ...route, remediation: `${route.remediation} ${hint}` }),
+          rendererMode: activeRendererMode,
+          resultFormat: activeResultFormat,
+        });
+      }
+    }
     if (route._tag === "built-in") {
       builtInCommand = route.entry;
       argv = [route.commandId, ...argvTail];
     } else if (route._tag === "alias-disabled") {
       setActiveCommandId("cli:unknown-command");
-      await failUnknownCommand(route.token, false);
+      await failUnknownCommand(route.token, catalog, false);
       return;
     } else if (toolingHelpRequested(route, argvTail)) {
-      if (route.disabled) await dispatchHelpTarget(route.commandId);
+      if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
       else await printToolingHelp({ ...route, id: route.commandId }, route.aliasPolicy);
       return;
     } else if (await routeResolvedTooling(route, argvTail, signal)) {
@@ -361,14 +405,14 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
     if (commandArg === undefined) {
       if (dispatchArgv.includes("--all")) {
         if (await rejectUnknownHelpFlags(dispatchArgv)) return;
-        await printAllHelp();
+        await printAllHelp(catalog);
         return;
       }
-      await printRootHelpPage();
+      await printRootHelpPage(catalog);
       return;
     }
 
-    await dispatchHelpTarget(commandArg);
+    await dispatchHelpTarget(commandArg, catalog, signal);
     return;
   }
 
@@ -419,16 +463,18 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
 
   if (found === undefined) {
     const token = argv[0] ?? "";
-    if (await tryPluginOwnedCommand(token, argv.slice(1), signal)) return;
-    await failUnknownCommand(token);
+    if (await tryPluginOwnedCommand(token, argv.slice(1), signal, catalog)) return;
+    await failUnknownCommand(token, catalog);
     return;
   }
 
   if (builtInCommand?.status.kind === "embedding-exempt") {
+    await registerBundledPlugins();
     await runNativeOnlyBuiltIn(builtInCommand, argv.slice(1), signal);
     return;
   }
   if (builtInCommand !== undefined) {
+    await registerBundledPlugins();
     await runBuiltInCommand(builtInCommand, argv.slice(1), signal);
     return;
   }

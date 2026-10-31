@@ -172,7 +172,10 @@ If discovery reports `ToolingCommandUnavailableError`, inspect its `reason`:
 and aliases. `lando help --format=json` exposes `result.toolingMetadata` with
 `status` and, when unavailable, `reason` and `remediation`. Neither help nor a
 failed lookup repairs metadata by planning or starting a provider. You do not
-need `lando start` or `lando rebuild` just to repair discovery.
+need `lando start` or `lando rebuild` just to repair discovery. The same help
+JSON lists plugin commands as `result.all[]` rows with `source: "plugin"` and
+reports plugin discovery in `result.pluginMetadata`. Plugin commands can be MCP
+tools too; see [Expose plugin commands](#expose-plugin-commands).
 
 ## Protect sensitive tooling values
 
@@ -242,8 +245,12 @@ stays applied. Progress notifications you already received remain valid.
 
 `app:rebuild` asks before it recreates containers. It is not in the default
 allowlist; expose it with `--allow app:rebuild` or `mcp.allow`. `app:destroy`
-stays forbidden unless you allowlist it explicitly the same way. Once exposed,
-either command proceeds without a question when the call sends `flags.yes: true`.
+stays forbidden unless you allowlist it explicitly the same way. Plugin commands
+follow the same rule: Lando treats a command as destructive when its id ends in
+`destroy`, `remove`, `uninstall`, `prune`, `gc`, `reset`, `restore`, `rebuild`,
+or `poweroff`, or when the command declares a `yes` flag, so `db:reset` and
+`db:import` are never on by default. Once exposed, any of these commands
+proceeds without a question when the call sends `flags.yes: true`.
 
 Without `yes`, what happens depends on the client. A client that advertised the
 `elicitation` capability in `initialize` gets an `elicitation/create` request
@@ -258,6 +265,33 @@ allowlist is still unknown to the session.
 ```json
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"app:rebuild","arguments":{"flags":{"yes":true}}}}
 ```
+
+Global policy commands are also excluded from the default tools. If you explicitly
+allow `meta:global:disable` or `meta:global:reconcile`, the catalog marks them as
+destructive because cleanup can remove containers and routes. They preserve named
+volumes and refuse known or uncertain consumer disruption unless that call sends
+`flags["allow-disruption"]: true`. This acknowledgement is never saved and does
+not bypass ownership, dependency, or active-startup protection. These commands
+have no `yes` flag or generic confirmation prompt.
+
+## Expose plugin commands
+
+Commands that plugins contribute are MCP tools under the same allowlist as the
+built-ins. A bundled plugin command whose manifest sets `mcpAllowed: true`, today
+`db:snapshots`, is on by default. Every other plugin command needs an explicit
+`mcp.allow` entry or `--allow`, including commands from plugins you install
+yourself, even when their manifest declares `mcpAllowed`. Destructive plugin
+commands are never on by default and ask for confirmation as described above.
+
+```sh
+lando mcp --list --allow db:export --format=json
+```
+
+Each plugin tool in that list carries `plugin.name`, `plugin.source` (`bundled`
+or `external`), and `destructive`. The `diagnostics` array names plugin commands
+the catalog left out and why: a module that failed to load, a descriptor or
+alias conflict, or a destructive command that tried to self-allow. An unknown id
+passed to `--allow` fails with `McpToolInputError` before the server starts.
 
 ## Read resources and complete schema names
 
@@ -284,6 +318,28 @@ can tab through the public schema registry instead of guessing names.
 ```
 
 <Guide>
+  <Scenario id="plugin-tools" render={false} reason="Bundled plugin tools list with plugin provenance and allow source">
+    <Step name="list-plugin-tools">
+      <Run runtime="library" code={`const { Effect: E, Layer } = yield* Effect.promise(() => import("effect"));
+yield* Effect.promise(() => import("../../../../../core/src/runtime/bundled-plugins.ts"));
+const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
+const { defaultIdsOf, mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp-registry.ts"));
+const { buildMcpListResult } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp-list.ts"));
+const { mcpRegistryWithPlugins } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp-plugins.ts"));
+const runtime = LandoCore.makeLandoRuntime({ bootstrap: "plugins", plugins: { policy: "discovery" }, cwd: context.testDir });
+const registry = yield* E.scoped(Layer.build(runtime).pipe(
+  E.orDie,
+  E.flatMap((services) => mcpRegistryWithPlugins(mcpRegistryFromBuiltIns(builtInCommandEntries)).pipe(E.provide(services))),
+));
+const list = (allow: ReadonlyArray<string>) => buildMcpListResult({ ...registry, defaultAllowlist: defaultIdsOf(registry), allow });
+const sql = expect.objectContaining({ name: "@lando/sql", source: "bundled" });
+expect(list([]).tools).toContainEqual(expect.objectContaining({ id: "db:snapshots", source: "default", plugin: sql }));
+expect(list([]).tools).not.toContainEqual(expect.objectContaining({ id: "db:export" }));
+expect(list(["db:export"]).tools).toContainEqual(expect.objectContaining({ id: "db:export", source: "allow", destructive: true, plugin: sql }));`}
+        displayCode={`const listed = buildMcpListResult({ ...registry, allow: ["db:export"] });`} />
+    </Step>
+  </Scenario>
+
   <Scenario id="named-script-sparse-boolean-input" render={false} reason="MCP preserves explicit false and a later named argument without synthesizing argv">
     <Step name="prepare-named-script">
       <UseFixture name="named-inputs" />

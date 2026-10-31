@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 /**
  * Regenerate `mcp/src/generated/mcp-allowlist.ts` from every
- * `LandoCommandSpec` with `mcpAllowed: true`.
+ * reviewed built-in and bundled plugin commands with `mcpAllowed: true`.
  *
  * Inputs:
  *   - `core/src/cli/built-in-command-registry.ts` (the canonical command index)
+ *   - `core/src/cli/generated/bundled-command-descriptors.ts` (reviewed plugin metadata)
  *
  * Output:
  *   - `mcp/src/generated/mcp-allowlist.ts` — plain literal data (no
@@ -20,6 +21,7 @@ import { resolve } from "node:path";
 import { computeMcpDefaultAllowlist } from "@lando/mcp/allowlist";
 import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
 import { mcpRegistryFromBuiltIns } from "../core/src/cli/commands/meta/mcp.ts";
+import { BUNDLED_COMMAND_DESCRIPTORS } from "../core/src/cli/generated/bundled-command-descriptors.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -30,7 +32,7 @@ const HEADER = `/**
  *
  * Regenerate via \`bun run scripts/build-mcp-allowlist.ts\`.
  *
- * Source of truth: every \`LandoCommandSpec\` with \`mcpAllowed: true\`.
+ * Source of truth: built-in specs and bundled plugin descriptors with \`mcpAllowed: true\`.
  *
  * This is deliberately a literal-data module with no command or Effect imports,
  * so a consumer can read the default MCP allowlist without pulling the compiled
@@ -46,7 +48,7 @@ const renderModule = (ids: ReadonlyArray<string>): string => {
 
 const main = async (): Promise<void> => {
   const specs = mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.map((entry) => entry.spec);
-  const ids = computeMcpDefaultAllowlist(specs);
+  const ids = computeMcpDefaultAllowlist([...specs, ...BUNDLED_COMMAND_DESCRIPTORS]);
   await writeFormattedOutput(OUTPUT, renderModule(ids));
   console.log(`[build-mcp-allowlist] wrote ${OUTPUT} (${ids.length} tools)`);
 };

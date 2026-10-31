@@ -8,7 +8,6 @@ import { Effect, Layer } from "effect";
 
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 
-import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "../../src/cli/commands/plugin-remove.ts";
@@ -223,13 +222,15 @@ describe("meta:plugin:remove command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
-  test("invalidates the plugin-command cache after removing a plugin", async () => {
+  test("invalidates app tooling caches after removing a plugin", async () => {
     const pluginDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
     await mkdir(pluginDir, { recursive: true });
     await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-cache-"));
     try {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      const toolingCacheDir = join(cacheRoot, "apps", "tooling-removefixture");
+      await mkdir(toolingCacheDir, { recursive: true });
+      await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
 
       await Effect.runPromise(
         pluginRemove({
@@ -239,13 +240,13 @@ describe("meta:plugin:remove command", () => {
         }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
       );
 
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Bun.file(join(toolingCacheDir, "commands.bin")).exists()).toBe(false);
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }
   });
 
-  test("invalidates the plugin-command cache when reconciling a stale missing plugin", async () => {
+  test("invalidates app tooling caches when reconciling a stale missing plugin", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
     await mkdir(pluginsRoot, { recursive: true });
     await writeFile(
@@ -260,7 +261,9 @@ describe("meta:plugin:remove command", () => {
     );
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-cache-"));
     try {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      const toolingCacheDir = join(cacheRoot, "apps", "tooling-stalefixture");
+      await mkdir(toolingCacheDir, { recursive: true });
+      await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
 
       const result = await Effect.runPromise(
         pluginRemove({ name: "@lando/plugin-php", cacheRoot }).pipe(
@@ -269,7 +272,7 @@ describe("meta:plugin:remove command", () => {
       );
 
       expect(result.removed).toBe(false);
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Bun.file(join(toolingCacheDir, "commands.bin")).exists()).toBe(false);
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }

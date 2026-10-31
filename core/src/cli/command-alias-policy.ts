@@ -1,13 +1,25 @@
 import type { AppCommandIndexPayload, CommandIndexEntry } from "@lando/engine/cache/command-index";
 import { CommandAliasConflictError, CommandAliasTargetError } from "@lando/sdk/errors";
+import { buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
-import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
+import { BUNDLED_COMMAND_DESCRIPTORS } from "./generated/bundled-command-descriptors";
+import type { PluginCommandRow } from "./plugin-command-catalog";
 
 const RESERVED_ALIAS_TOKENS = new Set(["help", "--help", "-h", "--version", "-V", "-v"]);
+const BUNDLED_ROWS: readonly PluginCommandRow[] = BUNDLED_COMMAND_DESCRIPTORS.map((descriptor) => ({
+  id: descriptor.id,
+  summary: descriptor.summary,
+  descriptor,
+  pluginName: descriptor.pluginName,
+  source: "bundled",
+}));
+const BASE_CATALOG = buildCommandCatalog(BUNDLED_ROWS);
 const BUILT_IN_COMMANDS: ReadonlyArray<{
   readonly aliases: ReadonlyArray<string>;
   readonly spec: { readonly id: string };
-}> = Object.values(COMMAND_REGISTRY_MANIFEST.commands);
+}> = BASE_CATALOG.entries
+  .filter((entry) => entry.source === "built-in")
+  .map((entry) => ({ spec: { id: entry.id }, aliases: entry.tokens.filter((token) => token !== entry.id) }));
 const BUILT_IN_COMMAND_IDS = BUILT_IN_COMMANDS.map((entry) => entry.spec.id);
 const REGISTERED_ALIASES = new Set(
   BUILT_IN_COMMANDS.flatMap((entry) => entry.aliases).filter((alias) => !alias.startsWith("-")),
@@ -47,6 +59,9 @@ export const commandAliasRegistrationError = (
   policy: CommandAliasPolicyInput | undefined,
   appCommandIds: ReadonlyArray<string>,
   entries: ReadonlyArray<CommandIndexEntry> = [],
+  pluginIds: readonly string[] = BASE_CATALOG.entries
+    .filter((entry) => entry.source === "plugin")
+    .map((entry) => entry.id),
 ): CommandAliasConflictError | CommandAliasTargetError | undefined => {
   for (const entry of entries) {
     if (entry.source !== "bun-script") continue;
@@ -73,7 +88,7 @@ export const commandAliasRegistrationError = (
     });
   }
   if (policy?.enabled === false) return undefined;
-  const canonicalIds = [...BUILT_IN_COMMAND_IDS, ...appCommandIds];
+  const canonicalIds = [...BUILT_IN_COMMAND_IDS, ...appCommandIds, ...pluginIds];
   for (const [alias, target] of Object.entries(policy?.custom ?? {})) {
     const safeAlias = escapeDiagnosticText(alias);
     const safeTarget = escapeDiagnosticText(target);
@@ -123,25 +138,29 @@ export const commandAliasRegistrationError = (
 
 export const commandAliasPolicyError = (
   cache: AppCommandIndexPayload,
+  pluginIds?: readonly string[],
 ): CommandAliasConflictError | CommandAliasTargetError | undefined =>
   commandAliasRegistrationError(
     cache.aliasPolicy,
     cache.entries.map((entry) => entry.id),
     cache.entries,
+    pluginIds,
   );
 
 export const activeCommandAliases = (
   cache: AppCommandIndexPayload,
+  plugins: readonly PluginCommandRow[] = BUNDLED_ROWS,
 ): ReadonlyArray<readonly [string, string]> => {
   const policy = cache.aliasPolicy;
   if (policy?.enabled === false) return [];
+  const catalog = buildCommandCatalog(plugins, cache);
   const aliases = new Map<string, string>();
-  for (const entry of BUILT_IN_COMMANDS) {
-    for (const alias of entry.aliases) {
-      if (!alias.startsWith("-")) aliases.set(alias, entry.spec.id);
-    }
-  }
-  for (const alias of policy?.disabled ?? []) aliases.delete(alias);
-  for (const [alias, target] of Object.entries(policy?.custom ?? {})) aliases.set(alias, target);
+  for (const [token, entry] of catalog.byToken)
+    if (
+      token !== entry.id &&
+      !token.startsWith("-") &&
+      (entry.source !== "tooling" || policy?.custom?.[token] === entry.id)
+    )
+      aliases.set(token, entry.id);
   return [...aliases].sort(([left], [right]) => left.localeCompare(right));
 };

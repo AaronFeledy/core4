@@ -11,3 +11,4 @@ tooling:
 commandAliases:
   custom:
     hi: app:greet
+    dump: db:export

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -8,7 +8,6 @@ import { Effect, Layer, Schema } from "effect";
 import { PluginTrustState } from "@lando/sdk/schema";
 import { PluginTrustStore } from "@lando/sdk/services";
 
-import { writePluginCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import {
   pluginTrust,
@@ -50,16 +49,18 @@ describe("meta:plugin:trust commands", () => {
     expect(await Effect.runPromise(store.isPluginTrusted("@lando/plugin-php"))).toBe(true);
   });
 
-  test("invalidates the plugin-command cache after trusting a plugin", async () => {
+  test("invalidates app tooling caches after trusting a plugin", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-trust-cache-"));
     try {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      const toolingCacheDir = join(cacheRoot, "apps", "tooling-trustfixture");
+      await mkdir(toolingCacheDir, { recursive: true });
+      await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
 
       await Effect.runPromise(
         pluginTrust({ name: "@lando/plugin-php", cacheRoot }).pipe(Effect.provide(trustLayer(userConfRoot))),
       );
 
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Bun.file(join(toolingCacheDir, "commands.bin")).exists()).toBe(false);
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }
@@ -81,17 +82,19 @@ describe("meta:plugin:trust commands", () => {
     expect(await readFile(join(userConfRoot, "plugin-trust.yml"), "utf8")).toContain(`  - "${root}"`);
   });
 
-  test("invalidates the plugin-command cache after trusting an authoring root", async () => {
+  test("invalidates app tooling caches after trusting an authoring root", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-trust-cache-"));
     try {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      const toolingCacheDir = join(cacheRoot, "apps", "tooling-trustrootfixture");
+      await mkdir(toolingCacheDir, { recursive: true });
+      await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
       const root = resolve(userConfRoot, "authoring", "plugin");
 
       await Effect.runPromise(
         pluginTrustAuthoringRoot({ path: root, cacheRoot }).pipe(Effect.provide(trustLayer(userConfRoot))),
       );
 
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Bun.file(join(toolingCacheDir, "commands.bin")).exists()).toBe(false);
     } finally {
       await rm(cacheRoot, { recursive: true, force: true });
     }
@@ -135,11 +138,13 @@ describe("meta:plugin:trust commands", () => {
     );
   });
 
-  test("revokes plugin trust and invalidates the plugin-command cache", async () => {
+  test("revokes plugin trust and invalidates app tooling caches", async () => {
     const layer = trustLayer(userConfRoot);
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-trust-cache-"));
     try {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      const toolingCacheDir = join(cacheRoot, "apps", "tooling-revokefixture");
+      await mkdir(toolingCacheDir, { recursive: true });
+      await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
       await Effect.runPromise(pluginTrust({ name: "@lando/plugin-node" }).pipe(Effect.provide(layer)));
 
       const result = await Effect.runPromise(
@@ -148,7 +153,7 @@ describe("meta:plugin:trust commands", () => {
 
       expect(result.kind).toBe("revoke");
       expect(renderPluginTrustRevokeResult(result)).toBe("revoked-plugin: @lando/plugin-node");
-      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await Bun.file(join(toolingCacheDir, "commands.bin")).exists()).toBe(false);
       const store = await Effect.runPromise(PluginTrustStore.pipe(Effect.provide(layer)));
       expect(await Effect.runPromise(store.isPluginTrusted("@lando/plugin-node"))).toBe(false);
     } finally {

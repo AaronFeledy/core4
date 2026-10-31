@@ -275,16 +275,24 @@ export const isBuiltInCommandImplemented = (commandId: string): boolean =>
 export const resolveBuiltInCommand = (token: string | undefined): BuiltInCommandEntry | undefined =>
   token === undefined ? undefined : builtInCommandIndex.byToken.get(token);
 
-export const suggestBuiltInCommandForSuffix = (token: string): string | undefined => {
-  let match: BuiltInCommandEntry | undefined;
-  for (const entry of builtInCommandEntries) {
-    const id = entry.spec.id;
+export const suggestCommandForSuffix = (
+  token: string,
+  pluginCommandIds: ReadonlyArray<string> = [],
+): string | undefined => {
+  const matchesSuffix = (id: string): boolean => {
     const separator = id.indexOf(":");
-    if (separator < 0 || id.slice(separator + 1) !== token) continue;
-    if (match !== undefined) return undefined;
-    match = entry;
+    return separator >= 0 && id.slice(separator + 1) === token;
+  };
+  const matches = new Set<string>();
+  for (const entry of builtInCommandEntries) {
+    if (matchesSuffix(entry.spec.id)) matches.add(entry.spec.id);
   }
-  return match?.status.kind === "deferred" ? undefined : match?.spec.id;
+  for (const id of pluginCommandIds) {
+    if (matchesSuffix(id)) matches.add(id);
+  }
+  if (matches.size !== 1) return undefined;
+  const [match] = matches;
+  return match === undefined || deferredBuiltInCommandIds.includes(match) ? undefined : match;
 };
 
 export const isReservedNamespaceHead = (head: string | undefined): boolean =>

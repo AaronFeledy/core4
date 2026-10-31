@@ -1205,6 +1205,7 @@
       "CleanupProps",
       "CommandAliasesShape",
       "CommandCompletion",
+      "CommandContribution",
       "CommandOutput",
       "CommandOutputChunk",
       "CommandResultEnvelope",

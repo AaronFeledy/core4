@@ -573,7 +573,7 @@ describe("deprecation release gate", () => {
             name: "@lando/plugin-example",
             contributes: {
               commands: [
-                { id: "example:old", deprecated: { since: "4.2.0", removeIn: "5.0.0", note: "Use example:new." } },
+                { id: "example:old", summary: "Old example.", deprecated: { since: "4.2.0", removeIn: "5.0.0", note: "Use example:new." } },
               ],
             },
           };
@@ -603,7 +603,7 @@ describe("deprecation release gate", () => {
           export const manifest = {
             name: "@lando/plugin-example",
             contributes: {
-              commands: [{ id: "example:old", deprecated: commandNotice }],
+              commands: [{ id: "example:old", summary: "Old example.", deprecated: commandNotice }],
             },
           };
         `,

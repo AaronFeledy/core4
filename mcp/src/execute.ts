@@ -7,7 +7,7 @@
  * translating the command lifecycle `Exit` into a `CommandResultOutcome`.
  * Interrupts (cancellation) propagate; this seam must not swallow them.
  */
-import { Cause, type Context, Effect, type Exit } from "effect";
+import { Cause, type Context, Effect, Exit } from "effect";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
@@ -41,10 +41,15 @@ export const makeNestedExecute = (
 ): McpExecute =>
   Effect.fnUntraced(
     function* (entry, runInput) {
+      const bound = yield* Effect.exit(
+        entry.spec.bindInput === undefined ? Effect.succeed(runInput) : entry.spec.bindInput(runInput),
+      );
+      if (bound._tag === "Failure") return yield* outcomeFromExit(Exit.failCause(bound.cause));
+      const input = bound.value;
       const runtimeCwd = yield* Effect.serviceOption(RuntimeCwd);
       const cwd = runInput.appPath ?? (runtimeCwd._tag === "Some" ? runtimeCwd.value : process.cwd());
       const completion = entry.spec.completion;
-      const command = entry.spec.run(runInput);
+      const command = entry.spec.run(input);
       const rootAwareCommand =
         runInput.appPath === undefined
           ? command
@@ -55,11 +60,11 @@ export const makeNestedExecute = (
           rootAwareCommand.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(output.finish))),
           {
             commandId: entry.spec.id,
-            argv: entry.tooling === true ? [] : runInput.argv,
-            args: entry.tooling === true ? {} : runInput.args,
-            flags: entry.tooling === true ? {} : runInput.flags,
+            argv: entry.tooling === true ? [] : (input.parsedArgv ?? input.argv),
+            args: entry.tooling === true ? {} : input.args,
+            flags: entry.tooling === true ? {} : input.flags,
             ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
-            ...(completion === undefined ? {} : { completion: (value) => completion(value, runInput) }),
+            ...(completion === undefined ? {} : { completion: (value) => completion(value, input) }),
           },
         ),
       );

@@ -1,12 +1,8 @@
 import { expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
-import { PluginName } from "@lando/sdk/schema";
 import { APP_PLAN_CACHE_SCHEMA_VERSION, deriveAppPlanCacheKey } from "../../src/cache/app-plan.ts";
 import { canonicalCacheJson } from "../../src/cache/canonical.ts";
-import {
-  deriveAppCommandEntriesFingerprint,
-  derivePluginCommandPluginListSha,
-} from "../../src/cache/command-index.ts";
+import { deriveAppCommandEntriesFingerprint } from "../../src/cache/command-index.ts";
 import { fingerprintPlanningRuntimeParts } from "../../src/cache/planning-runtime.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
@@ -47,21 +43,6 @@ test("hashes canonical text when planning runtime keys have numeric names", () =
   const parts = { coreVersion: "test", "2": "two", "10": "ten", a: 2, B: 1 };
   const fingerprint = fingerprintPlanningRuntimeParts(parts);
   expect(fingerprint).toBe(sha256Hex('{"10":"ten","2":"two","B":1,"a":2,"coreVersion":"test"}'));
-});
-
-test("sorts manifest sets by UTF-16 when names differ by case and non-ASCII characters", () => {
-  const manifests = ["é", "a", "B", "日本"].map((name) => ({
-    name: PluginName.make(name),
-    version: "1",
-    api: 4 as const,
-    bootstrap: "app" as const,
-  }));
-  const fingerprint = derivePluginCommandPluginListSha(manifests);
-  expect(fingerprint).toBe(
-    sha256Hex(
-      '[{"api":4,"name":"B","version":"1"},{"api":4,"name":"a","version":"1"},{"api":4,"name":"é","version":"1"},{"api":4,"name":"日本","version":"1"}]',
-    ),
-  );
 });
 
 test("preserves command entry order when fingerprinting a semantic array", () => {

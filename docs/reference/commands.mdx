@@ -1,14 +1,15 @@
 ---
 title: Command Reference
-description: Generated reference for every public Lando command and its flags.
+description: Generated reference for built-in and bundled plugin Lando commands and their flags.
 ---
 
 {/* GENERATED FILE — do not hand-edit. Regenerate via `bun run codegen:command-reference`. */}
 
 # Command Reference
 
-Find public Lando commands, aliases, arguments, and flags below. Hidden and
-internal commands are omitted. This page is generated from command metadata.
+Find built-in and bundled plugin commands, aliases, arguments, and flags below.
+Optional plugins document their own commands. Hidden and internal commands are
+omitted. This page is generated from command metadata.
 
 ## Machine-readable output
 
@@ -745,6 +746,145 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+
+## `lando db:export`
+
+Export a database dump from a service.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `file` | Destination dump file. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--compression-level` | Host dump compression level: gzip 0-9 or zstd 1-22, selected by the file suffix. |
+| `--service` | Source database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:import`
+
+Import a database dump into a service.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `file` | Dump file to import. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Target database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:reset`
+
+Reset a database service to an empty state.
+
+Provided by `@lando/sql`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Target database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:restore`
+
+Restore a database service from a snapshot.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `snapshot` | Snapshot id or label to restore. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Target database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:seed`
+
+Seed a fresh database from a dump, snapshot, or running app.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `file` | Dump file to seed from. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--from-app` | Running app to copy the database from. |
+| `--from-path` | Checkout of a running app to copy the database from. |
+| `--from-service` | Database service in the source app. |
+| `--service` | Target database service. |
+| `--snapshot` | Snapshot id or label to seed from. |
+
+## `lando db:snapshot`
+
+Create a named snapshot of a database service.
+
+Provided by `@lando/sql`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--compression` | Snapshot compression format. (one of `gzip`, `zstd`, `none`) |
+| `--label` | Optional snapshot label. |
+| `--service` | Source database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:snapshots`
+
+List database snapshots and recovery points.
+
+Provided by `@lando/sql`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--from-app` | Explicit source app id. |
+| `--from-path` | Explicit canonical source app root. |
+| `--service` | Database service to list. |
+
+## `lando db:snapshots:prune`
+
+Preview or apply database snapshot retention.
+
+Provided by `@lando/sql`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--from-app` | Explicit sibling source app id. |
+| `--from-path` | Explicit canonical source app root. |
+| `--keep-latest` | Number of newest manual snapshots to retain. |
+| `--preview` | Show deletions without removing snapshots. |
+| `--service` | Database service to prune. |
+| `--yes, -y` | Confirm snapshot deletion. |
 
 ## `lando meta:bun`
 
