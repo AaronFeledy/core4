@@ -1,6 +1,8 @@
 import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import type { ManifestDiagnostic } from "@lando/engine/plugins/manifest-selection";
 import type { CommandContribution } from "@lando/sdk/schema";
+import { HELP_TOPICS } from "./cold-path-output";
+import { COMMAND_TOPICS } from "./command-topics";
 import type { DeferredCommandPlan } from "./deferred-commands";
 import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest";
 import type { HelpAliasPolicy } from "./help-names";
@@ -53,8 +55,10 @@ export const commandDescriptorNotice = (descriptor: CommandContribution, token: 
   const alias = aliases.find((entry) => typeof entry !== "string" && entry.name === token);
   return typeof alias === "object" ? alias.deprecated : undefined;
 };
+const reservedTopics: ReadonlySet<string> = new Set([...Object.keys(COMMAND_TOPICS), ...HELP_TOPICS]);
 const reserved = (token: string) =>
-  ["help", "run", "app", "apps", "meta", "plugin", "global", "recipes", "scratch"].includes(token) ||
+  reservedTopics.has(token) ||
+  ["help", "run"].includes(token) ||
   /^(scratch:|global:|meta:plugin:|meta:global:|plugin:|-)/u.test(token);
 const builtIns: Readonly<
   Record<

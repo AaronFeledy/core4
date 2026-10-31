@@ -15,9 +15,16 @@ const commandAlias = Schema.Union([
 ]);
 
 export const CommandContribution = Schema.Struct({
-  id: canonicalToken.annotate({
-    description: "Canonical colon-separated command id.",
-  }),
+  id: canonicalToken
+    .check(
+      Schema.isPattern(/^(?!(?:plugin|global|scratch|meta:plugin|meta:global|apps:scratch)(?::|$))/u, {
+        message:
+          "Choose a plugin-owned namespace; plugin, global, scratch, meta:plugin, meta:global, and apps:scratch are reserved for Lando.",
+      }),
+    )
+    .annotate({
+      description: "Canonical colon-separated command id.",
+    }),
   summary: Schema.String.check(Schema.isPattern(/\S/u), Schema.isMaxLength(512)).annotate({
     description: "Nonblank bounded command summary, authoritative for help and listings.",
   }),

@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { Context, Effect, Schema } from "effect";
+import { HELP_TOPICS } from "../../src/cli/cold-path-output.ts";
 import { buildCommandCatalog } from "../../src/cli/command-catalog.ts";
+import { COMMAND_TOPICS } from "../../src/cli/command-topics.ts";
 import { buildHelpCatalog } from "../../src/cli/compiled-help.ts";
 import { BUNDLED_COMMAND_DESCRIPTORS } from "../../src/cli/generated/bundled-command-descriptors.ts";
 import { createPluginCommandCatalog } from "../../src/cli/plugin-command-catalog.ts";
@@ -46,6 +48,29 @@ test("plugin aliases yield to built-ins, core topics, canonical ids and tooling"
     ),
   ).toBe(true);
 });
+
+test.each([...new Set([...Object.keys(COMMAND_TOPICS), ...HELP_TOPICS])])(
+  "plugin aliases cannot claim the registered topic %s",
+  (token) => {
+    // Given a plugin whose top-level alias is a registered command or help topic
+    const descriptor = { id: "fx:inspect", summary: "Inspect fixture.", topLevelAlias: token };
+    // When the catalog indexes it
+    const catalog = buildCommandCatalog([
+      {
+        id: descriptor.id,
+        descriptor,
+        summary: descriptor.summary,
+        pluginName: "@example/topic",
+        source: "app",
+      },
+    ]);
+    // Then the topic keeps the token and the dropped alias is reported
+    expect(catalog.resolve(token)?.source).not.toBe("plugin");
+    expect(catalog.diagnostics).toContainEqual(
+      expect.objectContaining({ _tag: "CommandAliasConflictError" }),
+    );
+  },
+);
 
 test("dispatch, machine help and diagnostics keep the discovery-first alias owner", async () => {
   // Given z:run discovered before a:run, both claiming the inspect alias

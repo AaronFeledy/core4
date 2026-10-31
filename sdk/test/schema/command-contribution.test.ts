@@ -24,3 +24,19 @@ test("decodes declarative command metadata without an implementation", () => {
   };
   expect(Schema.decodeUnknownSync(CommandContribution)(descriptor)).toEqual(descriptor);
 });
+
+test.each([
+  "plugin:owned",
+  "meta:plugin:owned",
+  "meta:global:owned",
+  "scratch:owned",
+  "apps:scratch:owned",
+  "global:owned",
+])("rejects reserved canonical namespace %s", (id) => {
+  // Given a plugin claiming a host-owned namespace.
+  const descriptor = { id, summary: "Inspect a resource." };
+  // When decoding the command descriptor.
+  const decoded = Schema.decodeUnknownResult(CommandContribution)(descriptor);
+  // Then the command cannot enter a plugin index.
+  expect(Result.isFailure(decoded)).toBe(true);
+});
