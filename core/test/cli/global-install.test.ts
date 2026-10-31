@@ -129,15 +129,19 @@ describe("global configuration reconciliation", () => {
         );
         expect(Result.isFailure(result)).toBe(true);
         if (Result.isFailure(result)) {
-          expect(result.failure).toMatchObject({
-            _tag: "LandofileWriteValidationError",
-            issues: expect.arrayContaining([
-              expect.objectContaining({
-                path: ["services", "mailpit", "image"],
-                source: expect.objectContaining({ file: userPath }),
-              }),
-            ]),
-          });
+          if (authoredDist) {
+            expect(result.failure).toMatchObject({ _tag: "LandofileFormConflictError" });
+          } else {
+            expect(result.failure).toMatchObject({
+              _tag: "LandofileWriteValidationError",
+              issues: expect.arrayContaining([
+                expect.objectContaining({
+                  path: ["services", "mailpit", "image"],
+                  source: expect.objectContaining({ file: userPath }),
+                }),
+              ]),
+            });
+          }
         }
         expect(await readFile(userPath, "utf8")).toBe(userContent);
         if (authoredDist) expect(await readFile(distPath, "utf8")).toBe(distContent);
