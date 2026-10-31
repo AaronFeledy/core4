@@ -82,7 +82,7 @@ The returned opaque, SDK-published `App` handle captures app identity and runtim
 | `pull`, `push`, `switch`, `remote` | Authored remote-sync contract over source/Dataset plugins (including bundled `dotenv`) and core `CodeSync`. Code changes invalidate old plans/handles even with `noPull`; all selected bindings MUST be re-resolved (§10.12). Release sequencing remains in the ROADMAP. |
 | `config`, `events` | App-scoped configuration and lifecycle access. |
 
-Inputs are option objects. One-shot methods require no runtime services after binding; live resources and subscriptions retain `Scope.Scope`. Typed Effects are returned directly, not renderer envelopes. `app.start()` is managed by default; detached behavior requires explicit opt-in.
+Inputs are option objects. One-shot methods require no runtime services after binding; live resources and subscriptions retain `Scope.Scope`. Typed Effects are returned directly, not renderer envelopes. Exec and tooling output capture follows §8.11.3, including omission of captured-output fields when a host supplies a sink. `app.start()` is managed by default; detached behavior requires explicit opt-in.
 
 Remote methods MUST enforce §10.12.8 and retain applied-data/code side effects on failure. General approval MUST NOT assert protected typed confirmation. Non-interactive hosts MUST fail protected operations requiring that confirmation. Tether MUST NOT be exposed as a library method or through programmatic CLI dispatch, even with a custom interactive renderer. Session credentials and named overrides MUST remain with their owning scope; config pull MUST use the private file landing rules, not promise an overlay for a later start (§10.12.7).
 

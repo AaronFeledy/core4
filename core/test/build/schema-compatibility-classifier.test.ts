@@ -248,3 +248,28 @@ test.each(["input", "output", "strict"] satisfies readonly SchemaPolarity[])(
     expect(findings).toEqual([]);
   },
 );
+
+test("does not prove a union replacement that drops a required key without a property schema", () => {
+  // Given
+  const before = { anyOf: [{ type: "object", required: ["mustExist"] }, { type: "null" }] };
+  // When
+  const findings = classifySchemaChange(before, { type: "object" }, "output");
+  // Then
+  expect(findings.some(({ verdict }) => verdict === "compatible")).toBe(false);
+});
+
+test("reports requiredness changes for keys that have no property schema", () => {
+  // Given
+  const before = { type: "object", required: ["mustExist"] };
+  const after = { type: "object" };
+  // When
+  const output = classifySchemaChange(before, after, "output");
+  const input = classifySchemaChange(after, before, "input");
+  // Then
+  expect(output).toMatchObject([
+    { verdict: "breaking", changeKind: "property-optional", path: "$.mustExist" },
+  ]);
+  expect(input).toMatchObject([
+    { verdict: "breaking", changeKind: "property-required", path: "$.mustExist" },
+  ]);
+});

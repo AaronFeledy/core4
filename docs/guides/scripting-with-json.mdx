@@ -45,8 +45,9 @@ enough behind that Lando drops events instead of stalling, the result frame's
 Source and compiled `--format json` are identical because both use the same
 native registry and dispatcher.
 
-Without `--follow`, `lando logs --format=json` returns `result.app` and
-`result.lines`. Each line has `service`, `stream` (`stdout` or `stderr`), and
+Without `--follow`, `lando logs --format=json` emits a buffered frame stream.
+Its terminal `result` frame carries the app name at `envelope.result.app` and
+the collected lines at `envelope.result.lines`. Each line has `service`, `stream` (`stdout` or `stderr`), and
 `line`, with optional `source` and `timestamp` (epoch milliseconds). In live
 follow mode, read the lines from the frames instead: the terminal frame's
 `envelope.result` contains `app` and omits `lines`. YAML collects the lines into

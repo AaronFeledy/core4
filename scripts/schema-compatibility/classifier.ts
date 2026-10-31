@@ -84,6 +84,25 @@ interface CompareContext {
   readonly unionProof?: boolean;
 }
 
+const requirednessFinding = (
+  path: string,
+  nowRequired: boolean,
+  polarity: CompareContext["polarity"],
+): CompatibilityFinding =>
+  nowRequired
+    ? finding(
+        polarity === "output" ? "compatible" : "breaking",
+        "property-required",
+        path,
+        "An optional property became required.",
+      )
+    : finding(
+        polarity === "input" ? "compatible" : "breaking",
+        "property-optional",
+        path,
+        "A required property became optional.",
+      );
+
 const compareProperties = (
   before: JsonSchema,
   after: JsonSchema,
@@ -117,18 +136,18 @@ const compareProperties = (
     if (beforeProperty !== undefined) {
       findings.push(...compareNode(beforeProperty, afterProperty, { ...context, path: propertyPath }));
     }
-    if (beforeRequired.has(property) === afterRequired.has(property)) continue;
-    if (afterRequired.has(property)) {
-      const verdict = context.polarity === "output" ? "compatible" : "breaking";
-      findings.push(
-        finding(verdict, "property-required", propertyPath, "An optional property became required."),
-      );
-    } else {
-      const verdict = context.polarity === "input" ? "compatible" : "breaking";
-      findings.push(
-        finding(verdict, "property-optional", propertyPath, "A required property became optional."),
-      );
+    if (beforeRequired.has(property) !== afterRequired.has(property)) {
+      findings.push(requirednessFinding(propertyPath, afterRequired.has(property), context.polarity));
     }
+  }
+
+  // A required key may have no property schema; its requiredness still constrains the contract.
+  for (const property of [...new Set([...beforeRequired, ...afterRequired])].sort()) {
+    if (beforeProperties[property] !== undefined || afterProperties[property] !== undefined) continue;
+    if (beforeRequired.has(property) === afterRequired.has(property)) continue;
+    findings.push(
+      requirednessFinding(childPath(context.path, property), afterRequired.has(property), context.polarity),
+    );
   }
 
   for (const property of Object.keys(afterProperties).sort()) {
