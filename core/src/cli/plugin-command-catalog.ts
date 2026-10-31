@@ -197,7 +197,7 @@ export const createPluginCommandCatalog = (
         ).pipe(Effect.provide(RedactionService.layer)),
       );
       return {
-        rows: rows.sort((a, b) => a.id.localeCompare(b.id)),
+        rows,
         topics: pluginTopicRows(
           rows.map((row) => ({ ...row, hidden: row.descriptor.hidden ?? false })),
           result.graph.plugins.map((plugin) => plugin.manifest),

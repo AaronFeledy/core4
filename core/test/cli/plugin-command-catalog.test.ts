@@ -81,7 +81,7 @@ test("catalog acquires once, matches ids without loading, and loads only a selec
   expect(await catalog.topic("fixture")).toBeDefined();
   expect(loaded).toEqual([]);
   const listing = await catalog.list("fixture");
-  expect(listing.rows.map((row) => row.id)).toEqual(["fixture:first", "fixture:second"]);
+  expect(listing.rows.map((row) => row.id)).toEqual(["fixture:second", "fixture:first"]);
   expect(loaded).toEqual([]);
   await catalog.resolve("fixture:first");
   expect(loaded).toEqual(["fixture:first"]);
