@@ -60,6 +60,8 @@ If you are looking for a public surface or policy:
 | Product non-goals | 01 | §14.1 |
 | Open and deferred decisions | 01 | §14.2 |
 | Bun policies and performance budgets | 02 | §2.1 |
+| Private Bun self-execution over `ProcessRunner`, recursion guard, child completion, single machine envelope, output caps, and stdin policy | 02 + 03 + 08 | §2.1 + §3.4 + §8.2.4 |
+| `PluginPackageOperationError` operations and the failed-operation mutation boundary | 08 + 10 | §8.2.4 + §9.6 |
 | TypeScript policy | 02 | §2.2 |
 | Native command dispatcher choice | 02 | §2.3 |
 | Effect runtime, schema validation, compiled decoders, logging, and docs rules | 02 | §2.4 + §2.5 |
@@ -149,6 +151,7 @@ If you are looking for a public surface or policy:
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
+| Bounded recipe post-init, prepared-script integrity, and public failure context | 08 | §8.8.8 |
 | Single preparation, immutable pre-publication review, and unattended init paths | 08 | §8.8.7 + §8.8.9 |
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService, type LandoEvent } from "@lando/sdk/services";
+import { withProcess } from "../_support/process-runner.ts";
 
 import { pluginPublish, renderPluginPublishResult } from "../../src/cli/commands/plugin-publish.ts";
 import { listTree } from "./_util/fs-tree.ts";
@@ -63,26 +64,27 @@ const writeFreshDist = async (dir: string) => {
     await utimes(join(dir, "dist", file), future, future);
 };
 
-const makeBuildingSpawner = (spawns: Spawn[]) => ({
-  spawn: async ({
-    cmd,
-    cwd,
-    env,
-  }: {
-    readonly cmd: ReadonlyArray<string>;
-    readonly cwd: string;
-    readonly env: Readonly<Record<string, string>>;
-  }) => {
-    spawns.push({ cmd, cwd, env });
-    if (cmd.includes("build")) {
-      await mkdir(join(root, "dist"), { recursive: true });
-      await writeFile(join(root, "dist", "index.js"), "export const ok = true;\n");
-    }
-    if (cmd.includes("tsc"))
-      await writeFile(join(root, "dist", "index.d.ts"), "export declare const ok = true;\n");
-    return { exitCode: 0 };
-  },
-});
+const buildingProcess = (spawns: Spawn[]) =>
+  withProcess(
+    async ({
+      cmd,
+      cwd,
+      env,
+    }: {
+      readonly cmd: ReadonlyArray<string>;
+      readonly cwd: string;
+      readonly env: Readonly<Record<string, string>>;
+    }) => {
+      spawns.push({ cmd, cwd, env });
+      if (cmd.includes("build")) {
+        await mkdir(join(root, "dist"), { recursive: true });
+        await writeFile(join(root, "dist", "index.js"), "export const ok = true;\n");
+      }
+      if (cmd.includes("tsc"))
+        await writeFile(join(root, "dist", "index.d.ts"), "export declare const ok = true;\n");
+      return { exitCode: 0 };
+    },
+  );
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "lando-plugin-publish-"));
@@ -104,8 +106,7 @@ describe("meta:plugin:publish command", () => {
         dryRun: true,
         noTest: true,
         userDataRoot: dataRoot,
-        spawner: makeBuildingSpawner([]),
-      }),
+      }).pipe(buildingProcess([])),
     );
 
     expect(listTree(dataRoot)).toEqual([]);
@@ -121,8 +122,7 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         noTest: true,
         userDataRoot: dataRoot,
-        spawner: makeBuildingSpawner([]),
-      }),
+      }).pipe(buildingProcess([])),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -141,8 +141,7 @@ describe("meta:plugin:publish command", () => {
         execPath: "/opt/bun",
         dryRun: true,
         noTest: true,
-        spawner: makeBuildingSpawner(spawns),
-      }).pipe(Effect.provide(recordingEventLayer(events))),
+      }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
     );
 
     expect(result.pluginName).toBe("@acme/lando-plugin-publish");
@@ -178,8 +177,7 @@ describe("meta:plugin:publish command", () => {
         dryRun: true,
         noTest: true,
         userDataRoot: join(root, "no-auth-here"),
-        spawner: makeBuildingSpawner([]),
-      }),
+      }).pipe(buildingProcess([])),
     );
 
     expect(result.published).toBe(false);
@@ -198,11 +196,10 @@ describe("meta:plugin:publish command", () => {
       pluginPublish({
         cwd: root,
         execPath: "/opt/bun",
-        spawner: makeBuildingSpawner(spawns),
         authReader: async () => ({
           registries: { "https://registry.npmjs.org/": { token: "secret-token" } },
         }),
-      }).pipe(Effect.provide(recordingEventLayer(events))),
+      }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
     );
 
     expect(result.rebuilt).toBe(true);
@@ -240,11 +237,10 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         execPath: "/opt/bun",
         noTest: true,
-        spawner: makeBuildingSpawner(spawns),
         authReader: async () => ({
           registries: { "https://registry.npmjs.org/": { token: "secret-token" } },
         }),
-      }),
+      }).pipe(buildingProcess(spawns)),
     );
 
     expect(result.rebuilt).toBe(true);
@@ -262,9 +258,8 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         execPath: "/opt/bun",
         noTest: true,
-        spawner: makeBuildingSpawner(spawns),
         authReader: async () => ({ registries: { "https://registry.npmjs.org/": { token: "t" } } }),
-      }),
+      }).pipe(buildingProcess(spawns)),
     );
 
     expect(result.tested).toBe(false);
@@ -303,9 +298,8 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         execPath: "/opt/bun",
         noTest: true,
-        spawner: makeBuildingSpawner(spawns),
         authReader: async () => ({ registries: { "https://npm.acme.test": { token: "acme-token" } } }),
-      }),
+      }).pipe(buildingProcess(spawns)),
     );
 
     const publishSpawn = spawns.find((spawn) => spawn.cmd[1] === "publish");
@@ -332,8 +326,7 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         noTest: true,
         userDataRoot: join(root, "empty-data-root"),
-        spawner: makeBuildingSpawner(spawns),
-      }).pipe(Effect.provide(recordingEventLayer(events))),
+      }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -359,9 +352,8 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         noTest: true,
         registry: "not-a-url",
-        spawner: makeBuildingSpawner(spawns),
         authReader: async () => ({ registries: { "not-a-url": { token: "t" } } }),
-      }).pipe(Effect.provide(recordingEventLayer(events))),
+      }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -385,9 +377,8 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         noTest: true,
         tag: "  ",
-        spawner: makeBuildingSpawner(spawns),
         authReader: async () => ({ registries: { "https://registry.npmjs.org/": { token: "t" } } }),
-      }),
+      }).pipe(buildingProcess(spawns)),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -425,8 +416,7 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         dryRun: true,
         noTest: true,
-        spawner: makeBuildingSpawner([]),
-      }),
+      }).pipe(buildingProcess([])),
     );
 
     expect(result.registry).toBe("https://npm.acme.test/");

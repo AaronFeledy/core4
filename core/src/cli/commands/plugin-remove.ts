@@ -1,18 +1,19 @@
 import { existsSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { type LandoCommandError, NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
-import type { ConfigService } from "@lando/sdk/services";
+import { NotImplementedError, PluginManifestError, PluginPackageOperationError } from "@lando/sdk/errors";
 
 import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 import { removeInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { findLandofilePath } from "@lando/landofile/discovery";
-import { writeFileAtomic } from "@lando/state-store/atomic";
 import { parseNpmPackageSpec } from "../../recipes/npm-source";
+import { bunSelfRun } from "./bun-self-runner";
+import { redactPluginPackageError } from "./plugin-package-error";
+import { updateManagedRootManifest } from "./plugin-remove-manifest";
 import { resolvePluginsRoot } from "./plugin-roots";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
@@ -24,20 +25,12 @@ const RESERVED_PLUGIN_ROOT_NAMES = new Set([
   "registry.json",
 ]);
 
-export interface PluginRemoveSpawner {
-  readonly uninstall: (request: {
-    readonly name: string;
-    readonly cwd: string;
-  }) => Promise<{ readonly exitCode: number; readonly stderr: string }>;
-}
-
 export interface PluginRemoveOptions {
   readonly name: string;
   readonly userDataRoot?: string;
   readonly cacheRoot?: string;
   readonly pluginsRoot?: string;
   readonly cwd?: string;
-  readonly spawner?: PluginRemoveSpawner;
   readonly trustStore?: Set<string>;
 }
 
@@ -51,76 +44,32 @@ export const PluginRemoveResultSchema = Schema.Struct({
   removed: Schema.Boolean,
 });
 
-const removeFailure = (name: string, stderr: string): NotImplementedError =>
-  new NotImplementedError({
-    message: `BunSelfExecError: bun remove failed for ${name}.`,
-    commandId: "meta:plugin:remove",
-    remediation: `Resolve the underlying bun error and retry:\n${stderr.trim()}`,
+const PLUGIN_REMOVE_COMMAND_ID = "meta:plugin:remove" as const;
+
+const uninstallViaBunSelf = Effect.fnUntraced(function* (name: string, cwd: string) {
+  const result = yield* bunSelfRun({
+    argv: ["remove", name],
+    cwd,
+    output: "quiet",
+    verb: "remove",
+    callerSubsystem: `plugin-remove:${PLUGIN_REMOVE_COMMAND_ID}:${name}`,
   });
-
-const defaultSpawner: PluginRemoveSpawner = {
-  uninstall: async ({ name, cwd }) => {
-    const proc = Bun.spawn({
-      cmd: [process.execPath, "remove", name],
-      cwd,
-      env: {
-        ...(Object.fromEntries(
-          Object.entries(process.env).filter(([, v]) => typeof v === "string"),
-        ) as Record<string, string>),
-        BUN_BE_BUN: "1",
-        LANDO_DISALLOW_BUN_BE_BUN_REENTRY: "1",
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-    return { exitCode, stderr };
-  },
-};
-
-const dependencyFields = [
-  "dependencies",
-  "devDependencies",
-  "optionalDependencies",
-  "peerDependencies",
-] as const;
-
-const managedRootManifestError = (manifestPath: string, cause: unknown): NotImplementedError =>
-  new NotImplementedError({
-    message: `Managed plugin root package.json is not readable JSON: ${manifestPath}.`,
-    commandId: "meta:plugin:remove",
-    remediation: `Repair or remove ${manifestPath}, then retry plugin removal. Cause: ${String(cause)}`,
-  });
-
-const updateManagedRootManifest = async (pluginsRoot: string, name: string): Promise<void> => {
-  const manifestPath = join(pluginsRoot, "package.json");
-  if (!existsSync(manifestPath)) return;
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(manifestPath, "utf8"));
-  } catch (cause) {
-    throw managedRootManifestError(manifestPath, cause);
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw managedRootManifestError(manifestPath, "manifest root is not an object");
-  }
-
-  let changed = false;
-  const manifest = parsed as Record<string, unknown>;
-  for (const field of dependencyFields) {
-    const deps = manifest[field];
-    if (typeof deps !== "object" || deps === null || Array.isArray(deps)) continue;
-    const depRecord = deps as Record<string, unknown>;
-    if (Object.hasOwn(depRecord, name)) {
-      delete depRecord[name];
-      changed = true;
-    }
-  }
-  if (!changed) return;
-
-  await writeFileAtomic(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-};
+  if (result.exitCode === 0) return;
+  return yield* Effect.fail(
+    yield* redactPluginPackageError(
+      new PluginPackageOperationError({
+        message: `Embedded Bun remove failed for ${name}.`,
+        remediation: "Resolve the underlying bun remove error and retry `lando plugin:remove`.",
+        commandId: PLUGIN_REMOVE_COMMAND_ID,
+        operation: "remove",
+        packageSpec: name,
+        cwd,
+        exitCode: result.exitCode,
+      }),
+      result.mode === "collected" ? result : undefined,
+    ),
+  );
+});
 
 const stripInlineComment = (line: string): string => line.replace(/\s+#.*$/u, "");
 
@@ -197,16 +146,7 @@ const activeLandofileRefusal = Effect.fnUntraced(function* (name: string, cwd: s
   });
 });
 
-export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
-  options: PluginRemoveOptions,
-): Effect.fn.Return<
-  PluginRemoveResult,
-  | LandoCommandError
-  | NotImplementedError
-  | PluginManifestError
-  | import("@lando/sdk/errors").LandofileFormConflictError,
-  ConfigService
-> {
+export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (options: PluginRemoveOptions) {
   if (options.name === "") {
     return yield* Effect.fail(
       new NotImplementedError({
@@ -295,13 +235,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       }
 
       if (hasModuleDir) {
-        const spawner = options.spawner ?? defaultSpawner;
-        const { exitCode, stderr } = yield* Effect.promise(() =>
-          spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
-        );
-        if (exitCode !== 0) {
-          return yield* Effect.fail(removeFailure(options.name, stderr));
-        }
+        yield* uninstallViaBunSelf(options.name, pluginsRoot);
         yield* Effect.tryPromise({
           try: () => updateManagedRootManifest(pluginsRoot, options.name),
           catch: (cause) =>
@@ -309,7 +243,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
               ? cause
               : new NotImplementedError({
                   message: `Failed to update managed plugin root package.json: ${String(cause)}`,
-                  commandId: "meta:plugin:remove",
+                  commandId: PLUGIN_REMOVE_COMMAND_ID,
                   remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
                 }),
         });
@@ -329,7 +263,7 @@ export const pluginRemove = Effect.fn("PluginRemove.remove")(function* (
       return { pluginName: options.name, removed: true };
     }),
   );
-});
+}, Effect.scoped);
 
 export const renderPluginRemoveResult = (result: PluginRemoveResult): string =>
   result.removed ? `removed: ${result.pluginName}` : `not-installed: ${result.pluginName} (no-op)`;

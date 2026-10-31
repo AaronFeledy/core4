@@ -334,7 +334,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ),
     options.configLayer ?? LandoConfigService.layer,
     EnvSecretStore.layer,
-  ).pipe(Layer.provide(PrivateFileAccessService.layer));
+  ).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {

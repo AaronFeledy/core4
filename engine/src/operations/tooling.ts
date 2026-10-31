@@ -26,6 +26,7 @@ import {
   type EnvironmentValueResolver,
   EventService,
   LandofileService,
+  type ProcessRunner,
   type RuntimeProviderRegistry,
   type ToolingEngine,
   type ToolingInvocation,
@@ -89,6 +90,7 @@ type RunToolingError =
   | ToolingInputError;
 
 type RunToolingServices =
+  | ProcessRunner
   | EnvironmentValueResolver
   | AppPlanner
   | ConfigService

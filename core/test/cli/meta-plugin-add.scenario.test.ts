@@ -4,13 +4,26 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { Effect, Layer, Queue, Stream } from "effect";
+import { Cause, Effect, type Exit, Layer, Queue, Stream } from "effect";
 
-import { ConfigService, EventService, type LandoEvent, PluginTrustStore } from "@lando/sdk/services";
+import {
+  BunSelfReentryError,
+  FileIoError,
+  PluginPackageOperationError,
+  ProcessExecError,
+} from "@lando/sdk/errors";
+import {
+  ConfigService,
+  EventService,
+  type LandoEvent,
+  PluginTrustStore,
+  ProcessRunner,
+} from "@lando/sdk/services";
+import { processRunnerFor } from "../_support/process-runner.ts";
 
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import { pluginAddSpec } from "../../src/cli/command-specs/meta/plugin/add.ts";
-import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
+import { type PluginAddOptions, pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
 import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
@@ -31,7 +44,15 @@ const fakeConfigService = (dataRoot: string) =>
 const pluginAddLayer = (
   dataRoot: string,
   trustStore = makePluginTrustStore(join(dataRoot, "plugin-trust.yml")),
-) => Layer.merge(fakeConfigService(dataRoot), Layer.succeed(PluginTrustStore, trustStore));
+) =>
+  Layer.mergeAll(
+    fakeConfigService(dataRoot),
+    Layer.succeed(PluginTrustStore, trustStore),
+    Layer.succeed(
+      ProcessRunner,
+      processRunnerFor(() => Effect.succeed({ exitCode: 0 })),
+    ),
+  );
 
 const recordingEventLayer = (events: LandoEvent[]) =>
   Layer.succeed(
@@ -121,6 +142,19 @@ const fetcherFor = (bytes: Uint8Array, calls?: Array<string>): TarballRecipeFetc
   },
 });
 
+const sourceFixture = (
+  name: string,
+  version: string,
+  materialize = (root: string) => writePluginManifest(root, { name, version }),
+) => {
+  const bytes = new Uint8Array([1]);
+  return {
+    registryClient: clientFor(packumentFor(name, bytes, version)),
+    fetcher: fetcherFor(bytes),
+    extractor: { extract: async (_bytes: Uint8Array, root: string) => materialize(join(root, "package")) },
+  };
+};
+
 const pluginPackageJson = (name: string, version: string, landoPlugin: Record<string, unknown> = {}) =>
   JSON.stringify({
     name,
@@ -149,7 +183,102 @@ afterEach(async () => {
   if (userDataRoot !== undefined) await rm(userDataRoot, { recursive: true, force: true });
 });
 
+const failureError = (exit: Exit.Exit<unknown, unknown>): unknown => {
+  if (exit._tag !== "Failure") throw new Error("expected failure");
+  const found = Cause.findErrorOption(exit.cause);
+  if (found._tag !== "Some") throw new Error(`expected tagged failure, got ${Cause.pretty(exit.cause)}`);
+  return found.value;
+};
+
 describe("meta:plugin:add command", () => {
+  test.each(["download", "verify", "extract"] as const)(
+    "reports an honest %s acquisition failure without child status",
+    async (stage) => {
+      const fixture = sourceFixture("@lando/plugin-stage", "1.2.3");
+      let source: Pick<PluginAddOptions, "registryClient" | "fetcher" | "extractor">;
+      switch (stage) {
+        case "download":
+          source = {
+            ...fixture,
+            fetcher: {
+              fetch: async () => {
+                throw new Error("fixture download failure");
+              },
+            },
+          };
+          break;
+        case "verify":
+          source = {
+            ...fixture,
+            registryClient: clientFor(packumentFor("@lando/plugin-stage", new Uint8Array([2]))),
+          };
+          break;
+        case "extract":
+          source = {
+            ...fixture,
+            extractor: {
+              extract: async () => {
+                throw new Error("fixture extract failure");
+              },
+            },
+          };
+          break;
+        default:
+          return stage satisfies never;
+      }
+      const error = await Effect.runPromise(
+        Effect.flip(
+          pluginAdd({ ...source, spec: "@lando/plugin-stage", trust: true }).pipe(
+            Effect.provide(pluginAddLayer(userDataRoot)),
+          ),
+        ),
+      );
+      expect(error).toBeInstanceOf(PluginPackageOperationError);
+      expect(error).toMatchObject({ operation: stage, packageSpec: "@lando/plugin-stage" });
+      expect(error).not.toHaveProperty("exitCode");
+      expect(await exists(join(pluginsRoot, "@lando/plugin-stage", "1.2.3"))).toBe(false);
+    },
+  );
+
+  test("failed postinstall capture prevents activation and residual trust", async () => {
+    const source = sourceFixture("@lando/plugin-overflow", "1.2.3", async (root) => {
+      await writePluginManifest(root, { name: "@lando/plugin-overflow", version: "1.2.3" });
+      await writeFile(
+        join(root, "package.json"),
+        JSON.stringify({
+          name: "@lando/plugin-overflow",
+          version: "1.2.3",
+          scripts: { postinstall: "fixture" },
+          landoPlugin: { name: "@lando/plugin-overflow", version: "1.2.3", api: 4, entry: "index.js" },
+        }),
+      );
+    });
+    const trustStore = new Set<string>();
+    const result = await Effect.runPromise(
+      pluginAdd({ ...source, spec: "@lando/plugin-overflow", trust: true, trustStore }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) => {
+            expect(input.capture).toBe(true);
+            return Effect.fail(
+              new ProcessExecError({
+                cmd: input.cmd,
+                message: "Private capture exceeded its byte budget.",
+                remediation: "Reduce child output.",
+              }),
+            );
+          }),
+        ),
+        Effect.provide(pluginAddLayer(userDataRoot)),
+        Effect.result,
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+    expect(await exists(join(pluginsRoot, "@lando/plugin-overflow", "1.2.3"))).toBe(false);
+    expect(await exists(join(pluginsRoot, "registry.json"))).toBe(false);
+    expect(trustStore.size).toBe(0);
+  });
+
   test("rejects non-registry specs with NotImplementedError and no phase words", async () => {
     const exit = await Effect.runPromiseExit(
       pluginAdd({
@@ -345,13 +474,18 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore: new Set<string>(),
-        bunSelfSpawner: {
-          spawn: async (options) => {
-            spawns.push(options);
-            return { exitCode: 0 };
-          },
-        },
-      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((options) =>
+            Effect.sync(() => {
+              spawns.push(options);
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+        Effect.provide(pluginAddLayer(userDataRoot)),
+      ),
     );
 
     expect(result.pluginName).toBe("@lando/plugin-postinstall");
@@ -388,7 +522,6 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore,
-        bunSelfSpawner: { spawn: async () => ({ exitCode: 0 }) },
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
     );
 
@@ -424,13 +557,18 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-evil", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore: new Set<string>(),
-        bunSelfSpawner: {
-          spawn: async (options) => {
-            spawns.push(options);
-            return { exitCode: 0 };
-          },
-        },
-      }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((options) =>
+            Effect.sync(() => {
+              spawns.push(options);
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+        Effect.provide(pluginAddLayer(userDataRoot, persistentStore)),
+      ),
     );
 
     expect(result.pluginName).toBe("@lando/plugin-trusted");
@@ -469,13 +607,22 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore: new Set<string>(),
-        bunSelfSpawner: {
-          spawn: async (options) => {
-            spawns.push(options);
-            return { exitCode: 0 };
-          },
-        },
-      }).pipe(Effect.provide(Layer.merge(pluginAddLayer(userDataRoot), recordingEventLayer(events)))),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((options) =>
+            Effect.sync(() => {
+              spawns.push({
+                cmd: [options.cmd, ...options.args],
+                cwd: options.cwd ?? "",
+                env: { ...options.env },
+              });
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+        Effect.provide(Layer.merge(pluginAddLayer(userDataRoot), recordingEventLayer(events))),
+      ),
     );
 
     expect(result.trusted).toBe(true);
@@ -532,7 +679,6 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore,
-        bunSelfSpawner: { spawn: async () => ({ exitCode: 0 }) },
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
     );
 
@@ -555,13 +701,13 @@ describe("meta:plugin:add command", () => {
     );
 
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure") {
-      const cause = JSON.stringify(exit.cause);
-      expect(cause).toContain("NotImplementedError");
-      expect(cause).toContain("lando plugin:add @lando/plugin-php");
-      expect(cause).not.toContain("--package=");
-      expect(cause).not.toContain("lando init");
-    }
+    expect(failureError(exit)).toMatchObject({
+      _tag: "PluginPackageOperationError",
+      operation: "resolve",
+      packageSpec: "@lando/plugin-php",
+      commandId: "meta:plugin:add",
+    });
+    expect(failureError(exit)).not.toHaveProperty("exitCode");
   });
 
   test("fails closed when npm metadata omits the tarball URL", async () => {
@@ -714,24 +860,18 @@ describe("meta:plugin:add command", () => {
     expect(await exists(join(pluginsRoot, "@lando/plugin-partial", ".staging"))).toBe(false);
   });
 
-  test("installs a plugin via the BunSelfRunner and validates the manifest before recording trust", async () => {
+  test("acquires and validates a plugin before recording trust", async () => {
     const calls: Array<{ spec: string; cwd: string }> = [];
-    const spawner = {
-      install: async ({ spec, cwd }: { spec: string; cwd: string }) => {
-        calls.push({ spec, cwd });
-        await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-php"), {
-          name: "@lando/plugin-php",
-          version: "1.2.3",
-        });
-        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-php") };
-      },
-    };
     const trustStore = new Set<string>();
     const result = await Effect.runPromise(
       pluginAdd({
         spec: "@lando/plugin-php",
         trust: true,
-        spawner,
+        ...sourceFixture("@lando/plugin-php", "1.2.3", async (cwd) => {
+          expect(trustStore.size).toBe(0);
+          calls.push({ spec: "@lando/plugin-php", cwd });
+          await writePluginManifest(cwd, { name: "@lando/plugin-php", version: "1.2.3" });
+        }),
         trustStore,
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
@@ -741,26 +881,22 @@ describe("meta:plugin:add command", () => {
     expect(result.trustSource).toBe("flag");
     expect(trustStore.has("@lando/plugin-php")).toBe(true);
     expect(calls.length).toBe(1);
-    expect(calls[0]?.cwd).toBe(pluginsRoot);
+    expect(calls[0]?.cwd).toStartWith(join(pluginsRoot, "@lando/plugin-php", ".staging-"));
   });
 
   test("fails closed when the manifest cannot be validated", async () => {
-    const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string }) => {
-        const packageDir = join(cwd, "node_modules", "@lando/plugin-bad");
-        await mkdir(packageDir, { recursive: true });
-        await writeFile(
-          join(packageDir, "package.json"),
-          JSON.stringify({ name: "@lando/plugin-bad", version: "0.0.1", landoPlugin: { name: "bad" } }),
-        );
-        return { exitCode: 0, stderr: "", packageRoot: packageDir };
-      },
-    };
+    const source = sourceFixture("@lando/plugin-bad", "0.0.1", async (packageDir) => {
+      await mkdir(packageDir, { recursive: true });
+      await writeFile(
+        join(packageDir, "package.json"),
+        JSON.stringify({ name: "@lando/plugin-bad", version: "0.0.1", landoPlugin: { name: "bad" } }),
+      );
+    });
     const exit = await Effect.runPromiseExit(
       pluginAdd({
         spec: "@lando/plugin-bad",
         trust: true,
-        spawner,
+        ...source,
         trustStore: new Set<string>(),
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
@@ -772,31 +908,27 @@ describe("meta:plugin:add command", () => {
   });
 
   test("rejects manifests whose entry escapes the package directory", async () => {
-    const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string }) => {
-        const packageDir = join(cwd, "node_modules", "@lando/plugin-escape");
-        await mkdir(packageDir, { recursive: true });
-        await writeFile(
-          join(packageDir, "package.json"),
-          JSON.stringify({
+    const source = sourceFixture("@lando/plugin-escape", "0.0.1", async (packageDir) => {
+      await mkdir(packageDir, { recursive: true });
+      await writeFile(
+        join(packageDir, "package.json"),
+        JSON.stringify({
+          name: "@lando/plugin-escape",
+          version: "0.0.1",
+          landoPlugin: {
             name: "@lando/plugin-escape",
             version: "0.0.1",
-            landoPlugin: {
-              name: "@lando/plugin-escape",
-              version: "0.0.1",
-              api: 4,
-              entry: "../../../escape.js",
-            },
-          }),
-        );
-        return { exitCode: 0, stderr: "", packageRoot: packageDir };
-      },
-    };
+            api: 4,
+            entry: "../../../escape.js",
+          },
+        }),
+      );
+    });
     const exit = await Effect.runPromiseExit(
       pluginAdd({
         spec: "@lando/plugin-escape",
         trust: true,
-        spawner,
+        ...source,
         trustStore: new Set<string>(),
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
@@ -809,21 +941,12 @@ describe("meta:plugin:add command", () => {
   });
 
   test("non-interactive run without --trust returns structured remediation", async () => {
-    const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string }) => {
-        await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-php"), {
-          name: "@lando/plugin-php",
-          version: "1.0.0",
-        });
-        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-php") };
-      },
-    };
     const exit = await Effect.runPromiseExit(
       pluginAdd({
         spec: "@lando/plugin-php",
         trust: false,
         nonInteractive: true,
-        spawner,
+        ...sourceFixture("@lando/plugin-php", "1.0.0"),
         trustStore: new Set<string>(),
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
@@ -836,19 +959,6 @@ describe("meta:plugin:add command", () => {
   });
 
   test("the default trust prompter routes confirmation through interaction.confirm", async () => {
-    const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string }) => {
-        await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-default-confirm"), {
-          name: "@lando/plugin-default-confirm",
-          version: "0.1.0",
-        });
-        return {
-          exitCode: 0,
-          stderr: "",
-          packageRoot: join(cwd, "node_modules", "@lando/plugin-default-confirm"),
-        };
-      },
-    };
     const interaction: InteractionPrompter = {
       promptAll: async () => ({}),
       confirm: async () => true,
@@ -859,7 +969,7 @@ describe("meta:plugin:add command", () => {
     const result = await Effect.runPromise(
       pluginAdd({
         spec: "@lando/plugin-default-confirm",
-        spawner,
+        ...sourceFixture("@lando/plugin-default-confirm", "0.1.0"),
         interaction,
         trustStore: new Set<string>(),
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
@@ -868,15 +978,6 @@ describe("meta:plugin:add command", () => {
   });
 
   test("prompt-confirmed trust persists to the in-memory store for the current install session", async () => {
-    const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string }) => {
-        await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-prompt"), {
-          name: "@lando/plugin-prompt",
-          version: "0.1.0",
-        });
-        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-prompt") };
-      },
-    };
     let promptCalls = 0;
     const prompter = {
       confirmTrust: async () => {
@@ -888,7 +989,7 @@ describe("meta:plugin:add command", () => {
     const first = await Effect.runPromise(
       pluginAdd({
         spec: "@lando/plugin-prompt",
-        spawner,
+        ...sourceFixture("@lando/plugin-prompt", "0.1.0"),
         prompter,
         trustStore,
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
@@ -900,7 +1001,7 @@ describe("meta:plugin:add command", () => {
     const second = await Effect.runPromise(
       pluginAdd({
         spec: "@lando/plugin-prompt",
-        spawner,
+        ...sourceFixture("@lando/plugin-prompt", "0.1.0"),
         prompter,
         trustStore,
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
@@ -910,20 +1011,11 @@ describe("meta:plugin:add command", () => {
   });
 
   test("declining the prompt returns structured remediation", async () => {
-    const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string }) => {
-        await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-decline"), {
-          name: "@lando/plugin-decline",
-          version: "0.1.0",
-        });
-        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-decline") };
-      },
-    };
     const prompter = { confirmTrust: async () => false };
     const exit = await Effect.runPromiseExit(
       pluginAdd({
         spec: "@lando/plugin-decline",
-        spawner,
+        ...sourceFixture("@lando/plugin-decline", "0.1.0"),
         prompter,
         trustStore: new Set<string>(),
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
@@ -936,15 +1028,6 @@ describe("meta:plugin:add command", () => {
   });
 
   test("uses a fresh trust store per install", async () => {
-    const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string }) => {
-        await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-isolation"), {
-          name: "@lando/plugin-isolation",
-          version: "0.0.1",
-        });
-        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-isolation") };
-      },
-    };
     let promptCalls = 0;
     const prompter = {
       confirmTrust: async () => {
@@ -956,12 +1039,157 @@ describe("meta:plugin:add command", () => {
     const result = await Effect.runPromise(
       pluginAdd({
         spec: "@lando/plugin-isolation",
-        spawner,
+        ...sourceFixture("@lando/plugin-isolation", "0.0.1"),
         prompter,
         trustStore: new Set<string>(),
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
     );
     expect(result.trustSource).toBe("prompt");
     expect(promptCalls).toBe(1);
+  });
+
+  test("reports registry acquisition failure without a fictitious Bun status or residual trust", async () => {
+    const trustStore = new Set<string>();
+
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-fail",
+        trust: true,
+        registryClient: {
+          fetchPackument: async () => {
+            throw new Error("registry unavailable");
+          },
+        },
+        trustStore,
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    const error = failureError(exit);
+    expect(error).toBeInstanceOf(PluginPackageOperationError);
+    expect(error).toMatchObject({
+      _tag: "PluginPackageOperationError",
+      operation: "resolve",
+      packageSpec: "@lando/plugin-fail",
+      commandId: "meta:plugin:add",
+    });
+    expect(error).not.toHaveProperty("exitCode");
+    expect(error).toHaveProperty("detail", expect.stringContaining("registry unavailable"));
+    expect(trustStore.has("@lando/plugin-fail")).toBe(false);
+    expect(await exists(join(pluginsRoot, "node_modules", "@lando/plugin-fail"))).toBe(false);
+  });
+
+  test("maps trusted postinstall nonzero exit to its package stage and cleans staging", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": JSON.stringify({
+        name: "@lando/plugin-postinstall",
+        version: "1.2.3",
+        scripts: { postinstall: "node postinstall.js" },
+        landoPlugin: {
+          name: "@lando/plugin-postinstall",
+          version: "1.2.3",
+          api: 4,
+          entry: "index.js",
+        },
+      }),
+      "index.js": "export {};\n",
+      "postinstall.js": "process.exit(3);\n",
+    });
+    const trustStore = new Set<string>();
+
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-postinstall",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore,
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor(() => Effect.succeed({ exitCode: 3 })),
+        ),
+        Effect.provide(pluginAddLayer(userDataRoot)),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    const error = failureError(exit);
+    expect(error).toBeInstanceOf(PluginPackageOperationError);
+    expect(error).toMatchObject({
+      _tag: "PluginPackageOperationError",
+      operation: "postinstall",
+      packageSpec: "@lando/plugin-postinstall",
+      commandId: "meta:plugin:add",
+      exitCode: 3,
+    });
+    expect(trustStore.has("@lando/plugin-postinstall")).toBe(false);
+    expect(await exists(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3"))).toBe(false);
+  });
+
+  test("classifies registry boundary failures by acquisition stage, not exception class", async () => {
+    for (const typed of [
+      new ProcessExecError({
+        message: "spawn failed",
+        cmd: "/bin/bun",
+        remediation: "fix spawn",
+      }),
+      new FileIoError({
+        message: "cwd missing",
+        path: "/missing",
+        remediation: "create cwd",
+      }),
+      new BunSelfReentryError({
+        message: "reentry",
+        remediation: "do not nest",
+        execPath: "/bin/bun",
+        verb: "install",
+        callerSubsystem: "test",
+      }),
+    ]) {
+      const exit = await Effect.runPromiseExit(
+        pluginAdd({
+          spec: "@lando/plugin-typed",
+          trust: true,
+          registryClient: {
+            fetchPackument: async () => {
+              throw typed;
+            },
+          },
+          trustStore: new Set<string>(),
+        }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
+      );
+      expect(exit._tag).toBe("Failure");
+      expect(failureError(exit)).toBeInstanceOf(PluginPackageOperationError);
+      expect(failureError(exit)).toMatchObject({ operation: "resolve" });
+      expect(failureError(exit)).not.toHaveProperty("exitCode");
+    }
+  });
+
+  test("wraps opaque registry rejection without inventing exitCode", async () => {
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-opaque",
+        trust: true,
+        registryClient: {
+          fetchPackument: async () => {
+            throw new Error("network down");
+          },
+        },
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    const error = failureError(exit);
+    expect(error).toBeInstanceOf(PluginPackageOperationError);
+    expect(error).toMatchObject({
+      _tag: "PluginPackageOperationError",
+      commandId: "meta:plugin:add",
+      operation: "resolve",
+    });
+    if (!(error instanceof PluginPackageOperationError))
+      throw new Error("expected package acquisition error");
+    expect(error.exitCode).toBeUndefined();
   });
 });

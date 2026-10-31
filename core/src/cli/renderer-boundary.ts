@@ -21,7 +21,7 @@ import {
   primaryFailureReason,
   resolveCommandCompletion,
 } from "@lando/sdk/command-result";
-import { JqExpressionError } from "@lando/sdk/errors";
+import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
 import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
 import { EventService, Renderer } from "@lando/sdk/services";
@@ -40,6 +40,7 @@ import {
 import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import type { FormatSummaryOptions } from "@lando/renderer/summary";
+import { ChildOutput, makeChildOutputPolicy } from "./child-output.ts";
 import {
   type CliInvocationSnapshot,
   newInvocationId,
@@ -249,7 +250,18 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
     });
     return Effect.sync(unsubscribe);
   });
+  const childOutput = makeChildOutputPolicy({
+    native:
+      !isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT) &&
+      options.rendererMode !== "json",
+    stdin: true,
+    stream:
+      isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT) || options.rendererMode === "json"
+        ? undefined
+        : () => RendererOutput.makeStreamFrameSink("text"),
+  });
   const commandEffect = interruptOnAbort(effect, options.signal).pipe(
+    Effect.provideService(ChildOutput, childOutput),
     Effect.withErrorReporting({ defectsOnly: true }),
   );
   const renderContext: RenderContext = {
@@ -308,6 +320,7 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
       makeMachineResultEmitters<A>({
         command,
         resultSchema,
+        output: childOutput.output,
         commandWarnings,
         sourceEnv,
         extraRedactionTokens: extraTokens,
@@ -340,7 +353,10 @@ const runWithInvocationRedaction = async <A, E, R, RE>(
           return;
         }
         const failure = failureOutcomeFromCause(cause, normalizeDefect);
-        if (failure.error instanceof JqExpressionError) {
+        if (
+          failure.error instanceof JqExpressionError ||
+          failure.error instanceof CommandInputValidationError
+        ) {
           setExitCode(2);
           return;
         }

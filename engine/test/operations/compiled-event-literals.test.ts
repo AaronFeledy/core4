@@ -28,6 +28,7 @@ import {
   type EventCommandExecutorInput,
 } from "../../src/services/event-command-executor.ts";
 import * as Events from "../../src/services/event-service.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as Tooling from "../../src/services/tooling-engine.ts";
 import { planApp } from "../plan-app.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
@@ -95,6 +96,7 @@ const fixture = async (source: string, hostEvents: HostEvents = {}) => {
   );
   const resolver = Resolver.layer.pipe(Layer.provideMerge(security));
   const runtime = Layer.mergeAll(
+    BunProcessRunner.layer,
     Events.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     resolver,

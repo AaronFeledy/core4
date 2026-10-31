@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileBunShellScriptCommands } from "@lando/engine/cache/command-compiler";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpDispatchDeps, dispatchTool } from "@lando/mcp/dispatch";
@@ -56,6 +57,7 @@ const retainedDispatch = (root: string, entry: McpCommandEntry, input: McpToolIn
     Effect.gen(function* () {
       const context = yield* Layer.build(
         Layer.mergeAll(
+          BunProcessRunner.layer,
           Layer.succeed(Context.Service<unknown>("script-mcp-runtime"), {}),
           environmentResolverLayer(),
           PrivateFileAccessService.layer,

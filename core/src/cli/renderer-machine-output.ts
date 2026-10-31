@@ -52,6 +52,7 @@ export interface MachineResultEmitterDeps<A> {
   readonly extraRedactionTokens?: ReadonlyArray<string>;
   readonly onRedactor?: (redactor: Redactor) => void;
   readonly signal?: AbortSignal;
+  readonly output?: () => import("@lando/sdk/schema").CommandOutput | undefined;
 }
 
 export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) => {
@@ -110,12 +111,14 @@ export const makeMachineResultEmitters = <A>(deps: MachineResultEmitterDeps<A>) 
     const redactor = yield* jsonRedactor(redactionTokens);
     const warnings = yield* commandWarnings.list;
     const trace = deps.trace === undefined ? undefined : yield* deps.trace;
+    const output = deps.output?.();
     const line = yield* encodeCommandResult({
       command,
       resultSchema,
       outcome,
       redactor,
       warnings,
+      ...(output === undefined ? {} : { output }),
       ...(trace === undefined ? {} : { trace }),
       format: envelopeFormat(outcome),
       ...projection,

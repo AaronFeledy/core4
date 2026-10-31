@@ -3,8 +3,7 @@
  *
  * A `select`/`multiselect` recipe prompt can source its choices from a
  * canonical Lando command run in a sandboxed bootstrap that requires no
- * app. The command is re-invoked as a child process (mirroring the
- * `BunSelfSpawner` precedent) and its stdout is parsed per `parse:`.
+ * app. The command is re-invoked as a child process and its stdout is parsed per `parse:`.
  * The runner is injectable so the prompt runtime stays unit-testable
  * without spawning real processes.
  */
