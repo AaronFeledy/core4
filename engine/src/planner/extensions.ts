@@ -123,6 +123,7 @@ export const toAppFeatureDraft = (
     ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
     ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
     ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),
+    ...(servicePlan.init === undefined ? {} : { init: servicePlan.init }),
     environment: { ...servicePlan.environment },
     ...(servicePlan.connection === undefined ? {} : { connection: servicePlan.connection }),
     ...(servicePlan.nonSqlCreds === undefined ? {} : { nonSqlCreds: servicePlan.nonSqlCreds }),
@@ -186,6 +187,7 @@ export const servicePlanFromDraft = (
   ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
   ...(draft.command === undefined ? {} : { command: draft.command }),
   ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
+  ...(draft.init === undefined ? {} : { init: draft.init }),
   environment: sortRecord(draft.environment),
   ...(draft.connection !== undefined
     ? { connection: draft.connection }

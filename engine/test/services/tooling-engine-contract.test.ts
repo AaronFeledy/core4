@@ -40,6 +40,7 @@ const stubCapabilities = {
   buildSsh: false,
   multiServiceApply: false,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: false,
   serviceLogSources: false,
   serviceHealth: "none" as const,

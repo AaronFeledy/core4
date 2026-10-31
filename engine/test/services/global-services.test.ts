@@ -25,6 +25,7 @@ const capabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCa
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",

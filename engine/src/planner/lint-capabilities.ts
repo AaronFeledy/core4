@@ -34,6 +34,7 @@ import type { PlannerIssue } from "./resolved-validation.ts";
 import {
   agentSocketCapabilityErrors,
   assertRouteNetworkingSupported,
+  assertServiceInitSupported,
   publicationCapabilityError,
   requiredLogSourceCapabilityError,
   serviceResourceCapabilityErrors,
@@ -70,6 +71,7 @@ const capabilityPath = (
     bindMounts: "appMount",
     persistentStorage: "storage",
     sharedCrossAppNetwork: "routes",
+    serviceInit: "init",
   }[error.capability];
   return field === undefined ? prefix : [...prefix, field];
 };
@@ -120,6 +122,20 @@ export const lintCapabilityIssues = Effect.fn("AppPlanner.lintCapabilities")(fun
         yield* check(assertComposePreservedPathsSupported(provider, capabilities, services));
       }
     const config = seed.resolution.normalizedConfig;
+    yield* check(
+      assertServiceInitSupported(provider, capabilities, {
+        [name]: { name, init: config.init },
+      }),
+    );
+    if (config.init === undefined && capabilities.serviceInit !== true)
+      issues.push({
+        rule: "landofile.capability",
+        severity: "warning",
+        path: ["services", name, "init"],
+        message: `Provider ${provider} does not declare native init support; effective init for service ${name} depends on feature contributions and is unknown offline.`,
+        suggestion:
+          "Final planning validates effective init at lando start. Set init: false to explicitly opt out, or select a provider with native init support.",
+      });
     const compiledMounts = compileAuthoredMounts(
       {
         appRoot: resolution.appRoot,

@@ -94,6 +94,10 @@ const makeMutators = (
     recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "command", value: command });
     draft.command = Array.isArray(command) ? [...command] : command;
   },
+  setInit: (init) => {
+    recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "init", value: init });
+    draft.init = draft.normalizedConfig.init ?? init;
+  },
   setArtifact: (artifact) => {
     recordWrite(ledger, { feature, serviceName: draft.serviceName, field: "artifact", value: artifact });
     draft.artifact = { ...artifact };
