@@ -108,11 +108,10 @@ type LegacyOrphanTeardownError =
   | AppLockTimeoutError
   | StateStoreError;
 
-type LegacyGlobalInstallChannel =
+type ExpectedGlobalInstallError =
   | Exclude<LandofileRootLoadError, LandofileValidationError>
   | LandofileWriteValidationError
   | ManagedFileTransactionError
-  | FileSystemError
   | AppPlacementError
   | GlobalAppError
   | GlobalDistConflictError
@@ -237,8 +236,8 @@ describe("Engine plan-carrying error channels", () => {
     expect(true).toBe(true);
   });
 
-  test("globalInstall retains its pre-refactor error members", () => {
-    assertType<Equal<ErrOf<ReturnType<typeof globalInstall>>, LegacyGlobalInstallChannel>>(true);
+  test("globalInstall carries prepared compilation and publication failures", () => {
+    assertType<Equal<ErrOf<ReturnType<typeof globalInstall>>, ExpectedGlobalInstallError>>(true);
     expect(true).toBe(true);
   });
 

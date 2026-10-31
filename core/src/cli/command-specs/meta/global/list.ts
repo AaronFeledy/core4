@@ -4,8 +4,8 @@ import {
   type GlobalListResult,
   GlobalListResultSchema,
   globalList,
-  renderGlobalListResult,
-} from "../../../commands/meta/global-list";
+} from "@lando/engine/operations/global-list";
+import { renderGlobalListResult } from "../../../commands/meta/global-list";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 
 export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {

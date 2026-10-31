@@ -7,9 +7,9 @@ import { Effect } from "effect";
 import { appMutationLockKey } from "@lando/engine/operations/app-mutation-lock";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, appIdentityKey } from "@lando/sdk/schema";
-import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
-import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
-import { globalPlanAt, globalTeardownHarness } from "../_support/global-teardown-harness.ts";
+import { globalDestroy } from "../../src/operations/global-destroy.ts";
+import { globalStop } from "../../src/operations/global-stop.ts";
+import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 
 const withDataRoot = async (use: (dataRoot: string) => Promise<void>) => {
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-global-observation-")));

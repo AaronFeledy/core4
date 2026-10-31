@@ -8,9 +8,9 @@ import {
 } from "@lando/engine/global-app/reconciliation";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
-import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
-import { globalPlanAt, globalTeardownHarness } from "../_support/global-teardown-harness.ts";
+import { globalDestroy } from "../../src/operations/global-destroy.ts";
+import { globalStop } from "../../src/operations/global-stop.ts";
+import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 
 const pending = [
   { phase: "evidence" as const, services: ["ssh-agent"], message: "Observe resources." },

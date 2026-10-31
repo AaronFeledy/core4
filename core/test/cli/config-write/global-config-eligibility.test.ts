@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { globalStart } from "@lando/engine/operations/global-start";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { consumeSites } from "@lando/landofile/compiled-sites";
 import { AbsolutePath, AppId, PluginManifest, ProviderId } from "@lando/sdk/schema";
@@ -25,7 +26,6 @@ import {
   globalConfigSet,
   globalConfigValidate,
 } from "../../../src/cli/commands/meta/global-config.ts";
-import { globalStart } from "../../../src/cli/commands/meta/global-start.ts";
 import { globalConfigLayer } from "../../_support/global-config-layer.ts";
 
 let root = "";
