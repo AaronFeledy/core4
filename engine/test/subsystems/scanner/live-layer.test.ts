@@ -137,8 +137,8 @@ describe("ProviderUrlScanner.layer", () => {
     },
   );
 
-  test("wires the probe scanner from RuntimeProvider endpoints and HttpClient", async () => {
-    const http = requestSequence([httpStatus(200)]);
+  test("uses applied endpoint scan policy when no plan is supplied to the scanner", async () => {
+    const http = requestSequence([httpStatus(418)]);
     const provider = {
       ...TestRuntimeProvider,
       appliedPlans: Effect.succeed([
@@ -149,7 +149,10 @@ describe("ProviderUrlScanner.layer", () => {
             [web]: {
               ...webPlan,
               endpoints: [
-                { _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } },
+                {
+                  _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 18080 },
+                  scan: { path: "/health", okCodes: [418] },
+                },
                 { _tag: "internal", protocol: "http", port: 8181 },
               ],
             },
@@ -166,7 +169,7 @@ describe("ProviderUrlScanner.layer", () => {
           state: service === worker ? "stopped" : "running",
           publications: {
             status: "present",
-            bindings: [{ port: 8080, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8080 }],
+            bindings: [{ port: 8080, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 18080 }],
           },
         }),
     } satisfies RuntimeProviderShape;
@@ -177,7 +180,7 @@ describe("ProviderUrlScanner.layer", () => {
 
     expect(result.endpoints).toHaveLength(1);
     expect(result.endpoints[0]?.service).toBe(web);
-    expect(result.endpoints[0]?.url).toBe("http://localhost:8080/");
+    expect(result.endpoints[0]?.url).toBe("http://localhost:18080/health");
     expect(result.endpoints[0]?.outcome).toBe("green");
   });
 

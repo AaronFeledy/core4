@@ -38,7 +38,7 @@ test("scans only active assigned host HTTP connections and deduplicates them", (
     },
   ];
   const urls = startupScanUrls(plan, [{ name: "web", state: "running", connections }]);
-  expect(urls).toEqual([{ service: web.name, url: "http://localhost:8080/" }]);
+  expect(urls).toEqual([{ service: web.name, url: "http://localhost:8080/", endpoint: assigned.endpoint }]);
 });
 
 test.each([
@@ -50,7 +50,7 @@ test.each([
   const urls = startupScanUrls(plan, [
     { name: "web", state: "running", connections: [host(wildcard), host("https://web.demo.test/files/*")] },
   ]);
-  expect(urls).toEqual([{ service: web.name, url: "https://web.demo.test/files/*/" }]);
+  expect(urls).toEqual([{ service: web.name, url: "https://web.demo.test/files/*/", endpoint: host(wildcard).endpoint }]);
 });
 
 test("preserves route prefixes when appending a configured scanner path", () => {
@@ -72,7 +72,7 @@ test("preserves route prefixes when appending a configured scanner path", () => 
       ],
     },
   ]);
-  expect(urls).toEqual([{ service: web.name, url: "https://web.demo.test/api/ready" }]);
+  expect(urls).toEqual([{ service: web.name, url: "https://web.demo.test/api/ready", endpoint: host("https://web.demo.test/api").endpoint }]);
 });
 
 test("never probes disabled or non-HTTP targets", async () => {

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { type EndpointPlan, ServiceConfig, groupLogicalEndpoints } from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { normalizeEndpoints } from "../../src/services/endpoint-normalizer.ts";
+import { endpointValidationError, normalizeEndpoints } from "../../src/services/endpoint-normalizer.ts";
 
 test("classifies matching publications without promoting unknown TCP listeners", () => {
   // Given
@@ -85,3 +85,56 @@ test.each([{ endpoints: [] }, { endpoints: [{ _tag: "internal", protocol: "tcp",
     expect(normalized).toEqual([...endpoints]);
   },
 );
+
+test("publications inherit sparse scan defaults from every matching facet", () => {
+  // Given
+  const contributions: readonly EndpointPlan[] = [
+    { _tag: "internal", protocol: "http", port: 9000, scan: { path: "/minio/health/live" } },
+    { _tag: "published", protocol: "http", port: 9000, publication: {}, scan: { okCodes: [204] } },
+    { _tag: "internal", protocol: "http", port: 9001, scan: { path: "/" } },
+  ];
+  const config = Schema.decodeUnknownSync(ServiceConfig)({ ports: ["19000:9000", "19001:9001"] });
+  // When
+  const endpoints = normalizeEndpoints(contributions, config);
+  // Then
+  expect(endpoints.slice(3).map((endpoint) => endpoint.scan)).toEqual([
+    { path: "/minio/health/live", okCodes: [204] }, { path: "/" },
+  ]);
+});
+
+test.each([{ endpoints: [] }, { endpoints: [{ _tag: "internal", protocol: "http", port: 9000 }] }])(
+  "explicit endpoints replace discovery scan metadata: %j", ({ endpoints }) => {
+    // Given
+    const config = Schema.decodeUnknownSync(ServiceConfig)({ endpoints, ports: ["19000:9000"] });
+    // When
+    const result = normalizeEndpoints([
+      { _tag: "internal", protocol: "http", port: 9000, scan: { path: "/health" } },
+    ], config);
+    // Then
+    expect(result).toEqual([...endpoints]);
+  },
+);
+
+test.each([
+  { first: { path: "/health" }, second: { path: "/" }, conflict: true },
+  { first: { okCodes: [200, 204] }, second: { okCodes: [204] }, conflict: true },
+  { first: { okCodes: [200, 204] }, second: { okCodes: [204, 200, 204] }, conflict: false },
+  { first: { path: "/health" }, second: { okCodes: [] }, conflict: false },
+])("preserves logical scan invariants before and after normalization: %j", ({ first, second, conflict }) => {
+  // Given
+  const contributions: readonly EndpointPlan[] = [
+    { _tag: "internal", protocol: "http", port: 9000, scan: first },
+    { _tag: "published", protocol: "http", port: 9000, publication: {}, scan: second },
+  ];
+  // When
+  const normalized = normalizeEndpoints(contributions, Schema.decodeUnknownSync(ServiceConfig)({ ports: ["19000:9000"] }));
+  const errors = [contributions, normalized].map((endpoints) =>
+    endpointValidationError(endpoints, { appRoot: "/app", serviceName: "storage" }),
+  );
+  // Then
+  expect(errors.map((error) => error !== undefined)).toEqual([conflict, conflict]);
+  if (conflict) {
+    expect(errors.map((error) => error?.issues?.length)).toEqual([1, 1]);
+    for (const error of errors) expect(error?.issues?.[0]?.message).toContain("9000/tcp");
+  }
+});
