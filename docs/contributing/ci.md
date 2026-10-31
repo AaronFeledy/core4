@@ -55,7 +55,21 @@ bun run typecheck
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
 
-`scripts/test-shards.ts` collects the unit file set and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`. It excludes integration files except the fake-client contract suites for `provider-lando`, `provider-docker`, and `provider-podman`. Those suites run in PR shards; their socket-dependent cases may skip when no live engine is available. Dedicated library and recipe suites, plus nightly-tier meta-suites, stay outside the shards. Shard balance comes from the committed timings file.
+`scripts/test-shards.ts` collects the unit file set from `scripts/test-ownership.ts` and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`. Workspace test roots come from the root package manifest. Tests beside scripts are included too. Dedicated library, recipe, docs, generated guide and nightly suites stay outside unit shards. Shard balance comes from the committed timings file.
+
+The unit set includes the three provider contract suites and the local integration suites explicitly listed in `LOCAL_INTEGRATION_TESTS`. Podman Desktop fake-client cases live in `desktop.test.ts` and run without a socket. Its real desktop contract remains in `desktop.integration.test.ts`, requires native macOS or Windows plus `LANDO_TEST_PODMAN_DESKTOP_SOCKET`, and currently has no CI invocation. A Linux fake-client pass does not establish desktop acceptance.
+
+Inspect ownership without starting tests:
+
+```bash
+bun run test:inventory
+bun run check:test-ownership
+bun run scripts/test-shards.ts --list
+```
+
+The inventory reports each test path, its primary execution owner, invocation and limitations. `manual` entries are known CI gaps, with prerequisites and reasons recorded alongside their paths. New integration suites without an execution owner and stale explicit entries fail the ownership check, which runs in static CI and `gate:pr`. New workspace packages are discovered through `workspaces.packages` (or array-form `workspaces`). Tests outside workspace test trees, scripts, or generated guides require an explicit discovery decision.
+
+Ownership records file selection. Selected files can still skip cases because a live socket, native OS, compiled binary, architecture or explicit destructive-test opt-in is missing. Read the test results and prerequisites before claiming live or native coverage; generated workflow validation and simulated platform cases provide no native execution receipt.
 
 Bun 1.4 `--parallel --no-isolate` was tried on the shard runtime and rejected because compiled-binary tests race on a shared outfile. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability is outside this matrix.
 
@@ -75,13 +89,15 @@ bun run scripts/update-test-timings.ts
 
 Nightly runs the same refresh in `refresh-test-timings-linux-x64` and uploads the timings file; commit the artifact when the split has drifted. `NIGHTLY_TIER_TESTS` stay out of both the PR shards and the timings refresh.
 
-The ordinary unsharded unit suite remains available locally. It excludes integration files, including the fake-client contracts added to PR shards:
+The unsharded local command uses exactly the same collected unit file set as CI shards:
 
 ```bash
 bun run test:unit
 ```
 
-To match the added provider-contract coverage, also run `bun test plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts`.
+On Windows, this command splits the collected paths into bounded sequential process invocations to fit the native command-line limit. Every selected path is retained, and a later successful batch cannot erase an earlier failure. Linux and macOS use one invocation. This preserves file selection; process boundaries differ from the Linux CI shards.
+
+For focused work, run explicit test paths or use the affected selector below. The full local unit command and the timings refresh execute the entire unit set; avoid them when you only need a focused check.
 
 For a local review of which shard-eligible tests may relate to your changes, run:
 

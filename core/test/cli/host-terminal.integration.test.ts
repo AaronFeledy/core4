@@ -47,7 +47,13 @@ describe("host terminal attachment detection", () => {
       const terminal = await runTerminalProbe();
 
       // Then
-      expect(terminal).toEqual({ term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 });
+      expect(terminal).toEqual({
+        term: "dumb",
+        colorterm: "truecolor",
+        columns: 132,
+        rows: 43,
+        noColor: true,
+      });
     },
   );
 

@@ -106,6 +106,9 @@ ${setupBunSteps}
       - name: Lint
         run: bun run lint
 
+      - name: Test ownership inventory
+        run: bun run check:test-ownership
+
       - name: Boundary gates
         run: bun run check:boundaries
 
