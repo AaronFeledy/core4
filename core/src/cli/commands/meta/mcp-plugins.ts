@@ -10,12 +10,12 @@ import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { RedactionService } from "@lando/redaction/service";
 import { McpAllowlistConflictError, McpToolInputError } from "@lando/sdk/errors";
 import { Effect, Option, Schema } from "effect";
-import type { McpCommandRegistry } from "./cli/commands/meta/mcp-registry";
-import { escapeDiagnosticText } from "./cli/diagnostic-text";
-import { validateEventCommandInput } from "./cli/event-command-input";
-import { type ResolvedPluginCommandSpec, loadPluginSpec } from "./cli/event-command-target";
-import type { PluginCommandDiagnostic } from "./cli/plugin-command-catalog";
-import { requireConfirmation } from "./cli/require-confirmation";
+import { escapeDiagnosticText } from "../../diagnostic-text";
+import { validateEventCommandInput } from "../../event-command-input";
+import { type ResolvedPluginCommandSpec, loadPluginSpec } from "../../event-command-target";
+import type { PluginCommandDiagnostic } from "../../plugin-command-catalog";
+import { requireConfirmation } from "../../require-confirmation";
+import type { McpCommandRegistry } from "./mcp-registry";
 
 /** Re-resolve manifests only, never import another app's implementation into the session. */
 const assertSelectedOwner = Effect.fn("Mcp.assertSelectedPluginOwner")(function* (

@@ -312,9 +312,23 @@ can tab through the public schema registry instead of guessing names.
 <Guide>
   <Scenario id="plugin-tools" render={false} reason="Bundled plugin tools list with plugin provenance and allow source">
     <Step name="list-plugin-tools">
-      <Run command="lando mcp --list --allow db:export --format=json" />
-      <Verify command="lando mcp --list --allow db:export --format=json" expect={{ stdout: { regex: "\"id\":\"db:export\",[^}]*\"source\":\"allow\",\"plugin\":\\{\"name\":\"@lando/sql\",\"source\":\"bundled\"" } }} />
-      <Verify command="lando mcp --list --format=json" expect={{ stdout: { regex: "\"id\":\"db:snapshots\",[^}]*\"source\":\"default\"" } }} />
+      <Run runtime="library" code={`const { Effect: E, Layer } = yield* Effect.promise(() => import("effect"));
+yield* Effect.promise(() => import("../../../../../core/src/runtime/bundled-plugins.ts"));
+const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
+const { defaultIdsOf, mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp-registry.ts"));
+const { buildMcpListResult } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp-list.ts"));
+const { mcpRegistryWithPlugins } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp-plugins.ts"));
+const runtime = LandoCore.makeLandoRuntime({ bootstrap: "plugins", plugins: { policy: "discovery" }, cwd: context.testDir });
+const registry = yield* E.scoped(Layer.build(runtime).pipe(
+  E.orDie,
+  E.flatMap((services) => mcpRegistryWithPlugins(mcpRegistryFromBuiltIns(builtInCommandEntries)).pipe(E.provide(services))),
+));
+const list = (allow: ReadonlyArray<string>) => buildMcpListResult({ ...registry, defaultAllowlist: defaultIdsOf(registry), allow });
+const sql = expect.objectContaining({ name: "@lando/sql", source: "bundled" });
+expect(list([]).tools).toContainEqual(expect.objectContaining({ id: "db:snapshots", source: "default", plugin: sql }));
+expect(list([]).tools).not.toContainEqual(expect.objectContaining({ id: "db:export" }));
+expect(list(["db:export"]).tools).toContainEqual(expect.objectContaining({ id: "db:export", source: "allow", destructive: true, plugin: sql }));`}
+        displayCode={`const listed = buildMcpListResult({ ...registry, allow: ["db:export"] });`} />
     </Step>
   </Scenario>
 

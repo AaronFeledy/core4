@@ -10,8 +10,8 @@ import { Context, Effect, Result } from "effect";
 import "../../src/runtime/bundled-plugins";
 import { Schema } from "effect";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry";
+import { mcpRegistryWithPlugins } from "../../src/cli/commands/meta/mcp-plugins";
 import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp-registry";
-import { mcpRegistryWithPlugins } from "../../src/mcp-plugins";
 
 export const bundledMcpRegistry = () => {
   const plugins = bundledPluginModules().map((module) => ({

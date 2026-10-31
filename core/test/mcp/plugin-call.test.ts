@@ -5,8 +5,8 @@ import { startStdioClient } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { Deferred, Effect, Fiber, Layer, Schema } from "effect";
+import { mcpRegistryWithPlugins } from "../../src/cli/commands/meta/mcp-plugins";
 import { serviceLayer } from "../../src/mcp-command-executor";
-import { mcpRegistryWithPlugins } from "../../src/mcp-plugins";
 import { pluginFixtureGraph } from "./plugin-fixture";
 
 const fixture = (spec: ExecutableCommandSpec) =>

@@ -24,7 +24,6 @@ import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
 import type { RedactionService } from "@lando/redaction/service";
 import * as RendererStdio from "@lando/renderer/stdio";
 import { serviceLayer } from "../../../mcp-command-executor";
-import { mcpRegistryWithPlugins } from "../../../mcp-plugins";
 import { resources } from "../../../mcp-resources";
 import type { RendererMode } from "../../bug-report";
 import { BuiltInCommandCatalog } from "../../built-in-command-catalog-service";
@@ -32,6 +31,7 @@ import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import type { ResultFormat } from "../../format-flags";
 import { runWithRendererHandling } from "../../renderer-boundary";
 import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
+import { mcpRegistryWithPlugins } from "./mcp-plugins";
 import {
   type McpCommandRegistry,
   type ResolvedMcpOptions,

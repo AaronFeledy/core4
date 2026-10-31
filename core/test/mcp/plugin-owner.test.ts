@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RedactionService } from "@lando/redaction/service";
 import { Effect, Schema } from "effect";
-import { mcpRegistryWithPlugins } from "../../src/mcp-plugins";
+import { mcpRegistryWithPlugins } from "../../src/cli/commands/meta/mcp-plugins";
 import { pluginFixtureGraph } from "./plugin-fixture";
 
 test("appPath accepts the listed app owner but rejects another app-local owner without loading it", async () => {

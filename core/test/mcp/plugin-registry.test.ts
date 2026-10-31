@@ -7,8 +7,8 @@ import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { buildMcpListResult } from "../../src/cli/commands/meta/mcp-list";
+import { mcpRegistryWithPlugins } from "../../src/cli/commands/meta/mcp-plugins";
 import { defaultIdsOf, knownIdsOf, validateMcpAllowlistIds } from "../../src/cli/commands/meta/mcp-registry";
-import { mcpRegistryWithPlugins } from "../../src/mcp-plugins";
 import { bundledMcpRegistry, pluginFixtureGraph } from "./plugin-fixture";
 
 const spec: ExecutableCommandSpec = {
