@@ -1,8 +1,14 @@
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
-import { Effect } from "effect";
+import { Effect, Ref } from "effect";
 
 import type { ProxyError, RouterWatcherError } from "@lando/sdk/errors";
-import { RouterService } from "@lando/sdk/services";
+import type { RouterService } from "@lando/sdk/services";
+
+import {
+  type GlobalRouterStartupPlan,
+  revalidateAppliedGlobalRouterStartup,
+  withGlobalRouterStartupPlanObserver,
+} from "@lando/engine/global-app/router-admission";
 
 import { globalCreateProviderId } from "@lando/engine/global-app/placement";
 import { lifecycleLine, serviceRowsText } from "../service-summary";
@@ -41,23 +47,23 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(
     // A placement mismatch would only surface in the start phase; refuse before stopping the router.
     yield* globalCreateProviderId();
     yield* globalStop();
+    const appliedPlan = yield* Ref.make<GlobalRouterStartupPlan | undefined>(undefined);
+    const revalidateRouter = Effect.flatMap(Ref.get(appliedPlan), revalidateAppliedGlobalRouterStartup);
     const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal }).pipe(
+      (effect) => withGlobalRouterStartupPlanObserver(effect, (plan) => Ref.set(appliedPlan, plan)),
       Effect.catchTags({
         GlobalAppError: Effect.fnUntraced(function* (error) {
           if (error.operation === "start") {
-            const router = yield* RouterService;
-            yield* Effect.result(router.revalidateStartup);
+            yield* Effect.result(revalidateRouter);
           }
           return yield* Effect.fail(error);
         }),
         ProxyApplyError: Effect.fnUntraced(function* (error) {
-          const router = yield* RouterService;
-          yield* Effect.result(router.revalidateStartup);
+          yield* Effect.result(revalidateRouter);
           return yield* Effect.fail(error);
         }),
         ServiceNotReadyError: Effect.fnUntraced(function* (error) {
-          const router = yield* RouterService;
-          yield* Effect.result(router.revalidateStartup);
+          yield* Effect.result(revalidateRouter);
           return yield* Effect.fail(error);
         }),
       }),
@@ -65,8 +71,7 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(
     // The router is the reason this command is prescribed as a recovery step,
     // so re-observe its startup here: without it a restart cannot affect the
     // persisted observation doctor keeps reporting.
-    const router = yield* RouterService;
-    yield* router.revalidateStartup;
+    yield* revalidateRouter;
     return result;
   },
   (effect, _options: GlobalRestartOptions = {}) => withGlobalMutation(effect),

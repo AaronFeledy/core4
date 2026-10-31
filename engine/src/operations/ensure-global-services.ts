@@ -38,6 +38,7 @@ import {
 } from "../global-app/ensure-cache.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
+import { captureGlobalStartupAdmission } from "../global-app/startup-admission.ts";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
@@ -47,6 +48,7 @@ import { canonicalAppRoot } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 
 import { withOrdinaryMounts } from "./file-sync-plan.ts";
+import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
 import { globalInstall } from "./global-install.ts";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 import { advanceGlobalRecordedPlan, retainGlobalPlanSiblings } from "./global-retained-plan.ts";
@@ -221,6 +223,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const available = planServices.map((service) => String(service.name));
     const availableSet = new Set(available);
     const missing = requested.filter((id) => !availableSet.has(id));
+    const verifyAdmission = yield* captureGlobalStartupAdmission();
 
     yield* events.publish(
       PreGlobalStartEvent.make({
@@ -234,6 +237,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       }),
     );
 
+    yield* verifyAdmission;
     if (missing.length > 0) {
       const resolution = yield* readGlobalResolution({
         providerId: plan.provider,
@@ -266,6 +270,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const realizedPlan = withOrdinaryMounts(planToApply);
     const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
 
+    yield* verifyAdmission;
     const finalPlan = yield* advanceGlobalRecordedPlan(
       retained.recordedPlan,
       builtPlan,
@@ -273,13 +278,22 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     );
     // Historical siblings remain observation evidence, never warm admission inputs.
     const desiredFinalPlan = { ...plan, services: { ...plan.services, ...builtPlan.services } };
-    yield* Effect.scoped(
-      applyWithResolvedEnvironment(provider, builtPlan, {
-        reconcile: false,
-        recordedPlan: finalPlan,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
-      }),
+    yield* withGlobalConsumerReservation(
+      builtPlan,
+      Object.keys(builtPlan.services),
+      Effect.scoped(
+        applyWithResolvedEnvironment(
+          provider,
+          builtPlan,
+          {
+            reconcile: false,
+            recordedPlan: finalPlan,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+            onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+          },
+          verifyAdmission,
+        ),
+      ),
     );
 
     const ready = yield* completeStartup({
@@ -290,6 +304,7 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
     const servicesStarted = startedServices(yield* collectPlanConnections(finalPlan, ready));
+    yield* verifyAdmission;
 
     yield* events.publish(
       PostGlobalStartEvent.make({

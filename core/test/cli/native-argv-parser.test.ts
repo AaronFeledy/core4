@@ -252,6 +252,16 @@ describe("native argv parser seam", () => {
       all: true,
       dryRun: false,
     });
+    expect(
+      globalPolicyOptionsFromInput(
+        compiledInput("meta:global:disable", ["mail", "--allow-disruption", "--dry-run"]),
+      ),
+    ).toEqual({
+      selectors: ["mail"],
+      all: false,
+      dryRun: true,
+      allowDisruption: true,
+    });
   });
 
   test("native argv normalization maps space-separated phrases to canonical ids", () => {

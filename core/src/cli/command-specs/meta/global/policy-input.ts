@@ -8,5 +8,10 @@ export const globalPolicyOptionsFromInput = (input: unknown) => {
       ? [raw]
       : [];
   const flags = specFlagsOf(input);
-  return { selectors, all: flags.all === true, dryRun: flags["dry-run"] === true };
+  return {
+    selectors,
+    all: flags.all === true,
+    dryRun: flags["dry-run"] === true,
+    ...(flags["allow-disruption"] === true ? { allowDisruption: true } : {}),
+  };
 };

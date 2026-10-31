@@ -19,6 +19,7 @@ import {
 import { makeLandoPaths } from "@lando/core/paths";
 import {
   AbsolutePath,
+  AppId,
   type AppPlan,
   LandofileShape,
   PluginManifest,
@@ -27,6 +28,7 @@ import {
   type ServiceConfig,
   ServiceName,
   ServicePlan,
+  appIdentityKey,
 } from "@lando/core/schema";
 import {
   type AppPlanner,
@@ -47,6 +49,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   SecretStore,
+  type ServiceRuntimeInfo,
   type ServiceSelector,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -108,6 +111,7 @@ interface ProviderCalls {
   readonly removed: string[];
   readonly inspect: Array<InspectCall>;
   readonly routes: Array<{ readonly app: string; readonly hostnames: ReadonlyArray<string> }>;
+  readonly publishedRoutes: Array<{ readonly app: string; readonly hostnames: ReadonlyArray<string> }>;
   readonly routerSetups: number[];
   readonly routesRemoved: string[];
 }
@@ -138,7 +142,12 @@ interface HarnessOptions {
   readonly failRemoveServices?: ReadonlyArray<string>;
   readonly missingAppliedState?: boolean;
   readonly incompleteObservationOwnership?: boolean;
+  readonly observationProviderId?: ProviderId;
+  readonly observationRoot?: AbsolutePath;
   readonly brokenModules?: ReadonlyArray<string>;
+  readonly consumerPlans?: ReadonlyArray<AppPlan>;
+  readonly consumerObservations?: ReadonlyArray<ServiceRuntimeInfo>;
+  readonly unreadableConsumerState?: boolean;
   readonly beforeApply?: Effect.Effect<void>;
   readonly offline?: boolean;
   readonly vanishedServices?: ReadonlyArray<string>;
@@ -289,6 +298,7 @@ const makeHarness = async (
     removed: [],
     inspect: [],
     routes: [],
+    publishedRoutes: [],
     routerSetups: [],
     routesRemoved: [],
   };
@@ -304,23 +314,29 @@ const makeHarness = async (
     appliedPlans: Effect.sync(() =>
       options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan],
     ),
-    list: () =>
+    list: (filter) =>
       Effect.sync(() => {
         const plan = appliedPlan;
-        return plan === undefined
-          ? []
-          : [...runningServices, ...(options.unplannedServices ?? []).map((name) => ServiceName.make(name))]
-              .filter((service) => !options.vanishedServices?.includes(service))
-              .map((service) => ({
-                app: plan.id,
-                ...(options.incompleteObservationOwnership ? {} : { appRoot: plan.root }),
-                providerId,
-                service,
-                containerId: `test-${service}`,
-                status: "running" as const,
-                state: "running",
-                publications: { status: "unknown" as const },
-              }));
+        const globalServices =
+          plan === undefined
+            ? []
+            : [...runningServices, ...(options.unplannedServices ?? []).map((name) => ServiceName.make(name))]
+                .filter((service) => !options.vanishedServices?.includes(service))
+                .map((service) => ({
+                  app: plan.id,
+                  ...(options.incompleteObservationOwnership
+                    ? {}
+                    : { appRoot: options.observationRoot ?? plan.root }),
+                  providerId: options.observationProviderId ?? providerId,
+                  service,
+                  containerId: `test-${service}`,
+                  status: "running" as const,
+                  state: "running",
+                  publications: { status: "unknown" as const },
+                }));
+        return [...globalServices, ...(options.consumerObservations ?? [])].filter(
+          (service) => filter.app === undefined || service.app === filter.app,
+        );
       }),
     apply: (plan, applyOptions) =>
       Effect.gen(function* () {
@@ -570,12 +586,19 @@ const makeHarness = async (
                       remediation: "Retry route publication.",
                     }),
                   )
-                : Effect.succeed(result),
+                : Effect.sync(() => {
+                    calls.publishedRoutes.push({
+                      app: String(app),
+                      hostnames: routes.map((route) => route.hostname),
+                    });
+                    return result;
+                  }),
             ),
           ),
         removeRoutes: (app) =>
           Effect.sync(() => {
             calls.routesRemoved.push(String(app));
+            calls.publishedRoutes.push({ app: String(app), hostnames: [] });
           }),
       }),
     ),
@@ -585,6 +608,14 @@ const makeHarness = async (
       RuntimeProviderRegistry.of({
         resolveAppliedPlan: () => Effect.succeed(undefined),
         resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedStateInventory: () =>
+          Effect.sync(() => ({
+            plans: [
+              ...(options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan]),
+              ...(options.consumerPlans ?? []),
+            ],
+            unreadable: options.unreadableConsumerState ? [{ path: "/protected/unreadable-app.json" }] : [],
+          })),
         appliedPlansFor: () =>
           Effect.sync(() => (options.missingAppliedState || appliedPlan === undefined ? [] : [appliedPlan])),
         list: Effect.succeed([providerId]),
@@ -641,6 +672,59 @@ const withHarness = async <T>(
       await rm(moduleRoot, { recursive: true, force: true });
     }
   });
+
+const registerConsumer = async (
+  harness: Harness,
+  options: { consumerPlans: AppPlan[]; consumerObservations: ServiceRuntimeInfo[] },
+  kind: "user" | "scratch",
+  required: ReadonlyArray<string>,
+  routed = false,
+) => {
+  const base = await Effect.runPromise(
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      return (yield* registry.appliedPlansFor(AbsolutePath.make(join(harness.dataRoot, "global"))))[0];
+    }).pipe(Effect.provide(harness.layer)),
+  );
+  const service = Object.values(base?.services ?? {})[0];
+  if (base === undefined || service === undefined) throw new Error("Expected applied global fixture");
+  const root = AbsolutePath.make(join(harness.dataRoot, `${kind}-consumer`));
+  const id = AppId.make(`${kind}-consumer`);
+  const consumer: AppPlan = {
+    ...base,
+    id,
+    name: `${kind} consumer`,
+    slug: String(id),
+    root,
+    identity: { appRoot: root, ownerKey: appIdentityKey("owner", root) },
+    requires: { globalServices: required },
+    routes: routed
+      ? [
+          {
+            hostname: "consumer.global.test",
+            scheme: "http",
+            service: service.name,
+            endpoint: 8080,
+            priority: 2,
+            backend: { service: service.name, protocol: "http", port: 8080 },
+          },
+        ]
+      : [],
+    extensions: kind === "scratch" ? { "@lando/core/scratch": { session: "test" } } : {},
+  };
+  options.consumerPlans.push(consumer);
+  options.consumerObservations.push({
+    app: id,
+    appRoot: root,
+    providerId: base.provider,
+    service: service.name,
+    containerId: `${id}-container`,
+    status: "running",
+    state: "running",
+    publications: { status: "unknown" },
+  });
+  return consumer;
+};
 
 const materializeDist = (
   harness: Harness,
@@ -871,6 +955,7 @@ describe("meta:global command effects", () => {
         {
           serviceNames: independentGlobalServices,
           exitedServices: ["mailpit"],
+          routerId: "traefik",
           revalidateStartup: Effect.sync(() => {
             revalidated.push("revalidated");
           }),
@@ -895,6 +980,7 @@ describe("meta:global command effects", () => {
         },
         {
           failInspect: true,
+          routerId: "proxy",
           revalidateStartup: Effect.sync(() => {
             revalidated.push("revalidated");
           }).pipe(
@@ -1125,6 +1211,7 @@ describe("meta:global command effects", () => {
       },
       {
         failApply: failed,
+        routerId: "proxy",
         revalidateStartup: Effect.sync(() => {
           revalidated.push("router-revalidated");
         }),
@@ -1157,6 +1244,7 @@ describe("meta:global command effects", () => {
         },
         {
           failRoutes: true,
+          routerId: "proxy",
           revalidateStartup: Effect.sync(() => {
             revalidated.push("router-revalidated");
           }).pipe(Effect.andThen(failingWatcherObservation("2026-09-19T10:00:00.000Z"))),
@@ -1182,6 +1270,7 @@ describe("meta:global command effects", () => {
       {
         serviceNames: independentGlobalServices,
         failApply: ["ssh-agent"],
+        routerId: "traefik",
         revalidateStartup: Effect.promise(() => rm(watcherRecordPath())),
       },
     );
@@ -1222,6 +1311,7 @@ describe("meta:global command effects", () => {
         serviceNames: independentGlobalServices,
         failApply: ["ssh-agent"],
         timeline,
+        routerId: "traefik",
         revalidateStartup: Effect.sync(() => {
           timeline.push("router-revalidated");
         }).pipe(
@@ -1869,7 +1959,7 @@ describe("meta:global command effects", () => {
       await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
       options.offline = true;
       const exit = await Effect.runPromiseExit(
-        globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        globalDisable({ selectors: ["mail"], allowDisruption: true }).pipe(Effect.provide(harness.layer)),
       );
       expect(failureOf(exit)).toMatchObject({
         _tag: "GlobalPolicyReconciliationError",
@@ -1987,6 +2077,74 @@ describe("meta:global command effects", () => {
     }, options);
   });
 
+  for (const scope of ["selected", "whole"] as const) {
+    test(`reconcile retries durable route withdrawal after a failed ${scope} start replaces applied metadata`, async () => {
+      const options = { failRoutes: false };
+      await withHarness(async (harness) => {
+        await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+        await writeFile(
+          join(harness.dataRoot, "global", ".lando.local.yml"),
+          "services:\n  mail:\n    routes: [mail.global.test]\n  proxy:\n    routes: [proxy.global.test]\n",
+        );
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        options.failRoutes = true;
+        const disabled = await Effect.runPromiseExit(
+          globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(failureOf(disabled)).toMatchObject({
+          servicesRemoved: ["mail"],
+          pending: expect.arrayContaining([expect.objectContaining({ phase: "routes" })]),
+        });
+        const restarted = await Effect.runPromiseExit(
+          globalStart(scope === "selected" ? { services: ["proxy"] } : {}).pipe(
+            Effect.provide(harness.layer),
+          ),
+        );
+        expect(failureOf(restarted)).toBeInstanceOf(ProxyApplyError);
+        expect([...(harness.calls.publishedRoutes.at(-1)?.hostnames ?? [])].sort()).toEqual([
+          "mail.global.test",
+          "proxy.global.test",
+        ]);
+        const before = await Effect.runPromise(
+          readGlobalReconciliation().pipe(Effect.provide(harness.layer)),
+        );
+        expect(before.pending).toEqual(
+          expect.arrayContaining([expect.objectContaining({ phase: "routes", services: ["mail"] })]),
+        );
+        options.failRoutes = false;
+        const attempts = harness.calls.routes.length;
+        const reconciled = await Effect.runPromise(globalReconcile().pipe(Effect.provide(harness.layer)));
+        expect(reconciled.pending).toEqual([]);
+        expect(reconciled.servicesRemoved).toEqual([]);
+        expect(harness.calls.routes).toHaveLength(attempts + 1);
+        expect(harness.calls.publishedRoutes.at(-1)?.hostnames).toEqual(["proxy.global.test"]);
+      }, options);
+    });
+  }
+
+  test("whole-app stop clears durable route failure only after actual route withdrawal", async () => {
+    const options = { failRoutes: false };
+    await withHarness(async (harness) => {
+      await mkdir(join(harness.dataRoot, "global"), { recursive: true });
+      await writeFile(
+        join(harness.dataRoot, "global", ".lando.local.yml"),
+        "services:\n  mail:\n    routes: [mail.global.test]\n  proxy:\n    routes: [proxy.global.test]\n",
+      );
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.failRoutes = true;
+      await Effect.runPromiseExit(globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      await Effect.runPromiseExit(globalStart({ services: ["proxy"] }).pipe(Effect.provide(harness.layer)));
+      expect(harness.calls.publishedRoutes.at(-1)?.hostnames).toContain("mail.global.test");
+      await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+      expect(harness.calls.publishedRoutes.at(-1)?.hostnames).toEqual([]);
+      const receipt = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+      expect(receipt.pending).toEqual([]);
+      const reconciled = await Effect.runPromise(globalReconcile().pipe(Effect.provide(harness.layer)));
+      expect(reconciled.pending).toEqual([]);
+      expect(harness.calls.publishedRoutes.at(-1)?.hostnames).toEqual([]);
+    }, options);
+  });
+
   test("disable saves policy and exposes routes pending when applied metadata is missing", async () => {
     const options = { missingAppliedState: false };
     await withHarness(async (harness) => {
@@ -2023,6 +2181,14 @@ describe("meta:global command effects", () => {
       });
       expect(await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).toEqual(before);
       expect(harness.calls.removed).toEqual([]);
+      const acknowledged = await Effect.runPromiseExit(
+        globalDisable({ selectors: ["mail"], allowDisruption: true }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(acknowledged)).toMatchObject({
+        _tag: "GlobalAppError",
+        message: expect.stringContaining("proxy"),
+      });
+      expect(await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).toEqual(before);
     });
   });
 
@@ -2086,6 +2252,201 @@ describe("meta:global command effects", () => {
       expect((await readdir(root, { recursive: true })).sort()).toEqual(before);
       expect(await Bun.file(join(root, ".lando.lock.yml")).exists()).toBe(false);
     });
+  });
+
+  for (const ownership of [
+    { name: "missing root", incompleteObservationOwnership: true },
+    { name: "mismatched provider", observationProviderId: ProviderId.make("foreign") },
+    {
+      name: "missing root and mismatched provider",
+      incompleteObservationOwnership: true,
+      observationProviderId: ProviderId.make("foreign"),
+    },
+  ]) {
+    test(`disable preserves intent and evidence pending for ${ownership.name} without applied state`, async () => {
+      const options: HarnessOptions & {
+        missingAppliedState: boolean;
+        incompleteObservationOwnership?: boolean;
+        observationProviderId?: ProviderId;
+      } = { missingAppliedState: false };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        options.missingAppliedState = true;
+        if (ownership.incompleteObservationOwnership !== undefined)
+          options.incompleteObservationOwnership = ownership.incompleteObservationOwnership;
+        if (ownership.observationProviderId !== undefined)
+          options.observationProviderId = ownership.observationProviderId;
+        await rm(distPath(harness.dataRoot));
+        const routes = harness.calls.routes.length;
+        const pending = await Effect.runPromiseExit(
+          globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(failureOf(pending)).toMatchObject({
+          _tag: "GlobalPolicyReconciliationError",
+          policySaved: true,
+          servicesRemoved: [],
+          pending: expect.arrayContaining([
+            expect.objectContaining({ phase: "evidence", services: ["mail"] }),
+          ]),
+        });
+        const policy = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+        expect(policy.plugins["@lando/fake-global-command"]?.contributions.mail?.enabled).toBe(false);
+        const receipt = await Effect.runPromise(
+          readGlobalReconciliation().pipe(Effect.provide(harness.layer)),
+        );
+        expect(receipt.pending).toEqual(
+          expect.arrayContaining([expect.objectContaining({ phase: "evidence", services: ["mail"] })]),
+        );
+        expect(harness.calls.removed).toEqual([]);
+        expect(harness.calls.destroy).toEqual([]);
+        expect(harness.calls.routes).toHaveLength(routes);
+      }, options);
+    });
+  }
+
+  test("disable ignores a selected-name observation proven to belong to another root", async () => {
+    const options: HarnessOptions & { missingAppliedState: boolean; observationRoot?: AbsolutePath } = {
+      missingAppliedState: false,
+      vanishedServices: ["proxy"],
+    };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.missingAppliedState = true;
+      options.observationRoot = AbsolutePath.make(join(harness.dataRoot, "foreign-root"));
+      await rm(distPath(harness.dataRoot));
+      const result = await Effect.runPromise(
+        globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(result.pending).toEqual([]);
+      expect(result.servicesRemoved).toEqual([]);
+      expect(harness.calls.removed).toEqual([]);
+    }, options);
+  });
+
+  for (const kind of ["user", "scratch"] as const) {
+    test(`disable protects a running ${kind} consumer unless disruption is acknowledged`, async () => {
+      const options = { consumerPlans: [] as AppPlan[], consumerObservations: [] as ServiceRuntimeInfo[] };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        const consumer = await registerConsumer(harness, options, kind, ["mail"]);
+        const before = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+        const preview = await Effect.runPromise(
+          globalDisable({ selectors: ["mail"], dryRun: true }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(preview.impact.consumers).toEqual([
+          expect.objectContaining({ id: consumer.id, kind, globalServices: ["mail"] }),
+        ]);
+        const refused = await Effect.runPromiseExit(
+          globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(failureOf(refused)).toMatchObject({
+          _tag: "GlobalConsumerProtectionError",
+          policySaved: false,
+          consumers: [expect.objectContaining({ id: consumer.id, kind })],
+        });
+        expect(await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).toEqual(
+          before,
+        );
+        expect(harness.calls.removed).toEqual([]);
+        const acknowledged = await Effect.runPromise(
+          globalDisable({ selectors: ["mail"], allowDisruption: true }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(acknowledged.impact.allowDisruption).toBe(true);
+        expect(acknowledged.servicesRemoved).toEqual(["mail"]);
+        expect(options.consumerObservations).toHaveLength(1);
+        expect(harness.calls.destroy).toEqual([]);
+      }, options);
+    });
+  }
+
+  test("disable protects a legacy routed app without an explicit router requirement", async () => {
+    const options = {
+      consumerPlans: [] as AppPlan[],
+      consumerObservations: [] as ServiceRuntimeInfo[],
+      routerId: "proxy",
+    };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      await registerConsumer(harness, options, "user", [], true);
+      const refusal = await Effect.runPromiseExit(
+        globalDisable({ selectors: ["proxy"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(refusal)).toMatchObject({
+        _tag: "GlobalConsumerProtectionError",
+        consumers: [expect.objectContaining({ globalServices: ["proxy"], routes: ["consumer.global.test"] })],
+      });
+      expect(harness.calls.removed).toEqual([]);
+    }, options);
+  });
+
+  test("disable refuses unreadable consumer evidence before saving policy", async () => {
+    const options = { unreadableConsumerState: false };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      const before = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+      options.unreadableConsumerState = true;
+      const refusal = await Effect.runPromiseExit(
+        globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(refusal)).toMatchObject({
+        _tag: "GlobalConsumerProtectionError",
+        policySaved: false,
+        uncertainties: [expect.stringContaining("unreadable")],
+      });
+      expect(await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).toEqual(before);
+      expect(harness.calls.removed).toEqual([]);
+      const acknowledged = await Effect.runPromise(
+        globalDisable({ selectors: ["mail"], allowDisruption: true }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(acknowledged.servicesRemoved).toEqual(["mail"]);
+    }, options);
+  });
+
+  test("disable refuses offline consumer uncertainty before saving without acknowledgement", async () => {
+    const options = { offline: false };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      const before = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+      options.offline = true;
+      const refused = await Effect.runPromiseExit(
+        globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(refused)).toMatchObject({
+        _tag: "GlobalConsumerProtectionError",
+        policySaved: false,
+        uncertainties: [expect.stringContaining("unreachable")],
+      });
+      expect(await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).toEqual(before);
+      expect(harness.calls.removed).toEqual([]);
+    }, options);
+  });
+
+  test("reconcile rechecks consumer protection without changing saved intent or pending receipts", async () => {
+    const options = {
+      consumerPlans: [] as AppPlan[],
+      consumerObservations: [] as ServiceRuntimeInfo[],
+      failRemove: false,
+    };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.failRemove = true;
+      await Effect.runPromiseExit(globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      await registerConsumer(harness, options, "user", ["mail"]);
+      const before = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+      const receipt = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+      const refused = await Effect.runPromiseExit(globalReconcile().pipe(Effect.provide(harness.layer)));
+      expect(failureOf(refused)).toMatchObject({ _tag: "GlobalConsumerProtectionError", policySaved: false });
+      expect(await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).toEqual(before);
+      expect(await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)))).toEqual(
+        receipt,
+      );
+      options.failRemove = false;
+      const acknowledged = await Effect.runPromise(
+        globalReconcile({ allowDisruption: true }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(acknowledged.servicesRemoved).toEqual(["mail"]);
+      expect(acknowledged.pending).toEqual([]);
+    }, options);
   });
 
   test("disable still saves false when its reconciliation receipt is corrupt", async () => {
@@ -2211,7 +2572,7 @@ describe("meta:global command effects", () => {
       await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
       options.offline = true;
       const pending = await Effect.runPromiseExit(
-        globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        globalDisable({ selectors: ["mail"], allowDisruption: true }).pipe(Effect.provide(harness.layer)),
       );
       expect(failureOf(pending)).toMatchObject({ policySaved: true });
       const receipt = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
@@ -2232,7 +2593,9 @@ describe("meta:global command effects", () => {
     await withHarness(async (harness) => {
       await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
       options.offline = true;
-      await Effect.runPromiseExit(globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      await Effect.runPromiseExit(
+        globalDisable({ selectors: ["mail"], allowDisruption: true }).pipe(Effect.provide(harness.layer)),
+      );
       options.serviceNames = ["proxy"];
       options.offline = false;
       await writeFile(
@@ -2326,7 +2689,9 @@ describe("meta:global command effects", () => {
       await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
       const applies = harness.calls.apply.length;
       options.offline = true;
-      await Effect.runPromiseExit(globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      await Effect.runPromiseExit(
+        globalDisable({ selectors: ["mail"], allowDisruption: true }).pipe(Effect.provide(harness.layer)),
+      );
       options.serviceNames = [];
       const result = await Effect.runPromise(
         globalEnable({ selectors: ["@lando/fake-global-command"] }).pipe(Effect.provide(harness.layer)),
@@ -2708,6 +3073,72 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test.each(["restart", "rebuild"] as const)(
+    "%s skips router revalidation after explicit disable",
+    async (command) => {
+      const revalidated: string[] = [];
+      await withHarness(
+        async (harness) => {
+          await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+          await Effect.runPromise(
+            globalDisable({ selectors: ["traefik", "traefik-diagnostics"], allowDisruption: true }).pipe(
+              Effect.provide(harness.layer),
+            ),
+          );
+          await Effect.runPromise(
+            (command === "restart" ? Effect.asVoid(globalRestart()) : Effect.asVoid(globalRebuild())).pipe(
+              Effect.provide(harness.layer),
+            ),
+          );
+          expect(revalidated).toEqual([]);
+          expect(
+            Object.keys(
+              harness.calls.apply.at(-1)?.options.recordedPlan?.services ??
+                harness.calls.apply.at(-1)?.plan.services ??
+                {},
+            ),
+          ).not.toContain("traefik");
+        },
+        {
+          serviceNames: independentGlobalServices,
+          routerId: "traefik",
+          revalidateStartup: Effect.sync(() => {
+            revalidated.push("unexpected");
+          }).pipe(Effect.andThen(failingWatcherObservation("2026-11-01T00:00:00.000Z"))),
+        },
+      );
+    },
+  );
+
+  test.each(["restart", "rebuild"] as const)(
+    "%s preserves partial startup failure without revalidating an unapplied router",
+    async (command) => {
+      const revalidated: string[] = [];
+      const options = {
+        serviceNames: independentGlobalServices,
+        routerId: "traefik",
+        failApply: [] as string[],
+        revalidateStartup: Effect.sync(() => {
+          revalidated.push("unexpected");
+        }).pipe(Effect.andThen(failingWatcherObservation("2026-11-01T00:00:00.000Z"))),
+      };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        options.failApply = ["traefik"];
+        const failed = await Effect.runPromiseExit(
+          (command === "restart" ? Effect.asVoid(globalRestart()) : Effect.asVoid(globalRebuild())).pipe(
+            Effect.provide(harness.layer),
+          ),
+        );
+        expect(failureOf(failed)).toMatchObject({
+          _tag: "GlobalAppError",
+          message: expect.stringContaining("traefik"),
+        });
+        expect(revalidated).toEqual([]);
+      }, options);
+    },
+  );
+
   test("restart clears a stale router watcher record", async () => {
     await withHarness(
       async (harness) => {
@@ -2723,7 +3154,7 @@ describe("meta:global command effects", () => {
         // Then the healthy observation clears the stale record on disk.
         expect(await Bun.file(path).exists()).toBe(false);
       },
-      { revalidateStartup: Effect.promise(() => rm(watcherRecordPath())) },
+      { routerId: "proxy", revalidateStartup: Effect.promise(() => rm(watcherRecordPath())) },
     );
   });
 
@@ -2743,7 +3174,7 @@ describe("meta:global command effects", () => {
         expect(await Bun.file(watcherRecordPath()).exists()).toBe(true);
         expect(JSON.parse(await readFile(watcherRecordPath(), "utf8"))).toMatchObject({ observedAt });
       },
-      { revalidateStartup: failingWatcherObservation(observedAt) },
+      { routerId: "proxy", revalidateStartup: failingWatcherObservation(observedAt) },
     );
   });
 
@@ -2763,7 +3194,7 @@ describe("meta:global command effects", () => {
         expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
         expect(JSON.parse(await readFile(watcherRecordPath(), "utf8"))).toMatchObject({ observedAt });
       },
-      { revalidateStartup: failingWatcherObservation(observedAt) },
+      { routerId: "proxy", revalidateStartup: failingWatcherObservation(observedAt) },
     );
   });
 
@@ -2783,6 +3214,7 @@ describe("meta:global command effects", () => {
       },
       {
         timeline,
+        routerId: "proxy",
         revalidateStartup: Effect.sync(() => {
           timeline.push("router-revalidated");
         }),
@@ -3078,4 +3510,220 @@ describe("meta:global command effects", () => {
       expect(emitted).toEqual([{ service: "proxy", chunk: "ready" }]);
     });
   });
+});
+
+for (const failGeneration of [false, true]) {
+  test(`global start revalidates a pre-hook disable${failGeneration ? " after nested generation fails" : ""}`, async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      harness.calls.build.length = 0;
+      harness.calls.apply.length = 0;
+      harness.events.length = 0;
+      const events = await Effect.runPromise(EventService.pipe(Effect.provide(harness.layer)));
+      const globalApp = await Effect.runPromise(GlobalAppService.pipe(Effect.provide(harness.layer)));
+      const hooked = EventService.of({
+        ...events,
+        publish: (event) =>
+          Effect.gen(function* () {
+            yield* events.publish(event);
+            if (event._tag !== "pre-global-start") return;
+            const child = globalDisable({ selectors: ["mail"] });
+            const nested = yield* Effect.result(
+              (failGeneration
+                ? child.pipe(
+                    Effect.provideService(GlobalAppService, {
+                      ...globalApp,
+                      regenerateDist: () =>
+                        Effect.fail(
+                          new GlobalAppError({
+                            operation: "regenerateDist",
+                            message: "Injected generation failure",
+                            remediation: "Remove the injected failure.",
+                          }),
+                        ),
+                    }),
+                  )
+                : child
+              ).pipe(Effect.provide(harness.layer), Effect.timeout(2000)),
+            );
+            if (failGeneration)
+              expect(nested).toMatchObject({
+                _tag: "Failure",
+                failure: { _tag: "GlobalPolicyReconciliationError", policySaved: true },
+              });
+            else expect(nested._tag).toBe("Success");
+          }),
+      });
+      const exit = await Effect.runPromiseExit(
+        globalStart({ services: ["mail"] }).pipe(
+          Effect.provideService(EventService, hooked),
+          Effect.provide(harness.layer),
+        ),
+      );
+      expect(failureOf(exit)).toMatchObject({ _tag: "GlobalAppError", operation: "startup-admission" });
+      expect(
+        (await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).plugins[
+          "@lando/fake-global-command"
+        ]?.contributions.mail?.enabled,
+      ).toBe(false);
+      expect(harness.calls.build).toHaveLength(0);
+      expect(harness.calls.apply).toHaveLength(0);
+      expect(harness.events.filter((event) => event._tag === "post-global-start")).toHaveLength(0);
+    });
+  });
+}
+
+const disableDuringRebuild = (harness: Harness, failGeneration: boolean) =>
+  Effect.gen(function* () {
+    const globalApp = yield* GlobalAppService;
+    const change = globalDisable({ selectors: ["mail"] });
+    const nested = yield* Effect.result(
+      failGeneration
+        ? change.pipe(
+            Effect.provideService(GlobalAppService, {
+              ...globalApp,
+              regenerateDist: () =>
+                Effect.fail(
+                  new GlobalAppError({
+                    operation: "regenerateDist",
+                    message: "Injected nested rebuild generation failure",
+                    remediation: "Remove the injected failure.",
+                  }),
+                ),
+            }),
+          )
+        : change,
+    );
+    if (failGeneration)
+      expect(nested).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "GlobalPolicyReconciliationError", policySaved: true },
+      });
+    else expect(nested._tag).toBe("Success");
+  }).pipe(Effect.provide(harness.layer), Effect.timeout(2000), Effect.orDie);
+
+for (const failGeneration of [false, true]) {
+  test(`global rebuild rejects a pre-hook disable before teardown${failGeneration ? " when nested generation fails" : ""}`, async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      harness.calls.destroy.length = 0;
+      harness.calls.build.length = 0;
+      harness.calls.apply.length = 0;
+      harness.events.length = 0;
+      const events = await Effect.runPromise(EventService.pipe(Effect.provide(harness.layer)));
+      const hooked = EventService.of({
+        ...events,
+        publish: (event) =>
+          Effect.gen(function* () {
+            yield* events.publish(event);
+            if (event._tag === "pre-global-rebuild") yield* disableDuringRebuild(harness, failGeneration);
+          }),
+      });
+      const rebuilt = await Effect.runPromiseExit(
+        globalRebuild().pipe(Effect.provideService(EventService, hooked), Effect.provide(harness.layer)),
+      );
+      expect(failureOf(rebuilt)).toMatchObject({ _tag: "GlobalAppError", operation: "startup-admission" });
+      const policy = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+      expect(policy.plugins["@lando/fake-global-command"]?.contributions.mail?.enabled).toBe(false);
+      expect(harness.calls.destroy).toEqual([]);
+      expect(harness.calls.build).toEqual([]);
+      expect(harness.calls.apply).toEqual([]);
+      expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
+    });
+  });
+
+  test(`global rebuild rejects a build-time disable before apply${failGeneration ? " when nested generation fails" : ""}`, async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      const recorded = await Effect.runPromise(
+        RuntimeProviderRegistry.pipe(
+          Effect.flatMap((registry) =>
+            registry.appliedPlansFor(AbsolutePath.make(join(harness.dataRoot, "global"))),
+          ),
+          Effect.provide(harness.layer),
+        ),
+      );
+      harness.calls.destroy.length = 0;
+      harness.calls.build.length = 0;
+      harness.calls.apply.length = 0;
+      harness.events.length = 0;
+      const builder = await Effect.runPromise(BuildOrchestrator.pipe(Effect.provide(harness.layer)));
+      let disabled = false;
+      const hooked = BuildOrchestrator.of({
+        ...builder,
+        build: (plan, options) =>
+          Effect.gen(function* () {
+            const built = yield* builder.build(plan, options);
+            if (!disabled && Object.hasOwn(plan.services, "mail")) {
+              disabled = true;
+              yield* disableDuringRebuild(harness, failGeneration);
+            }
+            return built;
+          }),
+      });
+      const rebuilt = await Effect.runPromiseExit(
+        globalRebuild().pipe(Effect.provideService(BuildOrchestrator, hooked), Effect.provide(harness.layer)),
+      );
+      expect(failureOf(rebuilt)).toMatchObject({ _tag: "GlobalAppError", operation: "startup-admission" });
+      expect(disabled).toBe(true);
+      expect(harness.calls.destroy).toHaveLength(1);
+      expect(harness.calls.build.some((plan) => Object.hasOwn(plan.services, "mail"))).toBe(true);
+      expect(harness.calls.apply).toEqual([]);
+      const after = await Effect.runPromise(
+        RuntimeProviderRegistry.pipe(
+          Effect.flatMap((registry) =>
+            registry.appliedPlansFor(AbsolutePath.make(join(harness.dataRoot, "global"))),
+          ),
+          Effect.provide(harness.layer),
+        ),
+      );
+      expect(after).toEqual(recorded);
+      const policy = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+      expect(policy.plugins["@lando/fake-global-command"]?.contributions.mail?.enabled).toBe(false);
+      expect(harness.events.map((event) => event._tag)).not.toContain("post-global-rebuild");
+    });
+  });
+}
+
+test("selected global start cannot republish a disabled retained sibling after its cleanup fails", async () => {
+  let beforeApply: Effect.Effect<void> = Effect.void;
+  await withHarness(
+    async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      expect(harness.calls.publishedRoutes.at(-1)?.hostnames.toSorted()).toEqual([
+        "mail.global.lndo.site",
+        "proxy.global.lndo.site",
+      ]);
+      harness.calls.publishedRoutes.length = 0;
+      harness.events.length = 0;
+      beforeApply = Effect.gen(function* () {
+        const nested = yield* Effect.result(globalDisable({ selectors: ["proxy"], allowDisruption: true }));
+        expect(nested).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "GlobalPolicyReconciliationError", policySaved: true },
+        });
+        expect(harness.calls.publishedRoutes.at(-1)?.hostnames).not.toContain("proxy.global.lndo.site");
+      }).pipe(Effect.provide(harness.layer), Effect.orDie);
+      const exit = await Effect.runPromiseExit(
+        globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(exit)).toMatchObject({ _tag: "GlobalAppError", operation: "startup-admission" });
+      const state = await Effect.runPromise(
+        Effect.gen(function* () {
+          const registry = yield* RuntimeProviderRegistry;
+          const provider = yield* registry.select(ProviderId.make("lando"));
+          return {
+            policy: yield* readGlobalPolicy(),
+            observed: yield* provider.list({ includeUnplanned: true }),
+          };
+        }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(state.policy.plugins["@lando/fake-global-command"]?.contributions.proxy?.enabled).toBe(false);
+      expect(state.observed.some((row) => row.service === "proxy" && row.status === "running")).toBe(true);
+      expect(harness.calls.publishedRoutes).toHaveLength(1);
+      expect(harness.calls.publishedRoutes.at(-1)?.hostnames).not.toContain("proxy.global.lndo.site");
+      expect(harness.events.filter((event) => event._tag === "post-global-start")).toHaveLength(0);
+    },
+    { failRemoveServices: ["proxy"], beforeApply: Effect.suspend(() => beforeApply) },
+  );
 });

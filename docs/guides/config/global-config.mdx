@@ -429,6 +429,26 @@ clears that package's individual choices and applies to its future contributions
 too. `lando global:reconcile` preserves choices and retries pending work; it never
 starts a container.
 
+Disabling a dependency can affect running user or scratch apps. Disable and
+reconcile protect those consumers before saving policy; unavailable inspection
+also causes refusal. Inspect `--dry-run --format=json` before proceeding. The
+explicit `--allow-disruption` acknowledgement applies only to its invocation and
+leaves the affected apps running. It doesn't relax resource ownership checks,
+named-volume retention, or protection for an in-flight global or app activation.
+Finish that active operation before retrying a refused policy command. See [Disable a shared service](../global/uninstall-and-purge.mdx#disable-a-shared-service)
+for the consumer details and recovery steps.
+
+Global mutations first lock the saved policy, then the actual global app root.
+Embedded hosts that share `<userConfRoot>/global.config.yml` serialize changes
+even when their runtime or data roots differ. Hosts sharing a runtime root also
+serialize changes to that root.
+
+Nested in-process command or SDK calls can reuse ownership for the same policy
+file and global root. Finish the current operation before switching either
+target. A child CLI process needs its own locks; recognized parent ownership
+causes refusal rather than lending the parent's locks. Run that mutation
+separately after the parent finishes. A child can then acquire fresh locks normally.
+
 A disabled, blocked, or unverified contribution is omitted from the effective
 Landofile, including any overrides for its id in the six layers or their includes.
 View, validation, and config writes use the same eligibility rules. Those overrides

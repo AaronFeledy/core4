@@ -1,8 +1,16 @@
+import { sameRealpath } from "@lando/paths";
 import { DateTime, Effect, Layer, Option, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { redactString, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
-import { CaError, ProxyApplyError, ProxyError, ProxySetupError, RouterWatcherError } from "@lando/sdk/errors";
+import {
+  CaError,
+  FileNotFoundError,
+  ProxyApplyError,
+  ProxyError,
+  ProxySetupError,
+  RouterWatcherError,
+} from "@lando/sdk/errors";
 import type { PluginStateStore } from "@lando/sdk/plugins";
 import { AppId, type ProxyConfig, type RoutePlan, ServiceName } from "@lando/sdk/schema";
 import {
@@ -56,7 +64,7 @@ import { type AuthorityPorts, DEFAULT_AUTHORITY_PORTS } from "./routing.ts";
 import { writeSecretAtomic } from "./secret-file.ts";
 import { stopSockets } from "./socket-proxy-install.ts";
 import { liveSocketProxy } from "./socket-proxy-setup.ts";
-import { persistedStatus } from "./status.ts";
+import { observeTraefikState, persistedStatus } from "./status.ts";
 import { normalizeDefaultDomain, removeAllCertificates, removeAppCertificates } from "./tls.ts";
 import { clearWatcherDiagnostic, writeWatcherDiagnostic } from "./watcher-diagnostic-state.ts";
 import {
@@ -164,6 +172,12 @@ const finalizeRouterStartup = Effect.fn("TraefikRouter.finalizeRouterStartup")(f
   advertised: AuthorityPorts,
   context: "setup" | "revalidation",
 ) {
+  if (context === "revalidation" && (yield* observeTraefikState(dependencies)) !== "running") {
+    yield* dependencies.fileSystem
+      .remove(routingStateFile(dependencies.paths))
+      .pipe(Effect.catch((cause) => (cause instanceof FileNotFoundError ? Effect.void : Effect.fail(cause))));
+    return;
+  }
   const ready = yield* assertAdvertisedForward(dependencies, advertised, context);
   yield* observeWatcherStartup(dependencies);
   if (ready) yield* confirmRouterAcquisition(dependencies);
@@ -470,6 +484,17 @@ export const layer = (stateStore: PluginStateStore) =>
       const fileSystem = yield* FileSystem;
       const paths = yield* PathsService;
       const globalApp = yield* GlobalAppService;
+      const globalRoot = (yield* globalApp.paths.pipe(
+        Effect.mapError(
+          (cause) =>
+            new ProxyError({
+              message: "Unable to resolve the global router's storage root.",
+              proxyId: TRAEFIK_PROXY_ID,
+              remediation: cause.remediation,
+              cause,
+            }),
+        ),
+      )).root;
       const certificateAuthority = yield* CertificateAuthority;
       const events = yield* Effect.serviceOption(EventService);
       const registry = yield* Effect.serviceOption(RuntimeProviderRegistry);
@@ -482,7 +507,7 @@ export const layer = (stateStore: PluginStateStore) =>
           ...fileSystem,
           writeSecretAtomic: (path, content) => Effect.tryPromise(() => writeSecretAtomic(path, content)),
         },
-        paths,
+        paths: { platform: paths.platform, globalAppRoot: globalRoot },
         globalApp,
         stateStore,
         ...(socketProxy === undefined ? {} : { socketProxy }),
@@ -490,6 +515,26 @@ export const layer = (stateStore: PluginStateStore) =>
         ...Option.match(registry, {
           onNone: () => ({}),
           onSome: (registry) => ({
+            readTraefikState: Effect.fn("TraefikRouter.readTraefikState")(function* () {
+              const provider = yield* registry.select(yield* globalApp.providerId);
+              if (!(yield* provider.isAvailable) || !(yield* provider.getStatus).running)
+                return "unknown" as const;
+              const root = (yield* globalApp.paths).root;
+              const services = yield* provider.list({ app: AppId.make("global"), includeUnplanned: true });
+              const owned = services.find(
+                (service) =>
+                  service.app === "global" &&
+                  service.service === "traefik" &&
+                  service.providerId === provider.id &&
+                  service.appRoot !== undefined &&
+                  sameRealpath(service.appRoot, root),
+              );
+              return owned === undefined
+                ? ("stopped" as const)
+                : (owned.state ?? owned.status).toLowerCase() === "running"
+                  ? ("running" as const)
+                  : ("stopped" as const);
+            }),
             readTraefikPublications: Effect.fn("TraefikRouter.readTraefikPublications")(function* () {
               const provider = yield* registry.select(yield* globalApp.providerId);
               const service = yield* provider.inspect({

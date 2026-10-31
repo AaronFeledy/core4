@@ -28,6 +28,11 @@ export const metaGlobalDisableSpec: LandoCommandSpec<typeof GlobalPolicyChangeRe
       description: "Preview policy, dependencies, routes, and unresolved evidence without changing anything.",
       default: false,
     }),
+    "allow-disruption": Flags.boolean({
+      description:
+        "Acknowledge disruption to running apps or unknown consumer evidence. Volumes and resource ownership safeguards are preserved.",
+      default: false,
+    }),
   },
   run: (input) => globalDisable(globalPolicyOptionsFromInput(input)),
   render: (result) => renderGlobalPolicyChangeResult(result),

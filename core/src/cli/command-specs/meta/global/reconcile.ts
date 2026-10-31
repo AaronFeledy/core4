@@ -18,7 +18,15 @@ export const metaGlobalReconcileSpec: LandoCommandSpec<typeof GlobalPolicyChange
       description: "Preview reconciliation without changing files or resources.",
       default: false,
     }),
+    "allow-disruption": Flags.boolean({
+      description: "Acknowledge consumer disruption for this cleanup retry. This permission is not saved.",
+      default: false,
+    }),
   },
-  run: (input) => globalReconcile({ dryRun: specFlagsOf(input)["dry-run"] === true }),
+  run: (input) =>
+    globalReconcile({
+      dryRun: specFlagsOf(input)["dry-run"] === true,
+      allowDisruption: specFlagsOf(input)["allow-disruption"] === true,
+    }),
   render: (result) => renderGlobalPolicyChangeResult(result),
 };

@@ -5,6 +5,12 @@ import { GlobalAppError } from "@lando/sdk/errors";
 import { AppId, type AppPlan, type ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 import { GlobalAppService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import {
+  activeGlobalPolicyChange,
+  globalActivationEpoch,
+  withGlobalActivationPolicyGate,
+  withGlobalPolicyChange,
+} from "../global-app/activation-scope.ts";
 import { commitGlobalPolicy, prepareGlobalPolicy } from "../global-app/enablement.ts";
 import { GlobalPolicyReconciliationError } from "../global-app/errors.ts";
 import { withGlobalMutation } from "../global-app/mutation.ts";
@@ -23,6 +29,12 @@ import {
   readGlobalResolution,
 } from "../global-app/resolution.ts";
 import { withReadOnlyLandofile } from "../services/landofile-live.ts";
+import { readGlobalConsumerReservations } from "./global-consumer-lease.ts";
+import {
+  GlobalConsumerProtectionError,
+  GlobalConsumerSchema,
+  readGlobalConsumerImpact,
+} from "./global-consumers.ts";
 import { GlobalDistResultSchema, validateGlobalConfiguration } from "./global-install.ts";
 import { type GlobalTeardown, resolveGlobalStopSelection, resolveGlobalTeardown } from "./global-teardown.ts";
 
@@ -30,6 +42,7 @@ export type GlobalPolicyChangeOptions = {
   readonly selectors?: ReadonlyArray<string>;
   readonly all?: boolean;
   readonly dryRun?: boolean;
+  readonly allowDisruption?: boolean;
 };
 
 export const GlobalPolicyImpactSchema = Schema.Struct({
@@ -38,6 +51,8 @@ export const GlobalPolicyImpactSchema = Schema.Struct({
   contributions: Schema.Array(Schema.String),
   plugins: Schema.Array(Schema.String),
   dependencyBlockers: Schema.Array(Schema.String),
+  consumers: Schema.Array(GlobalConsumerSchema),
+  allowDisruption: Schema.Boolean,
   routes: Schema.Array(Schema.Struct({ service: Schema.String, hostname: Schema.String })),
   volumes: Schema.Literal("retained"),
   uncertainties: Schema.Array(Schema.String),
@@ -168,7 +183,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
         },
   );
   const candidate = yield* readGlobalResolution({ policy: prepared.policy });
-  // Applied metadata is read without constructing the runtime. Its failure never discards an off switch.
+  // Read applied metadata without constructing the runtime before calculating impact.
   const placement = yield* Effect.result(resolveGlobalPlacement());
   const applied = placement._tag === "Success" ? placement.success.plan : undefined;
   const composition =
@@ -302,17 +317,47 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
         ? composition.success.pendingSites
         : [],
   );
+  const activationEpoch = yield* globalActivationEpoch;
+  const consumerImpact =
+    operation === "enable"
+      ? { consumers: [], uncertainties: [] }
+      : yield* readGlobalConsumerImpact({
+          selectedIds: ids,
+          ...(placement._tag === "Success"
+            ? { providerId: placement.success.realized ?? placement.success.desired }
+            : {}),
+          routerId: (yield* RouterService).id,
+        });
+  const reservations =
+    operation === "enable" ? undefined : yield* Effect.result(readGlobalConsumerReservations(ids));
+  const reserved =
+    reservations?._tag === "Success"
+      ? reservations.success.map(
+          (reservation) =>
+            `Activation of ${reservation.app.kind} ${reservation.app.id} (${reservation.app.root}) reserves ${reservation.services.filter((id) => selected.has(id)).join(", ")}; retry after startup completes.`,
+        )
+      : reservations?._tag === "Failure"
+        ? [reservations.failure.message]
+        : [];
+  const activePolicy = options.dryRun ? yield* activeGlobalPolicyChange : undefined;
   const impact: typeof GlobalPolicyImpactSchema.Type = {
     desired: operation === "enable" ? "enabled" : operation === "disable" ? "disabled" : "unchanged",
     policyChanges: prepared.changed,
     contributions: ids,
     plugins: prepared.plugins,
     dependencyBlockers: blockers,
+    consumers: consumerImpact.consumers,
+    allowDisruption: options.allowDisruption === true,
     routes: (applied?.routes ?? [])
       .filter((route) => selected.has(String(route.service)))
       .map((route) => ({ service: String(route.service), hostname: route.hostname })),
     volumes: "retained",
     uncertainties: [
+      ...reserved,
+      ...(activePolicy === undefined
+        ? []
+        : [`Global policy ${activePolicy} is still reconciling; retry after it completes.`]),
+      ...consumerImpact.uncertainties,
       ...(placement._tag === "Failure" ? ["Applied ownership metadata could not be read."] : []),
       ...(applied !== undefined &&
       operation !== "enable" &&
@@ -355,8 +400,81 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       pending: [],
     } satisfies GlobalPolicyChangeResult;
   if (validation?._tag === "Failure") return yield* Effect.fail(validation.failure);
+  if (operation !== "enable" && reserved.length > 0)
+    return yield* Effect.fail(
+      new GlobalConsumerProtectionError({
+        operation,
+        policySaved: false,
+        consumers: [],
+        uncertainties: reserved,
+        message: "Application activation reserves the selected global services; policy was left unchanged.",
+        remediation:
+          "Wait for application startup to complete, then retry. --allow-disruption cannot invalidate an active startup admission.",
+      }),
+    );
   if (blockers.length > 0) return yield* Effect.fail(dependencyError(blockers));
-  const policy = yield* commitGlobalPolicy(current.policy.revision, prepared.policy);
+  if (
+    operation !== "enable" &&
+    options.allowDisruption !== true &&
+    (consumerImpact.consumers.length > 0 || consumerImpact.uncertainties.length > 0)
+  )
+    return yield* Effect.fail(
+      new GlobalConsumerProtectionError({
+        operation,
+        policySaved: false,
+        message:
+          consumerImpact.consumers.length > 0
+            ? "Running applications require the selected global services; policy was left unchanged."
+            : "Running application dependencies could not be verified; policy was left unchanged.",
+        consumers: consumerImpact.consumers,
+        uncertainties: consumerImpact.uncertainties,
+        remediation:
+          "Stop or reconfigure the named applications and restore any unreadable evidence, then retry. Use --allow-disruption only when you intend to continue despite these consumers or uncertainties; the acknowledgement applies to this invocation.",
+      }),
+    );
+  const policy = yield* withGlobalActivationPolicyGate(
+    Effect.gen(function* () {
+      if (operation !== "enable" && (yield* globalActivationEpoch) !== activationEpoch)
+        return yield* Effect.fail(
+          new GlobalConsumerProtectionError({
+            operation,
+            policySaved: false,
+            consumers: [],
+            uncertainties: [
+              "Application activation changed during the consumer impact scan; retry to inspect the current running applications.",
+            ],
+            message: "Application activity changed during validation; policy was left unchanged.",
+            remediation: "Retry this command after application startup completes.",
+          }),
+        );
+      const active = operation === "enable" ? [] : yield* readGlobalConsumerReservations(ids);
+      if (operation !== "enable" && active.length > 0)
+        return yield* Effect.fail(
+          new GlobalConsumerProtectionError({
+            operation,
+            policySaved: false,
+            consumers: [],
+            uncertainties: active.map(
+              (reservation) =>
+                `Activation of ${reservation.app.kind} ${reservation.app.id} (${reservation.app.root}) reserves ${reservation.services.filter((id) => selected.has(id)).join(", ")}; retry after startup completes.`,
+            ),
+            message:
+              "Application activation reserves the selected global services; policy was left unchanged.",
+            remediation:
+              "Wait for application startup to complete, then retry. --allow-disruption cannot invalidate an active startup admission.",
+          }),
+        );
+      return yield* commitGlobalPolicy(current.policy.revision, prepared.policy);
+    }),
+  );
+  const priorRouteIds = [
+    ...new Set(
+      previousReceipt.pending
+        .filter((entry) => entry.phase === "routes")
+        .flatMap((entry) => entry.services.filter((id) => selected.has(id))),
+    ),
+  ];
+  let routesAttempted = false;
   let receipt: GlobalPolicyChangeResult = {
     dryRun: false,
     impact,
@@ -371,6 +489,15 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       ...(operation === "enable" || ids.length === 0
         ? []
         : [pendingWork("evidence", ids, "Selected cleanup has not yet acquired ownership evidence.")]),
+      ...(priorRouteIds.length === 0
+        ? []
+        : [
+            pendingWork(
+              "routes",
+              priorRouteIds,
+              "Earlier route withdrawal is still unconfirmed; applied-plan changes do not complete it.",
+            ),
+          ]),
       pendingWork("generation", ids, "Generated configuration has not yet been reconciled."),
     ],
   };
@@ -433,8 +560,10 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
             ? inventory.success
                 .filter(
                   (service) =>
+                    service.app === appliedPlan.id &&
                     service.appRoot === resolved.paths.root &&
                     service.providerId === appliedPlan.provider &&
+                    service.containerId !== undefined &&
                     ["running", "paused", "restarting"].includes(service.status),
                 )
                 .map((service) => String(service.service))
@@ -456,9 +585,12 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           inventory.success.some(
             (service) =>
               service.app === appliedPlan.id &&
-              (service.appRoot === resolved.paths.root || service.appRoot === undefined) &&
               !selected.has(String(service.service)) &&
-              !appliedNames.has(String(service.service)) &&
+              (service.appRoot === undefined ||
+                (service.appRoot === resolved.paths.root &&
+                  (service.providerId !== appliedPlan.provider ||
+                    service.containerId === undefined ||
+                    !appliedNames.has(String(service.service))))) &&
               ["running", "paused", "restarting"].includes(service.status),
           );
         const unknownDependents = candidate.entries.filter(
@@ -498,7 +630,10 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           if (
             observed._tag === "Failure" ||
             observed.success.some(
-              (service) => service.appRoot === resolved.paths.root && selected.has(String(service.service)),
+              (service) =>
+                selected.has(String(service.service)) &&
+                (service.appRoot === resolved.paths.root ||
+                  (service.app === AppId.make("global") && service.appRoot === undefined)),
             )
           ) {
             if (observed._tag === "Failure") causes.push(observed.failure);
@@ -544,7 +679,8 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
                         "Selected containers have not all been removed.",
                       ),
                     ]),
-                ...(selection.success.routes === undefined
+                ...(selection.success.routes === undefined ||
+                receipt.pending.some((entry) => entry.phase === "routes")
                   ? []
                   : [pendingWork("routes", appliedIds, "Selected routes have not yet been withdrawn.")]),
               ],
@@ -582,14 +718,16 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
               if (progress._tag === "Failure")
                 return yield* Effect.fail(incomplete(receipt, [...causes, progress.failure]));
             }
-            if (selection.success.routePolicyError !== undefined)
+            if (selection.success.routePolicyError !== undefined) {
+              routesAttempted = true;
               causes.push(selection.success.routePolicyError);
-            else if (selection.success.routes !== undefined) {
+            } else if (selection.success.routes !== undefined) {
               const router = yield* RouterService;
               const excluded = new Set(
                 candidate.entries.filter((entry) => !entry.enabled).map((entry) => entry.id),
               );
               const routes = selection.success.routes.filter((route) => !excluded.has(String(route.service)));
+              routesAttempted = true;
               const withdrawn = yield* Effect.result(router.applyRoutes(routes, selection.success.plan.id));
               if (withdrawn._tag === "Failure") causes.push(withdrawn.failure);
               else
@@ -599,6 +737,27 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
                 };
             }
           }
+        }
+        if (
+          !routesAttempted &&
+          priorRouteIds.length > 0 &&
+          inventory._tag === "Success" &&
+          !receipt.pending.some((entry) => entry.phase === "evidence")
+        ) {
+          const disabled = new Set(
+            candidate.entries.filter((entry) => !entry.enabled).map((entry) => entry.id),
+          );
+          const routes = appliedPlan.routes.filter(
+            (route) =>
+              !selected.has(String(route.service)) &&
+              !disabled.has(String(route.service)) &&
+              active.has(String(route.service)),
+          );
+          const router = yield* RouterService;
+          routesAttempted = true;
+          const withdrawn = yield* Effect.result(router.applyRoutes(routes, appliedPlan.id));
+          if (withdrawn._tag === "Failure") causes.push(withdrawn.failure);
+          else receipt = { ...receipt, pending: receipt.pending.filter((entry) => entry.phase !== "routes") };
         }
       } else if (resolved.evidence.kind !== "absent") {
         receipt = {
@@ -656,7 +815,10 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           };
         } else if (
           observed.success.some(
-            (service) => service.appRoot === resolved.paths.root && selected.has(String(service.service)),
+            (service) =>
+              selected.has(String(service.service)) &&
+              (service.appRoot === resolved.paths.root ||
+                (service.app === AppId.make("global") && service.appRoot === undefined)),
           )
         ) {
           receipt = {
@@ -666,7 +828,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
               pendingWork(
                 "evidence",
                 ids,
-                "Selected containers have no applied plan; cleanup needs ownership recovery.",
+                "Selected runtime observations lack matching applied ownership; cleanup cannot be confirmed until their root and provider evidence are restored.",
               ),
             ],
           };
@@ -728,17 +890,24 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
 export const globalEnable = Effect.fn("GlobalPolicy.enable")(
   (options: GlobalPolicyChangeOptions = {}) => changePolicy("enable", options),
   (effect, options: GlobalPolicyChangeOptions = {}) =>
-    options.dryRun ? withReadOnlyLandofile(effect) : withGlobalMutation(effect),
+    options.dryRun
+      ? withReadOnlyLandofile(effect)
+      : withGlobalMutation(withGlobalPolicyChange("enable", effect)),
 );
 
 export const globalDisable = Effect.fn("GlobalPolicy.disable")(
   (options: GlobalPolicyChangeOptions = {}) => changePolicy("disable", options),
   (effect, options: GlobalPolicyChangeOptions = {}) =>
-    options.dryRun ? withReadOnlyLandofile(effect) : withGlobalMutation(effect),
+    options.dryRun
+      ? withReadOnlyLandofile(effect)
+      : withGlobalMutation(withGlobalPolicyChange("disable", effect)),
 );
 
 export const globalReconcile = Effect.fn("GlobalPolicy.reconcile")(
-  (options: Pick<GlobalPolicyChangeOptions, "dryRun"> = {}) => changePolicy("reconcile", options),
-  (effect, options: Pick<GlobalPolicyChangeOptions, "dryRun"> = {}) =>
-    options.dryRun ? withReadOnlyLandofile(effect) : withGlobalMutation(effect),
+  (options: Pick<GlobalPolicyChangeOptions, "dryRun" | "allowDisruption"> = {}) =>
+    changePolicy("reconcile", options),
+  (effect, options: Pick<GlobalPolicyChangeOptions, "dryRun" | "allowDisruption"> = {}) =>
+    options.dryRun
+      ? withReadOnlyLandofile(effect)
+      : withGlobalMutation(withGlobalPolicyChange("reconcile", effect)),
 );

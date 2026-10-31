@@ -220,7 +220,12 @@ export const layerSelected = Layer.unwrap(
                       setup: Effect.fn("RouterService.setupWithGlobalMutation")((config, options) =>
                         withGlobalMutation(router.setup(config, options)).pipe(
                           Effect.provide(
-                            Context.pick(GlobalAppService, PathsService, PrivateFileAccessService)(captured),
+                            Context.pick(
+                              GlobalAppService,
+                              PathsService,
+                              StateStore,
+                              PrivateFileAccessService,
+                            )(captured),
                           ),
                           Effect.catchTag("GlobalAppError", (cause) =>
                             Effect.fail(

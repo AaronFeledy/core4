@@ -128,7 +128,8 @@ succeeds for every selected group publishes the current routes. A failed user-ap
 start never undoes shared global services.
 
 Exhausted readiness checks fail even supervised services. Restart and rebuild
-still revalidate the router after a readiness failure. Diagnose with `lando global:logs -s <service>`, or `lando doctor` for an `inspect-failed` provider observation. Fix the cause, then start that service to converge on its retained resources:
+revalidate the router after a readiness failure only when that operation actually
+applied it. A disabled router isn't probed or reported ready. Diagnose with `lando global:logs -s <service>`, or `lando doctor` for an `inspect-failed` provider observation. Fix the cause, then start that service to converge on its retained resources:
 
 ```sh
 lando global:start --service ssh-agent

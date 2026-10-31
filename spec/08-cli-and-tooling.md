@@ -108,13 +108,13 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `plugins` | Read or write the global app Landofile without an eager provider runtime |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
-| `meta:global:disable` | `global:disable` | `global` | Save disabled policy for selectors or `--all`; ownership-verified selected cleanup and generation; named volumes retained; `--dry-run` previews without writes |
+| `meta:global:disable` | `global:disable` | `global` | Save disabled policy for selectors or `--all`; protect running/unknown consumers unless invocation-scoped `--allow-disruption`; ownership-verified selected cleanup and generation; named volumes retained; `--dry-run` previews without writes |
 | `meta:global:enable` | `global:enable` | `global` | Enable contribution/package selectors or `--all`; regenerate without starting; `--dry-run` previews without writes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |
 | `meta:global:list` | `global:list` | `plugins` | List current contribution eligibility, policy source, capability evidence, and retained policies without provider runtime construction |
 | `meta:global:logs` | `global:logs` | `global` | Stream global logs |
 | `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then revalidate the router (§20.6.5) |
-| `meta:global:reconcile` | `global:reconcile` | `global` | Preserve policy, retry pending cleanup, and generate eligible config without starting; `--dry-run` previews without writes |
+| `meta:global:reconcile` | `global:reconcile` | `global` | Preserve policy, repeat consumer protection, retry pending cleanup, and generate eligible config without starting; invocation-scoped `--allow-disruption`; `--dry-run` previews without writes |
 | `meta:global:restart` | `global:restart` | `global` | Global stop, then start, then router startup revalidation (§20.6.5) |
 | `meta:global:start` | `global:start` | `global` | Start all or repeated `--service` subset |
 | `meta:global:status` | `global:status` | `global` | Report desired policy, observed state, and pending work without requiring a valid desired Landofile |

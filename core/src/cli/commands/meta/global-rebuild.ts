@@ -1,4 +1,6 @@
 import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
+import { revalidateAppliedGlobalRouterStartup } from "@lando/engine/global-app/router-admission";
+import { captureGlobalStartupAdmission } from "@lando/engine/global-app/startup-admission";
 import { DateTime, Effect, Schema } from "effect";
 
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
@@ -88,15 +90,22 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
   ): Effect.fn.Return<GlobalRebuildResult, GlobalRebuildError, GlobalRebuildServices> {
     yield* globalInstall({});
     const loaded = yield* loadGlobalPlan();
-    if (!loaded.materialized) return { app: "global", materialized: false, servicesRebuilt: [] };
+    if (!loaded.materialized) {
+      yield* revalidateAppliedGlobalRouterStartup(undefined);
+      return { app: "global", materialized: false, servicesRebuilt: [] };
+    }
 
     const services = Object.values(loaded.plan.services);
-    if (services.length === 0) return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
+    if (services.length === 0) {
+      yield* revalidateAppliedGlobalRouterStartup(loaded.plan);
+      return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
+    }
 
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(loaded.plan.provider);
     const events = yield* EventService;
     const builder = yield* BuildOrchestrator;
+    const verifyAdmission = yield* captureGlobalStartupAdmission();
 
     const { builtPlan, servicesRebuilt } = yield* withGlobalLifecycleEvents(
       {
@@ -121,6 +130,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
           ),
       },
       Effect.gen(function* () {
+        yield* verifyAdmission;
         yield* provider.destroy(
           { app: loaded.plan.id, plan: loaded.plan },
           { volumes: false, removeState: false },
@@ -131,6 +141,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
           {
             provider,
             services,
+            beforeApply: verifyAdmission,
             options: {
               reconcile: true,
               ...(options.signal === undefined ? {} : { signal: options.signal }),
@@ -139,24 +150,22 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
           (plan) => builder.build(plan, { refresh: true }),
         );
         const router = yield* RouterService;
+        const revalidateRouter = revalidateAppliedGlobalRouterStartup({
+          services: Object.fromEntries(applied.services.map((service) => [service.name, service])),
+        });
         const outcome = yield* completeStartup({
           policy: "global-groups",
           operation: "rebuild",
           provider,
           router,
           outcome: applied,
+          beforeRoutes: verifyAdmission,
           ...(options.signal === undefined ? {} : { signal: options.signal }),
-        }).pipe(
-          Effect.tapError(() =>
-            applied.services.length > 0
-              ? Effect.asVoid(Effect.result(router.revalidateStartup))
-              : Effect.void,
-          ),
-        );
+        }).pipe(Effect.tapError(() => Effect.asVoid(Effect.result(revalidateRouter))));
         const { builtPlan } = outcome;
         // Re-observe the router before the post event: a rebuild that leaves the
         // router's startup observation broken has not finished rebuilding.
-        yield* router.revalidateStartup;
+        yield* revalidateRouter;
         const servicesRebuilt = startedServices(yield* collectObservedConnections(builtPlan, outcome.ready));
 
         return { builtPlan, servicesRebuilt };

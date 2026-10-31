@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
+import { GlobalAppError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -26,14 +27,15 @@ import {
   type LandoEvent,
   PathsService,
   PluginRegistry,
+  RouterService,
   RuntimeProviderRegistry,
   type ServiceRuntimeInfo,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { bundledPluginModules } from "../../src/composition.ts";
-import { globalPolicyBucket } from "../../src/global-app/enablement.ts";
+import { globalPolicyBucket, readGlobalPolicy } from "../../src/global-app/enablement.ts";
 import {
   forgetGlobalEnsure,
   globalEnsureRecord,
@@ -41,6 +43,8 @@ import {
 } from "../../src/global-app/ensure-cache.ts";
 import { renderGlobalDist } from "../../src/global-app/service.ts";
 import { ensureGlobalServicesRunning } from "../../src/operations/ensure-global-services.ts";
+import { readGlobalConsumerReservations } from "../../src/operations/global-consumer-lease.ts";
+import { globalDisable } from "../../src/operations/global-policy.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
@@ -72,6 +76,7 @@ const makeFixture = async (directory: string) => {
   const events: LandoEvent[] = [];
   const runtimes = new Map<string, ServiceRuntimeInfo>();
   let onEvent: ((event: LandoEvent) => Effect.Effect<void>) | undefined;
+  let onApply: ((plan: AppPlan) => Effect.Effect<void>) | undefined;
   let applied: AppPlan | undefined;
   let capabilities = TestRuntimeProvider.capabilities;
   let catalog: ReadonlyArray<PluginManifest> = [];
@@ -79,6 +84,7 @@ const makeFixture = async (directory: string) => {
   const providerId = ProviderId.make("lando");
   const provider = {
     ...TestRuntimeProvider,
+    id: String(providerId),
     get capabilities() {
       return capabilities;
     },
@@ -101,25 +107,30 @@ const makeFixture = async (directory: string) => {
         return runtime;
       }),
     apply: (plan: AppPlan, options: Parameters<typeof TestRuntimeProvider.apply>[1]) =>
-      Effect.sync(() => {
-        calls.apply++;
-        applied = options.recordedPlan ?? plan;
-        for (const service of Object.values(plan.services))
-          runtimes.set(service.name, {
-            app: plan.id,
-            appRoot: plan.root,
-            providerId,
-            service: service.name,
-            containerId: `container-${service.name}`,
-            lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-            status: "running",
-            state: "running",
-            publications: { status: "present", bindings: [] },
-          });
-        return { changed: true };
+      Effect.gen(function* () {
+        if (onApply !== undefined) yield* onApply(plan);
+        return yield* Effect.sync(() => {
+          calls.apply++;
+          applied = options.recordedPlan ?? plan;
+          for (const service of Object.values(plan.services))
+            runtimes.set(service.name, {
+              app: plan.id,
+              appRoot: plan.root,
+              providerId,
+              service: service.name,
+              containerId: `container-${service.name}`,
+              lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
+              status: "running",
+              state: "running",
+              publications: { status: "present", bindings: [] },
+            });
+          return { changed: true };
+        });
       }),
   };
   const registry = RuntimeProviderRegistry.of({
+    appliedStateInventory: () =>
+      Effect.succeed({ plans: applied === undefined ? [] : [applied], unreadable: [] }),
     appliedPlansFor: () => Effect.succeed(applied === undefined ? [] : [applied]),
     resolveAppliedPlan: () => Effect.succeed(applied),
     resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
@@ -292,6 +303,9 @@ const makeFixture = async (directory: string) => {
     },
     setOmitOwnership: (next: boolean) => {
       omitOwnership = next;
+    },
+    onApply: (hook: typeof onApply) => {
+      onApply = hook;
     },
     onEvent: (hook: typeof onEvent) => {
       onEvent = hook;
@@ -534,5 +548,264 @@ test("historical sibling retention never admits that sibling through the warm de
     expect(f.calls.apply).toBe(2);
     await expect(f.ensure(["historical"])).rejects.toMatchObject({ _tag: "GlobalServiceMissingError" });
     expect(f.calls.apply).toBe(2);
+  });
+});
+
+for (const failGeneration of [false, true]) {
+  test(`cold pre-start rejects saved disable${failGeneration ? " after nested generation fails" : " with pending cleanup"}`, async () => {
+    await withFixture(async (f) => {
+      const plugin = bundledPluginModules().find((plugin) => plugin.name === "@lando/service-lando");
+      if (plugin === undefined) throw new Error("expected bundled Mailpit contribution");
+      f.setCatalog([plugin.manifest]);
+      f.setCapabilities({ ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true });
+      f.onEvent((event) =>
+        event._tag !== "pre-global-start" || event.cached !== false
+          ? Effect.void
+          : Effect.gen(function* () {
+              const globalApp = yield* GlobalAppService;
+              const child = globalDisable({ selectors: ["mailpit"] }).pipe(
+                Effect.provideService(RouterService, TestRouterService),
+              );
+              const nested = yield* Effect.result(
+                failGeneration
+                  ? child.pipe(
+                      Effect.provideService(GlobalAppService, {
+                        ...globalApp,
+                        regenerateDist: () =>
+                          Effect.fail(
+                            new GlobalAppError({
+                              operation: "regenerateDist",
+                              message: "Injected generation failure",
+                              remediation: "Remove the injected failure.",
+                            }),
+                          ),
+                      }),
+                    )
+                  : child,
+              );
+              expect(nested).toMatchObject({
+                _tag: "Failure",
+                failure: { _tag: "GlobalPolicyReconciliationError", policySaved: true },
+              });
+              if (
+                failGeneration &&
+                nested._tag === "Failure" &&
+                nested.failure._tag === "GlobalPolicyReconciliationError"
+              ) {
+                expect(nested.failure.pending.some((item) => item.phase === "generation")).toBe(true);
+              }
+            }).pipe(Effect.provide(f.layer), Effect.timeout(2000), Effect.orDie),
+      );
+      await expect(f.ensure(["mailpit"])).rejects.toMatchObject({
+        _tag: "GlobalAppError",
+        operation: "startup-admission",
+      });
+      const policy = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(f.layer)));
+      expect(policy.plugins[plugin.name]?.contributions.mailpit?.enabled).toBe(false);
+      expect(f.calls.build).toBe(0);
+      expect(f.calls.apply).toBe(0);
+      expect(f.events.filter((event) => event._tag === "post-global-start")).toHaveLength(0);
+    });
+  });
+}
+
+for (const change of ["revision", "content"] as const) {
+  test(`cold ensure rechecks saved policy ${change} after build before applying`, async () => {
+    await withFixture(async (f) => {
+      const builds = await Effect.runPromise(BuildOrchestrator.pipe(Effect.provide(f.layer)));
+      const changedBuilds = BuildOrchestrator.of({
+        ...builds,
+        build: (plan) =>
+          Effect.gen(function* () {
+            const result = yield* builds.build(plan);
+            const bucket = yield* globalPolicyBucket();
+            const policy = yield* readGlobalPolicy();
+            yield* bucket.set(
+              change === "revision"
+                ? { ...policy, revision: policy.revision + 1 }
+                : {
+                    ...policy,
+                    plugins: { ...policy.plugins, "manual-policy": { enabled: false, contributions: {} } },
+                  },
+            );
+            return result;
+          }).pipe(Effect.provide(f.layer), Effect.orDie),
+      });
+      const exit = await Effect.runPromise(
+        ensureGlobalServicesRunning({ services: ["app"] }).pipe(
+          Effect.provideService(BuildOrchestrator, changedBuilds),
+          Effect.provide(f.layer),
+          Effect.result,
+        ),
+      );
+      expect(exit).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "GlobalAppError", operation: "startup-admission" },
+      });
+      expect(f.calls.build).toBe(1);
+      expect(f.calls.apply).toBe(0);
+      expect(f.events.filter((event) => event._tag === "post-global-start")).toHaveLength(0);
+    });
+  });
+}
+
+test("a global provider hook cannot disable its active selected service even with disruption acknowledged", async () => {
+  await withFixture(async (f) => {
+    const plugin = bundledPluginModules().find((plugin) => plugin.name === "@lando/service-lando");
+    if (plugin === undefined) throw new Error("expected bundled Mailpit contribution");
+    f.setCatalog([plugin.manifest]);
+    f.setCapabilities({ ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true });
+    let attempted = false;
+    let revision: number | undefined;
+    let inspectReservations: Effect.Effect<ReadonlyArray<unknown>, GlobalAppError> | undefined;
+    f.onApply(() =>
+      Effect.gen(function* () {
+        attempted = true;
+        const context =
+          yield* Effect.context<Effect.Services<ReturnType<typeof readGlobalConsumerReservations>>>();
+        inspectReservations = readGlobalConsumerReservations(["mailpit"]).pipe(Effect.provide(context));
+        const before = yield* readGlobalPolicy();
+        revision = before.revision;
+        const result = yield* Effect.result(
+          globalDisable({ selectors: ["mailpit"], allowDisruption: true }).pipe(
+            Effect.provideService(RouterService, TestRouterService),
+          ),
+        );
+        expect(result).toMatchObject({
+          _tag: "Failure",
+          failure: { _tag: "GlobalConsumerProtectionError", policySaved: false },
+        });
+        if (result._tag === "Failure" && result.failure._tag === "GlobalConsumerProtectionError") {
+          expect(
+            result.failure.uncertainties.some(
+              (reason) =>
+                reason.includes("Activation of global global") && reason.includes("reserves mailpit"),
+            ),
+          ).toBe(true);
+        }
+        expect((yield* readGlobalPolicy()).revision).toBe(before.revision);
+      }).pipe(Effect.provide(f.layer), Effect.orDie),
+    );
+    const result = await f.ensure(["mailpit"]);
+    expect(attempted).toBe(true);
+    expect(result.servicesStarted.map((service) => service.name)).toContain("mailpit");
+    const policy = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(f.layer)));
+    expect(revision).toBe(policy.revision);
+    expect(policy.plugins[plugin.name]?.contributions.mailpit?.enabled).not.toBe(false);
+    expect(f.calls.apply).toBe(1);
+    if (inspectReservations === undefined) throw new Error("expected captured activation scope");
+    expect(await Effect.runPromise(inspectReservations)).toEqual([]);
+  });
+});
+
+test("late environment-session policy changes are verified before global provider apply", async () => {
+  await withFixture(async (f) => {
+    const original = await Effect.runPromise(EnvironmentValueResolver.pipe(Effect.provide(f.layer)));
+    let inspectReservations: Effect.Effect<ReadonlyArray<unknown>, GlobalAppError> | undefined;
+    const changed = EnvironmentValueResolver.of({
+      openSession: () =>
+        Effect.gen(function* () {
+          const session = yield* original.openSession();
+          const context =
+            yield* Effect.context<Effect.Services<ReturnType<typeof readGlobalConsumerReservations>>>();
+          inspectReservations = readGlobalConsumerReservations(["app"]).pipe(Effect.provide(context));
+          const policy = yield* readGlobalPolicy();
+          yield* (yield* globalPolicyBucket()).set({ ...policy, revision: policy.revision + 1 });
+          return session;
+        }).pipe(Effect.provide(f.layer), Effect.orDie),
+    });
+    const result = await Effect.runPromise(
+      ensureGlobalServicesRunning({ services: ["app"] }).pipe(
+        Effect.provideService(EnvironmentValueResolver, changed),
+        Effect.provide(f.layer),
+        Effect.result,
+      ),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "GlobalAppError", operation: "startup-admission" },
+    });
+    expect(f.calls.apply).toBe(0);
+    if (inspectReservations === undefined) throw new Error("expected captured activation scope");
+    expect(await Effect.runPromise(inspectReservations)).toEqual([]);
+  });
+});
+
+test("aborting global provider apply joins its finalizer and removes its activation reservation", async () => {
+  await withFixture(async (f) => {
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let finalized = false;
+    let inspectReservations: Effect.Effect<ReadonlyArray<unknown>, GlobalAppError> | undefined;
+    f.onApply(() =>
+      Effect.gen(function* () {
+        const context =
+          yield* Effect.context<Effect.Services<ReturnType<typeof readGlobalConsumerReservations>>>();
+        inspectReservations = readGlobalConsumerReservations(["app"]).pipe(Effect.provide(context));
+        enter();
+      }).pipe(
+        Effect.provide(f.layer),
+        Effect.andThen(Effect.never),
+        Effect.ensuring(
+          Effect.sync(() => {
+            finalized = true;
+          }),
+        ),
+      ),
+    );
+    const controller = new AbortController();
+    const pending = f.ensure(["app"], controller.signal).then(
+      () => "success",
+      () => "interrupted",
+    );
+    await entered;
+    if (inspectReservations === undefined) throw new Error("expected captured activation scope");
+    expect(await Effect.runPromise(inspectReservations)).toHaveLength(1);
+    controller.abort();
+    expect(await pending).toBe("interrupted");
+    expect(finalized).toBe(true);
+    expect(await Effect.runPromise(inspectReservations)).toEqual([]);
+  });
+});
+
+test("cold ensure does not publish success when policy changes during readiness", async () => {
+  await withFixture(async (f) => {
+    const registry = await Effect.runPromise(RuntimeProviderRegistry.pipe(Effect.provide(f.layer)));
+    const provider = await Effect.runPromise(registry.select(ProviderId.make("lando")));
+    let changed = false;
+    const observed = {
+      ...provider,
+      inspect: (target: Parameters<typeof provider.inspect>[0]) =>
+        provider.inspect(target).pipe(
+          Effect.tap(() =>
+            Effect.gen(function* () {
+              if (changed || f.calls.apply === 0) return;
+              changed = true;
+              const policy = yield* readGlobalPolicy();
+              yield* (yield* globalPolicyBucket()).set({ ...policy, revision: policy.revision + 1 });
+            }).pipe(Effect.provide(f.layer), Effect.orDie),
+          ),
+        ),
+    };
+    const result = await Effect.runPromise(
+      ensureGlobalServicesRunning({ services: ["app"] }).pipe(
+        Effect.provideService(
+          RuntimeProviderRegistry,
+          RuntimeProviderRegistry.of({ ...registry, select: () => Effect.succeed(observed) }),
+        ),
+        Effect.provide(f.layer),
+        Effect.result,
+      ),
+    );
+    expect(changed).toBe(true);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "GlobalAppError", operation: "startup-admission" },
+    });
+    expect(f.calls.apply).toBe(1);
+    expect(f.events.filter((event) => event._tag === "post-global-start")).toHaveLength(0);
+    expect(globalEnsureRecord(f.registry, f.root)).toBeUndefined();
   });
 });

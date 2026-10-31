@@ -52,6 +52,7 @@ const unusedPrivilege = {
 };
 
 type WatcherDependencies = {
+  readonly readTraefikState?: () => Effect.Effect<"running" | "stopped" | "unknown", unknown>;
   readonly ensureProviderReady?: Effect.Effect<void, GlobalAppError | AppPlacementError>;
   readonly readTraefikLogs?: () => Effect.Effect<
     { readonly providerId: string; readonly text: string },
@@ -117,6 +118,7 @@ const makeHarness = (
   const service = makeTraefikRouterService({
     httpClient: runtime.httpClient,
     ...watcherDependencies,
+    readTraefikState: watcherDependencies.readTraefikState ?? (() => Effect.succeed("running")),
     probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
@@ -170,6 +172,7 @@ const makeHarness = (
     makeTraefikRouterService({
       httpClient: runtime.httpClient,
       ...watcherDependencies,
+      readTraefikState: watcherDependencies.readTraefikState ?? (() => Effect.succeed("running")),
       probeForward: () => Effect.succeed({ kind: "success" }),
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {

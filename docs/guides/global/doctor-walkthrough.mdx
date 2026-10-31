@@ -43,6 +43,13 @@ The router reads its route configuration from a directory Lando mounts into the 
 
 It is a record, not a live probe. The check shows what the last router startup observed, and it stays reported until the next `lando global:restart` or `lando global:rebuild` observes a clean start and refreshes it. If the check still fails after you fixed the host, restart the global router and run doctor again.
 
+Restart and rebuild revalidate a router they actually applied. If the router is
+disabled, missing, or cannot be observed running, Lando doesn't probe it or create
+ready evidence. Its previous watcher-failure record remains historical evidence;
+disabling a service doesn't prove that failure was repaired. Check
+`lando global:list --format=json` for policy and
+`lando global:status --format=json` for observed state before deciding to restart it.
+
 The watcher runs on the provider runtime host, which is not always the operating system you typed the command on:
 
 | Where you run Lando | Where the watcher runs |

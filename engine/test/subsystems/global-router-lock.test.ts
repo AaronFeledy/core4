@@ -7,9 +7,10 @@ import { Deferred, Effect, Fiber, Layer, Semaphore, Stream } from "effect";
 import { makeLandoPaths } from "@lando/paths";
 import { ProxySetupError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
-import { EventService, GlobalAppService, PathsService, RouterService } from "@lando/sdk/services";
+import { EventService, GlobalAppService, PathsService, RouterService, StateStore } from "@lando/sdk/services";
 import { makeTestRouterService } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { makeStateStore } from "@lando/state-store/service";
 
 import { type GlobalMutationServices, withGlobalMutation } from "../../src/global-app/mutation.ts";
 import { appMutationLockKey } from "../../src/operations/app-mutation-lock.ts";
@@ -19,9 +20,9 @@ import { RouterServiceRegistry, layerSelected } from "../../src/subsystems/proxy
 
 const fixture = async (onWait = Effect.void) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "lando-router-lock-")));
-  const paths = makeLandoPaths({ userDataRoot: root });
+  const paths = makeLandoPaths({ userDataRoot: root, userConfRoot: join(root, "conf") });
   const globalRoot = paths.globalAppRoot;
-  const dependencies = Layer.mergeAll(
+  const base = Layer.mergeAll(
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
     Layer.succeed(PathsService, paths),
@@ -61,6 +62,12 @@ const fixture = async (onWait = Effect.void) => {
       }),
     ),
   );
+  const dependencies = Layer.effect(
+    StateStore,
+    Effect.map(PrivateFileAccessService, (access) =>
+      makeStateStore({ privateFileAccess: access, roots: paths.roots }),
+    ),
+  ).pipe(Layer.provideMerge(base));
   const selected = (router: typeof RouterService.Service) =>
     layerSelected.pipe(
       Layer.provideMerge(
@@ -76,7 +83,11 @@ const fixture = async (onWait = Effect.void) => {
         ),
       ),
     );
-  const lockPath = join(root, "operation-locks", `${appMutationLockKey("global", globalRoot)}.lock`);
+  const lockPath = join(
+    root,
+    `.lando-global-${appMutationLockKey("global", globalRoot)}`,
+    `${appMutationLockKey("global", globalRoot)}.lock`,
+  );
   return { root, dependencies, selected, lockPath };
 };
 

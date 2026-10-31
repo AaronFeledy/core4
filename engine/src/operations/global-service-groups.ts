@@ -4,6 +4,7 @@ import { type ApplyOptions, EnvironmentValueResolver, type RuntimeProviderShape 
 import { Effect, Result } from "effect";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
 import { advanceGlobalRecordedPlan } from "./global-retained-plan.ts";
 
 export const serviceGroups = (
@@ -33,7 +34,12 @@ export const serviceGroups = (
   return groups;
 };
 
-export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(function* <E, R>(
+export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(function* <
+  E,
+  R,
+  AdmissionE = never,
+  AdmissionR = never,
+>(
   plan: AppPlan,
   apply: {
     readonly provider: RuntimeProviderShape;
@@ -41,6 +47,7 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     readonly options: Pick<ApplyOptions, "reconcile" | "signal">;
     readonly recordedPlan?: AppPlan;
     readonly recordedDisabledIds?: ReadonlyArray<string>;
+    readonly beforeApply?: Effect.Effect<void, AdmissionE, AdmissionR>;
   },
   build: (plan: AppPlan) => Effect.Effect<AppPlan, E, R>,
 ) {
@@ -59,19 +66,27 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
                 Object.entries(plan.services).filter(([, service]) => names.has(service.name)),
               ),
             });
+            if (apply.beforeApply !== undefined) yield* apply.beforeApply;
             const candidateRecordedPlan =
               apply.recordedPlan === undefined
                 ? { ...recordedPlan, services: { ...recordedPlan.services, ...builtPlan.services } }
                 : yield* advanceGlobalRecordedPlan(recordedPlan, builtPlan, apply.recordedDisabledIds ?? []);
-            yield* Effect.scoped(
-              apply.provider.apply(builtPlan, {
-                ...apply.options,
-                resolveServiceEnvironment: (service) => session.resolveEnvironment(service.environment),
-                onVolumeCreated: yield* volumeCreationRecorder(apply.provider, builtPlan),
-                ...(apply.options.reconcile === true || apply.recordedPlan !== undefined
-                  ? { recordedPlan: candidateRecordedPlan }
-                  : {}),
-                completionPlan: candidateRecordedPlan,
+            yield* withGlobalConsumerReservation(
+              builtPlan,
+              [...names],
+              Effect.gen(function* () {
+                if (apply.beforeApply !== undefined) yield* apply.beforeApply;
+                return yield* Effect.scoped(
+                  apply.provider.apply(builtPlan, {
+                    ...apply.options,
+                    resolveServiceEnvironment: (service) => session.resolveEnvironment(service.environment),
+                    onVolumeCreated: yield* volumeCreationRecorder(apply.provider, builtPlan),
+                    ...(apply.options.reconcile === true || apply.recordedPlan !== undefined
+                      ? { recordedPlan: candidateRecordedPlan }
+                      : {}),
+                    completionPlan: candidateRecordedPlan,
+                  }),
+                );
               }),
             );
             recordedPlan = candidateRecordedPlan;

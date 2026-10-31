@@ -16,6 +16,13 @@ export const renderGlobalPolicyChangeResult = (result: GlobalPolicyChangeResult)
     ...(result.impact.dependencyBlockers.length === 0
       ? []
       : [`Required by: ${result.impact.dependencyBlockers.join(", ")}`]),
+    ...result.impact.consumers.map(
+      (consumer) =>
+        `Affected ${consumer.kind} app: ${consumer.name} (${consumer.id}, ${consumer.root}, ${consumer.provider}); requires ${consumer.globalServices.join(", ")}${consumer.routes.length === 0 ? "" : `; routes ${consumer.routes.join(", ")}`}`,
+    ),
+    ...(result.impact.allowDisruption
+      ? ["Consumer disruption explicitly acknowledged for this invocation; apps are left running."]
+      : []),
     ...result.impact.validationErrors.map((error) => `Validation: ${error}`),
     ...result.impact.routes.map((route) => `Route: ${route.hostname} (${route.service})`),
     ...result.impact.uncertainties.map((uncertainty) => `Unverified: ${uncertainty}`),

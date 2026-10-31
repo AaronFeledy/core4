@@ -2,6 +2,8 @@ import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/g
 import { DateTime, Effect, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
+import { recordGlobalRouterStartupPlan } from "@lando/engine/global-app/router-admission";
+import { captureGlobalStartupAdmission } from "@lando/engine/global-app/startup-admission";
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
@@ -132,6 +134,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
     const events = yield* EventService;
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(loaded.plan.provider);
+    const verifyAdmission = yield* captureGlobalStartupAdmission();
 
     return yield* withGlobalLifecycleEvents(
       {
@@ -159,6 +162,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
           ),
       },
       Effect.gen(function* () {
+        yield* verifyAdmission;
         const retained = options.services?.length
           ? yield* retainGlobalPlanSiblings(
               loaded.plan,
@@ -172,6 +176,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
           {
             provider,
             services,
+            beforeApply: verifyAdmission,
             ...(retained === undefined
               ? {}
               : { recordedPlan: retained.recordedPlan, recordedDisabledIds: retained.disabledIds }),
@@ -182,12 +187,16 @@ export const globalStart = Effect.fn("GlobalStart.start")(
           },
           (plan) => withBuildProvider(builds.build(plan), provider),
         );
+        yield* recordGlobalRouterStartupPlan({
+          services: Object.fromEntries(applied.services.map((service) => [service.name, service])),
+        });
         const outcome = yield* completeStartup({
           policy: "global-groups",
           operation: "start",
           provider,
           router,
           outcome: applied,
+          beforeRoutes: verifyAdmission,
           ...(options.signal === undefined ? {} : { signal: options.signal }),
         });
         const planOrder = new Map(Object.keys(loaded.plan.services).map((id, index) => [id, index]));
