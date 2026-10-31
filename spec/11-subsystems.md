@@ -80,7 +80,7 @@ Core owns `TunnelService`, `TunnelTarget`, `TunnelStartRequest`, `TunnelStopRequ
 - Readiness uses `runProbe`; plugins MUST NOT hand-roll retry loops.
 - URLs, auth material, connector environment, and host paths MUST be redacted before logs, events, machine output, telemetry, support bundles, or durable state. Protected debug logging is the only exception.
 - Events are `pre-tunnel-start`, `post-tunnel-start`, `tunnel-ready`, `pre-tunnel-stop`, `post-tunnel-stop`, and `tunnel-status`.
-- `lando share --format json` and `app.share()` return universal session schemas (§8.11); foreground streams use `StreamFrame` and end with a result frame. `lando share stop --format json` and `app.shareStop()` return `ShareStopAppResult`, whose `status` is always `stopped`: it acknowledges a completed stop rather than reporting general session state.
+- `lando share --format json` and `app.share()` return universal session schemas (§8.11); foreground streams use `StreamFrame` and end with a result frame. `lando share stop --format json` and `app.shareStop()` return `ShareStopAppResult` with the session id and optional provider, without a status field: successful command completion acknowledges the stop rather than reporting general session state.
 - `TunnelService` is not byte movement; it composes `HttpClient`, tool provisioning, `Downloader`, `ProcessRunner`, `StateStore`, `runProbe`, `InteractionService`, and `RedactionService`.
 
 Tagged errors are `TunnelProviderUnavailableError`, `TunnelTargetUnresolvedError`, `TunnelAuthRequiredError`, `TunnelStartError`, `TunnelReadyTimeoutError`, `TunnelDetachedStateError`, and `TunnelStopError`.

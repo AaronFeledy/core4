@@ -159,20 +159,21 @@ describe("InfoAppResult", () => {
 });
 
 describe("ShareStopAppResult", () => {
-  test("round-trips stopped status and rejects ready", () => {
-    const withProvider = { sessionId: "sess-1", provider: "ngrok", status: "stopped" as const };
+  test("round-trips session acknowledgement without a redundant status", () => {
+    const withProvider = { sessionId: "sess-1", provider: "ngrok" };
     expect(roundTrip(ShareStopAppResult, withProvider)).toEqual(withProvider);
 
     expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "ready" }))).toBe(true);
     expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "starting" }))).toBe(
       true,
+    expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "stopped" }))).toBe(
+      true,
+    );
     );
   });
 
   test("rejects excess properties", () => {
-    expect(
-      Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "stopped", extra: 1 })),
-    ).toBe(true);
+    expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", extra: 1 }))).toBe(true);
   });
 });
 
