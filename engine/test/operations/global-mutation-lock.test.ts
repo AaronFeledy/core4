@@ -470,11 +470,11 @@ test("global coordination preserves body defect identity and releases both lease
   }
 });
 
-test("interruption retains both global leases until an admitted native write settles", async () => {
+test("interruption retains both global leases until an admitted uncancelable operation settles", async () => {
   const isolated = await fixture();
   const admitted = Deferred.makeUnsafe<void>();
   let settle: () => void = () => undefined;
-  const native = new Promise<void>((resolve) => {
+  const pendingOperation = new Promise<void>((resolve) => {
     settle = resolve;
   });
   let completed = false;
@@ -488,7 +488,7 @@ test("interruption retains both global leases until an admitted native write set
   const owner = Effect.runFork(
     withGlobalMutation(
       Deferred.succeed(admitted, undefined).pipe(
-        Effect.andThen(Effect.promise(() => native)),
+        Effect.andThen(Effect.promise(() => pendingOperation)),
         Effect.tap(() =>
           Effect.sync(() => {
             completed = true;
