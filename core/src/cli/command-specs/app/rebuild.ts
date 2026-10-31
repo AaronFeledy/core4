@@ -54,5 +54,5 @@ export const rebuildSpec = {
   },
   streaming: StreamFrame,
   run: runRebuildCommand,
-  render: (result, _input, ctx) => renderRebuildAppResult(result as RebuildAppResult, ctx),
+  render: (result, _input, ctx) => renderRebuildAppResult(result, ctx),
 } satisfies LandoCommandSpec<RebuildAppResult>;

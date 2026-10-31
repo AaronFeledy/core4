@@ -17,5 +17,5 @@ export const stopSpec: LandoCommandSpec<StopAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => stopApp(),
-  render: (result) => renderStopAppResult(result as StopAppResult),
+  render: (result) => renderStopAppResult(result),
 };

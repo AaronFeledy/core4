@@ -28,5 +28,5 @@ export const startSpec = {
       Effect.andThen(refreshAppCache(), startApp(signal === undefined ? {} : { signal })),
     );
   },
-  render: (result, _input, ctx) => renderStartAppResult(result as StartAppResult, ctx),
+  render: (result, _input, ctx) => renderStartAppResult(result, ctx),
 } satisfies LandoCommandSpec<StartAppResult>;

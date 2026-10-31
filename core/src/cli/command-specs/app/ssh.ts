@@ -65,7 +65,7 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
     return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
   },
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderExecAppResult(result as ExecAppResult),
+  render: (result) => renderExecAppResult(result),
 };
 
 const subsystemDeferred = (kind: "subsystem" | "sidecar"): NotImplementedError =>

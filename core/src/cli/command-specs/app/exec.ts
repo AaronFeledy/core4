@@ -80,7 +80,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
   },
   streamFrames: (value) => {
-    const result = value as ExecAppResult;
+    const result = value;
     const frames = [];
     if (result.stdout.length > 0)
       frames.push({ _tag: "stdout" as const, service: result.service, chunk: result.stdout });
@@ -90,5 +90,5 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   },
   redactionTokens: execAppRedactionTokens,
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderExecAppResult(result as ExecAppResult),
+  render: (result) => renderExecAppResult(result),
 };

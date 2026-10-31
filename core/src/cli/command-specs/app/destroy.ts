@@ -85,5 +85,5 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
     yes: yesFlag("Skip the confirmation prompt."),
   },
   run: runDestroyCommand,
-  render: (result) => renderDestroyAppResult(result as DestroyAppResult),
+  render: (result) => renderDestroyAppResult(result),
 };

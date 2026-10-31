@@ -39,5 +39,5 @@ export const infoSpec: LandoCommandSpec<InfoAppResult> = {
     }),
   },
   run: (input) => infoApp(infoOptionsFromInput(input)),
-  render: (result, _input, ctx) => renderInfoAppResult(result as InfoAppResult, ctx),
+  render: (result, _input, ctx) => renderInfoAppResult(result, ctx),
 };
