@@ -2235,7 +2235,7 @@ describe("meta:global command effects", () => {
         followGlobalLogs().pipe(Effect.provide(Layer.mergeAll(harness.layer, sinkLayer))),
       );
 
-      expect(result).toEqual({ app: "global", lines: [] });
+      expect(result).toEqual({ app: "global" });
       expect(emitted).toEqual([{ service: "proxy", chunk: "ready" }]);
     });
   });

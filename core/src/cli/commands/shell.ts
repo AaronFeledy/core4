@@ -7,7 +7,7 @@ import { createPayloadRedactor } from "@lando/sdk/secrets";
  * (bash when present, otherwise sh). Host mode uses `ShellRunner` for an
  * interactive Bun Shell line REPL.
  */
-import { DateTime, Effect, Option, Queue, Stream } from "effect";
+import { DateTime, Effect, Option, Queue, Schema, Stream } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
@@ -98,14 +98,15 @@ const processShellIO: ShellIO = {
   },
 };
 
-export interface ShellAppResult {
-  readonly mode: "host" | "service";
-  readonly app: string;
-  readonly shell: string;
-  readonly cwd: string;
-  readonly service?: string;
-  readonly exitCode: number;
-}
+export const ShellAppResult = Schema.Struct({
+  mode: Schema.Literals(["host", "service"]).annotate({ description: "Shell execution location." }),
+  app: Schema.String.annotate({ description: "Application name." }),
+  shell: Schema.String.annotate({ description: "Shell used for the session." }),
+  cwd: Schema.String.annotate({ description: "Working directory of the shell." }),
+  service: Schema.optionalKey(Schema.String).annotate({ description: "Service name in service mode." }),
+  exitCode: Schema.Number.annotate({ description: "Shell process exit code." }),
+});
+export type ShellAppResult = typeof ShellAppResult.Type;
 
 export type ShellAppError =
   | AppPlanResolutionError
