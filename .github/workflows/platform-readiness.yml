@@ -49,7 +49,7 @@ jobs:
           bun test core/test/container-helper/helper.integration.test.ts
 
       - name: Upload container helper
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: container-helper
           path: core/container-helper/dist/
@@ -195,7 +195,7 @@ jobs:
 
       - name: Upload platform-readiness evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: platform-readiness-linux-x64
           path: ${{ runner.temp }}/platform-readiness-doctor.json
@@ -342,7 +342,7 @@ jobs:
 
       - name: Upload platform-readiness evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: platform-readiness-linux-arm64
           path: ${{ runner.temp }}/platform-readiness-doctor.json
@@ -407,7 +407,7 @@ jobs:
 
       - name: Upload platform-readiness evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: platform-readiness-darwin-arm64
           path: ${{ runner.temp }}/platform-readiness-doctor.json
@@ -472,7 +472,7 @@ jobs:
 
       - name: Upload platform-readiness evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: platform-readiness-darwin-x64
           path: ${{ runner.temp }}/platform-readiness-doctor.json
@@ -546,7 +546,7 @@ jobs:
 
       - name: Upload platform-readiness evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: platform-readiness-windows-x64
           path: ${{ runner.temp }}/platform-readiness-doctor.json
@@ -620,7 +620,7 @@ jobs:
 
       - name: Upload platform-readiness evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: platform-readiness-windows-arm64
           path: ${{ runner.temp }}/platform-readiness-doctor.json
