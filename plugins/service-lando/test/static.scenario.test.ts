@@ -203,7 +203,14 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(web.type).toBe("static:nginx");
     expect(web.artifact).toEqual({ kind: "ref", ref: "nginx:1.26-alpine" });
     expect(web.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "internal",
+        port: 80,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.healthcheck?.kind).toBe("command");
@@ -226,7 +233,14 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(web.environment.LANDO_WEBROOT).toBe("/app/dist");
     expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "internal",
+        port: 80,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
   });
 
