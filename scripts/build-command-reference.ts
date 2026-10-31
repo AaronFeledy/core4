@@ -9,7 +9,9 @@ import { resolve } from "node:path";
 
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { Effect } from "effect";
+import { buildCommandCatalog, commandDescriptorAliases } from "../core/src/cli/command-catalog.ts";
 import { loadPluginSpec } from "../core/src/cli/event-command-target.ts";
+import { BUNDLED_COMMAND_DESCRIPTORS } from "../core/src/cli/generated/bundled-command-descriptors.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../core/src/cli/generated/command-registry-manifest.ts";
 import { pluginFlagDefinitions } from "../core/src/cli/plugin-owned-command-input.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
@@ -52,7 +54,14 @@ export const bundledPluginCommands = async (
   Promise.all(
     modules.flatMap((plugin) =>
       [...(plugin.commands ?? [])].map(async ([id, load]) => {
-        const spec = await Effect.runPromise(loadPluginSpec(id, plugin.name, load));
+        const spec = await Effect.runPromise(
+          loadPluginSpec(
+            id,
+            plugin.name,
+            load,
+            plugin.manifest.contributes?.commands?.find((entry) => entry.id === id),
+          ),
+        );
         return {
           spec,
           plugin: plugin.name,
@@ -201,7 +210,26 @@ const renderPage = (plugins: ReadonlyArray<ManifestCommand> = []): string => {
 };
 
 const main = async (): Promise<void> => {
-  await Bun.write(OUTPUT, renderPage(await bundledPluginCommands()));
+  const catalog = buildCommandCatalog(
+    BUNDLED_COMMAND_DESCRIPTORS.map((descriptor) => ({
+      id: descriptor.id,
+      summary: descriptor.summary,
+      pluginName: descriptor.pluginName,
+      source: "bundled",
+      descriptor,
+    })),
+  );
+  const plugins = BUNDLED_COMMAND_DESCRIPTORS.filter(
+    (descriptor) => catalog.resolve(descriptor.id)?.source === "plugin",
+  ).map((descriptor) => ({
+    spec: { id: descriptor.id, summary: descriptor.summary },
+    plugin: descriptor.pluginName,
+    hidden: descriptor.hidden === true,
+    aliases: commandDescriptorAliases(descriptor),
+    flags: descriptor.flags,
+    args: descriptor.args,
+  }));
+  await Bun.write(OUTPUT, renderPage(plugins));
   console.log(`[build-command-reference] wrote ${OUTPUT}`);
 };
 

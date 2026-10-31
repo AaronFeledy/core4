@@ -129,11 +129,18 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "bundled-command-descriptors",
+    ownership: "derived",
+    script: "build-bundled-command-descriptors.ts",
+    workspace: "repo",
+    dependsOn: ["bundled-plugins", "setup-plugin-flags"],
+  },
+  {
     id: "mcp-allowlist",
     ownership: "derived",
     script: "build-mcp-allowlist.ts",
     workspace: "repo",
-    dependsOn: ["setup-plugin-flags"],
+    dependsOn: ["setup-plugin-flags", "bundled-command-descriptors"],
   },
   {
     id: "host-proxy-allowlist",
@@ -161,7 +168,7 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-command-registry-manifest.ts",
     workspace: "core",
-    dependsOn: ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations"],
+    dependsOn: ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations", "bundled-command-descriptors"],
   },
   {
     // Imports `@lando/sdk/schema`; see `bootstrap-layers`.
@@ -177,6 +184,7 @@ export const CODEGEN_CATALOG = [
     script: "build-schema-snapshot.ts",
     workspace: "repo",
     dependsOn: [
+      "bundled-command-descriptors",
       "bundled-plugins",
       "bundled-recipes",
       "bootstrap-layers",
@@ -192,7 +200,7 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-command-reference.ts",
     workspace: "repo",
-    dependsOn: ["command-registry-manifest", "bundled-plugins"],
+    dependsOn: ["command-registry-manifest", "bundled-plugins", "bundled-command-descriptors"],
   },
   {
     id: "compose-key-matrix",
