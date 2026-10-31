@@ -68,6 +68,7 @@ export type McpExecute = (
 
 export interface McpRunInput {
   readonly argv: ReadonlyArray<string>;
+  readonly parsedArgv?: ReadonlyArray<string>;
   readonly flags: Record<string, unknown>;
   readonly args: Record<string, unknown>;
   readonly interaction: "non-interactive";
