@@ -145,3 +145,36 @@ test("local, shard and timings commands select exact files rather than matching 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("timings can target a fresh candidate without changing the baseline or selecting path suffixes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "test-timing-candidate-"));
+  const file = "core/test/unit.test.ts";
+  const candidate = "candidate timings.json";
+  try {
+    for (const path of [file, `docs/test/${file}`]) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), 'import { test } from "bun:test"; test("fixture", () => {});');
+    }
+    await writeFile(join(root, TEST_TIMINGS_FILE), "baseline bytes");
+    const child = Bun.spawn([...timingRefreshCommand([file], candidate)], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    const output = Bun.stripANSI(`${stdout}\n${stderr}`);
+    expect(code, output).toBe(0);
+    expect(output).toMatch(/^\s*1 pass\s*$/mu);
+    expect(await Bun.file(join(root, TEST_TIMINGS_FILE)).text()).toBe("baseline bytes");
+    const timings = await Bun.file(join(root, candidate)).json();
+    expect(timings.version).toBe(1);
+    expect(Object.keys(timings.files)).toEqual([file]);
+    expect(timings.files[file]).toBeGreaterThanOrEqual(0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

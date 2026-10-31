@@ -11,11 +11,14 @@ import { TEST_TIMINGS_FILE, collectShardedTestFiles, testFileArguments } from ".
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
-export const timingRefreshCommand = (files: readonly string[]): readonly string[] => [
+export const timingRefreshCommand = (
+  files: readonly string[],
+  timingsFile: string = TEST_TIMINGS_FILE,
+): readonly string[] => [
   process.execPath,
   "--no-orphans",
   "test",
-  `--timings=${TEST_TIMINGS_FILE}`,
+  `--timings=${timingsFile}`,
   "--update-timings",
   ...testFileArguments(files),
 ];
