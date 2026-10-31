@@ -1,4 +1,5 @@
-import { type ShareStopResult, ShareStopResultSchema, appShareStop } from "@lando/engine/operations/share";
+import { appShareStop } from "@lando/engine/operations/share";
+import { ShareStopAppResult } from "@lando/sdk/schema";
 import { renderShareStopResult } from "../../../commands/share";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { Args } from "../../../spec/metadata";
@@ -15,8 +16,8 @@ export const shareStopSpec: LandoCommandSpec = {
     session: Args.string({ description: "Tunnel session id." }),
   },
   flags: shareStopFlags,
-  resultSchema: ShareStopResultSchema,
+  resultSchema: ShareStopAppResult,
   run: (input) => appShareStop(shareStopOptionsFromInput(input)),
   render: (result, input, ctx) =>
-    renderShareStopResult(result as ShareStopResult, shareFormatFromInput(input), ctx),
+    renderShareStopResult(result as ShareStopAppResult, shareFormatFromInput(input), ctx),
 };

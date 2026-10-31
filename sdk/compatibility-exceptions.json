@@ -5440,5 +5440,17 @@
     "changeKind": "enum-narrowed",
     "path": "$.composeKnobs.supported.items",
     "justification": "Pre-release: Compose tmpfs is no longer a preserved runtime knob; service tmpfs and volumes tmpfs normalize into tmpfs mount entries every bundled provider realizes, so providers no longer declare tmpfs knob support."
+  },
+  {
+    "surface": "command:app:exec",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release output narrowing: the command previously advertised an arbitrary object or array while its envelope already carried the App handle's ExecAppResult (app, service, command, exitCode, stdout, stderr). The result schema now names that shape, so `--json` key listing, the generated command schema, and MCP output schemas describe what the command emits; the emitted payload is unchanged."
+  },
+  {
+    "surface": "command:app:ssh",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release output narrowing: the command previously advertised an arbitrary object or array while its envelope already carried the App handle's ExecAppResult (app, service, command, exitCode, stdout, stderr). The result schema now names that shape, so `--json` key listing, the generated command schema, and MCP output schemas describe what the command emits; the emitted payload is unchanged."
   }
 ]

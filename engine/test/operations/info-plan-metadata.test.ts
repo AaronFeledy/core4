@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, PortablePath, ServiceInfo, landoNetworkingPlan } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  InfoAppResult,
+  PortablePath,
+  ServiceInfo,
+  landoNetworkingPlan,
+} from "@lando/sdk/schema";
 import { Schema } from "effect";
-import { AppInfoResultSchema } from "../../src/operations/info.ts";
 import { plan, runInfo, service } from "./info-storage-fixture.ts";
 
 test("projects selected artifact identity, user, and working directory without extra provider calls", async () => {
@@ -49,7 +54,7 @@ test("reports only safe build identity and omits absent plan metadata", async ()
   expect(json).not.toContain("private.example/secret-image");
   expect(json).not.toContain("/host/private/build");
   const commandJson = JSON.stringify(
-    Schema.encodeSync(AppInfoResultSchema)({ app: "storage-info", services: [row] }),
+    Schema.encodeSync(InfoAppResult)({ app: "storage-info", services: [row] }),
   );
   expect(commandJson).not.toContain("never-print-build-arg");
   expect(commandJson).not.toContain("private.example/secret-image");
@@ -141,7 +146,7 @@ test("reports planned health settings and observed health independently of lifec
   expect(rawJson).not.toContain("secret-health-command");
   expect(rawJson).not.toContain("secret-health-url.test");
   const commandJson = JSON.stringify(
-    Schema.encodeSync(AppInfoResultSchema)({ app: "storage-info", services: [row] }),
+    Schema.encodeSync(InfoAppResult)({ app: "storage-info", services: [row] }),
   );
   expect(commandJson).not.toContain("secret-health-command");
   expect(commandJson).not.toContain("secret-health-url.test");

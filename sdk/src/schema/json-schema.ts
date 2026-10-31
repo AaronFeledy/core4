@@ -163,6 +163,19 @@ import {
   ServiceNetworkAttachment,
   ServicePlan,
 } from "./app-plan.ts";
+import {
+  DestroyAppResult,
+  ExecAppResult,
+  InfoAppAgentEnv,
+  InfoAppHostProxy,
+  InfoAppResult,
+  LandofileEventsOutcome,
+  RebuildAppResult,
+  RestartAppResult,
+  StartAppResult,
+  StopAppResult,
+  ToolingResult,
+} from "./app-results.ts";
 import { ArtifactBuildSpec, ArtifactRef, BuildScript } from "./artifacts.ts";
 import { BuildPlan, BuildStep } from "./build-plan.ts";
 import { CommandTrace, CommandTraceSpan } from "./command-trace.ts";
@@ -438,6 +451,8 @@ import {
   RecipeRegistryResponse,
 } from "./recipe.ts";
 import {
+  AppRemoteEntry,
+  AppRemoteMutationResult,
   DatasetApplyOptions,
   DatasetApplyResult,
   DatasetArtifactFormat,
@@ -497,6 +512,7 @@ import {
   ToolingInvocationInput,
 } from "./tooling-input.ts";
 import {
+  ShareStopAppResult,
   TunnelCapabilities,
   TunnelSession,
   TunnelSessionFilter,
@@ -829,6 +845,20 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceInfo,
   ServiceInfoLogSource,
   StartedService,
+  LandofileEventsOutcome,
+  StartAppResult,
+  StopAppResult,
+  RestartAppResult,
+  RebuildAppResult,
+  DestroyAppResult,
+  InfoAppAgentEnv,
+  InfoAppHostProxy,
+  InfoAppResult,
+  ExecAppResult,
+  ToolingResult,
+  AppRemoteEntry,
+  AppRemoteMutationResult,
+  ShareStopAppResult,
   EndpointRef,
   ObservedPublication,
   PublicationObservation,
@@ -1394,6 +1424,21 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   RouteEvidence: "Read-only configured ingress and live route publication evidence.",
   ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
   StartedService: "Service startup result with scoped connection evidence.",
+  LandofileEventsOutcome:
+    "Whether the operation ran the Landofile's `events:` and `hostEvents` steps, or why it skipped them.",
+  StartAppResult: "Services and optional readiness checks returned after starting an app.",
+  StopAppResult: "Service teardown and lifecycle-step outcomes returned after stopping an app.",
+  RestartAppResult: "Services and optional readiness checks returned after restarting an app.",
+  RebuildAppResult: "Rebuilt services and their post-start observations returned after rebuilding an app.",
+  DestroyAppResult: "Resources removed and lifecycle-step outcomes returned after destroying an app.",
+  InfoAppAgentEnv: "Agent environment forwarding reported by app introspection.",
+  InfoAppHostProxy: "Host-proxy capabilities reported by app introspection.",
+  InfoAppResult: "Service and host-integration observations returned when inspecting an app.",
+  ExecAppResult: "Captured output and exit status returned after executing a command in an app service.",
+  ToolingResult: "Captured output and exit status returned after invoking an app tooling task.",
+  AppRemoteEntry: "A named remote and its provider configuration returned by an app remote listing.",
+  AppRemoteMutationResult: "Configuration and file details returned after adding or removing an app remote.",
+  ShareStopAppResult: "Confirmation that an app sharing session has stopped.",
   EmbeddingPluginPolicy: "Public Lando schema contract for Embedding Plugin Policy.",
   ContributionRef: "Public Lando schema contract for Contribution Ref.",
   PluginSetupFlagContribution: "Public Lando schema contract for Plugin Setup Flag Contribution.",

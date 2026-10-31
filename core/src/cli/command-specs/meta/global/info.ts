@@ -1,14 +1,13 @@
-import { Flags } from "../../../spec/metadata";
-
+import { InfoAppResult } from "@lando/sdk/schema";
 import {
   type GlobalInfoOptions,
   type GlobalInfoResult,
-  GlobalInfoResultSchema,
   globalInfo,
   renderGlobalInfoResult,
 } from "../../../commands/meta/global-info";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
+import { Flags } from "../../../spec/metadata";
 
 export const globalInfoOptionsFromInput = (input: unknown): GlobalInfoOptions => {
   const flags = specFlagsOf(input);
@@ -17,7 +16,7 @@ export const globalInfoOptionsFromInput = (input: unknown): GlobalInfoOptions =>
 };
 
 export const metaGlobalInfoSpec: LandoCommandSpec<GlobalInfoResult> = {
-  resultSchema: GlobalInfoResultSchema,
+  resultSchema: InfoAppResult,
   id: "meta:global:info",
   resultFormats: ["table"],
   summary: "Print runtime information for the host-level global Lando app.",

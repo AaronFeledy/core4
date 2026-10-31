@@ -1,9 +1,9 @@
-import { Flags } from "../../spec/metadata";
-
-import { AppInfoResultSchema, type InfoAppResult, infoApp } from "@lando/engine/operations/info";
+import { infoApp } from "@lando/engine/operations/info";
+import { InfoAppResult } from "@lando/sdk/schema";
 import { renderInfoAppResult } from "../../commands/info-render";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
+import { Flags } from "../../spec/metadata";
 
 /**
  * `lando app:info` — native command metadata adapter.
@@ -19,7 +19,7 @@ export const infoOptionsFromInput = (input: unknown): NonNullable<Parameters<typ
 };
 
 export const infoSpec: LandoCommandSpec<InfoAppResult> = {
-  resultSchema: AppInfoResultSchema,
+  resultSchema: InfoAppResult,
   id: "app:info",
   helpGroup: "common",
   mcpAllowed: true,

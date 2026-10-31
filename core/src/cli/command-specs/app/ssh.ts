@@ -4,19 +4,19 @@ import { Args, Flags } from "../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import { type ExecAppResult, execApp } from "@lando/engine/operations/exec";
-import { StreamFrame } from "@lando/sdk/schema";
+import { execApp } from "@lando/engine/operations/exec";
+import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
 import { serviceLoginShellCommand } from "../../service-login-shell";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { execInputUsesCliHostIo } from "./exec";
 
 export const sshSpec: LandoCommandSpec<ExecAppResult> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ExecAppResult,
   id: "app:ssh",
   helpGroup: "common",
   summary:

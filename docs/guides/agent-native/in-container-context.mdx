@@ -42,8 +42,10 @@ tags: [beta, docs, agent-native, info, json]
 
 `app:info --format=json` wraps its result in the same `CommandResultEnvelope`
 every non-interactive command emits: `{ "ok": true, "result": <InfoAppResult> }`.
-The result carries `app` (the app name, matching the Landofile) and `services`,
-an array with one entry per service defined in the Landofile.
+The [`InfoAppResult` schema reference](../../reference/schemas/info-app-result.mdx)
+lists every field. The result carries `app` (the app name, matching the
+Landofile) and `services`, an array with one entry per service defined in the
+Landofile.
 
 Each `services[]` entry names the service and its type and provider, whether
 it's primary, its current status, and its connections. It also carries safe

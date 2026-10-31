@@ -1,7 +1,8 @@
 import { Effect } from "effect";
 
-import { type RestartAppResult, RestartAppResultSchema, restartApp } from "@lando/engine/operations/restart";
+import { restartApp } from "@lando/engine/operations/restart";
 import { withIncompleteStartNotice } from "@lando/engine/operations/start-incomplete-notice";
+import { RestartAppResult } from "@lando/sdk/schema";
 import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderRestartAppResult } from "../../commands/restart";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
@@ -18,7 +19,7 @@ export const restartOptionsFromInput = (input: unknown): NonNullable<Parameters<
 };
 
 export const restartSpec = {
-  resultSchema: RestartAppResultSchema,
+  resultSchema: RestartAppResult,
   id: "app:restart",
   helpGroup: "common",
   mcpAllowed: true,

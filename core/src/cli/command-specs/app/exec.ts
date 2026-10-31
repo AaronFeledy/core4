@@ -3,16 +3,15 @@ import { Args, Flags } from "../../spec/metadata";
 
 import {
   type ExecAppError,
-  type ExecAppResult,
   type ExecAppServices,
   execApp,
   execAppRedactionTokens,
 } from "@lando/engine/operations/exec";
-import { StreamFrame } from "@lando/sdk/schema";
+import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
@@ -20,7 +19,7 @@ export const execInputUsesCliHostIo = (input: unknown): boolean =>
   typeof input === "object" && input !== null && "hostIo" in input && input.hostIo === "cli";
 
 export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServices> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ExecAppResult,
   id: "app:exec",
   helpGroup: "common",
   mcpAllowed: true,

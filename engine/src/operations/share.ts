@@ -5,9 +5,9 @@ import type { AppPlanResolutionError, ShareAppError } from "@lando/sdk/app";
 import { type StateStoreError, TunnelProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  type ShareStopAppResult,
   TunnelSession,
   type TunnelSession as TunnelSessionType,
-  TunnelStatus,
   TunnelStopRequest,
   TunnelTarget,
   type TunnelTarget as TunnelTargetType,
@@ -25,13 +25,6 @@ import {
 import { routerEnabled } from "../config/router-config.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 import { reconcileTunnelRegistry, recordTunnelSession, removeTunnelSession } from "../tunnel/registry.ts";
-
-export const ShareStopResultSchema = Schema.Struct({
-  sessionId: Schema.String,
-  provider: Schema.optionalKey(Schema.String),
-  status: TunnelStatus,
-});
-export type ShareStopResult = typeof ShareStopResultSchema.Type;
 
 export const ShareListResultSchema = Schema.Array(TunnelSession);
 
@@ -217,7 +210,7 @@ export const appShareList = Effect.fn("AppOperation.shareList")(function* (
 
 export const appShareStop = Effect.fn("AppOperation.shareStop")(function* (
   options: ShareStopOptions,
-): Effect.fn.Return<ShareStopResult, ShareStopCommandError, StateStore> {
+): Effect.fn.Return<ShareStopAppResult, ShareStopCommandError, StateStore> {
   const stopRequest = yield* Schema.decodeUnknownEffect(TunnelStopRequest)({
     sessionId: options.sessionId,
     ...(options.provider === undefined ? {} : { provider: options.provider }),

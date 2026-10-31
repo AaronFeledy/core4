@@ -998,7 +998,7 @@ Each traced command runs under one root span `lando <command-id>` with init, run
 Output:
 
 - Text renderers print a timing tree to stderr after the result, collapsing spans under 1% of the root duration.
-- `--format json` adds an optional `trace` envelope field typed by the public `CommandTrace` schema: `{ totalDurationMs, spans: [{ id, name, parent?, startOffsetMs, durationMs, status: ok|error|interrupted, attributes }], droppedSpans }`. JSON spans are not collapsed. `CommandTrace` is published from `@lando/sdk`, registered in `JSON_SCHEMA_REGISTRY`, and snapshot-governed by §13.2.
+- `--format json` adds an optional `trace` envelope field typed by the public `CommandTrace` schema: `{ totalDurationMs, spans: [{ id, name, parent?, startOffsetMs, durationMs, status: ok|error|interrupted, attributes }], droppedSpans }`. JSON spans are not collapsed. `CommandTrace` is published from `@lando/sdk`, registered in `publicSchemaRegistry`, and snapshot-governed by §13.2.
 - Span attributes pass through `RedactionService` before retention, rendering, or export.
 
 Opt-in OTLP export:

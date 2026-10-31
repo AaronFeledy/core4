@@ -90,7 +90,7 @@ If that root has no Landofile, Lando prints an info notice and skips the Landofi
 
 **Check backup hooks before removing data.** If a Landofile is present but unusable, a `pre-destroy` backup step might not run. With `lando destroy --volumes`, `--purge`, or `--purge-caches`, Lando asks before proceeding without those steps. Fix the Landofile to run them. Pass `--yes` only if you intend to remove data without them. A non-interactive run without `--yes` fails with `LandofileEventsSkippedError` before changing the app. This extra confirmation does not apply when the root has no Landofile.
 
-For scripts, inspect the result of `lando stop --format=json` or `lando destroy --format=json`. When the operation tears down an app whose steps could have run, `landofileEvents` contains:
+For scripts, inspect the result of `lando stop --format=json` or `lando destroy --format=json`. When the operation tears down an app whose steps could have run, [`landofileEvents`](../../reference/schemas/landofile-events-outcome.mdx) contains:
 
 - `{ status: "ran" }` when Lando could use the Landofile's event plan.
 - `{ status: "skipped", reason }` when it could not.

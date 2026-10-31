@@ -115,6 +115,18 @@ export type TunnelTarget = typeof TunnelTarget.Type;
 export const TunnelStatus = Schema.Literals(["starting", "ready", "stopped", "failed", "unknown"]);
 export type TunnelStatus = typeof TunnelStatus.Type;
 
+// ==== App sharing results
+// Confirmation returned when an App handle stops a sharing session.
+
+export const ShareStopAppResult = Schema.Struct({
+  sessionId: Schema.String.annotate({ description: "Identifier of the sharing session that was stopped." }),
+  provider: Schema.optionalKey(Schema.String).annotate({
+    description: "Tunnel provider that owned the stopped session, when known.",
+  }),
+  status: Schema.Literal("stopped").annotate({ description: "Final status of the stopped sharing session." }),
+}).annotate({ description: "Confirmation that an app sharing session has stopped." });
+export type ShareStopAppResult = typeof ShareStopAppResult.Type;
+
 export const TunnelStartRequest = Schema.Struct({
   app: AppId,
   target: TunnelTarget,

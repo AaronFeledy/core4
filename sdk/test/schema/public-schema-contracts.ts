@@ -14,6 +14,7 @@ import {
 const ISO_TIMESTAMP = "2026-06-14T00:00:00.000Z";
 const PUBLIC_SCHEMA_CONTRACT_TEST_FILE = "sdk/test/schema/public-schema-contracts.test.ts";
 const BOOTSTRAP_EVENT_CONTRACT_TEST_FILE = "sdk/test/events/bootstrap.test.ts";
+const APP_RESULTS_CONTRACT_TEST_FILE = "sdk/test/schema/app-results.test.ts";
 
 export type PublicSchemaContractFixture = {
   readonly testFile: `sdk/test/${string}.test.ts`;
@@ -331,6 +332,20 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   ServiceInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ServiceInfoLogSource: "sdk/test/schema/service-info.test.ts",
   StartedService: "sdk/test/schema/service-info.test.ts",
+  LandofileEventsOutcome: APP_RESULTS_CONTRACT_TEST_FILE,
+  StartAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  StopAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  RestartAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  RebuildAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  DestroyAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  InfoAppAgentEnv: APP_RESULTS_CONTRACT_TEST_FILE,
+  InfoAppHostProxy: APP_RESULTS_CONTRACT_TEST_FILE,
+  InfoAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  ExecAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  ToolingResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  AppRemoteEntry: APP_RESULTS_CONTRACT_TEST_FILE,
+  AppRemoteMutationResult: APP_RESULTS_CONTRACT_TEST_FILE,
+  ShareStopAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
   EndpointRef: "sdk/test/schema/endpoint-foundation.test.ts",
   ObservedPublication: "sdk/test/schema/endpoint-foundation.test.ts",
   PublicationObservation: "sdk/test/schema/endpoint-foundation.test.ts",

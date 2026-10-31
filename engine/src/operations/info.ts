@@ -9,10 +9,8 @@ import type {
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import {
   type AppPlan,
-  FileSyncInfo,
   type LoadScopedLandofile,
   type ServiceConnection,
-  ServiceInfo,
   type ServicePlan,
   type ServiceState,
   landoServiceNetworkAttachments,
@@ -45,29 +43,7 @@ export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/a
 
 type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 
-export const AppInfoServiceSchema = ServiceInfo;
-
 const CertsProvenance = Schema.Literals(["none", "custom"]);
-
-export const AppInfoAgentEnvSchema = Schema.Struct({
-  enabled: Schema.Boolean,
-  forwarded: Schema.Array(Schema.String),
-});
-
-const AppInfoHostProxySchema = Schema.Struct({
-  runLando: Schema.Struct({
-    availability: Schema.Literals(["available", "unavailable"]),
-    reason: Schema.optionalKey(Schema.String),
-  }),
-});
-
-export const AppInfoResultSchema = Schema.Struct({
-  app: Schema.String,
-  services: Schema.Array(AppInfoServiceSchema),
-  agentEnv: Schema.optionalKey(AppInfoAgentEnvSchema),
-  hostProxy: Schema.optionalKey(AppInfoHostProxySchema),
-  fileSync: Schema.optionalKey(FileSyncInfo),
-});
 
 const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppService["creds"] => {
   if (connection === undefined) return undefined;
