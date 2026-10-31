@@ -103,10 +103,10 @@ describe("Podman user container configuration", () => {
       'if ! test -f "$HOME/.config/containers/containers.conf"; then',
     );
     const systemdIndex = installPodman6Script.indexOf(
-      `printf '[engine]\\ncgroup_manager = "systemd"\\n' > "$HOME/.config/containers/containers.conf"`,
+      `printf '[engine]\\ncgroup_manager = "systemd"\\n\\n[network]\\nfirewall_driver = "nftables"\\n' > "$HOME/.config/containers/containers.conf"`,
     );
     const cgroupfsIndex = installPodman6Script.indexOf(
-      `printf '[engine]\\ncgroup_manager = "cgroupfs"\\n' > "$HOME/.config/containers/containers.conf"`,
+      `printf '[engine]\\ncgroup_manager = "cgroupfs"\\n\\n[network]\\nfirewall_driver = "nftables"\\n' > "$HOME/.config/containers/containers.conf"`,
     );
 
     expect(guardIndex).toBeGreaterThan(0);
@@ -128,7 +128,7 @@ describe("Podman user container configuration", () => {
 
     expect(proc.exitCode).toBe(0);
     expect(await Bun.file(join(home, ".config/containers/containers.conf")).text()).toBe(
-      `[engine]\ncgroup_manager = "${usesSystemd ? "systemd" : "cgroupfs"}"\n`,
+      `[engine]\ncgroup_manager = "${usesSystemd ? "systemd" : "cgroupfs"}"\n\n[network]\nfirewall_driver = "nftables"\n`,
     );
   });
 
