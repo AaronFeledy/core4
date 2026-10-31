@@ -180,6 +180,9 @@ doesn't undo what the Bun child already did on disk. Trust you granted with
       <Run command="lando --format=json bun fail.js" expectExit={3} />
       <Verify errorTag="LandoCommandError" />
     </Step>
+    <Step name="cleanup-bun-files">
+      <Cleanup />
+    </Step>
   </Scenario>
 
   <Scenario id="list-version-json-keys" render>
