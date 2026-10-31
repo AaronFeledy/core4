@@ -103,14 +103,15 @@ export const mcpRegistryWithPlugins = Effect.fn("Mcp.resolvePluginRegistry")(fun
   const redaction = yield* RedactionService;
   const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
   const diagnostics: PluginCommandDiagnostic[] = [...(registry.diagnostics ?? [])];
+  const isTaggedDiagnostic = Schema.is(
+    Schema.Struct({
+      _tag: Schema.String,
+      message: Schema.String,
+      remediation: Schema.optionalKey(Schema.String),
+    }),
+  );
   const addDiagnostic = (error: unknown) => {
-    const tagged = Schema.is(
-      Schema.Struct({
-        _tag: Schema.String,
-        message: Schema.String,
-        remediation: Schema.optionalKey(Schema.String),
-      }),
-    )(error);
+    const tagged = isTaggedDiagnostic(error);
     diagnostics.push({
       _tag: tagged ? error._tag : "PluginLoadError",
       message: escapeDiagnosticText(redactor.redactString(tagged ? error.message : String(error))).slice(

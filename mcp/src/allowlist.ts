@@ -82,11 +82,12 @@ export const filterMcpDefaultAllowlist = (
     readonly spec: McpAllowlistSpecView;
     readonly plugin?: { readonly name: string; readonly source: "bundled" | "external" };
   }[],
-): readonly string[] =>
-  entries
+): readonly string[] => {
+  const defaultIds = new Set(defaults);
+  return entries
     .filter(
       (entry) =>
-        defaults.includes(entry.spec.id) &&
+        defaultIds.has(entry.spec.id) &&
         !isMcpNeverAllowed(entry.spec.id) &&
         (entry.plugin === undefined ||
           (entry.plugin.source === "bundled" &&
@@ -94,3 +95,4 @@ export const filterMcpDefaultAllowlist = (
             !isMcpDestructiveCommand(entry.spec))),
     )
     .map((entry) => entry.spec.id);
+};
