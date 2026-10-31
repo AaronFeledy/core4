@@ -42,7 +42,7 @@ The host opts out of color when `NO_COLOR` holds any non-empty value or `TERM` i
 
 Under the opt-out, the task tree, notices, result summaries, OSC 8 hyperlinks, help, and interactive prompts drop every foreground and background color. Bold, dim, and default-color resets may stay, and the glyphs, text, and layout must match the colored frame once escape sequences are stripped. That is why status is never color-only. `TERM=dumb` also omits the terminal stream, so the tree falls back to one line per event. Tool payload bytes pass through untouched.
 
-Painters take a palette from `@lando/renderer/palette` as a required argument, so a new call site cannot forget the opt-out; only the public summary facades keep a default. The shared renderer contract suite fails any renderer whose narration emits color while its IO reports `noColor`. Prompts receive the resolved fact through `loadInteractivePromptDriver({ noColor })` and use default foreground and background intents; the `▶` selection marker and `▬` confirm underline carry state, and the driver suppresses OpenTUI's cursor-color (OSC 12) writes.
+Painters take a palette from `@lando/renderer/palette` as a required argument, so a new call site cannot forget the opt-out; only the public summary facades keep a default. The shared renderer contract suite fails any renderer whose narration emits color while its IO reports `noColor`. Prompts receive the resolved fact through `loadInteractivePromptDriver({ noColor })` and use default foreground and background intents; the `▶` selection marker carries state, inline confirmations stay plain text, and the driver suppresses OpenTUI's cursor-color (OSC 12) writes.
 
 ## Desktop notification policy
 

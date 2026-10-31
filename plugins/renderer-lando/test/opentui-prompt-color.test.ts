@@ -25,7 +25,6 @@ const cases = [
   "select",
   "described-select",
   "multiselect",
-  "confirm",
   "manual-choice",
 ] as const;
 
@@ -126,7 +125,6 @@ for (const kind of cases) {
     if (kind === "select" || kind === "described-select" || kind === "multiselect") {
       expect(result.frame).toContain("▶");
     }
-    if (kind === "confirm") expect(result.frame).toContain("▬");
     if (kind === "described-select") {
       expect(result.frame).toContain("Beta preview");
       expect(result.frame).toMatch(/│\s+b\s+│/);

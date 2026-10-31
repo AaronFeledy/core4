@@ -48,7 +48,7 @@ Rules:
 
 - Never introduce a color outside this table.
 - Never communicate state by color alone. Glyph or compact word first.
-- A non-empty host `NO_COLOR` (including `0`) or `TERM=dumb` suppresses chromatic SGR without changing glyphs, text, or layout. `TERM=dumb` also keeps narration append-only. Child payload bytes are unchanged. OpenTUI prompts use terminal-default foreground/background under the opt-out, retain the `▶` selection indicator and `▬` confirm underline, and preserve the terminal's cursor color. Preview, search, and validation text follow the same per-driver theme.
+- A non-empty host `NO_COLOR` (including `0`) or `TERM=dumb` suppresses chromatic SGR without changing glyphs, text, or layout. `TERM=dumb` also keeps narration append-only. Child payload bytes are unchanged. OpenTUI prompts use terminal-default foreground/background under the opt-out, retain the `▶` selection indicator, and preserve the terminal's cursor color. Confirmations render inline as plain text. Preview, search, and validation text follow the same per-driver theme.
 - Title text is bold default, not pink. Footer copy is dim default, not pink.
 - Pink is rail chrome, the active moving spinner glyph, and the opt-in brand icon. It is not a status
   color and must not paint labels, static `·`, wrap continuations, durations,
