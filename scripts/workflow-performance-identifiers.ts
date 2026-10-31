@@ -37,6 +37,7 @@ export const WORKFLOW_PERFORMANCE_STEP_IDS = [
   "cleanup:destroy",
   "cleanup:global",
   "cleanup:runtime",
+  "cleanup:unmount",
   "cleanup:storage",
   "cleanup:storage-helpers",
 ] as const;
