@@ -344,7 +344,7 @@ jobs:
         if: ${{ matrix.cell == 'podman-podman6-linux' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y uidmap fuse-overlayfs nftables
+          sudo apt-get install -y uidmap fuse-overlayfs
           if ! command -v brew >/dev/null 2>&1; then
             test -x /home/linuxbrew/.linuxbrew/bin/brew
             eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
@@ -390,13 +390,12 @@ jobs:
           fi
           # The runner image's system-level container config is outside our control and
           # changes between image releases. Pin the cgroup manager at user level so this
-          # lane remains deterministic. Homebrew's netavark has no iptables backend, so
-          # pin the nftables firewall driver instead of inheriting an iptables default.
+          # lane remains deterministic.
           if ! test -f "$HOME/.config/containers/containers.conf"; then
             if test -d /run/systemd/system; then
-              printf '[engine]\ncgroup_manager = "systemd"\n\n[network]\nfirewall_driver = "nftables"\n' > "$HOME/.config/containers/containers.conf"
+              printf '[engine]\ncgroup_manager = "systemd"\n' > "$HOME/.config/containers/containers.conf"
             else
-              printf '[engine]\ncgroup_manager = "cgroupfs"\n\n[network]\nfirewall_driver = "nftables"\n' > "$HOME/.config/containers/containers.conf"
+              printf '[engine]\ncgroup_manager = "cgroupfs"\n' > "$HOME/.config/containers/containers.conf"
             fi
           fi
           # A system-level storage.conf left behind by a distro podman install pins the
@@ -693,7 +692,7 @@ jobs:
         if: ${{ matrix.cell == 'podman-podman6-linux' }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y uidmap fuse-overlayfs nftables
+          sudo apt-get install -y uidmap fuse-overlayfs
           if ! command -v brew >/dev/null 2>&1; then
             test -x /home/linuxbrew/.linuxbrew/bin/brew
             eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
@@ -739,13 +738,12 @@ jobs:
           fi
           # The runner image's system-level container config is outside our control and
           # changes between image releases. Pin the cgroup manager at user level so this
-          # lane remains deterministic. Homebrew's netavark has no iptables backend, so
-          # pin the nftables firewall driver instead of inheriting an iptables default.
+          # lane remains deterministic.
           if ! test -f "$HOME/.config/containers/containers.conf"; then
             if test -d /run/systemd/system; then
-              printf '[engine]\ncgroup_manager = "systemd"\n\n[network]\nfirewall_driver = "nftables"\n' > "$HOME/.config/containers/containers.conf"
+              printf '[engine]\ncgroup_manager = "systemd"\n' > "$HOME/.config/containers/containers.conf"
             else
-              printf '[engine]\ncgroup_manager = "cgroupfs"\n\n[network]\nfirewall_driver = "nftables"\n' > "$HOME/.config/containers/containers.conf"
+              printf '[engine]\ncgroup_manager = "cgroupfs"\n' > "$HOME/.config/containers/containers.conf"
             fi
           fi
           # A system-level storage.conf left behind by a distro podman install pins the
