@@ -1,0 +1,107 @@
+---
+id: sqlite-database
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, database, sqlite]
+---
+
+# Use SQLite with db commands
+
+Declare `sqlite.path` on an app service to import, export, snapshot, restore, or reset a SQLite database. The path is relative to that service's app mount. Absolute paths and `..` segments are rejected.
+
+```yaml
+name: sqlite-database-demo
+services:
+  appserver:
+    type: "php:8.3"
+    primary: true
+    appMount:
+      target: /app
+      accelerate: false
+    sqlite:
+      path: data/site.sqlite
+```
+
+`lando app:config:lint --format=json` from the app directory confirms the Landofile. `db:*` commands use this key even before you rebuild, as long as the service already has an applied plan. `lando info` shows `engine=sqlite` and the path after the planner stamps the next apply.
+
+Pass `--service <name>` when the app has more than one database target. `db:seed` is not supported for SQLite files.
+
+## Export or snapshot the database
+
+Use an existing SQLite database and an applied plan with the mount configuration above. Rebuild an existing app after changing its mount. Run these commands from the app directory. Export writes `.dump` SQL; `.gz` and `.zst` paths compress it on the host.
+
+```sh
+lando db:export backup.sql.gz --service appserver
+lando db:snapshot --service appserver
+lando db:snapshots --service appserver
+```
+
+Snapshots belong to this app folder, service, database path, and physical storage. For a bind mount, Lando records its canonical host source; for a named volume, it records the verified volume identity and any mounted subdirectory. Snapshots also record the SQLite version and contain the selected database, including committed WAL data. Other SQLite files in the same directory are outside that snapshot.
+
+## Import or restore the database
+
+Stop applications and other clients that use the selected file before importing or restoring it. **Both operations replace the selected database's contents.** The target file must already exist. A raw SQLite input is detected from its file header; SQL dumps are loaded into a separate staging database first. Compressed inputs decompress on the host. Lando copies the staged database into the existing target through SQLite's backup API, preserving the target file.
+
+```sh
+lando db:import backup.sql.gz --service appserver --yes
+```
+
+To recover a snapshot, find its ID with `lando db:snapshots --service appserver`. Replace `<id>` below with the ID for this app folder, service, database path, and physical storage. The recorded SQLite version must also match. A snapshot from a different bind source or a replaced volume cannot restore into the current target. Older snapshots that recorded only a relative database path are also refused; keep them if you need their data, and use logical export and import to move data between targets.
+
+```sh
+lando db:restore <id> --service appserver --yes
+```
+
+Import and restore take a recovery snapshot of the current database before changing it. They require the same exclusive access as reset. Lando runs SQLite's integrity check on staged imports, restore payloads, and recovery copies before changing the target, then checks the target again before reporting success. A failed check stops the operation. If a failure occurs after the target changed, the command reports failure and retains the recovery evidence.
+
+## Reset to an empty database
+
+Stop applications and other clients that use the selected file before resetting it. This includes clients outside Lando. **Reset removes the selected database's tables, views, indexes, triggers, and data.** Export any data you want to keep first.
+
+```sh
+lando db:reset --service appserver --yes
+```
+
+The target file must already exist. A successful reset leaves an empty, usable SQLite database at the same path. It preserves the database file, its ownership, service configuration, and other databases. Reset clears `user_version` and does not run migrations or seeds. Run your application's migration command separately when you want to recreate its schema.
+
+Lando obtains SQLite's exclusive database lock and holds it from recovery capture through reset. A Lando command lock alone cannot exclude external SQLite clients. If SQLite cannot establish exclusive access, the command fails before resetting anything. `--yes` skips confirmation; it does not skip locking, recovery capture, or verification.
+
+Before changing data, reset saves a recovery snapshot for this app folder, service, and path. The result identifies that snapshot. Failures after capture retain its ID and recovery guidance; if cataloguing failed, the error identifies the retained recovery file instead. Keep that evidence and follow the reported guidance before retrying. Restore a catalogued snapshot with `lando db:restore <id> --service appserver --yes`. A failure is not a successful reset, even when part of the operation completed.
+
+## Prune saved snapshots
+
+Snapshot pruning reads the catalog without opening the database. It works when the database file or volume is missing or read-only. The current app still needs an applied plan to select the SQLite service. `--from-path` selects another app folder; `--from-app` selects a sibling app in the same repository group.
+
+Preview manual snapshot cleanup from the app directory:
+
+```sh
+lando db:snapshots:prune --service appserver --keep-latest=3 --preview
+```
+
+The keep count applies separately to each recorded physical database in the selected catalog scope. Automatic recovery snapshots are preserved. `--keep-latest=0` selects all manual SQLite snapshots in that scope. Review the candidate IDs before applying the command without `--preview`; `--yes` skips confirmation. Only the confirmed IDs are removed, so snapshots added while you confirm remain intact.
+
+## Use supported storage
+
+Use an ordinary writable directory bind shared by the host and provider, or a named volume whose ownership Lando can verify. Before accessing a bind-backed database, Lando creates a temporary proof file at the canonical source, verifies it through a read-only helper, and removes it. This refuses a remote replica at the same pathname. The host must be able to write the source directory; file-only binds are unsupported. Accelerated mounts and binds realized as private copies are refused before the helper starts, because their configured host source may differ from the file the application uses. For an app bind, set `appMount.accelerate: false` and rebuild before retrying. Tmpfs and read-only covering mounts are unsupported.
+
+If `appMount.excludes` puts the database directory on a named volume, Lando verifies the provider's recorded owner and physical volume generation before inspecting the file owner. It rechecks that identity around capture and mutation, and preserves any mounted subdirectory. The provider must support helper mounts of that subdirectory; an unsupported mount fails before SQLite access. Matching file uid/gid alone does not prove that the volume belongs to this app. A missing, foreign, or unverifiable volume stops the command before data changes.
+
+If safe access cannot be established, fix the reported mount or ownership problem before retrying. A database that needs an extension absent from the pinned helper also fails safely; the helper does not currently include FTS5.
+
+## Check the Landofile
+
+<Guide>
+  <Scenario id="lint-sqlite-path" render>
+    <Step name="scaffold">
+      <UseFixture name="sqlite-database-demo" />
+    </Step>
+    <Step name="lint-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Next
+
+- [Import and export app databases](./db-import-export.mdx)

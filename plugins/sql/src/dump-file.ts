@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { SqlDumpNotFoundError, errnoCode } from "@lando/sdk/errors";
 
 import { type DumpCompression, collectDumpPrefix, detectDumpCompression } from "./compression.ts";
+import { isSqliteDatabaseHeader } from "./sqlite-header.ts";
 
 type DumpMiss = "missing" | "unreadable" | "directory";
 
@@ -33,6 +34,7 @@ const dumpNotFound = (path: string, appRoot: string, kind: DumpMiss): SqlDumpNot
 export type ReadableDump = {
   readonly digest: string;
   readonly compression: DumpCompression;
+  readonly sqliteDatabase: boolean;
 };
 
 export const ensureReadableDump = (
@@ -53,7 +55,11 @@ export const ensureReadableDump = (
         prefix = collectDumpPrefix(chunk, prefix);
         hash.update(chunk);
       }
-      return { digest: hash.digest("hex"), compression: detectDumpCompression(prefix) };
+      return {
+        digest: hash.digest("hex"),
+        compression: detectDumpCompression(prefix),
+        sqliteDatabase: isSqliteDatabaseHeader(prefix),
+      };
     },
     catch: (cause) =>
       cause instanceof SqlDumpNotFoundError ? cause : dumpNotFound(path, appRoot, dumpMissKind(cause)),

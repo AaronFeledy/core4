@@ -23,3 +23,6 @@ export const dataHelperImage: PinnedHelperImage = pinnedHelperImage(providerImag
 
 /** Bun helper for the volume-ownership witness and the Windows file-sync target. */
 export const volumeWitnessImage: PinnedHelperImage = pinnedHelperImage(providerImages.images.volumeWitness);
+
+/** Pinned sqlite3 helper for file-backed SQL plugin targets. */
+export const sqliteHelperImage: PinnedHelperImage = pinnedHelperImage(providerImages.images.sqliteHelper);

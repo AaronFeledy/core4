@@ -5442,6 +5442,36 @@
     "justification": "Pre-release: Compose tmpfs is no longer a preserved runtime knob; service tmpfs and volumes tmpfs normalize into tmpfs mount entries every bundled provider realizes, so providers no longer declare tmpfs knob support."
   },
   {
+    "surface": "schema:ServiceCredsDisplay",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed pre-release SQLite file target: ServiceCredsDisplay becomes a strict union of the existing server username/password/database display and a sqlite engine-plus-path arm. Historical server records remain readable. Mixed sqlite-plus-server fields are rejected. Tests cover both arms and strict excess-property rejection."
+  },
+  {
+    "surface": "schema:ServiceInfo",
+    "changeKind": "unsupported-construct",
+    "path": "$.creds.anyOf",
+    "justification": "Reviewed pre-release SQLite file target: info credentials reuse the ServiceCredsDisplay union so sqlite services publish engine and path instead of empty server creds. Existing mysql/mariadb/postgres/mongodb/mssql info payloads remain valid. Tests cover sqlite info encoding and secret-free server display."
+  },
+  {
+    "surface": "schema:InfoAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.creds.anyOf",
+    "justification": "Reviewed propagation of the SQLite ServiceCredsDisplay arm into the public app-info result. The existing server username, redacted password, database, and optional redacted root-password object is unchanged; SQLite adds engine and path without widening unrelated service or app-result fields. Strict aggregate round-trip tests cover both credential arms and reject mixed credentials, missing SQLite path, and unexpected app fields."
+  },
+  {
+    "surface": "command:app:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.creds.anyOf",
+    "justification": "Reviewed pre-release SQLite file target: app info credentials inherit the ServiceCredsDisplay union. Existing server credential objects remain valid; sqlite services add engine and path. Info render and info-creds tests cover both arms."
+  },
+  {
+    "surface": "command:meta:global:info",
+    "changeKind": "unsupported-construct",
+    "path": "$.services.items.creds.anyOf",
+    "justification": "Reviewed pre-release SQLite file target: global info credentials inherit the same ServiceCredsDisplay union as app info. Historical server credential objects remain valid. Sqlite services publish engine and path rather than empty username fields."
+  },
+  {
     "surface": "schema:EndpointInvariantIssue",
     "changeKind": "enum-widened",
     "path": "$.kind",

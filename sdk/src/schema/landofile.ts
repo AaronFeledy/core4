@@ -38,6 +38,7 @@ import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 import { ToolingAuthoredInputFields } from "./tooling-input.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
 export { ToolingFlagShape, ToolingArgShape } from "./tooling-input.ts";
@@ -621,6 +622,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     database: Schema.optionalKey(Schema.String).annotate({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
+    }),
+    sqlite: Schema.optionalKey(SqliteTargetConfig).annotate({
+      description:
+        "File-backed SQLite database relative to this service's app mount. Use db:import, db:export, db:snapshot, db:restore, and db:reset against the file.",
     }),
     password: Schema.optionalKey(EnvironmentValue).annotate({
       description:

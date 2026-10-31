@@ -4,6 +4,8 @@ import type { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import type { EnvironmentValueResolver, RuntimeProvider } from "@lando/sdk/services";
 
+import type { SqliteSnapshotDeps } from "./sqlite-snapshot.ts";
+
 import type { SqlExec, SqlMover } from "./actions.ts";
 import type { SqlPublisher } from "./progress.ts";
 import type { SqlRecoveryDeps } from "./recovery.ts";
@@ -54,4 +56,5 @@ export type SqlCommandDeps = SqlMover &
     ) => Effect.Effect<AbsolutePath, SqlRecoveryUnavailableError>;
     readonly confirm: (message: string) => Effect.Effect<boolean, unknown>;
     readonly publish: SqlPublisher;
+    readonly sqlite?: SqliteSnapshotDeps;
   };

@@ -41,6 +41,7 @@ const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<Sum
 };
 
 const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
+  if ("engine" in creds) return `engine=${creds.engine} path=${creds.path}`;
   const parts = [`user=${creds.user}`, `database=${creds.database}`, `password=${creds.password}`];
   if (creds.rootPassword !== undefined) parts.push(`root-password=${creds.rootPassword}`);
   return parts.join(" ");

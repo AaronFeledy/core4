@@ -18,8 +18,8 @@ describe("sqlCandidates", () => {
     ]);
 
     expect(sqlCandidates(plan)).toEqual([
-      { name: "adb", type: "mysql:8.0", family: "mysql" },
-      { name: "zdb", type: "postgres:16", family: "postgres" },
+      { kind: "server", name: "adb", type: "mysql:8.0", family: "mysql" },
+      { kind: "server", name: "zdb", type: "postgres:16", family: "postgres" },
     ]);
   });
 });
@@ -35,7 +35,9 @@ describe("resolveSqlTarget", () => {
     expect(result.failure._tag).toBe("SqlServiceNotFoundError");
     expect(result.failure.available).toEqual([]);
     expect(result.failure.service).toBeUndefined();
-    expect(result.failure.remediation).toBe("Add a mysql, mariadb, postgres, mongodb, or mssql service.");
+    expect(result.failure.remediation).toBe(
+      "Add a mysql, mariadb, postgres, mongodb, mssql, or sqlite service.",
+    );
   });
 
   test("includes the requested name on not-found when no candidates exist", () => {
@@ -58,7 +60,9 @@ describe("resolveSqlTarget", () => {
     if (!(result.failure instanceof SqlServiceNotFoundError)) return;
     expect(result.failure.service).toBe("cache");
     expect(result.failure.available).toEqual(["database"]);
-    expect(result.failure.remediation).toBe("Add a mysql, mariadb, postgres, mongodb, or mssql service.");
+    expect(result.failure.remediation).toBe(
+      "Add a mysql, mariadb, postgres, mongodb, mssql, or sqlite service.",
+    );
   });
 
   test("selects the only candidate when no service is requested", () => {
@@ -66,7 +70,12 @@ describe("resolveSqlTarget", () => {
 
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isFailure(result)) return;
-    expect(result.success).toEqual({ name: "database", type: "postgres:16", family: "postgres" });
+    expect(result.success).toEqual({
+      kind: "server",
+      name: "database",
+      type: "postgres:16",
+      family: "postgres",
+    });
   });
 
   test("returns ambiguous when multiple candidates exist and none is requested", () => {
@@ -97,6 +106,66 @@ describe("resolveSqlTarget", () => {
 
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isFailure(result)) return;
-    expect(result.success).toEqual({ name: "postgres", type: "postgres:16", family: "postgres" });
+    expect(result.success).toEqual({
+      kind: "server",
+      name: "postgres",
+      type: "postgres:16",
+      family: "postgres",
+    });
+  });
+
+  test("selects a sqlite file target from the sqlite key even when type is php", () => {
+    const result = resolveSqlTarget({
+      services: {
+        appserver: { name: "appserver", type: "php:8.3", sqlite: { path: "data/site.sqlite" } },
+      },
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isFailure(result)) return;
+    expect(result.success).toEqual({
+      kind: "file",
+      name: "appserver",
+      type: "php:8.3",
+      family: "sqlite",
+      path: "data/site.sqlite",
+    });
+  });
+
+  test("lets the sqlite key win over a server connection on the same service", () => {
+    const candidates = sqlCandidates({
+      services: {
+        appserver: {
+          name: "appserver",
+          type: "postgres:16",
+          connection: {
+            family: "postgres",
+            port: 5432 as never,
+            creds: { user: "lando", password: "lando", database: "app" },
+          },
+          sqlite: { path: "db.sqlite" },
+        },
+      },
+    });
+
+    expect(candidates).toEqual([
+      { kind: "file", name: "appserver", type: "postgres:16", family: "sqlite", path: "db.sqlite" },
+    ]);
+  });
+
+  test("returns ambiguous when a sqlite file and a server database both exist", () => {
+    const result = resolveSqlTarget({
+      services: {
+        appserver: { name: "appserver", type: "php:8.3", sqlite: { path: "data/site.sqlite" } },
+        database: { name: "database", type: "mysql:8.0" },
+      },
+    });
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isSuccess(result)) return;
+    expect(result.failure).toBeInstanceOf(SqlServiceAmbiguousError);
+    if (!(result.failure instanceof SqlServiceAmbiguousError)) return;
+    expect(result.failure.available).toEqual(["appserver", "database"]);
+    expect(result.failure.remediation).toBe("Pass --service <name>.");
   });
 });
