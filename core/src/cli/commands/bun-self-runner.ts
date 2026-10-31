@@ -74,6 +74,7 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (inputOptions
       }),
     );
   const policy = yield* ChildOutput;
+  if (policy !== undefined) yield* policy.check;
   const renderer = yield* Effect.serviceOption(Renderer);
   const native = options.output === "native" && policy?.native === true;
   const streaming = !native && options.output !== "quiet" && policy?.stream !== undefined;

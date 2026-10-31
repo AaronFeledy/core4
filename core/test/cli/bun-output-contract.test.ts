@@ -121,6 +121,24 @@ test("invocation collection rejects an overflowing child atomically and stops fo
   expect(policy.output()?.chunks[0]?.chunk.length).toBe(600_000);
 });
 
+test("output overflow remains terminal even when a caller catches the failure", async () => {
+  const policy = makeChildOutputPolicy({ native: false, stdin: false, stream: undefined });
+  let children = 0;
+  const runner = processRunnerFor(() =>
+    Effect.sync(() => {
+      children++;
+      return { exitCode: 0, stdout: "x".repeat(600_000) };
+    }),
+  );
+  const results = await Effect.runPromise(
+    Effect.forEach(["first", "second", "third"], (stage) =>
+      Effect.result(bunSelfRun({ argv: [stage] })),
+    ).pipe(Effect.provideService(ProcessRunner, runner), Effect.provideService(ChildOutput, policy)),
+  );
+  expect(results.map((result) => result._tag)).toEqual(["Success", "Failure", "Failure"]);
+  expect(children).toBe(2);
+});
+
 test("explicit credentials are absent from collected output and the single Bun lifecycle pair", async () => {
   const program = Effect.gen(function* () {
     const output = yield* bunSelfRun({

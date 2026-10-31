@@ -1,4 +1,4 @@
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import {
@@ -15,7 +15,12 @@ import {
   readInstalledPluginRegistry,
 } from "@lando/engine/plugins/installed-registry";
 import { makeLandoPaths } from "@lando/paths";
-import type { ConfigError, NotImplementedError } from "@lando/sdk/errors";
+import {
+  type ConfigError,
+  type NotImplementedError,
+  ProcessExecError,
+  ProcessTimeoutError,
+} from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore, ProcessRunner } from "@lando/sdk/services";
 import {
@@ -187,6 +192,13 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
           updatedPlugins.push(row.name);
           rows.push(row);
         } else {
+          const failure = Cause.findErrorOption(exit.cause);
+          if (
+            failure._tag === "Some" &&
+            (failure.value instanceof ProcessExecError || failure.value instanceof ProcessTimeoutError)
+          ) {
+            return yield* Effect.failCause(exit.cause);
+          }
           rows.push({ ...row, status: "failed", reason: "apply-failed" });
         }
       }
