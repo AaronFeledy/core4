@@ -68,11 +68,15 @@ const pluginSpec = (
       return { ...input, ...bound, interaction: "non-interactive" as const };
     }),
     run: Effect.fn("Mcp.runPluginCommand")(function* (input: McpRunInput) {
-      if (isMcpDestructiveCommand(spec)) {
+      const destructive = isMcpDestructiveCommand(spec);
+      if (destructive) {
         yield* requireConfirmation({ yes: input.flags.yes === true, message: `Run ${spec.id}?` });
       }
+      // Accepted general confirmation answers the plugin's own `yes` prompt; protected-target
+      // typed confirmation stays the plugin's to collect.
       const pluginInput = {
         ...input,
+        ...(destructive && spec.flags?.yes !== undefined ? { flags: { ...input.flags, yes: true } } : {}),
         parsedArgv: input.parsedArgv ?? [],
         interaction: "non-interactive" as const,
       };
