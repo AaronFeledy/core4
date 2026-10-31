@@ -241,10 +241,11 @@ export const createPluginCommandCatalog = (
       const head = token.split(":", 1)[0] ?? token;
       if (isHelpTopic(head)) return `Run \`lando help ${head}\` to list commands.`;
       const result = await graph();
-      const ids =
-        result.status === "available"
-          ? (await index(result)).entries.filter((entry) => !entry.hidden).map((entry) => entry.id)
-          : [];
+      const catalog = result.status === "available" ? await index(result) : undefined;
+      const aliased = catalog?.resolve(token);
+      if (aliased?.source === "plugin" && aliased.id !== token)
+        return `Run \`lando ${aliased.id}\` to run the plugin command directly.`;
+      const ids = catalog?.entries.filter((entry) => !entry.hidden).map((entry) => entry.id) ?? [];
       if (!isReservedNamespaceHead(head) && ids.some((id) => id.startsWith(`${head}:`)))
         return `Run \`lando help ${head}\` to list commands.`;
       const suggestion = suggestCommandForSuffix(token, ids);

@@ -168,3 +168,22 @@ test("scenario 8: duplicate ids retain their first owner and missing loaders are
     await f.cleanup();
   }
 });
+
+test("a missing tooling cache refuses a bare plugin alias and names the plugin command", async () => {
+  const f = await createCatalogFixture();
+  try {
+    await f.install("@example/first", [
+      { id: "fx:inspect", summary: "Inspect fixture.", topLevelAlias: "inspect" },
+    ]);
+    // Given no app:cache:refresh, a tooling task named inspect could still own the token.
+    const run = await f.invoke(["inspect", "--format=json"]);
+    expect(run.exit).not.toBe(0);
+    const error = JSON.parse(run.stdout).error;
+    expect(error._tag).toBe("ToolingCommandUnavailableError");
+    expect(error.remediation).toContain("Run `lando fx:inspect` to run the plugin command directly.");
+    const direct = await f.invoke(["fx:inspect", "--format=json"]);
+    expect(direct.exit, direct.stderr).toBe(0);
+  } finally {
+    await f.cleanup();
+  }
+});
