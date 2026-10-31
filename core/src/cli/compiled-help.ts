@@ -10,7 +10,7 @@ import type { AppCommandIndexPayload } from "@lando/engine/cache/command-index";
 import { CORE_VERSION } from "@lando/engine/version";
 
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
-import { MORE_ROWS, type ThisAppHelpRow, commonRows, renderColdRootHelp } from "./cold-path-output";
+import { type ThisAppHelpRow, commonRows } from "./cold-path-output";
 import { buildCommandCatalog } from "./command-catalog";
 import { activeResultFormat, emitResultLine } from "./compiled-runtime";
 import { isEnvelopeResultFormat } from "./format-flags";
@@ -21,6 +21,7 @@ import { helpRedactor } from "./help-redaction";
 import { shouldStyleHelp } from "./help-style";
 import { printMachineHelpTarget } from "./help-target";
 import { type PluginCommandListing, PluginMetadata } from "./plugin-command-catalog";
+import { moreRows } from "./root-help-topics";
 
 import { type ToolingHelpEntry, renderCommandHelp, renderToolingHelp } from "./cli-help";
 
@@ -137,7 +138,7 @@ export const buildHelpCatalog = (
   const common = commonRows(aliasPolicy).map((row) => toCatalogRow(row, "built-in"));
   const thisApp =
     cache == null ? [] : thisAppHelpRowsFromCache(cache).map((row) => toCatalogRow(row, "tooling"));
-  const more = MORE_ROWS.map((row) => ({
+  const more = moreRows(plugins?.topics).map((row) => ({
     typeable: row.token,
     extras: [],
     canonicalId: row.token,
@@ -195,25 +196,6 @@ export const printHelpCatalogJson = (
       yield* Effect.promise(() => emitResultLine(line));
     }),
   );
-
-export const printRootHelp = (
-  activeAliases?: ReadonlyArray<readonly [string, string]>,
-  cache?: AppCommandIndexPayload | null,
-  toolingMetadata?: ToolingMetadataStatus,
-): Promise<void> => {
-  if (cache == null) {
-    return emitResultLine(
-      renderColdRootHelp(activeAliases, toolingMetadata === undefined ? {} : { toolingMetadata }),
-    );
-  }
-  return emitResultLine(
-    renderColdRootHelp(activeAliases, {
-      thisAppRows: thisAppHelpRowsFromCache(cache),
-      ...(toolingMetadata === undefined ? {} : { toolingMetadata }),
-      ...(cache.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
-    }),
-  );
-};
 
 const rendererModeFrom = (
   argv: ReadonlyArray<string>,

@@ -16,6 +16,7 @@ import { buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { loadPluginSpec } from "./event-command-target";
 import { interruptOnAbort } from "./interrupt-on-abort";
+import { pluginTopicRows } from "./root-help-topics";
 
 export const PluginCommandDiagnostic = Schema.Struct({
   _tag: Schema.String,
@@ -45,6 +46,7 @@ export type PluginCommandRow = {
   readonly loadError?: PluginCommandDiagnostic;
 };
 export interface PluginCommandListing {
+  readonly topics?: ReturnType<typeof pluginTopicRows>;
   readonly rows: readonly PluginCommandRow[];
   readonly metadata: PluginMetadata;
 }
@@ -179,6 +181,10 @@ export const createPluginCommandCatalog = (
       );
       return {
         rows: rows.sort((a, b) => a.id.localeCompare(b.id)),
+        topics: pluginTopicRows(
+          rows.map((row) => ({ ...row, hidden: row.descriptor.hidden ?? false })),
+          result.graph.plugins.map((plugin) => plugin.manifest),
+        ),
         metadata: { status: "available", implementation: "discovered", diagnostics },
       };
     },

@@ -2,12 +2,17 @@ import { readAppCommandCacheForCwdDetailed } from "@lando/engine/cache/command-i
 import { ToolingDisabledError } from "@lando/sdk/errors";
 import { Effect, Exit, Layer } from "effect";
 import { resolveBuiltInCommand } from "./built-in-command-registry";
-import { type HelpTopic, isHelpTopic, renderColdAllHelp, renderColdTopicHelp } from "./cold-path-output";
+import {
+  type HelpTopic,
+  isHelpTopic,
+  renderColdAllHelp,
+  renderColdRootHelp,
+  renderColdTopicHelp,
+} from "./cold-path-output";
 import {
   pluginRowsForCache,
   printCommandHelp,
   printHelpCatalogJson,
-  printRootHelp,
   printToolingHelp,
   thisAppHelpRowsFromCache,
 } from "./compiled-help";
@@ -109,7 +114,19 @@ export const printRootHelpPage = async (
 ): Promise<void> => {
   if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
   const result = await readHelpCache();
-  if (result !== undefined) await printRootHelp(undefined, result.cache, result.toolingMetadata);
+  if (result === undefined) return;
+  const { cache, toolingMetadata } = result;
+  const plugins = await catalog.list();
+  await emitResultLine(
+    await redactHelpText(
+      renderColdRootHelp(undefined, {
+        thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
+        toolingMetadata,
+        ...(plugins.topics === undefined ? {} : { pluginTopics: plugins.topics }),
+        ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+      }),
+    ),
+  );
 };
 
 export const printHelpCatalogPage = async (
