@@ -7,8 +7,8 @@ import {
   type GlobalDestroyResult,
   GlobalDestroyResultSchema,
   globalDestroy,
-  renderGlobalDestroyResult,
-} from "../../../commands/meta/global-destroy";
+} from "@lando/engine/operations/global-destroy";
+import { renderGlobalDestroyResult } from "../../../commands/meta/global-destroy";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specFlagsOf } from "../../../spec/input-coercion";
 

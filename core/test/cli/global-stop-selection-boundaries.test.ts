@@ -2,13 +2,13 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { globalStop } from "@lando/engine/operations/global-stop";
 import { AbsolutePath, ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import {
   globalStopOptionsFromInput,
   metaGlobalStopSpec,
 } from "../../src/cli/command-specs/meta/global/stop.ts";
-import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
 import { parseFlagsAndPositionals } from "../../src/cli/compiled-argv.ts";
 import { globalPlanAt, globalTeardownHarness } from "../_support/global-teardown-harness.ts";
 

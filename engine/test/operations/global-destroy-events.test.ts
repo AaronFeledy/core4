@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { Effect } from "effect";
-import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
-import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
-import { globalPlanAt, globalTeardownHarness } from "../_support/global-teardown-harness.ts";
+import { globalDestroy } from "../../src/operations/global-destroy.ts";
+import { globalStop } from "../../src/operations/global-stop.ts";
+import { globalPlanAt, globalTeardownHarness } from "../../src/testing/global-teardown.ts";
 
 const withRoot = async (use: (root: string) => Promise<void>) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "global-destroy-events-")));
