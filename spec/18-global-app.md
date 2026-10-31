@@ -123,13 +123,15 @@ Contribution evaluation follows the purity and module-containment rules of §7.3
 
 ### 20.5 `GlobalAppService` core service
 
-`GlobalAppService` owns the `global` identity and root, generated-layer reconciliation, planning, lifecycle operations, service-scoped `ensureRunning`, contribution enablement, and runtime information. It reuses the retained provider connection and the standard Landofile, planner, build, routing, and certificate services.
+Engine operations in `engine/src/operations/global-*.ts` own explicit start, stop, restart, rebuild, destroy, and list effects, options, result schemas, errors, and service requirements. Core commands retain rendering and command specifications only; specifications call engine operations directly. `GlobalAppService` supplies the `global` identity and root, generated-layer reconciliation, service-scoped `ensureRunning`, and runtime information. The engine reuses the retained provider connection and the standard Landofile, planner, build, routing, and certificate services; extraction introduces no additional service tag or coordinator.
 
 Required behavior:
 
 - The service belongs to the `global` bootstrap level and is lazy when included by higher levels.
 - `start` and `ensureRunning` are idempotent and reconcile drift. `ensureRunning` limits work to requested service ids.
 - Shared resolution performs contribution, conflict, capability, dependency, and service-schema validation before generated-layer reconciliation. `regenerateDist` is the single writer for `.lando.dist.yml` and owns managed-content validation and atomic replacement.
+- Configuration preparation captures invocation-local catalog, policy, and capability evidence. Eligible contribution results are reused across current and candidate policy projections; provider inventories and startup admission are never memoized by this preparation. The candidate carries its rendered generated-layer bytes and compiled Landofile with provenance into publication and cold startup planning instead of re-evaluating authored inputs to reconstruct the same configuration.
+- Preparation uses read-only Landofile acquisition and validates even a not-yet-created global root without creating root, canonical, or bind-source paths. Publication verifies captured source bytes and path identities, preserves generated-file ownership checks, and writes the validated content verbatim; inconsistent content or changed source/capability evidence requires explicit fresh preparation. An identical generated file is not rewritten. These checks do not replace the later startup admission or live readiness checks.
 - Bind sources written as `~` or `~/...` MUST resolve against the user's home, not the global root, and MUST NOT be created by generated-layer reconciliation.
 - `providerId` resolves the provider holding the applied global plan for the canonical global root, else the host provider (§5). It reads applied state only and MUST NOT construct, initialize, or contact a runtime.
 - Failures are tagged as listed in §20.13.
@@ -180,7 +182,7 @@ The §10.4 SSH sidecar is not declared through `requires.globalServices`. The SS
 
 #### 20.6.4 Standard event sequence
 
-The global start event pair for required services is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. The SSH sidecar's best-effort start pair (§20.6.3) fires at start-time overlay resolution, only when the sidecar needed starting: in start and restart that is after the required-service pair and before the user-app build; in a service-scoped rebuild it follows the selected services' artifact build and precedes their provider apply. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair.
+The global start event pair for required services is nested inside user-app `pre-start`; any required global Build-scope events occur inside that pair. The SSH sidecar's best-effort start pair (§20.6.3) fires at start-time overlay resolution, only when the sidecar needed starting: in start and restart that is after the required-service pair and before the user-app build; in a service-scoped rebuild it follows the selected services' artifact build and precedes their provider apply. `apps:poweroff` stops user apps, then scratch apps, then the global app. `--keep-global` suppresses the global stop pair. The global branch MUST call the shared engine stop operation with the discovered actual root and provider and trigger `apps:poweroff`, not infer the target from current configuration. Its coordinator, evidence, reconciliation receipt, and event payload MUST all identify that discovered root. Stop retains named volumes and applied state, emits no destroy events, and a route-withdrawal failure MUST leave the managed runtime available.
 
 #### 20.6.5 Restart, rebuild, and router revalidation
 
