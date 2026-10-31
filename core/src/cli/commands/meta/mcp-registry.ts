@@ -10,6 +10,7 @@ import type { RegisteredCommand } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
 import type { PluginCommandDiagnostic } from "../../plugin-command-catalog";
+import type { LandoCommandSpec } from "../../spec/command-spec";
 import { toolingSpecFromRegistered } from "./mcp-tooling";
 
 export interface McpCommandRegistry {
@@ -31,7 +32,7 @@ export const mcpRegistryFromBuiltIns = (
   commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
-    if (spec.id === "app:config") return appConfigMcpSpecs.map((projection) => ({ spec: projection }));
+    if (spec.id === "app:config") return appConfigMcpSpecs.map((spec: LandoCommandSpec) => ({ spec }));
     return [{ spec }];
   }),
 });

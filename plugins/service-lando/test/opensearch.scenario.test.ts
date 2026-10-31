@@ -206,7 +206,14 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
       ref: "opensearchproject/opensearch:2",
     });
     expect(search.endpoints).toEqual([
-      { _tag: "internal", port: 9200, protocol: "http", name: "search", primary: true },
+      {
+        _tag: "internal",
+        port: 9200,
+        protocol: "http",
+        name: "search",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);

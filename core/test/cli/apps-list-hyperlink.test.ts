@@ -21,12 +21,12 @@ const result: ListServicesResult = {
   ],
 };
 
-const tty = (env: Record<string, string | undefined> = { TERM: "xterm-256color" }): RenderContext => ({
+const tty = (noColor = false): RenderContext => ({
   mode: "lando",
   format: "text",
   columns: 80,
   isTTY: true,
-  env,
+  noColor,
 });
 
 describe("renderAppsListResult ROOT hyperlinks", () => {
@@ -56,23 +56,24 @@ describe("renderAppsListResult ROOT hyperlinks", () => {
   });
 
   test("keeps ROOT plain when NO_COLOR is set", () => {
-    const out = renderAppsListResult(result, "table", tty({ TERM: "xterm-256color", NO_COLOR: "1" }));
+    const out = renderAppsListResult(result, "table", tty(true));
     expect(out).toContain("/srv/apps/my-app");
     expect(out).not.toContain(`${ESC}]8;`);
   });
 
   test("keeps ROOT plain when TERM is dumb", () => {
-    const out = renderAppsListResult(result, "table", tty({ TERM: "dumb" }));
+    const out = renderAppsListResult(result, "table", tty(true));
     expect(out).toContain("/srv/apps/my-app");
     expect(out).not.toContain(`${ESC}]8;`);
   });
 
-  test("keeps ROOT plain when env is missing on a TTY context", () => {
+  test("keeps ROOT plain when injected IO opts out on a TTY context", () => {
     const out = renderAppsListResult(result, "table", {
       mode: "lando",
       format: "text",
       columns: 80,
       isTTY: true,
+      noColor: true,
     });
     expect(out).toContain("/srv/apps/my-app");
     expect(out).not.toContain(`${ESC}]8;`);

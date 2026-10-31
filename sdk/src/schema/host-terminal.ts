@@ -6,6 +6,9 @@ import { Schema } from "effect";
 
 /** Facts borrowed from an output terminal that core has positively identified as attached. */
 export const HostTerminal = Schema.Struct({
+  noColor: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Whether the attached host terminal opts out of color.",
+  }),
   term: Schema.optionalKey(Schema.NonEmptyString).annotate({
     description: "Attached terminal's TERM value, copied verbatim when present.",
   }),

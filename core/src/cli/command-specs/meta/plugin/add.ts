@@ -62,5 +62,5 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
       nonInteractive: resolveNonInteractive({ isTTY: process.stdin.isTTY }),
     });
   }),
-  render: (result) => renderPluginAddResult(result as PluginAddResult),
+  render: (result) => renderPluginAddResult(result),
 };

@@ -37,5 +37,5 @@ export const metaGlobalStartSpec: LandoCommandSpec<GlobalStartResult> = {
     }),
   },
   run: (input) => globalStart(globalStartOptionsFromInput(input)),
-  render: (result) => renderGlobalStartResult(result as GlobalStartResult),
+  render: (result) => renderGlobalStartResult(result),
 };

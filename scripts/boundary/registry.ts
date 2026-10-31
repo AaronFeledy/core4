@@ -55,7 +55,7 @@ export const BOUNDARY_RULE_REGISTRATIONS = [
   {
     rule: machineOutputRule,
     seamJustification:
-      "Canonical serialization moved behind @lando/sdk/command-result, eliminating the machine-output rule's final carve-out (one to zero); the strengthened rule scans every runtime consumer, including @lando/mcp, for direct serialization and missing command result schemas that package edges cannot express.",
+      "Canonical serialization moved behind @lando/sdk/command-result, eliminating the machine-output rule's final carve-out (one to zero); the rule scans every runtime consumer, including @lando/mcp, for direct serialization that package edges cannot express. Command result schema requirements are enforced by the type checker.",
   },
   {
     rule: managedFileRule,

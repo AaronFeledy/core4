@@ -49,9 +49,13 @@ test.each([undefined, "Set port: 5433 instead."])(
     if (Result.isFailure(applied)) {
       expect(applied.failure).toBeInstanceOf(ServiceFeatureError);
       expect(applied.failure.cause).toBe(cause);
-      expect(applied.failure.message).toBe(
-        `services.${ctx.serviceName}.environment.PGPORT: PGPORT disagrees with port.${suggestion ? ` ${suggestion}` : ""}`,
-      );
+      expect(applied.failure.issues).toEqual([
+        {
+          path: ["environment", "PGPORT"],
+          message: "PGPORT disagrees with port.",
+          ...(suggestion === undefined ? {} : { suggestion }),
+        },
+      ]);
     }
   },
 );

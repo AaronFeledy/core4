@@ -107,6 +107,7 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<LandoEvent>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),

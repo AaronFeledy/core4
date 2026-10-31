@@ -1,6 +1,6 @@
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import type { ToolingInputDeclaration } from "@lando/sdk/schema";
-import { Effect, Layer, Schema } from "effect";
+import { type ToolingInputDeclaration, ToolingResult } from "@lando/sdk/schema";
+import { Effect, Layer } from "effect";
 
 import {
   type BunShellScriptEmptyError,
@@ -41,16 +41,8 @@ import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { type ToolingRoute, resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router";
 
-const ToolingResultSchema = Schema.Struct({
-  tool: Schema.String,
-  service: Schema.String,
-  exitCode: Schema.Number,
-  stdout: Schema.String,
-  stderr: Schema.String,
-});
-
 const dynamicToolingOptions = {
-  resultSchema: ToolingResultSchema,
+  resultSchema: ToolingResult,
   redactionTokens: runToolingRedactionTokens,
   completion: (result: RunToolingResult) => commandCompletionFromExitCode(result.exitCode),
   failureExitCode: (error: unknown) => (error instanceof ToolingExecError ? error.exitCode : undefined),
@@ -92,7 +84,7 @@ export const runDynamicTooling = async (
   // The first separator belongs to Lando; subsequent separators belong to the task.
   const commandArgv = taskArgv[0] === "--" ? taskArgv.slice(1) : taskArgv;
   prepareDynamicToolingInvocation(name);
-  if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
+  if (await emitJsonListModeIfRequested(ToolingResult)) return;
   const { restore, ...hostIo } = attachToolingHostIo(
     !isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json",
   );
@@ -136,7 +128,7 @@ const runDynamicBunShellTooling = async (
   const { name, appRoot, relativePath, input } = route;
   const commandArgv = argv[0] === "--" ? argv.slice(1) : argv;
   prepareDynamicToolingInvocation(name);
-  if (await emitJsonListModeIfRequested(ToolingResultSchema)) return;
+  if (await emitJsonListModeIfRequested(ToolingResult)) return;
   const mode = toolingHostStdin(!isEnvelopeResultFormat(activeResultFormat) && activeRendererMode !== "json");
   return runWithProcessAbortSignal(
     (signal) => {

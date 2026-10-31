@@ -1,4 +1,4 @@
-import { DateTime, Effect, Option, Schema } from "effect";
+import { DateTime, Effect, Option } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
@@ -10,7 +10,7 @@ import {
   ServiceNotReadyError,
 } from "@lando/sdk/errors";
 import { PostAppStartEvent, PostStartEvent, PreAppStartEvent, PreStartEvent } from "@lando/sdk/events";
-import { CheckResult, type PreparedFileSyncTarget, StartedService } from "@lando/sdk/schema";
+import type { PreparedFileSyncTarget } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type BuildOptions,
@@ -74,13 +74,6 @@ import { withApplyProgress, withGlobalStartProgress } from "./start-progress-pha
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
-export const StartedServiceResultSchema = StartedService;
-
-export const StartAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStarted: Schema.Array(StartedServiceResultSchema),
-  checks: Schema.optionalKey(Schema.Array(CheckResult)),
-});
 
 type StartAppServices =
   | EnvironmentValueResolver

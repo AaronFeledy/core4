@@ -20,7 +20,6 @@ import {
 } from "./start-internal.ts";
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
-export { StartedServiceResultSchema, StartAppResultSchema } from "./start-internal.ts";
 export type { CheckResult } from "@lando/sdk/schema";
 export type { StartManagedScope } from "./start-file-sync.ts";
 

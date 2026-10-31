@@ -17,13 +17,15 @@ import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { Stdio } from "effect";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
-import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
+import { versionSpec as typedVersionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
 import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const roots: string[] = [];
+const versionSpec: LandoCommandSpec = typedVersionSpec;
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));

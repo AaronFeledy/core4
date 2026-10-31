@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer, Option, Schema } from "effect";
 
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import { EventService } from "@lando/sdk/services";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -146,6 +147,11 @@ describe("--format=yaml on a live-streaming command", () => {
   const ResultSchema = Schema.Struct({ message: Schema.String, output: Schema.optional(Schema.String) });
 
   const streamingEffect = Effect.gen(function* () {
+    yield* (yield* EventService).publish({
+      _tag: "message.info",
+      body: "stream starting",
+      timestamp: "2026-10-30T00:00:00.000Z",
+    });
     const sink = yield* Effect.serviceOption(StreamFrameSink);
     if (Option.isSome(sink)) {
       yield* sink.value.emit({
@@ -182,14 +188,22 @@ describe("--format=yaml on a live-streaming command", () => {
     return io;
   };
 
-  test("json keeps the stdout, stderr and result frame sequence", async () => {
+  test("json emits the published event and data frames before one terminal result", async () => {
     const io = await runStreaming("json");
     const frames = io
       .stdoutLines()
       .filter((line) => line.length > 0)
       .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
 
-    expect(frames.map((frame) => frame._tag)).toEqual(["stdout", "stderr", "result"]);
+    expect(frames.filter((frame) => frame._tag === "event")).toMatchObject([
+      { _tag: "event", event: "message.info", payload: { body: "stream starting" } },
+    ]);
+    expect(frames.filter((frame) => frame._tag !== "event").map((frame) => frame._tag)).toEqual([
+      "stdout",
+      "stderr",
+      "result",
+    ]);
+    expect(frames.at(-1)?._tag).toBe("result");
   });
 
   test("yaml emits exactly one envelope document and no raw chunk", async () => {

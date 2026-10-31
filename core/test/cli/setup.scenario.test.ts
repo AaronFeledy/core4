@@ -56,6 +56,7 @@ const makeEventServiceLayer = (sink: EventSink) =>
       subscribe: () => Stream.die("not used in setup scenario test"),
       subscribeQueue: Effect.die("not used in setup scenario test"),
       waitFor: () => Effect.die("not used in setup scenario test"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("not used in setup scenario test"),
       query: () => Effect.succeed([]),
     }),

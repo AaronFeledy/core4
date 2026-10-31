@@ -4,7 +4,7 @@ import { serviceTypes } from "../src/index.ts";
 
 describe("bundled service image identity", () => {
   // Given the registered catalog, excluding author-supplied images.
-  const catalog = [...serviceTypes].filter(([id]) => id !== "compose" && id !== "lando");
+  const catalog = [...serviceTypes].filter(([id]) => !["compose", "lando", "minio"].includes(id));
 
   it("declares identity when the service owns its default image", () => {
     // When
@@ -37,7 +37,7 @@ describe("bundled service image identity", () => {
 
   it("omits identity when the image is author-supplied", () => {
     // Given
-    for (const id of ["compose", "lando"]) {
+    for (const id of ["compose", "lando", "minio"]) {
       // When
       const serviceType = serviceTypes.get(id);
 

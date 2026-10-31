@@ -1,0 +1,5 @@
+name: mailpit-listener-collision
+services:
+  inbox:
+    type: mailpit
+    port: 8025

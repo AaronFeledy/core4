@@ -1,0 +1,6 @@
+name: mailpit-loopback-bind
+services:
+  inbox:
+    type: mailpit
+    environment:
+      MP_UI_BIND_ADDR: "127.0.0.1:18025"

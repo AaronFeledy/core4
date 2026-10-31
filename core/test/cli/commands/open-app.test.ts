@@ -102,6 +102,7 @@ const layers = (rec: ReturnType<typeof record>) =>
         subscribe: () => Effect.die("nu") as never,
         subscribeQueue: Effect.die("nu") as never,
         waitFor: () => Effect.die("nu") as never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("nu") as never,
         query: () => Effect.die("nu") as never,
       }),
@@ -548,7 +549,7 @@ describe("renderOpenAppResult", () => {
     ],
     launch: "printed" as const,
   };
-  const tty: RenderContext = { mode: "lando", format: "text", columns: 80, isTTY: true };
+  const tty: RenderContext = { mode: "lando", format: "text", columns: 80, isTTY: true, noColor: false };
   const qrFor = (url: string): string => {
     const qr = renderTerminalQr(url);
     expect(qr).toBeDefined();

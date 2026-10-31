@@ -12,6 +12,14 @@ const io = (isTTY: boolean): RendererIO => ({
 });
 
 describe("fallback renderer capabilities", () => {
+  test("verbose suppresses color when TTY IO opts out", () => {
+    // Given
+    const terminal = { ...io(true), noColor: true };
+    // When
+    const renderer = makeVerboseRenderer(terminal);
+    // Then
+    expect(renderer.capabilities).toEqual(RENDERER_CAPABILITIES_NONE);
+  });
   test("plain and json are always all-false", () => {
     expect(makePlainRenderer(io(true)).capabilities).toEqual(RENDERER_CAPABILITIES_NONE);
     expect(makePlainRenderer(io(false)).capabilities).toEqual(RENDERER_CAPABILITIES_NONE);

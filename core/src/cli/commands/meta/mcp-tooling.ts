@@ -4,7 +4,7 @@ import type { McpRunInput } from "@lando/mcp/dispatch";
 import type { McpCommandSpec } from "@lando/mcp/registry";
 import { RedactionService } from "@lando/redaction/service";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
-import type { ToolingInputDeclaration, ToolingInvocationInput } from "@lando/sdk/schema";
+import { type ToolingInputDeclaration, type ToolingInvocationInput, ToolingResult } from "@lando/sdk/schema";
 import type { RegisteredCommand } from "@lando/sdk/services";
 import { Effect, Option, Predicate, Schema } from "effect";
 
@@ -24,23 +24,15 @@ const invocationFromMaps = (declaration: ToolingInputDeclaration, input: unknown
   return { _tag: "NamedMaps", flags, args };
 };
 
-const ToolingMcpResultSchema = Schema.Struct({
-  tool: Schema.String,
-  service: Schema.String,
-  exitCode: Schema.Number,
-  stdout: Schema.String,
-  stderr: Schema.String,
-});
-
 export const toolingSpecFromRegistered = (command: RegisteredCommand): McpCommandSpec => {
   const declaration = command.input;
   return {
     id: command.id,
     summary: command.summary,
     ...(declaration === undefined ? {} : { toolingInput: declaration }),
-    resultSchema: ToolingMcpResultSchema,
+    resultSchema: ToolingResult,
     completion: (result) =>
-      commandCompletionFromExitCode(Schema.decodeUnknownSync(ToolingMcpResultSchema)(result).exitCode),
+      commandCompletionFromExitCode(Schema.decodeUnknownSync(ToolingResult)(result).exitCode),
     inputRedactionTokens: (input) =>
       declaration === undefined
         ? []

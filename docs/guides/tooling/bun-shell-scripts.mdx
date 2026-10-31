@@ -240,6 +240,8 @@ With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still a
 
 Add `--format=json` or `--format=yaml` and Lando collects the script instead of streaming it. You get one envelope on stdout with the script's output and exit code under `result`:
 
+Captured `result.stdout` and `result.stderr` are present even for empty output. A result returned through a live sink omits both fields because the sink already received the bytes; MCP carries them in `output.chunks` instead.
+
 ```sh
 lando stamp abc1234 --format=json
 lando stamp abc1234 --format=yaml

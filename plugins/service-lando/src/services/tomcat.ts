@@ -7,6 +7,7 @@ import {
   loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
@@ -69,6 +70,10 @@ export const tomcatServiceFeature: ServiceFeatureDefinition = {
   id: TOMCAT_FEATURE_ID,
   schema: TomcatFeatureConfig,
   priority: 600,
+  validateEffective: serviceFeatureValidateEffective(TOMCAT_FEATURE_ID, (ctx) => {
+    const { ownsImageConfig } = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
+    return { handledServiceFields: ownsImageConfig ? ["webroot"] : [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {

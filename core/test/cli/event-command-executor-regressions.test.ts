@@ -27,6 +27,7 @@ const makeHarness = (): Harness => {
       return queue;
     }),
     waitFor: () => Effect.never,
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.never,
     query: () => Effect.succeed([]),
   };

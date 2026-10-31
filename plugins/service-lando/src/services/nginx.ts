@@ -19,6 +19,7 @@ import {
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
@@ -130,6 +131,13 @@ export const nginxServiceFeature: ServiceFeatureDefinition = {
   id: NGINX_FEATURE_ID,
   schema: Schema.Unknown,
   priority: NGINX_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(NGINX_FEATURE_ID, (ctx) => {
+    const service = ctx.normalizedConfig;
+    if (service.command !== undefined || service.entrypoint !== undefined)
+      return { handledServiceFields: [] };
+    resolveWebroot("nginx", service.webroot, service.appMount);
+    return { handledServiceFields: ["webroot"] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),

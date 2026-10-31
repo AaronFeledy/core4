@@ -55,6 +55,7 @@ export const runBuiltInCommand = (
       return runCompiledCommand(
         entry.spec.run(input),
         runtime,
+        // Hooks only receive the value produced by this same spec's run.
         (result, context) => entry.spec.render?.(result, input, context),
         { ...compiledCommandOptionsFromSpec(entry.spec, input), signal },
       );
