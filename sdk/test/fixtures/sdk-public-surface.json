@@ -67,6 +67,7 @@
     "writeStderr"
   ],
   "rendererOutputIOMembers": ["stdoutColumns", "stdoutIsTTY", "writeStderr", "writeStdout"],
+  "featureEffectiveValidation": "readonly validateEffective?: (ctx: ServiceEndpointContext) => Effect.Effect<ServiceFeatureValidationResult, ServiceFeatureError>",
   "featureEndpointDeclarations": {
     "ServiceFeatureDefinition": "readonly declareEndpoints?: (ctx: ServiceEndpointContext) => Effect.Effect<readonly EndpointPlan[], ServiceFeatureError>",
     "AppFeatureDefinition": "readonly declareEndpoints?: (ctx: AppEndpointDeclarationContext) => Effect.Effect<Readonly<Record<string, readonly EndpointPlan[]>>, AppFeatureError>"
@@ -470,7 +471,7 @@
     "UrlScanner": [
       "detectCollisions:(appIds:ReadonlyArray<AppId>) => Effect.Effect<ReadonlyArray<PortCollision>,ScannerError|PortCollisionError>",
       "id:string",
-      "scan:(appId:AppId,options?:{ plan?:AppPlan;urls?:ReadonlyArray<{ service:ServiceName;url:string }>;/** Observe completed attempts without affecting probe verdicts;detail is redacted. */ onAttempt?:(attempt:ScanAttempt) => Effect.Effect<void>;}) => Effect.Effect<ScanResult,ScannerError>"
+      "scan:(appId:AppId,options?:{ plan?:AppPlan;urls?:ReadonlyArray<{ service:ServiceName;url:string;endpoint?:EndpointRef;}>;/** Observe completed attempts without affecting probe verdicts;detail is redacted. */ onAttempt?:(attempt:ScanAttempt) => Effect.Effect<void>;}) => Effect.Effect<ScanResult,ScannerError>"
     ]
   },
   "subpathExports": {
@@ -1334,6 +1335,7 @@
       "EndpointPlan",
       "EndpointPublication",
       "EndpointRef",
+      "EndpointScan",
       "Environment",
       "EnvironmentValue",
       "EventCmdStep",
@@ -1649,6 +1651,7 @@
       "ServiceCredsDisplay",
       "ServiceDependency",
       "ServiceDependencyCondition",
+      "ServiceFeatureValidationResult",
       "ServiceFileConfig",
       "ServiceHomePlan",
       "ServiceInfo",

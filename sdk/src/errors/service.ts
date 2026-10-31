@@ -26,6 +26,10 @@ export class ServiceFeatureError extends Schema.TaggedError<ServiceFeatureError>
   message: Schema.String,
   feature: Schema.String,
   cause: Schema.optional(Schema.Unknown),
+  issues: Schema.optional(Schema.Array(ValidationIssue)).annotate({
+    description:
+      "Offending fields with paths relative to the service's own config; absent or empty means the whole service.",
+  }),
   remediation: Remediation,
 }) {}
 

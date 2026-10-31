@@ -97,12 +97,11 @@ export interface ServiceTypeInput {
  * A reference to a composable feature the planner applies to the seeded base
  * draft in priority order. `config` carries the feature's resolved
  * options; the planner reads the feature's priority from its definition.
- * A non-empty string at `config.webroot` declares that the composed feature
- * handles the effective root, whether as server configuration or context.
- * The declaring plugin must implement that meaning; this is not proof of HTTP
- * serving. Explicit authored webroot requires at least one such declaration
- * after inheritance and planner substitutions, before app-plan cache lookup.
- * Features own path validation and must not declare roots they silently ignore.
+ * Service-field support is declared explicitly by the feature definition's
+ * `validateEffective` result, never inferred from keys in this config. Validation
+ * sees Original decoded config and final inherited immutable facts before cache
+ * lookup, including when authored endpoints replace discovery. Claims name only
+ * fields the feature actually represents; findings use ServiceFeatureError.issues.
  */
 export interface FeatureRef {
   readonly id: string;

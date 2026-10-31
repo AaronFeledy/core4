@@ -239,6 +239,7 @@ import { EndpointInvariantIssue, HttpEndpointSelection, LogicalEndpoint } from "
 import {
   BindAddress,
   EndpointRef,
+  EndpointScan,
   InternalEndpoint,
   ObservedPublication,
   PublicationObservation,
@@ -471,6 +472,7 @@ import {
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
+import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
 import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import {
@@ -689,6 +691,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   HealthcheckPlan,
   ScannerConfig,
   ScanPlan,
+  EndpointScan,
+  ServiceFeatureValidationResult,
   CheckResult,
   CertificatePlan,
   HostAliasPlan,
@@ -1250,6 +1254,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HealthcheckPlan: "Public Lando schema contract for Healthcheck Plan.",
   ScannerConfig: "Post-start URL scan settings, or false to skip scanning.",
   ScanPlan: "Fully resolved post-start URL scan settings for a service.",
+  EndpointScan: "Sparse plan-only startup scan defaults for a logical listener.",
+  ServiceFeatureValidationResult: "Successful effective service feature validation claims.",
   CheckResult: "An owner-classified post-start HTTP check.",
   CertificatePlan: "Public Lando schema contract for Certificate Plan.",
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
@@ -1386,7 +1392,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EndpointRef: "Logical network listener identity and aliases.",
   ObservedPublication: "Actual host publication observed by a runtime provider.",
   PublicationObservation: "Explicit unknown, absent, or present runtime publication evidence.",
-  EndpointInvariantIssue: "Logical listener alias, primary, or protocol conflict.",
+  EndpointInvariantIssue: "Logical listener alias, primary, protocol, or scan-default conflict.",
   HttpEndpointSelection: "Unambiguous HTTP listener selection without order-based fallback.",
   LogicalEndpoint: "Grouped facets of one logical network listener.",
   ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",
