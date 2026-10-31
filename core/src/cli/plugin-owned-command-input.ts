@@ -1,31 +1,9 @@
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { type CommandHelpEntry, type CommandHelpOptions, renderCommandHelp } from "./cli-help";
-import { type OclifFlagDefinition, parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
+import { parseFlagsAndPositionals, setParsedFlag } from "./compiled-argv";
 import { normalizeCliFlagTokens, validateCommandCliFlags } from "./flag-value-validation";
-import { universalFormatFlagDefs } from "./format-flags";
-import { yesFlag } from "./spec/confirmation-flag";
+import { pluginFlagDefinitions } from "./plugin-flag-definitions";
 import type { ArgDefinitions } from "./spec/metadata";
-
-export const pluginFlagDefinitions = (
-  spec: Pick<ExecutableCommandSpec, "flags">,
-): Readonly<Record<string, OclifFlagDefinition>> => {
-  const flags: Record<string, OclifFlagDefinition> = { ...universalFormatFlagDefs };
-  for (const [name, definition] of Object.entries(spec.flags ?? {})) {
-    if (name === "yes") {
-      flags[name] = yesFlag(definition.description);
-      continue;
-    }
-    flags[name] = {
-      name,
-      type: definition.type === "boolean" ? "boolean" : "option",
-      ...(definition.valueType === undefined ? {} : { valueType: definition.valueType }),
-      ...(definition.description === undefined ? {} : { description: definition.description }),
-      ...(definition.multiple === undefined ? {} : { multiple: definition.multiple }),
-      ...(definition.options === undefined ? {} : { options: definition.options }),
-    };
-  }
-  return flags;
-};
 
 export const pluginOwnedCliFlagError = (
   spec: Pick<ExecutableCommandSpec, "id" | "flags" | "strict">,

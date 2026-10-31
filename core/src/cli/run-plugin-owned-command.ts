@@ -23,8 +23,8 @@ import { validateEventCommandInput } from "./event-command-input";
 import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { tryPluginCommandHelp } from "./plugin-command-help";
 import { pluginOwnedCliFlagError, pluginOwnedCommandInputFromArgv } from "./plugin-owned-command-input";
+export { pluginFlagDefinitions } from "./plugin-flag-definitions";
 export {
-  pluginFlagDefinitions,
   pluginOwnedCliFlagError,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,

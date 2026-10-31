@@ -13,7 +13,7 @@ import { buildCommandCatalog, commandDescriptorAliases } from "../core/src/cli/c
 import { loadPluginSpec } from "../core/src/cli/event-command-target.ts";
 import { BUNDLED_COMMAND_DESCRIPTORS } from "../core/src/cli/generated/bundled-command-descriptors.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../core/src/cli/generated/command-registry-manifest.ts";
-import { pluginFlagDefinitions } from "../core/src/cli/plugin-owned-command-input.ts";
+import { pluginFlagDefinitions } from "../core/src/cli/plugin-flag-definitions.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");

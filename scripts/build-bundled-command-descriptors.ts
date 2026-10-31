@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { Effect } from "effect";
 import { loadPluginSpec } from "../core/src/cli/event-command-target.ts";
-import { pluginFlagDefinitions } from "../core/src/cli/plugin-owned-command-input.ts";
+import { pluginFlagDefinitions } from "../core/src/cli/plugin-flag-definitions.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
