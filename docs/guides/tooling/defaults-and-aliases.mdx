@@ -81,6 +81,14 @@ lando app:greet
 
 Set `enabled: false` to suppress every top-level alias in this app, or add tokens under `disabled` to remove only those shortcuts. Canonical ids remain available.
 
+The target can also be a plugin command id. With the bundled `@lando/sql` plugin, this makes `lando dump` run `db:export`, and `lando help --format=json` then lists `db:export` with `typeable: "dump"`:
+
+```yaml
+commandAliases:
+  custom:
+    dump: db:export
+```
+
   <Scenario id="remap-command-alias" render>
     <Step name="scaffold">
       <UseFixture name="command-aliases" />
@@ -94,8 +102,15 @@ Set `enabled: false` to suppress every top-level alias in this app, or add token
     <Step name="run-canonical-command">
       <Verify command="lando app:greet --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"app:greet\"" } }} />
     </Step>
+    <Step name="alias-a-plugin-command">
+      <Verify command="lando help --format=json" expect={{ stdout: { regex: "\"canonicalId\":\"db:export\",\"typeable\":\"dump\"" } }} />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
     </Step>
   </Scenario>
+
+## Plugin aliases
+
+A plugin can ship its own shortcuts in its manifest: colon-form `aliases` such as `db:dump`, or a `topLevelAlias` such as `export`. Both route to the plugin command without any Landofile change. A plugin alias loses to anything Lando already owns: a built-in command or alias, a core help topic such as `recipes`, a reserved token, or a tooling task in the current app. Lando drops the colliding alias, keeps the command reachable by its id, and lists the conflict in `lando help --format=json` under `result.pluginMetadata.diagnostics`; `lando help --all` prints one notice line pointing there. When two plugins claim the same alias, the one found first in discovery precedence wins. Installing a plugin never takes `app:cache:refresh` or another built-in away from you.
 </Guide>
