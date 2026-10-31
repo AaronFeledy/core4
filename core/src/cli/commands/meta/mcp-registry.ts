@@ -1,14 +1,21 @@
-import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "@lando/mcp/allowlist";
+import {
+  assertMcpAllowlistSafe,
+  filterMcpDefaultAllowlist,
+  isAppConfigMcpUnsafeId,
+} from "@lando/mcp/allowlist";
+import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpToolInputError } from "@lando/sdk/errors";
 import type { RegisteredCommand } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
+import type { PluginCommandDiagnostic } from "../../plugin-command-catalog";
 import { toolingSpecFromRegistered } from "./mcp-tooling";
 
 export interface McpCommandRegistry {
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
+  readonly diagnostics?: readonly PluginCommandDiagnostic[];
 }
 
 export interface ResolvedMcpOptions {
@@ -33,7 +40,7 @@ export const mcpRegistryWithToolingEntries = (
   registry: McpCommandRegistry,
   commands: ReadonlyArray<RegisteredCommand>,
 ): McpCommandRegistry => ({
-  commandEntries: registry.commandEntries,
+  ...registry,
   toolingEntries: commands
     .filter((command) => !command.hidden)
     .map((command) => ({ spec: toolingSpecFromRegistered(command), tooling: true })),
@@ -44,6 +51,9 @@ export const knownIdsOf = (registry: McpCommandRegistry): ReadonlySet<string> =>
     ...registry.commandEntries.map((entry) => entry.spec.id),
     ...(registry.toolingEntries ?? []).map((entry) => entry.spec.id),
   ]);
+
+export const defaultIdsOf = (registry: McpCommandRegistry): readonly string[] =>
+  filterMcpDefaultAllowlist(MCP_DEFAULT_ALLOWLIST, registry.commandEntries);
 
 export const validateMcpAllowlistIds = (
   options: ResolvedMcpOptions,
