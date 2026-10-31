@@ -365,8 +365,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
       if (route.disabled) await dispatchHelpTarget(route.commandId, catalog, signal);
       else await printToolingHelp({ ...route, id: route.commandId }, route.aliasPolicy);
       return;
-    } else {
-      if (await routeResolvedTooling(route, argvTail, signal)) return;
+    } else if (await routeResolvedTooling(route, argvTail, signal)) {
+      return;
     }
     if (builtInCommand === undefined) builtInCommand = resolveBuiltInCommand(argv[0]);
   }
