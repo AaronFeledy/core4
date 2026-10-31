@@ -78,5 +78,7 @@ test.each([
   expect(envelope.result.diagnostics).toContainEqual(
     expect.objectContaining({ _tag: "McpAllowlistConflictError" }),
   );
-  for (const tool of plugins) expect(tool.plugin).toEqual({ name: "@lando/sql", source: "external" });
+  // The app-local replacement stays external for authorization but keeps its discovery tier.
+  for (const tool of plugins)
+    expect(tool.plugin).toEqual({ name: "@lando/sql", source: "external", provenance: "app" });
 });

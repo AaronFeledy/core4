@@ -151,7 +151,11 @@ export const mcpRegistryWithPlugins = Effect.fn("Mcp.resolvePluginRegistry")(fun
     if (policy._tag === "Failure") addDiagnostic(policy.failure);
     commandEntries.push({
       spec: projected,
-      plugin: { name: candidate.pluginName, source: candidate.source === "bundled" ? "bundled" : "external" },
+      plugin: {
+        name: candidate.pluginName,
+        source: candidate.source === "bundled" ? "bundled" : "external",
+        provenance: candidate.source,
+      },
     });
     knownIds.add(candidate.id);
   }

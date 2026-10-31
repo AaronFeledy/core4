@@ -38,7 +38,7 @@ test("bundled db:snapshots defaults and explicit db:export validate and list", a
     expect.objectContaining({
       id: "db:snapshots",
       source: "default",
-      plugin: { name: "@lando/sql", source: "bundled" },
+      plugin: { name: "@lando/sql", source: "bundled", provenance: "bundled" },
     }),
   );
   expect(result.tools).toContainEqual(
@@ -53,7 +53,7 @@ test("external mcpAllowed commands need explicit allowance", async () => {
   expect(buildMcpListResult({ ...input, allow: [spec.id] }).tools).toContainEqual(
     expect.objectContaining({
       id: spec.id,
-      plugin: { name: "@example/mcp", source: "external" },
+      plugin: { name: "@example/mcp", source: "external", provenance: "user" },
       source: "allow",
     }),
   );

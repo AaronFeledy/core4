@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { isMcpDestructiveCommand } from "@lando/mcp/allowlist";
 import { computeEffectiveAllowlist } from "@lando/mcp/catalog";
+import type { McpCommandEntry } from "@lando/mcp/registry";
 import { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 import { type RenderContext, isDecoratedContext, summaryPaintOptions } from "../../renderer-boundary";
 
@@ -10,7 +11,13 @@ export const McpListToolSchema = Schema.Struct({
   summary: Schema.String,
   source: Schema.String,
   plugin: Schema.optionalKey(
-    Schema.Struct({ name: Schema.String, source: Schema.Literals(["bundled", "external"]) }),
+    Schema.Struct({
+      name: Schema.String,
+      /** Authorization class: only bundled contributions inherit default allowance. */
+      source: Schema.Literals(["bundled", "external"]),
+      /** Discovery tier the selected plugin contribution came from. */
+      provenance: Schema.optionalKey(Schema.Literals(["bundled", "system", "user", "app", "explicit"])),
+    }),
   ),
   destructive: Schema.optionalKey(Schema.Boolean),
 });
@@ -38,7 +45,7 @@ interface McpListEntrySpec {
 
 interface McpListEntry {
   readonly spec: McpListEntrySpec;
-  readonly plugin?: { readonly name: string; readonly source: "bundled" | "external" };
+  readonly plugin?: McpCommandEntry["plugin"];
 }
 
 export interface BuildMcpListResultInput {
