@@ -144,6 +144,9 @@ const resolveToolingRouteExit = async (token: string | undefined, signal?: Abort
   return exit.value;
 };
 
+// Help and listing paths stay free of bundled plugin modules; command dispatch registers them before building a runtime.
+const registerBundledPlugins = () => import("../runtime/bundled-plugins");
+
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (signal?.aborted) return;
   const catalog = createPluginCommandCatalog(signal);
@@ -461,12 +464,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>, signal?: AbortSign
   }
 
   if (builtInCommand?.status.kind === "embedding-exempt") {
-    await import("../runtime/bundled-plugins");
+    await registerBundledPlugins();
     await runNativeOnlyBuiltIn(builtInCommand, argv.slice(1), signal);
     return;
   }
   if (builtInCommand !== undefined) {
-    await import("../runtime/bundled-plugins");
+    await registerBundledPlugins();
     await runBuiltInCommand(builtInCommand, argv.slice(1), signal);
     return;
   }
