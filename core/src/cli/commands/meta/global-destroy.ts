@@ -6,6 +6,11 @@ import { executeGlobalTeardown, resolveGlobalTeardown } from "@lando/engine/oper
 import { TeardownProvider } from "@lando/engine/providers/app-placement";
 import { DestroyAppOutcome, DestroyAppResult, type ProviderId } from "@lando/sdk/schema";
 import { teardownLine, volumesTrailer } from "../service-summary";
+import {
+  publishShutdownWarnings,
+  receiptShutdownObservations,
+  shutdownServiceRows,
+} from "../shutdown-summary";
 
 export interface GlobalDestroyOptions {
   readonly providerId?: ProviderId;
@@ -21,6 +26,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
   }),
   servicesDestroyed: DestroyAppResult.fields.servicesDestroyed,
   volumesRemoved: DestroyAppResult.fields.volumesRemoved,
+  shutdownObservations: DestroyAppResult.fields.shutdownObservations,
 });
 
 export type GlobalDestroyResult = typeof GlobalDestroyResultSchema.Type;
@@ -40,14 +46,13 @@ const confirmationError = (): GlobalDestroyConfirmationError =>
     remediation: "Re-run with --yes to confirm.",
   });
 
-export const renderGlobalDestroyResult = (result: GlobalDestroyResult): string => {
-  return teardownLine(
+export const renderGlobalDestroyResult = (result: GlobalDestroyResult): string =>
+  teardownLine(
     result.outcome,
     result.app,
-    result.servicesDestroyed,
+    shutdownServiceRows(result.servicesDestroyed, result.shutdownObservations),
     volumesTrailer(result.volumesRemoved),
   );
-};
 
 export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
   options: GlobalDestroyOptions = {},
@@ -70,11 +75,14 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
 
   const receipt = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
 
-  return {
+  const result: GlobalDestroyResult = {
     app: "global",
     outcome: receipt.changed ? "destroyed" : "unchanged",
     materialized: loaded.materialized,
     servicesDestroyed: receipt.services,
     volumesRemoved: receipt.volumesRemoved,
+    ...receiptShutdownObservations(receipt),
   };
+  yield* publishShutdownWarnings(result);
+  return result;
 });
