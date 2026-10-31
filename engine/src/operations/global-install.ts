@@ -10,15 +10,7 @@ import { withGlobalMutation } from "../global-app/mutation.ts";
 import { globalCreateProviderId } from "../global-app/placement.ts";
 import { prepareGlobalConfiguration } from "../global-app/preparation.ts";
 import { recordGlobalGeneration } from "../global-app/reconciliation.ts";
-import {
-  type GlobalResolution,
-  assertEffectiveGlobalServices,
-  assertGlobalResolution,
-  projectEffectiveGlobalResolution,
-} from "../global-app/resolution.ts";
-import { renderGlobalDist } from "../global-app/service.ts";
-import { hostProviderId } from "../providers/host-provider.ts";
-import { prepareLandofileReplacement } from "../services/landofile-live.ts";
+import { assertGlobalResolution } from "../global-app/resolution.ts";
 import { withProcessCwd } from "./global-plan.ts";
 
 export interface GlobalInstallOptions {
@@ -43,37 +35,6 @@ export const GlobalInstallResultSchema = Schema.Struct({
   userLandofileCreated: Schema.Boolean,
 });
 export type GlobalInstallResult = typeof GlobalInstallResultSchema.Type;
-
-/** Validate proposed defaults with the real authored layers without writing generated files. */
-export const validateGlobalConfiguration = Effect.fn("GlobalApp.validateConfiguration")(function* (
-  resolution: GlobalResolution,
-  options: GlobalInstallOptions = {},
-) {
-  const globalApp = yield* GlobalAppService;
-  const paths = yield* globalApp.paths;
-  const replacement = yield* prepareLandofileReplacement(
-    {
-      appRoot: paths.root,
-      targetFile: paths.distLandofile,
-      content: renderGlobalDist(resolution.composableServices),
-    },
-    { name: "global", provider: yield* hostProviderId, excludedServices: resolution.directlyExcludedIds },
-  );
-  const compiled = replacement.landofile;
-  const services = compiled.document.services ?? {};
-  const pendingSites = compiled.pendingSites;
-  yield* assertEffectiveGlobalServices(
-    resolution,
-    services,
-    options.services?.length ? options.services : undefined,
-    pendingSites,
-  );
-  return {
-    services,
-    pendingSites,
-    resolution: projectEffectiveGlobalResolution(resolution, services, pendingSites),
-  };
-});
 
 /** Reconcile defaults and generated configuration without changing explicit user policy. */
 const installPreparedConfiguration = Effect.fn("AppOperation.installPreparedConfiguration")(
