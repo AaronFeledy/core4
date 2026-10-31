@@ -38,6 +38,15 @@ test.each([0, 143, 137])("reports daemon exit %i without a shutdown verdict", as
   expect(Schema.is(ServiceShutdownObservation)(result.shutdownObservations[0])).toBe(true);
 });
 
+test("retains terminal exit facts for dead containers", async () => {
+  // Given / When
+  const result = await run({ State: { Status: "dead", Running: false, ExitCode: 137, OOMKilled: true } });
+  // Then
+  expect(result.shutdownObservations).toEqual([
+    { ...identity, status: "exited", exitCode: 137, oomKilled: true },
+  ]);
+});
+
 test.each([true, false, undefined])("preserves explicitly reported OOM %s", async (oomKilled) => {
   // Given / When
   const result = await run(
@@ -63,6 +72,7 @@ test.each([
   [{ State: { OOMKilled: true } }, "state-unavailable"],
   [{ State: { Status: "created", ExitCode: 0, OOMKilled: false } }, "not-exited"],
   [{ State: { Status: "running", Running: true, ExitCode: 0 } }, "not-exited"],
+  [{ State: { Status: "dead", Running: true, ExitCode: 0 } }, "not-exited"],
 ] as const)("reports unknown for incomplete or never-started state %j", async (state, reason) => {
   // Given / When
   const result = await run(state);
@@ -71,9 +81,9 @@ test.each([
   expect(result.shutdownObservations[0]).not.toHaveProperty("exitCode");
 });
 
-test("does not invent a missing exit code", async () => {
+test.each(["exited", "dead"])("does not invent a missing exit code for %s", async (status) => {
   // Given / When
-  const result = await run({ State: { Status: "exited", OOMKilled: true } });
+  const result = await run({ State: { Status: status, OOMKilled: true } });
   // Then
   expect(result.shutdownObservations).toEqual([{ ...identity, status: "exited", oomKilled: true }]);
 });

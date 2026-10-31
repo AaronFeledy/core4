@@ -57,7 +57,10 @@ export const observeShutdown = Effect.fn("ShutdownObservation.inspect")(function
     if (state.Running !== true && typeof state.Status !== "string")
       return { ...base, status: "unknown", reason: "state-unavailable" } satisfies ServiceShutdownObservation;
     // Created containers commonly report ExitCode=0 without ever having run.
-    if (state.Running === true || (state.Status !== "exited" && state.Status !== "stopped")) {
+    if (
+      state.Running === true ||
+      (state.Status !== "exited" && state.Status !== "stopped" && state.Status !== "dead")
+    ) {
       return { ...base, status: "unknown", reason: "not-exited" } satisfies ServiceShutdownObservation;
     }
     return {
