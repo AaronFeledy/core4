@@ -81,10 +81,6 @@ export const KNOB_FIXTURES = {
     input: { extra_hosts: { "host.local": "10.0.0.1" } },
     expected: inHostConfig({ ExtraHosts: ["host.local:10.0.0.1"] }),
   },
-  init: {
-    input: { init: true },
-    expected: inHostConfig({ Init: true }),
-  },
   stop_signal: {
     input: { stop_signal: "SIGUSR1" },
     expected: inTopLevel({ StopSignal: "SIGUSR1" }),

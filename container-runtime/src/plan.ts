@@ -150,6 +150,7 @@ export const containerHostConfigFragment = (
   const extraHosts = service.hostAliases.map(({ hostname, ip }) => `${hostname}:${ip}`);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
+    ...(service.init === undefined ? {} : { Init: service.init }),
     ...(binds.length > 0 ? { Binds: binds } : {}),
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
     ...(Object.keys(tmpfs).length > 0 ? { Tmpfs: tmpfs } : {}),

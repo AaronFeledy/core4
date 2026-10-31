@@ -148,7 +148,7 @@ const makeInput = (
     resolvePlan,
     noPlanError,
     readAppEnvironment: () => Effect.succeed([]),
-    before: Effect.sync(() => calls.push({ name: "before", args: [] })),
+    before: () => Effect.sync(() => calls.push({ name: "before", args: [] })),
     service: makeService(calls),
     ...(dataPlane === undefined ? {} : { dataPlane }),
   };
@@ -209,7 +209,7 @@ describe("resolved provider operations", () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps({
       ...makeInput(calls),
-      before: Effect.die("must not start runtime"),
+      before: () => Effect.die("must not start runtime"),
     });
     if (ops.listVolumeSnapshots === undefined) throw new Error("Expected snapshot listing adapter");
     expect(await Effect.runPromise(ops.listVolumeSnapshots())).toEqual([]);
