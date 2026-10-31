@@ -75,7 +75,9 @@ test("keeps the real default tools/list within discovery budgets and accepts doc
   const tools = Schema.decodeUnknownSync(
     Schema.Array(Schema.Struct({ name: Schema.String, outputSchema: Schema.JsonObject })),
   )(catalog?.tools);
-  expect(tools).toHaveLength(15);
+  // Built-in defaults plus the bundled @lando/sql db:snapshots tool.
+  expect(tools).toHaveLength(16);
+  expect(tools.map((tool) => tool.name)).toContain("db:snapshots");
   expect(Buffer.byteLength(JSON.stringify({ jsonrpc: "2.0", id: 2, result: catalog }))).toBeLessThan(85_000);
   for (const tool of tools) {
     expect(Buffer.byteLength(JSON.stringify(tool.outputSchema)), tool.name).toBeLessThan(9_000);
