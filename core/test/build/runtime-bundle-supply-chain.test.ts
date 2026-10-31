@@ -38,6 +38,8 @@ const runPrerequisiteScript = async (
   try {
     await Bun.write(resolve(fakeBin, "updates"), "");
     await Bun.write(resolve(fakeBin, "sleeps"), "");
+    await Bun.write(resolve(fakeBin, "install-arguments"), "");
+    await Bun.write(resolve(fakeBin, "verified-packages"), "");
     await writeCommand(
       "sudo",
       `if [ "$1" = "tee" ]; then
@@ -47,11 +49,15 @@ elif [ "$1" = "apt-get" ] && [ "$2" = "update" ]; then
   printf '%s\\n' "$*" >>"$APT_TEST_ROOT/updates"
   ${updateBody}
 elif [ "$1" = "apt-get" ] && [ "$2" = "install" ]; then
+  printf '%s\\n' "$@" >"$APT_TEST_ROOT/install-arguments"
   touch "$APT_TEST_ROOT/installed"
 fi`,
     );
     await writeCommand("sleep", `printf '%s\\n' "$1" >>"$APT_TEST_ROOT/sleeps"`);
-    await writeCommand("dpkg-query", `printf '${installedVersion}\\n'`);
+    await writeCommand(
+      "dpkg-query",
+      `printf '%s\\n' "$3" >>"$APT_TEST_ROOT/verified-packages"\nprintf '${installedVersion}\\n'`,
+    );
     await writeCommand("apt-cache", aptCacheBody);
     const child = Bun.spawn(["bash", "-c", await renderPrerequisiteScript()], {
       cwd: repoRoot,
@@ -72,6 +78,8 @@ fi`,
       updates: await Bun.file(resolve(fakeBin, "updates")).text(),
       sleeps: await Bun.file(resolve(fakeBin, "sleeps")).text(),
       installed: await Bun.file(resolve(fakeBin, "installed")).exists(),
+      installArguments: (await Bun.file(resolve(fakeBin, "install-arguments")).text()).split("\n"),
+      verifiedPackages: (await Bun.file(resolve(fakeBin, "verified-packages")).text()).split("\n"),
     };
   } finally {
     await rm(fakeBin, { force: true, recursive: true });
@@ -134,6 +142,34 @@ POLICY
 seq 1 100000`;
 
     expect((await runPrerequisiteScript(aptCacheBody, "1.0")).exitCode).toBe(0);
+  });
+
+  test("reinstalls and verifies the co-versioned GLib packages from the ARM snapshot", async () => {
+    // Given: an arm64 candidate policy, whose snapshot URI is architecture-independent.
+    const aptCacheBody = `cat <<'POLICY'
+  Candidate: 1.0
+  Version table:
+ *** 1.0 500
+        500 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main arm64 Packages
+POLICY`;
+    // When: execute the generated install and verification script.
+    const result = await runPrerequisiteScript(aptCacheBody, "1.0");
+    // Then: every real GLib dependency is eligible for downgrade and is verified afterwards.
+    expect(result.exitCode, result.output).toBe(0);
+    expect(result.installArguments).toContain("--allow-downgrades");
+    expect(result.installArguments).toContain("--reinstall");
+    for (const name of [
+      "libgirepository-2.0-0",
+      "libglib2.0-0t64",
+      "libglib2.0-bin",
+      "libglib2.0-dev",
+      "libglib2.0-dev-bin",
+    ]) {
+      expect(result.installArguments).toContain(name);
+      expect(result.verifiedPackages).toContain(name);
+    }
+    expect(result.installArguments).not.toContain("libglib2.0-dev-bin-linux");
+    expect(result.verifiedPackages).not.toContain("libglib2.0-dev-bin-linux");
   });
 
   test("rejects a live candidate when only another version comes from the snapshot", async () => {
