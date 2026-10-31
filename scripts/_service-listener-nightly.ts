@@ -1,5 +1,6 @@
 import { CONTAINER_HELPER_JOB_ID, containerHelperDownloadStep } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 
@@ -33,6 +34,8 @@ ${containerHelperDownloadStep}
 ${renderInstallPodman6Step()}
 
 ${renderAssertPodman6Step()}
+
+${landoRootlessPrereqSteps}
 
       - name: Start explicit listener test socket
         run: |

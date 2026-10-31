@@ -69,8 +69,7 @@ ${renderInstallPodman6Step()}
 
 ${renderAssertPodman6Step()}
 
-      - name: Enable unprivileged port binding
-        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+${landoRootlessPrereqSteps}
 
       - name: Start Podman socket
         run: |

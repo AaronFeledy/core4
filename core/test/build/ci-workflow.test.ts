@@ -293,7 +293,11 @@ describe("ci workflow", () => {
     expect(providerLandoE2e).toContain("    timeout-minutes: 60");
     expect(providerLandoE2e).toContain("      - name: Install Podman 6 toolchain");
     expect(providerLandoE2e).toContain("      - name: Assert Podman 6 host contract");
-    expect(providerLandoE2e).toContain("        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
+    expect(providerLandoE2e).toContain("      - name: Provision rootless runtime prerequisites");
+    expect(providerLandoE2e).toContain("sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0");
+    expect(providerLandoE2e.indexOf("Provision rootless runtime prerequisites")).toBeLessThan(
+      providerLandoE2e.indexOf("podman system service"),
+    );
     expect(providerLandoE2e).toContain("      - name: Start Podman socket");
     expect(providerLandoE2e).toContain("      - name: Regenerate derived sources");
     expect(providerLandoE2e).toContain("        run: bun run codegen");

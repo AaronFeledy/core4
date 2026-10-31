@@ -52,3 +52,17 @@ test("requires successful tests plus four-case evidence instead of accepting an 
     false,
   );
 });
+
+test("provisions rootless user namespaces before starting the explicit socket", () => {
+  // Given / When: decode the job's executable steps.
+  const { steps } = Schema.decodeUnknownSync(jobSchema)(Bun.YAML.parse(`jobs:\n${serviceListenerNightlyJob}`))
+    .jobs["service-listeners-linux-x64"];
+  const prereqs = steps.findIndex((step) =>
+    step.run?.includes("kernel.apparmor_restrict_unprivileged_userns=0"),
+  );
+  const socket = steps.findIndex((step) => step.run?.includes("podman system service"));
+  // Then: user namespace permissions are ready before Podman's reexec.
+  expect(prereqs).toBeGreaterThanOrEqual(0);
+  expect(socket).toBeGreaterThan(prereqs);
+  expect(steps[prereqs]?.run).toContain("apt-get install -y uidmap fuse-overlayfs");
+});

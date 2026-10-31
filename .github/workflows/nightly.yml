@@ -301,8 +301,25 @@ jobs:
           fi
           echo "podman6-contract: $numbers satisfies >= $MINIMUM"
 
-      - name: Enable unprivileged port binding
-        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+      - name: Provision rootless runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          fi
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
       - name: Start Podman socket
         run: |
@@ -500,6 +517,26 @@ jobs:
             exit 1
           fi
           echo "podman6-contract: $numbers satisfies >= $MINIMUM"
+
+      - name: Provision rootless runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          fi
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
 
       - name: Start explicit listener test socket
         run: |

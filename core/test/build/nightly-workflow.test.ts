@@ -29,6 +29,7 @@ const firstDerivedConsumer: Readonly<Record<string, readonly [name: string, comm
     "bun test plugins/file-sync-mutagen/test/contract.test.ts",
   ],
   "provider-lando-e2e-linux-x64": ["Build Linux x64 binary", "build:manifest"],
+  "service-listeners-linux-x64": ["Compile current listener CLI", "build:manifest"],
   "published-manifest-setup-linux-x64": ["Build Linux x64 binary", "build:manifest"],
   "mysql-arm-client-linux-arm64": ["Build Linux arm64 binary", "build:manifest"],
   "nightly-tier-unit-tests-linux-x64": [
@@ -89,6 +90,39 @@ test("nightly jobs regenerate derived sources after frozen install and before th
 
 test("nightly workflow regression stays in PR unit-test shards", () => {
   expect(isShardedUnitTest("core/test/build/nightly-workflow.test.ts")).toBe(true);
+});
+
+test("nightly socket jobs provision rootless prerequisites before starting Podman", () => {
+  // Given / When: inspect every rendered job that starts a host Podman socket.
+  const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
+  const socketJobs = Object.entries(jobs).filter(([, job]) =>
+    job.steps.some((step) => typeof step.run === "string" && step.run.includes("podman system service")),
+  );
+  // Then: installation and the host contract precede prerequisites, which precede service startup.
+  expect(socketJobs.map(([id]) => id).sort()).toEqual([
+    "provider-lando-e2e-linux-x64",
+    "service-listeners-linux-x64",
+  ]);
+  for (const [, { steps }] of socketJobs) {
+    const install = steps.findIndex(
+      (step) => typeof step.name === "string" && step.name.startsWith("Install Podman 6 toolchain"),
+    );
+    const contract = steps.findIndex((step) => step.name === "Assert Podman 6 host contract");
+    const prereqs = steps.findIndex((step) => step.name === "Provision rootless runtime prerequisites");
+    const socket = steps.findIndex(
+      (step) => typeof step.run === "string" && step.run.includes("podman system service"),
+    );
+    expect(install).toBeGreaterThanOrEqual(0);
+    expect(contract).toBeGreaterThan(install);
+    expect(prereqs).toBeGreaterThan(contract);
+    expect(socket).toBeGreaterThan(prereqs);
+    expect(steps[prereqs]?.run).toContain("apt-get install -y uidmap fuse-overlayfs");
+    expect(steps[prereqs]?.run).toContain("/etc/subuid");
+    expect(steps[prereqs]?.run).toContain("/etc/subgid");
+    expect(steps[prereqs]?.run).toContain("net.ipv4.ip_unprivileged_port_start=0");
+    expect(steps[prereqs]?.run).toContain("kernel.apparmor_restrict_unprivileged_userns=0");
+    expect(steps[prereqs]?.run).toContain("/sys/fs/cgroup/user.slice");
+  }
 });
 
 test.each([
