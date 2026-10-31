@@ -4,16 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
+import { makeLandoPaths } from "@lando/core/paths";
 import { AbsolutePath, LandofileShape, PluginManifest, ProviderId, ServiceName } from "@lando/core/schema";
-import { PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
+import { PathsService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { globalEnable } from "@lando/engine/operations/global-policy";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import * as GlobalAppServiceLayer from "@lando/engine/global-app/service";
 import { globalInstall } from "@lando/engine/operations/global-install";
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { parseLandofile } from "@lando/landofile/parser";
-import { renderGlobalInstallResult } from "../../src/cli/commands/meta/global-install.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { testStateStoreLayer } from "../_support/landofile-layer.ts";
 
@@ -58,6 +60,9 @@ const layerWithFakeGlobalService = (modulePath: string) => {
 
   return Layer.mergeAll(
     testStateStoreLayer,
+    BunFileSystem.layer,
+    Layer.succeed(PathsService, makeLandoPaths()),
+    PrivateFileAccessService.layer,
     GlobalAppServiceLayer.layer.pipe(
       Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
     ),
@@ -85,7 +90,7 @@ const layerWithFakeGlobalService = (modulePath: string) => {
   );
 };
 
-describe("global:install command operation", () => {
+describe("global configuration reconciliation", () => {
   test("materializes both global Landofile files with no plugin argument", async () => {
     await withTempRoots(async (dataRoot) => {
       const result = await Effect.runPromise(
@@ -93,7 +98,6 @@ describe("global:install command operation", () => {
           Effect.provide(makeLandoRuntime({ bootstrap: "global", plugins: { policy: "discovery" } })),
         ),
       );
-      const output = renderGlobalInstallResult(result);
 
       expect(result.paths.root).toBe(AbsolutePath.make(join(dataRoot, "global")));
       expect(result.dist.path).toBe(AbsolutePath.make(join(dataRoot, "global", ".lando.dist.yml")));
@@ -110,9 +114,6 @@ describe("global:install command operation", () => {
       expect(distContent).toContain("traefik:");
       expect(distContent).toContain("traefik:v3.3");
       expect(await readFile(join(dataRoot, "global", ".lando.yml"), "utf8")).toContain("User overrides");
-      expect(output).toContain(".lando.dist.yml");
-      expect(output).toContain("created");
-      expect(output).toContain("Global services: mailpit, ssh-agent, traefik");
     });
   });
 
@@ -151,8 +152,10 @@ describe("global:install command operation", () => {
     await withTempRoots(async () => {
       const runtime = makeLandoRuntime({ bootstrap: "global", plugins: { policy: "discovery" } });
       for (const plugin of ["mailpit", "@lando/proxy-traefik"]) {
-        const result = await Effect.runPromise(globalInstall({ plugin }).pipe(Effect.provide(runtime)));
-        expect(result.dist.serviceIds).toContain(plugin === "mailpit" ? "mailpit" : "traefik");
+        const result = await Effect.runPromise(
+          globalEnable({ selectors: [plugin] }).pipe(Effect.provide(runtime)),
+        );
+        expect(result.dist?.serviceIds).toContain(plugin === "mailpit" ? "mailpit" : "traefik");
       }
     });
   });
@@ -172,6 +175,9 @@ describe("global:install command operation", () => {
       };
       const layer = Layer.mergeAll(
         testStateStoreLayer,
+        BunFileSystem.layer,
+        Layer.succeed(PathsService, makeLandoPaths()),
+        PrivateFileAccessService.layer,
         GlobalAppServiceLayer.layer.pipe(
           Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
         ),

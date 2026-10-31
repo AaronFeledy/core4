@@ -22,7 +22,6 @@ import {
 import { makeRouteApplication } from "./apply-routes.ts";
 import { ensureDashboardFile } from "./dashboard.ts";
 import { TRAEFIK_DIAGNOSTICS_ID, renderTraefikFallbackConfig } from "./diagnostics.ts";
-import { prepareTraefikDiagnostics } from "./global-services/diagnostics.ts";
 import { makeRouteObserver } from "./observe-routes.ts";
 import { fingerprintsEqual } from "./port-acquisition-helpers.ts";
 import {
@@ -37,8 +36,6 @@ import {
   dashboardConfigFile,
   defaultDomainFile,
   defaultTlsFile,
-  diagnosticConfigFile,
-  diagnosticHtmlFile,
   dynamicConfigDir,
   fallbackConfigFile,
   joinFor,
@@ -348,7 +345,6 @@ export const makeTraefikRouterService = (
               if (decision.notices.length > 0) {
                 yield* publishFallbackWarn(dependencies, decision);
               }
-              yield* prepareTraefikDiagnostics(dependencies);
               yield* ensureDashboardFile(dependencies, defaultDomain);
               yield* dependencies.globalApp.ensureRunning([TRAEFIK_PROXY_ID, TRAEFIK_DIAGNOSTICS_ID]);
               yield* finalizeRouterStartup(dependencies, advertised, "setup");
@@ -448,8 +444,6 @@ export const makeTraefikRouterService = (
             yield* dependencies.fileSystem.remove(defaultTlsFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(dashboardConfigFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(fallbackConfigFile(dependencies.paths));
-            yield* dependencies.fileSystem.remove(diagnosticConfigFile(dependencies.paths));
-            yield* dependencies.fileSystem.remove(diagnosticHtmlFile(dependencies.paths));
             yield* dependencies.fileSystem.remove(watcherDiagnosticFile(dependencies.paths));
             yield* removeAllCertificates(dependencies);
             routes.clear();

@@ -13,6 +13,7 @@ import {
 } from "@lando/sdk/services";
 
 import { globalObserveProviderId } from "../global-app/placement.ts";
+import { readGlobalResolution } from "../global-app/resolution.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
@@ -127,7 +128,7 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
           "The applied global provider is offline; selected containers and routes could not be removed.",
         reason: "mismatch",
         detail: "provider-resources",
-        remediation: "Start the applied provider and repeat this uninstall command.",
+        remediation: "Start the applied provider and repeat the selected cleanup command.",
       }),
     );
   const observed = online
@@ -149,6 +150,18 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
       .map((service) => String(service.service)),
   );
   const selected = new Set(requested);
+  const updateRoutes = online && evidence.plan.routes.some((route) => selected.has(String(route.service)));
+  const retainedRoutes = evidence.plan.routes.filter(
+    (route) => !selected.has(String(route.service)) && activeNames.has(String(route.service)),
+  );
+  // Applied routes may outlive a failed disable; blocked but enabled siblings still own their routes.
+  const routePolicy =
+    updateRoutes && retainedRoutes.length > 0 ? yield* readGlobalResolution().pipe(Effect.result) : undefined;
+  const disabled = new Set(
+    routePolicy?._tag === "Success"
+      ? routePolicy.success.entries.filter((entry) => !entry.enabled).map((entry) => entry.id)
+      : [],
+  );
   return {
     plan: evidence.plan,
     services: Object.values(evidence.plan.services)
@@ -158,12 +171,8 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
           ? owned.filter((observation) => observation.service === service.name)
           : [],
       ),
-    routes:
-      online && evidence.plan.routes.some((route) => selected.has(String(route.service)))
-        ? evidence.plan.routes.filter(
-            (route) => !selected.has(String(route.service)) && activeNames.has(String(route.service)),
-          )
-        : undefined,
+    routes: updateRoutes ? retainedRoutes.filter((route) => !disabled.has(String(route.service))) : undefined,
+    routePolicyError: routePolicy?._tag === "Failure" ? routePolicy.failure : undefined,
   };
 });
 
@@ -186,6 +195,7 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
       }
     }
   }
+  if (selection.routePolicyError !== undefined) return yield* Effect.fail(selection.routePolicyError);
   if (selection.routes !== undefined) {
     const router = yield* RouterService;
     yield* router.applyRoutes(selection.routes, selection.plan.id);

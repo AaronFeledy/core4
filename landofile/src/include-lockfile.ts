@@ -150,7 +150,7 @@ export const parseLockEntries = (
 ): Effect.Effect<ReadonlyMap<string, LockEntry>, LandofileParseError | LandofileIncludeError> =>
   openLockfileBucket(stateStore, appRoot, path).pipe(
     Effect.flatMap((bucket) =>
-      bucket.get.pipe(
+      Effect.flatMap(bucket.exists, (exists) => (exists ? bucket.get : Effect.succeed(undefined))).pipe(
         Effect.mapError(
           (cause) =>
             new LandofileParseError({

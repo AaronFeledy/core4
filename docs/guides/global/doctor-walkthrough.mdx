@@ -17,21 +17,25 @@ lando doctor
 
 Doctor includes a `global-app` section without bootstrapping a project app. If the provider section degrades, this disk-backed check can still run.
 
-Doctor reads the global app on the provider setup selected. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs).
+This check reads the local generated files under the global root; it doesn't
+inspect the provider's containers. Use `lando global:status --format=json` for
+runtime observations. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs)
+for provider placement.
 
 ## When it is not installed
 
 The check warns and sets `installed` to `false`. Starting an app that needs Traefik, Mailpit, or the SSH sidecar provisions the global app. To materialize it now:
 
 ```sh
-lando global:install
+lando global:reconcile
+lando global:status --format=json
 ```
 
 ## When it is installed
 
 The check passes and reports the generated dist Landofile (`<userDataRoot>/global/.lando.dist.yml`), the overlay (`<userDataRoot>/global/.lando.yml`), the dist file mtime as `lastInstallTimestamp`, materialized service ids, and plugin names that declare `globalServices:`.
 
-If the dist file exists but cannot be read, the check fails and tells you to fix permissions or rerun `lando global:install`.
+If the dist file exists but cannot be read, the check fails and tells you to fix permissions or rerun `lando global:reconcile`. Reconcile preserves saved policy and starts no containers. Use `lando global:status --format=json` to inspect desired policy, observed services, and pending cleanup separately; generated configuration alone isn't proof that a disabled service has stopped.
 
 ## Read the router file-watcher check
 

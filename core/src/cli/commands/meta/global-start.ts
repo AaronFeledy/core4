@@ -1,4 +1,4 @@
-import { withGlobalMutation } from "@lando/engine/global-app/enablement";
+import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
 import { DateTime, Effect, Schema } from "effect";
 
 import { routerEnabled } from "@lando/engine/config/router-config";
@@ -6,6 +6,7 @@ import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { includeAvailableDependencies } from "@lando/engine/operations/ensure-global-services";
 
+import { retainGlobalPlanSiblings } from "@lando/engine/operations/global-retained-plan";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
@@ -62,6 +63,8 @@ export const GlobalStartResultSchema = Schema.Struct({
 export type GlobalStartResult = typeof GlobalStartResultSchema.Type;
 
 export type GlobalStartError =
+  | Effect.Error<ReturnType<typeof globalInstall>>
+  | Effect.Error<ReturnType<typeof retainGlobalPlanSiblings>>
   | ServiceNotReadyError
   | GlobalAppError
   | LoadGlobalPlanError
@@ -80,6 +83,7 @@ export type GlobalStartError =
   | ToolingExecError;
 
 export type GlobalStartServices =
+  | GlobalMutationServices
   | import("@lando/sdk/services").StateStore
   | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner
@@ -100,8 +104,9 @@ export const globalStart = Effect.fn("GlobalStart.start")(
   function* (
     options: GlobalStartOptions = {},
   ): Effect.fn.Return<GlobalStartResult, GlobalStartError, GlobalStartServices> {
-    yield* globalInstall({});
-    const loaded = yield* loadGlobalPlan();
+    const selection = options.services === undefined ? {} : { services: options.services };
+    yield* globalInstall(selection);
+    const loaded = yield* loadGlobalPlan(selection);
     if (!loaded.materialized) return { app: "global", servicesStarted: [] };
 
     const router = yield* RouterService;
@@ -154,12 +159,22 @@ export const globalStart = Effect.fn("GlobalStart.start")(
           ),
       },
       Effect.gen(function* () {
+        const retained = options.services?.length
+          ? yield* retainGlobalPlanSiblings(
+              loaded.plan,
+              provider,
+              services.map((service) => String(service.name)),
+            )
+          : undefined;
         const builds = yield* BuildOrchestrator;
         const applied = yield* applyGlobalServiceGroups(
           loaded.plan,
           {
             provider,
             services,
+            ...(retained === undefined
+              ? {}
+              : { recordedPlan: retained.recordedPlan, recordedDisabledIds: retained.disabledIds }),
             options: {
               reconcile: false,
               ...(options.signal === undefined ? {} : { signal: options.signal }),

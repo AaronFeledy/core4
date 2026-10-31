@@ -29,10 +29,11 @@ for (const command of ["stop", "destroy"] as const) {
         command === "stop"
           ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
           : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
-      // Then it returns a read-only no-op without materializing the root or parsing desired YAML.
+      // Then only coordination storage is created; the global root and runtime remain untouched.
       expect(result.materialized).toBe(false);
-      expect(harness.calls).toEqual([]);
-      expect(await readdir(dataRoot)).toEqual([]);
+      expect(harness.calls).toEqual(["removeRoutes"]);
+      expect(await readdir(dataRoot)).toEqual(["operation-locks"]);
+      expect(await readdir(join(dataRoot, "operation-locks"))).toEqual([]);
     });
   });
 
@@ -88,7 +89,7 @@ for (const probe of ["availability", "status"] as const) {
     await withDataRoot(async (dataRoot) => {
       const harness = await globalTeardownHarness(dataRoot, { [probe]: Effect.fail(unavailable) });
       await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
-      expect(harness.calls).toEqual([]);
+      expect(harness.calls).toEqual(["removeRoutes"]);
     });
   });
 }

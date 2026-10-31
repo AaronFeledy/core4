@@ -12,6 +12,8 @@ import {
   type ServiceConfig,
 } from "@lando/sdk/schema";
 
+import { emptyGlobalPolicy, prepareGlobalPolicy } from "../../src/global-app/enablement.ts";
+
 import {
   materializeGlobalServices,
   resolveGlobalServiceContributions,
@@ -167,7 +169,17 @@ describe("global service materialization", () => {
         ],
         providerCapabilities: capabilities(),
         providerId: "lando",
-        enablement: { mailpit: false, mailhog: true },
+        policy: {
+          revision: 1,
+          plugins: {
+            "@lando/mail": {
+              contributions: {
+                mailpit: { defaultEnabled: true, enabled: false },
+                mailhog: { defaultEnabled: false, enabled: true },
+              },
+            },
+          },
+        },
         loadServiceConfig: (entry) => {
           loaded.push(entry.contribution.id);
           return Effect.succeed({ api: 4, type: "lando" });
@@ -196,9 +208,21 @@ describe("global service materialization", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(GlobalAppError);
     expect(loads).toBe(0);
-    for (const enablement of [{ mailpit: false }, { mailhog: false }]) {
+    for (const id of ["mailpit", "mailhog"]) {
+      const prepared = await Effect.runPromise(
+        prepareGlobalPolicy(
+          emptyGlobalPolicy(),
+          [
+            { plugin: "@lando/mail", contribution: { id: "mailpit" } },
+            { plugin: "@lando/mail", contribution: { id: "mailhog" } },
+          ],
+          { selectors: [id], enabled: false },
+        ),
+      );
       expect(
-        Object.keys(await Effect.runPromise(materializeGlobalServices({ ...input, enablement }))),
+        Object.keys(
+          await Effect.runPromise(materializeGlobalServices({ ...input, policy: prepared.policy })),
+        ),
       ).toHaveLength(1);
     }
   });
@@ -229,6 +253,10 @@ describe("global service materialization", () => {
     expect(rejected.accepted).toEqual([]);
     expect(rejected.rejected).toHaveLength(1);
     expect(rejected.rejected[0]?.missing).toEqual(["serviceLogSources"]);
+    expect(rejected.rejected[0]?.remediation).toContain("lando setup --provider=");
+    expect(rejected.rejected[0]?.remediation).toContain("lando global:disable log-source-reader");
+    expect(rejected.rejected[0]?.remediation).not.toContain("in your Landofile");
+    expect(rejected.rejected[0]?.remediation).not.toContain("--keep-global");
   });
 
   test("drops capability-rejected and disabled contributions and returns an id-sorted service map", async () => {

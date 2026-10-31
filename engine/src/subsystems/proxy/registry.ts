@@ -9,7 +9,7 @@ import {
   ConfigService,
   EventService,
   type FileSystem,
-  type GlobalAppService,
+  GlobalAppService,
   ManagedFileService,
   PathsService,
   RouterService,
@@ -20,7 +20,7 @@ import { RedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { bundledPluginModules } from "../../composition.ts";
-import { withGlobalMutation } from "../../global-app/enablement.ts";
+import { type GlobalMutationServices, withGlobalMutation } from "../../global-app/mutation.ts";
 import { makePublishRender } from "../../lifecycle/publish-render.ts";
 import { indexContributions, selectRegistration } from "../../plugins/capability-registry.ts";
 import { makeLandoPluginContext } from "../../plugins/context.ts";
@@ -208,7 +208,7 @@ export const layerSelected = Layer.unwrap(
         ? Effect.succeed(UnavailableRouterService.layerUnavailable)
         : registry.select().pipe(
             Effect.flatMap((selected) =>
-              Effect.map(StateStore, (store) =>
+              Effect.map(Effect.context<GlobalMutationServices>(), (captured) =>
                 Layer.effect(
                   RouterService,
                   Effect.gen(function* () {
@@ -219,7 +219,9 @@ export const layerSelected = Layer.unwrap(
                       // Acquire the global lock first, as explicit global lifecycle commands do.
                       setup: Effect.fn("RouterService.setupWithGlobalMutation")((config, options) =>
                         withGlobalMutation(router.setup(config, options)).pipe(
-                          Effect.provideService(StateStore, store),
+                          Effect.provide(
+                            Context.pick(GlobalAppService, PathsService, PrivateFileAccessService)(captured),
+                          ),
                           Effect.catchTag("GlobalAppError", (cause) =>
                             Effect.fail(
                               new ProxySetupError({

@@ -108,16 +108,17 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `plugins` | Read or write the global app Landofile without an eager provider runtime |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
+| `meta:global:disable` | `global:disable` | `global` | Save disabled policy for selectors or `--all`; ownership-verified selected cleanup and generation; named volumes retained; `--dry-run` previews without writes |
+| `meta:global:enable` | `global:enable` | `global` | Enable contribution/package selectors or `--all`; regenerate without starting; `--dry-run` previews without writes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |
-| `meta:global:install` | `global:install` | `global` | Enable `globalServices:`, write `global.config.yml`, regenerate `dist`; does not start |
-| `meta:global:list` | `global:list` | `minimal` | List global services, enablement, source, status |
+| `meta:global:list` | `global:list` | `plugins` | List current contribution eligibility, policy source, capability evidence, and retained policies without provider runtime construction |
 | `meta:global:logs` | `global:logs` | `global` | Stream global logs |
 | `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then revalidate the router (§20.6.5) |
+| `meta:global:reconcile` | `global:reconcile` | `global` | Preserve policy, retry pending cleanup, and generate eligible config without starting; `--dry-run` previews without writes |
 | `meta:global:restart` | `global:restart` | `global` | Global stop, then start, then router startup revalidation (§20.6.5) |
 | `meta:global:start` | `global:start` | `global` | Start all or repeated `--service` subset |
-| `meta:global:status` | `global:status` | `global` | Report global app status |
+| `meta:global:status` | `global:status` | `global` | Report desired policy, observed state, and pending work without requiring a valid desired Landofile |
 | `meta:global:stop` | `global:stop` | `global` | Stop global services |
-| `meta:global:uninstall` | `global:uninstall` | `global` | Disable contributions and stop affected services |
 | `meta:mcp` | `mcp` | `plugins` | MCP over stdio; `--allow`, `--deny`, `--tooling`, `--list` |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install plugin |
 | `meta:plugin:build` | none | `minimal` | Build through `BunSelfRunner.buildLib` |

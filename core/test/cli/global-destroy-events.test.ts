@@ -68,10 +68,12 @@ test("absent global destroy emits no lifecycle or task events", async () => {
     const harness = await globalTeardownHarness(root);
     // When destroy is requested.
     const result = await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
-    // Then no teardown bracket or route mutation is invented.
+    // Then historical routes are withdrawn without inventing container lifecycle events.
     expect(result.outcome).toBe("unchanged");
     expect(harness.events).toEqual([]);
-    expect(harness.calls).not.toContain("removeRoutes");
+    expect(harness.calls).toContain("removeRoutes");
+    expect(harness.calls).not.toContain("destroy");
+    expect(harness.calls).not.toContain("ensureReady");
   });
 });
 

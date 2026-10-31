@@ -10,6 +10,7 @@ import { AppPlanner, FileSystem, GlobalAppService, RuntimeProviderRegistry } fro
 import { loadGlobalPlan } from "../../src/operations/global-plan.ts";
 import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { globalPolicyFixture } from "./global-policy-fixture.ts";
 
 describe("loadGlobalPlan host provider", () => {
   test("plans the global app on the selected host provider", async () => {
@@ -23,6 +24,7 @@ describe("loadGlobalPlan host provider", () => {
       const selected: Array<string | undefined> = [];
       const planned: Array<string | undefined> = [];
       const layer = Layer.mergeAll(
+        globalPolicyFixture,
         makeTestStateStore().layer,
         Layer.succeed(
           FileSystem,

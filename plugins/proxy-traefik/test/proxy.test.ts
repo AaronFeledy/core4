@@ -8,6 +8,7 @@ import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import { renderTraefikDiagnosticHtml } from "../src/diagnostics.ts";
 import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { makeTraefikRouterService, renderTraefikDynamicConfig } from "../src/proxy.ts";
 import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
@@ -279,12 +280,12 @@ describe("Traefik RouterService", () => {
     expect(otherNames.every((name) => !demoNames.has(name))).toBe(true);
   });
 
-  test("setup installs the unmatched-route diagnostics before starting the global services", async () => {
+  test("setup keeps fallback routing on the host and diagnostic assets inside the service", async () => {
     const harness = makeHarness();
 
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
 
-    expect(harness.files.get("/lando/global/proxy-traefik/diagnostic/nginx.conf")).toBeDefined();
+    expect([...harness.files.keys()].some((path) => path.includes("/diagnostic/"))).toBe(false);
     expect(harness.files.get("/lando/global/proxy-traefik/dynamic/fallback.yml")).toContain(
       "traefik-diagnostics.global.internal:8080",
     );
@@ -305,11 +306,7 @@ describe("Traefik RouterService", () => {
   });
 
   test("diagnostic page is private and offers actionable recovery commands", async () => {
-    const harness = makeHarness();
-
-    await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
-
-    const html = harness.files.get("/lando/global/proxy-traefik/diagnostic/404.html") ?? "";
+    const html = renderTraefikDiagnosticHtml();
     expect(html).toContain("lando start");
     expect(html).toContain("lando info");
     expect(html).toContain("lando doctor");
@@ -444,9 +441,9 @@ describe("Traefik RouterService", () => {
     expect(harness.files.get("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).toBe("previous");
   });
 
-  test("an atomic diagnostic replacement failure leaves the prior config untouched", async () => {
-    const harness = makeHarness("nginx.conf");
-    const path = "/lando/global/proxy-traefik/diagnostic/nginx.conf";
+  test("an atomic fallback replacement failure leaves the prior config untouched", async () => {
+    const harness = makeHarness("fallback.yml");
+    const path = "/lando/global/proxy-traefik/dynamic/fallback.yml";
     harness.files.set(path, "previous");
 
     const exit = await Effect.runPromiseExit(
@@ -455,7 +452,7 @@ describe("Traefik RouterService", () => {
 
     expect(exit._tag).toBe("Failure");
     expect(harness.files.get(path)).toBe("previous");
-    expect(harness.ensured).toEqual([]);
+    expect(harness.ensured).toEqual([["traefik", "traefik-diagnostics"]]);
   });
 
   test("reloads running Windows Traefik only when routes change, including removal", async () => {
@@ -561,7 +558,7 @@ describe("Traefik RouterService", () => {
 
     expect(harness.files.has("/lando/global/proxy-traefik/dynamic/routes-demo.yml")).toBe(false);
     expect(harness.files.has("/lando/global/proxy-traefik/dynamic/fallback.yml")).toBe(true);
-    expect(harness.files.has("/lando/global/proxy-traefik/diagnostic/nginx.conf")).toBe(true);
+    expect([...harness.files.keys()].some((path) => path.includes("/diagnostic/"))).toBe(false);
   });
 });
 

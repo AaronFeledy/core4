@@ -1,4 +1,4 @@
-import { withGlobalMutation } from "@lando/engine/global-app/enablement";
+import { type GlobalMutationServices, withGlobalMutation } from "@lando/engine/global-app/mutation";
 import { DateTime, Effect, Schema } from "effect";
 
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
@@ -52,6 +52,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 export type GlobalRebuildResult = typeof GlobalRebuildResultSchema.Type;
 
 export type GlobalRebuildError =
+  | Effect.Error<ReturnType<typeof globalInstall>>
   | ServiceNotReadyError
   | GlobalAppError
   | LoadGlobalPlanError
@@ -69,6 +70,7 @@ export type GlobalRebuildError =
   | SecretReferenceInvalidError;
 
 export type GlobalRebuildServices =
+  | GlobalMutationServices
   | import("@lando/sdk/services").StateStore
   | import("@lando/sdk/services").EnvironmentValueResolver
   | AppPlanner

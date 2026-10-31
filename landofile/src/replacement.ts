@@ -3,7 +3,7 @@ import { LandofileWriteValidationError } from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { createIncludeResolutionSession } from "./include-session.ts";
-import { type PresentLandofileLayer, presentLandofileLayers } from "./layers.ts";
+import { type PresentLandofileLayer, landofileLayerPaths, presentLandofileLayers } from "./layers.ts";
 import { assertReadableRoot, loadContext } from "./load-context.ts";
 import { composePreparedLayers } from "./pipeline/compose.ts";
 import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
@@ -28,15 +28,18 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
     const runtime = yield* loadContext(replacement.appRoot, inputs.templates.context?.env);
     const layers = yield* presentLandofileLayers(replacement.appRoot);
     const target = layers.find((layer) => layer.filePath === replacement.targetFile);
+    const position = landofileLayerPaths(replacement.appRoot).find(
+      (layer) => layer.yamlPath === replacement.targetFile || layer.typescriptPath === replacement.targetFile,
+    );
     const ordered: readonly PresentLandofileLayer[] =
       target === undefined
         ? [
             ...layers,
             {
               filePath: replacement.targetFile,
-              layer: "canonical",
-              order: 3,
-              basename: ".lando",
+              layer: position?.layer ?? "canonical",
+              order: position?.order ?? 3,
+              basename: position?.basename ?? ".lando",
             } satisfies PresentLandofileLayer,
           ].sort((a, b) => a.order - b.order)
         : layers;
@@ -92,7 +95,7 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
       prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
     );
     const merged = yield* composePreparedLayers(prepared, runtime, { session, inputs });
-    yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
+    return yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
       appRoot: replacement.appRoot,
       overrides: inputs.overrides,
       pendingSites: runtime.pendingSites,

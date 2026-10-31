@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
 import { GlobalConfig, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { ConfigService, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { ConfigService, GlobalAppService, PathsService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { plugin as serviceLando } from "@lando/service-lando";
 import { Effect, Layer, Schema } from "effect";
@@ -26,6 +27,8 @@ test("global Mailpit preserves its expression in dist and replans it after a dom
   const infrastructure = Layer.mergeAll(configLayer, BunFileSystem.layer);
   const registry = PluginRegistryLayer.layerWith({ user: false, app: false }, [serviceLando]);
   const layer = Layer.mergeAll(
+    registry,
+    Layer.succeed(PathsService, makeLandoPaths()),
     makeTestStateStore().layer,
     GlobalAppLayer.layer.pipe(Layer.provide(infrastructure)),
     PlannerLayer.layer.pipe(Layer.provide(Layer.mergeAll(registry, infrastructure))),
