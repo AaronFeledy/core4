@@ -1,5 +1,11 @@
 [
   {
+    "surface": "command:meta:global:list",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.state",
+    "justification": "Pre-release global policy distinguishes unverified capability or dependency evidence from known unsupported intent. Agents must handle enabled, disabled, blocked, and unverified catalog states; policy choices remain separate from observed runtime status."
+  },
+  {
     "surface": "command:meta:global:uninstall",
     "changeKind": "surface-removed",
     "path": "$",

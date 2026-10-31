@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { GlobalAppService } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import { GlobalPolicyReconciliationError } from "../../src/global-app/errors.ts";
@@ -167,7 +167,7 @@ test("recorded advancement preserves sibling volume and network ownership", asyn
   const sibling = plan.services[ServiceName.make("sibling")];
   const mail = plan.services[ServiceName.make("mail")];
   if (sibling === undefined || mail === undefined) throw new Error("Expected service fixtures");
-  const prior = {
+  const prior: AppPlan = {
     ...plan,
     services: {
       ...plan.services,
@@ -189,7 +189,7 @@ test("recorded advancement preserves sibling volume and network ownership", asyn
       sharedNetworkMembership: { name: "shared", aliases: { [sibling.name]: ["prior-sibling"] } },
     },
   };
-  const selected = {
+  const selected: AppPlan = {
     ...plan,
     services: {
       [mail.name]: mail,
