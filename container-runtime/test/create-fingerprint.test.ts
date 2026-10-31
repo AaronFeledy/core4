@@ -81,6 +81,15 @@ test("fingerprints probe identity, execution locus, argv/shell semantics and hos
 const fixtureRedaction = makeRedactionService();
 
 describe("desired immutable create config", () => {
+  test("distinguishes unspecified, enabled and disabled native init", () => {
+    // Given / When
+    const absent = fingerprint(service);
+    const enabled = fingerprint({ ...service, init: true });
+    const disabled = fingerprint({ ...service, init: false });
+    // Then
+    expect(new Set([absent, enabled, disabled]).size).toBe(3);
+    expect(fingerprint({ ...service, init: true })).toBe(enabled);
+  });
   test("pins the mount-list-only default fingerprint bytes", () => {
     // Given the default plan without authored networks or bridge aliases.
     // When / Then the mount-only create projection stays pinned.

@@ -2,7 +2,7 @@ import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
 import { DateTime, Effect } from "effect";
 
-import { AbsolutePath, AppId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type ServiceShutdownObservation } from "@lando/sdk/schema";
 import {
   EventService,
   FileSystem,
@@ -19,6 +19,7 @@ import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { removeGlobalResources } from "./global-teardown-resources.ts";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 import { unknownPlanServiceError } from "./unknown-service.ts";
 
 const runtimeOnline = (provider: Pick<RuntimeProviderShape, "isAvailable" | "getStatus">) =>
@@ -153,8 +154,10 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
   selection: Effect.Success<ReturnType<typeof resolveGlobalStopSelection>>,
 ) {
   const services: string[] = [];
+  const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
   for (const service of selection.services) {
     const result = yield* resolved.provider.removeObservedService(service);
+    observationSources.push(result.shutdownObservations);
     switch (result.kind) {
       case "removed":
         services.push(String(service.service));
@@ -171,10 +174,13 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
     const router = yield* RouterService;
     yield* router.applyRoutes(selection.routes, selection.plan.id);
   }
-  return {
-    changed: services.length > 0,
-    services,
-  };
+  return withShutdownObservations(
+    {
+      changed: services.length > 0,
+      services,
+    },
+    ...observationSources,
+  );
 });
 
 export const globalTeardownAppRef = (resolved: GlobalTeardown) => ({

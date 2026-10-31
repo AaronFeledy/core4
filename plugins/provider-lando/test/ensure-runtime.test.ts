@@ -382,8 +382,6 @@ describe("ensureRuntime", () => {
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["terminate", 4321],
         ["launch", canonicalArgs(p)],
       ]);
@@ -418,8 +416,6 @@ describe("ensureRuntime", () => {
 
       // Then: the old owned process is stopped and relaunched with the current spec.
       expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
@@ -550,8 +546,6 @@ describe("ensureRuntime", () => {
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["findMatching", canonicalArgs(p)],
         ["findManaged", canonicalArgs(p)],
         ["isAlive", 4321],
@@ -584,8 +578,6 @@ describe("ensureRuntime", () => {
       );
 
       expect(calls).toEqual([
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["findMatching", canonicalArgs(p)],
@@ -864,7 +856,7 @@ describe("ensureRuntime", () => {
       );
 
       // Then: readiness uses ping only and never invokes expensive info.
-      expect(apiCalls).toEqual(["ping", "ping", "ping"]);
+      expect(apiCalls).toEqual(["ping", "ping"]);
       expect(calls).toEqual([["launch", canonicalArgs(p)]]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
     } finally {

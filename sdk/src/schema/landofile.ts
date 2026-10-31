@@ -7,7 +7,11 @@ import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
 import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
-import { ComposeServiceKnobFields, ComposeTmpfsServiceField } from "./compose-service-knobs.ts";
+import {
+  ComposeInitServiceField,
+  ComposeServiceKnobFields,
+  ComposeTmpfsServiceField,
+} from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { ServiceCreds } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
@@ -694,6 +698,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     labels: Schema.optionalKey(ComposeLabelsInput),
 
     ...ComposeServiceKnobFields,
+    init: ComposeInitServiceField,
 
     ports: Schema.optionalKey(ComposePortsField),
     expose: Schema.optionalKey(ComposeExposeField),

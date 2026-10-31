@@ -15,6 +15,11 @@ import {
   resolveGlobalTeardown,
 } from "@lando/engine/operations/global-teardown";
 import { teardownLine } from "../service-summary";
+import {
+  publishShutdownWarnings,
+  receiptShutdownObservations,
+  shutdownServiceRows,
+} from "../shutdown-summary";
 
 const now = () => DateTime.nowUnsafe();
 
@@ -25,6 +30,7 @@ export const GlobalStopResultSchema = Schema.Struct({
     description: "Whether the global app has a materialized Landofile.",
   }),
   servicesStopped: StopAppResult.fields.servicesStopped,
+  shutdownObservations: StopAppResult.fields.shutdownObservations,
 });
 
 export type GlobalStopResult = typeof GlobalStopResultSchema.Type;
@@ -46,9 +52,12 @@ export type GlobalStopServices =
   | EventService
   | RouterService;
 
-export const renderGlobalStopResult = (result: GlobalStopResult): string => {
-  return teardownLine(result.outcome, result.app, result.servicesStopped);
-};
+export const renderGlobalStopResult = (result: GlobalStopResult): string =>
+  teardownLine(
+    result.outcome,
+    result.app,
+    shutdownServiceRows(result.servicesStopped, result.shutdownObservations),
+  );
 
 export const globalStop = Effect.fn("GlobalStop.stop")(function* (
   options: GlobalStopOptions = {},
@@ -95,12 +104,15 @@ export const globalStop = Effect.fn("GlobalStop.stop")(function* (
         const router = yield* RouterService;
         yield* router.removeRoutes(app.id);
       }
-      return {
+      const result: GlobalStopResult = {
         app: "global",
-        outcome: receipt.changed ? ("stopped" as const) : ("unchanged" as const),
+        outcome: receipt.changed ? "stopped" : "unchanged",
         materialized: loaded.materialized,
         servicesStopped: receipt.services,
+        ...receiptShutdownObservations(receipt),
       };
+      yield* publishShutdownWarnings(result);
+      return result;
     }),
   );
 });

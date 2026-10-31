@@ -21,6 +21,7 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
@@ -159,7 +160,10 @@ test.each([
                   evolveHistoricalContainerUser(
                     evolveHistoricalReadiness(
                       evolveHistoricalShorthand(
-                        evolveHistoricalNetworks(normalizeJsonSchema(repaired), "bare"),
+                        evolveHistoricalNetworks(
+                          evolveHistoricalNativeInit(normalizeJsonSchema(repaired)),
+                          "bare",
+                        ),
                       ),
                     ),
                   ),

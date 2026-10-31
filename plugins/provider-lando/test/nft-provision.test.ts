@@ -673,6 +673,8 @@ describe("NFT_MANIFEST", () => {
 describe("setupProviderLando nft helper", () => {
   test("provisions nft into the linux runtime bin during setup", async () => {
     const { setupProviderLando } = await import("../src/setup.ts");
+    const { catatonitFixture } = await import("./fixtures/catatonit.ts");
+    const helper = catatonitFixture();
     const root = await mkdtemp(join(tmpdir(), "lando-setup-nft-"));
     const runtimeBinDir = join(root, "runtime", "bin");
     const runtimeConfigDir = join(root, "runtime", "config");
@@ -686,6 +688,7 @@ describe("setupProviderLando nft helper", () => {
 
     try {
       await mkdir(runtimeBinDir, { recursive: true });
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "0.1.7");
       await Effect.runPromise(
         setupProviderLando({
           platform: "linux",
@@ -694,6 +697,8 @@ describe("setupProviderLando nft helper", () => {
           runtimeBinDir,
           runtimeConfigDir,
           nftArtifactDownload: download,
+          artifactDownload: helper.download,
+          _catatonitPackage: helper.pkg,
           nftCacheDir: join(root, "nft-downloads"),
           stateDir: join(root, "state"),
         }),
