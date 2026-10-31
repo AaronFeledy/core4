@@ -64,6 +64,8 @@ import type {
   VolumeSnapshotSpec,
 } from "../schema/index.ts";
 import type { MountObservation } from "../schema/service-mount.ts";
+import type { DestroyOutcome, ObservedServiceRemoval } from "../schema/service-shutdown.ts";
+export type { DestroyOutcome, ObservedServiceRemoval } from "../schema/service-shutdown.ts";
 import type { PrivilegeService, ProcessResult } from "./process.ts";
 
 export type ProviderError =
@@ -540,16 +542,5 @@ export interface DestroyOptions {
   readonly purgeCaches?: boolean;
   readonly removeState?: boolean;
 }
-
-/**
- * What a `destroy` call actually did. A provider handed no plan that finds no applied record for
- * the app removed nothing, and says so, so no caller can read silent success as teardown.
- */
-export type DestroyOutcome =
-  | { readonly kind: "destroyed" }
-  | { readonly kind: "no-op"; readonly reason: "no-applied-plan" };
-
-/** Whether `removeObservedService` removed the container behind an observation, or found none. */
-export type ObservedServiceRemoval = { readonly kind: "removed" } | { readonly kind: "absent" };
 
 export type RuntimeProviderShape = RuntimeProvider["Service"];

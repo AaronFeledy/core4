@@ -133,3 +133,16 @@ export const ComposePullPolicyField = Schema.Union([
 });
 
 export const ComposeBooleanOrStringField = Schema.Union([Schema.Boolean, Schema.String]);
+
+export const ComposeInitField = Schema.Union([
+  Schema.Boolean,
+  Schema.String.check(Schema.isPattern(/^(?:true|false|on|off|1|0|yes|no)$/iu)),
+]).pipe(
+  Schema.decodeTo(
+    Schema.Boolean,
+    SchemaTransformation.transform({
+      decode: (input) => (typeof input === "boolean" ? input : /^(?:true|on|1|yes)$/iu.test(input)),
+      encode: (input) => input,
+    }),
+  ),
+);

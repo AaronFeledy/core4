@@ -492,6 +492,7 @@ import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
 import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
+import { DestroyOutcome, ObservedServiceRemoval, ServiceShutdownObservation } from "./service-shutdown.ts";
 import {
   DotnetServiceConfig,
   LocalStackServiceConfig,
@@ -850,6 +851,9 @@ const basePublicSchemaRegistry = schemaRegistry({
   HostPlatform,
   ServiceInfo,
   ServiceInfoLogSource,
+  ServiceShutdownObservation,
+  DestroyOutcome,
+  ObservedServiceRemoval,
   StartedService,
   LandofileEventsOutcome,
   StartAppResult,
@@ -1187,6 +1191,9 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ServiceState: "Shared observed and supervised service lifecycle vocabulary.",
   RouteEvidence: "Read-only configured ingress and live route publication evidence.",
   ServiceInfoLogSource: "Declared service log source and provider availability returned by info.",
+  ServiceShutdownObservation: "Attributed daemon shutdown facts without inferred graceful or forced cleanup.",
+  DestroyOutcome: "Provider destroy receipt with optional shutdown observations.",
+  ObservedServiceRemoval: "Exact observed-container removal receipt with optional shutdown observations.",
   StartedService: "Service startup result with scoped connection evidence.",
   PluginDoctorReport: "Public Lando schema contract for plugin-contributed doctor results.",
   PreparedFileSyncTarget: "Public Lando schema contract for a prepared file-sync target.",

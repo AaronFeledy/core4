@@ -119,7 +119,7 @@ const canonicalCases: ReadonlyArray<CanonicalCase> = [
   ["dns_search scalar", { dns_search: "example.test" }, { dns_search: ["example.test"] }],
   ["dns_opt scalar", { dns_opt: "use-vc" }, { dns_opt: ["use-vc"] }],
   ["extra_hosts list form", { extra_hosts: ["db:127.0.0.1"] }, { extra_hosts: { db: "127.0.0.1" } }],
-  ["init string", { init: "true" }, { init: "true" }],
+  ["init string", { init: "true" }, { init: true }],
   ["stop_grace_period duration", { stop_grace_period: "1m30s" }, { stop_grace_period: 90 }],
   ["security_opt scalar", { security_opt: "label=disable" }, { security_opt: ["label=disable"] }],
   ["group_add scalar", { group_add: 1000 }, { group_add: [1000] }],
@@ -171,6 +171,7 @@ const rejectionCases: ReadonlyArray<readonly [key: string, invalid: unknown]> = 
   ["dns_opt", 1],
   ["extra_hosts", ["missing-separator"]],
   ["init", 1],
+  ["init", "sometimes"],
   ["stop_signal", true],
   ["stop_grace_period", "soon"],
   ["security_opt", 1],
@@ -188,6 +189,28 @@ const decodeStrict = (input: unknown) =>
   Schema.decodeUnknownSync(ServiceConfig)(input, { onExcessProperty: "error" });
 
 describe("Compose service runtime knobs", () => {
+  test.each([
+    [true, true],
+    [false, false],
+    ["true", true],
+    ["false", false],
+    ["on", true],
+    ["off", false],
+    ["1", true],
+    ["0", false],
+    ["yes", true],
+    ["no", false],
+    ["TRUE", true],
+    ["OFF", false],
+  ] as const)("normalizes init %j and round-trips its boolean", (input, expected) => {
+    // Given / When
+    const decoded = decodeStrict({ init: input });
+    const encoded = Schema.encodeSync(ServiceConfig)(decoded);
+    // Then
+    expect(decoded.init).toBe(expected);
+    expect(decodeStrict(encoded).init).toBe(expected);
+  });
+
   test("Given ServiceConfig, when fields are inspected, then every runtime knob uses its verbatim Compose key", () => {
     // Given / When
     const fields = Object.keys(ServiceConfig.fields);

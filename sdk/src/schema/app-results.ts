@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import { FileSyncInfo } from "./file-sync-policy.ts";
 import { CheckResult } from "./networking.ts";
 import { ServiceInfo, StartedService } from "./service-info.ts";
+import { ServiceShutdownObservation } from "./service-shutdown.ts";
 
 // ==== Lifecycle results
 // Outcomes returned when an App handle changes its services or resources.
@@ -59,6 +60,9 @@ export const StopAppResult = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String).annotate({
     description: "Names of the services stopped by the operation.",
   }),
+  shutdownObservations: Schema.optionalKey(Schema.Array(ServiceShutdownObservation)).annotate({
+    description: "Attributed daemon shutdown facts, when the provider supports observation.",
+  }),
   landofileEvents: Schema.optionalKey(LandofileEventsOutcome).annotate({
     description: "Lifecycle-step outcome when the app teardown could run Landofile events.",
   }),
@@ -100,6 +104,7 @@ export const DestroyAppResult = Schema.Struct({
       "Number of app snapshots removed; only a snapshot purge (`lando destroy --purge`) removes them.",
   }),
   landofileEvents: StopAppResult.fields.landofileEvents,
+  shutdownObservations: StopAppResult.fields.shutdownObservations,
 }).annotate({
   description: "Resources removed and lifecycle-step outcomes returned after destroying an app.",
 });
