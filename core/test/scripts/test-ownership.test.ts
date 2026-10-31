@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -116,4 +116,45 @@ test("detects stale explicit ownership after a suite is renamed or removed", asy
   expect(staleTestOwners(paths.filter((path) => !path.endsWith("/desktop.integration.test.ts")))).toEqual([
     "plugins/provider-podman/test/desktop.integration.test.ts",
   ]);
+});
+
+test("accounts for Go helper tests without adding them to Bun unit argv", async () => {
+  const root = await fixture();
+  await put(root, "core/container-helper/main_test.go", "package main\n");
+  await put(root, "core/container-helper/protocol_test.go", "package main\n");
+  const inventory = await collectTestInventory(root);
+  const go = inventory.filter((entry) => entry.owner === "container-helper-go");
+  expect(go.map((entry) => entry.path)).toEqual([
+    "core/container-helper/main_test.go",
+    "core/container-helper/protocol_test.go",
+  ]);
+  expect(go.every((entry) => entry.invocation.includes("build-container-helper.ts --test"))).toBe(true);
+  expect(go.every((entry) => entry.note.includes("not native ARM64 Go tests"))).toBe(true);
+  expect(await collectShardedTestFiles(root)).toHaveLength(3);
+  await put(root, "new-package/test/unowned_test.go", "package example\n");
+  await expect(collectTestInventory(root)).rejects.toThrow("new-package/test/unowned_test.go");
+});
+
+test.each([
+  "integration.spec.ts",
+  "integration.test.js",
+  "integration.test.mts",
+  "integration_test.ts",
+  "integration.spec.tsx",
+  "integration.spec.cjs",
+])("requires an integration execution owner for %s", async (suffix) => {
+  const root = await fixture();
+  const path = `new-package/test/live.${suffix}`;
+  await put(root, path);
+  expect(testOwnership(path)).toBeUndefined();
+  await expect(collectTestInventory(root)).rejects.toThrow(path);
+});
+
+test.skipIf(process.platform === "win32")("rejects test-file symlinks instead of omitting them", async () => {
+  const root = await fixture();
+  await put(root, "new-package/test/target.ts");
+  await symlink("target.ts", join(root, "new-package/test/linked.test.ts"));
+  await expect(collectTestInventory(root)).rejects.toThrow(
+    "Test-file symlinks are not supported; use regular test files:\nnew-package/test/linked.test.ts",
+  );
 });

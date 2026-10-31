@@ -7,6 +7,9 @@ import { collectManifests } from "./boundary/graph.ts";
 const ROOT = resolve(import.meta.dirname, "..");
 const normalize = (path: string): string => path.replaceAll("\\", "/").replace(/^\.\//u, "");
 const TEST_FILE = /(?:\.(?:test|spec)|_(?:test|spec))\.[cm]?[jt]sx?$/u;
+const GO_TEST_FILE = /_test\.go$/u;
+const INTEGRATION_FILE = /\.integration[._](?:test|spec)\.[cm]?[jt]sx?$/u;
+const isTestFile = (path: string): boolean => TEST_FILE.test(path) || GO_TEST_FILE.test(path);
 const ignoredDirectories = new Set([".git", "node_modules", "dist", ".astro", "provider-diagnostics"]);
 
 export const FAKE_CLIENT_PROVIDER_TESTS: readonly string[] = [
@@ -66,6 +69,7 @@ export type TestOwner =
   | "providers"
   | "services"
   | "container-helper"
+  | "container-helper-go"
   | "manual";
 export interface TestOwnership {
   readonly owner: TestOwner;
@@ -84,7 +88,16 @@ const ownership = (owner: TestOwner, invocation: string, note: string): TestOwne
 
 export const testOwnership = (input: string): TestOwnership | undefined => {
   const path = normalize(input);
-  if (!TEST_FILE.test(path) || path.split("/").some((part) => part === ".." || part === "")) return;
+  if (!isTestFile(path) || path.split("/").some((part) => part === ".." || part === "")) return;
+  if (GO_TEST_FILE.test(path)) {
+    return path.startsWith("core/container-helper/")
+      ? ownership(
+          "container-helper-go",
+          "ci.yml: container-helper (bun run scripts/build-container-helper.ts --test)",
+          "Go tests run in the containerized Linux x64 helper builder, outside Bun. The ARM64 helper job exercises downloaded binaries, not native ARM64 Go tests.",
+        )
+      : undefined;
+  }
   if (path in MANUAL_TESTS) return ownership("manual", `bun test ./${path}`, MANUAL_TESTS[path] ?? "");
   if (NIGHTLY_TIER_TESTS.includes(path))
     return ownership(
@@ -120,7 +133,7 @@ export const testOwnership = (input: string): TestOwnership | undefined => {
       "ci.yml: unit-tests-linux-x64-shard",
       "Local fixtures or subprocesses; no live provider required. Platform skips remain possible.",
     );
-  if (path.endsWith(".integration.test.ts")) {
+  if (INTEGRATION_FILE.test(path)) {
     if (
       path.startsWith("core/test/live/") ||
       /^plugins\/provider-(?:lando|docker)\/test\/[^/]+\.integration\.test\.ts$/u.test(path)
@@ -159,16 +172,20 @@ export const collectTestInventory = async (root = ROOT): Promise<readonly TestIn
   );
   const entries: TestInventoryEntry[] = [];
   const failures: string[] = [];
+  const symlinks: string[] = [];
   const walk = async (directory: string): Promise<void> => {
     for (const entry of await readdir(resolve(root, directory), { withFileTypes: true })) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (!ignoredDirectories.has(entry.name)) await walk(path);
-      } else if (entry.isFile() && TEST_FILE.test(entry.name)) {
+      } else if (entry.isSymbolicLink() && isTestFile(entry.name)) {
+        symlinks.push(path);
+      } else if (entry.isFile() && isTestFile(entry.name)) {
         const discovered =
           workspaceRoots.some((workspace) => path.startsWith(`${workspace}/test/`)) ||
           path.startsWith("scripts/") ||
-          path.startsWith("test/scenarios/generated/guides/");
+          path.startsWith("test/scenarios/generated/guides/") ||
+          (GO_TEST_FILE.test(path) && path.startsWith("core/container-helper/"));
         const owner = discovered ? testOwnership(path) : undefined;
         if (owner) entries.push({ path, ...owner });
         else failures.push(path);
@@ -176,6 +193,10 @@ export const collectTestInventory = async (root = ROOT): Promise<readonly TestIn
     }
   };
   await walk("");
+  if (symlinks.length)
+    throw new Error(
+      `Test-file symlinks are not supported; use regular test files:\n${symlinks.sort().join("\n")}`,
+    );
   if (failures.length) throw new Error(`Tests without an execution owner:\n${failures.sort().join("\n")}`);
   return entries.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 };

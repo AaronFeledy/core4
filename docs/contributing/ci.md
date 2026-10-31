@@ -37,6 +37,7 @@ Every platform cell runs the fork-safe portable static gates:
 ```bash
 bun run codegen:check
 bun run lint
+bun run check:test-ownership
 bun run check:boundaries
 bun run check:telemetry-inventory
 bun run check:compose-coverage
@@ -55,7 +56,7 @@ bun run typecheck
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix on `ubuntu-26.04`. The selected profile controls whether those shards run; each selected suite still runs in full. Library, recipe, Linux guide, and provider test jobs also use Ubuntu 26.04 rather than running twice on different Ubuntu releases. Builds stay on `ubuntu-24.04` for the older glibc reference.
 
-`scripts/test-shards.ts` collects the unit file set from `scripts/test-ownership.ts` and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`. Workspace test roots come from the root package manifest. Tests beside scripts are included too. Dedicated library, recipe, docs, generated guide and nightly suites stay outside unit shards. Shard balance comes from the committed timings file.
+`scripts/test-shards.ts` collects the unit file set from `scripts/test-ownership.ts` and runs `bun --no-orphans test --shard=i/3 --timings=.bun-test-timings.json`. Workspace test roots come from the root package manifest. Tests beside scripts are included too. Go helper test files belong to the containerized `container-helper` builder, which runs `build-container-helper.ts --test`; they stay outside Bun unit argv and do not establish native ARM64 Go-test execution. Dedicated library, recipe, docs, generated guide and nightly suites stay outside unit shards. Shard balance comes from the committed timings file.
 
 The unit set includes the three provider contract suites and the local integration suites explicitly listed in `LOCAL_INTEGRATION_TESTS`. Podman Desktop fake-client cases live in `desktop.test.ts` and run without a socket. Its real desktop contract remains in `desktop.integration.test.ts`, requires native macOS or Windows plus `LANDO_TEST_PODMAN_DESKTOP_SOCKET`, and currently has no CI invocation. A Linux fake-client pass does not establish desktop acceptance.
 
@@ -67,7 +68,9 @@ bun run check:test-ownership
 bun run scripts/test-shards.ts --list
 ```
 
-The inventory reports each test path, its primary execution owner, invocation and limitations. `manual` entries are known CI gaps, with prerequisites and reasons recorded alongside their paths. New integration suites without an execution owner and stale explicit entries fail the ownership check, which runs in static CI and `gate:pr`. New workspace packages are discovered through `workspaces.packages` (or array-form `workspaces`). Tests outside workspace test trees, scripts, or generated guides require an explicit discovery decision.
+The inventory reports each test path, its primary execution owner, invocation and limitations. `manual` entries are known CI gaps, with prerequisites and reasons recorded alongside their paths. New integration suites without an execution owner and stale explicit entries fail the ownership check, which runs in static CI and `gate:pr`. New workspace packages are discovered through `workspaces.packages` (or array-form `workspaces`). Tests outside workspace test trees, scripts, generated guides, or the Go helper tree require discovery support. Test-file symlinks fail the check; keep authored test files as regular files.
+
+For an unowned path, register a new workspace in the root manifest if needed, then add an owner in `scripts/test-ownership.ts` backed by an actual execution command. Add that CI invocation before labeling a suite as CI-owned. If a suite intentionally remains manual, record its prerequisites and missing CI invocation. For a renamed or deleted explicitly owned suite, update or remove its registry path. Rerun `bun run check:test-ownership` after the correction.
 
 Ownership records file selection. Selected files can still skip cases because a live socket, native OS, compiled binary, architecture or explicit destructive-test opt-in is missing. Read the test results and prerequisites before claiming live or native coverage; generated workflow validation and simulated platform cases provide no native execution receipt.
 

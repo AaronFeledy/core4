@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { timingRefreshCommand } from "../../../scripts/update-test-timings.ts";
 
 import {
   FAKE_CLIENT_PROVIDER_TESTS,
@@ -107,4 +111,37 @@ test("bounds Windows command lines while preserving every collected file exactly
   expect(calls).toBe(commands.length);
   expect(code).toBe(7);
   expect(() => localUnitTestCommands(["x".repeat(16_000)], "win32")).toThrow("Windows command budget");
+});
+
+test("local, shard and timings commands select exact files rather than matching path suffixes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "test-exact-selection-"));
+  const file = "core/test/unit.test.ts";
+  try {
+    for (const [path, name] of [
+      [file, "intended unit"],
+      ["docs/test/core/test/unit.test.ts", "excluded docs"],
+    ] as const) {
+      await mkdir(dirname(join(root, path)), { recursive: true });
+      await writeFile(join(root, path), `import { test } from "bun:test"; test("${name}", () => {});`);
+    }
+    for (const command of [
+      localUnitTestCommand([file]),
+      shardedUnitTestCommand("1/1", {}, [file]),
+      timingRefreshCommand([file]),
+    ]) {
+      const child = Bun.spawn([...command], { cwd: root, stdout: "pipe", stderr: "pipe" });
+      const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
+      const output = Bun.stripANSI(`${stdout}\n${stderr}`);
+      expect(code, output).toBe(0);
+      expect(output).toMatch(/^\s*1 pass\s*$/mu);
+      expect(output).toContain("intended unit");
+      expect(output).not.toContain("excluded docs");
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });

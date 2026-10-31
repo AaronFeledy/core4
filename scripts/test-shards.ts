@@ -45,12 +45,15 @@ export const isShardedUnitTest = (path: string): boolean => testOwnership(path)?
 export const collectShardedTestFiles = async (root: string = REPO_ROOT): Promise<ReadonlyArray<string>> =>
   (await collectTestInventory(root)).filter((entry) => entry.owner === "unit").map((entry) => entry.path);
 
+export const testFileArguments = (files: readonly string[]): readonly string[] =>
+  files.map((path) => `./${path}`);
+
 export const localUnitTestCommand = (files: readonly string[]): readonly string[] => [
   process.execPath,
   "--no-orphans",
   "test",
   ...SHARD_RUNTIME_FLAGS,
-  ...files.map((path) => `./${path}`),
+  ...testFileArguments(files),
 ];
 
 // CreateProcessW accepts at most 32,767 UTF-16 code units. Reserve room
@@ -108,6 +111,7 @@ const parseShardSpec = (spec: string): { readonly index: number; readonly count:
 export const shardedUnitTestCommand = (
   spec: string,
   options: { readonly updateTimings?: boolean } = {},
+  files: readonly string[] = [],
 ): ReadonlyArray<string> => {
   const { index, count } = parseShardSpec(spec);
   return [
@@ -118,6 +122,7 @@ export const shardedUnitTestCommand = (
     `--shard=${index}/${count}`,
     `--timings=${TEST_TIMINGS_FILE}`,
     ...(options.updateTimings === true ? ["--update-timings"] : []),
+    ...testFileArguments(files),
   ];
 };
 
@@ -128,7 +133,7 @@ const runShard = async (spec: string, options: { readonly updateTimings: boolean
   }
   console.error(`[test-shards] shard ${spec}: ${files.length} collected files`);
   const proc = Bun.spawn({
-    cmd: [...shardedUnitTestCommand(spec, options), ...files],
+    cmd: [...shardedUnitTestCommand(spec, options, files)],
     cwd: REPO_ROOT,
     stdout: "inherit",
     stderr: "inherit",
