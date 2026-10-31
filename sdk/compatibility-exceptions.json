@@ -1,5 +1,23 @@
 [
   {
+    "surface": "command:meta:global:list",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.state",
+    "justification": "Pre-release global policy distinguishes unverified capability or dependency evidence from known unsupported intent. Agents must handle enabled, disabled, blocked, and unverified catalog states; policy choices remain separate from observed runtime status."
+  },
+  {
+    "surface": "command:meta:global:uninstall",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release #1257 replaces global:uninstall with explicit global:disable policy and ownership-verified cleanup. Disable preserves named volumes; deliberate deletion remains global:destroy --yes --purge. No unreleased command alias is retained."
+  },
+  {
+    "surface": "command:meta:global:install",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release #1257 separates durable global:enable intent from global:reconcile configuration repair and global:start runtime changes. The previous install command mixed those meanings; the new commands expose policy impact previews and preserve explicit choices during repair."
+  },
+  {
     "surface": "schema:LogSourceStrategy",
     "changeKind": "enum-widened",
     "path": "$",

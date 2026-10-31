@@ -63,16 +63,17 @@ import {
   metaGlobalConfigValidateSpec,
 } from "./command-specs/meta/global/config-verbs";
 import { metaGlobalDestroySpec } from "./command-specs/meta/global/destroy";
+import { metaGlobalDisableSpec } from "./command-specs/meta/global/disable";
+import { metaGlobalEnableSpec } from "./command-specs/meta/global/enable";
 import { metaGlobalInfoSpec } from "./command-specs/meta/global/info";
-import { metaGlobalInstallSpec } from "./command-specs/meta/global/install";
 import { metaGlobalListSpec } from "./command-specs/meta/global/list";
 import { globalLogsSpec } from "./command-specs/meta/global/logs";
 import { metaGlobalRebuildSpec } from "./command-specs/meta/global/rebuild";
+import { metaGlobalReconcileSpec } from "./command-specs/meta/global/reconcile";
 import { metaGlobalRestartSpec } from "./command-specs/meta/global/restart";
 import { metaGlobalStartSpec } from "./command-specs/meta/global/start";
 import { metaGlobalStatusSpec } from "./command-specs/meta/global/status";
 import { metaGlobalStopSpec } from "./command-specs/meta/global/stop";
-import { metaGlobalUninstallSpec } from "./command-specs/meta/global/uninstall";
 import { metaMcpSpec } from "./command-specs/meta/mcp";
 import { pluginAddSpec } from "./command-specs/meta/plugin/add";
 import { pluginBuildSpec } from "./command-specs/meta/plugin/build";
@@ -210,7 +211,8 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       metaGlobalConfigValidateSpec,
       metaGlobalDestroySpec,
       metaGlobalInfoSpec,
-      metaGlobalInstallSpec,
+      metaGlobalEnableSpec,
+      metaGlobalReconcileSpec,
       metaGlobalListSpec,
       globalLogsSpec,
       metaGlobalRebuildSpec,
@@ -218,7 +220,7 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       metaGlobalStartSpec,
       metaGlobalStatusSpec,
       metaGlobalStopSpec,
-      metaGlobalUninstallSpec,
+      metaGlobalDisableSpec,
       metaMcpSpec,
       pluginAddSpec,
       pluginBuildSpec,

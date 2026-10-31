@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
+import { appMutationLockKey } from "@lando/engine/operations/app-mutation-lock";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, appIdentityKey } from "@lando/sdk/schema";
 import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
@@ -29,10 +30,14 @@ for (const command of ["stop", "destroy"] as const) {
         command === "stop"
           ? await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)))
           : await Effect.runPromise(globalDestroy({ yes: true }).pipe(Effect.provide(harness.layer)));
-      // Then it returns a read-only no-op without materializing the root or parsing desired YAML.
+      // Then only coordination storage is created; the global root and runtime remain untouched.
       expect(result.materialized).toBe(false);
-      expect(harness.calls).toEqual([]);
-      expect(await readdir(dataRoot)).toEqual([]);
+      expect(harness.calls).toEqual(["removeRoutes"]);
+      const globalRoot = join(dataRoot, "global");
+      const lockDirectory = `.lando-global-${appMutationLockKey("global", globalRoot)}`;
+      expect(await readdir(dataRoot)).toEqual([lockDirectory]);
+      expect(await readdir(join(dataRoot, lockDirectory))).toEqual([]);
+      await expect(stat(globalRoot)).rejects.toMatchObject({ code: "ENOENT" });
     });
   });
 
@@ -88,7 +93,7 @@ for (const probe of ["availability", "status"] as const) {
     await withDataRoot(async (dataRoot) => {
       const harness = await globalTeardownHarness(dataRoot, { [probe]: Effect.fail(unavailable) });
       await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
-      expect(harness.calls).toEqual([]);
+      expect(harness.calls).toEqual(["removeRoutes"]);
     });
   });
 }

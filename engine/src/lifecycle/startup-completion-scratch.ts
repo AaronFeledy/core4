@@ -1,9 +1,10 @@
-import { AppPlacementError } from "@lando/sdk/errors";
+import { AppPlacementError, GlobalAutoStartError, ServiceNotReadyError } from "@lando/sdk/errors";
 import type { AppPlan, RouterConfig } from "@lando/sdk/schema";
 import type { RouterServiceShape } from "@lando/sdk/services";
 import { Cause, Effect } from "effect";
 import { resolveProxyDefaultDomain } from "../config/proxy-default-domain.ts";
 import { resolveRouterConfigForApp, routerEnabled } from "../config/router-config.ts";
+import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 
 export const applyScratchRoutes = Effect.fn("RouterService.applyScratchRoutes")(
   function* (request: {
@@ -16,6 +17,7 @@ export const applyScratchRoutes = Effect.fn("RouterService.applyScratchRoutes")(
     const defaultDomain = yield* resolveProxyDefaultDomain;
     const resolved = yield* resolveRouterConfigForApp(request.landofileRouter);
     yield* Effect.scoped(router.setup({ defaultDomain, ...resolved }));
+    yield* verifyGlobalConsumerAdmission;
     yield* router.applyRoutes(plan.routes, plan.id);
   },
   Effect.asVoid,
@@ -24,7 +26,10 @@ export const applyScratchRoutes = Effect.fn("RouterService.applyScratchRoutes")(
       Effect.catchCause((cause) => {
         if (Cause.hasInterruptsOnly(cause)) return Effect.interrupt;
         const error = Cause.findErrorOption(cause);
-        return error._tag === "Some" && error.value instanceof AppPlacementError
+        return error._tag === "Some" &&
+          (error.value instanceof AppPlacementError ||
+            error.value instanceof GlobalAutoStartError ||
+            error.value instanceof ServiceNotReadyError)
           ? Effect.fail(error.value)
           : Effect.logWarning(
               `Unable to apply routes for scratch app ${String(request.plan.id)}: ${Cause.pretty(cause)}`,

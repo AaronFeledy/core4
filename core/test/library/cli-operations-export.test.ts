@@ -11,11 +11,14 @@ import { makeLandoRuntime } from "@lando/core";
 import {
   ConfigResultSchema,
   config,
+  globalDisable,
+  globalEnable,
+  globalReconcile,
   invokeOperation,
   listServices,
   renderAppsListResult,
   renderConfigResult,
-  renderGlobalInstallResult,
+  renderGlobalPolicyChangeResult,
 } from "@lando/core/cli/operations";
 
 import corePackage from "../../package.json";
@@ -72,7 +75,10 @@ describe("@lando/core/cli/operations package export", () => {
 
     expect(operations.invokeOperation).toBeFunction();
     expect(operations.listServices).toBeFunction();
-    expect(operations.renderGlobalInstallResult).toBe(renderGlobalInstallResult);
+    expect(operations.globalEnable).toBe(globalEnable);
+    expect(operations.globalDisable).toBe(globalDisable);
+    expect(operations.globalReconcile).toBe(globalReconcile);
+    expect(operations.renderGlobalPolicyChangeResult).toBe(renderGlobalPolicyChangeResult);
     expect(corePackage.exports["./cli/operations"]).toEqual({
       types: "./src/cli/operations.ts",
       import: "./src/cli/operations.ts",

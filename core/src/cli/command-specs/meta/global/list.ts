@@ -1,8 +1,6 @@
-import { Effect } from "effect";
 import { Flags } from "../../../spec/metadata";
 
 import {
-  DefaultGlobalListLayer,
   type GlobalListResult,
   GlobalListResultSchema,
   globalList,
@@ -20,13 +18,13 @@ export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
     "List every contributed global service, its source plugin, enabled state, and per-service commands.",
   namespace: "meta",
   topLevelAlias: "global:list",
-  bootstrap: "minimal",
+  bootstrap: "plugins",
   flags: {
     format: Flags.string({
       description: "Output format.",
       default: "table",
     }),
   },
-  run: () => globalList().pipe(Effect.provide(DefaultGlobalListLayer)),
+  run: () => globalList(),
   render: (result, _input, ctx) => renderGlobalListResult(result, ctx),
 };

@@ -10,6 +10,8 @@ import { Effect, Schema } from "effect";
 
 test.each([
   { id: "app:destroy" },
+  { id: "meta:global:disable" },
+  { id: "meta:global:reconcile" },
   { id: "fixture:restore" },
   { id: "fixture:inspect", flags: { yes: { type: "boolean" } } },
 ])("one classifier excludes destructive defaults and marks explicitly allowed $id", (surface) => {

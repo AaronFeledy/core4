@@ -6,12 +6,172 @@ timeout: 60000
 tags: [beta, docs, global, lifecycle]
 ---
 
-# Uninstall the global app
+# Disable shared global services
 
-Use `lando global:uninstall` to clear the host-level global app's generated
-services, not to remove the Lando CLI. If you only need to stop one shared service,
-use `lando global:stop --service` instead. Named volumes are retained unless you choose
-a purge operation. Anonymous volumes follow their container, as described in [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
+Use `lando global:disable <service>` to disable a shared service and stop its
+containers while retaining named volumes. This manages the global app, not the
+Lando CLI. If you only need a temporary stop, use `lando global:stop --service`
+instead. Anonymous volumes follow their container, as described in [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
+
+## Disable a shared service
+
+On the host, preview the effect of disabling Mailpit:
+
+```sh
+lando global:disable mailpit --dry-run --format=json
+```
+
+The preview changes neither files nor runtime resources. Read `result.impact` for
+the selected contributions and plugins, dependency blockers, affected apps and
+route hostnames, and the `volumes: retained` policy. `desired` reports the requested
+choice; `policyChanges` says whether it would change saved preferences.
+
+Check `validationErrors` and `uncertainties` as well as `dependencyBlockers`. A
+successful preview can report problems that would prevent or limit the real
+operation. Missing ownership evidence is uncertainty, not permission to delete a
+resource. The result reports `dryRun: true` and `policySaved: false`; it doesn't
+reserve the state it inspected. The real command checks current state again.
+
+A preview run from another CLI process reports the policy and runtime evidence it
+can observe. It doesn't see an active startup's private in-process reservation.
+The real command must acquire its own mutation lock and check current admission
+before making changes. A preview invoked inside the startup's in-process command
+or SDK context also reports any reserved ids it would affect.
+
+By default, disable and reconcile refuse before saving policy if a running user or
+scratch app needs the selected service, or if Lando cannot verify whether such an
+app is running. `GlobalConsumerProtectionError` reports `policySaved: false` and
+the affected apps or inspection uncertainty. In the preview, each `impact.consumers`
+entry identifies the app's `id`, `name`, `kind`, `root`, `provider`, active
+`services`, required `globalServices`, and `routes`.
+
+Stop or reconfigure the affected apps if that's what you intend, and restore any
+unavailable inspection before retrying. If you deliberately want to disable the
+dependency while leaving those apps running, add `--allow-disruption` to that
+invocation. For example, `lando global:disable mailpit --allow-disruption` can
+interrupt their mail capture. The flag acknowledges only that consumer impact;
+it doesn't bypass global-service dependency checks, ownership checks, or volume
+retention, and it never stops the affected apps for you.
+
+An active startup has a separate protection. While a global service, user app, or
+scratch app is applying services that need a selected global id, disable and
+reconcile refuse for that id even with `--allow-disruption`. This also covers an
+in-process command invoked by that startup's service hook, before its new
+containers appear as running consumers. Policy stays unchanged for the refused invocation
+(`policySaved: false`). Finish the active operation, then retry as a separate
+command; disruption acknowledgement cannot cancel an in-flight admission.
+
+This protection follows the saved policy file. Embedded hosts using different
+global runtime roots still share it when they share `global.config.yml`.
+
+Within the same process, Lando also refuses a second policy change or a new
+service activation while an earlier policy command is checking or finishing its
+cleanup. Let that operation finish before running another mutation. Previews
+remain read-only and don't take ownership of the pending change.
+
+If a policy change is refused because a global route update is in progress,
+retry after that update finishes.
+
+A child `lando` process owns its own mutation lock. It cannot borrow a running
+parent command's lock. When Lando recognizes that parent ownership, it refuses
+the child mutation immediately;
+other lock contention follows the normal bounded wait. Run the policy command
+separately after the parent finishes. In-process command and SDK calls retain
+nested operation support and still obey the active-startup protection above.
+
+When the proposed change is what you want, disable Mailpit and check the result:
+
+```sh
+lando global:disable mailpit
+lando global:list --format=json
+lando global:status --format=json
+```
+
+The `mailpit` entry in the list reports `enabled: false` and `state: disabled`.
+Disable saves your choice, stops and removes its owned containers, withdraws its
+routes, and regenerates configuration. Other contributions keep their configuration
+and active routes. Named volumes remain available for reuse. Check status for any
+pending work before treating cleanup as complete.
+
+The argument accepts a contribution id or a plugin package name from
+`global:list`. You can pass several ids in one command. A package name disables
+that plugin's current and future contributions and clears its individual choices.
+For example, `@lando/proxy-traefik` selects the router and its diagnostics service;
+disabling that package also makes routed app URLs unavailable. Unknown or ambiguous
+names fail before policy changes.
+
+If an enabled service requires one you selected, disable both in the same command,
+or select the owning package when it contains both. Lando identifies known
+dependents and rejects an incomplete selection before changing policy. It never
+silently disables another contribution. Remove an authored dependency before
+disabling the contributed service it requires.
+
+The choice persists in `<userConfRoot>/global.config.yml`. Neither automatic
+startup nor `lando global:reconcile` re-enables it.
+Overrides for that service in any global Landofile layer stay on disk but are
+ignored while it is disabled. To re-enable it with those overrides and its retained
+named volumes, run:
+
+```sh
+lando global:enable mailpit
+lando global:list --format=json
+```
+
+Check both `enabled: true` and `state: enabled` in the list. A `blocked` or
+`unverified` entry needs its reported cause resolved before it can start. Enable
+doesn't start containers; start an app that needs
+Mailpit, or run `lando global:start --service mailpit` and inspect
+`lando global:status --service mailpit --format=json`.
+
+## Finish pending cleanup
+
+After consumer protection has passed or you've explicitly acknowledged disruption,
+unavailable cleanup evidence or a broken unrelated contribution can leave work
+pending even though the disable choice was saved. Cleanup still needs matching
+ownership evidence. Incomplete reconciliation fails with `GlobalPolicyReconciliationError` and reports
+`policySaved`, `revision`, `servicesRemoved`, and `pending`. Pending entries identify
+work on evidence, containers, routes, or configuration generation. Completed work
+stays complete; failure doesn't undo your disabled policy.
+
+If you change your mind, `lando global:enable <id>` cancels unfinished disable
+cleanup attributable to that contribution, including when its plugin has since
+disappeared. It saves enabled intent without recreating removed containers or
+restoring routes. Select the owning package if an id has policies under several
+plugins. Lando preserves cleanup it cannot attribute and reports that uncertainty;
+the saved choice does not clear another owner's work. Cleanup for other disabled
+contributions remains pending. Read the contribution's eligibility and observed
+state before using it.
+
+Read the desired policy, observed resources, and pending work, then retry after
+fixing the reported cause:
+
+```sh
+lando global:status --format=json
+lando global:reconcile
+lando global:status --format=json
+```
+
+Reconcile preserves policy and starts no containers. It can finish generating
+configuration even when container cleanup is still blocked, or remove a selected
+container while another contribution prevents generation. Successful generation
+alone doesn't prove cleanup finished. If containers or routes lack matching
+applied ownership evidence, Lando leaves their cleanup pending rather than deleting
+unverified resources. Status remains available even when the desired Landofile
+cannot be validated.
+
+Reconcile checks consumers again. An earlier `--allow-disruption` isn't saved as
+permission for later commands. If the affected apps are still running and you
+intend to continue despite their dependency, explicitly pass it again to
+`lando global:reconcile --allow-disruption`. Read the current preview first; the
+affected apps or inspection gaps may have changed.
+
+Reconciliation can retry a removed plugin's pending service only while its saved
+ownership proof still matches the applied service and that id hasn't become an
+authored service. Reused ids or changed ownership remain pending. If you intend to
+stop the entire global app instead, `lando global:stop` is the explicit operation;
+it also withdraws the whole global route definition while retaining named volumes.
+Use that only when stopping the other shared services is acceptable. A route-only
+recovery doesn't prove unknown containers were removed.
 
 ## Stop one global service
 
@@ -24,7 +184,7 @@ That stops Mailpit and removes its container. Status reports it as `stopped` in 
 
 Dependencies aren't stopped for you. Lando leaves named volumes, the shared network, and every service you didn't name alone, so Traefik keeps serving its routes. An unknown name fails before anything stops. A selected stop needs the global app's applied state; if containers outlived it, the command fails and changes nothing.
 
-This isn't a permanent off switch. Starting an app that needs a global service can bring it back. To start it yourself:
+A stop is temporary. Starting an app that needs a global service can bring it back. To start it yourself:
 
 ```sh
 lando global:start --service mailpit
@@ -32,22 +192,25 @@ lando global:start --service mailpit
 
 Mailpit's route needs Traefik, so that also starts Traefik when it's stopped and lists it in `servicesStarted`. Routes follow what runs: services you didn't name keep theirs while they're up, and a stopped service's hostname gets the proxy's 404 page.
 
-## Clear generated services
+## Disable every contributed service
 
-Run this to regenerate the global Landofile with its services cleared. Provider
-named volumes stay in place, and the command does not require `--yes`.
-
-```sh
-lando global:uninstall
-```
-
-To destroy provider resources and volumes first, then clear services:
+Use `--all` to disable every known plugin's current and future contributions,
+including retained policy for plugins that are no longer loaded. This keeps named
+volumes and your authored Landofile files. Authored services that aren't current
+plugin contributions stay in the configuration. Enable and disable require either
+selectors or `--all`; a bare command doesn't change policy, and selectors cannot
+be combined with `--all`. Neither command accepts `--yes`.
 
 ```sh
-lando global:uninstall --purge
+lando global:disable --all
+lando global:list --format=json
+lando global:status --format=json
 ```
 
-A plugin argument is not available yet. It fails with `GlobalAppError` before any provider or dist mutation.
+Check that the listed contributions report `enabled: false`, then inspect any
+pending cleanup. Re-enable each service or plugin you need with
+`lando global:enable <id-or-package>`. Use `lando global:enable --all` only when you
+intend to enable every known plugin and reset its individual choices.
 
 ## Destroy provider resources
 
@@ -67,8 +230,9 @@ This reads and cleans up only the selected provider. Named volumes stay unless y
 
 To move the global app to another provider, do not destroy it by hand. See [Switch providers](../setup/provider-selection.mdx#switch-providers).
 
-To remove volumes as well as provider resources, add `--purge`. This deletes the
-global app's stored volume data:
+To remove service- and app-scoped named volumes as well as provider resources,
+add `--purge`. This deletes their stored data. Volumes declared with
+`scope: global` survive this operation:
 
 ```sh
 lando global:destroy --yes --purge
@@ -90,6 +254,22 @@ lando global:config
 With no `--service`, `global:stop` tears down the whole global app's running provider resources and keeps named volumes. `global:restart` and `global:rebuild` always act on the whole global app. `lando poweroff` stops the global app after your apps unless you pass `--keep-global`. `global:config` prints the effective global Landofile, merged from the generated file and your own layers (YAML or TypeScript, includes resolved), plus the paths behind it.
 
 Each `meta:global:*` command publishes a `global:*` alias.
+
+<Guide>
+  <Scenario id="global-disable-help" tags={["scenario"]} render={false} reason="Verify disablement command discovery without changing shared services">
+    <Step name="inspect-command">
+      <Run command="lando help global:disable --format=json" />
+      <Verify command="lando help global:disable --format=json" expect={{ stdout: { regex: "\"canonicalId\":\\s*\"meta:global:disable\"" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="global-reconcile-preview" tags={["scenario"]} render={false} reason="Verify a reconciliation preview without changing files or runtime resources">
+    <Step name="preview-reconciliation">
+      <Run command="lando global:reconcile --dry-run --format=json" />
+      <Verify command="lando global:reconcile --dry-run --format=json" expect={{ stdout: { regex: "\"dryRun\":\\s*true[\\s\\S]*\"policySaved\":\\s*false" } }} />
+      <Verify command="lando global:reconcile --dry-run --format=json" expect={{ stdout: { regex: "\"volumes\":\\s*\"retained\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 ## Verify
 

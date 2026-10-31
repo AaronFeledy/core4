@@ -22,6 +22,8 @@ import type {
   LandofileDialectMixError,
   LandofileParseError,
   LandofileValidationError,
+  LandofileWriteValidationError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginManifestError,
@@ -64,6 +66,8 @@ type LandofileRootLoadError = Effect.Error<ReturnType<typeof loadLandofileLayers
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | GlobalServiceCollisionError
+  | PluginManifestError
   | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
@@ -105,6 +109,10 @@ type LegacyOrphanTeardownError =
   | StateStoreError;
 
 type LegacyGlobalInstallChannel =
+  | Exclude<LandofileRootLoadError, LandofileValidationError>
+  | LandofileWriteValidationError
+  | ManagedFileTransactionError
+  | FileSystemError
   | AppPlacementError
   | GlobalAppError
   | GlobalDistConflictError
@@ -116,6 +124,10 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | AppResolveError
+  | StateStoreError
+  | LandofileWriteValidationError
+  | ManagedFileTransactionError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | AppPlacementError
@@ -201,6 +213,8 @@ describe("Engine plan-carrying error channels", () => {
         | GlobalAppError
         | AppPlacementError
         | LandofileParseError
+        | GlobalServiceCollisionError
+        | PluginManifestError
       >
     >(true);
     expect(true).toBe(true);
@@ -245,6 +259,9 @@ describe("Engine plan-carrying error channels", () => {
         | SecretStoreUnavailableError
         | SecretReferenceInvalidError
         | ToolingExecError
+        | Effect.Error<ReturnType<typeof globalInstall>>
+        | AppResolveError
+        | StateStoreError
       >
     >(true);
     expect(true).toBe(true);

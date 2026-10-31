@@ -220,6 +220,26 @@ export const makeRuntimeProviderRegistry = (
       );
 
       return RuntimeProviderRegistry.of({
+        appliedStateInventory: Effect.fn("RuntimeProviderRegistry.appliedStateInventory")(function* (
+          providerId: ProviderId,
+        ) {
+          const { contribution, context } = yield* contributionFor(providerId);
+          if (contribution.appliedStateInventory === undefined)
+            return yield* Effect.fail(
+              redactFailure(
+                new ProviderUnavailableError({
+                  providerId,
+                  operation: "applied-state.list",
+                  message: `Runtime provider ${providerId} does not provide a strict applied-state inventory.`,
+                  remediation:
+                    "Update the provider plugin to support strict applied-state inventory before relying on host-wide ownership checks.",
+                }),
+              ),
+            );
+          return yield* contribution
+            .appliedStateInventory(context)
+            .pipe(Effect.provideService(PathsService, paths), Effect.mapError(redactFailure));
+        }),
         assertAppliedStateReadable: Effect.fn("RuntimeProviderRegistry.assertAppliedStateReadable")(
           function* (plan) {
             const { contribution, context } = yield* contributionFor(plan.provider);
