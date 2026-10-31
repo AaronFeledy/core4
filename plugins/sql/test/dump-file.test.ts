@@ -43,6 +43,15 @@ describe("ensureReadableDump", () => {
     expect(dump.digest).toHaveLength(64);
   });
 
+  test("detects a raw SQLite database from its 16-byte header", async () => {
+    const path = join(appRoot, "site.db");
+    await writeFile(path, Buffer.concat([Buffer.from("SQLite format 3\0"), Buffer.from("payload")]));
+    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
+
+    expect(dump.compression).toBe("none");
+    expect(dump.sqliteDatabase).toBe(true);
+  });
+
   test("detects gzip from magic bytes even without a .gz suffix", async () => {
     const path = join(appRoot, "dump.sql");
     await writeFile(path, Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x00]));

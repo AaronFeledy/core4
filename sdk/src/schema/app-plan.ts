@@ -32,6 +32,7 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { SqliteTargetConfig } from "./sqlite.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
@@ -84,6 +85,9 @@ const ServicePlanFields = {
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
   environment: Environment,
+  sqlite: Schema.optionalKey(SqliteTargetConfig).annotate({
+    description: "File-backed SQLite database copied from the service's authored sqlite.path.",
+  }),
   user: Schema.optionalKey(Schema.String),
   home: Schema.optionalKey(ServiceHomePlan).annotate({
     description: "Resolved home status, always set by the planner; optional for hand-built plans.",

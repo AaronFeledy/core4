@@ -19,8 +19,8 @@ export interface EngineHttpRequest {
   readonly method: "GET" | "POST" | "PUT" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
-  /** Docker-only feature opt-in; uses the negotiated prefix unless advertised support is known. */
-  readonly minimumApiVersion?: "1.48";
+  /** Docker-only feature API: volume subpaths (1.45) require advertised support; optional gateway priority (1.48) may fall back. Ordinary requests keep their negotiated prefix. */
+  readonly minimumApiVersion?: "1.45" | "1.48";
   readonly headers?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
   readonly stdin?: AsyncIterable<Uint8Array>;

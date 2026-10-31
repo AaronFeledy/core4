@@ -220,11 +220,20 @@ export type ExecChunk =
   | { readonly kind: "stdout" | "stderr"; readonly chunk: Uint8Array }
   | { readonly exitCode: number };
 
+export interface EphemeralBindMount {
+  readonly source: string;
+  readonly target: string;
+  readonly readOnly?: boolean;
+}
+
 export interface EphemeralRunSpec {
   readonly owner?: AppSelector;
   readonly image: string;
   readonly command: ReadonlyArray<string>;
   readonly mounts?: ReadonlyArray<VolumeMountPlan>;
+  readonly binds?: ReadonlyArray<EphemeralBindMount>;
+  readonly user?: string;
+  readonly entrypoint?: ReadonlyArray<string>;
   readonly stdin?: "inherit" | "ignore";
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   readonly captureStdout?: boolean;

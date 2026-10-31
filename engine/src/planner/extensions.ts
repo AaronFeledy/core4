@@ -126,6 +126,7 @@ export const toAppFeatureDraft = (
     environment: { ...servicePlan.environment },
     ...(servicePlan.connection === undefined ? {} : { connection: servicePlan.connection }),
     ...(servicePlan.nonSqlCreds === undefined ? {} : { nonSqlCreds: servicePlan.nonSqlCreds }),
+    ...(servicePlan.sqlite === undefined ? {} : { sqlite: servicePlan.sqlite }),
     ...(servicePlan.user === undefined ? {} : { user: servicePlan.user }),
     ...(servicePlan.workingDirectory === undefined ? {} : { workingDirectory: servicePlan.workingDirectory }),
     ...(appMount === undefined
@@ -192,6 +193,7 @@ export const servicePlanFromDraft = (
     : draft.nonSqlCreds === undefined
       ? {}
       : { nonSqlCreds: draft.nonSqlCreds }),
+  ...(draft.sqlite === undefined ? {} : { sqlite: draft.sqlite }),
   ...(draft.user === undefined ? {} : { user: draft.user }),
   ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
   mounts: [

@@ -15,6 +15,8 @@ export const DbCommandResult = Schema.Struct({
   family: Schema.optionalKey(Schema.String),
   file: Schema.optionalKey(Schema.String),
   snapshotId: Schema.optionalKey(Schema.String),
+  recoverySnapshotId: Schema.optionalKey(Schema.String),
+  recoveryPath: Schema.optionalKey(Schema.String),
   snapshots: Schema.optionalKey(Schema.Array(SnapshotInfo)),
   pruneCandidates: Schema.optionalKey(Schema.Array(SnapshotId)),
   prunedSnapshotIds: Schema.optionalKey(Schema.Array(SnapshotId)),

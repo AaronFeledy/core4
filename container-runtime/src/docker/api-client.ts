@@ -37,6 +37,7 @@ import {
   type DockerApiNegotiationFail,
   compareDockerApiVersion,
   dockerApiPrefixFor,
+  dockerApiVersionFromPrefix,
   dockerApiVersionUnavailable,
 } from "./api-version.ts";
 
@@ -170,8 +171,33 @@ const initialPrefix = (session: DockerPrefixSession, ctx: ProviderErrorContext):
     }),
   );
 
-const requestPrefix = (session: DockerPrefixSession, input: DockerHttpRequest, prefix: string): string => {
+const requestPrefix = (
+  session: DockerPrefixSession,
+  input: DockerHttpRequest,
+  prefix: string,
+  ctx: ProviderErrorContext,
+): string => {
   const advertised = peekDockerDaemonApiVersion(session.endpointKey);
+  // Pre-subpath daemons may ignore the unknown field and mount the volume root.
+  if (
+    input.minimumApiVersion === "1.45" &&
+    (advertised === undefined || (compareDockerApiVersion(advertised, "1.45") ?? -1) < 0)
+  ) {
+    throw new ProviderUnavailableError({
+      providerId: ctx.providerId,
+      operation: "volume-subpath",
+      message:
+        "Docker volume subdirectory helpers require API v1.45 or newer; the selected daemon has not advertised that support.",
+      remediation:
+        "Use a volume root or a passthrough directory bind, or update Docker/Lando so the selected endpoint advertises API v1.45 or newer. Lando will not substitute the volume root.",
+    });
+  }
+  // A custom URL path can select a proxy/daemon; a feature opt-in must never discard it.
+  if (
+    session.explicitPrefix !== undefined &&
+    dockerApiVersionFromPrefix(session.explicitPrefix) === undefined
+  )
+    return prefix;
   return input.minimumApiVersion !== undefined &&
     advertised !== undefined &&
     (compareDockerApiVersion(advertised, input.minimumApiVersion) ?? -1) >= 0
@@ -423,7 +449,7 @@ export const makeUnixDockerApiClient = (
         try: (signal) =>
           requestWithNegotiatedPrefix(session, ctx, async (prefix) => {
             const spawned = await spawnCurl(
-              requestPrefix(session, input, prefix),
+              requestPrefix(session, input, prefix, ctx),
               input,
               combinedAbortSignal(input.signal, signal),
             );
@@ -482,7 +508,7 @@ export const makeNamedPipeDockerApiClient = (
       Effect.tryPromise({
         try: (signal) =>
           requestWithNegotiatedPrefix(session, ctx, (prefix) =>
-            clientFor(requestPrefix(session, input, prefix)).request({
+            clientFor(requestPrefix(session, input, prefix, ctx)).request({
               ...input,
               signal: combinedAbortSignal(input.signal, signal),
             }),
@@ -516,7 +542,7 @@ export const makeHttpDockerApiClient = (
       Effect.tryPromise({
         try: (signal) =>
           requestWithNegotiatedPrefix(session, ctx, (prefix) =>
-            clientFor(requestPrefix(session, input, prefix)).request({
+            clientFor(requestPrefix(session, input, prefix, ctx)).request({
               ...input,
               signal: combinedAbortSignal(input.signal, signal),
             }),

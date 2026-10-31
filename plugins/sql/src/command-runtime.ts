@@ -10,6 +10,7 @@ import {
   EventService,
   InteractionService,
   LandofileService,
+  PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   StateStore,
@@ -20,7 +21,7 @@ import { validateExportCompressionLevel } from "./command-input.ts";
 import { providerSqlExec } from "./dispatch.ts";
 import { type DbCommandInput, executeDbCommand } from "./execute.ts";
 import { resolveSqlTarget } from "./target.ts";
-import { toSqlLandofile, toSqlPlan } from "./views.ts";
+import { overlaySqliteFromLandofile, toSqlLandofile, toSqlPlan } from "./views.ts";
 
 export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCommandInput) {
   yield* validateExportCompressionLevel(input);
@@ -31,6 +32,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const interaction = yield* InteractionService;
   const events = yield* EventService;
   const stateStore = yield* StateStore;
+  const paths = yield* PathsService;
   const landofile = yield* landofiles.discover;
   const authored = toSqlLandofile(landofile.document);
   const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot);
@@ -44,7 +46,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
         remediation: "Run `lando start` to apply the database plan, then retry.",
       }),
     );
-  const plan = toSqlPlan(planned);
+  const plan = overlaySqliteFromLandofile(toSqlPlan(planned), authored);
   const earlyTarget = resolveSqlTarget(plan, input.service);
   if (earlyTarget._tag === "Failure") return yield* Effect.fail(earlyTarget.failure);
   const provider = yield* registry.select(planned);
@@ -148,6 +150,17 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
               { app: planned.id, service: ServiceName.make(service), plan: planned },
               PortablePath.make(destination ?? mount.target),
             );
+      },
+      sqlite: {
+        applied: planned,
+        removeSnapshot: (handle) => mover.removeSnapshot(handle),
+        locateVolume: (volume) => provider.locateVolume(volume),
+        run: (spec) => Effect.scoped(provider.run(spec)),
+        pullArtifact: (spec) => provider.pullArtifact(spec),
+        paths: {
+          ownerSnapshotsDir: paths.ownerSnapshotsDir,
+        },
+        stateStore,
       },
       withVolumeLock: (instanceId, body) => stateStore.withLock(physicalVolumeLockKey(instanceId), body),
       initialization: (identity) =>

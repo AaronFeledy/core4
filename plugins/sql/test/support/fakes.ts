@@ -83,6 +83,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
         MYSQL_DATABASE: "sql-app",
         ...(options.rootPassword === undefined ? {} : { MYSQL_ROOT_PASSWORD: options.rootPassword }),
       },
+      mounts: [],
       storage,
     },
   };
@@ -91,6 +92,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
       name: extra.name,
       type: extra.type,
       environment: {},
+      mounts: [],
       storage: [{ store: `sql-app_${extra.name}_data`, target: fixtureDataDestination(extra.type) }],
     };
   }

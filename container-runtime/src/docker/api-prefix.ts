@@ -115,7 +115,8 @@ export const dockerApiEndpointKey = (dockerHost: string): string => {
   if (dockerHost.startsWith("tcp://")) {
     try {
       const parsed = new URL(`http://${dockerHost.slice("tcp://".length)}`);
-      return `tcp://${parsed.host}`;
+      const route = prefixFromPathname(parsed.pathname);
+      return `tcp://${parsed.host}${route !== undefined && dockerApiVersionFromPrefix(route) === undefined ? route : ""}`;
     } catch {
       return dockerHost;
     }
@@ -123,7 +124,8 @@ export const dockerApiEndpointKey = (dockerHost: string): string => {
   if (dockerHost.startsWith("http://") || dockerHost.startsWith("https://")) {
     try {
       const parsed = new URL(dockerHost);
-      return `${parsed.protocol}//${parsed.host}`;
+      const route = prefixFromPathname(parsed.pathname);
+      return `${parsed.protocol}//${parsed.host}${route !== undefined && dockerApiVersionFromPrefix(route) === undefined ? route : ""}`;
     } catch {
       return dockerHost;
     }

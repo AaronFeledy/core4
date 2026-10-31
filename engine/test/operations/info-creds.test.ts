@@ -275,4 +275,19 @@ describe("infoForPlan creds from connection facts", () => {
     expect(result.services[0]?.creds).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain(SECRET_VALUE);
   });
+
+  test("shows sqlite engine and path instead of empty server credentials", async () => {
+    const service: ServicePlan = {
+      ...makeService({}),
+      name: ServiceName.make("appserver"),
+      type: "php:8.3",
+      sqlite: { path: "data/site.sqlite" },
+    };
+    const plan = { ...makePlan({}), services: { appserver: service } };
+    const result = await Effect.runPromise(infoForPlan(plan).pipe(Effect.provide(provide(plan))));
+
+    expect(result.services[0]?.creds).toEqual({ engine: "sqlite", path: "data/site.sqlite" });
+    const encoded = Schema.encodeSync(ServiceInfo)(Schema.decodeUnknownSync(ServiceInfo)(result.services[0]));
+    expect(encoded.creds).toEqual({ engine: "sqlite", path: "data/site.sqlite" });
+  });
 });

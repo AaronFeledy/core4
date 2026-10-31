@@ -44,8 +44,10 @@ const appendBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return output;
 };
 
+const DUMP_PREFIX_LIMIT = 16;
+
 export const collectDumpPrefix = (chunk: Uint8Array, prefix: Uint8Array): Uint8Array =>
-  prefix.byteLength >= 4 ? prefix : appendBytes(prefix, chunk);
+  prefix.byteLength >= DUMP_PREFIX_LIMIT ? prefix : appendBytes(prefix, chunk);
 
 const streamThrough = (
   source: ReadableStream<Uint8Array>,

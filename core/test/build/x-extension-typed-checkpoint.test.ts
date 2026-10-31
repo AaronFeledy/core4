@@ -15,28 +15,31 @@ import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts"
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
+import { evolveHistoricalSqliteTarget } from "./x-extension-sqlite-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
 import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
-const expected = evolveHistoricalConsolePort(
-  evolveHistoricalAppMountAcceleration(
-    evolveHistoricalEnvironment(
-      evolveHistoricalEndpointMetadata(
-        evolveHistoricalTimestamps(
-          evolveHistoricalReadiness(
-            evolveHistoricalShorthand(
-              evolveHistoricalNetworks(
-                normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
-                "authoring",
+const expected = evolveHistoricalSqliteTarget(
+  evolveHistoricalConsolePort(
+    evolveHistoricalAppMountAcceleration(
+      evolveHistoricalEnvironment(
+        evolveHistoricalEndpointMetadata(
+          evolveHistoricalTimestamps(
+            evolveHistoricalReadiness(
+              evolveHistoricalShorthand(
+                evolveHistoricalNetworks(
+                  normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+                  "authoring",
+                ),
               ),
+              "authoring",
             ),
             "authoring",
           ),
-          "authoring",
         ),
+        "authoring",
       ),
-      "authoring",
     ),
   ),
 );

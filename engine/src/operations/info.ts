@@ -57,6 +57,11 @@ const credsFromConnection = (connection: ServicePlan["connection"]): InfoAppServ
   };
 };
 
+const credsFromService = (service: ServicePlan): InfoAppService["creds"] =>
+  service.sqlite === undefined
+    ? credsFromConnection(service.connection)
+    : { engine: "sqlite", path: service.sqlite.path };
+
 const toServiceInfo = (
   plan: AppPlan,
   service: ServicePlan,
@@ -66,7 +71,7 @@ const toServiceInfo = (
   runtimeHealth: ServiceRuntimeInfo["health"],
 ): InfoAppService => {
   const logSources = infoLogSources(service, capabilities);
-  const creds = credsFromConnection(service.connection);
+  const creds = credsFromService(service);
   const artifact =
     service.artifact === undefined
       ? undefined
