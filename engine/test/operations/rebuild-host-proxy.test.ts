@@ -2,8 +2,8 @@ import { expect, spyOn, test } from "bun:test";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
-import { makeLandoPaths } from "@lando/paths";
 import { AppPlan, ServiceName } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Exit, Schema } from "effect";
 import * as composition from "../../src/composition.ts";
@@ -111,7 +111,7 @@ test.each(["existing", "missing", "failed-adopt", "failed-fresh", "configure-rej
       ...(state.startsWith("failed") ? { applyEffect: Effect.die(new Error("apply failed")) } : {}),
     });
     const app = { kind: "user" as const, id: selected.id, root: selected.root };
-    const paths = makeLandoPaths({ userDataRoot: harness.userDataRoot });
+    const paths = await Effect.runPromise(PathsService.pipe(Effect.provide(harness.layer)));
     const shim = join(harness.userDataRoot, "shim");
     await writeFile(shim, "shim");
     const access = await Effect.runPromise(

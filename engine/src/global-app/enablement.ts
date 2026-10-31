@@ -233,6 +233,9 @@ export const prepareGlobalPolicy = Effect.fnUntraced(function* (
   return {
     policy: { revision: policy.revision + (changed ? 1 : 0), plugins: nextPlugins } satisfies GlobalPolicy,
     ids: [...new Set(ids)],
+    selections: [...selectedEntries.values()].sort(
+      (left, right) => left.plugin.localeCompare(right.plugin) || left.id.localeCompare(right.id),
+    ),
     plugins: [...selectedPlugins].sort(),
     changed,
   };

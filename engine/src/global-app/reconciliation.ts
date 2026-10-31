@@ -74,9 +74,11 @@ export const readGlobalReconciliation = Effect.fn("GlobalApp.readReconciliation"
 /** Keep pending work for other selections; each command replaces only its own receipt. */
 export const recordGlobalReconciliation = Effect.fn("GlobalApp.recordReconciliation")(function* (
   next: GlobalReconciliationState,
+  options: { readonly supersede?: ReadonlyArray<string> } = {},
 ) {
   const bucket = yield* reconciliationBucket();
-  const selected = new Set(next.contributions);
+  // Receipt replacement scope does not establish ownership for resource cleanup.
+  const selected = new Set(options.supersede ?? next.contributions);
   return yield* bucket
     .update((previous) => {
       const pending = [

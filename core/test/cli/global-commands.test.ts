@@ -23,6 +23,7 @@ import {
   type AppPlan,
   LandofileShape,
   PluginManifest,
+  PluginName,
   PortablePath,
   ProviderId,
   type ServiceConfig,
@@ -138,6 +139,8 @@ type HarnessLayer = Layer.Layer<
 >;
 
 interface HarnessOptions {
+  readonly pluginName?: string;
+  readonly pluginPresent?: boolean;
   readonly providerId?: ProviderId;
   readonly failDestroy?: boolean;
   readonly failRemove?: boolean;
@@ -447,6 +450,7 @@ const makeHarness = async (
   };
   const currentManifest = () => ({
     ...manifest,
+    name: options.pluginName === undefined ? manifest.name : PluginName.make(options.pluginName),
     contributes: {
       ...manifest.contributes,
       globalServices: (
@@ -463,7 +467,7 @@ const makeHarness = async (
     },
   });
   const pluginRegistry = PluginRegistry.of({
-    list: Effect.sync(() => [currentManifest()]),
+    list: Effect.sync(() => (options.pluginPresent === false ? [] : [currentManifest()])),
     declaredProviderCapabilities: () => provider.capabilities,
     load: () => Effect.succeed(manifest),
     loadServiceType: () => Effect.succeed(fakeServiceType),
@@ -2853,6 +2857,202 @@ describe("meta:global command effects", () => {
       ).toEqual([]);
     }, options);
   });
+
+  for (const selector of ["package", "contribution", "all"] as const) {
+    test(`enable by ${selector} supersedes no-applied cleanup after its plugin disappears`, async () => {
+      const options = { missingAppliedState: false, pluginPresent: true };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        options.missingAppliedState = true;
+        const disabled = await Effect.runPromiseExit(
+          globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(failureOf(disabled)).toMatchObject({ policySaved: true });
+        const prior = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+        expect(prior.pending.some((entry) => entry.phase === "routes")).toBe(true);
+        expect(prior.targets).toEqual([]);
+        options.pluginPresent = false;
+        const selection =
+          selector === "all"
+            ? { all: true }
+            : { selectors: [selector === "package" ? "@lando/fake-global-command" : "mail"] };
+        const before = {
+          actions: [...harness.calls.actions],
+          removed: [...harness.calls.removed],
+          routes: harness.calls.routes.length,
+          routesRemoved: harness.calls.routesRemoved.length,
+        };
+        const preview = await Effect.runPromise(
+          globalEnable({ ...selection, dryRun: true }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(preview).toMatchObject({ policySaved: false, states: [] });
+        expect(preview.contributions).toContain("mail");
+        expect(
+          await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer))),
+        ).toEqual(prior);
+        const enabled = await Effect.runPromise(globalEnable(selection).pipe(Effect.provide(harness.layer)));
+        expect(enabled).toMatchObject({ policySaved: true, states: [], pending: [] });
+        expect(enabled.contributions).toContain("mail");
+        const policy = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+        const owner = policy.plugins["@lando/fake-global-command"];
+        if (selector === "contribution") expect(owner?.contributions.mail?.enabled).toBe(true);
+        else {
+          expect(owner?.enabled).toBe(true);
+          expect(owner?.contributions.mail).not.toHaveProperty("enabled");
+        }
+        expect(await Effect.runPromise(globalReconcile().pipe(Effect.provide(harness.layer)))).toMatchObject({
+          servicesRemoved: [],
+          pending: [],
+        });
+        expect(harness.calls.actions).toEqual(before.actions);
+        expect(harness.calls.removed).toEqual(before.removed);
+        expect(harness.calls.routes).toHaveLength(before.routes);
+        expect(harness.calls.routesRemoved).toHaveLength(before.routesRemoved);
+      }, options);
+    });
+  }
+
+  test("retained contribution enable preserves unrelated no-applied cleanup until its package is selected", async () => {
+    const options = { missingAppliedState: false, pluginPresent: true };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.missingAppliedState = true;
+      await Effect.runPromiseExit(globalDisable({ all: true }).pipe(Effect.provide(harness.layer)));
+      options.pluginPresent = false;
+      const enabled = await Effect.runPromiseExit(
+        globalEnable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(failureOf(enabled)).toMatchObject({
+        policySaved: true,
+        contributions: ["mail"],
+        pending: expect.arrayContaining([expect.objectContaining({ services: ["proxy"] })]),
+      });
+      const saved = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+      expect(
+        saved.pending.every((entry) => entry.services.length === 1 && entry.services[0] === "proxy"),
+      ).toBe(true);
+      expect(saved.targets).toEqual([]);
+      const enabledPackage = await Effect.runPromise(
+        globalEnable({ selectors: ["@lando/fake-global-command"] }).pipe(Effect.provide(harness.layer)),
+      );
+      expect(enabledPackage.pending).toEqual([]);
+      const owner = (await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).plugins[
+        "@lando/fake-global-command"
+      ];
+      expect(owner?.enabled).toBe(true);
+      expect(Object.values(owner?.contributions ?? {}).every((entry) => entry.enabled === undefined)).toBe(
+        true,
+      );
+      expect(harness.calls.removed).toEqual([]);
+    }, options);
+  });
+
+  test("absent retained enable generation failure does not revive unproven cleanup", async () => {
+    const options = { missingAppliedState: false, pluginPresent: true, serviceNames: ["mail"] };
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+      options.missingAppliedState = true;
+      await Effect.runPromiseExit(globalDisable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)));
+      options.pluginPresent = false;
+      const globalApp = await Effect.runPromise(GlobalAppService.pipe(Effect.provide(harness.layer)));
+      const failed = await Effect.runPromiseExit(
+        globalEnable({ selectors: ["@lando/fake-global-command"] }).pipe(
+          Effect.provideService(GlobalAppService, {
+            ...globalApp,
+            regenerateDist: () =>
+              Effect.fail(
+                new GlobalAppError({
+                  operation: "regenerateDist",
+                  message: "Generation failed.",
+                  remediation: "Repair generated configuration storage.",
+                }),
+              ),
+          }),
+          Effect.provide(harness.layer),
+        ),
+      );
+      expect(failureOf(failed)).toMatchObject({
+        policySaved: true,
+        contributions: ["mail"],
+        pending: [expect.objectContaining({ phase: "generation", services: ["mail"] })],
+      });
+      expect(
+        (await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)))).targets,
+      ).toEqual([]);
+      expect(
+        (await Effect.runPromise(globalReconcile().pipe(Effect.provide(harness.layer)))).pending,
+      ).toEqual([]);
+      expect(harness.calls.removed).toEqual([]);
+    }, options);
+  });
+
+  for (const applied of [false, true]) {
+    test(`enable of a replacement owner preserves ${applied ? "proven" : "unattributed"} old-owner cleanup`, async () => {
+      const options = {
+        missingAppliedState: false,
+        offline: false,
+        pluginName: "@lando/fake-global-command",
+        serviceNames: ["mail"],
+      };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        options.missingAppliedState = !applied;
+        options.offline = applied;
+        await Effect.runPromiseExit(
+          globalDisable({ selectors: ["mail"], allowDisruption: true }).pipe(Effect.provide(harness.layer)),
+        );
+        const prior = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+        expect(prior.pending.length).toBeGreaterThan(0);
+        expect(prior.targets?.length).toBe(applied ? 1 : 0);
+        options.offline = false;
+        options.pluginName = "@lando/replacement-global-command";
+        const before = {
+          actions: [...harness.calls.actions],
+          removed: [...harness.calls.removed],
+          routes: harness.calls.routes.length,
+        };
+        const preview = await Effect.runPromise(
+          globalEnable({ selectors: [options.pluginName], dryRun: true }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(preview.states.map((entry) => entry.plugin)).toEqual([options.pluginName]);
+        expect(preview.impact.uncertainties.join(" ")).toContain("@lando/fake-global-command");
+        expect(preview.impact.uncertainties.join(" ")).toContain(options.pluginName);
+        const enabled = await Effect.runPromiseExit(
+          globalEnable({ selectors: [options.pluginName] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(failureOf(enabled)).toMatchObject({
+          _tag: "GlobalPolicyReconciliationError",
+          policySaved: true,
+          contributions: ["mail"],
+          pending: prior.pending,
+        });
+        const saved = await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)));
+        expect(saved.pending).toEqual(prior.pending);
+        expect(saved.targets).toEqual(prior.targets);
+        const policy = await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)));
+        const ambiguous = await Effect.runPromiseExit(
+          globalEnable({ selectors: ["mail"] }).pipe(Effect.provide(harness.layer)),
+        );
+        expect(failureOf(ambiguous)).toMatchObject({ _tag: "GlobalAppError", operation: "policy" });
+        expect(await Effect.runPromise(readGlobalPolicy().pipe(Effect.provide(harness.layer)))).toEqual(
+          policy,
+        );
+        const original = await Effect.runPromiseExit(
+          globalEnable({ selectors: ["@lando/fake-global-command"] }).pipe(Effect.provide(harness.layer)),
+        );
+        if (applied) expect(Exit.isSuccess(original)).toBe(true);
+        else {
+          expect(failureOf(original)).toMatchObject({ policySaved: true, pending: prior.pending });
+          expect(
+            (await Effect.runPromise(readGlobalReconciliation().pipe(Effect.provide(harness.layer)))).pending,
+          ).toEqual(prior.pending);
+        }
+        expect(harness.calls.actions).toEqual(before.actions);
+        expect(harness.calls.removed).toEqual(before.removed);
+        expect(harness.calls.routes).toHaveLength(before.routes);
+      }, options);
+    });
+  }
 
   test("selected start isolates an unrelated invalid enabled contribution module", async () => {
     await withHarness(

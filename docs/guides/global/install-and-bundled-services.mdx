@@ -56,7 +56,9 @@ Each retained policy names its plugin and lists contributions with `id`,
 `defaultEnabled`, and any individual `enabled` override. This lets you inspect a
 removed plugin's preferences without loading that plugin again.
 
-Re-enabling cancels unfinished disable cleanup for the selected contributions, including pending route withdrawal. It does not recreate removed containers or republish routes. Pending cleanup for other contributions remains visible in `global:status`; enable can still report incomplete reconciliation for that work. If configuration generation fails after the choice is saved, the contribution stays enabled with generation pending.
+Re-enabling cancels unfinished disable cleanup attributable to the selected contributions, including pending route withdrawal. Package and contribution selections also apply to retained policy after a plugin disappears, even when runtime ownership records are unavailable. They do not recreate removed containers or republish routes. If an id has policies under several owners and cleanup cannot be attributed, Lando preserves that work and reports the owners in the preview's `impact.uncertainties`. Select a package when the id itself is ambiguous. The saved enable choice does not clear another owner's cleanup.
+
+Pending cleanup for other contributions remains visible in `global:status`; enable can still report incomplete reconciliation for that work. If configuration generation fails after the choice is saved, the contribution stays enabled with generation pending.
 
 Re-enabling an eligible service restores its generated configuration and any overrides you kept in the global Landofile layers. An app that needs it can start it automatically, or you can run:
 

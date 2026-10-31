@@ -91,6 +91,10 @@ describe("owned global policy", () => {
       prepareGlobalPolicy(disabled.policy, [], { selectors: ["@example/mail"], enabled: true }),
     );
     expect(absent.ids).toEqual([]);
+    expect(absent.selections).toEqual([
+      { plugin: "@example/mail", id: "mailhog" },
+      { plugin: "@example/mail", id: "mailpit" },
+    ]);
     expect(absent.policy.plugins["@example/mail"]?.contributions.mailpit).not.toHaveProperty("enabled");
     const replacement = { plugin: "@example/replacement", contribution: { id: "mailpit" } };
     expect(globalContributionPolicy(replacement, disabled.policy)).toEqual({
@@ -145,6 +149,7 @@ describe("owned global policy", () => {
       prepareGlobalPolicy(old.policy, replacement, { selectors: ["@example/replacement"], enabled: false }),
     );
     expect(exactPackage.ids).toEqual(["mailpit"]);
+    expect(exactPackage.selections).toEqual([{ plugin: "@example/replacement", id: "mailpit" }]);
   });
 
   test("revision exhaustion fails rather than reusing an imprecise number", async () => {

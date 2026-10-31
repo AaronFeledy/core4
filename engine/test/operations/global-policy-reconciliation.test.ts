@@ -101,6 +101,45 @@ test("configuration repair does not erase container and route cleanup evidence",
   expect(repaired.pending.map((entry) => entry.phase)).toEqual(["routes"]);
 });
 
+test("receipt result ids do not supersede cleanup owned by another selection", async () => {
+  const f = fixture();
+  const target = {
+    id: "mail",
+    plugin: "@example/old-mail",
+    root: "/tmp/core4-global-policy-receipts/global",
+    provider: "lando",
+    appliedServiceHash: "owned-old-service",
+  };
+  const pending = { phase: "routes" as const, services: ["mail"], message: "Old owner withdrawal failed." };
+  await f.run(
+    recordGlobalReconciliation({
+      revision: 1,
+      operation: "disable",
+      contributions: ["mail"],
+      servicesRemoved: [],
+      targets: [target],
+      pending: [pending],
+    }),
+  );
+  await f.run(
+    recordGlobalReconciliation(
+      {
+        revision: 2,
+        operation: "enable",
+        contributions: ["mail"],
+        servicesRemoved: [],
+        targets: [],
+        pending: [],
+      },
+      { supersede: [] },
+    ),
+  );
+  const saved = await f.run(readGlobalReconciliation());
+  expect(saved.contributions).toEqual(["mail"]);
+  expect(saved.pending).toEqual([pending]);
+  expect(saved.targets).toEqual([target]);
+});
+
 test("proven whole-app teardown completes resource cleanup while retaining generation work", async () => {
   const f = fixture();
   await f.run(

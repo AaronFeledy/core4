@@ -134,9 +134,13 @@ work on evidence, containers, routes, or configuration generation. Completed wor
 stays complete; failure doesn't undo your disabled policy.
 
 If you change your mind, `lando global:enable <id>` cancels unfinished disable
-cleanup for that contribution. It saves enabled intent without recreating removed
-containers or restoring routes. Cleanup for other disabled contributions remains
-pending. Read the contribution's eligibility and observed state before using it.
+cleanup attributable to that contribution, including when its plugin has since
+disappeared. It saves enabled intent without recreating removed containers or
+restoring routes. Select the owning package if an id has policies under several
+plugins. Lando preserves cleanup it cannot attribute and reports that uncertainty;
+the saved choice does not clear another owner's work. Cleanup for other disabled
+contributions remains pending. Read the contribution's eligibility and observed
+state before using it.
 
 Read the desired policy, observed resources, and pending work, then retry after
 fixing the reported cause:

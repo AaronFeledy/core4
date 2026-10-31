@@ -135,15 +135,19 @@ const serviceFingerprint = (service: typeof ServicePlan.Type): string =>
 const recordProgress = (
   receipt: GlobalPolicyChangeResult,
   targets: ReadonlyArray<GlobalReconciliationTarget>,
+  supersede?: ReadonlyArray<string>,
 ) =>
-  recordGlobalReconciliation({
-    revision: receipt.revision,
-    targets: receipt.operation === "enable" ? [] : targets,
-    operation: receipt.operation,
-    contributions: receipt.contributions,
-    servicesRemoved: receipt.servicesRemoved,
-    pending: receipt.pending,
-  });
+  recordGlobalReconciliation(
+    {
+      revision: receipt.revision,
+      targets: receipt.operation === "enable" ? [] : targets,
+      operation: receipt.operation,
+      contributions: receipt.contributions,
+      servicesRemoved: receipt.servicesRemoved,
+      pending: receipt.pending,
+    },
+    supersede === undefined ? {} : { supersede },
+  );
 
 const incomplete = (
   receipt: GlobalPolicyChangeResult,
@@ -216,27 +220,36 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
           );
         })
       : [];
-  const supersededTargets =
+  const supersededIds =
     operation === "enable"
-      ? (previousReceiptResult._tag === "Success"
-          ? (previousReceiptResult.success.targets ?? [])
-          : []
-        ).filter((target) => {
-          if (
-            !(
-              options.all ||
-              options.selectors?.includes(target.plugin) ||
-              options.selectors?.includes(target.id)
+      ? prepared.selections
+          .filter((entry) => {
+            const owner = prepared.policy.plugins[entry.plugin];
+            const preference = owner?.contributions[entry.id];
+            if (
+              preference === undefined ||
+              !(preference.enabled ?? owner?.enabled ?? preference.defaultEnabled)
             )
-          )
-            return false;
-          const owner = prepared.policy.plugins[target.plugin];
-          const preference = owner?.contributions[target.id];
-          return (
-            preference !== undefined && (preference.enabled ?? owner?.enabled ?? preference.defaultEnabled)
-          );
-        })
-      : [];
+              return false;
+            const targets =
+              previousReceiptResult._tag === "Success"
+                ? (previousReceiptResult.success.targets ?? []).filter((target) => target.id === entry.id)
+                : [];
+            if (targets.length > 0) return targets.every((target) => target.plugin === entry.plugin);
+            const owners = Object.entries(prepared.policy.plugins).filter(([, policy]) =>
+              Object.hasOwn(policy.contributions, entry.id),
+            );
+            return (
+              owners.length === 1 &&
+              owners[0]?.[0] === entry.plugin &&
+              !current.contributions.some(
+                (contribution) =>
+                  contribution.contribution.id === entry.id && contribution.plugin !== entry.plugin,
+              )
+            );
+          })
+          .map((entry) => entry.id)
+      : undefined;
   const ids =
     operation === "reconcile"
       ? [
@@ -245,7 +258,29 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
             ...retiredTargets.map((target) => target.id),
           ]),
         ].sort()
-      : [...new Set([...prepared.ids, ...supersededTargets.map((target) => target.id)])].sort();
+      : prepared.ids;
+  const contributionIds = [...new Set([...ids, ...(supersededIds ?? [])])].sort();
+  const supersessionUncertainties =
+    operation === "enable"
+      ? prepared.selections.flatMap((entry) => {
+          if (
+            supersededIds?.includes(entry.id) ||
+            !previousReceipt.pending.some(
+              (pending) => pending.phase !== "generation" && pending.services.includes(entry.id),
+            )
+          )
+            return [];
+          const owners = Object.entries(prepared.policy.plugins)
+            .filter(([, policy]) => Object.hasOwn(policy.contributions, entry.id))
+            .map(([plugin]) => plugin);
+          const currentOwners = current.contributions
+            .filter((contribution) => contribution.contribution.id === entry.id)
+            .map((contribution) => contribution.plugin);
+          return [
+            `Pending cleanup for ${entry.id} cannot be attributed to selected owner ${entry.plugin}. Policy owners: ${owners.join(", ")}; current owners: ${currentOwners.join(", ") || "none"}. Enabling intent does not establish this ownership, so cleanup remains pending.`,
+          ];
+        })
+      : [];
   const selected = new Set(ids);
   const targets: ReadonlyArray<GlobalReconciliationTarget> = [
     ...retiredTargets,
@@ -343,7 +378,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
   const impact: typeof GlobalPolicyImpactSchema.Type = {
     desired: operation === "enable" ? "enabled" : operation === "disable" ? "disabled" : "unchanged",
     policyChanges: prepared.changed,
-    contributions: ids,
+    contributions: contributionIds,
     plugins: prepared.plugins,
     dependencyBlockers: blockers,
     consumers: consumerImpact.consumers,
@@ -353,6 +388,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       .map((route) => ({ service: String(route.service), hostname: route.hostname })),
     volumes: "retained",
     uncertainties: [
+      ...supersessionUncertainties,
       ...reserved,
       ...(activePolicy === undefined
         ? []
@@ -393,7 +429,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       operation,
       revision: current.policy.revision,
       policySaved: false,
-      contributions: ids,
+      contributions: contributionIds,
       plugins: prepared.plugins,
       states: effectiveCandidate.entries.filter((entry) => selected.has(entry.id)),
       servicesRemoved: [],
@@ -484,7 +520,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
     operation,
     revision: policy.revision,
     policySaved: true,
-    contributions: ids,
+    contributions: contributionIds,
     plugins: prepared.plugins,
     states: effectiveCandidate.entries.filter((entry) => selected.has(entry.id)),
     servicesRemoved: [],
@@ -501,11 +537,18 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
               "Earlier route withdrawal is still unconfirmed; applied-plan changes do not complete it.",
             ),
           ]),
-      pendingWork("generation", ids, "Generated configuration has not yet been reconciled."),
+      pendingWork("generation", contributionIds, "Generated configuration has not yet been reconciled."),
     ],
   };
-  const causes: unknown[] = [];
-  const marked = yield* Effect.result(recordProgress(receipt, targets));
+  const causes: unknown[] = supersessionUncertainties.map(
+    (message) =>
+      new GlobalAppError({
+        operation: "reconciliation",
+        message,
+        remediation: "Restore matching owned cleanup evidence or explicitly stop the whole global app.",
+      }),
+  );
+  const marked = yield* Effect.result(recordProgress(receipt, targets, supersededIds));
   if (marked._tag === "Failure") return yield* Effect.fail(incomplete(receipt, [marked.failure]));
 
   if (operation !== "enable" && ids.length > 0) {
@@ -874,7 +917,7 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       dist: generation.success,
       pending: receipt.pending.filter((entry) => entry.phase !== "generation"),
     };
-  const recorded = yield* Effect.result(recordProgress(receipt, targets));
+  const recorded = yield* Effect.result(recordProgress(receipt, targets, supersededIds));
   if (recorded._tag === "Failure") {
     receipt = {
       ...receipt,

@@ -316,12 +316,10 @@ export const makeHarness = (
   const runtimeProviderRegistry = {
     appliedPlansFor: (root: AbsolutePath) =>
       Effect.sync(() => {
+        const persisted = (options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root);
+        if (persisted.length > 0) return persisted;
         const global = globalAdmission.appliedPlan();
-        return root === globalAdmission.root
-          ? global === undefined
-            ? []
-            : [global]
-          : (options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root);
+        return root === globalAdmission.root && global !== undefined ? [global] : [];
       }),
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
