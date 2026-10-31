@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { ConfigTranslateSourceId, LANDOFILE_EDITOR_SCHEMA_URL } from "@lando/sdk/schema";
 import { ProcessRunner } from "@lando/sdk/services";
 import { Effect, Result, Stream } from "effect";
+import { runRecipeInitPipeline as runPipeline } from "../../src/recipes/init-pipeline.ts";
 import { secretReference } from "../../src/recipes/init-pipeline/secrets.ts";
 import { type RecipeInitPreparationRequest, prepareRecipeInit } from "../../src/recipes/prepared-init.ts";
 import { runRecipeInitPipeline } from "../_support/recipe-pipeline.ts";
@@ -214,7 +215,8 @@ test.each(["stdin", "secretEnv"])("S5 raw secrets reach only their one declared 
   const inputs: unknown[] = [];
   // When
   const result = await Effect.runPromise(
-    runRecipeInitPipeline({ ...f.publication, prepared }).pipe(
+    // Call the pipeline directly so the real-runner helper cannot shadow this injected runner.
+    runPipeline({ ...f.publication, prepared }).pipe(
       Effect.provideService(
         ProcessRunner,
         ProcessRunner.of({
