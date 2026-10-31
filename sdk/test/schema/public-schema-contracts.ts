@@ -21,6 +21,7 @@ export type PublicSchemaContractFixture = {
 };
 
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
+  CommandContribution: "sdk/test/schema/command-contribution.test.ts",
   LandofileSourceValue: "sdk/test/schema/landofile-source.test.ts",
   LandofileSourceDocument: "sdk/test/schema/landofile-source.test.ts",
   LandofileSourceProjection: "sdk/test/schema/landofile-source.test.ts",
@@ -678,6 +679,7 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
   RouteInput: "appserver.lndo.site",
   HealthcheckInput: "pg_isready",
   CommandSpec: "npm start",
+  CommandContribution: { id: "db:inspect", summary: "Inspect the database." },
   PortablePath: "/app",
   ProviderId: "lando",
   BindAddress: "127.0.0.1",

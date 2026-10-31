@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { CommandContribution, PluginManifest } from "@lando/sdk/schema";
+import { CommandContribution, PluginManifest, getJsonSchema } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
 
 test.each([
@@ -39,4 +39,13 @@ test.each([
   const decoded = Schema.decodeUnknownResult(CommandContribution)(descriptor);
   // Then the command cannot enter a plugin index.
   expect(Result.isFailure(decoded)).toBe(true);
+});
+
+test("publishes command descriptors as a standalone JSON schema", () => {
+  // Given the public schema registry, when an author requests the descriptor contract.
+  const schema = getJsonSchema("CommandContribution");
+  // Then its required identity and summary are available without the enclosing manifest.
+  expect(schema).toMatchObject({ type: "object", required: ["id", "summary"] });
+  expect(schema).toHaveProperty("properties.id");
+  expect(schema).toHaveProperty("properties.mcpAllowed");
 });
