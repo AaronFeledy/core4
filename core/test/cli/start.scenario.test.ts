@@ -66,6 +66,7 @@ import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import * as LandoConfigService from "@lando/engine/services/config";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import * as BunFileSystem from "@lando/engine/services/file-system";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { terminateOwnedHostProxyWorkersInRoot } from "@lando/engine/subsystems/host-proxy/worker";
 import { HostProxyWorkerRecord, probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
@@ -594,6 +595,7 @@ const makeStartLayer = (
   };
 
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     PrivateFileAccessService.layer,
     testStateStoreLayer,
     Layer.succeed(
