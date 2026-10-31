@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
-const probePath = new URL("./fixtures/host-terminal-probe.ts", import.meta.url).pathname;
+const probePath = resolve(import.meta.dirname, "fixtures/host-terminal-probe.ts");
 
 const runPipedProbe = async (): Promise<unknown> => {
   const child = Bun.spawn([process.execPath, probePath], {
