@@ -137,7 +137,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
             : {}),
       },
       ...(projectFiles === undefined ? [] : [projectFiles]),
-      ...(hostProxy === undefined
+      ...(hostProxy?.runLando.availability !== "unavailable"
         ? []
         : [
             {
@@ -145,7 +145,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
               rows: [
                 {
                   label: "runLando",
-                  tone: (hostProxy.runLando.availability === "available" ? "ok" : "skipped") as SummaryTone,
+                  tone: "skipped" as const,
                   value: hostProxy.runLando.availability,
                   fields:
                     hostProxy.runLando.reason === undefined
@@ -169,7 +169,7 @@ const agentEnvLines = (result: InfoAppResult): ReadonlyArray<string> => {
 
 const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
   const hostProxy = result.hostProxy;
-  if (hostProxy === undefined) return [];
+  if (hostProxy?.runLando.availability !== "unavailable") return [];
   const reason = hostProxy.runLando.reason === undefined ? "" : `\t${hostProxy.runLando.reason}`;
   return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
 };

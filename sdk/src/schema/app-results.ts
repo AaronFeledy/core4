@@ -123,13 +123,16 @@ export type InfoAppAgentEnv = typeof InfoAppAgentEnv.Type;
 export const InfoAppHostProxy = Schema.Struct({
   runLando: Schema.Struct({
     availability: Schema.Literals(["available", "unavailable"]).annotate({
-      description: "Whether services can invoke Lando through the host proxy.",
+      description:
+        "Whether the selected services have a configured, provider-supported Lando command bridge; not worker health.",
     }),
     reason: Schema.optionalKey(Schema.String).annotate({
       description: "Explanation of host-proxy command availability.",
     }),
   }).annotate({ description: "Availability of the in-container Lando command bridge." }),
-}).annotate({ description: "Host-proxy capabilities reported by app introspection." });
+}).annotate({
+  description: "Configured host-proxy capability for selected eligible services, not worker liveness.",
+});
 export type InfoAppHostProxy = typeof InfoAppHostProxy.Type;
 
 export const InfoAppResult = Schema.Struct({
@@ -141,7 +144,8 @@ export const InfoAppResult = Schema.Struct({
     description: "Agent environment forwarding details, when configured.",
   }),
   hostProxy: Schema.optionalKey(InfoAppHostProxy).annotate({
-    description: "In-container host-proxy command availability, when the plan records it.",
+    description:
+      "In-container Lando command capability, present only when a selected service is host-proxy eligible; not worker health.",
   }),
   fileSync: Schema.optionalKey(FileSyncInfo).annotate({
     description: "File synchronization status, when available.",
