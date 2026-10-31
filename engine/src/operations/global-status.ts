@@ -180,6 +180,8 @@ export const globalStatus = Effect.fn("GlobalApp.status")(function* (options: Gl
   if (plan !== undefined) {
     for (const service of Object.values(plan.services)) {
       if (!selectedNames.has(String(service.name))) continue;
+      // Inspect can synthesize ownership from the plan; inventory must establish it first.
+      if (!owned.some((runtime) => runtime.service === service.name)) continue;
       const inspection =
         provider === undefined || !online
           ? undefined

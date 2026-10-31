@@ -1807,18 +1807,39 @@ describe("meta:global command effects", () => {
     }, options);
   });
 
-  test("status reports incomplete observation ownership as uncertainty rather than absence", async () => {
-    const options = { incompleteObservationOwnership: false, missingAppliedState: false };
+  for (const missingAppliedState of [false, true]) {
+    test(`status reports incomplete runtime ownership as unknown (applied state missing: ${missingAppliedState})`, async () => {
+      const options = { incompleteObservationOwnership: false, missingAppliedState: false };
+      await withHarness(async (harness) => {
+        await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
+        options.incompleteObservationOwnership = true;
+        options.missingAppliedState = missingAppliedState;
+        harness.calls.inspect.length = 0;
+
+        const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));
+
+        expect(result.services.every((service) => service.status === "unknown")).toBe(true);
+        expect(result.services.flatMap((service) => service.connections)).toEqual([]);
+        expect(harness.calls.inspect).toEqual([]);
+        expect(result.pending).toContainEqual(expect.objectContaining({ phase: "evidence" }));
+        expect(result.diagnostics.join(" ")).toContain("incomplete ownership");
+      }, options);
+    });
+  }
+
+  test("status does not infer running services from applied state absent from inventory", async () => {
+    const options = { vanishedServices: [] as string[] };
     await withHarness(async (harness) => {
       await Effect.runPromise(globalStart().pipe(Effect.provide(harness.layer)));
-      options.incompleteObservationOwnership = true;
-      options.missingAppliedState = true;
+      options.vanishedServices = ["mail", "proxy"];
+      harness.calls.inspect.length = 0;
 
       const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));
 
-      expect(result.services.every((service) => service.status === "unknown")).toBe(true);
-      expect(result.pending).toContainEqual(expect.objectContaining({ phase: "evidence" }));
-      expect(result.diagnostics.join(" ")).toContain("incomplete ownership");
+      expect(result.runtimeState).toBe("available");
+      expect(result.services.every((service) => service.status === "stopped")).toBe(true);
+      expect(result.services.flatMap((service) => service.connections)).toEqual([]);
+      expect(harness.calls.inspect).toEqual([]);
     }, options);
   });
 
