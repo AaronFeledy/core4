@@ -254,6 +254,7 @@ import { EndpointInvariantIssue, HttpEndpointSelection, LogicalEndpoint } from "
 import {
   BindAddress,
   EndpointRef,
+  EndpointScan,
   InternalEndpoint,
   ObservedPublication,
   PublicationObservation,
@@ -488,6 +489,7 @@ import {
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
+import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
 import { ServiceInfo, ServiceInfoLogSource, StartedService } from "./service-info.ts";
 import { MountObservation, ObservedMount, ServiceInfoMount } from "./service-mount.ts";
 import {
@@ -707,6 +709,8 @@ const basePublicSchemaRegistry = schemaRegistry({
   HealthcheckPlan,
   ScannerConfig,
   ScanPlan,
+  EndpointScan,
+  ServiceFeatureValidationResult,
   CheckResult,
   CertificatePlan,
   HostAliasPlan,
@@ -1151,6 +1155,8 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ProxyAuthority: "Externally visible authority selected by a proxy implementation.",
   ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
   ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",
+  EndpointScan: "Sparse plan-only startup scan defaults for a logical listener.",
+  ServiceFeatureValidationResult: "Successful effective service feature validation claims.",
   AuthoredNetworkPlan:
     "A top-level Landofile network that services join in addition to the app and shared networks.",
   CommandAliasesShape: "Per-app top-level command alias policy.",
@@ -1174,7 +1180,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EndpointRef: "Logical network listener identity and aliases.",
   ObservedPublication: "Actual host publication observed by a runtime provider.",
   PublicationObservation: "Explicit unknown, absent, or present runtime publication evidence.",
-  EndpointInvariantIssue: "Logical listener alias, primary, or protocol conflict.",
+  EndpointInvariantIssue: "Logical listener alias, primary, protocol, or scan-default conflict.",
   HttpEndpointSelection: "Unambiguous HTTP listener selection without order-based fallback.",
   LogicalEndpoint: "Grouped facets of one logical network listener.",
   ServiceConnection: "Scoped service connection with explicit binding and activity evidence.",

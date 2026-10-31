@@ -1,0 +1,7 @@
+name: mailpit-moved-listener
+services:
+  inbox:
+    type: mailpit
+    port: 8025
+    environment:
+      MP_UI_BIND_ADDR: "0.0.0.0:18025"

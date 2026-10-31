@@ -204,7 +204,14 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     expect(search.type).toBe("solr");
     expect(search.artifact).toEqual({ kind: "ref", ref: "solr:9" });
     expect(search.endpoints).toEqual([
-      { _tag: "internal", port: 8983, protocol: "http", name: "search", primary: true },
+      {
+        _tag: "internal",
+        port: 8983,
+        protocol: "http",
+        name: "search",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);

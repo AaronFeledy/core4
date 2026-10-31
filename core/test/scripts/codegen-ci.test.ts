@@ -170,6 +170,15 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("provider-lando-e2e-linux-x64:");
       expect(firstWorkflow).toContain("Run e2e guide scenarios");
       expect(firstWorkflow).toContain("Run live integration suites");
+      expect(firstWorkflow).toContain("service-listeners-linux-x64:");
+      expect(firstWorkflow).toContain('LANDO_TEST_LISTENERS_STRICT: "1"');
+      expect(firstWorkflow).toContain(
+        'bun scripts/build-service-listener-qa-image.ts "$LANDO_TEST_MINIO_IMAGE"',
+      );
+      expect(firstWorkflow).toContain(
+        "bun test plugins/service-lando/test/service-listener-journeys.integration.test.ts --max-concurrency=1",
+      );
+      expect(firstWorkflow).toContain("^SERVICE_LISTENER_ACCEPTANCE completed=4/4 cases=");
       expect(firstWorkflow).toContain("distribution-rehearsal-linux-x64:");
       expect(firstWorkflow).toContain("Verify SHA256SUMS match the binaries");
       expect(firstWorkflow).toContain("published-manifest-setup-linux-x64:");
@@ -328,7 +337,7 @@ describe("ci workflow codegen", () => {
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(41);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(12);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(13);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");

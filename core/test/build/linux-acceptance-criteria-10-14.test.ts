@@ -36,6 +36,7 @@ const expectPassingSpotCheck = async (testPath: string, nameFilter: string): Pro
     result.exitCode,
     `expected ${testPath} -t "${nameFilter}" to pass\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   ).toBe(0);
+  expect(Bun.stripANSI(`${result.stdout}\n${result.stderr}`)).toMatch(/^\s*[1-9]\d* pass\s*$/mu);
 };
 
 const longHarness = { timeout: 180_000 };
@@ -116,7 +117,7 @@ describe("linux-x64 acceptance criteria 10-14", () => {
         "runs provider, CA, router, shell integration, and file sync in deterministic order",
         "validates network trust before provider and file-sync downloads and honors config proxy precedence",
         "reports file sync as already satisfied for native bind-mount providers",
-        "--skip-file-sync skips Mutagen download until setup is rerun",
+        "--skip-file-sync records the explicitly configured engine without installing it",
       ];
       for (const filter of setupSpotChecks) {
         await expectPassingSpotCheck("core/test/cli/setup.test.ts", filter);

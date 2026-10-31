@@ -48,7 +48,7 @@ describe("mailpit ServiceType", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: MAILPIT_IMAGE });
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 1025, protocol: "tcp", name: "smtp", primary: true },
-      { _tag: "internal", port: 8025, protocol: "http", name: "ui" },
+      { _tag: "internal", port: 8025, protocol: "http", name: "ui", scan: { path: "/" } },
     ]);
     expect(plan.environment).toMatchObject({ MP_SMTP_BIND_ADDR: "0.0.0.0:1025" });
     expect(plan.healthcheck).toEqual({
@@ -66,7 +66,7 @@ describe("mailpit ServiceType", () => {
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 2525, protocol: "tcp", name: "smtp", primary: true },
-      { _tag: "internal", port: 8025, protocol: "http", name: "ui" },
+      { _tag: "internal", port: 8025, protocol: "http", name: "ui", scan: { path: "/" } },
     ]);
     expect(plan.environment).toMatchObject({ MP_SMTP_BIND_ADDR: "0.0.0.0:2525" });
     expect(plan.healthcheck?.command).toEqual(["/mailpit", "readyz"]);

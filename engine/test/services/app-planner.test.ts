@@ -2837,7 +2837,14 @@ describe("AppPlannerLayer.layer", () => {
         ),
       ).toEqual([]);
       expect(web?.endpoints).toEqual([
-        { _tag: "internal", port: 3000, protocol: "http", primary: true, name: "web" },
+        {
+          _tag: "internal",
+          port: 3000,
+          protocol: "http",
+          primary: true,
+          name: "web",
+          scan: { path: "/", okCodes: [] },
+        },
         {
           _tag: "published",
           port: 3000,
@@ -2845,6 +2852,7 @@ describe("AppPlannerLayer.layer", () => {
           primary: true,
           name: "web",
           publication: { hostPort: 3000 },
+          scan: { path: "/", okCodes: [] },
         },
       ]);
       expect(web?.dependsOn).toEqual([
@@ -3310,7 +3318,7 @@ describe("AppPlannerLayer.layer", () => {
       if (failure instanceof LandofileValidationError) {
         expect(failure._tag).toBe("LandofileValidationError");
         expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-          "services.worker",
+          "services.worker.type",
         ]);
         expect(failure.message).toContain("requires an image or build artifact");
       }

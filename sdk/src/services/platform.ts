@@ -23,6 +23,7 @@ import type {
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
   AppPlan,
+  EndpointRef,
   HealthcheckPlan,
   ProxyApplyResult,
   ProxyCapabilities,
@@ -217,7 +218,11 @@ export class UrlScanner extends Context.Service<
       appId: AppId,
       options?: {
         readonly plan?: AppPlan;
-        readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+        readonly urls?: ReadonlyArray<{
+          readonly service: ServiceName;
+          readonly url: string;
+          readonly endpoint?: EndpointRef;
+        }>;
         /** Observe completed attempts without affecting probe verdicts; detail is redacted. */
         readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
       },

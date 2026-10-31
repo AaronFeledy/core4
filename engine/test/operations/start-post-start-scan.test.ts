@@ -80,7 +80,11 @@ test("start probes published URLs through UrlScanner with the plan", async () =>
   expect(scan && "appId" in scan ? scan.appId : undefined).toBe(plan.id);
   expect(scan && "options" in scan ? scan.options?.plan : undefined).toBeDefined();
   expect(scan && "options" in scan ? scan.options?.urls : undefined).toEqual([
-    { service: web.name, url: "http://localhost:3000/" },
+    {
+      service: web.name,
+      url: "http://localhost:3000/",
+      endpoint: { port: 3000, transport: "tcp", names: ["http"], primary: false },
+    },
   ]);
   const scanTreeId = `start-scan-${plan.id}`;
   const trees = byTag(harness.events, "task.tree.start");
