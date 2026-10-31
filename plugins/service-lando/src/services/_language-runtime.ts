@@ -50,7 +50,7 @@ interface LanguageRuntimeSpec<V extends string, F extends string> {
   readonly resolveFallback: (version: V) => string;
 }
 
-const DEFAULT_KEEP_ALIVE = ["sh", "-c", "tail -f /dev/null"] as const;
+const DEFAULT_KEEP_ALIVE = ["tail", "-f", "/dev/null"] as const;
 
 export const makeLanguageRuntime = <V extends string, F extends string>(spec: LanguageRuntimeSpec<V, F>) => {
   const validateFramework = (raw: string | undefined): F => {

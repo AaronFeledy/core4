@@ -83,7 +83,7 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.type).toBe("python:3.12");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "python:3.12-slim" });
     expect(plan.primary).toBe(true);
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(String(plan.workingDirectory)).toBe("/app");
 
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
@@ -131,7 +131,7 @@ describe("python:3.12 ServiceType", () => {
       { _tag: "internal", port: 8000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "django",
       port: 8000,
@@ -146,7 +146,7 @@ describe("python:3.12 ServiceType", () => {
       { _tag: "internal", port: 8000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "fastapi",
       port: 8000,
@@ -160,7 +160,7 @@ describe("python:3.12 ServiceType", () => {
       { _tag: "internal", port: 5000, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck).toBeUndefined();
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "flask",
       port: 5000,
