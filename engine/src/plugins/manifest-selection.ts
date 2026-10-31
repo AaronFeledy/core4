@@ -33,12 +33,13 @@ export const selectPluginManifests = <T extends PluginManifestEntry>(
 ) => {
   const owners = new Map<string, T>();
   for (const source of sources) for (const plugin of source) owners.set(plugin.manifest.name, plugin);
-  const plugins = [...owners.values()].filter((plugin) => !disable.includes(plugin.manifest.name));
+  const disabled = new Set(disable);
+  const plugins = [...owners.values()].filter((plugin) => !disabled.has(plugin.manifest.name));
   const commands = new Map<string, PluginCommandEntry>();
   const diagnostics: ManifestDiagnostic[] = [];
   for (const plugin of plugins) {
+    const provenance = { pluginName: plugin.manifest.name, source: plugin.source };
     for (const descriptor of plugin.manifest.contributes?.commands ?? []) {
-      const provenance = { pluginName: String(plugin.manifest.name), source: plugin.source };
       const winner = commands.get(descriptor.id);
       if (winner !== undefined) {
         if (diagnostics.length < 100)

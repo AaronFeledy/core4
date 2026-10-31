@@ -22,10 +22,11 @@ export const pluginCommandCandidates = (
     const declared = (plugin.manifest.contributes?.commands ?? []).map((entry) => entry.id);
     const loaders = commandLoaders(plugin);
     const provided = [...loaders.keys()];
-    if (provided.some((id) => !declared.includes(id)))
+    const declaredIds = new Set(declared);
+    if (provided.some((id) => !declaredIds.has(id)))
       return Result.fail(
         new PluginDescriptorMismatchError({
-          pluginName: String(plugin.manifest.name),
+          pluginName: plugin.manifest.name,
           kind: "commands",
           declared,
           provided,
@@ -41,7 +42,7 @@ export const pluginCommandCandidates = (
         (() =>
           Promise.reject(
             new PluginDescriptorMismatchError({
-              pluginName: String(plugin.manifest.name),
+              pluginName: plugin.manifest.name,
               kind: "commands",
               declared: [descriptor.id],
               provided,
@@ -52,7 +53,7 @@ export const pluginCommandCandidates = (
       candidates.push({
         id: descriptor.id,
         descriptor,
-        pluginName: String(plugin.manifest.name),
+        pluginName: plugin.manifest.name,
         source: plugin.source,
         load,
       });
@@ -76,7 +77,7 @@ export const resolveGraphCommands = (
         _tag: failure._tag,
         message: failure.message,
         remediation: failure.remediation,
-        loser: { pluginName: String(plugin.manifest.name), source: plugin.source },
+        loser: { pluginName: plugin.manifest.name, source: plugin.source },
       });
       for (const entry of selectedCommands) commands.push({ ...entry, load: () => Promise.reject(failure) });
       continue;
