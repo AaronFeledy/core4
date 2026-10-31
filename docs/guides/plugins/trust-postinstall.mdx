@@ -43,9 +43,17 @@ lando meta:plugin:trust-authoring-root /absolute/path/to/plugin
 
 ## When postinstall runs
 
-`plugin:add` unpacks without running scripts. A trusted name with a non-empty `scripts.postinstall` then runs install in that package directory.
+`plugin:add` unpacks without running scripts. A trusted name with a non-empty `scripts.postinstall` then runs `bun install` in that package directory with the Bun that Lando ships.
 
-A name that is not trusted skips that step.
+A name that is not trusted skips that step. A trusted script that exits nonzero
+fails the add with `PluginPackageOperationError`, operation `postinstall`, and
+the script's exit code; the CLI exits `1`. In your terminal the script's output
+streams as it runs, and the error points you back to it. Under `--format=json`
+the output is collected into the envelope instead. The plugin isn't activated,
+but the trust you granted stays in place, so fix the package's script or
+dependencies and run `lando plugin:add` again. See
+[Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-commands)
+for the envelope and error fields.
 
 ## Verify
 

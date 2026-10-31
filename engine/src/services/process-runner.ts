@@ -12,8 +12,10 @@ import {
 } from "@lando/sdk/services";
 import { Context, Effect, Layer, Stream } from "effect";
 import { type CapturedHostExecutionContext, captureHostExecutionContext } from "./host-execution-context.ts";
+import { PreparedProcessBinding } from "./prepared-process.ts";
 import { runProcess, streamProcess } from "./process-execution.ts";
 import { environmentForRedaction } from "./tooling-input-environment.ts";
+export { withPreparedProcess } from "./prepared-process.ts";
 
 export { awaitSinkResult } from "./process-io.ts";
 export { resolveProcessCgroup } from "./process-spawn-context.ts";
@@ -122,7 +124,7 @@ const redactProcessError = Effect.fnUntraced(function* (
 const scopedProcessStream = (
   input: ProcessSpawnOptions,
   includeExitCode: boolean,
-  execution: { readonly bunCommandEnv: boolean; readonly context: CapturedHostExecutionContext | undefined },
+  execution: { readonly bunCommandEnv: boolean },
 ) =>
   Stream.unwrap(
     Effect.gen(function* () {
@@ -131,7 +133,9 @@ const scopedProcessStream = (
         args: [...input.args],
         ...(input.env === undefined ? {} : { env: { ...input.env } }),
       };
-      const captured = execution.context ?? captureHostExecutionContext(snapshot);
+      const binding = yield* PreparedProcessBinding;
+      const prepared = binding?.request === input ? binding : undefined;
+      const captured = prepared?.context ?? captureHostExecutionContext(snapshot);
       const controller = yield* Effect.acquireRelease(
         Effect.sync(() => new AbortController()),
         (controller) => Effect.sync(() => controller.abort()),
@@ -141,6 +145,7 @@ const scopedProcessStream = (
       const iterator = streamProcess({ ...snapshot, signal }, captured, {
         includeExitCode,
         bunCommandEnv: execution.bunCommandEnv,
+        ...(prepared === undefined ? {} : { prepared: prepared.spawn }),
       });
       const iterable: AsyncIterable<ProcessStreamEvent> = {
         [Symbol.asyncIterator]: () => ({
@@ -165,10 +170,7 @@ const scopedProcessStream = (
     }),
   );
 
-const service = (
-  bunCommandEnv: boolean,
-  context?: CapturedHostExecutionContext,
-): Context.Service.Shape<typeof ProcessRunner> =>
+const service = (bunCommandEnv: boolean): Context.Service.Shape<typeof ProcessRunner> =>
   ProcessRunner.of({
     run: Effect.fn("ProcessRunner.run")(function* (input) {
       const snapshot = {
@@ -176,8 +178,10 @@ const service = (
         args: [...input.args],
         ...(input.env === undefined ? {} : { env: { ...input.env } }),
       };
-      const captured = context ?? captureHostExecutionContext(snapshot);
-      if (snapshot.capture !== true)
+      const binding = yield* PreparedProcessBinding;
+      const prepared = binding?.request === input ? binding : undefined;
+      const captured = prepared?.context ?? captureHostExecutionContext(snapshot);
+      if (prepared === undefined && snapshot.capture !== true)
         yield* publishRedactedProcessEvent(captured, {
           _tag: "pre-process-exec",
           ...processEventShape(snapshot),
@@ -185,7 +189,11 @@ const service = (
       let running: Promise<ProcessResult> | undefined;
       const result = yield* Effect.tryPromise({
         try: (signal) => {
-          running = runProcess(snapshot, captured, { signal, bunCommandEnv });
+          running = runProcess(snapshot, captured, {
+            signal,
+            bunCommandEnv,
+            ...(prepared === undefined ? {} : { prepared: prepared.spawn }),
+          });
           return running;
         },
         catch: (cause) =>
@@ -202,7 +210,7 @@ const service = (
           Effect.flatMap(redactProcessError(captured, error, snapshot.capture === true), Effect.fail),
         ),
       );
-      if (snapshot.capture !== true)
+      if (prepared === undefined && snapshot.capture !== true)
         yield* publishRedactedProcessEvent(captured, {
           _tag: "post-process-exec",
           ...processEventShape(snapshot),
@@ -211,13 +219,11 @@ const service = (
       return result;
     }),
     stream: (input) =>
-      scopedProcessStream(input, false, { bunCommandEnv, context }).pipe(
+      scopedProcessStream(input, false, { bunCommandEnv }).pipe(
         Stream.filter((event): event is ProcessStreamChunk => "kind" in event),
       ),
-    streamWithExit: (input) => scopedProcessStream(input, true, { bunCommandEnv, context }),
+    streamWithExit: (input) => scopedProcessStream(input, true, { bunCommandEnv }),
   });
 
 export const layer = Layer.succeed(ProcessRunner, service(false));
 export const layerWithBunCommandEnv = Layer.succeed(ProcessRunner, service(true));
-
-export const serviceWithBunCommandEnv = (context: CapturedHostExecutionContext) => service(true, context);

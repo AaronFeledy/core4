@@ -29,19 +29,23 @@ export const runProcess = async (
   execution: {
     readonly signal: AbortSignal;
     readonly bunCommandEnv: boolean;
+    readonly prepared?: { readonly cwd: string; readonly env: Readonly<Record<string, string>> };
   },
 ): Promise<ProcessResult> => {
   const startedAt = DateTime.toEpochMillis(DateTime.nowUnsafe());
   const signal =
     input.signal === undefined ? execution.signal : AbortSignal.any([input.signal, execution.signal]);
-  await using context = await prepareProcessSpawn(captured, {
-    signal,
-    bunCommandEnv: execution.bunCommandEnv,
-  });
+  await using context =
+    execution.prepared === undefined
+      ? await prepareProcessSpawn(captured, {
+          signal,
+          bunCommandEnv: execution.bunCommandEnv,
+        })
+      : { ...execution.prepared, [Symbol.asyncDispose]: async () => {} };
   signal.throwIfAborted();
   const proc = Bun.spawn(
     [input.cmd, ...input.args],
-    buildSpawnOptions({ ...input, cwd: context.cwd, env: context.env }),
+    buildSpawnOptions({ ...input, cwd: context.cwd, env: context.env }, captured.platform),
   );
   const abort = () => proc.kill("SIGKILL");
   signal.addEventListener("abort", abort, { once: true });
@@ -97,16 +101,23 @@ export const runProcess = async (
 export async function* streamProcess(
   input: ProcessSpawnOptions,
   captured: CapturedHostExecutionContext,
-  execution: { readonly includeExitCode: boolean; readonly bunCommandEnv: boolean },
+  execution: {
+    readonly includeExitCode: boolean;
+    readonly bunCommandEnv: boolean;
+    readonly prepared?: { readonly cwd: string; readonly env: Readonly<Record<string, string>> };
+  },
 ): AsyncGenerator<ProcessStreamEvent> {
-  await using context = await prepareProcessSpawn(captured, {
-    ...(input.signal === undefined ? {} : { signal: input.signal }),
-    bunCommandEnv: execution.bunCommandEnv,
-  });
+  await using context =
+    execution.prepared === undefined
+      ? await prepareProcessSpawn(captured, {
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
+          bunCommandEnv: execution.bunCommandEnv,
+        })
+      : { ...execution.prepared, [Symbol.asyncDispose]: async () => {} };
   input.signal?.throwIfAborted();
   const proc = Bun.spawn(
     [input.cmd, ...input.args],
-    buildSpawnOptions({ ...input, cwd: context.cwd, env: context.env }),
+    buildSpawnOptions({ ...input, cwd: context.cwd, env: context.env }, captured.platform),
   );
   const startedAt = DateTime.toEpochMillis(DateTime.nowUnsafe());
   let timedOut = false;

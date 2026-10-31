@@ -14,8 +14,8 @@ const extractArgv = (input: unknown): ReadonlyArray<string> => {
 export const metaBunSpec: LandoCommandSpec<MetaBunResult> = {
   resultSchema: MetaBunResultSchema,
   id: "meta:bun",
-  summary: "Proxy to the embedded Bun CLI via BunSelfRunner.",
-  description: "Proxy to the embedded Bun CLI via BunSelfRunner.",
+  summary: "Proxy to the embedded Bun CLI using the current executable.",
+  description: "Proxy to the embedded Bun CLI using the current executable.",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",

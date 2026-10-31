@@ -22,6 +22,9 @@ test("post-init output masks a value registered after module loading", async () 
     await writeFile(join(root, "package.json"), "{}");
     try {
       await runPostInit({
+        runBun: async () => {
+          throw new TypeError("Unexpected Bun action");
+        },
         actions: [{ type: "command", cmd: "app:config:translate", args: [] }],
         destination: root,
         recipeId: "fixture",

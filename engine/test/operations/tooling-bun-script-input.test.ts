@@ -3,11 +3,10 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parseScriptFile } from "@lando/landofile/bun-sh-discovery";
 import { EnvironmentValueResolver, EventService, type LandoEvent } from "@lando/sdk/services";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Result } from "effect";
 import { runBunShellScript, runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
-import { recordingScriptEvents, withBunScript } from "./tooling-bun-script-support.ts";
+import { recordingScriptEvents, scriptHostLayer, withBunScript } from "./tooling-bun-script-support.ts";
 
 test("executes declared flags and positionals using original argv and named input values", async () => {
   // Given
@@ -38,7 +37,7 @@ test("executes declared flags and positionals using original argv and named inpu
           env: { LANDO_FLAG_TONE: "spoof", LANDO_ARG_NAME: "spoof", LANDO_INPUT: "spoof" },
         },
         root,
-      ).pipe(Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer))),
+      ).pipe(Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer))),
     );
     // Then
     expect(result?.exitCode).toBe(0);
@@ -87,7 +86,7 @@ test("keeps input defaults literal while resolving caller environment in one ses
     // When
     const result = await Effect.runPromise(
       runBunShellTooling({ name: "probe", env: { EXPLICIT: "authored" } }, root).pipe(
-        Effect.provide(PrivateFileAccessService.layer),
+        Effect.provide(scriptHostLayer),
         Effect.provideService(EnvironmentValueResolver, resolver),
       ),
     );
@@ -109,7 +108,7 @@ test("exports supplied boolean switches as literal true", async () => {
       // When
       const result = await Effect.runPromise(
         runBunShellTooling({ name: "probe", input: { _tag: "RawArgv", argv: ["--verbose"] } }, root).pipe(
-          Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer)),
+          Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer)),
         ),
       );
       // Then
@@ -154,7 +153,7 @@ for (const entry of ["direct", "discovery"] as const) {
         // When
         const result = await Effect.runPromise(
           Effect.result(effect).pipe(
-            Effect.provide(PrivateFileAccessService.layer),
+            Effect.provide(scriptHostLayer),
             Effect.provideService(
               EnvironmentValueResolver,
               EnvironmentValueResolver.of({
@@ -194,10 +193,10 @@ test("shadows inherited and caller input namespaces without changing the parent 
     const resolver = join(import.meta.dirname, "../environment-values.ts");
     const helper = `
       import { Effect, Layer } from "effect";
-      import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+      import { scriptHostLayer } from ${JSON.stringify(join(import.meta.dirname, "tooling-bun-script-support.ts"))};
       import { testEnvironmentResolverLayer } from ${JSON.stringify(resolver)};
       import { runBunShellTooling } from ${JSON.stringify(operation)};
-      const result = await Effect.runPromise(runBunShellTooling({name: "probe", input: {_tag: "RawArgv", argv: ["--raw", "two words"]}, env: {LANDO_INPUT: "spoof", LANDO_FLAG_STALE: "caller-stale", LANDO_ARG_EXTRA: "caller-extra", ORDINARY: "kept"}}, ${JSON.stringify(root)}).pipe(Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer))));
+      const result = await Effect.runPromise(runBunShellTooling({name: "probe", input: {_tag: "RawArgv", argv: ["--raw", "two words"]}, env: {LANDO_INPUT: "spoof", LANDO_FLAG_STALE: "caller-stale", LANDO_ARG_EXTRA: "caller-extra", ORDINARY: "kept"}}, ${JSON.stringify(root)}).pipe(Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer))));
       console.log(JSON.stringify({result, inheritedAfter: process.env.LANDO_FLAG_STALE, inputAfter: process.env.LANDO_INPUT}));
     `;
     // When

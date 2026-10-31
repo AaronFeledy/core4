@@ -4,7 +4,6 @@ import { execApp } from "@lando/engine/operations/exec";
 import { startApp } from "@lando/engine/operations/start";
 import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
 import * as RoutedSecretStore from "@lando/engine/services/secret-store-registry";
-import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
@@ -34,6 +33,7 @@ import { Effect, Layer, Redacted, Schema, Stream } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { EmptyResultSchema } from "../../src/cli/spec/command-base.ts";
 import * as TestLandofileLayers from "../_support/landofile-layer.ts";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 
 test.each([
   { failApply: false, providerState: "running", expectedState: "running" },

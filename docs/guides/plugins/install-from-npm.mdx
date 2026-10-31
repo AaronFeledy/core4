@@ -39,6 +39,18 @@ without that script takes the trust-prompt path and fails with
 
 Packages land at `<userDataRoot>/plugins/<name>/<version>/`. A directory that already exists is left in place.
 
+If a step fails, the command stops with `PluginPackageOperationError` and
+exits `1`. The error names the operation that failed (`resolve`, `download`,
+`verify`, `extract`, or `postinstall`), the package spec, and the child's exit
+code when a Bun child ran and exited nonzero. Nothing after that step runs, so
+a failed add never activates the plugin or refreshes the command cache. Lando
+doesn't undo what the step already wrote on disk. Fix the cause the message
+points at
+(a bad spec, a registry problem, or the package's own script), then run
+`lando plugin:add` again. `lando plugin:remove` reports its failures the same
+way with operation `remove`. The full field list and the `--format=json` shape
+are in [Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-commands).
+
 `lando plugin:add` is the top-level alias of `meta:plugin:add`.
 
 ## Trust the name

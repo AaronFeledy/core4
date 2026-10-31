@@ -14,7 +14,7 @@ import {
 import { Effect, Queue, Stream } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import * as Process from "../../src/services/process-runner.ts";
-import * as Shell from "../../src/services/shell-runner.ts";
+import * as Shell from "../shell-runner.ts";
 
 const limit = 1024 * 1024;
 const shellLayer = Shell.layer(() => {

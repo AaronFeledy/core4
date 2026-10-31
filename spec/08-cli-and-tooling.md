@@ -103,7 +103,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `apps:scratch:run` | `scratch:run`, `run` | `scratch` | Scope-bound toolbox execution; `--keep` detaches |
 | `apps:scratch:start` | `scratch:start`, `scratch` | `scratch` | `--fork` or `--from`; isolation, cwd mount, global-storage, detach controls |
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop selected or foreground scratch and destroy it |
-| `meta:bun` | `bun` | `minimal` | Embedded Bun proxy through `BunSelfRunner` |
+| `meta:bun` | `bun` | `minimal` | Transparent embedded Bun argv proxy (§8.2.4) |
 | `meta:config` | `config` | `none` | Read, validate, or repair `<userConfRoot>/config.yml` |
 | `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1) |
 | `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks catalog references and eligibility before no-start removal. Stopped providers are reported unavailable during discovery; a runtime stopping after recheck causes failed removal, never startup or repair (§10.11.2). |
@@ -122,11 +122,11 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:global:uninstall` | `global:uninstall` | `global` | Disable contributions and stop affected services |
 | `meta:mcp` | `mcp` | `plugins` | MCP over stdio; `--allow`, `--deny`, `--tooling`, `--list` |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install plugin |
-| `meta:plugin:build` | none | `minimal` | Build through `BunSelfRunner.buildLib` |
+| `meta:plugin:build` | none | `minimal` | Build (including declarations) through the private Bun self-execution wrapper |
 | `meta:plugin:link` | none | `plugins` | Link current plugin |
 | `meta:plugin:login` | `plugin:login` | `minimal` | Authenticate plugin source |
 | `meta:plugin:logout` | `plugin:logout` | `minimal` | Forget authentication |
-| `meta:plugin:new` | none | `minimal` | Scaffold plugin through `BunSelfRunner.create` |
+| `meta:plugin:new` | none | `minimal` | Scaffold a plugin from a built-in template |
 | `meta:plugin:publish` | none | `minimal` | Publish; reads `<userDataRoot>/plugin-auth.json` |
 | `meta:plugin:remove` | `plugin:remove` | `plugins` | Remove plugin |
 | `meta:plugin:test` | none | `minimal` | Run plugin tests |
@@ -139,7 +139,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:uninstall` | `uninstall` | `none` | Remove recorded Lando-owned files through a command-owned maintenance runtime that does not require valid global configuration; `--yes`, `--dry-run` |
 | `meta:update` | `update` | `plugins` | Update core and plugins |
 | `meta:version` | `version` | `none` | Print embedded version |
-| `meta:x` | `x` | `minimal` | One-shot package execution through `BunSelfRunner.x` |
+| `meta:x` | `x` | `minimal` | One-shot package execution (`bun x`) through the private Bun self-execution wrapper (§8.2.4) |
 
 Command-wide rules:
 
@@ -222,11 +222,21 @@ In compiled mode, the host line evaluator MUST append a scoped private `bun` lau
 
 #### 8.2.4 The `meta:bun` and `meta:x` commands
 
-`meta:bun` forwards Bun argv to `BunSelfRunner`; `meta:x` requires a package spec and invokes `BunSelfRunner.x`. Both use caller cwd, stream output, preserve child exit status, run at `minimal`, and publish `cli-meta:bun-*`, `cli-meta:x-*`, and `pre-bun-self-exec`/`post-bun-self-exec`.
+`meta:bun` is a transparent Bun argv proxy with no blanket verb allowlist; `meta:x` requires a package spec and proxies `x <spec> …`. Both use caller cwd, run at `minimal`, and publish `cli-meta:bun-*` / `cli-meta:x-*` plus redacted `pre-bun-self-exec`/`post-bun-self-exec`. They go through the private Bun self-execution wrapper (§2.1, §3.4), which self-spawns the current executable (`process.execPath` with `BUN_BE_BUN=1`) through the injected `ProcessRunner` and MUST NOT search `PATH` for Bun. Lando's own global flags precede the command id; every token after `bun` or `x` is Bun argv and MUST be forwarded unchanged. Core reserves aliases `bun` and `x`.
 
-For every verb, the default `BunSelfRunner` MUST prepend a scoped private `lando` launcher to the child's effective `PATH` whenever a target resolves: the `lando` on that effective `PATH`, else the running compiled CLI. Source or library mode with no `lando` on `PATH` creates no launcher. When a launcher is present, a bare `lando` in package scripts, lifecycle scripts, or `x` binaries MUST run as Lando with neither `BUN_BE_BUN` nor `BUN_FEATURE_FLAG_NO_ORPHANS` set. Other commands keep their Bun environment, so `bun` in a package script still uses the embedded Bun without a host installation. Caller environment overrides MUST NOT disable `BUN_BE_BUN` or `LANDO_DISALLOW_BUN_BE_BUN_REENTRY` in the child. The launcher MUST preserve `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1`, so nested `lando bun` remains refused, and its directory MUST be removed only after the child exits, including on interruption. This only changes the child's command resolution: embedded mode still self-spawns `process.execPath` with `BUN_BE_BUN=1`, never a Bun selected from `PATH`. A path-qualified call to a Lando binary is outside this guarantee.
+**Output and stdin.** In human (`text`) mode, `meta:bun` and `meta:x` inherit the CLI's stdin, stdout, and stderr; that passthrough is raw and is the one place child output bypasses redaction. Under `--format=json` or `--format=yaml` the child still inherits CLI stdin, but its stdout and stderr are collected and the command emits one `CommandResultEnvelope` after exit, not `StreamFrame`s; no raw child bytes and no `meta:x` banner reach machine stdout. Collected output lives in `envelope.output` as channel-tagged chunks, not in every operation's `result`; completion status lives in `result.exitCode`. Collection is capped at 1 MiB of raw bytes per channel for the whole invocation across every child it starts; exceeding the cap fails with `ProcessExecError`, never a truncated success, and no later stage runs. Order within one channel is preserved; the contract makes no claim about interleaving between channels. The frame policy of other commands is unchanged. Direct library and event-driven execution collect by default and never implicitly attach host stdin or output.
 
-`BunSelfRunner` prevents recursive `BUN_BE_BUN` entry with `BunSelfReentryError`. Child failures return `BunSelfExecError`. Offline uncached `meta:x` returns `BunSelfOfflineError`; `meta:bun` passes offline policy through. Core reserves aliases `bun` and `x`.
+The invocation-wide collector above belongs to the CLI adapter. Direct and event-driven calls retain the per-child capture limit; they MUST NOT be described as implicitly sharing the CLI collector across independent calls.
+
+**Completion.** Child exit codes are data, not Effect failures of the wrapper: a successful Effect returns `{ exitCode }` (and `meta:x` also returns `spec`). Command specs install `commandCompletionFromExitCode` so nonzero completion yields `{ ok: false, exitCode }`, a `LandoCommandError` carrying the command id and that exit code, and the completed typed value (§8.3). Direct `invokeOperation` does not apply that command policy and reports successful Effect execution separately. Preparation failures are `FileIoError`; startup, I/O, and collection-overflow failures are `ProcessExecError`; timeouts are `ProcessTimeoutError`; recursive `BUN_BE_BUN` entry fails with `BunSelfReentryError`. There is no offline tag and no inferred offline classifier: offline or network policy is Bun's own behavior on the child.
+
+**Launcher.** For every invocation, the wrapper MUST prepend a scoped private `lando` launcher to the child's effective `PATH` whenever a target resolves: the `lando` on that effective `PATH`, else the running compiled CLI. Source mode with no `lando` on `PATH` creates no launcher. When a launcher is present, a bare `lando` in package scripts, lifecycle scripts, or `x` binaries MUST run as Lando with neither `BUN_BE_BUN` nor `BUN_FEATURE_FLAG_NO_ORPHANS` set. Other commands keep their Bun environment, so a bare `bun` inside those scripts still reaches the current executable without a host Bun install. Caller environment overrides MUST NOT disable `BUN_BE_BUN` or `LANDO_DISALLOW_BUN_BE_BUN_REENTRY` in the child. The launcher MUST preserve `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1`, so nested `lando bun` remains refused, and its directory MUST be removed only after the child exits, including on interruption. This only changes the child's command resolution: the self-spawn remains `process.execPath` with `BUN_BE_BUN=1`, never a Bun selected from `PATH`. A path-qualified call to a Lando binary is outside this guarantee.
+
+**Managed children.** `meta:plugin:build` (including declaration build), `meta:plugin:test`, `meta:plugin:publish`, trusted postinstall during `meta:plugin:add` and `meta:update`, and recipe `postInit` Bun actions stream live progress through `Renderer` in human mode and preserve their completion summaries; in machine mode they collect under the same per-channel cap into `envelope.output`. `meta:plugin:remove` collects quietly in both modes. Managed children MUST NOT inherit CLI stdin. Recipe `postInit` Bun and command actions MAY receive explicitly bound input, which takes precedence over default closed stdin. Canonical redaction runs before any collected output reaches events, envelopes, logs, or errors, and an explicit `BUN_AUTH_TOKEN` is always protected. When a collected managed operation fails, its error carries at most 8 KiB total of redacted UTF-8 diagnostic output, stderr first and then stdout, with an explicit clipping indicator. A human-streamed failure points to the already-displayed output instead; retained live tails for that case are deferred.
+
+**Plugin operation failures.** Plugin acquisition and lifecycle paths that treat a nonzero package-manager child as a command failure MUST raise `PluginPackageOperationError` with `operation` in `resolve`, `download`, `verify`, `extract`, `postinstall`, or `remove` and package context; `exitCode` is present only when a child was observed to exit nonzero, because acquisition downloads and extracts are not a `bun install`. The CLI exits `1`. A failure stops every later Lando activation, deletion, registry, cache, or trust-mutation step; it does not roll back effects the child already produced, and explicit persistent trust grants are retained (§9.6). Direct `meta:plugin:build` and `meta:plugin:test` and the final `meta:plugin:publish` child follow the exit-as-data completion above. A failed prerequisite rebuild or retest inside publication stops with `PluginPublishValidationError` before any publish result exists.
+
+In a batch update, failed-operation mutation safety applies to the affected plugin; earlier successful activations remain committed. Ordinary package failures may be reported per row while the batch continues. `ProcessExecError` and `ProcessTimeoutError` MUST abort the update invocation, including capture overflow. Once the shared collector exceeds its budget, catching that failure MUST NOT authorize another Bun child in the same invocation.
 
 #### 8.2.5 The `app:open` command
 
@@ -615,13 +625,13 @@ Actions run in order only after the static create transaction (§8.8.7) and requ
 | `gitInit` | Reserved; preparation rejects it before any output is committed until an implementation ships (issue #1851) |
 | `message` | Emit renderer-aware expression text |
 | `command` | Invoke a `recipePostInitAllowed` canonical command at its bootstrap level |
-| `bun` | Invoke `BunSelfRunner` with `verb: script\|install\|add\|create\|run\|x` |
+| `bun` | Bounded recipe Bun action (`verb: script\|install\|add\|create\|run\|x`) through the private Bun self-execution wrapper (§8.2.4) under recipe action and path restrictions; not the transparent `meta:bun` proxy |
 
 `command` actions MAY bind named `stdin` and `secretEnv`. Bun verbs use their declared shapes: `script` plus argv, `install`, `add` dependency groups, `create` template/destination, package-script `run`, and package-spec `x`.
 
 The initial generated `postInit.command` allowlist is `app:config:translate` and `app:start`. Start requires explicit opt-in and MUST NOT be the default. Plugin installation, updates, setup, global config, shell integration, and arbitrary tooling are forbidden.
 
-All Bun actions are destination-bounded, redacted, recursion-guarded, lifecycle-evented, and shape-validated. Violations use `BunSelfArgvShapeError`, `BunActionOutsideDestinationError`, `BunCreateOutsideDestinationError`, `BunScriptOutsideRecipeError`, or `BunScriptChecksumError`. Interruptions return `RecipeInterruptedError`; committed or externally created files are not rolled back. Network-capable Bun verbs are the explicit recipe network exception and SHOULD be user-controllable. Arbitrary shell hooks are forbidden outside bounded `verb: script`.
+All Bun actions are destination-bounded, redacted, and shape-validated by the recipe post-init runtime, not by blanket proxy verb checks in the wrapper. "Bounded" here means action and path restrictions; the output byte budget of §8.2.4 applies separately on top. Bun and command actions ignore ambient CLI stdin and accept only explicitly bound action input. The wrapper returns child exit codes as data; nonzero exits and path/argv violations produce internal `RecipePostInitError` values. Public initialization maps those failures to `RecipeInitPostInitError`, retaining the failed action, committed-file context, and `rolledBack: false`, not promising the low-level `kind` or child `exitCode`. Script contents MUST match their prepared digest immediately before invocation; changed content fails through that same public boundary. Interruptions return `RecipeInterruptedError`; committed or externally created files are not rolled back. Network-capable Bun verbs are the explicit recipe network exception and SHOULD be user-controllable. Arbitrary shell hooks are forbidden outside bounded `verb: script`.
 
 #### 8.8.9 Init lifecycle
 
@@ -705,11 +715,7 @@ Recipe and init failures preserve these schema-backed `_tag` values:
 | `RecipeOutputValidationError` | Manifest, authoring, Landofile, or auxiliary output invalid |
 | `RecipeForbiddenCommandError` | Programmatic command outside `runs` |
 | `RecipeForbiddenFetchError` | URL outside `fetchAllowlist` |
-| `BunSelfArgvShapeError` | Invalid bounded Bun action payload |
-| `BunActionOutsideDestinationError` | Bun cwd escapes destination |
-| `BunCreateOutsideDestinationError` | Create destination escapes recipe root |
-| `BunScriptOutsideRecipeError` | Script path escapes recipe tree |
-| `BunScriptChecksumError` | Embedded script checksum mismatch |
+| `RecipeInitPostInitError` | Public post-init failure, including bounded Bun failures and changed prepared scripts; retains failed-action and committed-file context with `rolledBack: false` |
 | `RecipeInterruptedError` | Init interrupted after scoped cancellation |
 
 Recipe persisted locations are `recipes/<id>/`, `<userDataRoot>/recipe-cache/git/<sha>/`, `<userDataRoot>/recipe-cache/tarball/<sha256>/`, (npm tarballs included). Compiled manifests, generated Landofiles, and derived snapshots MUST remain independent of provider state.
@@ -937,7 +943,7 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Fa
 | `ok` | Success discriminator |
 | `result` | Optional command `resultSchema` value |
 | `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures with required `role` |
-| `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses |
+| `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses; carries the collected child output of Bun-backed commands under `json`/`yaml` (§8.2.4) |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |
 

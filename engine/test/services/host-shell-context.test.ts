@@ -7,8 +7,8 @@ import { Effect, Stream } from "effect";
 import { StreamFrameSink } from "../../src/operations/stream-frame-sink.ts";
 import { runHostShellRepl } from "../../src/services/host-shell-repl.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const shellLayer = BunShellRunner.layer(() => {
   throw new TypeError("unused interactive IO");

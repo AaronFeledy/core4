@@ -11,6 +11,7 @@ import { FileSyncStartError, ShellExecError } from "@lando/sdk/errors";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { SECRET_SOUP_FIXTURE } from "@lando/sdk/test";
 
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import {
   type DownloaderEvents,
@@ -18,10 +19,11 @@ import {
   makeDownloaderService,
 } from "@lando/http-client/downloader";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
+import { bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { buildHostDnsCheck } from "../../src/cli/commands/doctor-host-dns-check.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
 import { redactDetails, redactString } from "../../src/cli/redact.ts";
+import { withProcess } from "../_support/process-runner.ts";
 
 const patternRedactor = () => createStandaloneRedactor("secrets", { sourceEnv: {} });
 
@@ -51,7 +53,7 @@ const realRedactionLayer = Layer.effect(
 ).pipe(Layer.provide(RedactionService.layer));
 const shellRunnerLive = BunShellRunner.layer(() => {
   throw new TypeError("Interactive shell IO is not used by redaction service tests.");
-});
+}).pipe(Layer.provide(BunProcessRunner.layer));
 
 const captureEventLayer = (events: LandoEvent[]) =>
   Layer.succeed(
@@ -160,7 +162,6 @@ describe("audited services compose canonical redaction", () => {
 
   test("BunSelfRunner redacts published event fields through RedactionService.layer", async () => {
     const events: LandoEvent[] = [];
-    const spawner: BunSelfSpawner = { spawn: async () => ({ exitCode: 0 }) };
     const root = await mkdtemp(join(tmpdir(), `lando-bun-redaction-${REGISTERED_SECRET}-`));
     try {
       const cwd = join(root, UNREGISTERED_BEARER);
@@ -170,11 +171,13 @@ describe("audited services compose canonical redaction", () => {
           argv: ["install", VALUE_AND_PATTERN_SOUP],
           cwd,
           env: { BUN_AUTH_TOKEN: REGISTERED_SECRET },
-          spawner,
           execPath: "/bin/bun",
           callerSubsystem: `caller ${VALUE_AND_PATTERN_SOUP}`,
           verb: `verb ${VALUE_AND_PATTERN_SOUP}`,
-        }).pipe(Effect.provide(Layer.mergeAll(realRedactionLayer, captureEventLayer(events)))),
+        }).pipe(
+          withProcess(async () => ({ exitCode: 0 })),
+          Effect.provide(Layer.mergeAll(realRedactionLayer, captureEventLayer(events))),
+        ),
       );
 
       expect(events.map((event) => event._tag)).toEqual(["pre-bun-self-exec", "post-bun-self-exec"]);

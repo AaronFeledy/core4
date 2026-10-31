@@ -4,12 +4,11 @@ import { parseScriptFile } from "@lando/landofile/bun-sh-discovery";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createPayloadRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runBunShellScript, runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { testEnvironmentResolverLayerFor } from "../environment-values.ts";
-import { recordingScriptEvents, withBunScript } from "./tooling-bun-script-support.ts";
+import { recordingScriptEvents, scriptHostLayer, withBunScript } from "./tooling-bun-script-support.ts";
 
 for (const entry of ["direct", "discovery"] as const) {
   test.each(
@@ -70,9 +69,7 @@ for (const entry of ["direct", "discovery"] as const) {
         // When
         const result = await Effect.runPromise(
           (mode === "live" ? execution.pipe(Effect.provideService(StreamFrameSink, sink)) : execution).pipe(
-            Effect.provide(
-              Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayerFor(redaction)),
-            ),
+            Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayerFor(redaction))),
             Effect.provideService(RedactionService, redaction),
             Effect.provideService(EventService, recordingScriptEvents(events)),
           ),
@@ -155,9 +152,7 @@ for (const entry of ["direct", "discovery"] as const) {
             ? runBunShellScript(discovered, root, options)
             : runBunShellTooling(options, root)
           ).pipe(
-            Effect.provide(
-              Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayerFor(redaction)),
-            ),
+            Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayerFor(redaction))),
             Effect.provideService(RedactionService, redaction),
             Effect.provide(mode === "live" ? Layer.succeed(StreamFrameSink, sink) : Layer.empty),
           ),
@@ -207,9 +202,7 @@ for (const entry of ["direct", "discovery"] as const) {
           ? runBunShellScript(discovered, root, options)
           : runBunShellTooling(options, root)
         ).pipe(
-          Effect.provide(
-            Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayerFor(redaction)),
-          ),
+          Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayerFor(redaction))),
           Effect.provideService(RedactionService, redaction),
         ),
       );
