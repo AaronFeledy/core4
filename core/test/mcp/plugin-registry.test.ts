@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { dispatchTool } from "@lando/mcp/dispatch";
+import type { McpCommandEntry } from "@lando/mcp/registry";
 import { RedactionService } from "@lando/redaction/service";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -149,7 +150,14 @@ test("--allow rejects app:remote:tether even when the id is otherwise known", as
 test("dispatch refuses app:remote:tether even when registered and allowed", async () => {
   // Given a registry and effective allowlist that both contain tether
   let executed = 0;
-  const entry = { spec: { ...spec, id: tether, summary: "Tether fixture" } };
+  const entry: McpCommandEntry = {
+    spec: {
+      id: tether,
+      summary: "Tether fixture",
+      resultSchema: Schema.String,
+      run: () => Effect.succeed("ran"),
+    },
+  };
   // When a client calls the tool
   const exit = await Effect.runPromise(
     Effect.exit(
