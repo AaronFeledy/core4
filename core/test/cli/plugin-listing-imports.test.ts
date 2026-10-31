@@ -10,7 +10,7 @@ test("listing, topics and token indexing import zero bundled or external plugin 
     const script = `
       let imports = 0;
       Bun.plugin({name: "plugin-import-trap", setup(build) {
-        build.onLoad({filter: /(?:\\/plugins\\/[^/]+\\/src\\/index\\.ts|\\/.lando\\/plugins\\/[^/]+\\/index\\.ts)$/}, () => { imports++; throw new Error("plugin entry evaluated"); });
+        build.onLoad({filter: /(?:\\/plugins\\/(?!renderer-)[^/]+\\/src\\/index\\.ts|\\/.lando\\/plugins\\/[^/]+\\/index\\.ts)$/}, (args) => { imports++; throw new Error("plugin entry evaluated: " + args.path); });
       }});
       const {runCli} = await import(${JSON.stringify(resolve(repo, "core/src/cli/index.ts"))});
       for (const argv of [["help", "--all", "--format=json"], ["help", "db"], ["help", "trap"]]) await runCli({argv, rootUrl: ${JSON.stringify(resolve(repo, "core/bin/lando.ts"))}});
@@ -22,7 +22,10 @@ test("listing, topics and token indexing import zero bundled or external plugin 
     `;
     const child = Bun.spawn([process.execPath, "--eval", script], {
       cwd: f.root,
-      env: f.env,
+      // Pin the default renderer so agent detection on the host cannot change
+      // which modules load. The renderer plugin it imports is chosen by
+      // renderer mode, not by command listing, so the trap leaves it alone.
+      env: { ...f.env, LANDO_RENDERER: "lando" },
       stdout: "pipe",
       stderr: "pipe",
     });
