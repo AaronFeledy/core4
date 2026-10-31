@@ -57,7 +57,7 @@ The deprecation gate runs immediately after codegen. It MUST fail if a `removeIn
 | `bootstrap-layers` | Service registry, bootstrap ranks, plugin contributions | One generated Layer per bootstrap level | Derived drift, boundary, and perf gates |
 | `schema-snapshot` | Public schema, command-result, and bundled-manifest registries | Schema artifacts, references, fixtures, package mirrors | Derived regeneration and schema compatibility |
 | `setup-plugin-flags` | Ship list and setup contributions | Setup flag metadata | Derived drift and command tests |
-| `mcp-allowlist` | Command registry metadata | MCP command allowlist | Derived drift and registry tests |
+| `mcp-allowlist` | Built-in command registry metadata and bundled command descriptors | MCP command allowlist | Derived drift and registry tests |
 | `host-proxy-allowlist` | Command registry metadata | Host-proxy command allowlist | Derived drift and contract tests |
 | `command-registry-manifest` | Built-in command registry and topics | Embedded manifest and command-id list | Derived drift and registry completeness |
 | `compiled-decoders` | The fixed hot-path schema AST list in `core/src/cli/compiled-decoder-targets.ts` and the pinned Effect version | Gitignored generated decoder module plus declaration under `core/src/cli/generated/` (§12.5.1) | Derived regeneration, compiled-decoder parity, perf gates |
