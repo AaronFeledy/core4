@@ -33,6 +33,9 @@ test("supplies strict explicit inputs and bounded container-only image preparati
   expect(job.needs).toContain("container-helper");
   expect(job["timeout-minutes"]).toBe(60);
   expect(job.steps.some((step) => step.run?.includes("build-service-listener-qa-image.ts"))).toBe(true);
+  // The compiled-binary stamper refuses placeholder 0.0.0 versions.
+  expect(job.steps.some((step) => step.run?.includes("--version 0.0.0"))).toBe(false);
+  expect(job.steps.some((step) => step.run?.includes('--version "$VERSION"'))).toBe(true);
   expect(job.steps.some((step) => step.uses?.includes("setup-go"))).toBe(false);
 });
 

@@ -553,7 +553,8 @@ jobs:
       - name: Compile current listener CLI
         run: |
           bun run --filter='@lando/core' build:manifest
-          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./core/dist/lando --version 0.0.0-listener-qa --minify --sourcemap=external
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./core/dist/lando --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
           ./core/dist/lando --version
           echo "LANDO_SCENARIO_E2E_BINARY=$GITHUB_WORKSPACE/core/dist/lando" >> "$GITHUB_ENV"
