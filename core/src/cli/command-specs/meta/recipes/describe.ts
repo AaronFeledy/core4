@@ -37,5 +37,5 @@ export const metaRecipesDescribeSpec: LandoCommandSpec<RecipesDescribeResult> = 
     }
     return recipesDescribe(ref, { cwd: process.cwd() });
   },
-  render: (result) => renderRecipesDescribeResult(result as RecipesDescribeResult),
+  render: (result) => renderRecipesDescribeResult(result),
 };

@@ -5,22 +5,59 @@ timeout: 90000
 tags: [beta, docs, minio, service]
 ---
 
-# Add MinIO
+# Run your MinIO image
 
-Add `type: minio` under `services` in `.lando.yml`. Set `database` to name the bucket Lando creates for you:
+Use `type: minio` with a compatible container image you control. Lando configures
+the S3 API, console, persistent data, and `mc` client, but does not supply a
+default MinIO image.
+
+Before continuing, verify that your image supports your host architecture and
+contains a shell, filesystem utilities, the `minio` server, and `mc`. Its
+container user must be able to write `/data`. You own the image's provenance,
+security updates, and compatibility. Lando does not inspect or download it while
+linting configuration.
+
+In your app's `.lando.yml`, replace `registry.example.com/team/minio:approved`
+below with your verified image reference, preferably pinned by digest. The
+example registry is a placeholder, not an image provided or pull-verified by
+Lando.
 
 ```yaml
 name: minio-demo
 services:
   object-store:
     type: minio
+    image: registry.example.com/team/minio:approved
+    appMount: false
     database: uploads
+    routes:
+      - hostname: console.minio-demo.lndo.site
+        endpoint: console
 ```
 
-MinIO listens on API port `9000` and console port `9001`. Lando starts the
-official `quay.io/minio/minio` image with `server /data --address :9000 --console-address
-:9001`, stores object data in the persistent `/data` volume, and uses username `lando` with password `landolando`.
+The API defaults to port `9000` and the console to `9001`. Lando's default
+launcher runs `minio server /data --address :9000 --console-address :9001`,
+preparing the bucket directory first. Object data lives in the persistent
+`/data` volume. Local development credentials default to username `lando` and
+password `landolando`.
 MinIO requires the root password to be at least eight characters.
+
+The examples disable the application source mount because this data service
+does not need your project files; its objects live in the data volume instead.
+
+From the app directory on your host, check the configuration before starting:
+
+```sh
+lando app:config:lint
+lando start
+lando mc ready local
+lando info
+```
+
+Open `https://console.minio-demo.lndo.site` for the console. The explicit
+`endpoint: console` route selects the console listener; without that selector,
+a route selects the S3 API, which is the primary listener. `lando info` lists
+both App Network connections and the console route.
 
 <Guide>
   <Scenario id="resolved-config" render>
@@ -39,59 +76,130 @@ MinIO requires the root password to be at least eight characters.
 
 ## Bucket and credentials
 
-The official MinIO image does not honor a default-bucket environment variable.
-Lando creates the bucket as a directory under `/data` before the server starts.
+Lando prepares the bucket directory under `/data` before its default server
+command starts.
 `database: uploads` becomes the `uploads` bucket. If you omit it, Lando uses
 the app name.
 
 ### Run MinIO as another user
 
-That bucket `mkdir` lands in `/data`, which is a named volume, and it runs as the
-`user:` you set. The image itself runs as root and declares only `root`; its
-`/data` is a bare `VOLUME` with nothing behind it, so who owns the tree is
-whatever the runtime happens to create. With no `user:` or `user: root` nothing
-changes and no preparation is needed.
-
-For any non-root user, Lando prepares the tree in the image before the volume
-exists: one root build step creates `/data` and chowns it to your user. A
-container runtime seeds a fresh named volume from the image directory at that
-path, ownership included, so your user owns `/data` from the first start and the
-bucket `mkdir` succeeds.
+The bucket directory is created as the planned container user. Choose a user
+your image supports and make sure `/data` is writable by that user. Lando cannot
+infer named users, home paths, or data ownership from an arbitrary image. Prefer
+a numeric UID when overriding a bring-your-own image's user:
 
 ```yaml
 services:
   object-store:
     type: minio
+    image: registry.example.com/team/minio:approved
+    appMount: false
     database: uploads
     user: "10001"
 ```
 
-Two things to know:
-
-- It only applies to a **new** volume. A volume created by an earlier start
-  keeps the ownership it already has. Purging that volume deletes its objects. Back up anything you need before using `lando destroy` with volume purge to create a fresh volume with the new ownership.
-- Lando has to know your user exists in the image. A numeric uid always works,
-  because a uid can always be given ownership, even when you supply your own
-  `image:` or `build:`. Any user name other than `root` is refused. A named
-  `user:` on a service that supplies its own `image:` or `build:` is refused
-  too, because that image is no longer the one the type described. The refusal
-  is a `DataTreeOwnershipCapabilityError` that names the service, the data
-  tree (`/data`), and the Landofile option to change. Fix it with a numeric
-  uid, or use `root`.
+Changing `user:` does not repair ownership in an existing data volume. If
+planning reports an ownership capability error, correct the image or user named
+in that error. Back up objects before explicitly removing a data volume;
+removing it deletes its contents.
 
 For local development, the root credentials default to user `lando` and password `landolando`.
 Override `MINIO_ROOT_USER` and `MINIO_ROOT_PASSWORD` under `environment` when
 your app needs different credentials.
 
-A `port:` override changes the S3 API listen address, the internal endpoint, and
-the `mc` alias used for readiness. Known limit: the console port is fixed at
-`9001`. `port:` moves only the API, and no Landofile key moves the console.
+## Build an image you maintain
+
+If your project already has a compatible Dockerfile, replace `image:` with an
+explicit Compose build. Do not set both:
+
+```yaml
+services:
+  object-store:
+    type: minio
+    appMount: false
+    build:
+      context: .
+      dockerfile: Dockerfile
+```
+
+The build must produce the same compatible runtime described above. Lando does
+not silently build MinIO source or choose a replacement distribution. Omitting
+both an image and a Compose build fails planning at `services.object-store.image`,
+before any container action. A Lando build-script block alone does not supply
+the base image. A maintained default distribution is tracked separately in
+[issue #1899](https://github.com/AaronFeledy/core4/issues/1899).
+
+## Change the API or console port
+
+Set `port:` for the S3 API and `consolePort:` for the console in `.lando.yml`.
+Each is an integer from `1` to `65535`; omitted values remain `9000` and `9001`,
+respectively. The two listeners must use different ports.
+
+```yaml
+name: minio-demo
+services:
+  object-store:
+    type: minio
+    image: registry.example.com/team/minio:approved
+    appMount: false
+    port: 9001
+    consolePort: 19001
+    routes:
+      - hostname: console.minio-demo.lndo.site
+        endpoint: console
+```
+
+Here the API can use `9001` because the console has moved to `19001`. The
+`mc` readiness alias follows the API port, and the named console route follows
+`consolePort:`. You don't need to hardcode the console's numeric port in a route.
+
+After editing the file, run `lando start`, `lando mc ready local`, and
+`lando info` again. The API connection should use `9001` and the console
+connection `19001`. If planning reports a listener collision, give `port:` and
+`consolePort:` different values before starting again. Setting a host publication
+under `ports:` does not move either container listener.
+
+Startup scanning checks the API at `/minio/health/live` and the console at `/`.
+An unauthenticated S3 request to the API root can return `403`; that does not
+make it a suitable readiness check. Explicit global or service `scanner.path`
+and `scanner.okCodes` settings override these endpoint defaults. See
+[tune the scanner](./router-and-scanner.mdx#tune-the-scanner-per-service).
+
+  <Scenario id="custom-listeners" render={false} reason="Plan independently configured MinIO API and console listeners with a named console route">
+    <Step name="plan-listeners">
+      <UseFixture name="custom-listeners" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"consolePort\":\\s*19001" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="reject-listener-collision" render={false} reason="Reject equal API and console ports before provider action">
+    <Step name="reject-collision">
+      <UseFixture name="listener-collision" />
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="require-authored-artifact" render={false} reason="Reject MinIO without an authored image or Compose build before provider action">
+    <Step name="reject-missing-artifact">
+      <UseFixture name="missing-artifact" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"object-store\",\\s*\"image\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
 
 ## Console and client
 
-Open `https://object-store.minio-demo.lndo.site` for the MinIO console. Lando
-routes that hostname to port `9001`; applications talk to the S3 API on the
-internal service port `9000`.
+Applications in another service talk to `http://object-store:9000` by default,
+or `http://object-store:9001` with the custom ports above. The console URL is for
+browser access, not an S3 client endpoint.
+
+If you supply your own `command:` or `entrypoint:`, Lando preserves it. Your
+launcher must bind the API and console to the ports you declared; changing
+`port:` or `consolePort:` does not rewrite an authored launcher.
 
 The service also adds `mc` tooling, so you can run the MinIO client in the
 object-store service:

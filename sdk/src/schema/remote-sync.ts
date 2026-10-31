@@ -25,6 +25,31 @@ export const RemoteConfig = Schema.Struct({
 }).pipe((self) => Schema.StructWithRest(self, [Schema.Record(Schema.String, Schema.Unknown)]));
 export type RemoteConfig = typeof RemoteConfig.Type;
 
+// ==== App remote results
+// Named remote configuration returned by App-handle remote operations.
+
+export const AppRemoteEntry = Schema.Struct({
+  name: Schema.String.annotate({ description: "Name of the remote in the app configuration." }),
+  config: RemoteConfig.annotate({
+    description: "Remote source configuration, including provider-specific settings.",
+  }),
+}).annotate({
+  description: "A named remote and its provider configuration returned by an app remote listing.",
+});
+export type AppRemoteEntry = typeof AppRemoteEntry.Type;
+
+export const AppRemoteMutationResult = Schema.Struct({
+  app: Schema.String.annotate({ description: "Name of the app whose remote configuration changed." }),
+  remote: Schema.String.annotate({ description: "Name of the remote added or removed." }),
+  file: Schema.String.annotate({ description: "Path of the configuration file changed by the operation." }),
+  config: RemoteConfig.annotate({
+    description: "Remote source configuration, including provider-specific settings.",
+  }),
+}).annotate({
+  description: "Configuration and file details returned after adding or removing an app remote.",
+});
+export type AppRemoteMutationResult = typeof AppRemoteMutationResult.Type;
+
 export const DatasetBinding = Schema.Struct({
   service: Schema.optionalKey(ServiceName),
   path: Schema.optionalKey(PortablePath),

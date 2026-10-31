@@ -1,41 +1,35 @@
 import { resolveCommandCompletion } from "@lando/sdk/command-result";
-import { Cause, Context, Effect, Exit, Layer } from "effect";
+import type { DeprecationNotice } from "@lando/sdk/schema";
+import { DeprecationService } from "@lando/sdk/services";
+import { DateTime, Effect, Layer } from "effect";
+import { commandDescriptorNotice } from "./command-catalog";
 
 import type { RendererIO } from "@lando/renderer/io";
-import {
-  type CommandInputValidationError,
-  type ConfigError,
-  type LandoRuntimeBootstrapError,
-  ToolingCommandLookupError,
-} from "@lando/sdk/errors";
+import type { CommandInputValidationError, ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
 import type { Renderer } from "@lando/sdk/services";
 
-import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { makeLandoRuntime } from "../runtime/layer";
-import { builtInCommandEntries } from "./built-in-command-registry";
 import {
   emitJsonListModeIfRequested,
-  emitResultLine,
+  resetActiveCommandInvocation,
   runCompiledCommand,
   runWithProcessAbortSignal,
+  setActiveCommandId,
 } from "./compiled-runtime";
 import { validateEventCommandInput } from "./event-command-input";
-import { resolveEventCommandTarget } from "./event-command-target";
-import {
-  pluginOwnedCliFlagError,
-  pluginOwnedCommandInputFromArgv,
-  renderPluginOwnedCommandHelp,
-} from "./plugin-owned-command-input";
+import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
+import { tryPluginCommandHelp } from "./plugin-command-help";
+import { pluginOwnedCliFlagError, pluginOwnedCommandInputFromArgv } from "./plugin-owned-command-input";
+export { pluginFlagDefinitions } from "./plugin-flag-definitions";
 export {
-  pluginFlagDefinitions,
   pluginOwnedCliFlagError,
   pluginOwnedCommandInputFromArgv,
   renderPluginOwnedCommandHelp,
 } from "./plugin-owned-command-input";
 import type { MalformedCliFlagValueError, UnknownCliFlagError } from "./flag-value-validation";
-import { interruptOnAbort } from "./interrupt-on-abort";
 import { withRedactedRenderer } from "./redacted-renderer";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 
@@ -46,12 +40,18 @@ export const isPluginOwnedCommandId = (token: string): boolean => PLUGIN_OWNED_C
 export interface RunPluginOwnedCommandOptions {
   readonly io?: RendererIO;
   readonly signal?: AbortSignal;
+  readonly deprecation?: { readonly id: string; readonly notice: DeprecationNotice };
 }
 
 type PluginOwnedRuntime = Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
 
-const defaultPluginRuntime = (bootstrap: ExecutableCommandSpec["bootstrap"]): PluginOwnedRuntime =>
-  makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } })) as PluginOwnedRuntime;
+const defaultPluginRuntime = (
+  bootstrap: ExecutableCommandSpec["bootstrap"],
+  cwd: string,
+): PluginOwnedRuntime =>
+  makeLandoRuntime(
+    cliRuntimeOptions({ bootstrap, cwd, plugins: { policy: "discovery" } }),
+  ) as PluginOwnedRuntime;
 
 const compiledPluginOptions = (spec: ExecutableCommandSpec, options: RunPluginOwnedCommandOptions) => ({
   resultSchema: spec.resultSchema,
@@ -118,6 +118,7 @@ const runPluginOwnedCommand = (
 ): Promise<void> =>
   runWithProcessAbortSignal(
     async (signal) => {
+      await import("../runtime/bundled-plugins");
       const flagError = pluginOwnedCliFlagError(spec, argv);
       if (flagError !== undefined) {
         await renderPluginOwnedPreCommandFailure(flagError, options.io);
@@ -129,10 +130,23 @@ const runPluginOwnedCommand = (
       const operation = validateEventCommandInput(spec, parsed).pipe(
         Effect.flatMap((input) => {
           normalizedInput = input;
-          return withRedactedRenderer(spec.run(input));
+          return Effect.gen(function* () {
+            if (options.deprecation !== undefined) {
+              const service = yield* Effect.serviceOption(DeprecationService);
+              if (service._tag === "Some")
+                yield* service.value.use({
+                  kind: "command",
+                  id: options.deprecation.id,
+                  notice: options.deprecation.notice,
+                  timestamp: DateTime.nowUnsafe(),
+                });
+            }
+            return yield* withRedactedRenderer(spec.run(input));
+          });
         }),
       );
-      await runCompiledCommand(operation, defaultPluginRuntime(spec.bootstrap), () => undefined, {
+      const cwd = await Effect.runPromise(discoveryCwd());
+      await runCompiledCommand(operation, defaultPluginRuntime(spec.bootstrap, cwd), () => undefined, {
         ...compiledPluginOptions(spec, options),
         signal,
         ...(completion === undefined
@@ -156,39 +170,26 @@ const runPluginOwnedCommand = (
     options.signal === undefined ? {} : { signal: options.signal },
   );
 
-const resolvePluginOwnedFromGraph = Effect.fnUntraced(function* (commandId: string) {
-  const graph = yield* PluginContributionGraph;
-  const context = Context.make(PluginContributionGraph, graph);
-  const exit = yield* Effect.result(resolveEventCommandTarget(commandId, context, builtInCommandEntries));
-  if (exit._tag === "Failure") {
-    if (exit.failure instanceof ToolingCommandLookupError) return undefined;
-    return yield* Effect.fail(exit.failure);
-  }
-  return exit.success.kind === "plugin" ? exit.success.spec : undefined;
-});
-
 const dispatchPluginOwnedCommand = async (
   commandId: string,
   argv: ReadonlyArray<string>,
   signal?: AbortSignal,
+  catalog: PluginCommandCatalog = createPluginCommandCatalog(signal),
 ): Promise<"dispatched" | "not-found"> => {
   if (signal?.aborted) return "dispatched";
-  const exit = await Effect.runPromiseExit(
-    interruptOnAbort(
-      Effect.scoped(resolvePluginOwnedFromGraph(commandId).pipe(Effect.provide(defaultPluginRuntime("app")))),
-      signal,
-    ),
-  );
-  if (Exit.isFailure(exit)) {
-    if (signal?.aborted && Cause.hasInterruptsOnly(exit.cause)) return "dispatched";
-    await renderPluginOwnedPreCommandFailure(Cause.squash(exit.cause));
+  const row = await catalog.resolve(commandId);
+  if (row === undefined) return "not-found";
+  if ("unavailable" in row || row.loadError !== undefined) {
+    await renderPluginOwnedPreCommandFailure("unavailable" in row ? row.unavailable : row.loadError);
     return "dispatched";
   }
   if (signal?.aborted) return "dispatched";
-  const spec = exit.value;
+  const spec = row.spec;
   if (spec === undefined) return "not-found";
+  setActiveCommandId(spec.id);
+  resetActiveCommandInvocation(spec.id, argv);
   if (argv.includes("--help") || argv.includes("-h")) {
-    await emitResultLine(renderPluginOwnedCommandHelp(spec));
+    await tryPluginCommandHelp(commandId, catalog);
     return "dispatched";
   }
   // A plugin-owned command declares no opt-in format, so it honors exactly the
@@ -200,7 +201,11 @@ const dispatchPluginOwnedCommand = async (
     return "dispatched";
   }
   if (await emitJsonListModeIfRequested(spec.resultSchema)) return "dispatched";
-  await runPluginOwnedCommand(spec, argv, signal === undefined ? {} : { signal });
+  const notice = commandDescriptorNotice(row.descriptor, commandId);
+  await runPluginOwnedCommand(spec, argv, {
+    ...(signal === undefined ? {} : { signal }),
+    ...(notice === undefined ? {} : { deprecation: { id: commandId, notice } }),
+  });
   return "dispatched";
 };
 
@@ -208,5 +213,5 @@ export const tryPluginOwnedCommand = async (
   token: string,
   argv: ReadonlyArray<string>,
   signal?: AbortSignal,
-): Promise<boolean> =>
-  isPluginOwnedCommandId(token) && (await dispatchPluginOwnedCommand(token, argv, signal)) === "dispatched";
+  catalog: PluginCommandCatalog = createPluginCommandCatalog(signal),
+): Promise<boolean> => (await dispatchPluginOwnedCommand(token, argv, signal, catalog)) === "dispatched";

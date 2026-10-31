@@ -4827,13 +4827,13 @@
     "surface": "schema:EndpointPlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+    "justification": "Approved plan extensions add optional primary:true and opaque appProtocol to network endpoints and sparse plan-only scan path/okCodes metadata to endpoint variants. No existing field becomes required; historical ownership-bearing applied plans remain decodable without migration. Scan defaults do not add authoring syntax or readiness semantics."
   },
   {
     "surface": "schema:InternalEndpoint",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved internal network endpoint extension adds optional primary:true and opaque appProtocol. The Unix-socket variant is unchanged, neither field becomes required, and existing applied endpoints remain decodable."
+    "justification": "Approved internal endpoint extensions add optional primary:true and opaque appProtocol to network listeners and optional sparse plan-only scan path/okCodes metadata to endpoint variants. No field becomes required; historical applied endpoints remain decodable. Authoring and readiness semantics remain separate."
   },
   {
     "surface": "schema:LocalStackServiceConfig",
@@ -5464,5 +5464,35 @@
     "changeKind": "unsupported-construct",
     "path": "$.services.items.creds.anyOf",
     "justification": "Reviewed pre-release SQLite file target: global info credentials inherit the same ServiceCredsDisplay union as app info. Historical server credential objects remain valid. Sqlite services publish engine and path rather than empty username fields."
+  },
+  {
+    "surface": "schema:EndpointInvariantIssue",
+    "changeKind": "enum-widened",
+    "path": "$.kind",
+    "justification": "Approved pre-release effective service contracts add scan-conflict for contradictory defined path or status defaults on one logical endpoint. Omitted defaults inherit and equivalent status sets remain valid; consumers must handle the additional diagnostic kind."
+  },
+  {
+    "surface": "command:app:share:stop",
+    "changeKind": "property-removed",
+    "path": "$.status",
+    "justification": "Pre-release stop acknowledgement drops the constant status; successful completion plus sessionId and optional provider already acknowledge the completed stop."
+  },
+  {
+    "surface": "command:app:cache:refresh",
+    "changeKind": "property-removed",
+    "path": "$.pluginCommandCachePath",
+    "justification": "Reviewed pre-release removal: the plugin-command cache was written but never read by any consumer and is deleted. Plugin command metadata now comes from manifest command descriptors on demand, so app:cache:refresh no longer writes or reports that cache. Plugin-set changes still invalidate app tooling caches; refresh and plugin add/link/unlink/remove/trust regressions cover that."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "unsupported-construct",
+    "path": "$.commands.items.anyOf",
+    "justification": "Reviewed pre-release contract change: contributes.commands entries become CommandContribution descriptors (canonical id, nonblank bounded summary, optional hidden, aliases, topLevelAlias, mcpAllowed, deprecated) instead of bare ids or { id, deprecated }. Help, routing, aliases, and MCP eligibility read these descriptors without importing plugin code. Every in-repo manifest and fixture is converted; no string-form shim is retained for this unreleased surface."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "unsupported-construct",
+    "path": "$.contributes.commands.items.anyOf",
+    "justification": "Reviewed pre-release contract change propagated from PluginContribution: manifest command contributions are CommandContribution descriptors, and a manifest that repeats a command id is rejected. Bundled manifests keep plugin.yaml, package.json landoPlugin, and src/index.ts identical under descriptor parity tests; no string-form shim is retained for this unreleased surface."
   }
 ]

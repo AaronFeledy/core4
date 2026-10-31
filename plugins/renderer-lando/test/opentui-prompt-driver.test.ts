@@ -62,75 +62,34 @@ describe("OpenTUI prompt driver", () => {
     await expect(answer).resolves.toBe("3");
   });
 
-  test("confirm tab-select returns y or n", async () => {
-    const testSetup = await makeSetup();
-    const driver = await makeDriver(testSetup);
-
-    const noAnswer = driver.readRaw({
-      prompt: { ...basePrompt, type: "confirm" },
-      mode: "confirm",
-      defaultRaw: "yes",
+  test.each([
+    { type: "confirm", mode: "normal", defaultRaw: "false" },
+    { type: "confirm", mode: "normal", defaultRaw: "true" },
+    { type: "text", mode: "confirm", defaultRaw: "no" },
+    { type: "confirm", mode: "confirm" },
+    { type: "secret", mode: "normal" },
+  ])("declines %j before native loading or renderer creation", async (request) => {
+    // Given a loader that must not be needed by the canonical line-input types.
+    let loads = 0;
+    let creates = 0;
+    const driver = createOpenTuiPromptDriver({
+      loadModule: async () => {
+        loads++;
+        throw new TypeError("Unexpected native load");
+      },
+      createRenderer: async () => {
+        creates++;
+        throw new TypeError("Unexpected renderer creation");
+      },
     });
-    await waitForBuild(testSetup);
-    testSetup.mockInput.pressArrow("right");
-    await flushInput(testSetup);
-    testSetup.mockInput.pressEnter();
-    await flushInput(testSetup);
-    await expect(noAnswer).resolves.toBe("n");
 
-    const testSetup2 = await makeSetup();
-    const driver2 = await makeDriver(testSetup2);
-    const yesAnswer = driver2.readRaw({
-      prompt: { ...basePrompt, type: "confirm" },
-      mode: "confirm",
-      defaultRaw: "no",
-    });
-    await waitForBuild(testSetup2);
-    testSetup2.mockInput.pressArrow("left");
-    await flushInput(testSetup2);
-    testSetup2.mockInput.pressEnter();
-    await flushInput(testSetup2);
-    await expect(yesAnswer).resolves.toBe("y");
-  });
+    // When the rich driver is offered a line-input capability.
+    await expect(
+      driver.readRaw({ ...request, prompt: { ...basePrompt, type: request.type } }),
+    ).rejects.toBeInstanceOf(Error);
 
-  test("confirm pre-selects No without an affirmative default", async () => {
-    // No default: pressing Enter must NOT submit "y" — mirrors the line-based
-    // [y/N]/(y/n) reader where blank input is never affirmative (security: plugin
-    // trust and unverified tarball installs must not proceed on Enter alone).
-    const noDefault = await makeSetup();
-    const noDefaultDriver = await makeDriver(noDefault);
-    const noDefaultAnswer = noDefaultDriver.readRaw({
-      prompt: { ...basePrompt, type: "confirm" },
-      mode: "confirm",
-    });
-    await waitForBuild(noDefault);
-    noDefault.mockInput.pressEnter();
-    await flushInput(noDefault);
-    await expect(noDefaultAnswer).resolves.toBe("n");
-
-    const falseDefault = await makeSetup();
-    const falseDriver = await makeDriver(falseDefault);
-    const falseAnswer = falseDriver.readRaw({
-      prompt: { ...basePrompt, type: "confirm" },
-      mode: "confirm",
-      defaultRaw: "false",
-    });
-    await waitForBuild(falseDefault);
-    falseDefault.mockInput.pressEnter();
-    await flushInput(falseDefault);
-    await expect(falseAnswer).resolves.toBe("n");
-
-    const yesDefault = await makeSetup();
-    const yesDriver = await makeDriver(yesDefault);
-    const yesAnswer = yesDriver.readRaw({
-      prompt: { ...basePrompt, type: "confirm" },
-      mode: "confirm",
-      defaultRaw: "yes",
-    });
-    await waitForBuild(yesDefault);
-    yesDefault.mockInput.pressEnter();
-    await flushInput(yesDefault);
-    await expect(yesAnswer).resolves.toBe("y");
+    // Then neither native loading nor terminal ownership is acquired.
+    expect({ loads, creates }).toEqual({ loads: 0, creates: 0 });
   });
 
   test("input accepts default on enter and typed values", async () => {

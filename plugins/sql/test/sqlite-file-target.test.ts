@@ -104,11 +104,12 @@ describe("covering sqlite mounts", () => {
 });
 
 describe("sqlite snapshot compatibility", () => {
-  test("keys on sqlite_version, owner, service, and path rather than image identity", () => {
+  test("keys on sqlite_version, canonical owner, archive format, service, and path", () => {
     const source = {
       owner: { appRoot: "/app", ownerKey: "abc" },
       id: "snap",
-      store: { app: "app", store: "sqlite-deadbeef" },
+      store: { app: "app", store: sqliteSnapshotStore("data/site.sqlite") },
+      format: "tar",
       digest: "d".repeat(64),
       sizeBytes: 1,
       createdAt: "2026-01-01T00:00:00.000Z" as never,
@@ -117,13 +118,14 @@ describe("sqlite snapshot compatibility", () => {
         volumeInstanceId: "data/site.sqlite",
         family: "sqlite",
         version: "3.54.1",
-        imageIdentity: "ignored-image",
+        imageIdentity: "sqlite",
         recoveryReason: "manual" as const,
       },
     };
     expect(
       sqliteSnapshotsCompatible(source as never, {
         ownerKey: "abc",
+        appRoot: "/app",
         service: "appserver",
         path: "data/site.sqlite",
         version: "3.54.1",
@@ -132,14 +134,32 @@ describe("sqlite snapshot compatibility", () => {
     expect(
       sqliteSnapshotsCompatible(source as never, {
         ownerKey: "abc",
+        appRoot: "/app",
         service: "appserver",
         path: "data/site.sqlite",
         version: "3.45.0",
       }),
     ).toBe(false);
+    for (const overrides of [
+      { owner: { ...source.owner, appRoot: "/other" } },
+      { store: { app: "app", store: "other-store" } },
+      { format: "tar.gz" },
+      { metadata: { ...source.metadata, imageIdentity: "other" } },
+    ]) {
+      expect(
+        sqliteSnapshotsCompatible({ ...source, ...overrides } as never, {
+          ownerKey: "abc",
+          appRoot: "/app",
+          service: "appserver",
+          path: "data/site.sqlite",
+          version: "3.54.1",
+        }),
+      ).toBe(false);
+    }
     expect(
       sqliteSnapshotsCompatible(source as never, {
         ownerKey: "abc",
+        appRoot: "/app",
         service: "appserver",
         path: "other.sqlite",
         version: "3.54.1",
@@ -223,34 +243,12 @@ describe("sqlite helper user and scratch", () => {
     expect(sqliteHelperImage.ref).toContain("@sha256:");
   });
 
-  test("resolves helper uid:gid from the app mount owner", () => {
-    const source = mkdtempSync(join(tmpdir(), "lando-sqlite-uid-"));
-    const info = statSync(source);
-    expect(sqliteHelperUser({ kind: "bind", source, target: "/app", readOnly: false })).toBe(
-      `${info.uid}:${info.gid}`,
-    );
-  });
-
-  test("falls back to the process identity when the bind source cannot be stated", () => {
-    expect(
-      sqliteHelperUser({
-        kind: "bind",
-        source: join(tmpdir(), "lando-sqlite-missing-bind"),
-        target: "/app",
-        readOnly: false,
-      }),
-    ).toBe(`${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`);
-  });
-
-  test("named volumes fall back to the process identity until volume file owners can be stated", () => {
-    expect(
-      sqliteHelperUser({
-        kind: "volume",
-        store: "appserver_data",
-        target: "/app/data",
-        readOnly: false,
-      }),
-    ).toBe(`${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`);
+  test("accepts verified numeric ownership without falling back to the host identity", () => {
+    expect(sqliteHelperUser("100:200\n")).toBe("100:200");
+    expect(sqliteHelperUser("0:0")).toBe("0:0");
+    for (const invalid of ["", "www-data", "-1:100", "100:200:300", "100:200\n0:0", "9007199254740992:1"]) {
+      expect(sqliteHelperUser(invalid)).toBeUndefined();
+    }
   });
 
   test("keeps Lando as scratch owner and stays writable when helper uid cannot be chowned", () => {
@@ -327,13 +325,13 @@ describe("sqlite helper user and scratch", () => {
     };
     const deps = {
       applied,
-      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      run: () => Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" }),
       pullArtifact: () => Effect.succeed({ digest: sqliteHelperImage.digest }),
       paths: { ownerSnapshotsDir: (key: string) => join(dataRoot, "snapshots", key) },
     };
     const first = await Effect.runPromise(prepareSqliteHelper(deps, service, target));
     const second = await Effect.runPromise(prepareSqliteHelper(deps, service, target));
-    const expectedUser = sqliteHelperUser({ kind: "bind", source: bind, target: "/app", readOnly: false });
+    const expectedUser = "100:200";
     expect(first.user).toBe(expectedUser);
     expect(first.spec.user).toBe(expectedUser);
     expect(first.spec.user).not.toBe("www-data");
@@ -370,7 +368,7 @@ describe("sqlite helper user and scratch", () => {
     };
     const deps = {
       applied,
-      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      run: () => Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" }),
       pullArtifact: () => Effect.succeed({ digest: sqliteHelperImage.digest }),
       paths: { ownerSnapshotsDir: (key: string) => join(dataRoot, "snapshots", key) },
     };
@@ -430,6 +428,9 @@ describe("sqlite export dump", () => {
         applied,
         run: (spec: EphemeralRunSpec) => {
           commands.push(spec.command);
+          if (spec.command.includes("sqlite-owner")) {
+            return Effect.succeed({ exitCode: 0, stdout: "100:200\n", stderr: "" });
+          }
           return Effect.succeed({
             exitCode: 1,
             stdout: "",
@@ -457,7 +458,9 @@ describe("sqlite export dump", () => {
         },
       ),
     );
-    expect(commands.some((command) => command.includes('sqlite3 -bail "$1" .dump > "$2"'))).toBe(true);
+    expect(
+      commands.some((command) => command.includes('sqlite3 -bail -readonly -ifexists "$1" .dump > "$2"')),
+    ).toBe(true);
     expect(Exit.isFailure(exit)).toBe(true);
     if (!Exit.isFailure(exit)) return;
     const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
@@ -531,16 +534,22 @@ describe("sqlite live writer guard", () => {
     }
   });
 
-  test("warns when --force replaces a SQLite file while the service is running", async () => {
+  test("refuses a running service even when --force and --yes are set", async () => {
     const { harness, deps } = sqliteDeps(true);
     const exit = await Effect.runPromiseExit(
-      executeDbCommand(deps, { action: "reset", yes: true, force: true }),
+      executeDbCommand(deps, Object.assign({ action: "reset" as const, yes: true }, { force: true })),
     );
-    expect(harness.published()).toContain("message.warn");
+    expect(harness.published()).not.toContain("message.warn");
     expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(SqlRecoveryUnavailableError);
+    if (error instanceof SqlRecoveryUnavailableError) {
+      expect(error.remediation).toContain("do not bypass safety checks");
+    }
   });
 
-  test("maps --force from command input", () => {
+  test("does not map unsupported --force from command input", () => {
     expect(
       dbInputFromCommand("import", {
         argv: [],
@@ -548,6 +557,6 @@ describe("sqlite live writer guard", () => {
         flags: { force: true, yes: true },
         args: { file: "dump.sql" },
       }),
-    ).toMatchObject({ action: "import", force: true, yes: true, file: "dump.sql" });
+    ).toMatchObject({ action: "import", yes: true, file: "dump.sql" });
   });
 });

@@ -19,19 +19,25 @@ export const streamBunScript = Effect.fnUntraced(function* (
     readonly context: CapturedHostExecutionContext;
   },
 ) {
-  const runner = BunProcessRunner.serviceWithBunCommandEnv(output.context);
   const sink = Option.fromUndefinedOr(output.sink);
   const input = {
-    cmd: process.execPath,
-    args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), path, ...(options?.argv ?? [])],
+    cmd: output.context.runtime.execPath,
+    args: [...(output.context.platform === "win32" ? [] : ["--no-orphans"]), path, ...(options?.argv ?? [])],
     ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
     env: { ...options?.env, BUN_BE_BUN: "1" },
     ...(options?.hostIo === undefined ? {} : { inheritStdin: true }),
     ...(options?.signal === undefined ? {} : { signal: options.signal }),
     ...(options?.capture === true ? { capture: true } : {}),
   };
-  if (options?.capture === true) return yield* runner.run(input);
-  return yield* collectExecStream(runner.streamWithExit(input), sink);
+  const result = yield* BunProcessRunner.withPreparedProcess(
+    input,
+    (runner, request) =>
+      options?.capture === true
+        ? runner.run(request)
+        : collectExecStream(runner.streamWithExit(request), sink),
+    { ...output.context, env: { ...output.context.env, BUN_BE_BUN: "1" } },
+  );
+  return { ...result, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }, Effect.scoped);
 
 export const streamBunCommand = Effect.fnUntraced(function* (
@@ -42,21 +48,26 @@ export const streamBunCommand = Effect.fnUntraced(function* (
     readonly context: CapturedHostExecutionContext;
   },
 ) {
-  const runner = BunProcessRunner.serviceWithBunCommandEnv(execution.context);
   const source = [command, ...(options?.argv ?? []).map(quoteShellPath)].join(" ");
   const input = {
-    cmd: process.execPath,
-    args: [...(process.platform === "win32" ? [] : ["--no-orphans"]), "exec", source],
+    cmd: execution.context.runtime.execPath,
+    args: [...(execution.context.platform === "win32" ? [] : ["--no-orphans"]), "exec", source],
     env: { ...options?.env, BUN_BE_BUN: "1" },
     ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
     ...(options?.signal === undefined ? {} : { signal: options.signal }),
     ...(options?.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
     ...(options?.capture === true ? { capture: true } : {}),
   };
-  return yield* BunProcessRunner.withProcessRedactionTokens(
+  const result = yield* BunProcessRunner.withProcessRedactionTokens(
     [source],
-    options?.capture === true
-      ? runner.run(input)
-      : collectExecStream(runner.streamWithExit(input), execution.sink),
+    BunProcessRunner.withPreparedProcess(
+      input,
+      (runner, request) =>
+        options?.capture === true
+          ? runner.run(request)
+          : collectExecStream(runner.streamWithExit(request), execution.sink),
+      { ...execution.context, env: { ...execution.context.env, BUN_BE_BUN: "1" } },
+    ),
   );
+  return { ...result, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }, Effect.scoped);

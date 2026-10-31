@@ -5,7 +5,7 @@ import { renderRemoteTestResult } from "../../../commands/remote";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { remoteConfigFlags, remoteEnvArg, remoteTestOptionsFromInput } from "./common";
 
-export const remoteTestSpec: LandoCommandSpec = {
+export const remoteTestSpec: LandoCommandSpec<RemoteTestResult> = {
   id: "app:remote:test",
   summary: "Test remote connectivity for the current app.",
   namespace: "app",
@@ -15,5 +15,5 @@ export const remoteTestSpec: LandoCommandSpec = {
   resultSchema: RemoteTestResult,
   run: (input) => appRemoteTest(remoteTestOptionsFromInput(input)),
   render: (result, input, ctx) =>
-    renderRemoteTestResult(result as never, remoteTestOptionsFromInput(input).format, ctx),
+    renderRemoteTestResult(result, remoteTestOptionsFromInput(input).format, ctx),
 };

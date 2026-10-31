@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventService, type LandoEvent, ShellRunner } from "@lando/sdk/services";
 import { Effect, Layer, Queue, Stream } from "effect";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { testRedactionLayer } from "../redaction.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 test.each(["exec", "run", "runScript"] as const)(
   "%s shares its invocation snapshot with the child and event redactor",
@@ -36,6 +36,7 @@ test.each(["exec", "run", "runScript"] as const)(
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<never>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),

@@ -49,9 +49,9 @@ import * as LandoConfigService from "../../src/services/config.ts";
 import * as EnvironmentValueResolverLayer from "../../src/services/environment-value-resolver.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeEnvSecretStore } from "../../src/services/secret-store.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import * as TestLandofileLayers from "../services/landofile-layer.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -369,6 +369,7 @@ export const makeHarness = (
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),

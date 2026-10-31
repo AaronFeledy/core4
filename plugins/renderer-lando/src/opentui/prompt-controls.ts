@@ -1,8 +1,7 @@
 import { truncateToWidth } from "../terminal-width.ts";
-import { checkboxOption, checkedIndicesFromDefault, isYesDefault, readPromptType } from "./prompt-choice.ts";
+import { checkboxOption, checkedIndicesFromDefault, readPromptType } from "./prompt-choice.ts";
 import type {
   KeyEventLike,
-  OpenTuiModuleLike,
   PromptDriverRequestLike,
   RenderableLike,
   RendererLike,
@@ -10,7 +9,7 @@ import type {
 } from "./prompt-driver-types.ts";
 import { type PromptDisposer, noopDisposer, removeListener } from "./prompt-listeners.ts";
 import { addSelectControl, selectPanelMaxCols } from "./prompt-select-control.ts";
-import { PROMPT_THEME, promptSelectColors } from "./prompt-theme.ts";
+import { type PromptModuleLike, promptSelectColors } from "./prompt-theme.ts";
 
 const panelWidth = (renderer: RendererLike, maxCols = 72): number =>
   Math.max(24, Math.min(maxCols, renderer.width - 2));
@@ -18,7 +17,7 @@ const panelWidth = (renderer: RendererLike, maxCols = 72): number =>
 const fitTitle = (message: string, width: number): string => truncateToWidth(message, Math.max(4, width - 4));
 
 const addPromptChrome = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
+  mod: PromptModuleLike<R>,
   renderer: R,
   request: PromptDriverRequestLike,
 ): RenderableLike => {
@@ -28,10 +27,10 @@ const addPromptChrome = <R extends RendererLike>(
     id: `lando-prompt-${request.prompt.name}`,
     border: true,
     borderStyle: "rounded",
-    borderColor: PROMPT_THEME.accent,
+    borderColor: mod.theme.accent,
     title: fitTitle(request.prompt.message, width),
     titleAlignment: "left",
-    backgroundColor: PROMPT_THEME.background,
+    backgroundColor: mod.theme.background,
     padding: 1,
     flexDirection: "column",
     gap: 1,
@@ -42,7 +41,7 @@ const addPromptChrome = <R extends RendererLike>(
       new mod.TextRenderable(renderer, {
         id: "lando-prompt-issue",
         content: request.issue,
-        fg: PROMPT_THEME.issue,
+        fg: mod.theme.issue,
         width: width - 4,
       }),
     );
@@ -52,7 +51,7 @@ const addPromptChrome = <R extends RendererLike>(
 };
 
 const addInputControl = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
+  mod: PromptModuleLike<R>,
   renderer: R,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
@@ -66,12 +65,12 @@ const addInputControl = <R extends RendererLike>(
     width,
     value: defaultRaw ?? "",
     placeholder: defaultRaw === undefined ? "Type an answer…" : `Default: ${defaultRaw}`,
-    backgroundColor: PROMPT_THEME.inputBackground,
-    textColor: PROMPT_THEME.text,
-    cursorColor: PROMPT_THEME.accent,
-    focusedBackgroundColor: PROMPT_THEME.inputFocusedBackground,
-    focusedTextColor: PROMPT_THEME.focusedText,
-    placeholderColor: PROMPT_THEME.placeholder,
+    backgroundColor: mod.theme.inputBackground,
+    textColor: mod.theme.text,
+    cursorColor: mod.theme.accent,
+    focusedBackgroundColor: mod.theme.inputFocusedBackground,
+    focusedTextColor: mod.theme.focusedText,
+    placeholderColor: mod.theme.placeholder,
   });
   input.on(mod.InputRenderableEvents.ENTER, () => done(input.value));
   panel.add?.(input);
@@ -80,7 +79,7 @@ const addInputControl = <R extends RendererLike>(
       new mod.TextRenderable(renderer, {
         id: "lando-prompt-help",
         content: request.help,
-        fg: PROMPT_THEME.muted,
+        fg: mod.theme.muted,
         width,
       }),
     );
@@ -90,7 +89,7 @@ const addInputControl = <R extends RendererLike>(
     const node = new mod.TextRenderable(renderer, {
       id: `lando-prompt-footer-${line.id}`,
       content: line.render(input.value),
-      fg: PROMPT_THEME.muted,
+      fg: mod.theme.muted,
       width,
     });
     panel.add?.(node);
@@ -111,7 +110,7 @@ const addInputControl = <R extends RendererLike>(
 };
 
 const addTextareaControl = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
+  mod: PromptModuleLike<R>,
   renderer: R,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
@@ -125,12 +124,12 @@ const addTextareaControl = <R extends RendererLike>(
     height: Math.max(3, Math.min(8, renderer.height - 6)),
     initialValue: defaultRaw ?? "",
     placeholder: defaultRaw === undefined ? "Type an answer…" : `Default: ${defaultRaw}`,
-    backgroundColor: PROMPT_THEME.inputBackground,
-    textColor: PROMPT_THEME.text,
-    cursorColor: PROMPT_THEME.accent,
-    focusedBackgroundColor: PROMPT_THEME.inputFocusedBackground,
-    focusedTextColor: PROMPT_THEME.focusedText,
-    placeholderColor: PROMPT_THEME.placeholder,
+    backgroundColor: mod.theme.inputBackground,
+    textColor: mod.theme.text,
+    cursorColor: mod.theme.accent,
+    focusedBackgroundColor: mod.theme.inputFocusedBackground,
+    focusedTextColor: mod.theme.focusedText,
+    placeholderColor: mod.theme.placeholder,
     onSubmit: () => done(textarea.plainText),
   });
   panel.add?.(textarea);
@@ -138,7 +137,7 @@ const addTextareaControl = <R extends RendererLike>(
 };
 
 const addMultiselectControl = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
+  mod: PromptModuleLike<R>,
   renderer: R,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
@@ -156,7 +155,7 @@ const addMultiselectControl = <R extends RendererLike>(
     options: buildOptions(),
     showDescription: false,
     selectedIndex: 0,
-    ...promptSelectColors,
+    ...promptSelectColors(mod.theme),
     showScrollIndicator: false,
   });
   // Space is not a SelectRenderable binding, so toggle the focused row's checked state here without submitting.
@@ -178,34 +177,8 @@ const addMultiselectControl = <R extends RendererLike>(
   return () => removeListener(renderer.keyInput, "keypress", toggleListener);
 };
 
-const addConfirmControl = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
-  renderer: R,
-  panel: RenderableLike,
-  request: PromptDriverRequestLike,
-  done: (value: string) => void,
-): void => {
-  const tabs = new mod.TabSelectRenderable(renderer, {
-    id: "lando-prompt-confirm",
-    width: Math.max(18, Math.min(30, panelWidth(renderer) - 4)),
-    options: [
-      { name: "Yes", description: "y" },
-      { name: "No", description: "n" },
-    ],
-    tabWidth: 10,
-    ...promptSelectColors,
-    showDescription: false,
-    showUnderline: true,
-    wrapSelection: true,
-  });
-  tabs.setSelectedIndex?.(isYesDefault(request.defaultRaw) ? 0 : 1);
-  tabs.on(mod.TabSelectRenderableEvents.ITEM_SELECTED, (index: number) => done(index === 0 ? "y" : "n"));
-  panel.add?.(tabs);
-  tabs.focus?.();
-};
-
 export const buildPrompt = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
+  mod: PromptModuleLike<R>,
   renderer: R,
   request: PromptDriverRequestLike,
   done: (value: string) => void,
@@ -217,10 +190,6 @@ export const buildPrompt = <R extends RendererLike>(
   }
   if (type === "multiselect") {
     return addMultiselectControl(mod, renderer, panel, request, done);
-  }
-  if (type === "confirm") {
-    addConfirmControl(mod, renderer, panel, request, done);
-    return noopDisposer;
   }
   if (type === "textarea") {
     addTextareaControl(mod, renderer, panel, request, done);

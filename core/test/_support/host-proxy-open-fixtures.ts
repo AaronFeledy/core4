@@ -79,6 +79,7 @@ export const recordingEventLayer = () => {
       subscribe: () => Stream.die("unused event subscription"),
       subscribeQueue: Effect.die("unused event queue"),
       waitFor: () => Effect.die("unused event wait"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("unused event wait"),
       query: () => Effect.die("unused event query"),
     }),

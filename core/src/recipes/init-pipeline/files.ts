@@ -2,6 +2,40 @@ import { constants } from "node:fs";
 import { type FileHandle, lstat, open, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { RecipeFile } from "@lando/sdk/schema";
+import type { PreparedRecipeInit } from "../prepared-init-types.ts";
+
+export const inspectInitOutputPath = async (path: string): Promise<boolean> => {
+  const parent = dirname(path);
+  if (parent !== path) {
+    try {
+      const stat = await lstat(parent);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new RangeError("Unsafe output parent.");
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    }
+    await inspectInitOutputPath(parent);
+  }
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    return false;
+  }
+};
+
+export const observeInitDestinationAnchor = async (
+  path: string,
+): Promise<PreparedRecipeInit["destinationAnchor"]> => {
+  try {
+    const stat = await lstat(path);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new RangeError("Unsafe output parent.");
+    return Object.freeze({ path, dev: stat.dev, ino: stat.ino });
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    return observeInitDestinationAnchor(dirname(path));
+  }
+};
 export const auxiliaryDestination = (root: string, destination: string): string => {
   const path = resolve(root, destination);
   const local = relative(root, path);

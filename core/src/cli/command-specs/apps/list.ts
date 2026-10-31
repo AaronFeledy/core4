@@ -93,7 +93,7 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
     return yield* prune ? listServicesWithPrune(options) : listServices(options);
   }),
   render: (result, input, ctx) =>
-    renderAppsListResult(result as ListServicesResult, extractFormat(input), ctx, {
+    renderAppsListResult(result, extractFormat(input), ctx, {
       filtered: appsListHasFiltersFromInput(input),
     }),
 };

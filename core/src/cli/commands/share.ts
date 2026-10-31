@@ -1,7 +1,6 @@
 /** `lando share` result rendering. */
-import type { TunnelSession as TunnelSessionType } from "@lando/sdk/schema";
+import type { ShareStopAppResult, TunnelSession as TunnelSessionType } from "@lando/sdk/schema";
 
-import type { ShareStopResult } from "@lando/engine/operations/share";
 import type { RenderContext } from "../renderer-boundary";
 import { appendTerminalQr } from "../terminal-qr";
 
@@ -33,7 +32,7 @@ export const renderShareListResult = (
 };
 
 export const renderShareStopResult = (
-  result: ShareStopResult,
+  result: ShareStopAppResult,
   _format: "text" | "json" = "text",
   _ctx?: RenderContext,
 ): string => {

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ServiceFeatureError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, ServiceName } from "@lando/sdk/schema";
 import {
@@ -32,8 +33,10 @@ test("cache hits prepare declarations but skip apply and application-only decodi
     appOnlyDecodes: 0,
     declarations: 0,
     applies: 0,
+    validations: 0,
   };
   let originalPort = 8123;
+  let rejectEffective = false;
   const ssh: ServiceFeatureDefinition = {
     id: "lando.ssh-agent",
     priority: 100,
@@ -44,6 +47,25 @@ test("cache hits prepare declarations but skip apply and application-only decodi
         return true;
       }),
     ),
+    validateEffective: () => {
+      calls.validations++;
+      return rejectEffective
+        ? Effect.fail(
+            new ServiceFeatureError({
+              feature: "lando.ssh-agent",
+              message: "Rejected effective listener",
+              remediation: "Choose a supported port.",
+              issues: [
+                {
+                  path: ["port"],
+                  message: "Rejected effective listener",
+                  suggestion: "Choose a supported port.",
+                },
+              ],
+            }),
+          )
+        : Effect.succeed({ handledServiceFields: [] });
+    },
     declareEndpoints: (ctx) =>
       Effect.sync(() => {
         calls.declarations++;
@@ -183,6 +205,7 @@ test("cache hits prepare declarations but skip apply and application-only decodi
       originalDecodes: 2,
       appDecodes: 2,
       declarations: 2,
+      validations: 2,
     });
     expect(initial).toMatchObject({
       serviceLoads: 2,
@@ -193,6 +216,7 @@ test("cache hits prepare declarations but skip apply and application-only decodi
       appDecodes: 1,
       appOnlyDecodes: 1,
       applies: 2,
+      validations: 1,
     });
     originalPort = 9234;
     const third = await run();
@@ -205,7 +229,21 @@ test("cache hits prepare declarations but skip apply and application-only decodi
       appOnlyDecodes: 2,
       declarations: 3,
       applies: 4,
+      validations: 3,
     });
+    // When an otherwise cache-identical occurrence fails effective validation.
+    rejectEffective = true;
+    await expect(run()).rejects.toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: [
+        expect.objectContaining({
+          path: ["services", "web", "port"],
+          suggestion: "Choose a supported port.",
+        }),
+      ],
+    });
+    // Then cached application never replays, and the invalid occurrence never declares.
+    expect(calls).toMatchObject({ validations: 4, declarations: 3, applies: 4 });
   } finally {
     if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
     else process.env.LANDO_USER_CACHE_ROOT = previous;

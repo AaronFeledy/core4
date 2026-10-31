@@ -24,6 +24,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 
 import { withToolingOutput } from "../../src/operations/tooling-output.ts";
 import * as HostToolingEngine from "../../src/services/host-tooling-engine";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine";
 
 const providerId = ProviderId.make("lando");
@@ -167,7 +168,19 @@ const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer) =>
   Effect.runPromise(
     ToolingEngine.pipe(Effect.provide(live.pipe(Layer.provide(testEnvironmentResolverLayer)))),
   );
-const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
+const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
+  Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)),
+);
+
+const captureOutput: NonNullable<ToolingEngineContractHarness["captureOutput"]> = (run) =>
+  withToolingOutput(run).pipe(
+    Effect.map((result) => {
+      const { stdout, stderr } = result;
+      if (stdout === undefined || stderr === undefined)
+        throw new Error("Expected both captured output channels.");
+      return { ...result, stdout, stderr };
+    }),
+  );
 
 describe("ToolingEngine contract — built-in engines", () => {
   test("the built-in providerExec engine passes the contract", async () => {
@@ -175,7 +188,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "providerExec",
       engine,
-      captureOutput: withToolingOutput,
+      captureOutput,
       okScenario: {
         invocation: {
           tool: "build",
@@ -244,7 +257,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "host",
       engine,
-      captureOutput: withToolingOutput,
+      captureOutput,
       okScenario: {
         invocation: {
           tool: "build",

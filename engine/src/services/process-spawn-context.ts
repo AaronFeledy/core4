@@ -31,7 +31,10 @@ export const resolveProcessCgroup = (
   platform: NodeJS.Platform = process.platform,
 ): string | undefined => (platform === "linux" && cgroup !== undefined && cgroup !== "" ? cgroup : undefined);
 
-export const buildSpawnOptions = (input: ProcessSpawnOptions) => {
+export const buildSpawnOptions = (
+  input: ProcessSpawnOptions,
+  platform: NodeJS.Platform = process.platform,
+) => {
   if (input.capture === true && input.inheritOutput === true) {
     throw new ProcessExecError({
       message: "Private capture cannot inherit stdout or stderr.",
@@ -39,7 +42,7 @@ export const buildSpawnOptions = (input: ProcessSpawnOptions) => {
       remediation: "Remove inheritOutput when requesting private capture.",
     });
   }
-  const cgroup = resolveProcessCgroup(input.cgroup);
+  const cgroup = resolveProcessCgroup(input.cgroup, platform);
   const stdin: "pipe" | "inherit" | "ignore" =
     input.stdin !== undefined || input.stdinStream !== undefined
       ? "pipe"

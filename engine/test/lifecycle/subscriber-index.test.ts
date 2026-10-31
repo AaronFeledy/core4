@@ -18,7 +18,9 @@ const manifest = (input: {
     name: input.name ?? "@example/subscribers",
     version: "1.0.0",
     api: 4,
-    ...(input.commands === undefined ? {} : { contributes: { commands: input.commands } }),
+    ...(input.commands === undefined
+      ? {}
+      : { contributes: { commands: input.commands.map((id) => ({ id, summary: "Subscriber command." })) } }),
     subscribers: input.subscribers,
   });
 
@@ -170,18 +172,17 @@ describe("symbolic subscriber index", () => {
   test.each(["standalone", "Example:release.v2"])(
     "honors static catalog membership before deferred syntax for %s",
     async (commandId) => {
-      // Given: a manifest command whose identity is not constrained by a command-id schema.
+      // Given: a static host catalog identity outside the plugin command grammar.
       const closure = makeSubscriberRegistrationClosure([
         manifest({
-          commands: [commandId],
           subscribers: [
             { id: "exact", selectors: [{ event: `cli-${commandId}-init` }], module: "./exact.ts" },
             { id: "terminal", selectors: [{ family: "cli-command-terminal" }], module: "./terminal.ts" },
           ],
         }),
       ]);
-      // When: registration closes from authoritative manifest metadata.
-      const index = await Effect.runPromise(closure.close());
+      // When: registration closes from authoritative host metadata.
+      const index = await Effect.runPromise(closure.close({ builtIns: [commandId] }));
       // Then: exact init and both terminal-family phases honor the known identity.
       expect(ids(index, `cli-${commandId}-init`)).toEqual(["exact"]);
       expect(ids(index, `cli-${commandId}-run`)).toEqual(["terminal"]);

@@ -112,6 +112,13 @@ it does not substitute their console output.
 
 Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Followers survive common log rotation (rename+create and copytruncate) and keep per-source order. Interrupting `lando logs` releases every follower. Lines are redacted once before they reach the CLI.
 
+For scripts, `lando logs --format=json` emits a buffered frame stream. Its
+terminal `result` frame carries the app name at `envelope.result.app` and the
+collected lines at `envelope.result.lines`. Each line carries `service`, `stream`,
+and `line`, plus `source` and a timestamp in epoch milliseconds when available.
+With `--follow --format=json`, lines arrive as stream frames instead; the final
+result contains `app` but omits `lines` rather than returning an empty array.
+
 ## Read a start-failure log tail
 
 When the provider cannot apply a service, Lando tries to capture its console logs for the failure report, including in non-interactive runs. Containers stay in place so you can inspect any available logs afterward with `lando logs -s <service>`. A container that was created but never started may have no logs. The snapshot keeps the last 50 whole lines within 4,000 characters; an oversized line keeps its end.

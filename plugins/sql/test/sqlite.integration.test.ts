@@ -1,15 +1,23 @@
-import { chmodSync, chownSync, mkdirSync, mkdtempSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, statSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Layer } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option } from "effect";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, planAppIdentity } from "@lando/sdk/schema";
-import type { EphemeralRunSpec, ExecResult } from "@lando/sdk/services";
+import { SqlCommandFailedError, SqlRecoveryOperationError, StateStoreError } from "@lando/sdk/errors";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  SnapshotInfo,
+  planAppIdentity,
+} from "@lando/sdk/schema";
+import type { EphemeralRunSpec, ExecResult, StateStoreShape } from "@lando/sdk/services";
 import { PathsService, StateStore } from "@lando/sdk/services";
 import * as DiskStateStore from "@lando/state-store/service";
 
@@ -17,7 +25,7 @@ import type { SqlCommandDeps } from "../src/command-types.ts";
 import { packSqliteTar, unpackSqliteTar } from "../src/sqlite-archive.ts";
 import { executeSqliteCommand } from "../src/sqlite-execute.ts";
 import { isSqliteDatabaseHeader } from "../src/sqlite-header.ts";
-import { sqliteHelperUser } from "../src/sqlite-mount.ts";
+import { sqliteSnapshotStore } from "../src/sqlite-path.ts";
 import { cleanupSqlTestDeps, makeSqlTestDeps } from "./support/fakes.ts";
 
 const socket = process.env.LANDO_TEST_DOCKER_SOCKET || undefined;
@@ -70,9 +78,6 @@ const runEphemeral = (spec: EphemeralRunSpec): Effect.Effect<ExecResult, unknown
     const result = await docker(args, {
       ...(spec.stdinStream === undefined ? {} : { stdin: spec.stdinStream }),
     });
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr || `docker run exited ${result.exitCode}`);
-    }
     return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
   });
 
@@ -174,25 +179,33 @@ test.skipIf(dockerHost === undefined)(
     if (dockerHost === undefined) throw new Error("LANDO_TEST_DOCKER_SOCKET required");
     const hostUid = process.getuid?.() ?? 0;
     const hostGid = process.getgid?.() ?? 0;
-    const appUid = hostUid === 0 ? 1000 : hostUid;
-    const appGid = hostGid === 0 ? 1000 : hostGid;
+    const appUid = hostUid === 1001 ? 1002 : 1001;
+    const appGid = hostGid === 1001 ? 1002 : 1001;
     const appDir = mkdtempSync(join(tmpdir(), "lando-sqlite-provider-app-"));
     const landoRoot = mkdtempSync(join(tmpdir(), "lando-sqlite-provider-data-"));
     mkdirSync(join(appDir, "data"), { recursive: true });
-    chownSync(appDir, appUid, appGid);
-    chownSync(join(appDir, "data"), appUid, appGid);
     chmodSync(appDir, 0o755);
     chmodSync(join(appDir, "data"), 0o755);
-    const expectedUser = sqliteHelperUser({
-      kind: "bind",
-      source: appDir,
-      target: "/app",
-      readOnly: false,
-    });
-    expect(expectedUser).toBe(`${appUid}:${appGid}`);
+    const expectedUser = `${appUid}:${appGid}`;
 
     const pull = await docker(["pull", sqliteHelperImage.ref]);
     expect(pull.exitCode).toBe(0);
+
+    const setAppOwner = await docker([
+      "run",
+      "--rm",
+      "--user",
+      "0:0",
+      "--entrypoint",
+      "chown",
+      "-v",
+      `${appDir}:/app`,
+      sqliteHelperImage.ref,
+      `${appUid}:${appGid}`,
+      "/app/data",
+    ]);
+    expect(setAppOwner.exitCode).toBe(0);
+    expect(appUid).not.toBe(hostUid);
 
     const paths = makeLandoPaths({
       userConfRoot: join(landoRoot, "conf"),
@@ -252,17 +265,59 @@ test.skipIf(dockerHost === undefined)(
       },
     };
 
-    const assertOwned = (path: string) => {
-      const info = statSync(path);
-      expect(info.uid).toBe(appUid);
-      expect(info.gid).toBe(appGid);
-      expect(info.mode & 0o777).toBe(0o644);
+    const sqlite = deps.sqlite;
+    if (sqlite === undefined) throw new Error("Expected SQLite runtime");
+    const target = {
+      kind: "file" as const,
+      name: "appserver",
+      type: "php:8.3",
+      family: "sqlite" as const,
+      path: "data/app.sqlite",
+    };
+    const query = (sql: string) =>
+      docker([
+        "run",
+        "--rm",
+        "--user",
+        expectedUser,
+        "--entrypoint",
+        "sqlite3",
+        "-v",
+        `${appDir}:/app`,
+        sqliteHelperImage.ref,
+        "/app/data/app.sqlite",
+        sql,
+      ]);
+    const assertOwned = async (path: string) => {
+      // The cloud user namespace can expose a foreign host uid as overflow uid 65534.
+      const owner = await docker([
+        "run",
+        "--rm",
+        "--user",
+        "0:0",
+        "--entrypoint",
+        "stat",
+        "-v",
+        `${appDir}:/app:ro`,
+        sqliteHelperImage.ref,
+        "-c",
+        "%u:%g:%a",
+        "/app/data/app.sqlite",
+      ]);
+      expect(owner.exitCode).toBe(0);
+      expect(owner.stdout.trim()).toBe(`${appUid}:${appGid}:644`);
+      expect(statSync(path).mode & 0o777).toBe(0o644);
     };
 
     try {
+      const initialized = await query("PRAGMA user_version=0; VACUUM;");
+      expect(initialized.exitCode).toBe(0);
+      const originalInode = statSync(dbPath).ino;
+      const implicitRows =
+        "CREATE TABLE implicit_items (name TEXT); INSERT INTO implicit_items(rowid,name) VALUES(42,'forty-two'),(900,'nine-hundred');";
       await writeFile(
         join(appDir, "seed.sql"),
-        "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items (name) VALUES ('first');\n",
+        `CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items (name) VALUES ('first'); ${implicitRows}\n`,
       );
       await Effect.runPromise(
         executeSqliteCommand(
@@ -277,7 +332,7 @@ test.skipIf(dockerHost === undefined)(
           },
         ),
       );
-      assertOwned(dbPath);
+      await assertOwned(dbPath);
 
       await Effect.runPromise(
         executeSqliteCommand(
@@ -305,11 +360,11 @@ test.skipIf(dockerHost === undefined)(
           },
         ),
       );
-      assertOwned(dbPath);
+      await assertOwned(dbPath);
 
       await writeFile(
         join(appDir, "replace.sql"),
-        "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items (name) VALUES ('second');\n",
+        `CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT); INSERT INTO items (name) VALUES ('second'); ${implicitRows}\n`,
       );
       await Effect.runPromise(
         executeSqliteCommand(
@@ -324,7 +379,7 @@ test.skipIf(dockerHost === undefined)(
           },
         ),
       );
-      assertOwned(dbPath);
+      await assertOwned(dbPath);
 
       const queried = await docker(
         [
@@ -345,8 +400,312 @@ test.skipIf(dockerHost === undefined)(
       );
       expect(queried.exitCode).toBe(0);
       expect(queried.stdout.trim()).toBe("second");
+      expect(statSync(dbPath).ino).toBe(originalInode);
+
+      const rawBackup = await query(".backup main /app/data/raw.sqlite");
+      expect(rawBackup.exitCode).toBe(0);
+      const rawGzip = join(appDir, "raw.sqlite.gz");
+      await writeFile(
+        rawGzip,
+        Bun.gzipSync(await Bun.file(join(appDir, "data", "raw.sqlite")).arrayBuffer()),
+      );
+      expect((await query("UPDATE items SET name='changed-before-raw-import';")).exitCode).toBe(0);
+      const rawImport = await Effect.runPromise(
+        executeSqliteCommand(
+          deps,
+          {
+            action: "import",
+            yes: true,
+            file: rawGzip,
+          },
+          target,
+        ),
+      );
+      expect(rawImport.recoverySnapshotId).toBeString();
+      expect((await query("SELECT name FROM items;")).stdout.trim()).toBe("second");
+      expect(
+        (await query("SELECT rowid,name FROM implicit_items ORDER BY rowid;")).stdout.trim().split("\n"),
+      ).toEqual(["42|forty-two", "900|nine-hundred"]);
+      expect(statSync(dbPath).ino).toBe(originalInode);
+
+      const destructiveDump = join(appDir, "destructive.sql");
+      await writeFile(
+        destructiveDump,
+        ".shell printf corrupted > /app/data/app.sqlite\nATTACH '/app/data/app.sqlite' AS live; DROP TABLE live.items;\n",
+      );
+      const capturedBeforeBadDump = Array.from(
+        new Bun.Glob("sqlite-*/*.tar").scanSync({ cwd: paths.ownerSnapshotsDir(identity.ownerKey) }),
+      ).length;
+      const rejectedDump = await Effect.runPromiseExit(
+        executeSqliteCommand(
+          deps,
+          {
+            action: "import",
+            yes: true,
+            file: destructiveDump,
+          },
+          target,
+        ),
+      );
+      expect(Exit.isFailure(rejectedDump)).toBe(true);
+      if (!Exit.isFailure(rejectedDump))
+        throw new Error("A dump accessing the target mount must fail in staging");
+      const dumpError = Option.getOrUndefined(Cause.findErrorOption(rejectedDump.cause));
+      expect(dumpError).toBeInstanceOf(SqlCommandFailedError);
+      if (!(dumpError instanceof SqlCommandFailedError)) throw new Error("Expected isolated staging failure");
+      expect(dumpError.recoverySnapshotId).toBeUndefined();
+      expect((await query("SELECT name FROM items;")).stdout.trim()).toBe("second");
+      expect(
+        Array.from(
+          new Bun.Glob("sqlite-*/*.tar").scanSync({ cwd: paths.ownerSnapshotsDir(identity.ownerKey) }),
+        ).length,
+      ).toBe(capturedBeforeBadDump);
+
+      for (const journalMode of ["delete", "wal"]) {
+        const competingWrites: number[] = [];
+        const fencedStore: StateStoreShape = {
+          ...stateStore,
+          open: (request) =>
+            stateStore.open(request).pipe(
+              Effect.map((bucket) => ({
+                ...bucket,
+                set: (value) =>
+                  Effect.promise(async () => {
+                    const attempted = await query("INSERT INTO items(name) VALUES('racing');");
+                    competingWrites.push(attempted.exitCode);
+                  }).pipe(Effect.andThen(bucket.set(value))),
+              })),
+            ),
+        };
+        const resetDeps: SqlCommandDeps = { ...deps, sqlite: { ...sqlite, stateStore: fencedStore } };
+        const objects = await query(`
+        PRAGMA journal_mode=${journalMode};
+        PRAGMA user_version=42;
+        CREATE INDEX IF NOT EXISTS items_name ON items(name);
+        CREATE VIEW IF NOT EXISTS item_names AS SELECT name FROM items;
+        CREATE TRIGGER IF NOT EXISTS items_touch AFTER INSERT ON items BEGIN UPDATE items SET name=upper(name) WHERE id=new.id; END;
+      `);
+        expect(objects.exitCode).toBe(0);
+        const otherDatabase = join(appDir, "other.sqlite");
+        await writeFile(otherDatabase, "another database remains untouched");
+        const reset = await Effect.runPromise(
+          executeSqliteCommand(resetDeps, { action: "reset", yes: true }, target),
+        );
+        expect(reset.recoverySnapshotId).toBeString();
+        expect(competingWrites).toHaveLength(1);
+        expect(competingWrites[0]).not.toBe(0);
+        expect(statSync(dbPath).ino).toBe(originalInode);
+        await assertOwned(dbPath);
+        expect(await Bun.file(otherDatabase).text()).toBe("another database remains untouched");
+        const empty = await query(
+          "SELECT count(*) FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*'; PRAGMA user_version; PRAGMA journal_mode; PRAGMA integrity_check;",
+        );
+        expect(empty.exitCode).toBe(0);
+        expect(empty.stdout.trim().split("\n")).toEqual(["0", "0", journalMode, "ok"]);
+        const usable = await query(
+          "CREATE TABLE after_reset (id INTEGER); INSERT INTO after_reset VALUES (1); SELECT id FROM after_reset;",
+        );
+        expect(usable.exitCode).toBe(0);
+        expect(usable.stdout.trim()).toBe("1");
+
+        const recoveryId = reset.recoverySnapshotId ?? "";
+        const catalog = await Effect.runPromise(
+          stateStore.open({
+            root: {
+              path: AbsolutePath.make(
+                join(paths.ownerSnapshotsDir(identity.ownerKey), sqliteSnapshotStore(target.path)),
+              ),
+            },
+            key: `${recoveryId}.json`,
+            schema: SnapshotInfo,
+            version: 1,
+            codec: "json",
+            onCorrupt: "fail",
+          }),
+        );
+        const recovery = await Effect.runPromise(catalog.get);
+        expect(recovery?.metadata?.recoveryReason).toBe("reset");
+        if (recovery === null) throw new Error("Expected reset recovery snapshot");
+        const restored = await Effect.runPromise(
+          executeSqliteCommand(
+            {
+              ...deps,
+              resolveSnapshot: () => Effect.succeed(recovery),
+            },
+            { action: "restore", yes: true, snapshotId: recoveryId },
+            target,
+          ),
+        );
+        expect(restored.recoverySnapshotId).toBeString();
+        expect(statSync(dbPath).ino).toBe(originalInode);
+        const recovered = await query(
+          "SELECT name FROM items; SELECT count(*) FROM sqlite_schema WHERE name='after_reset'; PRAGMA user_version;",
+        );
+        expect(recovered.exitCode).toBe(0);
+        expect(recovered.stdout.trim().split("\n")).toEqual(["second", "0", "42"]);
+        const implicitRestored = await query("SELECT rowid,name FROM implicit_items ORDER BY rowid;");
+        expect(implicitRestored.exitCode).toBe(0);
+        expect(implicitRestored.stdout.trim().split("\n")).toEqual(["42|forty-two", "900|nine-hundred"]);
+      }
+
+      const failedCatalogStore: StateStoreShape = {
+        ...stateStore,
+        open: () =>
+          Effect.fail(
+            new StateStoreError({
+              reason: "io",
+              operation: "open",
+              cause: "injected catalog failure",
+              remediation: "Retry after resolving the catalog write failure.",
+            }),
+          ),
+      };
+      const failedCatalog = await Effect.runPromiseExit(
+        executeSqliteCommand(
+          {
+            ...deps,
+            sqlite: { ...sqlite, stateStore: failedCatalogStore },
+          },
+          { action: "reset", yes: true },
+          target,
+        ),
+      );
+      expect(Exit.isFailure(failedCatalog)).toBe(true);
+      if (!Exit.isFailure(failedCatalog)) throw new Error("Catalog failure must stop reset");
+      const catalogError = Option.getOrUndefined(Cause.findErrorOption(failedCatalog.cause));
+      expect(catalogError).toBeInstanceOf(SqlRecoveryOperationError);
+      if (!(catalogError instanceof SqlRecoveryOperationError))
+        throw new Error("Expected recovery operation failure");
+      expect(catalogError.recoverySnapshotId).toBeString();
+      expect(
+        await Bun.file(
+          join(
+            paths.ownerSnapshotsDir(identity.ownerKey),
+            sqliteSnapshotStore(target.path),
+            `${catalogError.recoverySnapshotId}.tar`,
+          ),
+        ).exists(),
+      ).toBe(true);
+      const preservedPayloads = Array.from(
+        new Bun.Glob("sqlite-helper/*/*.sqlite").scanSync({
+          cwd: paths.ownerSnapshotsDir(identity.ownerKey),
+          absolute: true,
+        }),
+      );
+      expect(preservedPayloads.length).toBeGreaterThan(0);
+      expect((await query("SELECT name FROM items;")).stdout.trim()).toBe("second");
+      expect(statSync(dbPath).ino).toBe(originalInode);
+
+      const earlyExit = await Effect.runPromiseExit(
+        executeSqliteCommand(
+          {
+            ...deps,
+            sqlite: {
+              ...sqlite,
+              run: (spec) => {
+                const source = spec.stdinStream;
+                if (source === undefined) return runEphemeral(spec);
+                const intercepted = async function* () {
+                  let chunks = 0;
+                  for await (const chunk of source) {
+                    chunks++;
+                    yield chunks === 1 ? chunk : new TextEncoder().encode(".quit\n");
+                  }
+                };
+                return runEphemeral({ ...spec, stdinStream: intercepted() });
+              },
+            },
+          },
+          { action: "reset", yes: true },
+          target,
+        ),
+      );
+      expect(Exit.isFailure(earlyExit)).toBe(true);
+      if (!Exit.isFailure(earlyExit)) throw new Error("Premature successful helper exit must fail reset");
+      const earlyError = Option.getOrUndefined(Cause.findErrorOption(earlyExit.cause));
+      expect(earlyError).toBeInstanceOf(SqlRecoveryOperationError);
+      if (!(earlyError instanceof SqlRecoveryOperationError))
+        throw new Error("Expected recovery operation failure");
+      expect(earlyError.recoverySnapshotId).toBeString();
+      expect((await query("SELECT name FROM items;")).stdout.trim()).toBe("second");
+      expect(statSync(dbPath).ino).toBe(originalInode);
+
+      for (const lockKind of ["writer", "reader"]) {
+        const readyPath = `lock-ready-${lockKind}`;
+        const holderName = `lando-sqlite-holder-${crypto.randomUUID()}`;
+        const holder = Bun.spawn(
+          [
+            "docker",
+            "run",
+            "--rm",
+            "-i",
+            "--name",
+            holderName,
+            "--user",
+            expectedUser,
+            "--entrypoint",
+            "sqlite3",
+            "-v",
+            `${appDir}:/app`,
+            sqliteHelperImage.ref,
+            "/app/data/app.sqlite",
+          ],
+          { env: dockerEnv, stdin: "pipe", stdout: "pipe", stderr: "pipe" },
+        );
+        try {
+          holder.stdin.write(
+            `${
+              lockKind === "writer"
+                ? "BEGIN IMMEDIATE; INSERT INTO items(name) VALUES('uncommitted');"
+                : "BEGIN; SELECT name FROM items;"
+            }\n.shell touch /app/data/${readyPath}\n`,
+          );
+          holder.stdin.flush();
+          for (let attempt = 0; !(await Bun.file(join(appDir, "data", readyPath)).exists()); attempt++) {
+            if (attempt >= 500) throw new Error("External SQLite writer did not acquire its lock");
+            await Bun.sleep(10);
+          }
+          const refused = await Effect.runPromiseExit(
+            executeSqliteCommand(
+              deps,
+              Object.assign({ action: "reset" as const, yes: true }, { force: true }),
+              target,
+            ),
+          );
+          expect(Exit.isFailure(refused)).toBe(true);
+          if (!Exit.isFailure(refused)) throw new Error("Reset must refuse an external writer");
+          const error = Option.getOrUndefined(Cause.findErrorOption(refused.cause));
+          expect(error).toBeInstanceOf(SqlCommandFailedError);
+          if (!(error instanceof SqlCommandFailedError)) throw new Error("Expected busy helper failure");
+          expect(error.recoverySnapshotId).toBeUndefined();
+          expect(error.stderrTail).toContain("locked");
+          expect(statSync(dbPath).ino).toBe(originalInode);
+        } finally {
+          holder.stdin.write("ROLLBACK;\n.quit\n");
+          holder.stdin.end();
+          await holder.exited;
+          await docker(["rm", "-f", holderName]);
+        }
+        const retained = await query("SELECT name FROM items;");
+        expect(retained.exitCode).toBe(0);
+        expect(retained.stdout.trim()).toBe("second");
+      }
     } finally {
       cleanupSqlTestDeps();
+      await docker([
+        "run",
+        "--rm",
+        "--user",
+        "0:0",
+        "--entrypoint",
+        "chown",
+        "-v",
+        `${appDir}:/app`,
+        sqliteHelperImage.ref,
+        "-R",
+        `${hostUid}:${hostGid}`,
+        "/app/data",
+      ]);
       await rm(appDir, { recursive: true, force: true });
       await rm(landoRoot, { recursive: true, force: true });
     }

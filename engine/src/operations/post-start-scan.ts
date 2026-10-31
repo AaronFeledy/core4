@@ -1,34 +1,46 @@
 import { DateTime, Effect } from "effect";
 
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { type AppPlan, type CheckResult, ServiceName, type StartedService } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type CheckResult,
+  type EndpointRef,
+  ServiceName,
+  type StartedService,
+} from "@lando/sdk/schema";
 import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
 import { makeTaskTree } from "@lando/sdk/task-progress";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { appendScanPath } from "../subsystems/scanner/connection-targets.ts";
-import { activeHostHttpUrls } from "./service-connections.ts";
+import { endpointScanPolicy } from "../services/endpoint-scan.ts";
+import { scanTargets } from "../subsystems/scanner/connection-targets.ts";
 import { startScanTreeId } from "./start-progress.ts";
 
 export interface PostStartScanInput {
   readonly scanner: UrlScannerShape;
   readonly plan: AppPlan;
   readonly events: Pick<EventServiceShape, "publish">;
-  readonly urls: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+  readonly urls: ReadonlyArray<{
+    readonly service: ServiceName;
+    readonly url: string;
+    readonly endpoint?: EndpointRef;
+  }>;
 }
 
 export const startupScanUrls = (
   plan: AppPlan,
   services: readonly StartedService[],
-): ReadonlyArray<{ readonly service: ServiceName; readonly url: string }> => {
+): PostStartScanInput["urls"] => {
   const targets = services.flatMap((service) => {
     const name = ServiceName.make(service.name);
-    const scan = plan.services[name]?.scanner;
-    const path = scan?.path ?? "/";
-    return activeHostHttpUrls(service.connections).map((base) => ({
-      service: name,
-      url: appendScanPath(base, path),
-    }));
+    const planned = plan.services[name];
+    if (planned?.scanner?.enabled === false) return [];
+    return service.connections.flatMap((connection) =>
+      scanTargets(
+        [{ ...connection, service: name }],
+        endpointScanPolicy(planned, connection.endpoint)?.path ?? planned?.scanner?.path ?? "/",
+      ),
+    );
   });
   return [...new Map(targets.map((target) => [`${target.service}/${target.url}`, target])).values()];
 };
@@ -74,7 +86,13 @@ export const runPostStartScan = Effect.fnUntraced(function* (
           const scanned = yield* Effect.result(
             input.scanner.scan(input.plan.id, {
               plan: input.plan,
-              urls: [{ service: target.service, url: target.url }],
+              urls: [
+                {
+                  service: target.service,
+                  url: target.url,
+                  ...(target.endpoint === undefined ? {} : { endpoint: target.endpoint }),
+                },
+              ],
               onAttempt: (attempt) =>
                 (attempt.verdict !== "lando-error" && attempt.verdict !== "service-error") ||
                 attempt.willRetry === false ||

@@ -43,5 +43,5 @@ export const metaGlobalUninstallSpec: LandoCommandSpec<GlobalUninstallResult> = 
     }),
   },
   run: (input) => globalUninstall(globalUninstallOptionsFromInput(input)),
-  render: (result) => renderGlobalUninstallResult(result as GlobalUninstallResult),
+  render: (result) => renderGlobalUninstallResult(result),
 };

@@ -9,6 +9,7 @@ import {
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
+import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
@@ -20,23 +21,25 @@ import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-che
 import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
 const expected = evolveHistoricalSqliteTarget(
-  evolveHistoricalAppMountAcceleration(
-    evolveHistoricalEnvironment(
-      evolveHistoricalEndpointMetadata(
-        evolveHistoricalTimestamps(
-          evolveHistoricalReadiness(
-            evolveHistoricalShorthand(
-              evolveHistoricalNetworks(
-                normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
-                "authoring",
+  evolveHistoricalConsolePort(
+    evolveHistoricalAppMountAcceleration(
+      evolveHistoricalEnvironment(
+        evolveHistoricalEndpointMetadata(
+          evolveHistoricalTimestamps(
+            evolveHistoricalReadiness(
+              evolveHistoricalShorthand(
+                evolveHistoricalNetworks(
+                  normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+                  "authoring",
+                ),
               ),
+              "authoring",
             ),
             "authoring",
           ),
-          "authoring",
         ),
+        "authoring",
       ),
-      "authoring",
     ),
   ),
 );

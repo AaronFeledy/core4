@@ -46,7 +46,7 @@ const commandManifest = () =>
     name: "@example/commands",
     version: "1.0.0",
     api: 4,
-    contributes: { commands: ["example:release"] },
+    contributes: { commands: [{ id: "example:release", summary: "Release example." }] },
   });
 
 const bootstrapManifest = (bootstrap: "app" | "tooling" | undefined, selectors: ReadonlyArray<string>) =>

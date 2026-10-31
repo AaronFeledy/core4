@@ -17,7 +17,7 @@ export const logFollowFromInput = (input: unknown): boolean => booleanFlag(specF
 export { extractSpecAbortSignal as logSignalFromInput } from "../spec/command-base";
 
 export const logLinesToStreamFrames = (result: Pick<LogsAppResult, "lines">) =>
-  result.lines.map((line) => ({
+  (result.lines ?? []).map((line) => ({
     _tag: line.stream,
     service: line.service,
     chunk: `${line.line}\n`,

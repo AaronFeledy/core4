@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Result, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,7 +26,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { services } from "../src/index.ts";
@@ -179,8 +182,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -204,7 +206,14 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     expect(search.type).toBe("solr");
     expect(search.artifact).toEqual({ kind: "ref", ref: "solr:9" });
     expect(search.endpoints).toEqual([
-      { _tag: "internal", port: 8983, protocol: "http", name: "search", primary: true },
+      {
+        _tag: "internal",
+        port: 8983,
+        protocol: "http",
+        name: "search",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);

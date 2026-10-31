@@ -214,6 +214,7 @@ const captureEvents = () => {
           if (found === undefined) throw new Error(`missing event ${name}`);
           return found;
         }),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
         Effect.sync(() =>

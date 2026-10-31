@@ -13,7 +13,7 @@ Before going offline, start the app while connected so Lando can pull images and
 
 ## What works offline
 
-Starting an app you already ran before works offline, as long as its images were already pulled and its containers already built. `lando start` and `lando restart` reuse images already in your provider instead of pulling them again, including the images for global services like the proxy. Scratch apps, `lando global:start`, and `lando global:restart` work the same way. Command routing and plugin resolution read from the on-disk command cache under the user cache root (refreshed with `app:cache:refresh`), not the network.
+Starting an app you already ran before works offline, as long as its images were already pulled and its containers already built. `lando start` and `lando restart` reuse images already in your provider instead of pulling them again, including the images for global services like the proxy. Scratch apps, `lando global:start`, and `lando global:restart` work the same way. Command routing reads the on-disk command cache under the user cache root (refreshed with `app:cache:refresh`), and plugin commands resolve from the plugins already installed on disk; neither touches the network.
 
 The bundled SSH sidecar installs `openssh-client` and `socat` when the global app builds its image, not when the container starts. After that first online build, later starts reuse the image and cached build layers without network access. SSH agent forwarding can come back offline after a poweroff or reboot.
 
@@ -28,6 +28,13 @@ Once a remote include has a lockfile entry and a cached copy, loading the app re
 A successful config or cache check does not prove that every build step can run offline. Build steps that download packages need network access when their cached layers are missing or their inputs change.
 
 An image that was never pulled has nothing in the local cache, so the first `lando start` for that image still needs network access. A remote include can only be resolved offline once it already has a lockfile entry and a cached copy from a prior online run. Changing an include's `version:` also needs network access, because the next load fetches the new version. There is no global `--offline` flag. Offline behavior is scoped per command, such as `--no-network` on `app:includes:update`.
+
+Bun controls package resolution and cache use for `lando bun` and `lando x`.
+When one of them fails offline you get Bun's exit code and Bun's message, not
+an offline error from Lando. Pass the Bun flag for the behavior you want and
+read Bun's `stderr` to tell a cache miss from a broken package. Under
+`--format=json` that output sits in the envelope, described in
+[Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-commands).
 
 <Guide>
   <Scenario id="update-includes-without-network" render>

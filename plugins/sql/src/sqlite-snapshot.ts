@@ -12,13 +12,13 @@ import {
   snapshotHandle,
 } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
-import { DateTime, Effect } from "effect";
+import { persistVerifiedStream } from "@lando/sdk/verified-stream";
+import { DateTime, Effect, Stream } from "effect";
 
 import { packSqliteTarFile, unpackSqliteTarFile } from "./sqlite-archive.ts";
 import {
   type SqliteHelperContext,
   type SqliteHelperDeps,
-  copyHostFile,
   requireSqliteDatabaseHeader,
   runSqliteHelper,
   sqliteScratchFile,
@@ -57,15 +57,20 @@ export const sqliteSnapshotsCompatible = (
   source: SnapshotInfo | undefined,
   context: {
     readonly ownerKey: string;
+    readonly appRoot: string;
     readonly service: string;
     readonly path: string;
     readonly version: string;
   },
 ): boolean =>
   source?.metadata !== undefined &&
+  source.format === "tar" &&
+  source.store.store === sqliteSnapshotStore(context.path) &&
+  source.metadata.imageIdentity === SQLITE_COMPAT_IDENTITY &&
   source.metadata.family === "sqlite" &&
   source.metadata.version === context.version &&
   source.owner.ownerKey === context.ownerKey &&
+  source.owner.appRoot === context.appRoot &&
   source.metadata.service === context.service &&
   source.metadata.volumeInstanceId === context.path;
 
@@ -73,6 +78,7 @@ export const requireSqliteCompatibleSnapshot = (
   source: SnapshotInfo | undefined,
   context: {
     readonly ownerKey: string;
+    readonly appRoot: string;
     readonly service: string;
     readonly path: string;
     readonly version: string;
@@ -84,7 +90,8 @@ export const requireSqliteCompatibleSnapshot = (
         new SqlRecoveryUnavailableError({
           message: `Snapshot ${source?.id ?? "(missing)"} is not compatible with SQLite path ${context.path}.`,
           service: context.service,
-          reason: "Snapshot ownership, service, sqlite_version, or path does not match.",
+          reason:
+            "Snapshot ownership, archive format, store, service, sqlite_version, or path does not match.",
           remediation: "Use a matching SQLite snapshot, or move data with logical export and import.",
         }),
       );
@@ -106,7 +113,7 @@ const observeSqliteVersion = Effect.fn("Sql.observeSqliteVersion")(function* (
     deps,
     target,
     helper,
-    ["sqlite3", helper.dbPath, "SELECT sqlite_version();"],
+    ["sqlite3", "-readonly", "-ifexists", helper.dbPath, "SELECT sqlite_version();"],
     {
       captureStdout: true,
     },
@@ -132,76 +139,117 @@ export const createSqliteSnapshot = Effect.fn("Sql.createSqliteSnapshot")(functi
   target: SqlFileTarget,
   options?: { readonly label?: string; readonly recoveryReason?: SnapshotMetadata["recoveryReason"] },
 ) {
-  const owner = sqlPlanIdentity(plan);
-  const store = sqliteSnapshotVolume(plan, target.path);
   return yield* withSqliteHelper(deps, service, target, (helper) =>
     Effect.gen(function* () {
       const version = yield* observeSqliteVersion(deps, target, helper);
       const staged = sqliteScratchFile(helper, ".sqlite");
       yield* runSqliteHelper(deps, target, helper, [
         "sqlite3",
+        "-bail",
+        "-readonly",
+        "-ifexists",
         helper.dbPath,
-        `VACUUM INTO '${staged.target}';`,
+        `.backup main ${JSON.stringify(staged.target)}`,
       ]);
       yield* requireSqliteDatabaseHeader(
         staged.host,
         target.name,
-        `VACUUM INTO did not produce a SQLite database for ${target.name}.`,
+        `Backup did not produce a SQLite database for ${target.name}.`,
       );
-      const id = randomUUID();
-      const createdAt = yield* DateTime.now;
-      const directory = join(deps.paths.ownerSnapshotsDir(owner.ownerKey), store.store);
-      yield* Effect.tryPromise({
-        try: () => mkdir(directory, { recursive: true }),
-        catch: (cause) =>
-          catalogFailure(target.name, "Cannot create the SQLite snapshot catalog directory.", cause),
-      });
-      const archivePath = join(directory, `${id}.tar`);
-      const packed = yield* Effect.tryPromise({
-        try: () => packSqliteTarFile(staged.host, archivePath),
-        catch: (cause) => catalogFailure(target.name, "Cannot write the SQLite snapshot archive.", cause),
-      });
-      const info: SnapshotInfo = {
-        owner,
-        id,
-        store,
-        digest: packed.digest,
-        sizeBytes: packed.sizeBytes,
-        createdAt,
-        format: "tar",
-        ...(options?.label === undefined ? {} : { label: options.label }),
-        metadata: sqliteSnapshotMetadata({
-          service: target.name,
-          path: target.path,
-          version,
-          recoveryReason: options?.recoveryReason ?? "manual",
-        }),
-      };
-      const bucket = yield* deps.stateStore
-        .open({
-          root: { path: AbsolutePath.make(directory) },
-          key: `${id}.json`,
-          schema: SnapshotInfo,
-          version: 1,
-          codec: "json",
-          onCorrupt: "fail",
-        })
-        .pipe(
-          Effect.mapError((cause) =>
-            catalogFailure(target.name, "Cannot open the SQLite snapshot sidecar.", cause),
-          ),
-        );
-      yield* bucket
-        .set(info)
-        .pipe(
-          Effect.mapError((cause) =>
-            catalogFailure(target.name, "Cannot write the SQLite snapshot sidecar.", cause),
-          ),
-        );
-      return snapshotHandle(info);
+      return yield* persistSqliteSnapshot(deps, plan, target, staged.host, version, options);
     }),
   );
 });
+
+export const persistSqliteSnapshot = Effect.fn("Sql.persistSqliteSnapshot")(function* (
+  deps: SqliteSnapshotDeps,
+  plan: SqlPlan,
+  target: SqlFileTarget,
+  stagedHost: string,
+  version: string,
+  options?: {
+    readonly id?: string;
+    readonly label?: string;
+    readonly recoveryReason?: SnapshotMetadata["recoveryReason"];
+  },
+) {
+  const owner = sqlPlanIdentity(plan);
+  const store = sqliteSnapshotVolume(plan, target.path);
+  yield* requireSqliteDatabaseHeader(stagedHost, target.name, "Cannot preserve the SQLite recovery payload.");
+  const id = options?.id ?? randomUUID();
+  const createdAt = yield* DateTime.now;
+  const directory = join(deps.paths.ownerSnapshotsDir(owner.ownerKey), store.store);
+  yield* Effect.tryPromise({
+    try: () => mkdir(directory, { recursive: true }),
+    catch: (cause) =>
+      catalogFailure(target.name, "Cannot create the SQLite snapshot catalog directory.", cause),
+  });
+  const archivePath = join(directory, `${id}.tar`);
+  const packed = yield* Effect.tryPromise({
+    try: () => packSqliteTarFile(stagedHost, archivePath),
+    catch: (cause) => catalogFailure(target.name, "Cannot write the SQLite snapshot archive.", cause),
+  });
+  const catalogWriteFailure = (cause: unknown) =>
+    new SqlRecoveryUnavailableError({
+      message: `SQLite recovery archive ${id} was captured but could not be cataloged.`,
+      service: target.name,
+      reason: String(cause),
+      remediation: `Preserve ${archivePath}, which contains only ${target.path} on ${target.name}. The snapshot is not cataloged, so db:restore cannot resolve its ID yet. Resolve snapshot-store access before retrying.`,
+    });
+  const info: SnapshotInfo = {
+    owner,
+    id,
+    store,
+    digest: packed.digest,
+    sizeBytes: packed.sizeBytes,
+    createdAt,
+    format: "tar",
+    ...(options?.label === undefined ? {} : { label: options.label }),
+    metadata: sqliteSnapshotMetadata({
+      service: target.name,
+      path: target.path,
+      version,
+      recoveryReason: options?.recoveryReason ?? "manual",
+    }),
+  };
+  const bucket = yield* deps.stateStore
+    .open({
+      root: { path: AbsolutePath.make(directory) },
+      key: `${id}.json`,
+      schema: SnapshotInfo,
+      version: 1,
+      codec: "json",
+      onCorrupt: "fail",
+    })
+    .pipe(Effect.mapError(catalogWriteFailure));
+  yield* bucket.set(info).pipe(Effect.mapError(catalogWriteFailure));
+  return snapshotHandle(info);
+});
+
+export const stageVerifiedSqliteImport = (
+  sourcePath: string,
+  destinationPath: string,
+  expectedDigest: string,
+  service: string,
+): Effect.Effect<void, SqlRecoveryUnavailableError> =>
+  Effect.scoped(
+    persistVerifiedStream({
+      body: Stream.fromReadableStream({
+        evaluate: () => Bun.file(sourcePath).stream(),
+        onError: (cause) => cause,
+      }),
+      destinationPath,
+      expectedSha256: expectedDigest,
+      // The host stages bytes for the verified database uid in its isolated helper scratch mount.
+      // A host-owned 0600 file would be unreadable when that uid differs from the Lando process.
+      mode: 0o644,
+    }).pipe(
+      Effect.asVoid,
+      Effect.mapError((cause) =>
+        catalogFailure(service, "Cannot stage a verified SQLite import payload.", cause),
+      ),
+    ),
+  );
 
 export const extractSqliteSnapshotArchiveToFile = (
   archivePath: string,
@@ -228,11 +276,31 @@ export const copySqliteSnapshotArchive = (
   destPath: string,
   service: string,
 ): Effect.Effect<void, SqlRecoveryUnavailableError> => {
+  if (info.format !== "tar" || !/^[a-zA-Z0-9_-]+$/u.test(info.id)) {
+    return Effect.fail(
+      catalogFailure(
+        service,
+        "Cannot read the SQLite snapshot archive.",
+        "Expected tar format and a snapshot ID without path separators.",
+      ),
+    );
+  }
   const directory = join(deps.paths.ownerSnapshotsDir(info.owner.ownerKey), info.store.store);
-  return copyHostFile(
-    join(directory, `${info.id}.${info.format ?? "tar"}`),
-    destPath,
-    service,
-    "Cannot read the SQLite snapshot archive.",
+  return Effect.scoped(
+    persistVerifiedStream({
+      body: Stream.fromReadableStream({
+        evaluate: () => Bun.file(join(directory, `${info.id}.tar`)).stream(),
+        onError: (cause) => cause,
+      }),
+      destinationPath: destPath,
+      expectedSha256: info.digest,
+      expectedSizeBytes: info.sizeBytes,
+      mode: 0o600,
+    }).pipe(
+      Effect.asVoid,
+      Effect.mapError((cause) =>
+        catalogFailure(service, "Cannot read a verified SQLite snapshot archive.", cause),
+      ),
+    ),
   );
 };

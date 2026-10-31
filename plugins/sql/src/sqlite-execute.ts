@@ -1,9 +1,7 @@
-import { randomUUID } from "node:crypto";
-
 import { DateTime, Effect, absurd } from "effect";
 
 import { SqlRecoveryUnavailableError, SqlSeedSourceError } from "@lando/sdk/errors";
-import { MessageWarnEvent } from "@lando/sdk/events";
+import { SqlRecoveryOperationError } from "@lando/sdk/errors";
 import type { DataTransferResult, SnapshotId, SnapshotInfo } from "@lando/sdk/schema";
 import { physicalVolumeLockKey } from "@lando/sdk/services";
 
@@ -14,14 +12,16 @@ import { ensureReadableDump } from "./dump-file.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { DEFAULT_SNAPSHOT_KEEP_LATEST } from "./snapshot-retention.ts";
 import { resolveSnapshotSource } from "./snapshot-source.ts";
+import { isSqliteDatabaseHeader } from "./sqlite-header.ts";
 import {
-  type SqliteHelperDeps,
   copyHostFile,
   hostFileSize,
+  requireSqliteDatabaseHeader,
   runSqliteHelper,
   sqliteScratchFile,
   withSqliteHelper,
 } from "./sqlite-helper.ts";
+import { mutateSqlite } from "./sqlite-mutation.ts";
 import { sqliteSidecarPaths } from "./sqlite-path.ts";
 import {
   type SqliteSnapshotDeps,
@@ -30,9 +30,9 @@ import {
   extractSqliteSnapshotArchiveToFile,
   requireSqliteCompatibleSnapshot,
   sqliteSnapshotVolume,
+  stageVerifiedSqliteImport,
 } from "./sqlite-snapshot.ts";
 import type { SqlFileTarget } from "./target.ts";
-import type { SqlPlanService } from "./views.ts";
 import { sqlPlanIdentity } from "./views.ts";
 
 const LIVE_WRITE_ACTIONS = new Set<DbCommandInput["action"]>(["import", "restore", "reset"]);
@@ -52,11 +52,6 @@ const requireSqliteRuntime = (
       )
     : Effect.succeed(deps.sqlite);
 
-const atomicReplaceScript =
-  'db="$1"; src="$2"; tmp="${db}.lando-import.$3"; cp "$src" "$tmp"; mv -f "$tmp" "$db"; rm -f "${db}-wal" "${db}-shm" "${db}-journal"';
-
-const resetScript = 'rm -f "$1" "$1-wal" "$1-shm" "$1-journal"';
-
 const refuseRunningSqliteWriter = Effect.fn("Sql.refuseRunningSqliteWriter")(function* (
   deps: SqlCommandDeps,
   input: DbCommandInput,
@@ -67,83 +62,23 @@ const refuseRunningSqliteWriter = Effect.fn("Sql.refuseRunningSqliteWriter")(fun
     Effect.mapError(
       (cause) =>
         new SqlRecoveryUnavailableError({
-          message: `Cannot inspect ${target.name} before a SQLite file replace.`,
+          message: `Cannot inspect ${target.name} before SQLite mutation.`,
           service: target.name,
           reason: String(cause),
-          remediation: "Check provider runtime health with `lando doctor`, then retry.",
+          remediation: "Check provider runtime health with lando doctor, then retry.",
         }),
     ),
   );
-  if (!observed.running) return;
-  if (input.force !== true) {
+  if (observed.running)
     return yield* Effect.fail(
       new SqlRecoveryUnavailableError({
-        message: `Cannot ${input.action} SQLite file on ${target.name} while the service is running.`,
+        message: `Cannot ${input.action} SQLite data on ${target.name} while the service is running.`,
         service: target.name,
-        reason: "A running service can keep a WAL writer open across a file replace.",
-        remediation: "Stop the service, then retry, or pass --force to replace the file while it is running.",
+        reason: "Stop application activity before acquiring the SQLite engine lock.",
+        remediation:
+          "Stop the service and close external SQLite clients, then retry. --force and --yes do not bypass safety checks.",
       }),
     );
-  }
-  yield* deps.publish(
-    MessageWarnEvent.make({
-      body: `Replacing the SQLite file on ${target.name} while the service is running. Concurrent writes can be lost. Stop the service instead of passing --force.`,
-      timestamp: yield* DateTime.now,
-    }),
-  );
-});
-
-const replaceSqliteFromHost = Effect.fn("Sql.replaceSqliteFromHost")(function* (
-  helperDeps: SqliteHelperDeps,
-  service: SqlPlanService,
-  target: SqlFileTarget,
-  sourceHostPath: string,
-) {
-  yield* withSqliteHelper(helperDeps, service, target, (helper) =>
-    Effect.gen(function* () {
-      const staged = sqliteScratchFile(helper, ".sqlite");
-      yield* copyHostFile(
-        sourceHostPath,
-        staged.host,
-        target.name,
-        `Cannot stage a SQLite payload for ${target.name}.`,
-      );
-      yield* runSqliteHelper(helperDeps, target, helper, [
-        "sh",
-        "-c",
-        atomicReplaceScript,
-        "sqlite-replace",
-        helper.dbPath,
-        staged.target,
-        randomUUID(),
-      ]);
-    }),
-  );
-});
-
-const importSqlDump = Effect.fn("Sql.importSqlDump")(function* (
-  helperDeps: SqliteHelperDeps,
-  service: SqlPlanService,
-  target: SqlFileTarget,
-  workingPath: string,
-) {
-  yield* withSqliteHelper(helperDeps, service, target, (helper) =>
-    Effect.gen(function* () {
-      const staged = sqliteScratchFile(helper, ".sqlite");
-      yield* runSqliteHelper(helperDeps, target, helper, ["sqlite3", "-bail", staged.target], {
-        stdinStream: Bun.file(workingPath).stream(),
-      });
-      yield* runSqliteHelper(helperDeps, target, helper, [
-        "sh",
-        "-c",
-        atomicReplaceScript,
-        "sqlite-replace",
-        helper.dbPath,
-        staged.target,
-        randomUUID(),
-      ]);
-    }),
-  );
 });
 
 export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(function* (
@@ -202,7 +137,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
       deps.confirm,
       target.name,
       steps,
-      `Reset will delete ${target.path} and its -wal, -shm, and -journal sidecars on ${target.name}.`,
+      `Reset will empty ${target.path} on ${target.name}. Recovery covers only this SQLite database; service, configuration, and other databases are preserved. No migrations or seeds will run.`,
     );
   }
   if (input.action === "restore") {
@@ -265,6 +200,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
   const progress = yield* publishTree(deps.publish, `db:${input.action}`, steps);
   const lockKey = physicalVolumeLockKey(`sql-sqlite:${owner.ownerKey}:${store.store}`);
   let snapshotId: string | undefined;
+  let recoverySnapshotId: string | undefined;
   let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;
   let prunedSnapshotIds: ReadonlyArray<SnapshotId> | undefined;
   let retentionApplied: boolean | undefined;
@@ -286,7 +222,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
               yield* runSqliteHelper(sqlite, target, helper, [
                 "sh",
                 "-c",
-                'sqlite3 -bail "$1" .dump > "$2"',
+                'sqlite3 -bail -readonly -ifexists "$1" .dump > "$2"',
                 "sqlite-dump",
                 helper.dbPath,
                 dumpFile.target,
@@ -304,33 +240,67 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
       });
       break;
     case "import":
-      transfer = yield* withSqliteLock(
-        Effect.gen(function* () {
-          yield* createSqliteSnapshot(sqlite, deps.plan, service, target, { recoveryReason: "import" });
-          return yield* withHostDumpCompression({
-            path: file,
-            compression,
-            ...(dump?.digest === undefined ? {} : { expectedDigest: dump.digest }),
-            direction: "import",
-            transfer: Effect.fn("Sql.sqliteImport.transfer")(function* (workingPath: string) {
-              if (dump?.sqliteDatabase === true) {
-                yield* replaceSqliteFromHost(sqlite, service, target, workingPath);
-              } else {
-                yield* importSqlDump(sqlite, service, target, workingPath);
-              }
-              return { accelerated: false as const, sizeBytes: hostFileSize(workingPath) };
+      transfer = yield* withHostDumpCompression({
+        path: file,
+        compression,
+        ...(dump?.digest === undefined ? {} : { expectedDigest: dump.digest }),
+        direction: "import",
+        transfer: Effect.fn("Sql.sqliteImport.transfer")(function* (workingPath: string, digest?: string) {
+          recoverySnapshotId = yield* withSqliteLock(
+            Effect.gen(function* () {
+              yield* refuseRunningSqliteWriter(deps, input, target);
+              return yield* mutateSqlite(deps, sqlite, service, target, "import", (helper) =>
+                Effect.gen(function* () {
+                  const stagedInput = sqliteScratchFile(helper, ".input");
+                  yield* stageVerifiedSqliteImport(
+                    workingPath,
+                    stagedInput.host,
+                    digest ?? dump?.digest ?? "",
+                    target.name,
+                  );
+                  const prefix = new Uint8Array(
+                    yield* Effect.promise(() => Bun.file(stagedInput.host).slice(0, 16).arrayBuffer()),
+                  );
+                  if (isSqliteDatabaseHeader(prefix)) return stagedInput.target;
+                  const database = sqliteScratchFile(helper, ".sqlite");
+                  const stagingHelper = {
+                    ...helper,
+                    spec: {
+                      image: helper.spec.image,
+                      binds: [{ source: helper.scratchHost, target: helper.scratchTarget }],
+                      user: helper.user,
+                      entrypoint: [],
+                      remove: true,
+                    },
+                  };
+                  yield* runSqliteHelper(
+                    sqlite,
+                    target,
+                    stagingHelper,
+                    ["sqlite3", "-bail", database.target],
+                    {
+                      stdinStream: Bun.file(stagedInput.host).stream(),
+                    },
+                  );
+                  yield* requireSqliteDatabaseHeader(
+                    database.host,
+                    target.name,
+                    "SQL import did not produce a SQLite database.",
+                  );
+                  return database.target;
+                }),
+              );
             }),
-          });
+          );
+          return { accelerated: false as const, sizeBytes: hostFileSize(workingPath) };
         }),
-      );
+      });
       break;
     case "reset":
-      yield* withSqliteLock(
+      recoverySnapshotId = yield* withSqliteLock(
         Effect.gen(function* () {
-          yield* createSqliteSnapshot(sqlite, deps.plan, service, target, { recoveryReason: "reset" });
-          yield* withSqliteHelper(sqlite, service, target, (helper) =>
-            runSqliteHelper(sqlite, target, helper, ["sh", "-c", resetScript, "sqlite-reset", helper.dbPath]),
-          );
+          yield* refuseRunningSqliteWriter(deps, input, target);
+          return yield* mutateSqlite(deps, sqlite, service, target, "reset");
         }),
       );
       break;
@@ -384,27 +354,27 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
           );
           yield* requireSqliteCompatibleSnapshot(restoreSource, {
             ownerKey: owner.ownerKey,
+            appRoot: owner.appRoot,
             service: target.name,
             path: target.path,
             version,
           });
-          yield* createSqliteSnapshot(sqlite, deps.plan, service, target, { recoveryReason: "restore" });
-          yield* withSqliteHelper(sqlite, service, target, (helper) =>
-            Effect.gen(function* () {
-              const archive = sqliteScratchFile(helper, ".tar");
-              const payload = sqliteScratchFile(helper, ".sqlite");
-              yield* copySqliteSnapshotArchive(sqlite, restoreSource, archive.host, target.name);
-              yield* extractSqliteSnapshotArchiveToFile(archive.host, payload.host, target.name);
-              yield* runSqliteHelper(sqlite, target, helper, [
-                "sh",
-                "-c",
-                atomicReplaceScript,
-                "sqlite-replace",
-                helper.dbPath,
-                payload.target,
-                randomUUID(),
-              ]);
-            }),
+          yield* refuseRunningSqliteWriter(deps, input, target);
+          recoverySnapshotId = yield* mutateSqlite(
+            deps,
+            sqlite,
+            service,
+            target,
+            "restore",
+            (helper) =>
+              Effect.gen(function* () {
+                const archive = sqliteScratchFile(helper, ".tar");
+                const payload = sqliteScratchFile(helper, ".sqlite");
+                yield* copySqliteSnapshotArchive(sqlite, restoreSource, archive.host, target.name);
+                yield* extractSqliteSnapshotArchiveToFile(archive.host, payload.host, target.name);
+                return payload.target;
+              }),
+            restoreSource.id,
           );
         }),
       );
@@ -414,7 +384,20 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
       return absurd<never>(input.action);
   }
 
-  yield* progress.complete;
+  yield* progress.complete.pipe(
+    Effect.mapError((cause) =>
+      recoverySnapshotId === undefined
+        ? cause
+        : new SqlRecoveryOperationError({
+            message: `${input.action} completed for ${target.path}, but completion notification failed.`,
+            service: target.name,
+            operation: input.action === "import" || input.action === "restore" ? input.action : "reset",
+            recoverySnapshotId,
+            cause,
+            remediation: `Recovery ${recoverySnapshotId} covers only ${target.path} on ${target.name}. Check database state before retrying.`,
+          }),
+    ),
+  );
   const seedStatus: "seeded" | undefined = undefined;
   return {
     service: target.name,
@@ -423,6 +406,7 @@ export const executeSqliteCommand = Effect.fn("Sql.executeSqliteCommand")(functi
     redactionTokens: [],
     ...(input.action === "import" || input.action === "export" ? { file } : {}),
     ...(snapshotId === undefined ? {} : { snapshotId }),
+    ...(recoverySnapshotId === undefined ? {} : { recoverySnapshotId, recoveryPath: target.path }),
     ...(listedSnapshots === undefined ? {} : { snapshots: listedSnapshots }),
     ...(pruneCandidates === undefined
       ? {}

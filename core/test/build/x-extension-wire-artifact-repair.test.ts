@@ -11,6 +11,7 @@ import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
+import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
@@ -81,32 +82,34 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
   const evolved = evolveHistoricalSqliteTarget(
-    evolveHistoricalToolingSensitivity(
-      evolveHistoricalAppMountAcceleration(
-        evolveHistoricalToolingShorthand(
-          evolveHistoricalEnvironment(
-            evolveHistoricalEndpointMetadata(
-              evolveHistoricalIncludeChecksum(
-                evolveHistoricalTimestamps(
-                  evolveHistoricalReadiness(
-                    evolveHistoricalShorthand(
-                      evolveHistoricalNetworks(
-                        normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
-                        "authoring",
+    evolveHistoricalConsolePort(
+      evolveHistoricalToolingSensitivity(
+        evolveHistoricalAppMountAcceleration(
+          evolveHistoricalToolingShorthand(
+            evolveHistoricalEnvironment(
+              evolveHistoricalEndpointMetadata(
+                evolveHistoricalIncludeChecksum(
+                  evolveHistoricalTimestamps(
+                    evolveHistoricalReadiness(
+                      evolveHistoricalShorthand(
+                        evolveHistoricalNetworks(
+                          normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured[source]))),
+                          "authoring",
+                        ),
                       ),
+                      "authoring",
                     ),
                     "authoring",
                   ),
-                  "authoring",
                 ),
               ),
+              "authoring",
             ),
             "authoring",
           ),
-          "authoring",
         ),
+        "authoring",
       ),
-      "authoring",
     ),
   );
   evolvedTypedCache.set(source, evolved);
@@ -151,23 +154,25 @@ describe("embedded wire closed x-* artifact repair", () => {
 
   test("collapses an identifier-only local ref onto the same normalized graph", async () => {
     const repaired = evolveHistoricalSqliteTarget(
-      evolveHistoricalAppMountAcceleration(
-        evolveHistoricalEnvironment(
-          evolveHistoricalEndpointMetadata(
-            evolveHistoricalTimestamps(
-              evolveHistoricalReadiness(
-                evolveHistoricalShorthand(
-                  evolveHistoricalNetworks(
-                    normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
-                    "authoring",
+      evolveHistoricalConsolePort(
+        evolveHistoricalAppMountAcceleration(
+          evolveHistoricalEnvironment(
+            evolveHistoricalEndpointMetadata(
+              evolveHistoricalTimestamps(
+                evolveHistoricalReadiness(
+                  evolveHistoricalShorthand(
+                    evolveHistoricalNetworks(
+                      normalizeJsonSchema(wireObject(repairClosedExtension(typedCaptured.services))),
+                      "authoring",
+                    ),
                   ),
+                  "authoring",
                 ),
                 "authoring",
               ),
-              "authoring",
             ),
+            "authoring",
           ),
-          "authoring",
         ),
       ),
     );

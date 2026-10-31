@@ -48,9 +48,10 @@ import {
   type EventCommandExecutorInput,
 } from "../../src/services/event-command-executor.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { compileAuthoredEventPlan } from "../authored-invocations.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("event-reentry"),
@@ -236,6 +237,7 @@ const eventRuntime = (
   const redaction = makeRedactionService();
   const resolver = testEnvironmentResolverLayerFor(redaction);
   return Layer.mergeAll(
+    BunProcessRunner.layer,
     resolver,
     LandoEventService.layer.pipe(Layer.provide(resolver)),
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),

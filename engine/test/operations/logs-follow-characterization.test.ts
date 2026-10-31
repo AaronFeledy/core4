@@ -157,7 +157,7 @@ describe("log-follow completion", () => {
         followLogsForPlan(plan, { signal: controller.signal }).pipe(Effect.provide(layer)),
       );
 
-      expect(result).toEqual({ app: "Follow App", lines: [] });
+      expect(result).toEqual({ app: "Follow App" });
       expect(released.sort()).toEqual(["database", "web"]);
       expect(frames.sort((a, b) => (a.service ?? "").localeCompare(b.service ?? ""))).toEqual(
         mode === "empty"

@@ -3,8 +3,8 @@ import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
-import { runRecipeInitPipeline } from "../../src/recipes/init-pipeline.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { runRecipeInitPipeline } from "../_support/recipe-pipeline.ts";
 import { prepareTestSource, testSource } from "./fixtures/prepared-source.ts";
 
 const roots: string[] = [];

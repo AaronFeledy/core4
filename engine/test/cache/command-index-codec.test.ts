@@ -1,21 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { Result } from "effect";
-import {
-  decodeAppCommandIndex,
-  decodePluginCommandIndex,
-  encodeAppCommandIndex,
-  encodePluginCommandIndex,
-} from "../../src/cache/command-index.ts";
-import {
-  abi6Bytes,
-  app,
-  encodedInput,
-  entry,
-  input,
-  plugin,
-  without,
-} from "./fixtures/command-index-codec.ts";
+import { decodeAppCommandIndex, encodeAppCommandIndex } from "../../src/cache/command-index.ts";
+import { abi6Bytes, app, encodedInput, entry, input, without } from "./fixtures/command-index-codec.ts";
 
 const withFlag = (patch: object) => ({
   ...encodedInput,
@@ -26,10 +13,7 @@ const withArg = (patch: object) => ({
   args: encodedInput.args.map((arg, index) => (index === 0 ? { ...arg, ...patch } : arg)),
 });
 
-for (const [magic, payload, decode] of [
-  ["LCAC", app, decodeAppCommandIndex],
-  ["LCPC", plugin, decodePluginCommandIndex],
-] as const) {
+for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as const) {
   describe(`${magic} current-ABI validation`, () => {
     test.each([null, [], new Map(), new Set()].map((value) => ({ value })))(
       "rejects non-record payloads %#",
@@ -182,12 +166,6 @@ test("roundtrips complete app metadata through the typed encoder", () => {
   // Then
   expect(decoded).toEqual(app);
 });
-test("roundtrips complete plugin metadata through the typed encoder", () => {
-  // Given / When
-  const decoded = decodePluginCommandIndex(encodePluginCommandIndex(plugin));
-  // Then
-  expect(decoded).toEqual(plugin);
-});
 
 test.each([
   ...["appName", "sourceFile", "sourceMtimeMs", "sourceSize"].map((key) => without(app, key)),
@@ -247,23 +225,4 @@ test.each([
   const bytes = abi6Bytes("LCAC", payload);
   // When / Then
   expect(decodeAppCommandIndex(bytes)).toBeNull();
-});
-
-test.each([
-  without(plugin, "pluginNames"),
-  ...[
-    { pluginNames: null },
-    { pluginNames: [0] },
-    { pluginListSha: 1 },
-    { manifestFingerprint: null },
-    { commandsByPlugin: null },
-    { commandsByPlugin: [] },
-    { commandsByPlugin: { example: "deploy" } },
-    { commandsByPlugin: { example: [1] } },
-  ].map((patch) => ({ ...plugin, ...patch })),
-])("rejects malformed plugin metadata %#", (payload) => {
-  // Given
-  const bytes = abi6Bytes("LCPC", payload);
-  // When / Then
-  expect(decodePluginCommandIndex(bytes)).toBeNull();
 });

@@ -35,12 +35,12 @@ import * as BuildOrchestratorLayer from "@lando/engine/services/build-orchestrat
 import * as LandoConfigService from "@lando/engine/services/config";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
-import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ContainerHelperAssets } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import * as StateStoreLayer from "@lando/state-store/service";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 import "../../src/runtime/engine-composition.ts";
@@ -353,6 +353,7 @@ const makeRebuildLayer = (plannedApp: AppPlan = plan) => {
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
@@ -406,6 +407,7 @@ const makeCachedBuildLayer = () => {
       subscribe: () => Stream.empty,
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("not used"),
       query: () => Effect.die("not used"),
     }),

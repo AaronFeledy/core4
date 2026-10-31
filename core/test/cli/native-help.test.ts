@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
-import { suggestBuiltInCommandForSuffix } from "../../src/cli/built-in-command-registry.ts";
+import { suggestCommandForSuffix } from "../../src/cli/built-in-command-registry.ts";
 import { renderColdAllHelp } from "../../src/cli/cold-path-output.ts";
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
@@ -174,12 +174,14 @@ describe("native registry help", () => {
       command: "cli:help",
       ok: true,
     });
-    expect((envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all).toHaveLength(
-      nonHiddenBuiltInCount,
-    );
+    expect(
+      (envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all.filter(
+        (row) => row.source === "built-in",
+      ),
+    ).toHaveLength(nonHiddenBuiltInCount);
     expect(
       (envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all.every(
-        (row) => row.source === "built-in",
+        (row) => row.source === "built-in" || row.source === "plugin",
       ),
     ).toBe(true);
   });
@@ -223,9 +225,9 @@ describe("native unknown-command failures", () => {
   });
 
   test("Given an ambiguous, absent, or deferred suffix, when searched, then no canonical command is suggested", () => {
-    expect(suggestBuiltInCommandForSuffix("config")).toBeUndefined();
-    expect(suggestBuiltInCommandForSuffix("does-not-exist")).toBeUndefined();
-    expect(suggestBuiltInCommandForSuffix("plugin:login")).toBeUndefined();
+    expect(suggestCommandForSuffix("config")).toBeUndefined();
+    expect(suggestCommandForSuffix("does-not-exist")).toBeUndefined();
+    expect(suggestCommandForSuffix("plugin:login")).toBeUndefined();
   });
 
   test("Given control characters in a near suffix, when dispatched, then the generic diagnostic stays escaped", async () => {

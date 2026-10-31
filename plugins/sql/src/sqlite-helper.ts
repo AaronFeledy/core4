@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { chmodSync, chownSync, mkdirSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { lstat, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { sqliteHelperImage } from "@lando/container-runtime/data-plane";
 import { SqlCommandFailedError, SqlRecoveryUnavailableError } from "@lando/sdk/errors";
 import { type AppPlan, planAppIdentity } from "@lando/sdk/schema";
 import type { EphemeralRunSpec, ExecResult } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 
 import { SQLITE_HEADER_BYTES, isSqliteDatabaseHeader } from "./sqlite-header.ts";
 import {
@@ -172,6 +172,9 @@ export const requireSqliteDatabaseHeader = (
 ): Effect.Effect<void, SqlRecoveryUnavailableError> =>
   Effect.tryPromise({
     try: async () => {
+      const info = await lstat(path);
+      if (!info.isFile())
+        throw new Error("The SQLite payload must be a regular file, not a symlink or directory.");
       const prefix = new Uint8Array(await Bun.file(path).slice(0, SQLITE_HEADER_BYTES).arrayBuffer());
       if (!isSqliteDatabaseHeader(prefix)) {
         throw new Error("The file does not start with the SQLite format 3 header.");
@@ -186,8 +189,21 @@ export const requireSqliteDatabaseHeader = (
       }),
   });
 
-export const removeSqliteHelperScratch = (scratchHost: string): Effect.Effect<void> =>
-  Effect.promise(() => rm(scratchHost, { recursive: true, force: true }).then(() => undefined));
+export const removeSqliteHelperScratch = (
+  scratchHost: string,
+  service = "sqlite",
+): Effect.Effect<void, SqlRecoveryUnavailableError> =>
+  Effect.tryPromise({
+    try: () => rm(scratchHost, { recursive: true, force: true }).then(() => undefined),
+    catch: (cause) =>
+      new SqlRecoveryUnavailableError({
+        message: `Cannot remove SQLite helper scratch at ${scratchHost}.`,
+        service,
+        reason: String(cause),
+        remediation:
+          "Check scratch directory ownership and permissions. Preserve any recovery evidence before removing retained files.",
+      }),
+  });
 
 export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function* (
   deps: SqliteHelperDeps,
@@ -208,7 +224,50 @@ export const prepareSqliteHelper = Effect.fn("Sql.prepareSqliteHelper")(function
     );
   }
   const image = yield* resolveSqliteHelperImage(deps);
-  const user = sqliteHelperUser(covering);
+  const inspectionAccess = sqliteHelperAccess({ ...covering, readOnly: true }, deps.applied);
+  const inspected = yield* deps
+    .run({
+      image,
+      ...(inspectionAccess.owner === undefined ? {} : { owner: inspectionAccess.owner }),
+      ...(inspectionAccess.mounts === undefined ? {} : { mounts: inspectionAccess.mounts }),
+      binds: inspectionAccess.binds,
+      user: "0:0",
+      entrypoint: [],
+      remove: true,
+      captureStdout: true,
+      command: [
+        "sh",
+        "-eu",
+        "-c",
+        'path="$1"; while [ "$path" != / ]; do [ ! -L "$path" ] || exit 65; path=${path%/*}; [ -n "$path" ] || path=/; done; [ -f "$1" ] || exit 66; stat -c "%u:%g" "$1"',
+        "sqlite-owner",
+        dbPath,
+      ],
+    })
+    .pipe(
+      Effect.mapError(
+        (cause) =>
+          new SqlRecoveryUnavailableError({
+            message: `Cannot inspect SQLite file ownership for ${target.name}.`,
+            service: target.name,
+            reason: String(cause),
+            remediation:
+              "Confirm the SQLite file exists on the planned mount and the provider can inspect it, then retry.",
+          }),
+      ),
+    );
+  const user = inspected.exitCode === 0 ? sqliteHelperUser(inspected.stdout) : undefined;
+  if (user === undefined) {
+    return yield* Effect.fail(
+      new SqlRecoveryUnavailableError({
+        message: `Cannot establish SQLite file ownership for ${target.name}.`,
+        service: target.name,
+        reason: `The read-only inspection failed (exit ${inspected.exitCode}) or returned invalid uid:gid. ${inspected.stderr.slice(-8192)}`,
+        remediation:
+          "Use an existing regular SQLite file without symlinks in its path. Check file permissions and retry; Lando does not guess a named-volume owner or initialize a missing database.",
+      }),
+    );
+  }
   const scratchHost = join(
     deps.paths.ownerSnapshotsDir(helperOwnerKey(deps.applied)),
     "sqlite-helper",
@@ -252,11 +311,26 @@ export const withSqliteHelper = <A, E, R>(
   service: SqlPlanService,
   target: SqlFileTarget,
   body: (helper: SqliteHelperContext) => Effect.Effect<A, E, R>,
+  options?: { readonly preserveOnFailure?: boolean },
 ): Effect.Effect<A, E | SqlRecoveryUnavailableError, R> =>
-  prepareSqliteHelper(deps, service, target).pipe(
-    Effect.flatMap((helper) =>
-      Effect.suspend(() => body(helper)).pipe(Effect.ensuring(removeSqliteHelperScratch(helper.scratchHost))),
-    ),
+  Effect.acquireUseRelease(
+    prepareSqliteHelper(deps, service, target),
+    (helper) =>
+      Effect.gen(function* () {
+        const result = yield* Effect.suspend(() => body(helper));
+        yield* Effect.uninterruptible(removeSqliteHelperScratch(helper.scratchHost, target.name));
+        return result;
+      }),
+    (helper, exit) => {
+      if (Exit.isSuccess(exit) || options?.preserveOnFailure === true) return Effect.void;
+      return removeSqliteHelperScratch(helper.scratchHost, target.name).pipe(
+        Effect.catchCause(() =>
+          Effect.logWarning(
+            `Could not remove SQLite helper scratch at ${helper.scratchHost}; preserving the operation failure.`,
+          ),
+        ),
+      );
+    },
   );
 
 export const runSqliteHelper = Effect.fn("Sql.runSqliteHelper")(function* (

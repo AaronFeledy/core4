@@ -74,6 +74,7 @@ const eventLayer = Layer.succeed(
     publish: () => Effect.void,
     subscribe: () => Stream.die("unused"),
     subscribeQueue: Effect.die("unused"),
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.die("unused"),
     query: () => Effect.die("unused"),
     waitFor: () => Effect.die("unused"),

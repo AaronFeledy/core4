@@ -30,6 +30,7 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 
 import {
   deriveAppPlanCacheKey,
@@ -224,6 +225,7 @@ const makeLayer = (options: {
     }),
   );
   return Layer.mergeAll(
+    BunProcessRunner.layer,
     PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,
@@ -299,6 +301,7 @@ const recordingEventLayer = (events: LandoEvent[]) =>
           ),
         subscribeQueue: Effect.succeed(queue),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       };

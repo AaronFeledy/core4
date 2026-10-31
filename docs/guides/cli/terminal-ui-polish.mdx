@@ -36,6 +36,14 @@ Layout tokens:
 
 Anti-patterns: no undifferentiated rainbow logs, no SaaS-purple gradients, no dense ASCII art, no decorative motion.
 
+## Color opt-out
+
+The host opts out of color when `NO_COLOR` holds any non-empty value or `TERM` is `dumb`. `FORCE_COLOR` does not override it. The stdio IO resolves this once as `RendererNarrationIO.noColor`; renderer code reads that fact, or the `color` capability derived from it, and never reads the environment itself.
+
+Under the opt-out, the task tree, notices, result summaries, OSC 8 hyperlinks, help, and interactive prompts drop every foreground and background color. Bold, dim, and default-color resets may stay, and the glyphs, text, and layout must match the colored frame once escape sequences are stripped. That is why status is never color-only. `TERM=dumb` also omits the terminal stream, so the tree falls back to one line per event. Tool payload bytes pass through untouched.
+
+Painters take a palette from `@lando/renderer/palette` as a required argument, so a new call site cannot forget the opt-out; only the public summary facades keep a default. The shared renderer contract suite fails any renderer whose narration emits color while its IO reports `noColor`. Prompts receive the resolved fact through `loadInteractivePromptDriver({ noColor })` and use default foreground and background intents; the `▶` selection marker carries state, inline confirmations stay plain text, and the driver suppresses OpenTUI's cursor-color (OSC 12) writes.
+
 ## Desktop notification policy
 
 The `@lando/notify-lando` plugin, not core or the renderer, decides when a command completion publishes `notify.desktop`. It ships bundled and enabled by default.
@@ -46,4 +54,4 @@ Subscriber registration uses metadata without discovering an app or loading its 
 
 `notify.enabled: false` silences desktop notification policy. Environment overrides `LANDO_NOTIFY_ENABLED`, `LANDO_NOTIFY_THRESHOLD_MS`, and `LANDO_NOTIFY_COMMANDS` map to `notify.enabled`, `notify.thresholdMs`, and the JSON-array `notify.commands` value.
 
-Only the outer invocation (`parentInvocationId` absent) may publish one success or failure notification. Nested events carry `parentInvocationId` and stay observable, but they never independently trigger foreground presentation. The renderer decides presentation through `renderer.capabilities.notifications`. The default `lando` renderer publishes all four capabilities as true when stderr is a terminal at construction, without importing OpenTUI or probing the terminal. Notifications use OSC 99 on stderr immediately; terminals without OSC 99 support ignore them. Non-terminal stderr publishes all four capabilities as false and drops desktop notifications.
+Only the outer invocation (`parentInvocationId` absent) may publish one success or failure notification. Nested events carry `parentInvocationId` and stay observable, but they never independently trigger foreground presentation. The renderer decides presentation through `renderer.capabilities.notifications`. The default `lando` renderer publishes all four capabilities as true when stderr is a terminal at construction, except `color`, which is false under the [color opt-out](#color-opt-out). It does this without importing OpenTUI or probing the terminal. Notifications use OSC 99 on stderr immediately; terminals without OSC 99 support ignore them. Non-terminal stderr publishes all four capabilities as false and drops desktop notifications.

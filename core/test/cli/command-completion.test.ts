@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
+import { StreamFrame } from "@lando/sdk/schema";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
-import { Effect, Layer, Queue, Schema, Stream } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import { compiledCommandOptionsFromSpec } from "../../src/cli/run-built-in-command";
+import { makeTestEventService } from "../../src/testing/test-runtime-events";
 
 describe("canonical CLI completion", () => {
   test("keeps report findings successful while setting the findings exit code", async () => {
@@ -37,17 +39,7 @@ describe("canonical CLI completion", () => {
       const events: LandoEvent[] = [];
       const order: string[] = [];
       let calls = 0;
-      const eventService = EventService.of({
-        publish: (event) =>
-          Effect.sync(() => {
-            events.push(event);
-          }),
-        subscribe: () => Stream.empty,
-        subscribeQueue: Queue.unbounded<never>(),
-        waitFor: () => Effect.never,
-        waitForAny: () => Effect.never,
-        query: () => Effect.succeed([]),
-      });
+      const eventService = makeTestEventService(events);
       const input = { args: {}, flags: { count: 7 }, argv: [] };
       const spec = {
         id: "app:exec",
@@ -102,8 +94,16 @@ describe("canonical CLI completion", () => {
       });
       expect(io.stderr()).not.toContain("BUG REPORT");
       if (format === "json") {
-        const frames = io.stdoutLines().map((line) => JSON.parse(line));
-        expect(frames[0]).toEqual({ _tag: "stdout", chunk: "final tail" });
+        const frames = io
+          .stdoutLines()
+          .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
+        expect(frames.filter((frame) => frame._tag === "stdout")).toEqual([
+          { _tag: "stdout", chunk: "final tail" },
+        ]);
+        expect(frames.filter((frame) => frame._tag === "event").map((frame) => frame.event)).toEqual([
+          "cli-app:exec-init",
+          "cli-app:exec-error",
+        ]);
         expect(frames.at(-1)).toMatchObject({
           _tag: "result",
           envelope: { ok: false, result: { exitCode: 7 }, error: { _tag: "LandoCommandError" } },
