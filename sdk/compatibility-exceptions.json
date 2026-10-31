@@ -1,5 +1,17 @@
 [
   {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.init.anyOf",
+    "justification": "Intentional pre-release #1199 init input narrowing: booleans and ASCII case-insensitive true/false, on/off, yes/no, and quoted 1/0 remain accepted and normalize to a boolean. Arbitrary strings, surrounding whitespace, trailing line breaks, numeric 1/0, and null are rejected. The published pattern now matches runtime acceptance; focused schema parity and round-trip regressions cover valid spellings and rejected input. This is not a backward-compatibility claim for formerly unconstrained strings."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.init.anyOf",
+    "justification": "Intentional pre-release #1199 authoring-schema correction: init accepts booleans or the same ASCII case-insensitive boolean spellings as ServiceConfig, not arbitrary strings. The flag-free JSON Schema pattern and runtime matcher share one definition and reject whitespace, trailing line breaks, numeric 1/0, and null. Published-versus-runtime acceptance regressions cover the narrowing; no legacy string-acceptance shim is retained."
+  },
+  {
     "surface": "command:meta:global:list",
     "changeKind": "enum-widened",
     "path": "$.services.items.state",

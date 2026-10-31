@@ -62,6 +62,12 @@ const podmanStorageLifecycleCheck = {
   command: bunTest("plugins/provider-lando/test/anonymous-volume-lifecycle.integration.test.ts"),
 } as const satisfies ProviderAcceptanceCheckPlan;
 
+const nativeInitCheck = {
+  id: "native-init",
+  label: "Live native init TERM, handler marker, orphan reaping, and control cases",
+  command: bunTest("plugins/provider-lando/test/native-init.integration.test.ts"),
+} as const satisfies ProviderAcceptanceCheckPlan;
+
 const landoChecks = [
   {
     id: "managed-setup-readiness",
@@ -70,6 +76,7 @@ const landoChecks = [
   },
   COMPOSE_KNOBS_TRANSPORT_CHECK,
   podmanStorageLifecycleCheck,
+  nativeInitCheck,
   {
     id: "sdk-provider-contract",
     label: "SDK provider contract against live Podman socket",
@@ -120,6 +127,7 @@ const landoChecks = [
 
 const podmanChecks = [
   podmanStorageLifecycleCheck,
+  nativeInitCheck,
   {
     id: "sdk-provider-contract",
     label: "SDK provider contract against live Podman socket",

@@ -87,7 +87,7 @@ describe("dotnet ServiceType", () => {
   test("plans keepalive, app mount, NuGet cache, and HTTP endpoint defaults", async () => {
     const plan = await planDotnetService(dotnetServiceType, { type: "dotnet" });
 
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
     expect(String(serviceAppMount(plan)?.target)).toBe("/app");

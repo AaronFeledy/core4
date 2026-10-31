@@ -27,6 +27,25 @@ const composeOnce = (features: ReadonlyArray<ServiceFeatureDefinition>): Promise
   Effect.runPromise(composeService(inputFor(features)));
 
 describe("composeService", () => {
+  test.each(["lando", "l337"] as const)("keeps the %s base init default", async (baseKind) => {
+    // Given / When
+    const plan = await Effect.runPromise(composeService({ ...inputFor([]), baseKind }));
+    // Then
+    expect(plan.init).toBe(baseKind === "lando" ? true : undefined);
+  });
+  test.each([true, false])("finalizes feature init %s over the Lando default", async (init) => {
+    // Given
+    const feature: ServiceFeatureDefinition = {
+      id: "feature.init",
+      priority: 100,
+      apply: (ctx) => Effect.sync(() => ctx.setInit(init)),
+    };
+    // When
+    const plan = await composeOnce([feature]);
+    // Then
+    expect(plan.init).toBe(init);
+  });
+
   test("applies features in stable ascending priority order", async () => {
     const calls: string[] = [];
     const later: ServiceFeatureDefinition = {

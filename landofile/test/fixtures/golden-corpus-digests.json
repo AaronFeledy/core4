@@ -673,6 +673,17 @@
       "digest": "8058b8279ce6c19da800eeff5c85c7f9ca180a58c23ab2e11ed8b175aaf9d531"
     },
     {
+      "fixture": "docs/guides/node/fixtures/node-init-invalid",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-init-off",
+      "digest": "795cfc700131d5e05f3132b1b440405a6bd8f5bfbc7e6ad3158743a1588fe224"
+    },
+    {
       "fixture": "docs/guides/node/fixtures/node-port",
       "digest": "a46c69af113f682cd3e3bc9d35e0798c4118f96b40310286ad2fb85632210963"
     },

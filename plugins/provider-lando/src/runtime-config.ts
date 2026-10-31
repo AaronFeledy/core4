@@ -1,14 +1,16 @@
-import { chmod, mkdir, unlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, unlink } from "node:fs/promises";
 
 import { Effect } from "effect";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
+import { writeFileAtomic } from "@lando/state-store/atomic";
 import { hasUsableUserSystemdSession } from "./user-systemd-session.ts";
 
 export interface WriteManagedRuntimeContainersConfOptions {
   readonly runtimeBinDir: string;
   readonly runtimeConfigDir: string;
   readonly useSystemdRunShim?: boolean;
+  readonly nativeInit?: boolean;
 }
 
 const escapeTomlString = (value: string): string => value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
@@ -67,8 +69,29 @@ done
 exec "$@"
 `;
 
+const MANAGED_CONFIG_MODE = 0o600;
+const MANAGED_SHIM_MODE = 0o755;
+
 const systemdRunShimPath = (runtimeBinDir: string): string =>
   `${runtimeBinDir.replace(/\/+$/u, "")}/systemd-run`;
+
+const ensureContentAndMode = async (path: string, content: string, mode: number): Promise<void> => {
+  try {
+    const info = await lstat(path);
+    if (info.isFile()) {
+      const existing = await readFile(path, "utf8");
+      if (existing === content) {
+        if ((info.mode & 0o7777) !== mode) {
+          await chmod(path, mode);
+        }
+        return;
+      }
+    }
+  } catch (cause) {
+    if (!isErrnoCode(cause, "ENOENT")) throw cause;
+  }
+  await writeFileAtomic(path, content, { mode, ownerOnly: "best-effort" });
+};
 
 export const writeManagedRuntimeContainersConf = (
   options: WriteManagedRuntimeContainersConfOptions,
@@ -86,26 +109,34 @@ export const writeManagedRuntimeContainersConf = (
       // Do not set network.network_backend: Podman 6.0.1 accepts only netavark.
       // Pasta is a helper binary in this directory, not a valid backend name.
       // Netavark execs nft from PATH; Lando provisions nft into runtime/bin.
-      const body = `[containers]\ncgroups = "no-conmon"\nlog_driver = "k8s-file"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
+      const initPath = options.nativeInit === false ? "" : `init_path = "${binDir}/catatonit"\n`;
+      const body = `[containers]\n${initPath}cgroups = "no-conmon"\nlog_driver = "k8s-file"\n[engine]\ncgroup_manager = "cgroupfs"\nevents_logger = "file"\nhelper_binaries_dir = ["${binDir}"]\nconmon_path = ["${binDir}/conmon"]\nruntime = "crun"\n[engine.runtimes]\ncrun = ["${binDir}/crun"]\n[network]\ndefault_host_ips = [${defaultHostIps}]\n`;
       await mkdir(options.runtimeConfigDir, { recursive: true });
       const configDir = options.runtimeConfigDir.replace(/\/+$/u, "");
       const containersConfigDir = `${configDir}/containers`;
       await mkdir(containersConfigDir, { recursive: true });
-      await writeFile(`${configDir}/containers.conf`, body);
-      await writeFile(`${configDir}/registries.conf`, MANAGED_REGISTRIES_CONF);
-      await writeFile(`${containersConfigDir}/policy.json`, MANAGED_SIGNATURE_POLICY);
+      await ensureContentAndMode(`${configDir}/containers.conf`, body, MANAGED_CONFIG_MODE);
+      await ensureContentAndMode(
+        `${configDir}/registries.conf`,
+        MANAGED_REGISTRIES_CONF,
+        MANAGED_CONFIG_MODE,
+      );
+      await ensureContentAndMode(
+        `${containersConfigDir}/policy.json`,
+        MANAGED_SIGNATURE_POLICY,
+        MANAGED_CONFIG_MODE,
+      );
       await mkdir(options.runtimeBinDir, { recursive: true });
       const shimPath = systemdRunShimPath(options.runtimeBinDir);
       const useShim = options.useSystemdRunShim ?? !hasUsableUserSystemdSession();
       if (useShim) {
-        await writeFile(shimPath, MANAGED_SYSTEMD_RUN_SHIM, { mode: 0o755 });
-        await chmod(shimPath, 0o755);
+        await ensureContentAndMode(shimPath, MANAGED_SYSTEMD_RUN_SHIM, MANAGED_SHIM_MODE);
         return;
       }
       try {
         await unlink(shimPath);
       } catch (cause) {
-        if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT") {
+        if (isErrnoCode(cause, "ENOENT")) {
           return;
         }
         throw cause;

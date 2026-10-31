@@ -341,6 +341,9 @@ export const ProviderCapabilities = Schema.Struct({
   buildSsh: Schema.Boolean,
   multiServiceApply: Schema.Boolean,
   serviceExec: Schema.Boolean,
+  serviceInit: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Whether native service init is supported; omission means unsupported.",
+  }),
   serviceLogs: Schema.Boolean,
   serviceLogSources: Schema.Boolean,
   serviceHealth: Schema.Literals(["native", "lando", "none"]),

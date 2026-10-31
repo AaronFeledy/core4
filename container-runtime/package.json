@@ -32,6 +32,7 @@
     "./native-ownership": "./src/native-ownership.ts",
     "./volume-ownership": "./src/volume-ownership.ts",
     "./testing/storage-lifecycle": "./test/support/storage-lifecycle.ts",
+    "./testing/native-init": "./test/support/native-init.ts",
     "./log-file-access": "./src/log-file-access.ts",
     "./log-source-binding": "./src/log-source-binding.ts",
     "./data-plane": "./src/data-plane.ts",

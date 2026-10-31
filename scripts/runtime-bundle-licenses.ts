@@ -9,7 +9,7 @@ export const runtimeBundleRecipeUrls = (
   runtimeVersion: string,
   repository: string,
 ): readonly string[] => {
-  if (component.sourceBuild === undefined) return [];
+  if (!("sourceBuild" in component) || component.sourceBuild === undefined) return [];
   const root = `https://github.com/${repository}/tree/runtime-v${runtimeVersion}/scripts`;
   const patch = sourcePatchFor(component);
   return patch === undefined ? [root] : [root, `${root}/patches/${basename(patch)}`];

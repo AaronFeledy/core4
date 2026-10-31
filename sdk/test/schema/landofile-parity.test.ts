@@ -195,6 +195,10 @@ test("runtime JSON Schema agrees with the strict Landofile decoder", async () =>
 
 const INVALID_INPUT_FIXTURES = new Map([
   [
+    "node/fixtures/node-init-invalid",
+    "Deliberate init: sometimes; only booleans or ASCII case-insensitive true/false/on/off/yes/no/1/0 strings are accepted.",
+  ],
+  [
     "router-and-scanner/fixtures/router-and-scanner-invalid",
     "Retries intentionally exceed the allowed range.",
   ],

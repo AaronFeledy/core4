@@ -56,6 +56,8 @@ Bare `restart` stops then starts the app, removing and recreating its containers
 
 All of these keep named volumes and drop a removed container's anonymous volumes. For what counts as retained storage, how to declare it, and how to read `services[].mounts` in `lando info --format=json`, see [Keep data across stop, restart, and destroy](../tutorial/app-lifecycle.mdx#keep-data-across-stop-restart-and-destroy).
 
+The `stopped:` and `destroyed:` lines repeat how the runtime said each container ended, such as `app (exit 143)` after SIGTERM, and `--format=json` carries the same facts under `result.shutdownObservations`. Lando reports the code; it does not decide whether the stop was clean. Exit `0` is not proof your app finished its cleanup, and `137` alone is not proof Lando killed it. Only an explicit `OOMKilled` report or a failed inspection adds a warning. See [Read what stop reports](../tutorial/app-lifecycle.mdx#read-what-stop-reports).
+
 ## Recover from a failed start
 
 ```sh

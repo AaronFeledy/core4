@@ -63,6 +63,27 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+test.each([
+  [undefined, true, ["config"]],
+  [true, false, ["config"]],
+  [true, true, []],
+] as const)("reconciles init %s to %s", (before, after, expected) => {
+  // Given
+  const previous = { ...service, ...(before === undefined ? {} : { init: before }) };
+  const desired = { ...service, init: after };
+  // When
+  const reasons = bringUpRecreateReasons(
+    plan,
+    desired,
+    {
+      labels: commonContainerLabels(plan, previous),
+    },
+    { skipAbsentFields: true },
+  );
+  // Then
+  expect(reasons).toEqual([...expected]);
+});
+
 describe("host-proxy session reconciliation", () => {
   const key = "dev.lando.host-proxy-session";
   const overlay = { ...service, environment: { LANDO_HOST_PROXY_SESSION: "current-session" } };

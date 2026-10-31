@@ -108,6 +108,7 @@ export const createConfigFingerprint = (
     artifact: service.artifact,
     command: normalizeCommand(service.command),
     entrypoint: normalizeEntrypoint(service.entrypoint),
+    init: service.init,
     user: service.user === "" ? undefined : service.user,
     workingDirectory: service.workingDirectory,
     environment: Object.fromEntries(

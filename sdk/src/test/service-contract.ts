@@ -371,6 +371,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     setCommand(command) {
       recorded.settings.command = command;
     },
+    setInit(init) {
+      recorded.settings.init = init;
+    },
     setArtifact(artifact) {
       recorded.settings.artifact = artifact;
     },
@@ -626,6 +629,7 @@ const makeRecordingAppFeatureContext = (
       setCerts: recordMutation,
       setEntrypoint: recordMutation,
       setCommand: recordMutation,
+      setInit: recordMutation,
       setArtifact: recordMutation,
       setUser: recordMutation,
       setWorkingDirectory: recordMutation,

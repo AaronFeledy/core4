@@ -205,7 +205,7 @@ const lifecycleProvider = (provider: RuntimeProviderShape): RuntimeProviderShape
                 sessions: appliedPlan.fileSync.map((entry) => entry.session),
               },
       ),
-    quiesceForFileSync: () => Effect.void,
+    quiesceForFileSync: () => Effect.succeed({}),
     apply: (plan, options) =>
       provider.apply(plan, options).pipe(
         Effect.tap(() =>

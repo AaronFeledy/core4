@@ -47,6 +47,7 @@ const applyWire = async (selected: ReadonlyArray<AppFeatureServiceView>) => {
       setCerts: record,
       setEntrypoint: record,
       setCommand: record,
+      setInit: record,
       setArtifact: record,
       setUser: record,
       setWorkingDirectory: record,

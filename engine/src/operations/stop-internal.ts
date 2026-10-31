@@ -14,7 +14,7 @@ import {
   PreServiceStopEvent,
   PreStopEvent,
 } from "@lando/sdk/events";
-import type { AppPlan, FileSyncSessionInfo } from "@lando/sdk/schema";
+import type { AppPlan, FileSyncSessionInfo, ServiceShutdownObservation } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type AppliedFileSyncInspection,
@@ -198,13 +198,15 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     );
   }
 
-  yield* provider
+  const destroyOutcome = yield* provider
     .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
     .pipe(
       Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
       Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
       Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
     );
+  const shutdownObservations: readonly ServiceShutdownObservation[] | undefined =
+    destroyOutcome.shutdownObservations;
 
   if (
     appliedFileSync.status === "accelerated" &&
@@ -248,6 +250,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
       app: plan.name,
       servicesStopped: services.map((service) => String(service.name)),
       landofileEvents,
+      ...(shutdownObservations === undefined ? {} : { shutdownObservations }),
     },
     plan,
   };
