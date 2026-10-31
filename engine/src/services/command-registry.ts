@@ -34,6 +34,7 @@ import { compileAppCommands } from "../cache/command-compiler.ts";
 import { readFreshAppCommandCacheForCwd, writeAppCommandCache } from "../cache/command-index-writer.ts";
 import type { CommandIndexEntry } from "../cache/command-index.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
+import { PluginContributionGraph } from "../plugins/contribution-graph.ts";
 
 const discoverScriptsForCwd = Effect.fnUntraced(function* (
   cwd: string,
@@ -57,6 +58,7 @@ export const layerWith = (
   registrationError: (
     policy: LandofileShape["commandAliases"],
     entries: ReadonlyArray<CommandIndexEntry>,
+    pluginCommandIds: readonly string[],
   ) => CommandAliasConflictError | CommandAliasTargetError | undefined,
 ) =>
   Layer.effect(
@@ -64,6 +66,8 @@ export const layerWith = (
     Effect.gen(function* () {
       const landofileService = yield* LandofileService;
       const paths = yield* Effect.serviceOption(PathsService);
+      const graph = yield* Effect.serviceOption(PluginContributionGraph);
+      const pluginCommandIds = graph._tag === "Some" ? graph.value.commands.map((entry) => entry.id) : [];
       const cacheOptions = paths._tag === "Some" ? { cacheRoot: paths.value.roots.userCacheRoot } : {};
       return CommandRegistry.of({
         list: Effect.gen(function* () {
@@ -72,7 +76,7 @@ export const layerWith = (
             includeScriptInventory: true,
           }).pipe(Effect.catch(() => Effect.succeed(null)));
           if (cached !== null) {
-            const error = registrationError(cached.aliasPolicy, cached.entries);
+            const error = registrationError(cached.aliasPolicy, cached.entries, pluginCommandIds);
             if (error !== undefined) return yield* Effect.fail(error);
             return toRegisteredCommands(cached.entries);
           }
@@ -84,7 +88,7 @@ export const layerWith = (
             return [];
           }
           const entries = compileAppCommands(landofile, scripts);
-          const error = registrationError(landofile.commandAliases, entries);
+          const error = registrationError(landofile.commandAliases, entries, pluginCommandIds);
           if (error !== undefined) return yield* Effect.fail(error);
           yield* writeAppCommandCache({
             landofile,
