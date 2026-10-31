@@ -28,6 +28,7 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `service-info` | `<userCacheRoot>/apps/<app-id>/info.json` | JSON | Last known user-app `ServiceInfo[]`. |
 | `provider` | `<userCacheRoot>/provider-cache.json` | JSON | Provider availability and version metadata. |
 | `command-registry-manifest` | embedded generated module | generated object | Built-in `LandoCommandSpec` projection for native routing; build-derived only and MUST NOT duplicate plugin metadata (§17.2). |
+| `bundled-command-descriptors` | embedded generated module | generated object | Bundled plugin manifests and command descriptors with their flag and arg declarations, for level-`none` help, the MCP default allowlist, and the command reference; build-derived only, type-only imports, never the runtime source of installed-plugin metadata (§17.2). |
 | `compiled-decoders` | embedded generated module | generated JavaScript plus declaration | Ahead-of-time compiled decoders for the fixed hot-path schema list (§2.5, §12.5); build-derived only, installed by the compiled CLI entry, never read from disk at runtime (§17.2). |
 | `template-compile` | `<userCacheRoot>/templates/<engineId>/<contentHash>.bin` | binary | Cross-app compiled `CompiledTemplate` content (§7.3.2). |
 | `template-render` | `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` | binary | Rendered output keyed by template and canonical resolved variables. |
