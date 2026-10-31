@@ -382,3 +382,43 @@ describe("CI selection", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("platform build path selection", () => {
+  test.each([
+    "core/test/build/host-execution-compiled.test.ts",
+    "core/test/build/opentui-compiled-acceptance.test.ts",
+    "core/test/build/support/fixture.ts",
+    "scripts/codegen.ts",
+    "scripts/build-command-registry-manifest.ts",
+    "scripts/build-compiled-binary.ts",
+    "scripts/sanitize-compiled-binary.ts",
+    "scripts/smoke-windows-binary.ts",
+    "scripts/check-compiled-binary-notices.ts",
+  ])("selects every platform build for %s", (path) => {
+    // Given / When: classify a platform job's script or compiled-test input.
+    const selection = selectPaths([path]);
+    // Then: no platform build can be skipped for this PR.
+    expect(selection).toEqual({ profile: "runtime", broad: true, reason: "platform build path" });
+    for (const { id } of CI_PLATFORMS) {
+      const tier = CI_JOB_TIERS[`build-${id}`];
+      expect(tier).toBeDefined();
+      expect(tier && jobSelected(tier, selection)).toBe(true);
+      expect(resultFailures(selection, { [`build-${id}`]: { result: "skipped" } })).toEqual([
+        `build-${id}: skipped`,
+      ]);
+    }
+  });
+
+  test.each([
+    ["docs/page.md", "docs"],
+    ["plugins/provider-lando/src/provider.ts", "providers"],
+  ])("keeps %s non-broad", (path, profile) => {
+    expect(selectPaths([path])).toMatchObject({ profile, broad: false });
+  });
+
+  test("platform build selection precedes provider selection in a mixed diff", () => {
+    expect(
+      selectPaths(["plugins/provider-lando/src/provider.ts", "core/test/build/fixture.test.ts"]),
+    ).toEqual({ profile: "runtime", broad: true, reason: "platform build path" });
+  });
+});
