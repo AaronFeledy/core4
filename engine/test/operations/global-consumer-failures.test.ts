@@ -84,7 +84,8 @@ test("final global ensure preserves mapped primary and secondary admission error
     ).pipe(
       Effect.provideService(GlobalAppService, {
         ...global,
-        ensureRoot: Effect.failCause(mergeFailure(Cause.fail(primary), Cause.fail(secondary), "rollback")),
+        regenerateDist: () =>
+          Effect.failCause(mergeFailure(Cause.fail(primary), Cause.fail(secondary), "rollback")),
       }),
       Effect.provide(harness.layer),
     ),

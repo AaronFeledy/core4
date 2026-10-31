@@ -20,6 +20,7 @@ import { lintLandofileSnapshot as lintLandofileSnapshotPackage } from "@lando/la
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import {
   type LandofileFinalizeOverrides,
+  acquireLandofileReplacement as acquireLandofileReplacementPackage,
   findDiscoveredLandofilePath,
   loadLandofileFile as loadLandofileFilePackage,
   loadLandofileLayers as loadLandofileLayersPackage,
@@ -133,12 +134,14 @@ export const validateLandofileReplacement = (
     validateLandofileReplacementPackage(replacement, { ...inputs, overrides }),
   );
 
-export const prepareLandofileReplacement = (
-  replacement: Parameters<typeof prepareLandofileReplacementPackage>[0],
+export const acquireLandofileReplacement = (
+  replacement: Parameters<typeof acquireLandofileReplacementPackage>[0],
   overrides?: LandofileFinalizeOverrides,
 ) =>
   Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
-    prepareLandofileReplacementPackage(replacement, { ...inputs, overrides }),
+    inputs.readOnly
+      ? prepareLandofileReplacementPackage(replacement, { ...inputs, overrides })
+      : acquireLandofileReplacementPackage(replacement, { ...inputs, overrides }),
   );
 
 export const loadLandofileFile = (

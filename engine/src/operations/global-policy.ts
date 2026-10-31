@@ -579,13 +579,18 @@ const changePolicy = Effect.fn("GlobalPolicy.change")(function* (
       yield* assertGlobalResolution(resolved, undefined, { directOnly: true });
       const globalApp = yield* GlobalAppService;
       const generated =
-        validation?._tag === "Success" ? validation.success : yield* preparation.compile(resolved);
+        validation?._tag === "Success"
+          ? validation.success
+          : !prepared.changed && composition !== undefined
+            ? yield* Effect.fromResult(composition)
+            : yield* preparation.compile(resolved);
       yield* generated.verify;
       const dist = yield* globalApp.regenerateDist({
         services: resolved.composableServices,
         content: generated.content,
       });
       yield* globalApp.ensureUserLandofile;
+      yield* generated.publishIncludes;
       return dist;
     }),
   );

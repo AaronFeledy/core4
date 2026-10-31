@@ -9,7 +9,7 @@ import {
   projectEffectiveGlobalResolution,
   resolveGlobalServices,
 } from "../services/global-services.ts";
-import { prepareLandofileReplacement } from "../services/landofile-live.ts";
+import { acquireLandofileReplacement } from "../services/landofile-live.ts";
 import type { GlobalPolicy } from "./enablement.ts";
 import { captureGlobalResolution } from "./resolution.ts";
 import { renderGlobalDist } from "./service.ts";
@@ -40,7 +40,7 @@ export const prepareGlobalConfiguration = Effect.fn("GlobalApp.prepareConfigurat
     services?: ReadonlyArray<string>,
   ) {
     const content = renderGlobalDist(resolution.composableServices);
-    const replacement = yield* prepareLandofileReplacement(
+    const replacement = yield* acquireLandofileReplacement(
       { appRoot: paths.root, targetFile: paths.distLandofile, content },
       {
         name: "global",
@@ -80,6 +80,7 @@ export const prepareGlobalConfiguration = Effect.fn("GlobalApp.prepareConfigurat
       resolution: effective,
       landofile: admitted,
       verify: replacement.verify,
+      publishIncludes: replacement.publishIncludes,
       providerCapabilities: captured.providerCapabilities,
     };
   });

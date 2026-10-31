@@ -19,7 +19,7 @@ export interface LandofileReplacement {
   readonly content: string;
 }
 
-export const validateLandofileReplacement = Effect.fn("Landofile.validateReplacement")(
+export const compileLandofileReplacement = Effect.fn("Landofile.compileReplacement")(
   function* (
     replacement: LandofileReplacement,
     inputs: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
@@ -111,7 +111,7 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
       prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
     );
     const merged = yield* composePreparedLayers(prepared, runtime, { session, inputs });
-    return yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
+    const landofile = yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
       appRoot: replacement.appRoot,
       overrides: inputs.overrides,
       pendingSites: runtime.pendingSites,
@@ -119,6 +119,7 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
       logger: runtime.logger,
       ...(inputs?.templates.context?.env === undefined ? {} : { env: inputs.templates.context.env }),
     });
+    return { landofile, session };
   },
   Effect.catchTag("LandofileValidationError", (error) =>
     Effect.fail(
@@ -131,3 +132,8 @@ export const validateLandofileReplacement = Effect.fn("Landofile.validateReplace
     ),
   ),
 );
+
+export const validateLandofileReplacement = (
+  replacement: LandofileReplacement,
+  inputs: Parameters<typeof compileLandofileReplacement>[1],
+) => compileLandofileReplacement(replacement, inputs).pipe(Effect.map(({ landofile }) => landofile));

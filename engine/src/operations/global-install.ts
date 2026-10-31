@@ -62,6 +62,7 @@ const installPreparedConfiguration = Effect.fn("AppOperation.installPreparedConf
       content: candidate.content,
     });
     const user = yield* globalApp.ensureUserLandofile;
+    yield* candidate.publishIncludes;
     if (candidate.resolution.errors.length === 0) yield* recordGlobalGeneration(policy.revision);
     return {
       candidate,
