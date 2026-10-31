@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import {
   LandofileAuthoringShape,
   getEditorJsonSchema,
@@ -102,3 +103,38 @@ test.each([
     ).toContainEqual(["services", "web", "init"]);
   }
 });
+
+test("bounds repeated-comment validation and still accepts a following expression", async () => {
+  // Given comment-only input and the same prefix followed by a legitimate expression.
+  const script = `
+    import { getEditorJsonSchema } from "@lando/sdk/schema";
+    import { JsonSchema, Result, Schema, SchemaRepresentation } from "effect";
+    import { importableNode } from ${JSON.stringify(new URL("./landofile-parity-json-schema-fixup.ts", import.meta.url).href)};
+    const editor = Schema.make(SchemaRepresentation.fromJsonSchemaDocument(
+      JsonSchema.fromSchemaDraft07(getEditorJsonSchema("LandofileShape")),
+      { patterns: "apply", onEnter: importableNode },
+    ).ast);
+    const prefix = "{{# x #}}".repeat(1000);
+    for (let index = 0; index < 8; index++) {
+      for (const [suffix, accepted] of [["", false], ["{{ vars.init }}", true]]) {
+        const result = Schema.decodeUnknownResult(editor)({ name: "demo", services: { web: { init: prefix + suffix } } });
+        if (Result.isSuccess(result) !== accepted) process.exit(1);
+      }
+    }
+    process.stdout.write("16");
+  `;
+  // When the real editor decoder runs in a child with a generous hard deadline.
+  const child = Bun.spawn([process.execPath, "--eval", script], {
+    cwd: fileURLToPath(new URL("../../../", import.meta.url)),
+    stdout: "pipe",
+    stderr: "pipe",
+    timeout: 3000,
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  // Then both outcomes complete without runaway backtracking or lost acceptance.
+  expect({ exitCode, stdout, stderr }).toEqual({ exitCode: 0, stdout: "16", stderr: "" });
+}, 10_000);

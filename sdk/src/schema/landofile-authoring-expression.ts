@@ -212,7 +212,7 @@ const slots = new Map<AuthoringExpressionExpectedType, Schema.Codec<AuthoringExp
 // JSON Schema approximates syntax only; parsed scope/type checks remain authoritative.
 const wholeTemplatePattern = /^\{\{(?!#)-?(?:(?!\{\{|\}\})[\s\S])+?-?\}\}(?![\s\S])/;
 const compositeTemplatePattern =
-  /^(?:\{\{\{\{|\$\$\{|\{\{#[\s\S]*?#\}\}|(?!\{\{|\$\$\{|\$\{|\$[A-Za-z_])[\s\S])*(?:\{\{(?!#)(?:(?!\{\{|\}\})[\s\S])+\}\}|\$(?:[A-Za-z_][A-Za-z0-9_]*|\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\?|:\+)[^}]*)?)\}))/;
+  /^(?:\{\{\{\{|\$\$\{|\{\{#(?:(?!#\}\})[\s\S])*#\}\}|(?!\{\{|\$\$\{|\$\{|\$[A-Za-z_])[\s\S])*(?:\{\{(?!#)(?:(?!\{\{|\}\})[\s\S])+\}\}|\$(?:[A-Za-z_][A-Za-z0-9_]*|\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\?|:\+)[^}]*)?)\}))/;
 
 export const authoringExpressionSlot = (
   expectedType: AuthoringExpressionExpectedType,
