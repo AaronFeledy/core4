@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
@@ -13,10 +13,8 @@ const renderReleaseWorkflow = async (): Promise<string> =>
   Bun.$`bun -e ${'import { renderReleaseWorkflow } from "./scripts/build-release-workflow.ts"; process.stdout.write(renderReleaseWorkflow());'}`
     .cwd(repoRoot)
     .text();
-const renderPrerequisiteScript = async (): Promise<string> =>
-  Bun.$`bun -e ${'import { RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT } from "./scripts/runtime-bundle-supply-chain.ts"; process.stdout.write(RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT.replaceAll("          ", ""));'}`
-    .cwd(repoRoot)
-    .text();
+const prerequisiteScript = (): Promise<string> =>
+  readFile(resolve(repoRoot, "scripts/runtime-bundle-builder/prerequisites.sh"), "utf8");
 const actionReferences = (workflow: string): ReadonlyArray<string> =>
   Array.from(workflow.matchAll(/^\s*(?:-\s+)?uses:\s+(\S+)/gmu)).flatMap((match) => {
     const actionReference = match[1];
@@ -36,24 +34,36 @@ const runPrerequisiteScript = async (
   };
 
   try {
+    const fixtureEtc = resolve(fakeBin, "etc/apt");
+    const fixtureLists = resolve(fakeBin, "var/lib/apt/lists");
+    await mkdir(resolve(fixtureEtc, "sources.list.d"), { recursive: true });
+    await mkdir(resolve(fixtureEtc, "apt.conf.d"), { recursive: true });
+    await mkdir(fixtureLists, { recursive: true });
+    await Bun.write(resolve(fixtureEtc, "sources.list"), "live source\n");
+    await Bun.write(resolve(fixtureEtc, "sources.list.d/live.sources"), "live source\n");
+    await Bun.write(resolve(fixtureLists, "old-index"), "old\n");
     await Bun.write(resolve(fakeBin, "updates"), "");
     await Bun.write(resolve(fakeBin, "sleeps"), "");
     await writeCommand(
-      "sudo",
-      `if [ "$1" = "tee" ]; then
-  cat >"$APT_TEST_ROOT/config"
-elif [ "$1" = "apt-get" ] && [ "$2" = "update" ]; then
-  shift 2
+      "apt-get",
+      `if [ "$1" = "update" ]; then
+  shift
   printf '%s\\n' "$*" >>"$APT_TEST_ROOT/updates"
   ${updateBody}
-elif [ "$1" = "apt-get" ] && [ "$2" = "install" ]; then
+elif [ "$1" = "install" ]; then
   touch "$APT_TEST_ROOT/installed"
 fi`,
     );
     await writeCommand("sleep", `printf '%s\\n' "$1" >>"$APT_TEST_ROOT/sleeps"`);
     await writeCommand("dpkg-query", `printf '${installedVersion}\\n'`);
     await writeCommand("apt-cache", aptCacheBody);
-    const child = Bun.spawn(["bash", "-c", await renderPrerequisiteScript()], {
+    const script = (await prerequisiteScript())
+      .replaceAll("/etc/apt", fixtureEtc)
+      .replaceAll("/var/lib/apt", resolve(fakeBin, "var/lib/apt"));
+    if (/(?<![\w/])\/(?:etc\/apt|var\/lib\/apt)/u.test(script)) {
+      throw new Error("APT path escaped the fixture");
+    }
+    const child = Bun.spawn(["bash", "-c", script], {
       cwd: repoRoot,
       env: { ...process.env, APT_TEST_ROOT: fakeBin, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
       stdout: "pipe",
@@ -68,7 +78,10 @@ fi`,
     return {
       exitCode,
       output: stdout + stderr,
-      config: await Bun.file(resolve(fakeBin, "config")).text(),
+      sources: await Bun.file(resolve(fixtureEtc, "sources.list.d/runtime-bundle.sources")).text(),
+      retries: await Bun.file(resolve(fixtureEtc, "apt.conf.d/50lando-runtime-bundle-snapshot")).text(),
+      liveSourceExists: await Bun.file(resolve(fixtureEtc, "sources.list.d/live.sources")).exists(),
+      oldIndexExists: await Bun.file(resolve(fixtureLists, "old-index")).exists(),
       updates: await Bun.file(resolve(fakeBin, "updates")).text(),
       sleeps: await Bun.file(resolve(fakeBin, "sleeps")).text(),
       installed: await Bun.file(resolve(fakeBin, "installed")).exists(),
@@ -83,7 +96,7 @@ describe("runtime-bundle workflow supply chain", () => {
     const workflow = await renderWorkflow();
     const references = actionReferences(workflow);
 
-    expect(references).toHaveLength(10);
+    expect(references).toHaveLength(8);
     for (const actionReference of references) {
       expect(actionReference).toMatch(actionReferencePattern);
     }
@@ -98,29 +111,18 @@ describe("runtime-bundle workflow supply chain", () => {
     }
   });
 
-  test("installs Ubuntu build prerequisites from one fixed snapshot", async () => {
+  test("installs build prerequisites from only the signed Ubuntu snapshot", async () => {
     const workflow = await renderWorkflow();
-    const snapshotConfig = workflow.indexOf("UBUNTU_SNAPSHOT=20261019T000000Z");
-    const aptConfig = workflow.indexOf("APT::Snapshot", snapshotConfig);
-    const packageIndex = workflow.indexOf("sudo apt-get update", aptConfig);
-    const packageInstall = workflow.indexOf("sudo apt-get install", packageIndex);
-    const packageVerification = workflow.indexOf(
-      'test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"',
-      packageInstall,
-    );
-
-    expect(snapshotConfig).toBeGreaterThan(-1);
-    expect(aptConfig).toBeGreaterThan(snapshotConfig);
-    expect(packageIndex).toBeGreaterThan(aptConfig);
-    expect(packageInstall).toBeGreaterThan(packageIndex);
-    expect(packageVerification).toBeGreaterThan(packageInstall);
-    expect(workflow).toContain("--allow-downgrades --reinstall");
-    expect(workflow).toContain('Acquire::Retries "3";');
-    expect(workflow).toContain("sudo apt-get update --error-on=any");
-    expect(workflow).toContain("https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT");
-    expect(workflow).toMatch(/PACKAGES=.*\bpatch\b/u);
+    const script = await prerequisiteScript();
+    expect(workflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform");
+    expect(workflow).not.toContain("sudo apt-get install -y --allow-downgrades");
+    expect(script).toContain("Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg");
+    expect(script).toContain("apt-get update --error-on=any");
+    expect(script).toContain('Acquire::Retries "3";');
+    expect(script).toContain('test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"');
+    expect(script).toMatch(/PACKAGES=.*\bpatch\b/u);
     for (const obsoletePackage of ["libassuan-dev", "libgpg-error-dev", "libgpgme-dev"]) {
-      expect(workflow).not.toContain(obsoletePackage);
+      expect(script).not.toContain(obsoletePackage);
     }
   });
 
@@ -149,6 +151,14 @@ POLICY`;
     expect((await runPrerequisiteScript(aptCacheBody, "2.0")).exitCode).not.toBe(0);
   });
 
+  test("rejects an installed version that differs from the signed snapshot candidate", async () => {
+    const result = await runPrerequisiteScript(
+      `printf '  Candidate: 2.0\\n  Version table:\\n *** 2.0 500\\n        500 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main amd64 Packages\\n'`,
+      "1.0",
+    );
+    expect(result.exitCode).not.toBe(0);
+  });
+
   test("retries failed index updates with backoff before installing", async () => {
     const result = await runPrerequisiteScript(
       `printf '  Candidate: 1.0\\n  Version table:\\n *** 1.0 500\\n        500 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main amd64 Packages\\n'`,
@@ -160,7 +170,11 @@ POLICY`;
     expect(result.updates).toBe("--error-on=any\n".repeat(3));
     expect(result.sleeps).toBe("5\n15\n");
     expect(result.installed).toBe(true);
-    expect(result.config).toBe('APT::Snapshot "20261019T000000Z";\nAcquire::Retries "3";\n');
+    expect(result.retries).toBe('Acquire::Retries "3";\n');
+    expect(result.sources).toContain("URIs: https://snapshot.ubuntu.com/ubuntu/20261019T000000Z/");
+    expect(result.sources).toContain("Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg");
+    expect(result.liveSourceExists).toBe(false);
+    expect(result.oldIndexExists).toBe(false);
   });
 
   test("fails closed with an annotation after four failed index updates", async () => {

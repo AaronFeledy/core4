@@ -139,20 +139,14 @@ describe("runtime-bundle workflow", () => {
     expect(workflow).toContain("runs-on: ${{ matrix.runsOn }}");
   });
 
-  test("installs Linux source-build prerequisites before assembly without host Podman", async () => {
+  test("assembles Linux assets with the isolated builder on native runners", async () => {
     const workflow = await readWorkflow();
-    const installPrereqs = workflow.indexOf("Install Linux Podman source-build prerequisites");
-    const assemble = workflow.indexOf("Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources");
-    expect(installPrereqs).toBeGreaterThan(-1);
-    expect(assemble).toBeGreaterThan(installPrereqs);
-    for (const prerequisite of "uses: actions/setup-go@|go-version: 1.25.6|dtolnay/rust-toolchain@|libcap-dev|libsqlite3-dev|libseccomp-dev|protobuf-compiler|uidmap".split(
-      "|",
-    )) {
-      expect(workflow).toContain(prerequisite);
-    }
-    expect(workflow).not.toContain("libsubid-dev");
-    expect(workflow).not.toMatch(/\n\s+golang \\\n/u);
-    expect(workflow).not.toMatch(/apt-get install[^\n]*\bpodman\b/);
+    expect(workflow).toContain("Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources");
+    expect(workflow).toContain("runs-on: ${{ matrix.runsOn }}");
+    expect(workflow).not.toContain("Install Linux Podman source-build prerequisites");
+    expect(workflow).not.toContain("actions/setup-go@");
+    expect(workflow).not.toContain("dtolnay/rust-toolchain@");
+    expect(workflow).not.toMatch(/apt-get install[^\n]*\bpodman\b/u);
   });
 
   test("uploads the pinned bundle asset names for each host key", async () => {

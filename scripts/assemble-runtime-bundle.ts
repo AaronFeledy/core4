@@ -14,7 +14,7 @@
  * filesystem, network, and subprocesses directly.
  */
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -34,6 +34,7 @@ import {
   RUNTIME_BUNDLE_SOURCES_PATH,
   type RuntimeBundleBinaryComponent,
   type RuntimeBundleSources,
+  isLinuxRuntimeBundle,
   parseRuntimeBundleSources,
 } from "./runtime-bundle-sources.ts";
 
@@ -102,17 +103,29 @@ const packDeterministic = async (stageDir: string, artifactPath: string, isZip: 
   if (isZip) {
     await run(["find", ".", "-exec", "touch", "-d", "@0", "{}", "+"], stageDir);
     await run(
-      ["sh", "-c", 'files=$(find . -type f | sort); zip -X -D -q "$1" $files', "sh", artifactPath],
+      [
+        "bash",
+        "-e",
+        "-o",
+        "pipefail",
+        "-c",
+        'files=$(find . -type f | sort); zip -X -D -q "$1" $files',
+        "bash",
+        artifactPath,
+      ],
       stageDir,
     );
     return;
   }
   await run(
     [
-      "sh",
+      "bash",
+      "-e",
+      "-o",
+      "pipefail",
       "-c",
       'tar --format=gnu --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - . | gzip -n -9 > "$1"',
-      "sh",
+      "bash",
       artifactPath,
     ],
     stageDir,
@@ -145,8 +158,12 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
   const target = targetFor(options.hostKey);
   const verifyCommand = options.verifyCommand ?? run;
   const stageDir = await mkdtemp(join(tmpdir(), "rb-stage-"));
-  const downloadDir = await mkdtemp(join(tmpdir(), "rb-dl-"));
+  const ownedDirs = [stageDir];
+  let primaryFailure: { cause: unknown } | undefined;
+  let assembled: AssembledBundle | undefined;
   try {
+    const downloadDir = await mkdtemp(join(tmpdir(), "rb-dl-"));
+    ownedDirs.push(downloadDir);
     await stageRuntimeBundleLicenses({
       components: group.components,
       runtimeVersion: options.sources.runtimeVersion,
@@ -199,13 +216,27 @@ export const assembleBundle = async (options: AssembleBundleOptions): Promise<As
     await verifyManagedLinuxPodman(options.hostKey, stageDir, verifyCommand);
     await mkdir(options.outDir, { recursive: true });
     const outPath = join(options.outDir, target.filename);
-    await packDeterministic(stageDir, outPath, target.filename.endsWith(".zip"));
-    const sha256 = sha256Hex(await readFile(outPath));
-    return { hostKey: options.hostKey, filename: target.filename, artifactPath: outPath, sha256 };
-  } finally {
-    await rm(stageDir, { recursive: true, force: true });
-    await rm(downloadDir, { recursive: true, force: true });
+    const temporaryDir = await mkdtemp(join(options.outDir, ".rb-assembly-"));
+    ownedDirs.push(temporaryDir);
+    const temporaryPath = join(temporaryDir, target.filename);
+    await packDeterministic(stageDir, temporaryPath, target.filename.endsWith(".zip"));
+    const sha256 = sha256Hex(await readFile(temporaryPath));
+    await rename(temporaryPath, outPath);
+    assembled = { hostKey: options.hostKey, filename: target.filename, artifactPath: outPath, sha256 };
+  } catch (cause) {
+    primaryFailure = { cause };
   }
+  const results = await Promise.allSettled(
+    ownedDirs.map((path) => rm(path, { recursive: true, force: true })),
+  );
+  const cleanupFailure = results.find(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
+  );
+  if (primaryFailure !== undefined) throw primaryFailure.cause;
+  if (cleanupFailure !== undefined) throw cleanupFailure.reason;
+  if (assembled === undefined)
+    throw new Error("assemble-runtime-bundle: assembly did not produce an archive");
+  return assembled;
 };
 
 const main = async (argv: ReadonlyArray<string>): Promise<void> => {
@@ -223,6 +254,17 @@ const main = async (argv: ReadonlyArray<string>): Promise<void> => {
     }
   }
   if (hostKey === undefined) throw new Error("assemble-runtime-bundle: --platform <host-key> is required");
+  if (isLinuxRuntimeBundle(hostKey)) {
+    const { buildLinuxRuntimeBundle } = await import("./linux-runtime-bundle-builder.ts");
+    const artifactPath = await buildLinuxRuntimeBundle({
+      hostKey,
+      outDir,
+      repository: await resolveManifestRepository(),
+      execute: run,
+    });
+    process.stdout.write(`${artifactPath}\n`);
+    return;
+  }
   const sources = parseRuntimeBundleSources(JSON.parse(await readFile(RUNTIME_BUNDLE_SOURCES_PATH, "utf8")));
   const result = await assembleBundle({
     hostKey,
