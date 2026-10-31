@@ -43,12 +43,25 @@ notification. An inbound frame over 1 MiB ends the session.
 
 ## Call a tool and read its result
 
-Every tool in `tools/list` carries an `outputSchema`. A `tools/call` result has
+With MCP `2025-06-18`, every tool in `tools/list` carries a compact `outputSchema`.
+It describes the envelope and the result's first-level fields, required keys,
+simple types, and union variants. Nested objects are permissive summaries rather
+than complete validation schemas, keeping tool discovery small. When a summary
+matches a public schema exactly, its description points to the full schema at
+`lando://schemas/{name}`, such as `lando://schemas/ServiceInfo`. Other summaries
+have no resource pointer; not every command-specific shape has a public schema.
+
+A `tools/call` result has
 `structuredContent` holding the redacted, bounded `CommandResultEnvelope` for the
 command, plus the same JSON as a `text` content block for clients that ignore
 structured output. `isError` is `true` whenever the envelope is not `ok`, so a
 command's own tagged failure (for example `LandofileNotFoundError`) arrives as a
 normal tool result you can read.
+
+The compact schema does not shorten the returned data. Results still use the full
+command schema for server-side encoding, including tagged errors, validation
+issues, warnings, deprecations, and bounded output with `output.truncated`.
+MCP envelopes do not include the CLI's optional timing `trace`.
 
 Rejections that never reach the command (bad input, `Server busy`) also come
 back as a tool result with `isError: true`; the
@@ -248,9 +261,10 @@ allowlist is still unknown to the session.
 
 ## Read resources and complete schema names
 
-The server also publishes read-only resources. Each JSON payload reuses the
-matching command result schema and is redacted and bounded the same way tool
-results are.
+The server also publishes read-only resources. App and diagnostic payloads use
+the full matching command result schema, not the compact tool-discovery
+projection, and are redacted and bounded the same way tool results are.
+Schema resources return full public JSON Schema documents on demand.
 
 | URI | What you get |
 | --- | --- |

@@ -54,6 +54,8 @@ Live JSON commands such as `lando exec --format=json` first mask registered valu
 
 Tooling `--format=json` and `--format=yaml` collect stdout and stderr into one result envelope instead of printing the payload separately. Library and event invocations also collect output unless the host supplies a live sink. Collection uses memory proportional to the output; human live delivery does not keep a second copy.
 
+Captured results include `stdout` and `stderr`, even when both are empty strings. When a live sink receives the bytes, the result omits those fields instead; MCP returns the delivered bytes in the envelope's `output.chunks`.
+
 [MCP calls](../agent-native/mcp.mdx#read-streamed-command-output) retain a bounded, redacted tail in the final envelope's `output` field. A progress token also enables live notifications; it is not required to receive final output. `output.truncated` tells you whether any captured output was dropped. MCP text output follows the same UTF-8 and redaction rules as live JSON output, not the byte-exact human stream.
 
 With a human result format, the `json` renderer writes progress and messages to stderr as structured events. Live JSON commands such as `lando exec --format=json` put events in the stdout stream instead, so one newline-delimited stream carries `stdout` and `stderr` data frames, `event` frames, and the final `result` frame. Events keep their own order, but their position relative to data frames can shift, because a data frame waits for its complete line. Filter on `_tag` rather than position.

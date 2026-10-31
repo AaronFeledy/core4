@@ -5446,5 +5446,11 @@
     "changeKind": "enum-widened",
     "path": "$.kind",
     "justification": "Approved pre-release effective service contracts add scan-conflict for contradictory defined path or status defaults on one logical endpoint. Omitted defaults inherit and equivalent status sets remain valid; consumers must handle the additional diagnostic kind."
+  },
+  {
+    "surface": "command:app:share:stop",
+    "changeKind": "property-removed",
+    "path": "$.status",
+    "justification": "Pre-release stop acknowledgement drops the constant status; successful completion plus sessionId and optional provider already acknowledge the completed stop."
   }
 ]

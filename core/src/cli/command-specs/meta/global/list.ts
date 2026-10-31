@@ -28,5 +28,5 @@ export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
     }),
   },
   run: () => globalList().pipe(Effect.provide(DefaultGlobalListLayer)),
-  render: (result, _input, ctx) => renderGlobalListResult(result as GlobalListResult, ctx),
+  render: (result, _input, ctx) => renderGlobalListResult(result, ctx),
 };

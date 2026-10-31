@@ -3,6 +3,7 @@ import { DateTime, Effect, Schema } from "effect";
 import type { EventError, ProxyError } from "@lando/sdk/errors";
 
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
+import { StopAppOutcome, StopAppResult } from "@lando/sdk/schema";
 import { EventService, RouterService } from "@lando/sdk/services";
 import { withGlobalLifecycleEvents } from "./global-common";
 
@@ -18,10 +19,12 @@ import { teardownLine } from "../service-summary";
 const now = () => DateTime.nowUnsafe();
 
 export const GlobalStopResultSchema = Schema.Struct({
-  app: Schema.String,
-  outcome: Schema.Literals(["stopped", "unchanged"]),
-  materialized: Schema.Boolean,
-  servicesStopped: Schema.Array(Schema.String),
+  app: StopAppResult.fields.app,
+  outcome: StopAppOutcome,
+  materialized: Schema.Boolean.annotate({
+    description: "Whether the global app has a materialized Landofile.",
+  }),
+  servicesStopped: StopAppResult.fields.servicesStopped,
 });
 
 export type GlobalStopResult = typeof GlobalStopResultSchema.Type;

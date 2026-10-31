@@ -44,5 +44,5 @@ export const metaSnapshotsGcSpec: LandoCommandSpec<SnapshotGcReport> = {
     }),
   },
   run: (input) => snapshotGc(snapshotGcOptionsFromInput(input)).pipe(Effect.flatMap(failOnFailedProvider)),
-  render: (result) => renderSnapshotGcReport(result as SnapshotGcReport),
+  render: (result) => renderSnapshotGcReport(result),
 };

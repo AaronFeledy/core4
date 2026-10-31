@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { GlobalAppError, type GlobalDistConflictError } from "@lando/sdk/errors";
+import { AbsolutePath } from "@lando/sdk/schema";
 import type { GlobalDistResult } from "@lando/sdk/services";
 import {
   type AppPlanner,
@@ -29,7 +30,7 @@ export interface GlobalUninstallResult {
 }
 
 const GlobalDistResultSchema = Schema.Struct({
-  path: Schema.String,
+  path: AbsolutePath,
   status: Schema.Literals(["created", "updated", "unchanged"]),
   serviceIds: Schema.Array(Schema.String),
 });

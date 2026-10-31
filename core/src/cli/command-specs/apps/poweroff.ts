@@ -31,5 +31,5 @@ export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
       yes: flags.yes === true,
     });
   },
-  render: (result) => renderPoweroffResult(result as PoweroffResult),
+  render: (result) => renderPoweroffResult(result),
 };

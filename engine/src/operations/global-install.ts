@@ -8,6 +8,7 @@ import {
   type GlobalServiceCollisionError,
   type PluginManifestError,
 } from "@lando/sdk/errors";
+import { AbsolutePath } from "@lando/sdk/schema";
 import type { GlobalAppPaths, GlobalDistResult, ProviderSelectionError } from "@lando/sdk/services";
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
 
@@ -26,13 +27,13 @@ export interface GlobalInstallResult {
 }
 
 const GlobalAppPathsResultSchema = Schema.Struct({
-  root: Schema.String,
-  distLandofile: Schema.String,
-  userLandofile: Schema.String,
+  root: AbsolutePath,
+  distLandofile: AbsolutePath,
+  userLandofile: AbsolutePath,
 });
 
 const GlobalDistResultSchema = Schema.Struct({
-  path: Schema.String,
+  path: AbsolutePath,
   status: Schema.Literals(["created", "updated", "unchanged"]),
   serviceIds: Schema.Array(Schema.String),
 });

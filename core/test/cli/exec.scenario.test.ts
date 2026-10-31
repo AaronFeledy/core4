@@ -25,6 +25,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { withOptionalStderrOutput } from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
 import { execSpec } from "../../src/cli/command-specs/app/exec";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec";
 import { environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -273,7 +274,8 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "proof" }]);
     const command = ["appserver", "--", "printf", "%s", "one argument", "--flag", ""];
-    const validated = validateToolInput(execSpec, { args: { command } });
+    const registrySpec: LandoCommandSpec = execSpec;
+    const validated = validateToolInput(registrySpec, { args: { command } });
     // When: the canonical spec runs the decoded MCP input, without CLI argv.
     const result = await Effect.runPromise(
       execSpec

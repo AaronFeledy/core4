@@ -1,4 +1,5 @@
-import { type StopAppResult, StopAppResultSchema, stopApp } from "@lando/engine/operations/stop";
+import { stopApp } from "@lando/engine/operations/stop";
+import { StopAppResult } from "@lando/sdk/schema";
 import { renderStopAppResult } from "../../commands/stop";
 import type { LandoCommandSpec } from "../../spec/command-base";
 
@@ -7,7 +8,7 @@ import type { LandoCommandSpec } from "../../spec/command-base";
  */
 
 export const stopSpec: LandoCommandSpec<StopAppResult> = {
-  resultSchema: StopAppResultSchema,
+  resultSchema: StopAppResult,
   id: "app:stop",
   helpGroup: "common",
   mcpAllowed: true,
@@ -16,5 +17,5 @@ export const stopSpec: LandoCommandSpec<StopAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => stopApp(),
-  render: (result) => renderStopAppResult(result as StopAppResult),
+  render: (result) => renderStopAppResult(result),
 };

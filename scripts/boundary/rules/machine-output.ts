@@ -3,8 +3,6 @@ import ts from "typescript";
 import type { BoundaryRule } from "../types.ts";
 import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
-const COMMAND_SPEC_SHAPE_KEYS = ["id", "summary", "namespace", "bootstrap", "run"] as const;
-
 const propertyName = (node: ts.PropertyName): string | undefined => {
   if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) return node.text;
   if (ts.isStringLiteral(node) || ts.isNumericLiteral(node)) return node.text;
@@ -109,48 +107,6 @@ const matchTextForShape = (node: ts.CallExpression, shape: ResultShape): string 
     : "JSON.stringify(<command-result-envelope>)";
 };
 
-const typeReferenceName = (node: ts.TypeNode | undefined): string | undefined => {
-  if (node !== undefined && ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
-    return node.typeName.text;
-  }
-  return undefined;
-};
-
-const isCommandSpecAnnotated = (node: ts.ObjectLiteralExpression): boolean => {
-  const parent = node.parent;
-  if (ts.isVariableDeclaration(parent) && typeReferenceName(parent.type) === "LandoCommandSpec") return true;
-  if (ts.isPropertyDeclaration(parent) && typeReferenceName(parent.type) === "LandoCommandSpec") return true;
-  if (
-    (ts.isAsExpression(parent) || ts.isSatisfiesExpression(parent)) &&
-    typeReferenceName(parent.type) === "LandoCommandSpec"
-  ) {
-    return true;
-  }
-  return false;
-};
-
-const isCommandSpecLiteral = (
-  node: ts.ObjectLiteralExpression,
-  props: Map<string, ts.Expression>,
-): boolean => {
-  if (isCommandSpecAnnotated(node)) return true;
-  return COMMAND_SPEC_SHAPE_KEYS.every((key) => props.has(key));
-};
-
-const commandIdOf = (props: Map<string, ts.Expression>): string => {
-  const id = props.get("id");
-  return id !== undefined && ts.isStringLiteralLike(id) ? id.text : "<command>";
-};
-
-const missingResultSchema = (props: Map<string, ts.Expression>): boolean => {
-  if (!props.has("resultSchema")) return true;
-  const value = props.get("resultSchema");
-  if (value === undefined) return true;
-  if (ts.isIdentifier(value) && value.text === "undefined") return true;
-  if (value.kind === ts.SyntaxKind.NullKeyword) return true;
-  return false;
-};
-
 export const machineOutputRule = {
   id: "machine-output",
   scope: {
@@ -161,7 +117,7 @@ export const machineOutputRule = {
   carveOuts: { files: [], prefixes: [] },
   passMessage: "Machine output boundary check passed.",
   failureHeadline:
-    "Machine output boundary check failed. Command-result envelopes must serialize only through encodeCommandResult, and every command spec must declare a resultSchema.",
+    "Machine output boundary check failed. Command-result envelopes and result stream frames must serialize only through the canonical SDK encoders.",
   onNode: (node, context) => {
     const source = node.getSourceFile();
     if (ts.isCallExpression(node) && isJsonStringifyCall(node) && node.arguments[0] !== undefined) {
@@ -169,14 +125,6 @@ export const machineOutputRule = {
       if (shape !== undefined) {
         const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
         context.report({ line: line + 1, detail: matchTextForShape(node, shape) });
-      }
-    }
-
-    if (ts.isObjectLiteralExpression(node)) {
-      const props = directProperties(node);
-      if (isCommandSpecLiteral(node, props) && missingResultSchema(props)) {
-        const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
-        context.report({ line: line + 1, detail: `${commandIdOf(props)} (missing resultSchema)` });
       }
     }
   },

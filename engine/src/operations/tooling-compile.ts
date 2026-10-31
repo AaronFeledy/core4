@@ -227,8 +227,8 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
     const result = yield* withToolingOutput(run);
     combined = {
       ...result,
-      stdout: combined.stdout + result.stdout,
-      stderr: combined.stderr + result.stderr,
+      stdout: combined.stdout + (result.stdout ?? ""),
+      stderr: combined.stderr + (result.stderr ?? ""),
     };
     if (result.exitCode !== 0) break;
   }

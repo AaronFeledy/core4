@@ -39,5 +39,5 @@ export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
     }),
   },
   run: (input) => globalDestroy(globalDestroyOptionsFromInput(input)),
-  render: (result) => renderGlobalDestroyResult(result as GlobalDestroyResult),
+  render: (result) => renderGlobalDestroyResult(result),
 };

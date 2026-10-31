@@ -1,18 +1,21 @@
 import { expect } from "bun:test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { AppInfoResultSchema } from "@lando/engine/operations/info";
-import { StartAppResultSchema } from "@lando/engine/operations/start";
 import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { runProbe } from "@lando/sdk/probe";
-import type { LandofileShape, ServiceConnection } from "@lando/sdk/schema";
+import {
+  InfoAppResult,
+  type LandofileShape,
+  type ServiceConnection,
+  StartAppResult,
+} from "@lando/sdk/schema";
 import { Duration, Effect, Option, Schema } from "effect";
 import { acquireTempAppRoot } from "./live-app-scope.ts";
 
-const startEnvelope = Schema.Struct({ ok: Schema.Literal(true), result: StartAppResultSchema });
+const startEnvelope = Schema.Struct({ ok: Schema.Literal(true), result: StartAppResult });
 const startFrame = Schema.Struct({ _tag: Schema.Literal("result"), envelope: startEnvelope });
-const infoEnvelope = Schema.Struct({ ok: Schema.Literal(true), result: AppInfoResultSchema });
+const infoEnvelope = Schema.Struct({ ok: Schema.Literal(true), result: InfoAppResult });
 const stdoutFrame = Schema.Struct({ _tag: Schema.Literal("stdout"), chunk: Schema.String });
 
 export const listenerCli = (args: {
