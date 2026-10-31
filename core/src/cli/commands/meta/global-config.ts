@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { LandofileWriteValidationError } from "@lando/sdk/errors";
-import { LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
+import { AbsolutePath, LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
 import { type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
 import { runEditVerb, runSetVerb, runUnsetVerb } from "@lando/engine/config-write/verbs";
@@ -52,9 +52,9 @@ export interface GlobalConfigResult {
 }
 
 export const GlobalAppPathsSchema = Schema.Struct({
-  root: Schema.String,
-  distLandofile: Schema.String,
-  userLandofile: Schema.String,
+  root: AbsolutePath,
+  distLandofile: AbsolutePath,
+  userLandofile: AbsolutePath,
 });
 
 export const GlobalConfigResultSchema = Schema.Struct({
