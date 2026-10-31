@@ -35,6 +35,9 @@ test("post-init failure diagnostics use the injected runtime redactor after late
   try {
     // When
     const failure = await runPostInit({
+      runBun: async () => {
+        throw new TypeError("Unexpected Bun action");
+      },
       actions: [{ type: "command", cmd: "app:config:translate" }],
       destination: process.cwd(),
       recipeId: "redaction-test",

@@ -137,3 +137,12 @@ and runtime setup.
 Interruptions are excluded. Primary-error selection prefers the first unannotated typed failure, then the first unannotated defect, then the first typed failure or defect.
 
 This matches CLI and MCP projection, but the helper does not serialize or automatically redact the values. Handle them accordingly before displaying or recording them. `renderError` receives only the primary failure. A projected defect or interruption propagates as a defect with the original cause attached instead of returning the result object.
+
+### Bun and plugin child exits
+
+Commands that run Bun for the user (`meta:bun`, `meta:x`, the plugin authoring and management commands, `meta:update`, and recipe `postInit` actions) share one observable contract, documented for CLI consumers in [Script Lando with JSON](./guides/scripting-with-json.mdx#capture-bun-backed-commands). The short version for hosts:
+
+- A completed nonzero child exit remains result data. Direct `invokeOperation` reports `ok: true` when the Effect returned successfully, so inspect the operation's `exitCode`. The CLI command adapter applies completion policy separately, producing `ok: false`, `result.exitCode`, and `LandoCommandError`. Managed plugin failures use `PluginPackageOperationError` with an operation and an exit code only for an observed nonzero child. Preparation, process execution, timeout, and recursion failures retain their own tags; don't infer an offline classification from stderr.
+- Direct and event-driven operations never attach the host's stdin, stdout, or stderr on their own. Their default child capture is capped at 1 MiB per channel per child. The CLI adapter additionally supplies the shared invocation-wide budget and envelope output; those are not implicit guarantees of `invokeOperation`. An operation's declared result determines which captured output it returns.
+- Bun proxy commands, plugin operations, noninteractive shell commands/scripts, and initialization use the `ProcessRunner` you provide, with no live-runner fallback. The interactive `app:shell` evaluator still owns its separate IPC child and does not use that override. There is no public Bun runner service, layer, or plugin contribution.
+- Recipe `postInit` failures reach you as `RecipeInitPostInitError` with the failed action and committed-file context. `rolledBack: false` means the generated scaffold remains. Don't expect the command completion envelope or a child exit field from initialization.

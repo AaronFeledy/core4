@@ -8,7 +8,6 @@ import type { RecipeInitReview } from "../../recipes/prepared-init-types";
 import type { ChoicesCommandRunner } from "../../recipes/prompts/index";
 import type { RecipeRegistryClient } from "../../recipes/registry-source";
 import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../../recipes/tarball-source";
-import type { BunSelfSpawner } from "./bun-self-runner";
 
 export interface InitAppOptions {
   readonly signal?: AbortSignal;
@@ -41,7 +40,6 @@ export interface InitAppOptions {
   ) => Promise<void>;
   readonly choicesRunner?: ChoicesCommandRunner;
   readonly postInitCommandRunner?: ChoicesCommandRunner;
-  readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
   readonly privateFileAccess: PrivateFileAccess;
   readonly onWarn?: (message: string) => void | Promise<void>;

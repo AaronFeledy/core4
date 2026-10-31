@@ -27,7 +27,13 @@ lando meta:plugin:test test/plugin.test.ts -- --bail
 
 Paths before `--` are test files. Flags after `--` go to Bun `test` unchanged. The command validates the plugin manifest first.
 
-A non-zero Bun exit is a non-zero Lando exit.
+Both commands run Bun through the Lando executable you invoked, so no separate
+Bun install is needed. Test and build output streams to your terminal as it
+runs. A failing test or build exits with Bun's own code; under `--format=json`
+you get one envelope with `ok: false`, `result.exitCode`, and the collected
+output. Fix what Bun reported and rerun. The envelope shape and the other
+failure tags are in
+[Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-commands).
 
 ## Build
 

@@ -4,10 +4,9 @@ import { join } from "node:path";
 import { parseScriptFile } from "@lando/landofile/bun-sh-discovery";
 import { normalizeToolingTask } from "@lando/landofile/tooling-normalize";
 import { EnvironmentValueResolver, EventService, type LandoEvent } from "@lando/sdk/services";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Result } from "effect";
 import { runBunShellScript, runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
-import { recordingScriptEvents, withBunScript } from "./tooling-bun-script-support.ts";
+import { recordingScriptEvents, scriptHostLayer, withBunScript } from "./tooling-bun-script-support.ts";
 
 test.each(["direct", "discovery"])(
   "%s refuses stale declarations before resolver, progress, or body",
@@ -35,7 +34,7 @@ test.each(["direct", "discovery"])(
               ? runBunShellScript(script, root, options)
               : runBunShellTooling({ name: "probe", ...options }, root),
           ).pipe(
-            Effect.provide(PrivateFileAccessService.layer),
+            Effect.provide(scriptHostLayer),
             Effect.provideService(
               EnvironmentValueResolver,
               EnvironmentValueResolver.of({

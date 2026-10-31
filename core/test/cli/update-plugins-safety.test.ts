@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readInstalledPluginRegistry, recordInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 import { Effect, Layer } from "effect";
 import { makePluginUpdateRunner } from "../../src/cli/commands/update-plugins";
@@ -60,7 +61,8 @@ async function fixture() {
   };
   const trust = makePluginTrustStore(join(root, "trust.yml"));
   await Effect.runPromise(trust.trustPlugin(name));
-  const layer = Layer.merge(
+  const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     Layer.succeed(PluginTrustStore, trust),
     Layer.succeed(
       ConfigService,
