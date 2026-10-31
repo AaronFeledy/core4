@@ -73,7 +73,7 @@ export const pluginOwnedCommandInputFromArgv = (
 
 export const renderPluginOwnedCommandHelp = (
   spec: ExecutableCommandSpec,
-  options?: Pick<CommandHelpOptions, "styled">,
+  options?: Pick<CommandHelpOptions, "styled"> & { readonly aliases?: readonly string[] },
 ): string => {
   const args: ArgDefinitions = Object.fromEntries(
     Object.entries(spec.args ?? {}).map(([name, definition]) => [
@@ -88,7 +88,8 @@ export const renderPluginOwnedCommandHelp = (
   const entry: CommandHelpEntry = {
     spec: {
       id: spec.id,
-      summary: spec.summary,
+      summary: spec.summary ?? "",
+      ...(options?.aliases === undefined ? {} : { aliases: options.aliases }),
       args,
       flags: pluginFlagDefinitions(spec),
       ...(spec.strict === undefined ? {} : { strict: spec.strict }),

@@ -5,7 +5,6 @@ import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "
 
 export const spec = {
   id: "db:restore",
-  summary: "Restore a database service from a snapshot.",
   namespace: "db",
   bootstrap: "app",
   flags: {

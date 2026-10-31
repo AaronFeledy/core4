@@ -36,6 +36,7 @@ const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAl
 export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   extends Omit<ExecutableCommandSpec<A, E, R, unknown>, "namespace" | "render" | "completion"> {
   readonly namespace: LandoCommandNamespace;
+  readonly summary: string;
   readonly description?: string;
   readonly deprecated?: DeprecationNotice;
   /** True only for commands exposed as MCP tools by default; destructive surfaces must not set this. */

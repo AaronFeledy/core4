@@ -5,7 +5,6 @@ import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "
 
 export const spec = {
   id: "db:reset",
-  summary: "Reset a database service to an empty state.",
   namespace: "db",
   bootstrap: "app",
   flags: {

@@ -74,12 +74,12 @@ export const manifest = {
   version: "0.0.0",
   api: 4,
   bootstrap: "app",
-  contributes: { commands: ["${fixtureCommandId}"] },
+  contributes: { commands: [{ id: "${fixtureCommandId}", summary: "Fixture shipping proof." }] },
 };
 export const plugin = { name: manifest.name, manifest,
   commands: new Map([["${fixtureCommandId}", async () => ({
     id: "${fixtureCommandId}", namespace: "fixture", bootstrap: "plugins",
-    summary: "Fixture shipping proof.", resultSchema: Schema.Void, run: () => Effect.void,
+    resultSchema: Schema.Void, run: () => Effect.void,
   })]]) };
 `,
       "utf8",
