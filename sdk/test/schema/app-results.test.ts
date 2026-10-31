@@ -164,11 +164,11 @@ describe("ShareStopAppResult", () => {
     expect(roundTrip(ShareStopAppResult, withProvider)).toEqual(withProvider);
 
     expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "ready" }))).toBe(true);
-    expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "starting" }))).toBe(
-      true,
     expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "stopped" }))).toBe(
       true,
     );
+    expect(Result.isFailure(decode(ShareStopAppResult, { sessionId: "sess-1", status: "starting" }))).toBe(
+      true,
     );
   });
 
