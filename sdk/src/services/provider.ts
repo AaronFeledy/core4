@@ -406,7 +406,11 @@ export class RuntimeProvider extends Context.Service<
     /** Opens a private provider-guest socket to a loopback host-proxy worker for the caller scope. */
     readonly openHostProxyBridge?: (
       input: HostProxyBridgeInput,
-    ) => Effect.Effect<HostProxyBridgeResult, ProviderError, Scope.Scope>;
+    ) => Effect.Effect<
+      HostProxyBridgeResult & { readonly exited: Promise<number> },
+      ProviderError,
+      Scope.Scope
+    >;
     /** Delivers the named agent socket through provider-owned resources released with the caller scope. */
     readonly openAgentSocketBridge?: (
       input: AgentSocketBridgeInput,

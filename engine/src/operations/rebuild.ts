@@ -116,7 +116,6 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
     ...(managed === undefined ? {} : { managed }),
     use: (gpgPlan, prepareGpgHome) =>
       withStartedSshAgent(gpgPlan, target.app, provider.capabilities, intent, {
-        platform: provider.platform,
         ...(managed === undefined ? {} : { managed }),
         use: (agentPlan) =>
           withStartedHostProxy(agentPlan, target.app, provider.capabilities, {

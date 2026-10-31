@@ -917,7 +917,7 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * `passThrough:`, `sources:`, `generates:`, `method:`, `status:`,
  * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
  * `silent:`, `output:`, `failFast:`, `aliases:`,
- * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
+ * `topLevelAlias:`, `namespace:`, `internal:`,
  * `examples:`, `usage:`.
  */
 export const ToolingTaskShape = Schema.Struct({

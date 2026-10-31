@@ -24,10 +24,20 @@ const bundledCountAfter = async (factory: string): Promise<string> => {
   return stdout.trim().split("\n").at(-1) ?? "";
 };
 
-test("the host-proxy worker runtime registers bundled plugins before building", async () => {
+test("the host-proxy open child registers bundled plugins before building", async () => {
+  const call = {
+    operation: "openUrl",
+    url: "https://example.com",
+    app: { kind: "user", id: "demo", root: "/tmp" },
+    mount: { containerRoot: "/app", hostRoot: "/tmp" },
+    cwd: "/app",
+    callId: "call-1",
+    depth: 0,
+    callerService: "web",
+  };
   const result = JSON.parse(
     await bundledCountAfter(
-      `const { hostProxyWorkerRuntime } = await import(${JSON.stringify(`${repo}/core/src/cli/host-proxy/worker-runtime.ts`)}); await hostProxyWorkerRuntime();`,
+      `const { hostProxyOpenLayer } = await import(${JSON.stringify(`${repo}/core/src/cli/host-proxy/call-open.ts`)}); await hostProxyOpenLayer(${JSON.stringify(call)});`,
     ),
   );
   expect(result.before).toBe(0);

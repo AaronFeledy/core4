@@ -4,7 +4,6 @@
  * Volume ownership and storage class keys stay defined in their producer
  * modules. This file re-exports them so callers have one import path.
  */
-import { sha256Hex } from "@lando/sdk/digest";
 import {
   AGENT_SOCKET_CONTAINER_DIR,
   type AppPlan,
@@ -31,12 +30,23 @@ export const SCRATCH_LABEL = "dev.lando.scratch" as const;
 export const SCRATCH_ID_LABEL = "dev.lando.scratch-id" as const;
 export const AGENT_SESSION_LABEL = "dev.lando.agent-session" as const;
 export const HOST_PROXY_SESSION_LABEL = "dev.lando.host-proxy-session" as const;
+export const HOST_PROXY_TRANSPORT_EXTENSION_KEY = "@lando/core/host-proxy-transport";
 export const SSH_AGENT_OVERLAY_LABEL = "dev.lando.ssh-agent-overlay" as const;
 export const GPG_AGENT_OVERLAY_LABEL = "dev.lando.gpg-agent-overlay" as const;
+
+export const hostProxySessionDigest = (extensions: ServicePlan["extensions"]): string | undefined => {
+  const transport = extensions[HOST_PROXY_TRANSPORT_EXTENSION_KEY];
+  if (typeof transport !== "object" || transport === null || !("sessionDigest" in transport))
+    return undefined;
+  return typeof transport.sessionDigest === "string" && /^[a-f0-9]{16}$/u.test(transport.sessionDigest)
+    ? transport.sessionDigest
+    : undefined;
+};
 
 export const containerIntegrationLabels = (
   environment: ServicePlan["environment"],
   labels: Readonly<Record<string, string>> = {},
+  extensions: ServicePlan["extensions"] = {},
 ): Record<string, string> => {
   const {
     [HOST_PROXY_SESSION_LABEL]: _hostProxy,
@@ -44,10 +54,10 @@ export const containerIntegrationLabels = (
     [GPG_AGENT_OVERLAY_LABEL]: _gpg,
     ...authored
   } = labels;
-  const session = environment.LANDO_HOST_PROXY_SESSION;
+  const sessionDigest = hostProxySessionDigest(extensions);
   return {
     ...authored,
-    ...(typeof session === "string" ? { [HOST_PROXY_SESSION_LABEL]: sha256Hex(session).slice(0, 16) } : {}),
+    ...(sessionDigest === undefined ? {} : { [HOST_PROXY_SESSION_LABEL]: sessionDigest }),
     ...(environment.SSH_AUTH_SOCK === `${AGENT_SOCKET_CONTAINER_DIR.ssh}/${SSH_AGENT_SOCKET_NAME}`
       ? { [SSH_AGENT_OVERLAY_LABEL]: "true" }
       : {}),

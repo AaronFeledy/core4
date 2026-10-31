@@ -61,14 +61,18 @@ export const commonContainerLabels = (
           Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
         )
       : {};
-  const baseLabels = containerIntegrationLabels(service.environment, {
-    ...userLabels,
-    [APP_LABEL]: plan.id,
-    [APP_ROOT_LABEL]: plan.root,
-    [SERVICE_LABEL]: service.name,
-    ...scratchLabelsForPlan(plan),
-    ...extra,
-  });
+  const baseLabels = containerIntegrationLabels(
+    service.environment,
+    {
+      ...userLabels,
+      [APP_LABEL]: plan.id,
+      [APP_ROOT_LABEL]: plan.root,
+      [SERVICE_LABEL]: service.name,
+      ...scratchLabelsForPlan(plan),
+      ...extra,
+    },
+    service.extensions,
+  );
   return { ...baseLabels, [CREATE_CONFIG_LABEL]: createConfigFingerprint(plan, service, baseLabels) };
 };
 

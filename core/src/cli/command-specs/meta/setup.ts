@@ -30,7 +30,6 @@ import {
   resolveProviderSelection,
 } from "@lando/engine/providers/precedence";
 import { GlobalConfigSources } from "@lando/engine/services/config";
-import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
 import { NetworkTrust } from "@lando/http-client/network-trust";
 import { formatSummary } from "@lando/renderer/summary";
 import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../commands/setup-network-trust";
@@ -47,7 +46,6 @@ import {
   inputNetworkProbe,
   inputProviderFlag,
   inputStringFlag,
-  shouldDisableHostProxyForSetup,
   sourceInstallDir,
 } from "./setup-inputs";
 import { authorizeProviderSetupPlan } from "./setup-provider-authorization";
@@ -67,7 +65,7 @@ import {
 } from "./setup-steps";
 import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-summary";
 
-export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs";
+export { SetupResultSchema } from "./setup-inputs";
 export { maybeSelectSetupProvider } from "./setup-provider-selection";
 export { SetupStepFailedError, ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
 
@@ -230,10 +228,6 @@ export const setupSpec: LandoCommandSpec<
     yield* runCaSetupStep(input, privilegeOptions, recorder, selectedProviderId).pipe(withHostProvider);
     yield* runProxySetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
     yield* runShellServiceSetupStep(input, recorder, selectedProviderId).pipe(withHostProvider);
-
-    if (shouldDisableHostProxyForSetup(input)) {
-      yield* HostProxyServiceDisabled.setup({ mode: "none" });
-    }
 
     if (
       process.platform !== "win32" &&

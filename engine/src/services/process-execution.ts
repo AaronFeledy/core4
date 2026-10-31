@@ -133,6 +133,7 @@ export async function* streamProcess(
   let failure: unknown;
   let failed = false;
   let cancelled = false;
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
   const readersWaiting: Array<() => void> = [];
   const consumerWaiting: Array<() => void> = [];
   const wakeConsumer = () => {
@@ -142,7 +143,8 @@ export async function* streamProcess(
     for (const wake of readersWaiting.splice(0)) wake();
   };
   const abort = () => {
-    proc.kill("SIGKILL");
+    proc.kill("SIGTERM");
+    killTimer ??= setTimeout(() => proc.kill("SIGKILL"), 500);
     wakeReaders();
     wakeConsumer();
   };
@@ -153,15 +155,24 @@ export async function* streamProcess(
       abort();
     }, input.timeoutMs);
   const enqueue = async (value: ProcessStreamChunk): Promise<void> => {
-    while (queue.length >= queueLimit && !cancelled && !failed)
+    while (queue.length >= queueLimit && !cancelled && !failed && !input.signal?.aborted)
       await new Promise<void>((resolve) => readersWaiting.push(resolve));
-    if (cancelled || failed) return;
+    if (cancelled || failed || input.signal?.aborted) return;
     queue.push(value);
     wakeConsumer();
   };
+  const readers = new Set<ReturnType<ReadableStream<Uint8Array>["getReader"]>>();
+  const waitingReaders = new Set<ReturnType<ReadableStream<Uint8Array>["getReader"]>>();
   const drain = async (stream: ReadableStream<Uint8Array>, kind: ProcessStreamChunk["kind"]) => {
+    const reader = stream.getReader();
+    readers.add(reader);
     try {
-      for await (const chunk of stream) {
+      for (;;) {
+        waitingReaders.add(reader);
+        const next = await reader.read();
+        waitingReaders.delete(reader);
+        if (next.done) break;
+        const chunk = next.value;
         if (input.capture === true) budget({ kind, chunk });
         await enqueue({ kind, chunk });
       }
@@ -173,12 +184,23 @@ export async function* streamProcess(
       proc.kill(input.capture === true ? "SIGKILL" : "SIGTERM");
       wakeReaders();
     } finally {
+      readers.delete(reader);
+      waitingReaders.delete(reader);
+      reader.releaseLock();
       openReaders--;
       wakeConsumer();
     }
   };
   const stdoutReader = stdoutStream === undefined ? Promise.resolve() : drain(stdoutStream, "stdout");
   const stderrReader = stderrStream === undefined ? Promise.resolve() : drain(stderrStream, "stderr");
+  let drainTimer: ReturnType<typeof setTimeout> | undefined;
+  const closeIdleReaders = () => {
+    if (queue.length === 0) for (const reader of waitingReaders) void reader.cancel().catch(() => undefined);
+    if (readers.size > 0) drainTimer = setTimeout(closeIdleReaders, 1000);
+  };
+  void proc.exited.then(() => {
+    if (openReaders > 0) drainTimer = setTimeout(closeIdleReaders, 1000);
+  });
   try {
     for (;;) {
       if (timedOut) throw timeoutError(input, DateTime.toEpochMillis(DateTime.nowUnsafe()) - startedAt);
@@ -203,8 +225,11 @@ export async function* streamProcess(
     wakeReaders();
     if (timer !== undefined) clearTimeout(timer);
     input.signal?.removeEventListener("abort", abort);
-    proc.kill("SIGKILL");
+    if (proc.exitCode === null) abort();
     await proc.exited;
-    if (input.capture === true) await Promise.all([stdoutReader, stderrReader]);
+    if (killTimer !== undefined) clearTimeout(killTimer);
+    for (const reader of readers) await reader.cancel();
+    await Promise.all([stdoutReader, stderrReader]);
+    if (drainTimer !== undefined) clearTimeout(drainTimer);
   }
 }

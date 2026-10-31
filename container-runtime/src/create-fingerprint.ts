@@ -86,7 +86,7 @@ export const createConfigFingerprint = (
       throw new ContainerPlanError(message, details);
     },
   });
-  const integrationLabels = containerIntegrationLabels(service.environment);
+  const integrationLabels = containerIntegrationLabels(service.environment, {}, service.extensions);
   const sshAgentActive = integrationLabels[SSH_AGENT_OVERLAY_LABEL] === "true";
   const gpgAgentActive = integrationLabels[GPG_AGENT_OVERLAY_LABEL] === "true";
   const sessionMountTargets = new Set<string>();
@@ -97,8 +97,9 @@ export const createConfigFingerprint = (
     sessionMountTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
     sessionMountTargets.add("/run/lando/gpg-agent-keys");
   }
-  if (service.environment.LANDO_HOST_PROXY_SESSION !== undefined) {
+  if (integrationLabels[HOST_PROXY_SESSION_LABEL] !== undefined) {
     sessionMountTargets.add("/run/lando/host-proxy.sock");
+    sessionMountTargets.add("/run/lando/host-proxy/credentials");
     sessionMountTargets.add("/usr/local/bin/lando");
     sessionMountTargets.add("/usr/local/bin/xdg-open");
     sessionMountTargets.add("/usr/local/bin/open");

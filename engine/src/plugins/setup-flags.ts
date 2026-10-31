@@ -29,7 +29,6 @@ export const SETUP_BUILTIN_FLAG_NAMES: ReadonlyArray<string> = [
   "skip-install-ca",
   "skip-shell-integration",
   "skip-file-sync",
-  "host-proxy",
   "format",
   "json",
 ];

@@ -42,6 +42,7 @@ const makeFixture = async (platform: HostPlatform) => {
     start: (command, args) => {
       calls.push({ command, args });
       return {
+        exited: Promise.resolve(0),
         waitReady: async () => {},
         close: async () => {
           closes += 1;

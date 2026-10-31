@@ -7,12 +7,7 @@ import { ProcessExecError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, ProcessRunner, type ProcessSpawnOptions } from "@lando/sdk/services";
 import { Effect, Layer, Stream } from "effect";
-import {
-  HostProxyOpenerError,
-  openHostTarget,
-  revealArgvFor,
-  revealHostPath,
-} from "../../../src/services/host-opener.ts";
+import { openHostTarget, revealArgvFor, revealHostPath } from "../../../src/services/host-opener.ts";
 import { openHostProxyTarget } from "../../../src/subsystems/host-proxy/open-target.ts";
 import { createHostProxyRunLandoSession } from "../../../src/subsystems/host-proxy/transport.ts";
 
@@ -172,15 +167,14 @@ test("opener failure retains its remediation and classification over the host-pr
         callerService: "web",
         executor: () => Effect.die("unused"),
         openExecutor: () =>
-          Effect.fail(
-            new HostProxyOpenerError({
-              message: "The host opener failed.",
-              opener: "xdg-open",
-              operation: "openUrl",
-              remediation: "Install a host browser.",
-            }),
-          ),
-        paths: { userDataRoot: root, userCacheRoot: root, platform: "win32" },
+          Effect.succeed({
+            _tag: "error" as const,
+            code: "internal" as const,
+            message: "The host opener failed.",
+            remediation: "Install a host browser.",
+          }),
+        paths: { userDataRoot: root, userCacheRoot: root },
+        hostGatewayName: "host.containers.internal",
         shimArtifactPath: shim,
       }).pipe(Effect.provide(services)),
     );
@@ -201,11 +195,7 @@ test("opener failure retains its remediation and classification over the host-pr
         message: "The host opener failed.",
         remediation: "Install a host browser.",
       });
-      expect(events[1]).toMatchObject({
-        _tag: "post-host-proxy-call",
-        outcome: "failure",
-        failureDetail: "HostProxyOpenerError",
-      });
+      expect(events).toEqual([]);
     } finally {
       await session.close();
     }
