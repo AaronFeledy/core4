@@ -55,6 +55,5 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
     "dry-run": dryRunFlag,
   },
   run: (input) => runGlobalConfig(globalConfigOptionsFromInput(input)),
-  render: (result, input) =>
-    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
+  render: (result, input) => renderGlobalConfigResult(result, globalConfigFormatFromInput(input)),
 };

@@ -45,5 +45,5 @@ export const metaXSpec: LandoCommandSpec<MetaXResult> = {
     return yield* metaX({ spec, argv: args });
   }),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderMetaXResult(result as MetaXResult),
+  render: (result) => renderMetaXResult(result),
 };

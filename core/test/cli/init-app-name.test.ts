@@ -2,12 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { RecipePrompt } from "@lando/sdk/schema";
 
-import {
-  appNamePromptChrome,
-  inferDefaultProxyService,
-  previewAppSlug,
-  renderProxyUrlFooter,
-} from "../../src/cli/commands/init-app-name-chrome.ts";
+import { appNamePromptChrome } from "../../src/cli/commands/init-app-name-chrome.ts";
 import { defaultAppNameFromCwd, withAppNameDefault } from "../../src/cli/commands/init-app-name.ts";
 
 describe("defaultAppNameFromCwd", () => {
@@ -53,30 +48,6 @@ describe("withAppNameDefault", () => {
   });
 });
 
-describe("inferDefaultProxyService", () => {
-  test("returns undefined when the landofile has no services", () => {
-    expect(inferDefaultProxyService("name: preview\nruntime: 4\n")).toBeUndefined();
-  });
-
-  test("picks the first non-data service", () => {
-    const yaml = [
-      "name: preview",
-      "services:",
-      "  appserver:",
-      "    type: php:8.3",
-      "  database:",
-      "    type: mariadb",
-      "",
-    ].join("\n");
-    expect(inferDefaultProxyService(yaml)).toBe("appserver");
-  });
-
-  test("returns undefined when only data services exist", () => {
-    const yaml = ["services:", "  database:", "    type: postgres", ""].join("\n");
-    expect(inferDefaultProxyService(yaml)).toBeUndefined();
-  });
-});
-
 describe("appNamePromptChrome", () => {
   const appRoot = "/tmp/my-site";
 
@@ -84,20 +55,10 @@ describe("appNamePromptChrome", () => {
     const chrome = appNamePromptChrome({ appRoot });
     const machine = chrome.footer?.find((line) => line.id === "machine-name");
     expect(machine?.render("My Site")).toContain("my-site");
-    expect(previewAppSlug("My Site", appRoot)).toBe("my-site");
   });
 
-  test("omits a proxy URL footer when the recipe has no routable service", () => {
+  test("offers only machine-name chrome before preparation", () => {
     const chrome = appNamePromptChrome({ appRoot });
-    expect(chrome.footer?.some((line) => line.id === "url")).toBe(false);
-  });
-
-  test("includes a default-route hostname when a proxy service is known", () => {
-    const chrome = appNamePromptChrome({ appRoot, proxyService: "appserver" });
-    const url = chrome.footer?.find((line) => line.id === "url");
-    expect(url?.render("my-site")).toContain("https://appserver.my-site.lndo.site");
-    expect(renderProxyUrlFooter("my-site", appRoot, "appserver")).toContain(
-      "https://appserver.my-site.lndo.site",
-    );
+    expect(chrome.footer?.map(({ id }) => id)).toEqual(["machine-name"]);
   });
 });

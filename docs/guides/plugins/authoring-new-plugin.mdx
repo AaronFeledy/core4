@@ -74,6 +74,27 @@ or building a plan. Keep the callback deterministic and resource-free. It receiv
 immutable service facts and the original decoded feature configuration, before
 planning substitutes certificate or SSH delivery configuration.
 
+Use an optional `validateEffective` callback for cross-field checks and explicit
+service-field support. Lando calls it once for each prepared feature occurrence
+after inheritance, before endpoint declaration and app-plan cache lookup. It
+receives the same immutable facts and original decoded feature configuration as
+declaration, not an application draft. Do not run `apply`, inspect images, resolve
+secrets, or acquire filesystem, network, or provider resources to validate.
+
+On success, return a `ServiceFeatureValidationResult` with `handledServiceFields`
+for the fields the feature actually consumes, currently `webroot` and
+`consolePort`. A property with the same name in feature configuration is not a
+support declaration. Claim `webroot` only when this feature really uses the root
+for server configuration or supported context; conditional mount-dependent
+features must not claim it when that context is absent.
+
+Reject expected invalid input through `ServiceFeatureError.issues`. Paths are
+relative to the service configuration, such as `["port"]`; include a useful
+`suggestion`. Core prefixes the service path and preserves structured findings
+for lint and machine output. Do not encode a path into prose or report an
+internal feature-config field as an authored Landofile field unless they really
+correspond. Validation still runs when the author supplies `endpoints: []`.
+
 ```ts
 import { Effect } from "effect";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";

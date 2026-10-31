@@ -23,5 +23,5 @@ export const pluginTrustAuthoringRootSpec: LandoCommandSpec<PluginTrustAuthoring
     path: Args.string({ description: "Absolute path to mark as a trusted authoring root.", required: true }),
   },
   run: (input) => pluginTrustAuthoringRoot(extractInput(input)),
-  render: (result) => renderPluginTrustAuthoringRootResult(result as PluginTrustAuthoringRootResult),
+  render: (result) => renderPluginTrustAuthoringRootResult(result),
 };

@@ -35,5 +35,5 @@ export const metaGlobalInstallSpec: LandoCommandSpec<GlobalInstallResult> = {
     }),
   },
   run: (input) => globalInstall(globalInstallOptionsFromInput(input)),
-  render: (result) => renderGlobalInstallResult(result as GlobalInstallResult),
+  render: (result) => renderGlobalInstallResult(result),
 };

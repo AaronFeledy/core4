@@ -647,6 +647,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     port: Schema.optionalKey(PortNumber).annotate({
       description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
     }),
+    consolePort: Schema.optionalKey(PortNumber).annotate({
+      description:
+        "MinIO console TCP port number (integer 1-65535); defaults to 9001, independently of the API port.",
+    }),
     framework: Schema.optionalKey(Schema.String),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:

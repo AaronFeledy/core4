@@ -2,6 +2,7 @@
 import type { LogsAppResult } from "@lando/engine/operations/logs";
 
 export const renderLogsAppResult = (result: LogsAppResult): string => {
+  if (result.lines === undefined) return "";
   if (result.lines.length === 0) return `${result.app} (no log lines)`;
   return result.lines
     .map((line) =>

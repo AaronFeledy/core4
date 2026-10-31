@@ -52,7 +52,7 @@ Ordinary CLI commands discover current app configuration. An embedded App handle
 
 While a service shell is interactive: stdin is attached, stdout and stderr stream back, terminal resize (`SIGWINCH`) updates the running shell, and Ctrl-C cancels the exec stream.
 
-PTY allocation and host-terminal detection are separate. `lando exec`, `lando ssh`, and service tooling borrow attached stdout facts such as `TERM`, `COLORTERM`, width, and height only when stdout is a real terminal. Redirected output and MCP calls do not gain terminal identity from a stream sink. An explicit PTY request still allocates a provider PTY through a pipe, using provider-safe size defaults without inventing `TERM` or `COLORTERM`.
+PTY allocation and host-terminal detection are separate. `lando exec`, `lando ssh`, and service tooling borrow attached stdout facts such as `TERM`, `COLORTERM`, width, height, and the host color opt-out (`NO_COLOR=1`) only when stdout is a real terminal. Redirected output and MCP calls do not gain terminal identity from a stream sink. An explicit PTY request still allocates a provider PTY through a pipe, using provider-safe size defaults without inventing `TERM` or `COLORTERM`.
 
 ## Use host-mode REPL
 
@@ -73,6 +73,12 @@ Every accepted line publishes `pre-shell-exec` before it runs and `post-shell-ex
 Ctrl+C aborts only the currently running line. The REPL prompt returns. An interrupted line reports exit status 130.
 
 Ctrl+D at an empty prompt ends the REPL with the exit status of the last executed line. Typing `exit` does the same. `exit <code>` ends it with that status. On both paths, the REPL restores the terminal before `lando shell` returns.
+
+The JSON result for a completed shell session contains `mode` (`host` or
+`service`), `app`, `shell`, `cwd`, and `exitCode`. Service mode also includes
+`service`; host mode omits it. Selecting JSON does not make the shell
+non-interactive. Use `lando shell --json` to list the result keys without
+opening a session, or `lando exec` to run a command without a terminal.
 
 `lando shell --no-interactive`, a non-TTY stdin/stdout, or a redirected invocation never opens the REPL. The command fails fast with tagged `ShellRequiresTtyError` instead of hanging. The error points at the scriptable equivalent:
 

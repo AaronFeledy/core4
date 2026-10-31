@@ -5,13 +5,17 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serviceContainerName } from "@lando/container-runtime/plan";
 import { makePodmanApiClient } from "@lando/container-runtime/podman/api-client";
-import { AppInfoResultSchema } from "@lando/engine/operations/info";
-import { StartAppResultSchema } from "@lando/engine/operations/start";
 import { makeLandoPaths } from "@lando/paths";
 import { appCertificateFiles } from "@lando/proxy-traefik";
 import { ProxyApplyError } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
-import { AppId, CommandResultEnvelope, type ServiceConnection } from "@lando/sdk/schema";
+import {
+  AppId,
+  CommandResultEnvelope,
+  InfoAppResult,
+  type ServiceConnection,
+  StartAppResult,
+} from "@lando/sdk/schema";
 import { Duration, Effect, Schema } from "effect";
 import { decodeInfoCliEnvelope, runFixtureCli } from "./convergence-cli.ts";
 import { liveEnabled, managedProviderSocketPath } from "./scanner-live-fixture";
@@ -97,7 +101,7 @@ const waitForActiveRoute = async (cwd: string, hostname: string) => {
             expect(info.exitCode, info.stdout + info.stderr).toBe(0);
             const envelope = decodeInfoCliEnvelope(info.stdout);
             expect(envelope.ok).toBe(true);
-            const result = Schema.decodeUnknownSync(AppInfoResultSchema)(envelope.result);
+            const result = Schema.decodeUnknownSync(InfoAppResult)(envelope.result);
             connections = result.services.find((service) => service.service === "web")?.connections ?? [];
             return connections.some(
               (connection) => isHttpsRoute(connection, hostname) && connection.state === "active",
@@ -145,9 +149,7 @@ test.skipIf(!liveEnabled)(
       expect(started.exitCode, started.stdout + started.stderr).toBe(0);
       const initial = await inspectWeb(container);
       expect(initial.State.Running).toBe(true);
-      const initialResult = Schema.decodeUnknownSync(StartAppResultSchema)(
-        terminalEnvelope(started.stdout).result,
-      );
+      const initialResult = Schema.decodeUnknownSync(StartAppResult)(terminalEnvelope(started.stdout).result);
       expect(
         initialResult.servicesStarted
           .find((service) => service.name === "web")
@@ -217,7 +219,7 @@ test.skipIf(!liveEnabled)(
       expect(recovered.exitCode, recovered.stdout + recovered.stderr).toBe(0);
       const envelope = terminalEnvelope(recovered.stdout);
       expect(envelope.ok).toBe(true);
-      const result = Schema.decodeUnknownSync(StartAppResultSchema)(envelope.result);
+      const result = Schema.decodeUnknownSync(StartAppResult)(envelope.result);
       expect(
         result.servicesStarted
           .find((service) => service.name === "web")

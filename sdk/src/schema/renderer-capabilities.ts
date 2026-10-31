@@ -24,7 +24,7 @@ export const RendererCapabilities = Schema.Struct({
 });
 export type RendererCapabilities = typeof RendererCapabilities.Type;
 
-/** Permanent all-false snapshot for non-TTY, plain, json, and degraded runs. */
+/** Permanent all-false snapshot for non-TTY stderr and the plain and json renderers. */
 export const RENDERER_CAPABILITIES_NONE: RendererCapabilities = Object.freeze({
   color: false,
   interactive: false,
@@ -32,7 +32,12 @@ export const RENDERER_CAPABILITIES_NONE: RendererCapabilities = Object.freeze({
   notifications: false,
 });
 
-/** Default-renderer TTY snapshot, published synchronously at construction. */
+/**
+ * Default-renderer TTY snapshot, published synchronously at construction. The
+ * renderer publishes it with `color: false` when the IO reports the host color
+ * opt-out (`RendererNarrationIO.noColor`). Line-mode or OpenTUI fallback never
+ * demotes a published snapshot.
+ */
 export const RENDERER_CAPABILITIES_TTY: RendererCapabilities = Object.freeze({
   color: true,
   interactive: true,
@@ -40,7 +45,7 @@ export const RENDERER_CAPABILITIES_TTY: RendererCapabilities = Object.freeze({
   notifications: true,
 });
 
-/** Verbose-mode TTY snapshot: color only; never interactive/animated/notifying. */
+/** Verbose-mode TTY snapshot: color only; never interactive/animated/notifying. Not used under the host color opt-out. */
 export const RENDERER_CAPABILITIES_VERBOSE_TTY: RendererCapabilities = Object.freeze({
   color: true,
   interactive: false,

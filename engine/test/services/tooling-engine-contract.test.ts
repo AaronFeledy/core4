@@ -169,13 +169,23 @@ const runEngineLayer = (live: typeof ProviderExecToolingEngine.layer) =>
   );
 const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
 
+const captureOutput: NonNullable<ToolingEngineContractHarness["captureOutput"]> = (run) =>
+  withToolingOutput(run).pipe(
+    Effect.map((result) => {
+      const { stdout, stderr } = result;
+      if (stdout === undefined || stderr === undefined)
+        throw new Error("Expected both captured output channels.");
+      return { ...result, stdout, stderr };
+    }),
+  );
+
 describe("ToolingEngine contract — built-in engines", () => {
   test("the built-in providerExec engine passes the contract", async () => {
     const engine = await runEngineLayer(ProviderExecToolingEngine.layer);
     const harness: ToolingEngineContractHarness = {
       name: "providerExec",
       engine,
-      captureOutput: withToolingOutput,
+      captureOutput,
       okScenario: {
         invocation: {
           tool: "build",
@@ -244,7 +254,7 @@ describe("ToolingEngine contract — built-in engines", () => {
     const harness: ToolingEngineContractHarness = {
       name: "host",
       engine,
-      captureOutput: withToolingOutput,
+      captureOutput,
       okScenario: {
         invocation: {
           tool: "build",

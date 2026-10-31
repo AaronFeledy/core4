@@ -145,18 +145,112 @@ non-PHP targets also fail planning. An app with no PHP services needs no opt-out
     </Step>
     <Step name="cleanup"><Cleanup /></Step>
   </Scenario>
+  <Scenario id="moved-http-listener" render={false} reason="Permit SMTP on the old UI port when the Mailpit HTTP listener moves">
+    <Step name="plan-listeners">
+      <UseFixture name="moved-http-listener" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "0.0.0.0:18025" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="reject-smtp-ui-collision" render={false} reason="Reject SMTP on Mailpit's effective HTTP port before provider action">
+    <Step name="reject-collision">
+      <UseFixture name="smtp-ui-collision" />
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="mailhog-moved-http-listener" render={false} reason="Preserve MailHog shared UI and API bind settings when SMTP reclaims the old HTTP port">
+    <Step name="plan-listeners">
+      <UseFixture name="mailhog-moved-http-listener" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "0.0.0.0:18026" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="mailhog-reject-smtp-ui-collision" render={false} reason="Reject SMTP on MailHog's effective HTTP port before provider action">
+    <Step name="reject-collision">
+      <UseFixture name="mailhog-smtp-ui-collision" />
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+  <Scenario id="reject-loopback-bind" render={false} reason="Reject a container-local UI bind that cannot serve the typed service's network connections">
+    <Step name="reject-bind">
+      <UseFixture name="loopback-bind" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"inbox\",\\s*\"environment\",\\s*\"MP_UI_BIND_ADDR\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
 </Guide>
 
 ## Open the UI
 
-SMTP stays on `1025` unless you set `port:`. The UI stays on `8025`. Lando
-adds a default hostname route to that UI port; override `routes:` when you
+SMTP stays on `1025` unless you set `port:`. The UI defaults to `8025`. Lando
+adds a default hostname route to the UI listener; override `routes:` when you
 want a different URL. SMTP is the service's primary listener, but the route
 still lands on the UI because it's the only HTTP listener. `lando info` lists
 both as App Network connections, `tcp://inbox:1025` and `http://inbox:8025`.
+
+## Change the SMTP or UI port
+
+Set `port:` for SMTP and Mailpit's `MP_UI_BIND_ADDR` environment setting for
+the UI and HTTP API. In `.lando.yml`, for example:
+
+```yaml
+services:
+  inbox:
+    type: mailpit
+    port: 8025
+    environment:
+      MP_UI_BIND_ADDR: "0.0.0.0:18025"
+```
+
+This moves the UI and API to container port `18025`, freeing `8025` for SMTP.
+Lando uses the effective UI port for its endpoint and routes. The ports must be
+different: setting SMTP to the UI's current port fails planning before a
+container starts. Typed mail services must bind on all container interfaces so
+their App Network connections and routes can reach them. Use a literal
+`:port`, `0.0.0.0:port`, or `[::]:port`, with ports from `1` to `65535`.
+Loopback addresses, named hosts, and container-specific IPs are rejected with
+an issue at the environment setting. Lando preserves accepted bind strings;
+it does not silently rewrite them.
+
+This container bind is separate from host exposure. A wildcard container bind
+does not publish a host port. Use `ports:` for an explicit host publication;
+keep its host address loopback-only unless you intend to expose it elsewhere.
+Use an explicitly managed Compose service if you need a process that listens
+only on its own container loopback interface.
+
+From your app directory, run `lando start`, then check readiness and connections:
+
+```sh
+lando exec inbox -- /mailpit readyz
+lando info
+```
+
+Look for SMTP on `8025` and the HTTP UI on `18025`, then open the UI route.
+If planning reports a collision, change one listener's port. If you also author
+`MP_SMTP_BIND_ADDR`, its port must match `port:`; use `port:` alone when you
+don't need a specific SMTP bind address. An authored `command:` or `entrypoint:`
+remains your responsibility and must use the declared listeners.
 
 ## Replace MailHog
 
 `type: mailhog` still plans as a working SMTP + UI service, but it is
 deprecated since 4.2.0 and scheduled for removal in 5.0.0. Switch to
 `type: mailpit`. `lando doctor --deprecations` reports the old type.
+
+For a MailHog app that must stay on the legacy image, `port:` still selects
+SMTP. To move its shared HTTP listener, set **both** `MH_UI_BIND_ADDR` and
+`MH_API_BIND_ADDR` to the same literal address, for example `0.0.0.0:18026`.
+Lando preserves these values and reports the matching UI endpoint. If you give
+them different ports, MailHog starts separate UI and API listeners, so choose
+`endpoint: ui` or `endpoint: api` in each route. Configure MailHog's
+`MH_API_HOST` when the browser UI needs a separate API URL. Two different bind
+strings on the same HTTP port are rejected; MailHog only shares the listener
+when the strings are identical. Neither HTTP listener may use the SMTP port.

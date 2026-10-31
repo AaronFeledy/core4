@@ -11,6 +11,9 @@ Choose a lowercase kebab-case name such as `my-app` when running `lando init`. S
 
 A hand-authored Landofile can still use a display name that `init` would reject. Lando keeps that display name and derives a safe runtime slug for networks, hostnames, aliases, caches, and provider labels.
 
+The interactive name prompt shows the machine name as you type. It does not guess
+a URL before you finish choosing the recipe options.
+
 <Guide>
   <Scenario id="init-validates-app-names" render>
     <Step name="reject-non-kebab-name">
@@ -39,13 +42,38 @@ A hand-authored Landofile can still use a display name that `init` would reject.
   </Scenario>
 </Guide>
 
+## Read the initialization summary
+
+Run `lando init` interactively to choose a recipe and answer its questions. Before
+writing, Lando summarizes the destination, files, services, and configured URL
+candidates from those completed answers. A normal initialization then continues
+without another approval prompt.
+
+URL candidates describe the authored configuration, not a running app. They use
+your configured `proxy.defaultDomain` and preferred router ports. Recipe-authored
+routes can use a hostname such as `my-app.lndo.test` without a service prefix.
+If routing is disabled or a URL cannot be determined yet, the summary explains
+that instead of inventing a hostname. After initialization, run `lando start` and
+`lando info` from the created directory for the actual published URLs.
+
+If any scaffold file already exists, Lando keeps the existing files and skips the
+whole auxiliary scaffold set and its executable post-init actions. The summary
+explains that reduced result and asks whether to create only the Landofile. The
+default is No; declining leaves the destination unchanged. An existing Landofile
+is an error, not an overwrite choice.
+
+`--yes`, `--no-interactive`, machine output, and invocations that need no human
+answers skip this interactive summary. Their normal validation and file-conflict
+rules still apply. Use `--format=json` when a script needs the prepared output
+inventory and publication receipt.
+
 ## Read the planner naming rules
 
 The planner keeps the Landofile `name` as the user-facing display name. It derives the runtime slug by lowercasing ASCII letters, replacing each run of non-alphanumeric characters with one hyphen, and removing edge hyphens. A name with no ASCII letters or digits falls back to a stable hash of the app root.
 
 Runtime slugs are capped at 57 characters. The `lando-` prefix consumes six characters, so a per-app network name stays within the DNS limit of 63 characters. For example, `c,o,m,m,a` becomes `c-o-m-m-a`, `bad name!` becomes `bad-name`, and `UPPER` becomes `upper`.
 
-Default routes use `<service>.<slug>.<domain>`, where `<domain>` is `proxy.defaultDomain` from global config (`lndo.site` unless you change it). Shared-network aliases use `<service>.<slug>.internal`. The original display name never reaches those DNS surfaces.
+Automatic default routes use `<service>.<slug>.<domain>`, where `<domain>` is `proxy.defaultDomain` from global config (`lndo.site` unless you change it). Authored routes, including recipe routes, can choose a different hostname. Shared-network aliases use `<service>.<slug>.internal`. The original display name never reaches those DNS surfaces.
 
 Set `proxy.defaultDomain` to a plain DNS domain like `lndo.test`, without a scheme, port, path, or wildcard. `lando config set` rejects other values with an issue naming `proxy.defaultDomain`. See [Change the default domain](../subsystems/proxy-traefik.mdx#change-the-default-domain).
 

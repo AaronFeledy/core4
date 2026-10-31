@@ -19,6 +19,7 @@ import {
   literalEnvironmentValue,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
@@ -191,6 +192,10 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   id: APACHE_FEATURE_ID,
   schema: Schema.Unknown,
   priority: APACHE_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(APACHE_FEATURE_ID, (ctx) => {
+    resolveWebroot("Apache", ctx.normalizedConfig.webroot, ctx.normalizedConfig.appMount);
+    return { handledServiceFields: ["webroot"] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {

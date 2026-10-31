@@ -8,6 +8,7 @@ import {
   logicalEndpointIdentity,
   validationIssue,
 } from "@lando/sdk/schema";
+import { endpointScanPolicies } from "./endpoint-scan.ts";
 
 /** Replay original declarations, never a previous normalization's synthesized facets. */
 export const normalizeEndpoints = (
@@ -24,6 +25,7 @@ export const normalizeEndpoints = (
         );
 
   if (config.endpoints === undefined) {
+    const scans = endpointScanPolicies(contributions);
     for (const entry of config.ports ?? []) {
       const identity = `${entry.target}/${entry.protocol}`;
       const declarations = contributions.filter((endpoint) => logicalEndpointIdentity(endpoint) === identity);
@@ -43,6 +45,7 @@ export const normalizeEndpoints = (
       ];
       const name = entry.name ?? (names.length === 1 ? names[0] : undefined);
       const appProtocol = entry.appProtocol ?? (hints.length === 1 ? hints[0] : undefined);
+      const scan = scans.get(identity);
       endpoints.push({
         _tag: "published",
         port: entry.target,
@@ -52,6 +55,7 @@ export const normalizeEndpoints = (
           : {}),
         ...(name === undefined ? {} : { name }),
         ...(appProtocol === undefined ? {} : { appProtocol }),
+        ...(scan === undefined ? {} : { scan }),
         publication: {
           ...(entry.hostIp === undefined ? {} : { bindAddress: entry.hostIp }),
           ...(entry.published === undefined ? {} : { hostPort: entry.published }),
@@ -88,6 +92,8 @@ export const endpointValidationError = (
         return `Endpoint listener ${issue.identities.join(", ")} declares conflicting protocols.`;
       case "multiple-primary":
         return `Multiple primary endpoint listeners are declared: ${issue.identities.join(", ")}.`;
+      case "scan-conflict":
+        return `Endpoint listener ${issue.identities.join(", ")} declares conflicting scan defaults.`;
       default:
         return issue.kind satisfies never;
     }
@@ -95,7 +101,7 @@ export const endpointValidationError = (
   return new LandofileValidationError({
     message: `Invalid endpoints for service ${location.serviceName}: ${messages.join(" ")}`,
     remediation:
-      "Use aliases for only one logical listener, agree on its protocol, and mark at most one listener primary: true.",
+      "Use aliases for only one logical listener, agree on its protocol and scan defaults, and mark at most one listener primary: true.",
     file: `${location.appRoot}/.lando.yml`,
     issues: messages.map((message) =>
       validationIssue(["services", location.serviceName, "endpoints"], message),

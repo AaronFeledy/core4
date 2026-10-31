@@ -18,5 +18,5 @@ export const metaGlobalRestartSpec: LandoCommandSpec<GlobalRestartResult> = {
     const signal = extractSpecAbortSignal(input);
     return globalRestart(signal === undefined ? {} : { signal });
   },
-  render: (result) => renderGlobalRestartResult(result as GlobalRestartResult),
+  render: (result) => renderGlobalRestartResult(result),
 };

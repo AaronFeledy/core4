@@ -11,7 +11,6 @@ import { validateAuthoredMounts } from "./authored-mounts.ts";
 import { validateAuthoredAppMount } from "./authored.ts";
 import type { ResolvedServiceSeed } from "./service-seeds.ts";
 import { authoredStorageScopes, rejectGlobalScope } from "./storage.ts";
-import { validateAuthoredWebroot } from "./webroot-policy.ts";
 
 /** These declarations are replaced by planner-owned configuration during composition. */
 export const plannerSeededFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlySet<string> =>
@@ -47,13 +46,6 @@ export const validateServiceSeed = Effect.fnUntraced(function* (
     userSources: seed.authoredService.logs ?? [],
   });
   if (Result.isFailure(logs)) errors.push(logs.failure);
-  const substituted = plannerSeededFeatureIds(seed.resolution.base);
-  const webroot = yield* validateAuthoredWebroot(
-    seed,
-    seed.resolution.features.filter((ref) => !substituted.has(ref.id)),
-    landofilePath,
-  ).pipe(Effect.result);
-  if (Result.isFailure(webroot)) errors.push(webroot.failure);
   const mount = validateAuthoredAppMount(seed.service, appRoot, seed.name);
   if (mount !== undefined) errors.push(mount);
   const mounts = validateAuthoredMounts(

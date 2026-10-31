@@ -1,0 +1,4 @@
+name: minio-missing-artifact
+services:
+  object-store:
+    type: minio

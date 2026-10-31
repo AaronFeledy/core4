@@ -206,7 +206,14 @@ describe("meilisearch service type — scenario: index create + document post + 
       ref: "getmeili/meilisearch:v1.11",
     });
     expect(search.endpoints).toEqual([
-      { _tag: "internal", port: 7700, protocol: "http", name: "search", primary: true },
+      {
+        _tag: "internal",
+        port: 7700,
+        protocol: "http",
+        name: "search",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);

@@ -593,6 +593,13 @@ describe("lando info", () => {
   test("prints a visible host-proxy unavailable notice from the plan extension", async () => {
     const plannedApp: AppPlan = {
       ...plan,
+      services: {
+        ...plan.services,
+        [node.name]: {
+          ...node,
+          extensions: { "@lando/core/service-features": { featureIds: ["lando.host-proxy"] } },
+        },
+      },
       extensions: {
         ...plan.extensions,
         "@lando/core/host-proxy": {

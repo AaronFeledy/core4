@@ -25,5 +25,5 @@ export const metaBunSpec: LandoCommandSpec<MetaBunResult> = {
     return yield* metaBun({ argv });
   }),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderMetaBunResult(result as MetaBunResult),
+  render: (result) => renderMetaBunResult(result),
 };

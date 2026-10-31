@@ -106,12 +106,15 @@ If you are looking for a public surface or policy:
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
 | Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
+| Final effective feature validation, explicit field claims and structured feature issues | 06 | §6.11.0 + §6.11.4 |
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
 | PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
+| MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
+| Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
 | Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
@@ -146,10 +149,14 @@ If you are looking for a public surface or policy:
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
+| Single preparation, immutable pre-publication review, and unattended init paths | 08 | §8.8.7 + §8.8.9 |
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
+| Host color opt-out (`NO_COLOR`, `TERM=dumb`) for narration, result decoration, help, and hyperlinks | 08 | §8.4.2 + §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
 | Command completion, result projection, machine envelopes, bounded output capture, streams, and closed pipes | 08 + 11 | §8.3 + §8.11 + §10.14 |
+| Output routing table, JSON frame-stream events, and dropped-event warnings | 08 | §8.11.3 |
+| History-plus-live event subscriptions (`subscribeWithHistory`) | 03 | §11.1 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
 | Library plugin/config policy and scope ownership | 09 | §16.4 + §16.6 |
 | Programmatic CLI and testing APIs | 09 | §16.7 + §16.8 |
@@ -166,6 +173,7 @@ If you are looking for a public surface or policy:
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
 | SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
+| Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
 | Accelerated-start journal, resume, and stop/destroy from any phase | 11 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |

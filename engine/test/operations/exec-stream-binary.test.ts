@@ -150,7 +150,7 @@ describe("collectExecStream binary frames", () => {
     );
 
     // Then
-    expect(result).toEqual({ exitCode: 0, stdout: "", stderr: "" });
+    expect(result).toEqual({ exitCode: 0 });
     expect(frames).toHaveLength(2);
   });
 
@@ -172,5 +172,16 @@ describe("collectExecStream binary frames", () => {
 
     // Then
     expect(result).toEqual({ exitCode: 0, stdout: "hello", stderr: "err" });
+  });
+
+  test.each([false, true])("distinguishes empty capture from an empty live stream: live=%s", async (live) => {
+    // Given
+    const sink = StreamFrameSink.of({ emit: () => Effect.void });
+    // When
+    const result = await Effect.runPromise(
+      collectExecStream(Stream.make({ exitCode: 7 }), live ? Option.some(sink) : Option.none()),
+    );
+    // Then
+    expect(result).toEqual(live ? { exitCode: 7 } : { exitCode: 7, stdout: "", stderr: "" });
   });
 });

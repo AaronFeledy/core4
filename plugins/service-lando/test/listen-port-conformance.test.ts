@@ -74,6 +74,7 @@ describe("bundled catalog listen-port conformance", () => {
         service: Schema.decodeUnknownSync(ServiceConfig)({
           type: id,
           port: PORT,
+          ...(family === "minio" ? { image: "example.test/minio:fixture" } : {}),
           ...(family === "varnish" ? { backend: "web" } : {}),
         }),
         serviceName: "server",

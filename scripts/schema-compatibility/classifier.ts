@@ -10,7 +10,7 @@ import {
   stringArray,
 } from "./model.ts";
 import { normalizeJsonSchema } from "./normalize.ts";
-import { compareUnion } from "./union-classifier.ts";
+import { compareUnion, compareUnionReplacement } from "./union-classifier.ts";
 
 export type {
   CompatibilityException,
@@ -81,7 +81,27 @@ const requiredSet = (schema: JsonSchema): ReadonlySet<string> => new Set(stringA
 interface CompareContext {
   readonly polarity: SchemaPolarity;
   readonly path: string;
+  readonly unionProof?: boolean;
 }
+
+const requirednessFinding = (
+  path: string,
+  nowRequired: boolean,
+  polarity: CompareContext["polarity"],
+): CompatibilityFinding =>
+  nowRequired
+    ? finding(
+        polarity === "output" ? "compatible" : "breaking",
+        "property-required",
+        path,
+        "An optional property became required.",
+      )
+    : finding(
+        polarity === "input" ? "compatible" : "breaking",
+        "property-optional",
+        path,
+        "A required property became optional.",
+      );
 
 const compareProperties = (
   before: JsonSchema,
@@ -94,6 +114,17 @@ const compareProperties = (
   const afterRequired = requiredSet(after);
   const findings: CompatibilityFinding[] = [];
 
+  if (context.unionProof && [...afterRequired].some((name) => afterProperties[name] === undefined)) {
+    return [
+      finding(
+        "unknown",
+        "unsupported-construct",
+        context.path,
+        "Required keys without property schemas need explicit review.",
+      ),
+    ];
+  }
+
   for (const property of Object.keys(beforeProperties).sort()) {
     const propertyPath = childPath(context.path, property);
     const afterProperty = afterProperties[property];
@@ -105,29 +136,32 @@ const compareProperties = (
     if (beforeProperty !== undefined) {
       findings.push(...compareNode(beforeProperty, afterProperty, { ...context, path: propertyPath }));
     }
-    if (beforeRequired.has(property) === afterRequired.has(property)) continue;
-    if (afterRequired.has(property)) {
-      const verdict = context.polarity === "output" ? "compatible" : "breaking";
-      findings.push(
-        finding(verdict, "property-required", propertyPath, "An optional property became required."),
-      );
-    } else {
-      const verdict = context.polarity === "input" ? "compatible" : "breaking";
-      findings.push(
-        finding(verdict, "property-optional", propertyPath, "A required property became optional."),
-      );
+    if (beforeRequired.has(property) !== afterRequired.has(property)) {
+      findings.push(requirednessFinding(propertyPath, afterRequired.has(property), context.polarity));
     }
+  }
+
+  // A required key may have no property schema; its requiredness still constrains the contract.
+  for (const property of [...new Set([...beforeRequired, ...afterRequired])].sort()) {
+    if (beforeProperties[property] !== undefined || afterProperties[property] !== undefined) continue;
+    if (beforeRequired.has(property) === afterRequired.has(property)) continue;
+    findings.push(
+      requirednessFinding(childPath(context.path, property), afterRequired.has(property), context.polarity),
+    );
   }
 
   for (const property of Object.keys(afterProperties).sort()) {
     if (beforeProperties[property] !== undefined) continue;
     const required = afterRequired.has(property);
     const verdict =
-      context.polarity === "input" || context.polarity === "strict"
-        ? required
+      context.unionProof &&
+      (context.polarity === "input" ||
+        before.additionalProperties !== undefined ||
+        before.unevaluatedProperties !== undefined)
+        ? "unknown"
+        : required && (context.polarity === "input" || context.polarity === "strict")
           ? "breaking"
-          : "compatible"
-        : "compatible";
+          : "compatible";
     findings.push(
       finding(
         verdict,
@@ -175,6 +209,12 @@ const compareNode = (
   context: CompareContext,
 ): ReadonlyArray<CompatibilityFinding> => {
   if (jsonEquals(before, after)) return [];
+
+  const replacement = compareUnionReplacement(before, after, {
+    ...context,
+    compare: (oldBranch, newBranch) => compareNode(oldBranch, newBranch, { ...context, unionProof: true }),
+  });
+  if (replacement !== undefined) return [replacement];
 
   const findings: CompatibilityFinding[] = [];
   for (const keyword of UNSUPPORTED_CONSTRUCTS) {
@@ -253,6 +293,13 @@ const compareNode = (
   const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
   for (const key of [...keys].sort()) {
     if (ANNOTATION_KEYS.has(key) || HANDLED_KEYS.has(key) || jsonEquals(before[key], after[key])) continue;
+    if (
+      context.unionProof &&
+      key === "additionalProperties" &&
+      ((context.polarity === "output" && before[key] === undefined) ||
+        (context.polarity === "input" && after[key] === undefined))
+    )
+      continue;
     findings.push(
       finding(
         "unknown",

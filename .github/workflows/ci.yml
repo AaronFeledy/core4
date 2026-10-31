@@ -1266,6 +1266,11 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun test core/test/build/host-execution-compiled.test.ts
 
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts
+
       - name: Upload darwin-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1343,6 +1348,11 @@ jobs:
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -1422,6 +1432,11 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun test core/test/build/host-execution-compiled.test.ts
 
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts
+
       - name: Upload linux-arm64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1500,6 +1515,11 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun test core/test/build/host-execution-compiled.test.ts
 
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando
+        run: bun test core/test/build/renderer-output-compiled.test.ts
+
       - name: Upload linux-x64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1575,6 +1595,11 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
         run: bun test core/test/build/host-execution-compiled.test.ts
 
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
+        run: bun test core/test/build/renderer-output-compiled.test.ts
+
       - name: Upload windows-x64 binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -1649,6 +1674,11 @@ jobs:
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
         run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
+        run: bun test core/test/build/renderer-output-compiled.test.ts
 
       - name: Upload windows-arm64 binary
         if: always()

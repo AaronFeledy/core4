@@ -272,6 +272,11 @@ ${renderSmokeCommands(platform)}
           LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
         run: bun test core/test/build/host-execution-compiled.test.ts
 
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/renderer-output-compiled.test.ts
+
       - name: Upload ${platform.id} binary
         if: always()
         uses: actions/upload-artifact@v6
