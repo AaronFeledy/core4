@@ -138,10 +138,28 @@ const scrubPtyNoise = (text: string): string => {
     .trim();
 };
 
+/**
+ * Decode NDJSON captured through a PTY. Git for Windows' winpty scrapes a fixed-width
+ * console and splits long records across rows, so rows are joined until they parse.
+ */
+const parseCapturedNdjson = (output: string): readonly unknown[] => {
+  const values: unknown[] = [];
+  let pending = "";
+  for (const row of scrubPtyNoise(output).split("\n")) {
+    pending += row;
+    try {
+      values.push(JSON.parse(pending));
+      pending = "";
+    } catch (cause) {
+      if (!(cause instanceof SyntaxError)) throw cause;
+    }
+  }
+  if (pending !== "") throw new Error(`PTY capture is not NDJSON after joining wrapped rows:\n${output}`);
+  return values;
+};
+
 const expectMachineInit = (output: string, cwd: string): void => {
-  const values: readonly unknown[] = scrubPtyNoise(output)
-    .split("\n")
-    .map((line) => JSON.parse(line));
+  const values = parseCapturedNdjson(output);
   const envelopes = values.filter(Schema.is(CommandResultEnvelope));
   expect(envelopes).toHaveLength(1);
   const envelope = envelopes[0];
