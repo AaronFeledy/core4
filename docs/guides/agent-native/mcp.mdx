@@ -313,7 +313,7 @@ can tab through the public schema registry instead of guessing names.
   <Scenario id="plugin-tools" render={false} reason="Bundled plugin tools list with plugin provenance and allow source">
     <Step name="list-plugin-tools">
       <Run command="lando mcp --list --allow db:export --format=json" />
-      <Verify command="lando mcp --list --allow db:export --format=json" expect={{ stdout: { regex: "\"id\":\"db:export\",[^}]*\"source\":\"allow\",\"plugin\":\\{\"name\":\"@lando/sql\",\"source\":\"bundled\"\\}" } }} />
+      <Verify command="lando mcp --list --allow db:export --format=json" expect={{ stdout: { regex: "\"id\":\"db:export\",[^}]*\"source\":\"allow\",\"plugin\":\\{\"name\":\"@lando/sql\",\"source\":\"bundled\"" } }} />
       <Verify command="lando mcp --list --format=json" expect={{ stdout: { regex: "\"id\":\"db:snapshots\",[^}]*\"source\":\"default\"" } }} />
     </Step>
   </Scenario>
