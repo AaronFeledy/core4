@@ -8,7 +8,7 @@
 import { mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { TEST_TIMINGS_FILE, collectShardedTestFiles } from "./test-shards.ts";
+import { SHARD_RUNTIME_FLAGS, TEST_TIMINGS_FILE, collectShardedTestFiles } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
@@ -68,7 +68,16 @@ export const refreshTestTimings = async ({
   try {
     console.error(`[update-test-timings] measuring ${files.length} files -> ${TEST_TIMINGS_FILE}`);
     const exitCode = await execute(
-      [process.execPath, "--no-orphans", "test", `--timings=${candidatePath}`, "--update-timings", ...files],
+      // Measure under the shards' per-test timeout so slow tests are timed, not killed.
+      [
+        process.execPath,
+        "--no-orphans",
+        "test",
+        ...SHARD_RUNTIME_FLAGS,
+        `--timings=${candidatePath}`,
+        "--update-timings",
+        ...files,
+      ],
       repoRoot,
     );
     if (exitCode !== 0) return exitCode;
