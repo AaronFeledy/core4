@@ -6,7 +6,7 @@ import { ConfigService, PathsService, ProcessRunner } from "@lando/sdk/services"
 import { Effect, Option } from "effect";
 
 const REMEDIATION =
-  "Set the reachable IDE address with `lando config set debugger.host <address>`, or use the Lando host with `lando config unset debugger.host`.";
+  "Set the reachable IDE address with `lando config set debugger.host <address>`, or use the Lando host with `lando config unset debugger.host`. Run `lando doctor` to inspect debugger host configuration and discovery.";
 
 const unavailable = (reason: DebuggerHostUnavailableError["reason"], networkingMode?: string) =>
   new DebuggerHostUnavailableError({
