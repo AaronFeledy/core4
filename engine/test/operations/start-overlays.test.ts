@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from "bun:test";
 import { type AppPlan, PortablePath } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { BuildOrchestrator, RuntimeProviderRegistry } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
@@ -84,6 +84,7 @@ for (const operation of ["start", "restart", "rebuild", "selected-rebuild"] as c
         },
       });
       const provider = await Effect.runPromise(harness.runtimeProviderRegistry.select());
+      const builder = await Effect.runPromise(BuildOrchestrator.pipe(Effect.provide(harness.layer)));
       const { agentSocket: _agentSocket, ...capabilities } = provider.capabilities;
       const ssh = spyOn(Ssh, "startSshAgentSession").mockImplementation(() =>
         Effect.sync(() => {
@@ -104,6 +105,14 @@ for (const operation of ["start", "restart", "rebuild", "selected-rebuild"] as c
         // When the real lifecycle operation is invoked.
         const result = await Effect.runPromise(
           run.pipe(
+            Effect.provideService(BuildOrchestrator, {
+              ...builder,
+              build: (value) =>
+                Effect.sync(() => {
+                  calls.push("build");
+                  return value;
+                }),
+            }),
             Effect.provideService(RuntimeProviderRegistry, {
               ...harness.runtimeProviderRegistry,
               select: () =>
