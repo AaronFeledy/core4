@@ -1006,7 +1006,7 @@
     },
     {
       "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
-      "digest": "dbfb8ca5f12b2f7ebfd573464455b078eab32d977faccfef8e4639b5b7d4f8f0"
+      "digest": "28400ad2c41892cb206a495eb3b9289ffbb8139f910d4a4acbf81ca3a6daf7ce"
     },
     {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",
