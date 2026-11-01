@@ -4,7 +4,7 @@ import { withProjectEvents } from "@lando/engine/planner/effective-events";
 import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
-import { configTranslators } from "@lando/lando3";
+import { makeConfigTranslators } from "@lando/lando3";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   AbsolutePath,
@@ -27,8 +27,10 @@ import {
   ToolingEngine,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { serviceTypeFacts } from "@lando/service-lando";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { loadLando3TranslatorPorts } from "../../src/recipes/lando3-ports.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { currentTestPlan, environmentResolverLayer, literalLandofile } from "../_support/value-contracts.ts";
 
@@ -55,7 +57,9 @@ const LANDO3_APP = [
 ].join("\n");
 
 const convert = async (text: string): Promise<LandofileShape> => {
-  const load = configTranslators.get("lando3");
+  const load = makeConfigTranslators(await loadLando3TranslatorPorts(serviceTypeFacts, undefined, {})).get(
+    "lando3",
+  );
   if (load === undefined) throw new Error("lando3 translator is not bundled");
   const translator = await load();
   const input = Schema.decodeUnknownSync(ConfigTranslateDocumentSetInput)({
