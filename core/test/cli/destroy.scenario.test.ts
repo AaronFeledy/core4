@@ -31,6 +31,7 @@ import {
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
 import * as BunDataMover from "@lando/data-mover/service";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -73,6 +74,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -296,7 +298,7 @@ const makeDestroyLayer = (
     apply: () => Effect.succeed({ changed: false }),
     ...(options.quiesceEffect === undefined
       ? {}
-      : { quiesceForFileSync: () => options.quiesceEffect ?? Effect.void }),
+      : { quiesceForFileSync: () => (options.quiesceEffect ?? Effect.void).pipe(Effect.as({})) }),
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
@@ -483,6 +485,7 @@ const makeDestroyLayer = (
       subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("not used"),
       query: () => Effect.succeed([]),
     }),
@@ -1317,7 +1320,10 @@ describe("lando destroy", () => {
       streamEvents: () => Stream.empty,
     });
     const harness = makeDestroyLayer();
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, unavailableEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(unavailableEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
     expect(result.app).toBe("test-destroy");
@@ -1372,7 +1378,10 @@ describe("lando destroy", () => {
         sessions: [testSessionSpec("app-mount")],
       },
     });
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     const error = await Effect.runPromise(
       destroyApp({ volumes: true }).pipe(Effect.provide(layer), Effect.flip),
@@ -1454,7 +1463,10 @@ describe("lando destroy", () => {
         callLog.push("provider.quiesce");
       }),
     });
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     const error = await Effect.runPromise(
       destroyApp({ volumes: true }).pipe(Effect.provide(layer), Effect.flip),
@@ -1537,7 +1549,10 @@ describe("lando destroy", () => {
         callLog.push("provider.quiesce");
       }),
     });
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     const error = await Effect.runPromise(
       destroyApp({ volumes: true }).pipe(Effect.provide(layer), Effect.flip),
@@ -1603,7 +1618,10 @@ describe("lando destroy", () => {
         callLog.push("provider.destroy");
       }),
     });
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
 

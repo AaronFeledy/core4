@@ -5,7 +5,7 @@ import {
   PathsService,
   StateStore,
 } from "@lando/sdk/services";
-import { Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 
 import {
   type ResolveLandofileIncludesOptions,
@@ -20,9 +20,11 @@ import { lintLandofileSnapshot as lintLandofileSnapshotPackage } from "@lando/la
 import type { LandofileRuntimeInputs } from "@lando/landofile/ports";
 import {
   type LandofileFinalizeOverrides,
+  acquireLandofileReplacement as acquireLandofileReplacementPackage,
   findDiscoveredLandofilePath,
   loadLandofileFile as loadLandofileFilePackage,
   loadLandofileLayers as loadLandofileLayersPackage,
+  prepareLandofileReplacement as prepareLandofileReplacementPackage,
   validateLandofileReplacement as validateLandofileReplacementPackage,
 } from "@lando/landofile/service";
 import * as LandofileServiceLayer from "@lando/landofile/service";
@@ -34,6 +36,13 @@ import {
 import * as HttpClient from "effect/http/HttpClient";
 import { landofileRuntimeInputs, landofileSourcePorts } from "../composition.ts";
 
+const ReadOnlyLandofile = Context.Reference<boolean>("@lando/engine/ReadOnlyLandofile", {
+  defaultValue: () => false,
+});
+
+export const withReadOnlyLandofile = <A, E, R>(body: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+  body.pipe(Effect.provideService(ReadOnlyLandofile, true));
+
 export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs> = Effect.gen(function* () {
   const inputs = landofileRuntimeInputs();
   const paths = yield* Effect.serviceOption(PathsService);
@@ -42,6 +51,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
   const downloader = yield* Effect.serviceOption(Downloader);
   return {
     ...inputs,
+    readOnly: yield* ReadOnlyLandofile,
     ...(Option.isNone(stateStore) ? {} : { stateStore: stateStore.value }),
     ports: {
       ...inputs.ports,
@@ -122,6 +132,16 @@ export const validateLandofileReplacement = (
 ) =>
   Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
     validateLandofileReplacementPackage(replacement, { ...inputs, overrides }),
+  );
+
+export const acquireLandofileReplacement = (
+  replacement: Parameters<typeof acquireLandofileReplacementPackage>[0],
+  overrides?: LandofileFinalizeOverrides,
+) =>
+  Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+    inputs.readOnly
+      ? prepareLandofileReplacementPackage(replacement, { ...inputs, overrides })
+      : acquireLandofileReplacementPackage(replacement, { ...inputs, overrides }),
   );
 
 export const loadLandofileFile = (

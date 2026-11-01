@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,7 +26,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -37,6 +40,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +182,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -241,7 +244,9 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "es-cli", args: ["/_cluster/health"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "es-cli", input: { _tag: "RawArgv", argv: ["/_cluster/health"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("es-cli");
@@ -277,7 +282,9 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "es-cli", args: ["/_cat/indices"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "es-cli", input: { _tag: "RawArgv", argv: ["/_cat/indices"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.exitCode).toBe(0);

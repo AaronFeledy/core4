@@ -25,6 +25,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",

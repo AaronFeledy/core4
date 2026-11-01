@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,7 +26,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -37,6 +40,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +182,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -206,7 +209,14 @@ describe("meilisearch service type — scenario: index create + document post + 
       ref: "getmeili/meilisearch:v1.11",
     });
     expect(search.endpoints).toEqual([
-      { _tag: "internal", port: 7700, protocol: "http", name: "search", primary: true },
+      {
+        _tag: "internal",
+        port: 7700,
+        protocol: "http",
+        name: "search",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
@@ -243,7 +253,9 @@ describe("meilisearch service type — scenario: index create + document post + 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "meili", args: ["create-index", "movies"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "meili", input: { _tag: "RawArgv", argv: ["create-index", "movies"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("meili");
@@ -285,7 +297,7 @@ describe("meilisearch service type — scenario: index create + document post + 
     const result = await Effect.runPromise(
       runTooling({
         name: "meili",
-        args: ["add-document", "movies", '[{"id":1,"title":"Casablanca"}]'],
+        input: { _tag: "RawArgv", argv: ["add-document", "movies", '[{"id":1,"title":"Casablanca"}]'] },
       }).pipe(Effect.provide(layer)),
     );
 
@@ -320,7 +332,9 @@ describe("meilisearch service type — scenario: index create + document post + 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "meili", args: ["search", "movies", "casa"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "meili", input: { _tag: "RawArgv", argv: ["search", "movies", "casa"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.exitCode).toBe(0);

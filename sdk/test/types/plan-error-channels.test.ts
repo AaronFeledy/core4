@@ -24,11 +24,13 @@ import type {
   DataTreeOwnershipCapabilityError,
   EventError,
   FileSyncDriftError,
+  FileSyncSelectionError,
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
   GpgAgentTransportError,
   GpgAgentUnavailableError,
+  HealthcheckTargetUnsupportedError,
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   Lando3LandofileDetected,
@@ -104,6 +106,8 @@ type ErrOf<E extends Effect.Effect<unknown, unknown, unknown>> = Effect.Error<E>
 // allow: SIZE_OK — independent verbatim union fixtures must stay in the requested single SDK test file.
 // Given: these member lists are frozen from the pre-refactor contracts, not derived from them.
 type LegacyAppPlannerChannel =
+  | HealthcheckTargetUnsupportedError
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | LandofileValidationError
   | RouteInputError
@@ -150,6 +154,7 @@ type LegacyDiscoverChannel =
 
 // The app contract's local LandofileNotFoundError alias includes LandofileFormConflictError.
 type LegacyStartAppError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
@@ -207,6 +212,7 @@ type LegacyStartAppError =
   | VolumeOperationError;
 
 type LegacyStopAppError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
@@ -246,6 +252,7 @@ type LegacyStopAppError =
   | VolumeOperationError;
 
 type LegacyInfoAppError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
@@ -276,6 +283,7 @@ type LegacyInfoAppError =
   | ProviderUnavailableError;
 
 type LegacyExecAppError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError
@@ -305,6 +313,7 @@ type LegacyExecAppError =
   | ToolingExecError;
 
 type LegacyToolingError =
+  | FileSyncSelectionError
   | CommandAliasConflictError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
@@ -345,6 +354,7 @@ type LegacyToolingError =
   | ToolingExecError;
 
 type LegacyLogsAppError =
+  | FileSyncSelectionError
   | RouteProviderMismatchError
   | Lando3LandofileDetected
   | LandofileDialectMixError

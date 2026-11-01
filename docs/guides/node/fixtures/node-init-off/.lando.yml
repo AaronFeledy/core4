@@ -1,0 +1,7 @@
+name: node-init-off
+services:
+  app:
+    type: "node:22"
+    primary: true
+    init: false
+    command: ["node", "server.mjs"]

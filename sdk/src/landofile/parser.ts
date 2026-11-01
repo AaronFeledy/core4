@@ -358,7 +358,7 @@ const parseScalar = (
     return unescapeDoubleQuotedScalar(trimmed.slice(1, -1));
   }
   if (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2) {
-    return trimmed.slice(1, -1);
+    return trimmed.slice(1, -1).replaceAll("''", "'");
   }
   if (trimmed.startsWith("!")) {
     throw new LandofileParseErrorClass({

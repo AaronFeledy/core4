@@ -1,5 +1,6 @@
-import type { AppPlan, ScanPlan, ScannerConfig } from "@lando/sdk/schema";
+import { type AppPlan, type ScanPlan, type ScannerConfig, logicalEndpointIdentity } from "@lando/sdk/schema";
 
+import { endpointScanPolicies } from "../services/endpoint-scan.ts";
 import type { ResolvedService } from "./service-types.ts";
 
 const defaults: ScanPlan = {
@@ -14,7 +15,7 @@ const overlay = (prior: ScanPlan, layer: ScannerConfig | undefined): ScanPlan =>
   if (layer === undefined) return prior;
   if (layer === false) return { ...prior, enabled: false };
   return {
-    enabled: true,
+    enabled: prior.enabled,
     path: layer.path ?? prior.path,
     okCodes: layer.okCodes ?? prior.okCodes,
     retries: layer.retries ?? prior.retries,
@@ -30,7 +31,7 @@ export const resolveScanPlan = (
 export const attachScanPlans = <Plan extends AppPlan>(
   plan: Plan,
   global: ScannerConfig | undefined,
-  resolvedServices: ReadonlyArray<ResolvedService>,
+  resolvedServices: ReadonlyArray<Pick<ResolvedService, "name" | "resolution">>,
 ): Plan => {
   const configs = new Map(
     resolvedServices.map(({ name, resolution }) => [name, resolution.normalizedConfig.scanner]),
@@ -38,10 +39,32 @@ export const attachScanPlans = <Plan extends AppPlan>(
   return {
     ...plan,
     services: Object.fromEntries(
-      Object.entries(plan.services).map(([name, service]) => [
-        name,
-        { ...service, scanner: resolveScanPlan(global, configs.get(name)) },
-      ]),
+      Object.entries(plan.services).map(([name, service]) => {
+        const config = configs.get(name);
+        const scanner = resolveScanPlan(global, config);
+        const globalPolicy = global === false ? undefined : global;
+        const servicePolicy = config === false ? undefined : config;
+        const policies = endpointScanPolicies(service.endpoints);
+        return [
+          name,
+          {
+            ...service,
+            scanner,
+            endpoints: service.endpoints.map((endpoint) => {
+              if (endpoint.protocol !== "http" && endpoint.protocol !== "https") return endpoint;
+              const policy = policies.get(logicalEndpointIdentity(endpoint));
+              return {
+                ...endpoint,
+                scan: {
+                  path: servicePolicy?.path ?? globalPolicy?.path ?? policy?.path ?? defaults.path,
+                  okCodes:
+                    servicePolicy?.okCodes ?? globalPolicy?.okCodes ?? policy?.okCodes ?? defaults.okCodes,
+                },
+              };
+            }),
+          },
+        ];
+      }),
     ),
   };
 };

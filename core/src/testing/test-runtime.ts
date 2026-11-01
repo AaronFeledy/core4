@@ -7,29 +7,10 @@ import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provi
 import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
-import {
-  Cause,
-  Clock,
-  type Context,
-  DateTime,
-  type Duration,
-  Effect,
-  Layer,
-  Option,
-  PubSub,
-  Queue,
-  Schema,
-  Stream,
-} from "effect";
+import { Clock, type Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
 import * as ContainerHelperAssetsLayer from "../container-helper/assets.ts";
 
-import {
-  CacheError,
-  EventError,
-  PluginLoadError,
-  ScratchAppNotFoundError,
-  SecretNotFoundError,
-} from "@lando/sdk/errors";
+import { CacheError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -44,7 +25,6 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   CacheService,
@@ -52,9 +32,7 @@ import {
   ConfigService,
   DeprecationService,
   type EnvironmentValueResolver,
-  type EventFor,
   EventService,
-  type EventWaitSpec,
   FileSyncEngine,
   FileSystem,
   GlobalAppService,
@@ -80,6 +58,7 @@ import {
   Telemetry,
   ToolingEngine,
 } from "@lando/sdk/services";
+import { makeTestEventService } from "./test-runtime-events.ts";
 /**
  * Re-export of the SDK's contract-valid deterministic runtime provider fixture.
  */
@@ -371,16 +350,6 @@ interface TestCacheEntry {
 const isExpiredCacheEntry = (entry: TestCacheEntry, nowMs: number): boolean =>
   entry.expiresAtMs !== undefined && entry.expiresAtMs <= nowMs;
 
-const eventError = (event: string, message: string, cause?: unknown): EventError =>
-  new EventError({
-    message,
-    event,
-    ...(cause === undefined ? {} : { cause }),
-    remediation: event
-      ? `Fix the handler or emitter for event \`${event}\`, then re-run the operation that publishes it.`
-      : "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
-  });
-
 const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A, I>) => {
   if (schema === undefined) {
     return Effect.succeed(value as A);
@@ -475,99 +444,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     record: () => Effect.void,
   });
 
-  const eventPubSub = Effect.runSync(PubSub.unbounded<LandoEvent>());
-  const eventQueues = new Set<Queue.Queue<LandoEvent>>();
-  const eventHistoryRedactor = createRedactor("secrets");
-  const matchesEventName = (name: string, event: LandoEvent): boolean => name === "*" || event._tag === name;
-  const waitForEventMatch = Effect.fnUntraced(function* <A>(
-    label: string,
-    predicate: (event: LandoEvent) => boolean,
-    timeout: Duration.Input | undefined,
-  ): Effect.fn.Return<A, EventError, import("effect").Scope.Scope> {
-    const queue = yield* PubSub.subscribe(eventPubSub);
-    const awaited = Stream.fromSubscription(queue).pipe(
-      Stream.filter(predicate),
-      Stream.runHead,
-      Effect.flatMap(
-        Option.match({
-          onNone: () => Effect.fail(eventError(label, `Event stream ended before receiving event: ${label}`)),
-          onSome: (event) => Effect.succeed(event as A),
-        }),
-      ),
-    );
-    return yield* timeout === undefined
-      ? awaited
-      : awaited.pipe(
-          Effect.timeoutOrElse({
-            duration: timeout,
-            orElse: () =>
-              Effect.fail(
-                (() =>
-                  new EventError({
-                    message: `Timed out waiting for event: ${label}`,
-                    event: label,
-                    reason: "timeout",
-                    remediation: `Increase the wait for event \`${label}\`, or fix whatever should emit that event before timing out.`,
-                  }))(),
-              ),
-          }),
-        );
-  }, Effect.scoped);
-  const eventService = EventService.of({
-    publish: (event) =>
-      Effect.sync(() => {
-        calls.events.push(event);
-        for (const queue of eventQueues) Queue.offerUnsafe(queue, event);
-      }).pipe(
-        Effect.andThen(PubSub.publish(eventPubSub, event)),
-        Effect.asVoid,
-        Effect.catchCauseIf(Cause.hasDies, (cause) =>
-          Effect.fail(eventError(event._tag, `Failed to publish event: ${event._tag}`, cause)),
-        ),
-      ),
-    subscribe: <Name extends string>(name: Name) =>
-      Stream.fromPubSub(eventPubSub).pipe(
-        Stream.filter((event): event is EventFor<Name> => matchesEventName(name, event)),
-      ),
-    subscribeQueue: Effect.acquireRelease(
-      Queue.unbounded<LandoEvent>().pipe(
-        Effect.tap((queue) =>
-          Effect.sync(() => {
-            eventQueues.add(queue);
-          }),
-        ),
-      ),
-      (queue) =>
-        Effect.sync(() => {
-          eventQueues.delete(queue);
-        }).pipe(Effect.andThen(Queue.shutdown(queue)), Effect.asVoid),
-    ),
-    waitFor: (name, options) =>
-      waitForEventMatch<EventFor<typeof name>>(
-        name,
-        (event) => matchesEventName(name, event) && (options?.filter?.(event as never) ?? true),
-        options?.timeout,
-      ),
-    waitForAny: (specs, options) =>
-      waitForEventMatch(
-        "*",
-        (event) =>
-          specs.some(
-            (spec: EventWaitSpec) =>
-              matchesEventName(spec.name, event) && (spec.filter?.(event as never) ?? true),
-          ),
-        options?.timeout,
-      ),
-    query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
-      Effect.sync(() =>
-        calls.events
-          .filter(
-            (event): event is EventFor<Name> =>
-              matchesEventName(name, event) && (filter?.(event as EventFor<Name>) ?? true),
-          )
-          .map((event) => eventHistoryRedactor.redactValue(event) as EventFor<Name>),
-      ),
-  });
+  const eventService = makeTestEventService(calls.events, config.events?.deliveryQueueCapacity);
 
   const deprecationService = DeprecationService.of({
     use: () => Effect.void,

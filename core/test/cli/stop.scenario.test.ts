@@ -31,6 +31,7 @@ import {
   StateStore,
 } from "@lando/core/services";
 import { makeTestStateStore } from "@lando/core/testing";
+import { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 
 import { makeLandoPaths } from "@lando/paths";
 const testStateStoreLayer = Layer.succeed(StateStore, makeTestStateStore().service);
@@ -63,6 +64,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -295,6 +297,7 @@ const makeStopLayer = (
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
@@ -549,11 +552,12 @@ describe("lando stop", () => {
           subscribe: () => Stream.die("not used"),
           subscribeQueue: Effect.die("not used"),
           waitFor: () => Effect.die("not used"),
+          subscribeWithHistory: () => Effect.never,
           waitForAny: () => Effect.die("not used"),
           query: () => Effect.succeed([]),
         }),
       ),
-      Layer.succeed(FileSyncEngine, unavailableEngine),
+      FileSyncResolver.layerWithEngine(unavailableEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     const result = await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));
@@ -609,7 +613,10 @@ describe("lando stop", () => {
         sessions: [testSessionSpec("app-mount")],
       },
     });
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     const error = await Effect.runPromise(stopApp().pipe(Effect.provide(layer), Effect.flip));
 
@@ -682,7 +689,10 @@ describe("lando stop", () => {
         sessions: existing.map((session) => session.spec),
       },
     });
-    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+    const layer = Layer.mergeAll(
+      harness.layer,
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
+    );
 
     const error = await Effect.runPromise(stopApp().pipe(Effect.provide(layer), Effect.flip));
 
@@ -827,11 +837,12 @@ describe("lando stop", () => {
           subscribe: () => Stream.die("not used"),
           subscribeQueue: Effect.die("not used"),
           waitFor: () => Effect.die("not used"),
+          subscribeWithHistory: () => Effect.never,
           waitForAny: () => Effect.die("not used"),
           query: () => Effect.succeed([]),
         }),
       ),
-      Layer.succeed(FileSyncEngine, fakeEngine),
+      FileSyncResolver.layerWithEngine(fakeEngine, { platform: ["linux", "darwin", "win32"] }),
     );
 
     await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));

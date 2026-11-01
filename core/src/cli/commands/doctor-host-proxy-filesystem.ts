@@ -1,4 +1,5 @@
 import { lstat, readdir } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import { Context, Effect, Layer } from "effect";
 
@@ -12,9 +13,15 @@ export type HostProxyDoctorRootState =
 
 export interface HostProxyDoctorFileSystemShape {
   readonly readRoot: (path: string) => Effect.Effect<HostProxyDoctorRootState>;
-  readonly socketMetadata: (
-    path: string,
-  ) => Effect.Effect<{ readonly type: "socket" | "other"; readonly mode: number } | undefined>;
+  readonly socketMetadata: (path: string) => Effect.Effect<
+    | {
+        readonly type: "socket" | "other";
+        readonly mode: number;
+        readonly owned: boolean;
+        readonly privateDirectory: boolean;
+      }
+    | undefined
+  >;
 }
 
 export class HostProxyDoctorFileSystem extends Context.Service<
@@ -45,7 +52,17 @@ export class HostProxyDoctorFileSystem extends Context.Service<
         Effect.promise(async () => {
           try {
             const metadata = await lstat(path);
-            return { type: metadata.isSocket() ? "socket" : "other", mode: metadata.mode & 0o777 } as const;
+            const directory = await lstat(dirname(path));
+            return {
+              type: metadata.isSocket() ? "socket" : "other",
+              mode: metadata.mode & 0o777,
+              owned: metadata.uid === process.getuid?.(),
+              privateDirectory:
+                directory.isDirectory() &&
+                !directory.isSymbolicLink() &&
+                (directory.mode & 0o777) === 0o700 &&
+                directory.uid === process.getuid?.(),
+            } as const;
           } catch (error) {
             if (error instanceof Error) return undefined;
             throw error;

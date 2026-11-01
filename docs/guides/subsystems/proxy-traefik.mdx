@@ -63,9 +63,16 @@ lando info
 
 HTTP-only apps skip CA setup. If a browser warns on HTTPS, see [Trust local HTTPS certificates](./certificates-mkcert.mdx).
 
-The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-proxy.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
+The default domain is `lndo.site`. Public DNS answers every `*.lndo.site` name with `127.0.0.1`, so most hosts need no DNS setup. Offline hosts, and resolvers that drop loopback answers as DNS-rebinding protection, need a local rule; see [Resolve lndo.site on this machine](./host-dns.mdx). Other devices on the LAN get that same loopback answer, which points them at themselves. See [Reach an app from another device](./external-access.mdx).
 
 Most apps skip `routes:`. A service with no `routes:` and no `proxy.<name>` entry gets the default hostname. Author routes and Lando serves exactly those instead, so list every name you want. Set `routes: []` (or `proxy.<name>: []`) to give a service no hostname at all; its published host ports still work.
+
+Interactive `lando init` shows configured URL candidates after you answer the
+recipe questions. These come from explicit authored routes, which can omit the
+service prefix. They use the configured domain and preferred router ports, but
+cannot establish runtime fallback ports or reachability. No explicit candidate
+does not mean the app will have no automatic routes. Use `lando info` after
+starting the app for its published URLs.
 
 ## Change the default domain
 

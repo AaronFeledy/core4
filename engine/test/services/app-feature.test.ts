@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
 
 import type { AppFeatureContext, AppFeatureDefinition, ServiceAppMountIntent } from "@lando/sdk/services";
+import { finalizeDraft } from "../../src/services/finalize-service.ts";
 
 import {
   type AppFeatureServiceDraft,
@@ -59,6 +60,66 @@ const run = (input: ComposeAppFeaturesInput) => Effect.runPromise(composeAppFeat
 const runExit = (input: ComposeAppFeaturesInput) => Effect.runPromiseExit(composeAppFeatures(input));
 
 describe("composeAppFeatures activation gating", () => {
+  test.each([true, false])("authored init %s wins over app-feature contribution", async (init) => {
+    // Given
+    const service = draft({ serviceName: "web", normalizedConfig: { init } });
+    const initFeature: AppFeatureDefinition = {
+      id: "app.init",
+      priority: 100,
+      selectors: { names: ["web"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setInit(!init))),
+    };
+    // When
+    await run(inputFor([service], [feature(initFeature)]));
+    const plan = finalizeDraft(service);
+    // Then
+    expect(plan).toHaveProperty("init", init);
+  });
+  test.each([true, false])("finalizes app-feature init %s", async (init) => {
+    // Given
+    const service = draft({ serviceName: "web" });
+    const initFeature: AppFeatureDefinition = {
+      id: "app.init",
+      priority: 100,
+      selectors: { names: ["web"] },
+      apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setInit(init))),
+    };
+    // When
+    await run(inputFor([service], [feature(initFeature)]));
+    const plan = finalizeDraft(service);
+    // Then
+    expect(plan).toHaveProperty("init", init);
+  });
+
+  test("rejects conflicting app-feature init writes", async () => {
+    // Given
+    const features = [true, false].map(
+      (init): AppFeatureDefinition => ({
+        id: `app.init.${init}`,
+        priority: 100,
+        selectors: { names: ["web"] },
+        apply: (ctx) => Effect.sync(() => ctx.forEachSelected((s) => s.setInit(init))),
+      }),
+    );
+    // When
+    const result = await runExit(
+      inputFor(
+        [draft({ serviceName: "web" })],
+        features.map((f) => feature(f)),
+      ),
+    );
+    // Then
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      const error = Cause.findErrorOption(result.cause);
+      expect(Option.isSome(error)).toBe(true);
+      if (Option.isSome(error)) {
+        expect(error.value._tag).toBe("MutationConflict");
+        if (error.value._tag === "MutationConflict") expect(error.value.field).toBe("init");
+      }
+    }
+  });
+
   test("an activated feature mutates selected service drafts in place", async () => {
     const services = [draft({ serviceName: "php", serviceType: "php" }), draft({ serviceName: "node" })];
     const smtp: AppFeatureDefinition = {

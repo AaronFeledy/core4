@@ -7,7 +7,11 @@ import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
 import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
-import { ComposeServiceKnobFields, ComposeTmpfsServiceField } from "./compose-service-knobs.ts";
+import {
+  ComposeInitServiceField,
+  ComposeServiceKnobFields,
+  ComposeTmpfsServiceField,
+} from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { ServiceCreds } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
@@ -38,7 +42,9 @@ import { LandofileRecipeField } from "./recipe-provenance.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
+import { ToolingAuthoredInputFields } from "./tooling-input.ts";
 import { toolingTaskStringConstraints } from "./tooling-task-string.ts";
+export { ToolingFlagShape, ToolingArgShape } from "./tooling-input.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 const REPLACE = { kind: "replace" } as const;
@@ -551,6 +557,9 @@ const AppMountEntry = Schema.String.check(
 
 const AppMountObject = Schema.Struct({
   target: Schema.String.annotate({ description: "Container destination for application source." }),
+  accelerate: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Allow automatic file-sync acceleration; false keeps an ordinary provider bind.",
+  }),
   readOnly: Schema.optionalKey(Schema.Boolean).annotate({
     description: "Mount application source read-only.",
   }),
@@ -642,6 +651,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     port: Schema.optionalKey(PortNumber).annotate({
       description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
     }),
+    consolePort: Schema.optionalKey(PortNumber).annotate({
+      description:
+        "MinIO console TCP port number (integer 1-65535); defaults to 9001, independently of the API port.",
+    }),
     framework: Schema.optionalKey(Schema.String),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:
@@ -685,6 +698,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     labels: Schema.optionalKey(ComposeLabelsInput),
 
     ...ComposeServiceKnobFields,
+    init: ComposeInitServiceField,
 
     ports: Schema.optionalKey(ComposePortsField),
     expose: Schema.optionalKey(ComposeExposeField),
@@ -740,6 +754,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
 
     healthcheck: Schema.optionalKey(HealthcheckInput),
+    readiness: Schema.optionalKey(HealthcheckInput).annotate({
+      description:
+        "Lifecycle readiness probe, independent of native healthcheck; false explicitly disables command readiness, not process supervision.",
+    }),
     logs: Schema.optionalKey(layerMerge(Schema.Array(LogSourceInput), keyedMerge("log-id"))),
     certs: Schema.optionalKey(CertsInput).annotate({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -863,41 +881,6 @@ export const ToolingVar = Schema.Union([
 ]);
 export type ToolingVar = typeof ToolingVar.Type;
 
-export const ToolingFlagShape = Schema.Struct({
-  alias: Schema.optionalKey(Schema.String).annotate({
-    description: "Optional single-token alias for this flag.",
-  }),
-  choices: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-    description: "Allowed values for this flag.",
-  }),
-  boolean: Schema.optionalKey(Schema.Boolean).annotate({
-    description: "Whether this flag is a boolean switch instead of a value-taking option.",
-  }),
-  required: Schema.optionalKey(Schema.Boolean).annotate({
-    description: "Whether this flag must be supplied.",
-  }),
-  description: Schema.optionalKey(Schema.String),
-  default: Schema.optionalKey(ToolingVarLiteral),
-  deprecated: Schema.optionalKey(DeprecationNotice),
-});
-export type ToolingFlagShape = typeof ToolingFlagShape.Type;
-
-export const ToolingArgShape = Schema.Struct({
-  choices: Schema.optionalKey(Schema.Array(Schema.String)).annotate({
-    description: "Allowed values for this argument.",
-  }),
-  order: Schema.optionalKey(
-    Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThanOrEqualTo(0))),
-  ).annotate({
-    description: "Positional order of this argument within the task.",
-  }),
-  description: Schema.optionalKey(Schema.String),
-  required: Schema.optionalKey(Schema.Boolean),
-  default: Schema.optionalKey(ToolingVarLiteral),
-  deprecated: Schema.optionalKey(DeprecationNotice),
-});
-export type ToolingArgShape = typeof ToolingArgShape.Type;
-
 export const ToolingStepShape = Schema.Struct({
   cmd: Schema.String.annotate({ description: "Shell command executed for this step." }),
   service: Schema.optionalKey(Schema.String).annotate({
@@ -939,7 +922,7 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * `passThrough:`, `sources:`, `generates:`, `method:`, `status:`,
  * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
  * `silent:`, `output:`, `failFast:`, `aliases:`,
- * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
+ * `topLevelAlias:`, `namespace:`, `internal:`,
  * `examples:`, `usage:`.
  */
 export const ToolingTaskShape = Schema.Struct({
@@ -964,9 +947,7 @@ export const ToolingTaskShape = Schema.Struct({
   ).annotate({
     description: "Ordered shell commands or command steps with task-local execution overrides.",
   }),
-  arguments: Schema.optionalKey(Schema.Literal(false)).annotate({
-    description: "Set to false to reject caller-supplied positional arguments for this task.",
-  }),
+  ...ToolingAuthoredInputFields,
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Working directory used when the tooling task runs.",
   }),
@@ -977,12 +958,6 @@ export const ToolingTaskShape = Schema.Struct({
     description: "Task-local variables, overriding include and app-wide tooling variables.",
   }),
   deprecated: Schema.optionalKey(DeprecationNotice),
-  flags: Schema.optionalKey(Schema.Record(Schema.String, ToolingFlagShape)).annotate({
-    description: "Named command-line flags accepted by the task.",
-  }),
-  args: Schema.optionalKey(Schema.Record(Schema.String, ToolingArgShape)).annotate({
-    description: "Positional arguments accepted by the task.",
-  }),
 });
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 
@@ -1055,14 +1030,14 @@ export type ToolingDefaultsShape = typeof ToolingDefaultsShape.Type;
  * script body.
  *
  * Accepted fields (matching `ToolingTaskShape`):
- * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
- *   Defaults to `:host` when omitted.
+ * - `service:` — literal service target, defaulting to `:host` when omitted.
  * - `desc:` / `description:` / `summary:` — short help text. `desc` is
  *   accepted as an alias for `description` by script-backed tooling.
+ * - `flags:` / `args:` / `disabled:` — shared tooling input declarations and visibility.
  *
  * Unsupported fields (`aliases`, `topLevelAlias`, `bootstrap`,
- * `flags`, `args`, `passThrough`, `sources`, `generates`, `status`,
- * `preconditions`, `run`, `platforms`, `internal`, `disabled`,
+ * `passThrough`, `sources`, `generates`, `status`,
+ * `preconditions`, `run`, `platforms`, `internal`,
  * `engine`) are detected pre-decode (including nested YAML list/object
  * forms like `sources:\n  - …`) and rejected with a tagged
  * `NotImplementedError` carrying `commandId: "landofile.parse"`, the
@@ -1075,6 +1050,8 @@ export const BunShellScriptFrontMatter = Schema.Struct({
   desc: Schema.optionalKey(Schema.String),
   description: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
+  ...ToolingAuthoredInputFields,
+  disabled: Schema.optionalKey(Schema.Boolean),
 });
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
 

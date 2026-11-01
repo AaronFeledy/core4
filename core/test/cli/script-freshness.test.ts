@@ -169,7 +169,11 @@ test("a new script becomes unavailable after the Landofile changes", async () =>
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
       error: {
-        _tag: "ToolingCompileError",
+        _tag: "ToolingCommandUnavailableError",
+        reason: "stale-cache",
+        staleReason: "source",
+        commandId: "app:probe",
+        sourcePath: join(root, ".lando.yml"),
         remediation: expect.stringContaining("app:cache:refresh"),
       },
     });

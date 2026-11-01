@@ -45,7 +45,7 @@ tooling:
 
 Use the object form when you need `service:`, flags, args, or other task settings. An empty shorthand string is rejected; use `false` to turn a task off. The object form still accepts `cmd: ""`, but that is not a disabling shorthand.
 
-MySQL and Postgres already wait on their own probe. To wait on your app, set `healthcheck:` on the service. See [Make start wait for your app](../services/wait-for-your-app.mdx).
+MySQL and Postgres already wait on their own probe. To wait on your app, set `readiness:` on the service; `healthcheck:` configures ongoing native health independently. See [Make start wait for your app](../services/wait-for-your-app.mdx) for defaults, fallback, and disabling either policy.
 
 ## Add a hostname
 
@@ -126,7 +126,7 @@ layer, then run the command again to check the remaining configuration.
 
 Maps deep-merge and scalars use the later value. Collection rules come from each field's schema, not the properties of its entries. Included Landofiles follow the same rules.
 
-These are authored values: Lando merges before interpreting shorthand or adding defaults. A local `appMount: /site` replaces an inherited app-mount object, including its `excludes`. Changing `environment` or `labels` between a list and a map also replaces the earlier value. Use maps when you want individual keys to merge. Only literal `healthcheck: false` discards an inherited probe before later layers; disabled object spellings still participate in ordinary map merging.
+These are authored values: Lando merges before interpreting shorthand or adding defaults. A local `appMount: /site` replaces an inherited app-mount object, including its `excludes`. Changing `environment` or `labels` between a list and a map also replaces the earlier value. Use maps when you want individual keys to merge. Literal `false` under `healthcheck` or `readiness` discards that policy's inherited probe before later layers; disabled object spellings still participate in ordinary map merging. Disabling native health does not disable explicit or contributed readiness, while disabled readiness blocks fallback to native health.
 
 The same rule applies to tooling: `tooling.check: echo local` or `tooling.check: false` replaces an inherited task wholesale, including its `service`, `cmds`, and flags. Lando interprets those shorthands only after composing the layers. The bare string `disabled` is rejected; use `false` to disable a task.
 

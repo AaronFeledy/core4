@@ -145,7 +145,7 @@ export const makeAppHandle = (
     exec: (options: ExecAppOptions) =>
       ops.execApp(options, target).pipe(
         Effect.tap((result) =>
-          result.stderr.length === 0
+          !result.stderr
             ? Effect.void
             : Effect.gen(function* () {
                 const redaction = yield* RedactionService;
@@ -158,7 +158,16 @@ export const makeAppHandle = (
         provide,
       ),
     tooling: (id: string, options?: ToolingOptions) =>
-      ops.runTooling({ name: id, cwd: root, ...options }, target).pipe(provide),
+      ops.runTooling({ name: id, cwd: root, ...options }, target).pipe(
+        Effect.map(({ tool, service, exitCode, stdout, stderr }) => ({
+          tool,
+          service,
+          exitCode,
+          ...(stdout === undefined ? {} : { stdout }),
+          ...(stderr === undefined ? {} : { stderr }),
+        })),
+        provide,
+      ),
     logs: (options?: LogsAppOptions) =>
       Stream.unwrap(
         ops.logsApp(options, target).pipe(

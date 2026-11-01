@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { PluginRegistry } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect } from "effect";
-import { planApp } from "../../src/planner/assemble.ts";
+import { Effect, Layer } from "effect";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 for (const type of ["nginx", "node:22"]) {
   test.each([
@@ -28,15 +28,12 @@ for (const type of ["nginx", "node:22"]) {
       Effect.gen(function* () {
         const registry = yield* PluginRegistry;
         return yield* planApp(
-          registry,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          undefined,
-          landofile,
-          TestRuntimeProvider.capabilities,
-          "/srv/apps/primary-port",
+          {
+            landofile,
+            providerCapabilities: TestRuntimeProvider.capabilities,
+            appRoot: "/srv/apps/primary-port",
+          },
+          Layer.succeed(PluginRegistry, registry),
         );
       }).pipe(Effect.provide(PluginRegistryLayer.layer)),
     );

@@ -55,6 +55,22 @@ services:
 
 That becomes `["sh", "-c", "printf ready && exec sleep infinity"]`. Malformed quotes fail planning with `LandofileValidationError`. Only `type: compose` splits strings this way; other service types run a string `command` as a shell script.
 
+## Choose an init process
+
+A `type: compose` service leaves init unspecified unless you configure it, preserving the container runtime's default. Set `init: true` when the image's process does not handle SIGTERM as PID 1 or leaves zombie children behind, and Lando runs the runtime's init as PID 1, forwarding the stop signal to your command and reaping orphans. Set `init: false` to explicitly disable the runtime's init, even if the runtime enables it by default.
+
+```yaml
+services:
+  worker:
+    type: compose
+    image: alpine:3.20
+    appMount: false
+    init: true
+    command: sleep infinity
+```
+
+Init forwards the signal to the process it started, which is the first word of your argv. With `sh -c '...'` that is the shell; use `exec` so your program takes its place. Catalog services such as `type: node` already default to `init: true`; see [Stop cleanly](./node.mdx#stop-cleanly).
+
 ## Probe the service
 
 From your host terminal, curl the published HTTP port after the service starts:

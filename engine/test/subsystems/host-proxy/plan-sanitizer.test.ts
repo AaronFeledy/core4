@@ -40,13 +40,15 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
       LANDO_HOST_PROXY_SESSION: "session-id",
     },
     mounts: [
-      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
-        type: "bind" as const,
-        source: "/tmp/lando-shim",
-        target: PortablePath.make(target),
-        readOnly: true,
-        realization: "passthrough" as const,
-      })),
+      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open", "/run/lando/host-proxy/credentials"].map(
+        (target) => ({
+          type: "bind" as const,
+          source: "/tmp/lando-shim",
+          target: PortablePath.make(target),
+          readOnly: true,
+          realization: "passthrough" as const,
+        }),
+      ),
       {
         type: "bind",
         source: "/tmp/lando-shim",

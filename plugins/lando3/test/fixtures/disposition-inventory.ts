@@ -683,7 +683,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
       [
         "healthcheck",
         "{command: echo ok, retry: 10, delay: 1000}",
-        "healthcheck",
+        "readiness",
         { command: "echo ok", retries: 10, intervalSeconds: 1 },
       ],
       ["ports", "[8080/http]", "endpoints", [{ _tag: "internal", protocol: "http", port: 8080 }]],
@@ -821,15 +821,14 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
   ),
   {
     pattern: ["services", "*", "healthcheck", "user"],
-    disposition: "drop",
+    disposition: "target",
     owner: "lower-api4",
     golden: [
-      diagnostic(api4("healthcheck: {command: echo ok, user: root}"), "dropped", [
-        "services",
-        "s",
-        "healthcheck",
-        "user",
-      ]),
+      output(
+        api4("healthcheck: {command: echo ok, user: root}"),
+        ["services", "s", "readiness", "user"],
+        "root",
+      ),
     ],
   },
   {

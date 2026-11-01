@@ -1,9 +1,17 @@
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { type EndpointPlan, validationIssuesFromSchemaIssue } from "@lando/sdk/schema";
+import {
+  type EndpointPlan,
+  ServiceFeatureValidationResult,
+  validationIssuesFromSchemaIssue,
+} from "@lando/sdk/schema";
 import type { AppFeatureServiceView, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Result, Schema } from "effect";
 import { sortRecord } from "./draft.ts";
 import type { ComposeServiceInput } from "./feature.ts";
+
+const decodeFeatureValidation = Schema.decodeUnknownResult(Schema.toType(ServiceFeatureValidationResult), {
+  onExcessProperty: "error",
+});
 
 export interface PreparedServiceFeature {
   readonly id: string;
@@ -11,6 +19,7 @@ export interface PreparedServiceFeature {
   readonly definition: ServiceFeatureDefinition;
   readonly originalRawConfig: Readonly<Record<string, unknown>>;
   readonly originalDecodedConfig?: Readonly<Record<string, unknown>>;
+  readonly validation?: ServiceFeatureValidationResult;
 }
 
 export type ApplicationConfig =
@@ -81,6 +90,7 @@ export const prepareServiceComposition = (input: ComposeServiceInput): PreparedS
       primary: base.primary,
       featureIds: Object.freeze(ordered.map((feature) => feature.id)),
       normalizedConfig: input.normalizedConfig,
+      resolutionMetadata: input.resolutionMetadata,
       connection: base.connection,
       framework: input.normalizedConfig.framework,
     }),
@@ -92,15 +102,17 @@ export const declarePreparedServiceEndpoints = Effect.fnUntraced(function* (
 ) {
   const endpoints: EndpointPlan[] = [];
   const features: PreparedServiceFeature[] = [];
+  const errors: ServiceFeatureError[] = [];
   for (const feature of prepared.features) {
     const declare = feature.definition.declareEndpoints;
-    if (declare === undefined) {
+    const validate = feature.definition.validateEffective;
+    if (declare === undefined && validate === undefined) {
       features.push(feature);
       continue;
     }
-    const config = yield* decodeServiceFeatureConfig(feature);
-    endpoints.push(
-      ...(yield* declare({
+    const result = yield* Effect.gen(function* () {
+      const config = yield* decodeServiceFeatureConfig(feature);
+      const context = Object.freeze({
         serviceName: prepared.facts.base.name,
         serviceType: prepared.facts.base.type,
         base: prepared.facts.baseKind,
@@ -110,12 +122,42 @@ export const declarePreparedServiceEndpoints = Effect.fnUntraced(function* (
         host: prepared.facts.host,
         normalizedConfig: prepared.facts.normalizedConfig,
         connection: prepared.facts.base.connection,
-        config,
-      })),
-    );
-    features.push({ ...feature, originalDecodedConfig: config });
+        config: Object.freeze(config),
+      });
+      let validation: ServiceFeatureValidationResult | undefined;
+      if (validate !== undefined) {
+        const result = decodeFeatureValidation(yield* validate(context));
+        if (Result.isFailure(result)) {
+          return yield* Effect.fail(
+            new ServiceFeatureError({
+              feature: feature.id,
+              message: `Feature ${feature.id} returned an invalid effective validation result.`,
+              remediation:
+                "Return ServiceFeatureValidationResult with handledServiceFields; report findings through ServiceFeatureError.issues.",
+            }),
+          );
+        }
+        validation = result.success;
+      }
+      const contribution = declare === undefined ? [] : yield* declare(context);
+      return {
+        feature: {
+          ...feature,
+          originalDecodedConfig: config,
+          ...(validation === undefined ? {} : { validation }),
+        },
+        contribution,
+      };
+    }).pipe(Effect.result);
+    if (Result.isFailure(result)) {
+      errors.push(result.failure);
+      features.push(feature);
+    } else {
+      features.push(result.success.feature);
+      endpoints.push(...result.success.contribution);
+    }
   }
-  return { prepared: { ...prepared, features }, contributions: endpoints };
+  return { prepared: { ...prepared, features }, contributions: endpoints, errors };
 });
 
 export const applicationFeatureConfig = (feature: PreparedServiceFeature, application: ApplicationConfig) => {

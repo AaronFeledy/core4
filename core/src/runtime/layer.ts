@@ -19,7 +19,6 @@ import type {
   Downloader,
   EnvironmentValueResolver,
   EventService,
-  FileSyncEngine,
   FileSystem,
   GlobalAppService,
   InteractionService,
@@ -48,6 +47,7 @@ import { bundledPluginModules } from "@lando/engine/composition";
 import type { LoggerMode } from "@lando/engine/logging/service";
 import type { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import type { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import type { FileSyncResolver } from "@lando/engine/plugins/file-sync-resolver";
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import {
   type BootstrapLifecycleTracker,
@@ -75,6 +75,7 @@ import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import type { GlobalConfigSnapshot, GlobalConfigSources } from "@lando/engine/services/config";
 import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
+import type { EventDispatchControl } from "@lando/engine/services/event-service";
 import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
 import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
@@ -109,6 +110,7 @@ type MinimalRuntimeServices =
   | ConfigService
   | EventService
   | EventDeliveryMetrics
+  | EventDispatchControl
   | PathsService
   | FileSystem
   | CacheService
@@ -137,9 +139,11 @@ type CommandRuntimeServices = PluginRuntimeServices | LandofileService | Command
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
   | CommandRuntimeServices
+  | ShellRunner
   | RuntimeProvider
   | RuntimeProviderRegistry
   | CertificateAuthorityResolver
+  | FileSyncResolver
   | DataMover
   | AppPlanSanitizer
   | ContainerHelperAssets
@@ -161,8 +165,6 @@ export type AppRuntimeServices =
   | AppPlanner
   | EventService
   | ToolingEngine
-  | ShellRunner
-  | FileSyncEngine
   | RouterService
   | RuntimeCwd
   | EventCommandExecutor;

@@ -7,9 +7,17 @@ tags: [beta, docs, php, service, customization]
 
 # Customize PHP
 
-Start from `type: php:8.3` (or another supported minor). That image ships a fixed set of built-in PHP extensions. Add an extra extension, mount a `php.ini`, or replace the image. Build steps change the image, mounted settings change configuration, and a replacement image takes responsibility for its own tools and extensions.
+Add extensions or PHP settings to an existing `type: php:8.3` service (or another supported minor). Lando installs a fixed extension set on stock images. Build steps add to that image, mounted settings change configuration, and a replacement image takes responsibility for its own tools and extensions. Run the commands below from your app directory on the host.
 
 ## See built-in extensions
+
+Start an existing service to pick up the current extension set, then check it.
+Replace `app` with your PHP service name:
+
+```sh
+lando start
+lando exec app -- php --ri pcntl
+```
 
 Stock PHP services using Apache, FPM, or CLI include these extensions alongside PHP's standard modules:
 
@@ -30,14 +38,7 @@ gd, intl, mbstring, mysqli, opcache, pcntl, pdo_mysql, pdo_pgsql, pdo_sqlite, zi
 | `pdo_sqlite` | PDO driver for SQLite |
 | `zip` | ZIP archive support |
 
-Stock PHP services with `framework: wordpress` also install pinned, checksum-verified WP-CLI at `/usr/local/bin/wp` and set `WP_CLI_ALLOW_ROOT=1` for Lando tooling. Custom images supply their own WP-CLI and extensions.
-
-Start an existing service to pick up the current extension set, then check it. Replace `app` with your PHP service name:
-
-```sh
-lando start
-lando exec app -- php --ri pcntl
-```
+Stock PHP services with `framework: wordpress` also install pinned, checksum-verified WP-CLI at `/usr/local/bin/wp` and set `WP_CLI_ALLOW_ROOT=1` for Lando tooling. Custom images and `build.context` builds supply their own WP-CLI and extensions.
 
 Reverb and Horizon don't need a separate `build.artifact` step to install `pcntl` on a stock PHP service.
 
@@ -50,8 +51,8 @@ Xdebug is not a `build.artifact` PECL one-off. Set `xdebug: true` (or a mode str
 `db_client: auto` is the default. At plan time Lando looks at the other services in your app (MySQL, MariaDB, Postgres, MongoDB) and installs the matching client CLI into the PHP container. Managed MySQL services select 8.0, 8.4, or 9.7 to match their declared series. You can force one with `db_client: "mysql:9.7"` or `db_client: "mariadb:11.4"`, or skip clients entirely with `db_client: false`.
 Detection is deterministic from the resolved plan; it never probes the
 provider. Changing `db_client` changes the build key, so the next `lando start`
-rebuilds that image. A custom `image:` still validates the option but skips
-the install steps.
+rebuilds that image. A custom `image:` or `build.context` still validates the
+option but skips the install steps.
 
 Oracle MySQL clients use Oracle's signed Bookworm APT repository on amd64. On Linux arm64, Lando installs pinned Oracle EL9 client RPM payloads: 8.0.46, 8.4.11, or 9.7.2 to match the selected series. All four package SHA256 checks must pass before extraction. Lando installs the client libraries and plugin paths without running RPM install scripts. Other architectures stop with `Unsupported architecture`; no MariaDB or wrong-series MySQL client is substituted.
 
@@ -145,7 +146,7 @@ build key, so the next `lando start` rebuilds that image. Bare `restart` also st
 
 ## See the security baseline
 
-Stock PHP services write `/usr/local/etc/php/conf.d/10-lando-baseline.ini` during the image build. Custom `image:` values skip that file.
+Stock PHP services write `/usr/local/etc/php/conf.d/10-lando-baseline.ini` during the image build. Custom images and replacement context builds skip that file. An authored startup command alone keeps the stock image's baseline.
 
 The current baseline sets `session.upload_progress.enabled = 0` on stock Apache, FPM, and CLI images, following the [php.net 23 Oct 2026 informational advisory](https://www.php.net/archive/2026.php#2026-10-23-1) for CVE-2026-115560. The risk requires upload progress to be enabled, `session.serialize_handler` configured as `php_binary` or `php_serialize`, and application code that switches it to `php` with `ini_set()` before `session_start()`. This mitigation does not replace installing PHP security updates.
 
@@ -206,33 +207,131 @@ the live host file; changing its contents alone does not force an image build.
 
 ## Replace the image
 
-Setting `image:` on a `php` service, or switching to `build.context` with your own Dockerfile, replaces the default `-apache` base entirely.
-`service-lando.php` only adds its prerequisite build steps (the apt
-packages, `docker-php-ext-install` compilation, Composer install, and
-database clients) and generates the Apache virtual-host command when
-`image:` is left unset. Set `image:` and those install steps are skipped:
-you get none of the built-in extensions above, no generated Apache
-startup, and no `db_client:` packages. The image's own `CMD`/`ENTRYPOINT` runs instead. Invalid `db_client:` values still fail at plan time.
+Use `image:` for an image you maintain, or `build.context` to build one from
+your own Dockerfile. Either choice makes you responsible for the image's
+tools, extensions, and serving configuration, even when your Dockerfile starts
+from an official PHP image. Adding only `build.artifact` or `build.app` steps
+does not replace the stock setup.
 
-What still applies regardless of `image:`: the app mount (`/app` unless
-`appMount: /site` moves it, or `appMount: false` removes it), HTTP endpoint,
-healthcheck, working directory, and `LANDO_*` environment.
+Compose's shorthand `build: .` also selects a context. A contextual build is
+custom even if the resolved configuration also carries Lando's stock image
+reference. An `image:` matching the selected PHP type's stock catalog
+reference, without a contextual build, keeps stock setup. Equivalent canonical
+spellings such as `php:8.3-apache-bookworm` and
+`docker.io/library/php:8.3-apache-bookworm` count as the same reference; a tag
+under another namespace does not. That catalog reference is Apache even when
+`via: fpm` or `via: cli` selects a different stock variant.
 
-## Prove the config
+For example, to build your own FPM image, create `Dockerfile.php` in your
+project root:
+
+```dockerfile
+FROM php:8.3-fpm-bookworm
+RUN docker-php-ext-install pdo_mysql
+```
+
+Save this as `.lando.yml` beside it. Put your app's `index.php` in the project
+root; nginx serves that directory and sends PHP requests to `app` on `9000`:
+
+```yaml
+name: php-custom-build
+services:
+  app:
+    type: php:8.3
+    via: fpm
+    primary: true
+    home: false
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+  edge:
+    type: nginx
+    backend: app
+```
+
+`home: false` disables home persistence for this custom build. Use an explicit
+`home.path` instead if you want to persist a home directory you know exists
+in your image.
+
+From the project directory on your host, start and check the extension:
+
+```sh
+lando start
+lando exec app -- php --ri pdo_mysql
+lando info
+```
+
+The extension check should show `pdo_mysql` enabled. Open the `edge` URL from
+`lando info` to check the served page. This example uses the Dockerfile base's
+FPM startup, not a Lando-generated PHP launcher.
+
+For both custom images and contextual builds, Lando skips its PHP prerequisite
+packages, built-in extension compilation, Composer binary install, database
+clients, WordPress WP-CLI and settings, and Xdebug extension install. It also
+skips generated Apache, FPM, and CLI launchers. Your image's `CMD`/`ENTRYPOINT`
+runs unless you author `command:` or `entrypoint:`. For custom Apache, configure
+the document root, listener, modules, and logs yourself. `port:` still selects
+Lando's endpoint and healthcheck; it does not reconfigure your server.
+
+Custom images and replacement builds do not receive PHP's implicit console
+aliases or file-log redirects. Their container stdout and stderr still appear in `lando logs`.
+Declare any additional file sources explicitly; see [service logs](../cli/service-logs.mdx).
+
+An authored `command:` or `entrypoint:` also takes ownership of startup on a
+stock image. Lando keeps stock installers and baseline settings, but omits
+its generated launcher, Apache startup preparation, and implicit log aliases.
+Configure your own listener and logs; a `port:` value alone does not change
+an authored process.
+
+Explicit opt-ins still matter:
+
+- `composer.packages` still adds a global-package install step. Supply a working
+  `composer` binary in your image; `composer.version` does not install it there.
+- `xdebug:` still configures Xdebug environment and tooling, but your image must
+  already have the extension installed.
+- Mailpit's `mailFrom` selection still applies. The replacement Dockerfile
+  controls the resulting image, so an image reference cannot prove its Debian
+  family. Selecting it fails planning with `MailpitMsmtpBaseFamilyError`.
+  Exclude it with `mailFrom: false` or a list of other
+  PHP services. See [Choose PHP senders](./mailpit.mdx#choose-php-senders).
+
+Invalid PHP options such as unsupported `db_client:` values still fail at plan
+time. Lando also keeps the app mount (`/app` unless you move or disable it),
+endpoint, healthcheck, working directory, and `LANDO_*` environment. Those
+defaults don't install tools or configure your custom server.
+
+## Check the config without starting containers
+
+Run `lando app:config --format=json` to inspect authored configuration and
+`lando app:cache:refresh --format=json` to validate and cache the plan. Neither
+builds your image or proves that its server starts. The checks below cover
+configuration and planning; use the extension and HTTP checks above after start.
 
 <Guide>
   <Scenario id="happy-path" render>
     <Step name="scaffold">
       <UseFixture name="php-customization-demo" />
     </Step>
-    <Step name="start">
-      <Run command="lando start" />
-      <Verify event="post-start" />
+    <Step name="validate-config">
+      <Run command="lando app:config:lint --format=json" />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
     </Step>
+  </Scenario>
+
+  <Scenario id="replacement-context-plan" render>
+    <Step name="inspect-replacement-config">
+      <UseFixture name="replacement-context" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"build\":\\s*\\{\"context\":\\s*\"\\.\",\"dockerfile\":\\s*\"Dockerfile\\.php\"\\},\"via\":\\s*\"fpm\",\"home\":\\s*false" } }} />
+    </Step>
+    <Step name="plan-replacement">
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true,\"result\":\\s*\\{\"app\":\\s*\"php-custom-build\",\"commandsCompiled\":\\s*0" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
   </Scenario>
 
   <Scenario id="extra-extension-plan" render>
@@ -279,7 +378,6 @@ healthcheck, working directory, and `LANDO_*` environment.
     </Step>
     <Step name="cleanup">
       <Cleanup />
-      <Run command="lando destroy -y" />
     </Step>
   </Scenario>
 

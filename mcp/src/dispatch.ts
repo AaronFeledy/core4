@@ -18,6 +18,7 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import type { Redactor } from "@lando/sdk/secrets";
 
+import { RedactionService } from "@lando/redaction/service";
 import {
   type CommandResultOutcome,
   buildCommandResultEnvelope,
@@ -25,11 +26,12 @@ import {
   normalizeDefect,
 } from "@lando/sdk/command-result";
 import { Logger } from "@lando/sdk/services";
+import { isMcpNeverAllowed } from "./allowlist";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import { boundedEventString, postEvent, preEvent } from "./call-events";
 import { OutputCapture } from "./output-capture";
 import { encodeProgressFrame } from "./progress";
-import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry";
+import { type McpCommandEntry, type McpCommandSpec, type McpToolInput, validateToolInput } from "./registry";
 import { inspectMcpCommandOutcome } from "./result-inspector";
 
 export type McpDispatchError = McpToolNotAllowedError | McpToolInputError | McpTransportError;
@@ -67,6 +69,7 @@ export type McpExecute = (
 
 export interface McpRunInput {
   readonly argv: ReadonlyArray<string>;
+  readonly parsedArgv?: ReadonlyArray<string>;
   readonly flags: Record<string, unknown>;
   readonly args: Record<string, unknown>;
   readonly interaction: "non-interactive";
@@ -89,6 +92,17 @@ export interface McpDispatchDeps {
 
 const nowMs = (deps: McpDispatchDeps) =>
   deps.now === undefined ? Clock.currentTimeMillis : Effect.sync(deps.now);
+
+/** Lexical classification only: authoritative tooling admission still runs against the current target. */
+export const registerToolInputRedaction = Effect.fnUntraced(function* (
+  spec: McpCommandSpec | undefined,
+  input: unknown,
+) {
+  const tokens = spec?.inputRedactionTokens?.(input ?? {}) ?? [];
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (Option.isSome(redaction)) yield* redaction.value.registerValues(tokens);
+  return tokens;
+});
 
 const appRefSummary = (deps: McpDispatchDeps, input: McpToolInput | undefined): string | undefined =>
   input?.appPath === undefined ? undefined : boundedEventString(deps.redactor, input.appPath);
@@ -123,11 +137,19 @@ const emitProgressFrame = (
  */
 export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
   request: McpToolCallRequest,
-  deps: McpDispatchDeps,
+  dependencies: McpDispatchDeps,
 ): Effect.fn.Return<McpDispatchResult, McpDispatchError> {
+  const entry = dependencies.registry.get(request.toolId);
+  const inputTokens = yield* registerToolInputRedaction(entry?.spec, request.input);
+  const deps =
+    inputTokens.length === 0
+      ? dependencies
+      : { ...dependencies, redactor: yield* dependencies.resultRedactor(inputTokens) };
   const startedAt = yield* nowMs(deps);
-  const appRef = appRefSummary(deps, request.input);
-  const entry = deps.registry.get(request.toolId);
+  const appRef =
+    entry?.tooling === true || entry?.spec.toolingInput !== undefined
+      ? undefined
+      : appRefSummary(deps, request.input);
   const commandId = entry?.spec.id ?? request.toolId;
 
   yield* emit(deps, preEvent(deps, { toolId: request.toolId, commandId, appRef }, startedAt));
@@ -171,6 +193,15 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
           "Enable MCP tooling for tooling-backed ids, or remove the id from mcp.allow/--allow for this session.",
       });
 
+    if (isMcpNeverAllowed(request.toolId)) {
+      return yield* new McpToolNotAllowedError({
+        message: `Tool ${request.toolId} can never run through MCP.`,
+        toolId: request.toolId,
+        effectiveAllowlist: [...deps.effective].sort((a, b) => a.localeCompare(b)),
+        source: deps.allowlistSource,
+        remediation: `Run \`lando ${request.toolId}\` interactively from a terminal; MCP cannot start it.`,
+      });
+    }
     if (!deps.effective.has(request.toolId)) {
       const error = rejectNotAllowed();
       return yield* Effect.fail(error);
@@ -202,7 +233,10 @@ export const dispatchTool = Effect.fn("McpService.dispatchTool")(function* (
 
     const rawOutcome = yield* deps.execute(entry, runInput);
     const outcome = yield* inspectMcpCommandOutcome(rawOutcome);
-    const tokens = Object.hasOwn(outcome, "value") ? (entry.spec.redactionTokens?.(outcome.value) ?? []) : [];
+    const tokens = [
+      ...(entry.spec.inputRedactionTokens?.(request.input ?? {}) ?? []),
+      ...(Object.hasOwn(outcome, "value") ? (entry.spec.redactionTokens?.(outcome.value) ?? []) : []),
+    ];
     const redactor = yield* deps.resultRedactor(tokens);
     const capture = deps.capture ?? new OutputCapture();
     capture.redactValues(tokens);

@@ -5,6 +5,7 @@ import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/
 import { EventService } from "@lando/sdk/services";
 import { Context, Effect, Layer, Option } from "effect";
 import type { Stdio } from "effect/Stdio";
+import { filterMcpDefaultAllowlist } from "./allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog";
 import { type MemoryPressureLevel, handleMemoryPressure } from "./memory-pressure";
 import { McpCommandExecutor } from "./port";
@@ -48,7 +49,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
         : undefined;
       const effective = (options?: McpCatalogOptions) =>
         computeEffectiveAllowlist({
-          defaults: config.defaultAllowlist,
+          defaults: filterMcpDefaultAllowlist(config.defaultAllowlist, config.commandEntries),
           allow:
             options?.tooling === true
               ? [...(options.allow ?? []), ...(config.toolingEntries ?? []).map((entry) => entry.spec.id)]
@@ -104,7 +105,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
             resultRedactor,
             ...(publish === undefined ? {} : { publish }),
           },
-        });
+        }).pipe(Effect.provideService(RedactionService, redaction));
       });
       return McpService.of({ serve, catalog, handleMemoryPressure: onMemoryPressure });
     }),

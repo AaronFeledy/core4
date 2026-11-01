@@ -11,7 +11,6 @@ import {
   hyperlink,
   linkKnownHttpUrls,
   resolveSummaryWidth,
-  shouldEmitHyperlinks,
   stripAnsi,
   styleBoxBottom,
   toneChip,
@@ -19,6 +18,9 @@ import {
   wrapFieldToWidth,
   wrapToWidth,
 } from "@lando/renderer/console-layout";
+import { terminalPalette } from "@lando/renderer/palette";
+
+const palette = terminalPalette(true);
 
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
@@ -231,7 +233,7 @@ describe("box helpers", () => {
   });
 
   test("boxBottom and boxSeparator match the width with their glyphs", () => {
-    const bottom = stripAnsi(boxBottom("11 steps", W));
+    const bottom = stripAnsi(boxBottom("11 steps", W, undefined, palette));
     expect(displayWidth(bottom)).toBe(W);
     expect(bottom.endsWith("╯")).toBe(true);
     const sep = stripAnsi(boxSeparator("next steps", W));
@@ -241,14 +243,14 @@ describe("box helpers", () => {
   });
 
   test("boxBody pads to width with side borders and preserves wide-char alignment", () => {
-    const body = stripAnsi(boxBody("你好 service", W));
+    const body = stripAnsi(boxBody("你好 service", W, undefined, palette));
     expect(displayWidth(body)).toBe(W);
     expect(body.startsWith("│ ")).toBe(true);
     expect(body.endsWith(" │")).toBe(true);
   });
 
   test("boxBody truncates content that exceeds the inner width", () => {
-    const body = stripAnsi(boxBody("x".repeat(100), W));
+    const body = stripAnsi(boxBody("x".repeat(100), W, undefined, palette));
     expect(displayWidth(body)).toBe(W);
     expect(body).toContain("…");
   });
@@ -349,32 +351,6 @@ describe("hyperlink", () => {
   });
 });
 
-describe("shouldEmitHyperlinks", () => {
-  test("emits on a TTY when TERM is set and NO_COLOR is unset", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color" } })).toBe(true);
-  });
-
-  test("treats empty NO_COLOR as unset", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color", NO_COLOR: "" } })).toBe(true);
-  });
-
-  test("stays plain when stdout is not a TTY", () => {
-    expect(shouldEmitHyperlinks({ isTTY: false, env: { TERM: "xterm-256color" } })).toBe(false);
-  });
-
-  test("stays plain when NO_COLOR is set", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "xterm-256color", NO_COLOR: "1" } })).toBe(false);
-  });
-
-  test("stays plain when TERM is dumb", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true, env: { TERM: "dumb" } })).toBe(false);
-  });
-
-  test("stays plain when env is missing", () => {
-    expect(shouldEmitHyperlinks({ isTTY: true })).toBe(false);
-  });
-});
-
 describe("linkKnownHttpUrls", () => {
   test("wraps each intact http(s) URL and leaves other text alone", () => {
     const text = "web\thttps://app.lndo.site, http://localhost:3000, tcp://localhost:5432";
@@ -463,7 +439,9 @@ describe("linkKnownHttpUrls", () => {
     const lines = wrapFieldToWidth(label, longUrl, label.length, innerWidth - 2);
     expect(lines[0]?.endsWith(shortUrl)).toBe(true);
     expect(lines.length).toBeGreaterThan(2);
-    const framed = lines.map((segment) => boxBody(`  ${segment}`, width, styleBoxBottom)).join("\n");
+    const framed = lines
+      .map((segment) => boxBody(`  ${segment}`, width, (line) => styleBoxBottom(line, palette), palette))
+      .join("\n");
     expect(stripAnsi(framed)).toContain(shortUrl);
     expect(stripAnsi(framed)).not.toContain(longUrl);
     const out = linkKnownHttpUrls(framed, [shortUrl, longUrl]);
@@ -477,7 +455,7 @@ describe("linkKnownHttpUrls", () => {
     const other = "http://example.com/other";
     const width = 80;
     const framed = [shortUrl, other]
-      .map((url) => boxBody(`  endpoints : ${url}`, width, styleBoxBottom))
+      .map((url) => boxBody(`  endpoints : ${url}`, width, (line) => styleBoxBottom(line, palette), palette))
       .join("\n");
     const out = linkKnownHttpUrls(framed, [shortUrl, longUrl, other]);
     expect(out).toContain(hyperlink(shortUrl, shortUrl));

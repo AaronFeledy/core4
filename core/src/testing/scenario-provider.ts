@@ -1,6 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import { resolveDesiredAppTarget } from "@lando/engine/landofile/app-resolution";
+import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { AbsolutePath, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
@@ -73,7 +74,20 @@ export const makeScenarioProvider = () => {
         id: typeof target === "string" ? target : (target?.provider ?? provider.id),
       }),
   });
-  const layer = Layer.succeed(RuntimeProviderRegistry, registry);
+  const registryLayer = Layer.succeed(RuntimeProviderRegistry, registry);
+  // The planner captures its registry at layer construction, before host overrides are merged.
+  const plannerDependencies = Layer.unwrap(
+    Effect.promise(() =>
+      withRuntimeProviderRegistryOverride(registryLayer, async () => {
+        await import("../runtime/bundled-plugins.ts");
+        return makeLandoRuntime({ bootstrap: "plugins", plugins: { policy: "bundled-only" } });
+      }),
+    ),
+  );
+  const layer = Layer.merge(
+    registryLayer,
+    AppPlannerLayer.layer.pipe(Layer.provide(Layer.merge(plannerDependencies, registryLayer)), Layer.orDie),
+  );
   return {
     layer,
     provider,

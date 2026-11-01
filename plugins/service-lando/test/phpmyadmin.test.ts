@@ -83,6 +83,7 @@ const unusedMutators = {
   setCerts: () => undefined,
   setEntrypoint: () => undefined,
   setCommand: () => undefined,
+  setInit: () => undefined,
   setArtifact: () => undefined,
   setUser: () => undefined,
   setWorkingDirectory: () => undefined,

@@ -7,7 +7,8 @@ import type { ServiceType } from "@lando/sdk/services";
 
 import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
-import { APACHE_DEFAULT_SITE_BUILD_STEP_ID, hasCustomPhpImage } from "../src/services/php-via.ts";
+import { resolvePhpRuntimePolicy } from "../src/services/php-runtime-policy.ts";
+import { APACHE_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/php-via.ts";
 import {
   PHP_FEATURE_ID,
   SUPPORTED_PHP_VERSIONS,
@@ -57,7 +58,7 @@ test.each([
   "registry-1.docker.io/library/php:8.3-apache-bookworm",
 ])("recognizes official PHP alias %s as catalog-owned", (image) => {
   const service = decodeService({ type: "php:8.3", image });
-  expect(hasCustomPhpImage(service)).toBe(false);
+  expect(resolvePhpRuntimePolicy(service, "8.3", "apache").artifactSource).toBe("stock");
 });
 
 test.each([
@@ -66,7 +67,7 @@ test.each([
   "php:8.3-apache-bookworm@sha256:abc",
 ])("retains custom PHP identity for %s", (image) => {
   const service = decodeService({ type: "php:8.3", image });
-  expect(hasCustomPhpImage(service)).toBe(true);
+  expect(resolvePhpRuntimePolicy(service, "8.3", "apache").artifactSource).toBe("image");
 });
 
 interface PlannedBuildStep {
@@ -374,7 +375,7 @@ describe("php serving modes (via:)", () => {
     expect(directives).toContain('DocumentRoot "/app"');
 
     const argv = plan.command as ReadonlyArray<string>;
-    expect(argv).not.toContain("sh");
+    expect(argv.join("\n")).not.toMatch(/usermod|groupmod|a2enmod|a2dissite/u);
     expect(argv.filter((token) => token.includes("/etc/apache2"))).toEqual([]);
     expect(argv.join("\n")).not.toMatch(/>\s*\//u);
   });
@@ -417,6 +418,8 @@ describe("php serving modes (via:)", () => {
     // bound to the same value, still as one synthetic directive stream.
     expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).toEqual([
       "ServerName localhost",
+      `ErrorLog "|/bin/sh -c 'exec /bin/cat >&3'"`,
+      'CustomLog "|/bin/cat" vhost_combined',
       "Listen 8080",
       "<VirtualHost *:8080>",
       'DocumentRoot "/app"',
@@ -442,9 +445,11 @@ describe("php serving modes (via:)", () => {
     // Given / When: no port, which is the shape every existing app already has.
     const plan = await composePhpPlan(php83ServiceType, { type: "php:8.3", via: "apache" });
 
-    // Then: byte-identical directives, and the image keeps its own listener.
+    // Then: main-server directives, and the image keeps its own listener.
     expect(apacheLauncherDirectives(plan.command, "apache2-foreground")).toEqual([
       "ServerName localhost",
+      `ErrorLog "|/bin/sh -c 'exec /bin/cat >&3'"`,
+      'CustomLog "|/bin/cat" vhost_combined',
       'DocumentRoot "/app"',
       '<Directory "/app">',
       "Options -Indexes +FollowSymLinks",
@@ -606,7 +611,7 @@ describe("php serving modes (via:)", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-cli-bookworm" });
     expect(plan.endpoints).toEqual([]);
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
   });
 

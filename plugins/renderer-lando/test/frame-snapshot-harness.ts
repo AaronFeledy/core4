@@ -55,7 +55,7 @@ export const captureTreeFrame = async (
   width: number,
   height: number,
 ): Promise<string> => {
-  const painter = new TaskTreeViewModel({ terminalColumns: width });
+  const painter = new TaskTreeViewModel({ color: true, terminalColumns: width });
   for (const event of events) painter.apply(event);
   const setup = await createTestRenderer({ width, height, clock: new ManualClock() });
   mountLines(setup.renderer, painter.snapshot().frameLines, width);
@@ -73,7 +73,7 @@ export const captureTreeResizeFrame = async (
   height: number,
 ): Promise<{ readonly before: string; readonly after: string }> => {
   const setup = await createTestRenderer({ width: from, height, clock: new ManualClock() });
-  const beforePainter = new TaskTreeViewModel({ terminalColumns: from });
+  const beforePainter = new TaskTreeViewModel({ color: true, terminalColumns: from });
   for (const event of events) beforePainter.apply(event);
   const beforeFrame = mountLines(setup.renderer, beforePainter.snapshot().frameLines, from);
   await setup.renderOnce();
@@ -81,7 +81,7 @@ export const captureTreeResizeFrame = async (
 
   setup.resize(to, height);
   setup.renderer.root.remove(beforeFrame);
-  const afterPainter = new TaskTreeViewModel({ terminalColumns: to });
+  const afterPainter = new TaskTreeViewModel({ color: true, terminalColumns: to });
   for (const event of events) afterPainter.apply(event);
   mountLines(setup.renderer, afterPainter.snapshot().frameLines, to);
   await setup.renderOnce();

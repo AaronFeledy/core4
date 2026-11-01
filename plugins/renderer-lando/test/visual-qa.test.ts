@@ -123,7 +123,7 @@ describe("task-tree visual golden frames", () => {
 
   test("tokenizes a spinning glyph as pink and the running label as cyan", () => {
     const glyph = SPINNER_FRAMES[0] ?? "⠋";
-    const styled = styleFrame([`│ ${glyph} appserver`]);
+    const styled = styleFrame([`│ ${glyph} appserver`], true);
     expect(tokenizeAnsi(styled[0] ?? "")).toBe(`⟨pink⟩│⟨reset⟩⟨pink⟩ ${glyph}⟨reset⟩⟨cyan⟩ appserver⟨reset⟩`);
   });
 });

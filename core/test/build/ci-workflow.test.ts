@@ -52,6 +52,22 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
+  test("requires the downloaded compiled binary for native-init live acceptance", async () => {
+    // Given
+    const jobs = findIndentedBlock(await readWorkflow(), "jobs");
+    const job = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
+    // When
+    const start = job.indexOf("      - name: Run provider integration tests");
+    const end = job.indexOf("      - name: Teardown Lando runtime", start);
+    const step = job.slice(start, end);
+    // Then
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(step).toContain("LANDO_SCENARIO_E2E_BINARY: ${{ github.workspace }}/dist/lando");
+    expect(step).toContain('LANDO_NATIVE_INIT_E2E: "1"');
+    expect(step).toContain("bun test core/test/live");
+  });
+
   test("runs deterministic cross-file isolation regressions in one Bun process", async () => {
     // Given / When
     const workflow = await readWorkflow();
@@ -691,6 +707,11 @@ describe("ci workflow", () => {
       expect(build).toContain(`          LANDO_RELEASE_TARGET: ${target}`);
       expect(build).toContain(`          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${binary}`);
       expect(build).toContain("        run: bun test core/test/build/opentui-compiled-acceptance.test.ts");
+      expect(build).toContain(`          LANDO_TEST_COMPILED_CLI: ./dist/${binary}`);
+      expect(build).toContain("        run: bun test core/test/build/host-execution-compiled.test.ts");
+      expect(build.indexOf(`Build ${target} binary`)).toBeLessThan(
+        build.indexOf("Verify compiled host execution"),
+      );
     }
   });
 

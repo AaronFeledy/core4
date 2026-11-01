@@ -1,16 +1,20 @@
 import { Clock, Effect, Option } from "effect";
 
 import type { ToolingResult } from "@lando/sdk/app";
-import type { ShellExecError, ShellScriptOutsideRootError } from "@lando/sdk/errors";
-import { NotImplementedError, ToolingExecError } from "@lando/sdk/errors";
-import type { Environment } from "@lando/sdk/schema";
+import { ToolingExecError } from "@lando/sdk/errors";
+import type { Environment, ToolingInputRevision, ToolingInvocationInput } from "@lando/sdk/schema";
 import { EnvironmentValueResolver, EventService } from "@lando/sdk/services";
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { readBunShellScript } from "@lando/landofile/bun-sh-script";
-import type { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { runHostScript } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
+import {
+  type PreparedBunShellScript,
+  bunShellScriptEnvironment,
+  prepareBunShellScript,
+  withBunShellScriptInputs,
+} from "./tooling-bun-script-input.ts";
 import { withToolingOutput } from "./tooling-output.ts";
 import { beginLiveToolingTree } from "./tooling-progress.ts";
 
@@ -24,43 +28,29 @@ export const findBunShellScriptForName = (
   return scripts.find((script) => script.id === target);
 };
 
-export const runBunShellScript = Effect.fnUntraced(function* (
-  script: DiscoveredBunShellScript,
+interface BunShellScriptOptions {
+  readonly expectedInputRevision?: ToolingInputRevision;
+  readonly input?: ToolingInvocationInput;
+  readonly cwd?: string;
+  readonly env?: Environment;
+  readonly hostIo?: "stdin" | "terminal";
+  readonly signal?: AbortSignal;
+}
+
+const executePreparedBunShellScript = Effect.fnUntraced(function* (
+  prepared: PreparedBunShellScript,
   appRoot: string,
-  options: {
-    readonly args?: ReadonlyArray<string>;
-    readonly cwd?: string;
-    readonly env?: Environment;
-    readonly hostIo?: "stdin" | "terminal";
-    readonly signal?: AbortSignal;
-  },
-): Effect.fn.Return<
-  ToolingResult,
-  | NotImplementedError
-  | ShellExecError
-  | ShellScriptOutsideRootError
-  | ToolingExecError
-  | import("@lando/sdk/errors").SecretStoreError
-  | import("@lando/sdk/errors").EnvironmentValueResolutionError,
-  PrivateFileAccessService | EnvironmentValueResolver | import("effect").Scope.Scope
-> {
-  if (script.service !== HOST_SERVICE) {
-    return yield* Effect.fail(
-      new NotImplementedError({
-        message: `.bun.sh script "${script.id}" declares service "${script.service}"; service-targeted .bun.sh scripts are not supported.`,
-        commandId: "tooling.run",
-        remediation:
-          "Remove the `service:` field (or set it to `:host`) so the script runs through the host engine, or move the body into a Landofile tooling task that targets the desired service.",
-      }),
-    );
-  }
+  options: BunShellScriptOptions,
+) {
+  const { script } = prepared;
   const cwd = options.cwd ?? appRoot;
   const session = yield* (yield* EnvironmentValueResolver).openSession();
-  const env = options.env === undefined ? undefined : yield* session.resolveEnvironment(options.env);
+  const resolved = options.env === undefined ? {} : yield* session.resolveEnvironment(options.env);
+  const env = bunShellScriptEnvironment(prepared, process.env, resolved);
   const result = yield* runHostScript(script.path, [appRoot], {
     cwd,
-    ...(options.args === undefined ? {} : { argv: options.args }),
-    ...(env === undefined ? {} : { env }),
+    argv: prepared.argv,
+    env,
     ...(options.hostIo === undefined ? {} : { hostIo: options.hostIo }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   }).pipe(
@@ -91,10 +81,20 @@ export const runBunShellScript = Effect.fnUntraced(function* (
   } satisfies ToolingResult;
 }, Effect.scoped);
 
+export const runBunShellScript = Effect.fnUntraced(function* (
+  script: DiscoveredBunShellScript,
+  appRoot: string,
+  options: BunShellScriptOptions,
+) {
+  const prepared = yield* prepareBunShellScript(script, options);
+  return yield* withBunShellScriptInputs(prepared, executePreparedBunShellScript(prepared, appRoot, options));
+});
+
 export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(function* (
   options: {
     readonly name: string;
-    readonly args?: ReadonlyArray<string>;
+    readonly expectedInputRevision?: ToolingInputRevision;
+    readonly input?: ToolingInvocationInput;
     readonly cwd?: string;
     readonly env?: Environment;
     readonly hostIo?: "stdin" | "terminal";
@@ -118,15 +118,24 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     );
   }
 
-  const events = yield* Effect.serviceOption(EventService);
-  const progressEvents = Option.getOrUndefined(events);
-  const liveTree = progressEvents === undefined ? undefined : beginLiveToolingTree(progressEvents, script.id);
-  if (liveTree !== undefined) yield* liveTree.start;
-  const startedAt = yield* Clock.currentTimeMillis;
-  const exit = yield* Effect.result(withToolingOutput(runBunShellScript(script, appRoot, options)));
-  const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
-  if (liveTree !== undefined)
-    yield* liveTree.finish(exit._tag === "Success" ? exit.success.exitCode : 1, durationMs);
-  if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
-  return exit.success satisfies ToolingResult;
+  const prepared = yield* prepareBunShellScript(script, options);
+  return yield* withBunShellScriptInputs(
+    prepared,
+    Effect.gen(function* () {
+      const events = yield* Effect.serviceOption(EventService);
+      const progressEvents = Option.getOrUndefined(events);
+      const liveTree =
+        progressEvents === undefined ? undefined : beginLiveToolingTree(progressEvents, script.id);
+      if (liveTree !== undefined) yield* liveTree.start;
+      const startedAt = yield* Clock.currentTimeMillis;
+      const exit = yield* Effect.result(
+        withToolingOutput(executePreparedBunShellScript(prepared, appRoot, options)),
+      );
+      const durationMs = (yield* Clock.currentTimeMillis) - startedAt;
+      if (liveTree !== undefined)
+        yield* liveTree.finish(exit._tag === "Success" ? exit.success.exitCode : 1, durationMs);
+      if (exit._tag === "Failure") return yield* Effect.fail(exit.failure);
+      return exit.success satisfies ToolingResult;
+    }),
+  );
 });

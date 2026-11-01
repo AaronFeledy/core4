@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,7 +26,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -37,6 +40,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +182,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -206,7 +209,14 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
       ref: "opensearchproject/opensearch:2",
     });
     expect(search.endpoints).toEqual([
-      { _tag: "internal", port: 9200, protocol: "http", name: "search", primary: true },
+      {
+        _tag: "internal",
+        port: 9200,
+        protocol: "http",
+        name: "search",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     const volumes = search.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
@@ -241,7 +251,9 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "os-cli", args: ["/_cluster/health"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "os-cli", input: { _tag: "RawArgv", argv: ["/_cluster/health"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("os-cli");
@@ -277,7 +289,9 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "os-cli", args: ["/_cat/indices"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "os-cli", input: { _tag: "RawArgv", argv: ["/_cat/indices"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.exitCode).toBe(0);

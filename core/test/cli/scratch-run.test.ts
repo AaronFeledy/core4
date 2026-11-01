@@ -111,6 +111,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -334,7 +335,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ),
     options.configLayer ?? LandoConfigService.layer,
     EnvSecretStore.layer,
-  ).pipe(Layer.provide(PrivateFileAccessService.layer));
+  ).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
@@ -1216,10 +1217,20 @@ describe("scratch run rendering", () => {
         .trim()
         .split("\n")
         .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
-      expect(frames).toHaveLength(3);
-      expect(frames[0]).toMatchObject({ _tag: "stdout", chunk: "piped-in\n" });
-      expect(frames[1]).toMatchObject({ _tag: "stderr", chunk: "warn\n" });
-      expect(frames[2]).toMatchObject({ _tag: "result", envelope: { result: { kept: true } } });
+      expect(frames.filter((frame) => frame._tag === "event").map((frame) => frame.event)).toEqual([
+        "task.tree.start",
+        "task.start",
+        "pre-build",
+        "post-build",
+        "task.complete",
+        "task.tree.complete",
+      ]);
+      expect(frames.filter((frame) => frame._tag !== "event")).toMatchObject([
+        { _tag: "stdout", chunk: "piped-in\n" },
+        { _tag: "stderr", chunk: "warn\n" },
+        { _tag: "result", envelope: { result: { kept: true } } },
+      ]);
+      expect(frames.at(-1)?._tag).toBe("result");
       expect(io.stderr()).toBe("");
     });
   });

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Effect, Layer, Predicate, Stream } from "effect";
 
 import { logFileHelperCleanupArgv, logFileHelperExecArgv } from "@lando/container-runtime/container-helper";
@@ -10,7 +10,7 @@ import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/host-proxy/dispatch";
 import { createHostProxyRunLandoSession } from "@lando/engine/subsystems/host-proxy/transport";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { resolveContainerHelper } from "../../src/container-helper/assets.ts";
@@ -36,6 +36,16 @@ const landoClient = async (role = "lando"): Promise<string> => {
   const link = join(await tempRoot(), role);
   await symlink(await helperPath(), link);
   return link;
+};
+
+const credentialsFile = async (): Promise<string> => {
+  const path = join(await tempRoot(), "credentials");
+  await writeFile(
+    path,
+    JSON.stringify({ version: 1, app: "demo", session: "session-id", token: "secret-token" }),
+    { mode: 0o444 },
+  );
+  return path;
 };
 
 const captureRunLando = async (
@@ -74,9 +84,7 @@ const captureRunLando = async (
       cwd: "/tmp",
       env: {
         LANDO_HOST_PROXY_URL: `http://127.0.0.1:${address.port}`,
-        LANDO_HOST_PROXY_TOKEN: "secret-token",
-        LANDO_HOST_PROXY_SESSION: "session-id",
-        LANDO_HOST_PROXY_APP: "demo",
+        LANDO_HOST_PROXY_CREDENTIALS_FILE: await credentialsFile(),
         LANDO_HOST_PROXY_DEPTH: "0",
         ...extraEnv,
       },
@@ -122,9 +130,7 @@ describe.skipIf(process.platform !== "linux")("host-proxy client role", () => {
         cwd: "/tmp",
         env: {
           LANDO_HOST_PROXY_URL: `http://127.0.0.1:${address.port}`,
-          LANDO_HOST_PROXY_TOKEN: "secret-token",
-          LANDO_HOST_PROXY_SESSION: "session",
-          LANDO_HOST_PROXY_APP: "demo",
+          LANDO_HOST_PROXY_CREDENTIALS_FILE: await credentialsFile(),
           SECRET: "never-forwarded",
         },
         stdout: "pipe",
@@ -166,7 +172,6 @@ describe.skipIf(process.platform !== "linux")("host-proxy client role", () => {
       SECRET_TOKEN: "do-not-forward",
     });
     expect(body.env).toEqual({
-      LANDO_APP_NAME: "demo",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",
@@ -243,6 +248,7 @@ const sessionLayers = Layer.mergeAll(
       publish: () => Effect.void,
       subscribe: () => Stream.die("unused"),
       subscribeQueue: Effect.die("unused"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("unused"),
       query: () => Effect.die("unused"),
       waitFor: () => Effect.die("unused"),
@@ -252,14 +258,6 @@ const sessionLayers = Layer.mergeAll(
 
 describe.skipIf(process.platform !== "linux")("host-proxy client against a real host session", () => {
   test("installs as the session client and forwards argv, remapped cwd, tty, and filtered env", async () => {
-    const envelope: CommandResultEnvelope = {
-      apiVersion: "v4",
-      command: "app:open",
-      ok: true,
-      result: { app: "demo", targets: [], launch: "printed" },
-      warnings: [],
-      deprecations: [],
-    };
     let captured: HostProxyRunLandoExecutorInput | undefined;
     const session = await Effect.runPromise(
       createHostProxyRunLandoSession({
@@ -269,7 +267,7 @@ describe.skipIf(process.platform !== "linux")("host-proxy client against a real 
         callerService: "web",
         executor: (request) => {
           captured = request;
-          return Effect.succeed({ envelope, exitCode: 0 });
+          return Effect.succeed({ stdout: "https://demo.lndo.site\n", stderr: "", exitCode: 0 });
         },
         paths: { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot() },
         shimArtifactPath: await helperPath(),
@@ -284,9 +282,7 @@ describe.skipIf(process.platform !== "linux")("host-proxy client against a real 
         cwd: "/tmp",
         env: {
           LANDO_HOST_PROXY_SOCKET: session.socketPath ?? "",
-          LANDO_HOST_PROXY_TOKEN: session.token,
-          LANDO_HOST_PROXY_SESSION: session.sessionId,
-          LANDO_HOST_PROXY_APP: session.appId,
+          LANDO_HOST_PROXY_CREDENTIALS_FILE: join(dirname(session.shimPath), "credentials"),
           LANDO_HOST_PROXY_CALLER: "web",
           LANG: "C.UTF-8",
           OPENCODE: "1",
@@ -302,13 +298,17 @@ describe.skipIf(process.platform !== "linux")("host-proxy client against a real 
       ]);
       expect(stderr).toBe("");
       expect(exitCode).toBe(0);
-      expect(stdout).toContain('"ok":true');
-      expect(captured).toEqual({
+      expect(stdout).toBe("https://demo.lndo.site\n");
+      expect(captured).toMatchObject({
         argv: ["open", "--print"],
         commandId: "app:open",
         cwd: "/srv/apps/demo",
         tty: false,
-        env: { LANDO_HOST_PROXY_CALLER: "web", LANDO_HOST_PROXY_DEPTH: "1", LANG: "C.UTF-8", OPENCODE: "1" },
+        env: { LANDO_HOST_PROXY_DEPTH: "1", LANG: "C.UTF-8", OPENCODE: "1" },
+        app: { kind: "user", id: "demo", root: "/srv/apps/demo" },
+        mount: { containerRoot: "/app", hostRoot: "/srv/apps/demo" },
+        callerService: "web",
+        depth: 0,
       });
     } finally {
       await session.close();

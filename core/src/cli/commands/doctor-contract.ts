@@ -71,6 +71,11 @@ export interface DoctorCheck {
 
 export interface DoctorResult {
   readonly checks: ReadonlyArray<DoctorCheck>;
+  readonly skipped?: ReadonlyArray<{
+    readonly section: string;
+    readonly status: "skipped";
+    readonly reason: string;
+  }>;
   /**
    * Failures of doctor's own machinery while producing the provider section.
    * Lifted into the report-level `self` section by `doctorReport`.

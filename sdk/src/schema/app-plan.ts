@@ -5,6 +5,7 @@ import { ArtifactBuildSpec, ArtifactRef } from "./artifacts.ts";
 import { DatabaseConnection, ServiceCreds } from "./database-connection.ts";
 import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
+import { FileSyncPolicy } from "./file-sync-policy.ts";
 import { EventsPlan } from "./landofile-events.ts";
 import { LogSource } from "./log-source.ts";
 import { DataStorePlan, MountPlan } from "./mounts.ts";
@@ -82,6 +83,10 @@ const ServicePlanFields = {
   artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
+  init: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Native container init for direct-child signal forwarding and orphan reaping; absence retains provider defaults.",
+  }),
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
   home: Schema.optionalKey(ServiceHomePlan).annotate({
@@ -99,6 +104,10 @@ const ServicePlanFields = {
   readiness: Schema.optionalKey(HealthcheckPlan).annotate({
     description:
       "Startup probe; defaults to healthcheck when absent. Ongoing native health uses healthcheck only.",
+  }),
+  readinessSource: Schema.optionalKey(Schema.Literals(["authored", "contributed"])).annotate({
+    description:
+      "Origin of explicit lifecycle readiness; absent for historical plans with unknown provenance.",
   }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
@@ -407,6 +416,10 @@ export const AppPlan = Schema.Struct({
    */
   fileSync: Schema.Array(FileSyncPlan).annotate({
     description: "File-sync sessions selected during planning.",
+  }),
+  fileSyncPolicy: Schema.optionalKey(FileSyncPolicy).annotate({
+    description:
+      "Recorded selection and per-service project-file policy; absent historical reasons are unknown.",
   }),
   /**
    * Effective Landofile `events:` and `config.yml hostEvents` steps compiled

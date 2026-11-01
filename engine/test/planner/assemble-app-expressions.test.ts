@@ -13,11 +13,11 @@ import { ConfigExpressionError } from "@lando/sdk/errors";
 import { AbsolutePath, type LoadScopedLandofile, ServiceName } from "@lando/sdk/schema";
 import { PluginRegistry, type ServiceType } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
-import { planApp } from "../../src/planner/assemble.ts";
+import { Effect, Layer, Result, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 const serviceType: ServiceType = {
   id: "expression-database",
@@ -38,14 +38,8 @@ const serviceType: ServiceType = {
 const plan = Effect.fnUntraced(function* (landofile: LoadScopedLandofile) {
   const registry = yield* PluginRegistry;
   return yield* planApp(
-    { ...registry, loadServiceType: () => Effect.succeed(serviceType) },
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    landofile,
-    TestRuntimeProvider.capabilities,
+    { landofile, providerCapabilities: TestRuntimeProvider.capabilities },
+    Layer.succeed(PluginRegistry, { ...registry, loadServiceType: () => Effect.succeed(serviceType) }),
   );
 }, Effect.provide(PluginRegistryLayer.layer));
 

@@ -1,4 +1,4 @@
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect } from "effect";
 
 import type {
   RestartAppOptions,
@@ -51,24 +51,20 @@ import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
+import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
+import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
-import { StartAppResultSchema, type StartManagedScope, startApp } from "./start.ts";
+import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
 export type RestartAppError = SdkRestartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
-
-export const RestartAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStarted: StartAppResultSchema.fields.servicesStarted,
-  checks: StartAppResultSchema.fields.checks,
-});
 
 type RestartAppServices =
   | EnvironmentValueResolver
@@ -184,61 +180,74 @@ const restartSelectedServices = Effect.fnUntraced(function* (
   yield* publishHomeTransitionNotices(appliedPlan, selectedPlan);
   yield* markStartMutation(target.plan);
 
-  yield* Effect.forEach(
-    [...services].reverse(),
-    (service) =>
-      Effect.gen(function* () {
-        if (signal?.aborted === true) return yield* Effect.interrupt;
-        yield* events.publish(
-          PreServiceStopEvent.make({
-            eventName: "pre-service-stop",
-            appRef: target.app,
-            serviceName: service.name,
-            providerId: target.plan.provider,
-            timestamp: DateTime.nowUnsafe(),
-          }),
-        );
-        yield* provider.stop({ app: target.plan.id, service: service.name, plan: target.plan });
-        yield* events.publish(
-          PostServiceStopEvent.make({
-            eventName: "post-service-stop",
-            appRef: target.app,
-            serviceName: service.name,
-            providerId: target.plan.provider,
-            timestamp: DateTime.nowUnsafe(),
-          }),
-        );
-      }),
-    { discard: true },
-  );
-
-  if (signal?.aborted === true) return yield* Effect.interrupt;
-  yield* Effect.scoped(
-    provider.apply(runtimePlan, {
-      reconcile: false,
-      recordedPlan: appliedPlan,
-      completionPlan: target.plan,
-      forbidRecreate: true,
-      onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
+  const started = yield* withGlobalConsumerAdmission(
+    {
+      plan: target.plan,
+      setupRouter: true,
       ...(signal === undefined ? {} : { signal }),
+      ...(target.landofile?.document.router === undefined
+        ? {}
+        : { landofileRouter: target.landofile.document.router }),
+    },
+    Effect.gen(function* () {
+      yield* Effect.forEach(
+        [...services].reverse(),
+        (service) =>
+          Effect.gen(function* () {
+            if (signal?.aborted === true) return yield* Effect.interrupt;
+            yield* events.publish(
+              PreServiceStopEvent.make({
+                eventName: "pre-service-stop",
+                appRef: target.app,
+                serviceName: service.name,
+                providerId: target.plan.provider,
+                timestamp: DateTime.nowUnsafe(),
+              }),
+            );
+            yield* provider.stop({ app: target.plan.id, service: service.name, plan: target.plan });
+            yield* events.publish(
+              PostServiceStopEvent.make({
+                eventName: "post-service-stop",
+                appRef: target.app,
+                serviceName: service.name,
+                providerId: target.plan.provider,
+                timestamp: DateTime.nowUnsafe(),
+              }),
+            );
+          }),
+        { discard: true },
+      );
+
+      if (signal?.aborted === true) return yield* Effect.interrupt;
+      yield* verifyGlobalConsumerAdmission;
+      yield* Effect.scoped(
+        provider.apply(runtimePlan, {
+          reconcile: false,
+          recordedPlan: appliedPlan,
+          completionPlan: target.plan,
+          forbidRecreate: true,
+          onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
+          ...(signal === undefined ? {} : { signal }),
+        }),
+      );
+      const initial = yield* Effect.forEach(services, (service) =>
+        inspectAppliedService({ provider, plan: target.plan, service: service.name }).pipe(
+          Effect.map((runtime) => [String(service.name), runtime] as const),
+        ),
+      );
+      const ready = yield* completeStartup({
+        policy: "selected-restart",
+        selectedPlan,
+        events,
+        provider,
+        plan: target.plan,
+        services: selected,
+        initial: new Map(initial),
+        ...(signal === undefined ? {} : { signal }),
+      });
+      return startedServices(yield* collectPlanConnections(target.plan, ready));
     }),
   );
-  const initial = yield* Effect.forEach(services, (service) =>
-    inspectAppliedService({ provider, plan: target.plan, service: service.name }).pipe(
-      Effect.map((runtime) => [String(service.name), runtime] as const),
-    ),
-  );
-  const ready = yield* completeStartup({
-    policy: "selected-restart",
-    selectedPlan,
-    events,
-    provider,
-    plan: target.plan,
-    services: selected,
-    initial: new Map(initial),
-    ...(signal === undefined ? {} : { signal }),
-  });
-  const started = startedServices(yield* collectPlanConnections(target.plan, ready));
 
   const postRestart = PostRestartEvent.make({
     _tag: "post-restart",

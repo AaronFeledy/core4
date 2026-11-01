@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream, Struct } from "effect";
 
 import { buildInfoSummary, infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -28,7 +28,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
@@ -44,35 +44,19 @@ interface RunResult {
 }
 
 const capabilities: ProviderCapabilities = {
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceLogSources: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: true,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: "native",
-  copyMounts: true,
-  copyOnWriteAppRoot: false,
+  ...Struct.omit(TestRuntimeProvider.capabilities, [
+    "composeKnobs",
+    "composeServiceFields",
+    "authoredNetworks",
+    "composeProjectFields",
+  ]),
   volumeSnapshot: "none",
   serviceFileCopy: "none",
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
-  providerExtensions: [],
 };
 
 const metadata = {
@@ -593,6 +577,13 @@ describe("lando info", () => {
   test("prints a visible host-proxy unavailable notice from the plan extension", async () => {
     const plannedApp: AppPlan = {
       ...plan,
+      services: {
+        ...plan.services,
+        [node.name]: {
+          ...node,
+          extensions: { "@lando/core/service-features": { featureIds: ["lando.host-proxy"] } },
+        },
+      },
       extensions: {
         ...plan.extensions,
         "@lando/core/host-proxy": {
@@ -764,10 +755,14 @@ describe("lando info --deep — agent-context env audit", () => {
 });
 
 describe("lando info — resolved log sources", () => {
-  const makeLogSourceLayer = (logSources: ReadonlyArray<LogSourceShape>, serviceLogSources: boolean) => {
+  const makeLogSourceLayer = (
+    logSources: ReadonlyArray<LogSourceShape>,
+    serviceLogSources: boolean,
+    serviceLogs = true,
+  ) => {
     const svc: ServicePlan = { ...postgres, logSources };
     const logPlan: AppPlan = { ...plan, services: { [svc.name]: svc } };
-    const caps: ProviderCapabilities = { ...capabilities, serviceLogSources };
+    const caps: ProviderCapabilities = { ...capabilities, serviceLogSources, serviceLogs };
     const provider: RuntimeProviderShape = {
       id: "lando",
       displayName: "Lando Runtime Provider",
@@ -862,6 +857,37 @@ describe("lando info — resolved log sources", () => {
     stream: "stderr",
     strategy: "follow",
   });
+  test.each([false, true])(
+    "reports pathless console aliases using serviceLogs=%s, not file capability",
+    async (serviceLogs) => {
+      // Given a native alias and a provider with the opposite file capability.
+      const source = Schema.decodeUnknownSync(LogSource)({
+        id: "error",
+        strategy: "console",
+        stream: "stderr",
+      });
+      // When projecting info through the operation.
+      const result = await Effect.runPromise(
+        infoApp().pipe(Effect.provide(makeLogSourceLayer([source], !serviceLogs, serviceLogs))),
+      );
+      // Then JSON stays pathless and presentation names the actual pipe.
+      const log = result.services[0]?.logSources?.[0];
+      expect(log).toMatchObject({
+        id: "error",
+        strategy: "console",
+        stream: "stderr",
+        availability: serviceLogs ? "available" : "unavailable",
+      });
+      expect(log).not.toHaveProperty("path");
+      expect(renderInfoAppResult(result)).toContain(
+        `log-source\terror\tconsole/stderr\tconsole\t${serviceLogs ? "available" : "unavailable"}`,
+      );
+      expect(
+        buildInfoSummary(result).sections[0]?.rows[0]?.fields?.find((field) => field.label === "log sources")
+          ?.value,
+      ).toContain("error (console/stderr)");
+    },
+  );
   const redirectSource = Schema.decodeUnknownSync(LogSource)({
     id: "access",
     path: "/var/log/apache/access.log",

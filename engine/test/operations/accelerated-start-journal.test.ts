@@ -14,8 +14,87 @@ import { restartApp } from "../../src/operations/restart.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { stopApp } from "../../src/operations/stop.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
-import { acceleratedPlan, app, recoveryHarness, target } from "./accelerated-start-recovery-support.ts";
+import {
+  acceleratedPlan,
+  app,
+  recoveryHarness,
+  session,
+  target,
+} from "./accelerated-start-recovery-support.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
+
+test("journal hashes the original persisted entries rather than reconstructing the normalized bundle", async () => {
+  const original: AppPlan = {
+    ...acceleratedPlan,
+    fileSync: acceleratedPlan.fileSync.map(({ engineId, session }) => ({ session, engineId })),
+  };
+  const harness = makeHarness({ plannedApp: original });
+  await Effect.runPromise(beginOrResumeAcceleratedStart(original, app).pipe(Effect.provide(harness.layer)));
+  const record = await Effect.runPromise(
+    readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)),
+  );
+  expect(record?.mountPlanDigest).toBe(
+    new Bun.CryptoHasher("sha256").update(JSON.stringify(original.fileSync)).digest("hex"),
+  );
+});
+
+test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
+  "historical journal resumes the same attempt from %s with unchanged session bytes",
+  async (phase) => {
+    // Given
+    const harness = await Effect.runPromise(recoveryHarness({ phase }));
+    const before = await Effect.runPromise(
+      readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)),
+    );
+    if (before === null) throw new Error("Expected historical pending journal");
+    const explicit: AppPlan = {
+      ...acceleratedPlan,
+      fileSync: acceleratedPlan.fileSync.map((entry) => ({ ...entry, session: { ...entry.session } })),
+    };
+    // When
+    const resumed = await Effect.runPromise(
+      beginOrResumeAcceleratedStart(explicit, app).pipe(Effect.provide(harness.layer)),
+    );
+    const pending = await Effect.runPromise(
+      readPendingAcceleratedStart(app, explicit).pipe(Effect.provide(harness.layer)),
+    );
+    // Then
+    expect(resumed.attemptId).toBe(before.attemptId);
+    expect(resumed.resumedFrom).toBe(phase);
+    expect(pending).toEqual(before);
+  },
+);
+
+test.each(["preparing", "sessions-ready", "apply-intent"] as const)(
+  "historical journal rejects changed engine or session identity at %s without altering recovery",
+  async (phase) => {
+    // Given
+    const harness = await Effect.runPromise(recoveryHarness({ phase }));
+    const before = await Effect.runPromise(
+      readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)),
+    );
+    for (const change of [
+      { engineId: "other" },
+      { session: { ...session, excludes: [] } },
+      { session: { ...session, source: AbsolutePath.make("/other") } },
+    ]) {
+      const changed = {
+        ...acceleratedPlan,
+        fileSync: acceleratedPlan.fileSync.map((entry) => ({ ...entry, ...change })),
+      };
+      // When
+      const result = await Effect.runPromiseExit(
+        beginOrResumeAcceleratedStart(changed, app).pipe(Effect.provide(harness.layer)),
+      );
+      // Then
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(
+        await Effect.runPromise(readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer))),
+      ).toEqual(before);
+      expect(harness.calls).toEqual([]);
+    }
+  },
+);
 
 test("pending accelerated start blocks changed ordinary plan before every hook or provider action", async () => {
   for (const operation of [startApp, restartApp, rebuildApp, stopApp, destroyApp]) {
@@ -74,6 +153,17 @@ test("a pending attempt for one root does not block another app with the same ID
     const otherPlan: AppPlan = {
       ...acceleratedPlan,
       root: otherRoot,
+      services: Object.fromEntries(
+        Object.entries(acceleratedPlan.services).map(([name, service]) => [
+          name,
+          {
+            ...service,
+            mounts: service.mounts.map((mount) =>
+              mount.type === "bind" ? { ...mount, source: otherRoot } : mount,
+            ),
+          },
+        ]),
+      ),
       fileSync: acceleratedPlan.fileSync.map((entry) => ({
         ...entry,
         session: { ...entry.session, app: otherApp, source: otherRoot },
@@ -164,6 +254,17 @@ test("pending journal follows a physical root through alias and changed app ID",
     const originalPlan = {
       ...acceleratedPlan,
       root: physical,
+      services: Object.fromEntries(
+        Object.entries(acceleratedPlan.services).map(([name, service]) => [
+          name,
+          {
+            ...service,
+            mounts: service.mounts.map((mount) =>
+              mount.type === "bind" ? { ...mount, source: physical } : mount,
+            ),
+          },
+        ]),
+      ),
       fileSync: acceleratedPlan.fileSync.map((entry) => ({
         ...entry,
         session: { ...entry.session, app: original, source: physical },

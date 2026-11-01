@@ -1,12 +1,15 @@
 import { DateTime, Effect, Option, Schema } from "effect";
 
-import { PortNumber } from "@lando/sdk/schema";
 import { MAILHOG_DEPRECATION_NOTICE, MailhogServiceConfig } from "@lando/sdk/schema/services/mailhog";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { DeprecationService } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  serviceFeatureApply,
+  serviceFeatureDeclareEndpoints,
+  serviceFeatureValidateEffective,
+} from "./_feature-helpers.ts";
+import { resolveMailListeners } from "./_mail-listeners.ts";
 
-import { MAILPIT_SMTP_PORT, MAILPIT_WEB_PORT } from "../mailpit-constants.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const MAILHOG_FEATURE_ID = "service-lando.mailhog";
@@ -14,10 +17,9 @@ export const MAILHOG_IMAGE = "mailhog/mailhog:v1.0.1";
 
 const applyMailhogFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const smtpPort = service.port ?? MAILPIT_SMTP_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? MAILHOG_IMAGE });
-  ctx.addEnv("MH_SMTP_BIND_ADDR", `0.0.0.0:${smtpPort}`);
+  ctx.addEnv("MH_SMTP_BIND_ADDR", resolveMailListeners(service, "mailhog").smtpAddress);
 
   applyAuthoredProcessFields(ctx);
 };
@@ -26,25 +28,14 @@ export const mailhogServiceFeature: ServiceFeatureDefinition = {
   id: MAILHOG_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
-  declareEndpoints: (ctx) =>
-    Effect.sync(() => {
-      const smtpPort = ctx.normalizedConfig.port ?? MAILPIT_SMTP_PORT;
-      return [
-        {
-          _tag: "internal" as const,
-          port: Schema.decodeUnknownSync(PortNumber)(smtpPort),
-          protocol: "tcp" as const,
-          name: "smtp",
-          primary: true as const,
-        },
-        {
-          _tag: "internal" as const,
-          port: Schema.decodeUnknownSync(PortNumber)(MAILPIT_WEB_PORT),
-          protocol: "http" as const,
-          name: "ui",
-        },
-      ];
-    }),
+  validateEffective: serviceFeatureValidateEffective(MAILHOG_FEATURE_ID, (ctx) => {
+    resolveMailListeners(ctx.normalizedConfig, "mailhog");
+    return { handledServiceFields: [] };
+  }),
+  declareEndpoints: serviceFeatureDeclareEndpoints(
+    MAILHOG_FEATURE_ID,
+    (ctx) => resolveMailListeners(ctx.normalizedConfig, "mailhog").endpoints,
+  ),
   apply: serviceFeatureApply(
     MAILHOG_FEATURE_ID,
     "mailhog service feature failed to apply",

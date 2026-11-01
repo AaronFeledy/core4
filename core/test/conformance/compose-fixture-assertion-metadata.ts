@@ -28,6 +28,7 @@ export const COMPOSE_FIXTURE_ASSERTIONS: Readonly<Record<string, ComposeFixtureA
   expose: { assertion: "internal-endpoints" },
   healthcheck: { assertion: "healthcheck" },
   image: { assertion: "artifact-ref" },
+  init: { assertion: "direct" },
   networks: { assertion: "networks" },
   ports: { assertion: "published-endpoints" },
   tmpfs: { assertion: "tmpfs" },

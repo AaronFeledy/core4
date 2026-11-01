@@ -42,7 +42,12 @@ describe("OCLIF user plugin loading", () => {
       XDG_CACHE_HOME: join(root, "cache"),
       XDG_CONFIG_HOME: join(root, "config"),
       XDG_DATA_HOME: unusableDataHome,
-      LANDO_DOCTOR_SECTION_BUDGET_MS: "100",
+      LANDO_USER_DATA_ROOT: join(root, "data"),
+      LANDO_USER_CONF_ROOT: join(root, "conf"),
+      LANDO_USER_CACHE_ROOT: join(root, "cache"),
+      LANDO_PROVIDER: "podman",
+      PATH: "/no-such-path",
+      LANDO_DOCTOR_SECTION_BUDGET_MS: "1000",
     };
   });
 

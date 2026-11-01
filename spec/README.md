@@ -60,6 +60,8 @@ If you are looking for a public surface or policy:
 | Product non-goals | 01 | §14.1 |
 | Open and deferred decisions | 01 | §14.2 |
 | Bun policies and performance budgets | 02 | §2.1 |
+| Private Bun self-execution over `ProcessRunner`, recursion guard, child completion, single machine envelope, output caps, and stdin policy | 02 + 03 + 08 | §2.1 + §3.4 + §8.2.4 |
+| `PluginPackageOperationError` operations and the failed-operation mutation boundary | 08 + 10 | §8.2.4 + §9.6 |
 | TypeScript policy | 02 | §2.2 |
 | Native command dispatcher choice | 02 | §2.3 |
 | Effect runtime, schema validation, compiled decoders, logging, and docs rules | 02 | §2.4 + §2.5 |
@@ -68,6 +70,7 @@ If you are looking for a public surface or policy:
 | Runtime layers, dependency direction, and source layout | 03 | §3.1 + §3.3 |
 | Bootstrap levels and fast paths | 03 | §3.2 |
 | Core Effect service tags | 03 | §3.4 |
+| Host execution directory identity, environment snapshots, and PWD precedence | 03 | §3.4 |
 | Lifecycle event scopes and names | 03 | §3.5 |
 | CLI and embedding imperative shells | 03 | §3.6 |
 | Canonical secret and PII redaction | 03 | §3.7 |
@@ -83,29 +86,43 @@ If you are looking for a public surface or policy:
 | Early volume creation receipts and seed eligibility after failed apply | 05 + 11 | §5.3 + §10.7 |
 | Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
+| Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
-| Bundled providers and multi-provider non-goal | 05 | §5.8 + §5.9 |
+| Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema | 06 | §6.1 + §6.2 |
+| Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
 | Artifact build contract | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
+| File-sync eligibility, shared policy, and provider prepared-volume support | 04 + 05 | §4.3 + §4.4 + §5.4 |
+| Canonical file-sync execution bundle and retained flat session history | 06 | §6.4 |
+| Planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
-| Healthchecks, start-failure retention, certificates, and trust injection | 06 | §6.7 + §6.8 |
+| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, and start-failure retention | 06 | §6.7 |
+| Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
+| Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
+| Certificates and trust injection | 06 | §6.8 |
 | Reserved service environment variables and agent context | 06 | §6.9 |
 | `ServiceInfo`, scoped `ServiceConnection`, and connection observation/projection | 06 | §6.10 |
 | `ServiceType`, `ServiceFeature`, and `AppFeature` contracts | 06 | §6.11 |
 | Provider-independent service/app endpoint declarations, immutable selection facts, and non-endpoint application | 06 | §6.11.0 + §6.11.4 |
+| Read-only service-type resolution metadata in app-feature declaration and application | 06 | §6.11.4 |
+| Final effective feature validation, explicit field claims and structured feature issues | 06 | §6.11.0 + §6.11.4 |
 | Service-type configuration issues and service-relative paths | 06 | §6.11 |
 | Explicit webroot declarations, pre-cache diagnostics, and language root context | 06 | §6.11.0 + §6.12.2 |
 | Canonical service-type catalog and credentials | 06 | §6.12 |
 | Tomcat catalog configuration and custom-image ownership | 06 | §6.12.1 |
+| PHP resolved runtime policy, default non-root home, custom-image/build ownership, retained explicit tooling, and Mailpit sender diagnostics | 06 | §6.12.5 |
 | Primary listen-port authority, native-variable validation, reserved ports, and Lando-owned clients | 06 | §6.2 + §6.12.1 |
+| MinIO console ports and effective Mailpit/MailHog secondary listeners | 06 | §6.12.1 |
+| Explicit MinIO BYO image/build and typed mail wildcard-bind reachability | 06 | §6.12.1 |
 | `BuildOrchestrator`, `BuildPlan`, results, transcripts, and errors | 06 | §6.13 |
 | Start convergence, failure warning, bare restart, selected restart, and rebuild | 06 | §6.15 |
-| Service log-source contracts | 06 | §6.14 |
+| Early conditional non-root low-port warning without runtime probing | 06 | §6.15 |
+| Pathless console aliases, pipe selection, file followers, and PHP Apache/FPM routing | 06 | §6.10 + §6.14 |
 | Landofile discovery and file forms | 07 | §7.1 |
 | Host-owned SDK and Effect modules for author code | 07 | §7.1.1 |
 | Six-layer Landofile merge | 07 | §7.2 |
@@ -128,14 +145,23 @@ If you are looking for a public surface or policy:
 | App config, global config, shell, Bun, open, and MCP commands | 08 | §8.2.1 + §8.2.6 |
 | `LandoCommandSpec`, command input, and command errors | 08 | §8.3 |
 | CLI-owned `--yes`/`-y` confirmation flags | 08 | §8.3.1 |
-| Single native dispatch and help projection | 08 | §8.4.1 + §8.4.2 |
-| Tooling schemas, positional argument round-tripping, steps, expressions, events, and scripts | 08 | §8.5 |
+| Single native dispatch, help projection, and internal/disabled visibility | 08 | §8.4.1 + §8.4.2 |
+| Tooling schemas, named-first binding, boolean projection, sensitivity, and retained input revisions | 08 | §8.5.1 |
+| Tooling steps, expressions, events, and scripts | 08 | §8.5 |
+| Bun Shell script metadata, positional policy, sparse named inputs, data-only environment, and disabled refusal | 08 | §8.5.9 |
+| Tooling cache/help recovery and explicit refresh | 08 | §8.7 |
+| Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
+| Bounded recipe post-init, prepared-script integrity, and public failure context | 08 | §8.8.8 |
+| Single preparation, immutable pre-publication review, and unattended init paths | 08 | §8.8.7 + §8.8.9 |
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
+| Host color opt-out (`NO_COLOR`, `TERM=dumb`) for narration, result decoration, help, and hyperlinks | 08 | §8.4.2 + §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
 | Command completion, result projection, machine envelopes, bounded output capture, streams, and closed pipes | 08 + 11 | §8.3 + §8.11 + §10.14 |
+| Output routing table, JSON frame-stream events, and dropped-event warnings | 08 | §8.11.3 |
+| History-plus-live event subscriptions (`subscribeWithHistory`) | 03 | §11.1 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |
 | Library plugin/config policy and scope ownership | 09 | §16.4 + §16.6 |
 | Programmatic CLI and testing APIs | 09 | §16.7 + §16.8 |
@@ -152,6 +178,7 @@ If you are looking for a public surface or policy:
 | External-tool egress exception and browser authorization | 11 | §10.3.1 + §10.3.5 |
 | SSH identity, identities, managed key, sidecar and host agent forwarding, gpg agent, relay reuse | 11 | §10.4 |
 | Probe, healthcheck, and app-check contracts | 11 | §10.5 |
+| Endpoint-scoped URL scan defaults, explicit override precedence and global disable policy | 06 + 11 | §6.6 + §10.5.3 |
 | File-sync engine and Mutagen implementation | 11 | §10.6 |
 | Accelerated-start journal, resume, and stop/destroy from any phase | 11 | §10.6.3 + §5.3.1 |
 | Setup and host integration | 11 | §10.8 |
@@ -232,6 +259,7 @@ Public surfaces MUST have one canonical registry. Narrative sections may explain
 Canonical owners:
 
 - Built-in commands, aliases, flags, args, bootstrap levels, completion policies, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
+- Plugin command identity, aliases, listing metadata, and MCP eligibility: manifest command descriptors (§9.4); plugin command inputs and execution: the command module's `ExecutableCommandSpec` (§8.3, §9.7).
 - Public schemas, event payload schemas, tagged errors, and plugin-facing contract metadata: the `@lando/sdk` schema, error, and event registries (§7.8, §13.2).
 - Core service tags and public service exports: §3.4 plus `@lando/core/services` (§16.2).
 - Secret and PII redaction: `@lando/sdk/secrets` owns the value layer, pattern-class catalog, `secrets`/`telemetry`/`transcript` profiles, and `[redacted]` sentinel, surfaced through `RedactionService` (§3.7, §3.4). This invariant is non-replaceable, has no `redactors:` plugin surface (§4.2), composes into every sensitive emitter, and is protected by the §13.4 boundary gate.

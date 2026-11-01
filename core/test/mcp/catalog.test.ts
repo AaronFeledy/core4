@@ -2,15 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
+import { ToolingInputRevision } from "@lando/sdk/schema";
 
 import { buildCatalog, computeEffectiveAllowlist } from "@lando/mcp/catalog";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { rebuildSpec } from "../../src/cli/command-specs/app/rebuild.ts";
-import { listSpec } from "../../src/cli/command-specs/apps/list.ts";
+import { listSpec as typedListSpec } from "../../src/cli/command-specs/apps/list.ts";
 import { mcpRegistryFromBuiltIns, mcpRegistryWithToolingEntries } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { Flags } from "../../src/cli/spec/metadata.ts";
+
+const listSpec: LandoCommandSpec = typedListSpec;
 
 const spec = (id: string, extra: Partial<LandoCommandSpec> = {}): LandoCommandSpec => ({
   id,
@@ -29,7 +32,7 @@ const entry = (id: string, extra: Partial<LandoCommandSpec> = {}): McpCommandEnt
 describe("deriveToolInputSchema", () => {
   test("projects repeatable service arrays for app info and rebuild", () => {
     // Given
-    const specs = [infoSpec, rebuildSpec];
+    const specs: ReadonlyArray<LandoCommandSpec> = [infoSpec, rebuildSpec];
 
     // When
     const schemas = specs.map(deriveToolInputSchema);
@@ -207,8 +210,10 @@ describe("buildCatalog", () => {
         summary: "Greet",
         hidden: false,
         input: {
-          flags: [{ name: "loud", boolean: true, required: false }],
-          args: [{ name: "target", order: 0, required: true }],
+          flags: [{ name: "loud", boolean: true, required: false, sensitive: false }],
+          args: [{ name: "target", order: 0, required: true, sensitive: false }],
+          acceptsArguments: true,
+          revision: ToolingInputRevision.make("fixture-revision"),
         },
       },
     ]);
@@ -221,6 +226,9 @@ describe("buildCatalog", () => {
     // Then
     expect(catalog.tools[0]?.inputSchema).toEqual({
       type: "object",
+      required: ["args"],
+      "x-lando-input-revision": "fixture-revision",
+      "x-lando-accepts-arguments": true,
       additionalProperties: false,
       properties: {
         flags: { type: "object", additionalProperties: false, properties: { loud: { type: "boolean" } } },

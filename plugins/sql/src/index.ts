@@ -15,14 +15,14 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   entry: "./src/index.ts",
   contributes: {
     commands: [
-      "db:import",
-      "db:export",
-      "db:snapshot",
-      "db:snapshots",
-      "db:snapshots:prune",
-      "db:restore",
-      "db:reset",
-      "db:seed",
+      { id: "db:import", summary: "Import a database dump into a service." },
+      { id: "db:export", summary: "Export a database dump from a service." },
+      { id: "db:snapshot", summary: "Create a named snapshot of a database service." },
+      { id: "db:snapshots", summary: "List database snapshots and recovery points.", mcpAllowed: true },
+      { id: "db:snapshots:prune", summary: "Preview or apply database snapshot retention." },
+      { id: "db:restore", summary: "Restore a database service from a snapshot." },
+      { id: "db:reset", summary: "Reset a database service to an empty state." },
+      { id: "db:seed", summary: "Seed a fresh database from a dump, snapshot, or running app." },
     ],
   },
 });

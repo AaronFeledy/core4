@@ -14,8 +14,6 @@ import {
   TRAEFIK_DIAGNOSTICS_IMAGE,
   TRAEFIK_DYNAMIC_CONFIG_DIR,
   TRAEFIK_IMAGE,
-  renderTraefikDiagnosticHtml,
-  renderTraefikDiagnosticNginxConfig,
   renderTraefikDynamicConfig,
   renderTraefikFallbackConfig,
 } from "@lando/proxy-traefik";
@@ -116,12 +114,8 @@ export interface ProxyDiagnosticsStack {
 }
 
 const writeProxyFiles = async (root: string, slug: string, routes: ReadonlyArray<RoutePlan>) => {
-  const diagnosticDir = join(root, "diagnostic");
   const dynamicDir = join(root, "dynamic");
-  await mkdir(diagnosticDir, { recursive: true });
   await mkdir(dynamicDir, { recursive: true });
-  await writeFile(join(diagnosticDir, "nginx.conf"), renderTraefikDiagnosticNginxConfig(), { mode: 0o644 });
-  await writeFile(join(diagnosticDir, "404.html"), renderTraefikDiagnosticHtml(), { mode: 0o644 });
   // The harness stays on the per-app bridge, where the diagnostic backend is
   // addressed by its service name instead of the global cross-app hostname.
   await writeFile(
@@ -132,7 +126,7 @@ const writeProxyFiles = async (root: string, slug: string, routes: ReadonlyArray
     join(dynamicDir, `routes-${slug}.yml`),
     renderTraefikDynamicConfig(routes, AppId.make(slug)),
   );
-  return { diagnosticDir, dynamicDir };
+  return { dynamicDir };
 };
 
 export const startProxyDiagnosticsStack = async (socketPath: string): Promise<ProxyDiagnosticsStack> => {
@@ -153,13 +147,12 @@ export const startProxyDiagnosticsStack = async (socketPath: string): Promise<Pr
       backend: { ...backend, host: "web" },
     },
   ];
-  const { diagnosticDir, dynamicDir } = await writeProxyFiles(root, slug, routes);
+  const { dynamicDir } = await writeProxyFiles(root, slug, routes);
 
   const services = {
     web: servicePlan("web", BACKEND_IMAGE, { command: ["sh", "-c", backendStartScript] }),
     [TRAEFIK_DIAGNOSTICS_ID]: servicePlan(TRAEFIK_DIAGNOSTICS_ID, TRAEFIK_DIAGNOSTICS_IMAGE, {
       command: [...TRAEFIK_DIAGNOSTICS_COMMAND],
-      mounts: [bindMount(diagnosticDir, TRAEFIK_DIAGNOSTICS_CONTAINER_DIR, true)],
       healthcheck: TRAEFIK_DIAGNOSTICS_HEALTHCHECK,
     }),
     traefik: servicePlan("traefik", TRAEFIK_IMAGE, {

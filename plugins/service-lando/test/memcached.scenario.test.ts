@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,7 +26,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -37,6 +40,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +182,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -230,7 +233,9 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["stats"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["stats"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("memcached-tool");
@@ -268,13 +273,17 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const setResult = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["set foo 0 0 3\r\nbar"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["set foo 0 0 3\r\nbar"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(setResult.exitCode).toBe(0);
     expect(setResult.stdout).toBe("STORED\r\n");
 
     const getResult = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["get foo"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["get foo"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(getResult.exitCode).toBe(0);
     expect(getResult.stdout).toContain("bar");

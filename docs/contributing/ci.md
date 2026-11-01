@@ -434,6 +434,49 @@ Set `LANDO_TEST_ARTIFACT_ROOT` to an existing caller-owned directory to retain
 sanitized per-command evidence after app teardown; remove that directory after
 review.
 
+### Run the bounded service journeys
+
+The `service-listeners-linux-x64` nightly job runs four serial journeys against
+the current compiled CLI: Mailpit with default and moved listeners, and MinIO
+with default and independently moved API/console ports. These tests use the
+explicit Podman API socket with isolated app roots; they do not require that
+socket to match the managed-CLI gate used by the database suites above.
+
+On Linux amd64, prepare an answering socket, a freshly built CLI, `curl`, and
+`tar`. The MinIO fixture builds pinned official source and a checksum-verified
+official `mc` inside a pinned Go container. It does not install host Go and is
+not a Lando product image or a recommended MinIO distribution.
+
+```bash
+export LANDO_TEST_PODMAN_SOCKET="$(bun -e 'import { makeLandoPaths } from "@lando/paths"; console.log(makeLandoPaths().providerSocketPath)')"
+export LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando"
+export LANDO_TEST_MINIO_IMAGE="localhost/lando-listener-minio:qa-$(date +%s)"
+bun scripts/build-service-listener-qa-image.ts "$LANDO_TEST_MINIO_IMAGE"
+LANDO_TEST_LISTENERS_STRICT=1 bun test \
+  plugins/service-lando/test/service-listener-journeys.integration.test.ts \
+  --max-concurrency=1
+```
+
+Require four passing cases and the four-of-four completion summary, not just a
+successful test-runner exit. The mail journeys send a unique message from a
+second container and retrieve it through the inbox API. The object-storage
+journeys roundtrip non-text bytes, reach the console, and check that startup
+scans use the API health path rather than treating its unauthenticated root `403`
+as a failed service.
+
+Missing explicit prerequisites skip ordinary local collection; strict mode fails
+them. Once execution is configured, image, startup, protocol, scan, and teardown
+failures fail the run rather than becoming skips. Each case removes only its
+unique apps, volumes and temporary roots. The image builder leaves the explicit
+test tag for reuse; remove that tag, not shared images, when finished:
+
+```bash
+IMAGE_PATH="$(bun -e 'console.log(encodeURIComponent(process.env.LANDO_TEST_MINIO_IMAGE ?? ""))')"
+test -n "$IMAGE_PATH" && curl --fail --noproxy '*' \
+  --unix-socket "$LANDO_TEST_PODMAN_SOCKET" -X DELETE \
+  "http://localhost/images/$IMAGE_PATH"
+```
+
 ### Run the MCP completion spot check
 
 With the same prepared roots and explicit managed socket, exercise the compiled

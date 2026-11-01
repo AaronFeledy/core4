@@ -4,6 +4,7 @@ import { type Context, Effect, Predicate, Schema } from "effect";
 import {
   type CapabilityError,
   DataTreeOwnershipCapabilityError,
+  type FileSyncSelectionError,
   LandofileValidationError,
   type PublicationUnsupportedError,
   type RouteInputError,
@@ -12,6 +13,8 @@ import {
 import {
   type AppId,
   type FileSyncPlan,
+  type FileSyncPolicy,
+  type FileSyncPolicyReason,
   type LandofileShape,
   type ProviderCapabilities,
   type ProviderId,
@@ -22,12 +25,17 @@ import {
   serviceAppMount,
 } from "@lando/sdk/schema";
 
+import {
+  type SelectedFileSyncPolicy,
+  recordFileSyncPolicy,
+  serviceFileSyncPolicy,
+} from "../plugins/file-sync-policy.ts";
 import { validateServiceDependencies } from "../services/dependency-validation.ts";
 import { sortRecord } from "../services/draft.ts";
 import { endpointValidationError, normalizeEndpoints } from "../services/endpoint-normalizer.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "../services/redirect-log-sources.ts";
 import { applyHostReachability } from "../subsystems/networking.ts";
-import { bindRealization, missingCapability } from "./compose-capabilities.ts";
+import { missingCapability } from "./compose-capabilities.ts";
 import { dataTreeOwnershipStep, resolveDataTreeOwnership } from "./data-tree.ts";
 import { resolveRoute } from "./endpoint-routes.ts";
 import { LOG_SOURCES_EXTENSION_KEY, servicePlanFromDraft } from "./extensions.ts";
@@ -57,6 +65,7 @@ export interface FinalizedServices {
     readonly key?: string;
   }>;
   readonly fileSync: ReadonlyArray<FileSyncPlan>;
+  readonly fileSyncPolicy: FileSyncPolicy;
   readonly routes: ReadonlyArray<RoutePlan>;
 }
 
@@ -65,16 +74,19 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   readonly appId: ReturnType<typeof AppId.make>;
   readonly appRoot: string;
   readonly appSlug: string;
+  readonly appName: string;
   readonly configs?: LandofileShape["configs"];
   readonly defaultDomain: string;
   readonly provider: ProviderId;
   readonly providerCapabilities: ProviderCapabilities;
   readonly metadata: ServicePlan["metadata"];
-  readonly fileSyncEngineId: string | undefined;
+  readonly ordinaryFileSyncReason: FileSyncPolicyReason;
+  readonly selectFileSyncEngine: Effect.Effect<SelectedFileSyncPolicy | undefined, FileSyncSelectionError>;
   readonly fileSystem?: Context.Service.Shape<typeof FileSystem> | undefined;
 }): Effect.fn.Return<
   FinalizedServices,
   | LandofileValidationError
+  | FileSyncSelectionError
   | CapabilityError
   | DataTreeOwnershipCapabilityError
   | PublicationUnsupportedError
@@ -86,6 +98,8 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
   const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
   const stores: Array<FinalizedServices["stores"][number]> = [];
   const fileSync: Array<FileSyncPlan> = [];
+  const servicePolicies: Record<string, FileSyncPolicy["services"][string]> = {};
+  let selectedEngine: SelectedFileSyncPolicy | undefined;
   const routeAccumulator = makeRouteAccumulator();
   const seenStoreNames = new Set<string>();
 
@@ -168,8 +182,26 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     shadowHostChecks.push(...shadowResult.shadowHostChecks);
     const planWithShadows = shadowResult.servicePlan;
     const appMount = serviceAppMount(planWithShadows);
+    const engine =
+      appMount !== undefined &&
+      input.providerCapabilities.bindMountPerformance === "slow" &&
+      draft.normalizedConfig.appMount !== false &&
+      draft.normalizedConfig.appMount?.accelerate !== false
+        ? yield* input.selectFileSyncEngine
+        : undefined;
+    const accelerate = engine !== undefined;
+    if (engine !== undefined) {
+      selectedEngine = engine;
+    }
+    servicePolicies[name] = serviceFileSyncPolicy({
+      mounted: appMount !== undefined,
+      optedOut:
+        draft.normalizedConfig.appMount !== false && draft.normalizedConfig.appMount?.accelerate === false,
+      selected: engine,
+      ordinaryReason: input.ordinaryFileSyncReason,
+    });
     let gitDirectories: GitHostCheck["directories"] = null;
-    if (bindRealization(input.providerCapabilities) === "passthrough" && appMount !== undefined) {
+    if (!accelerate && appMount !== undefined) {
       const gitPath = `${appMount.source}/.git`;
       gitDirectories = yield* readGitDirectories(gitPath, appMount.target, input.fileSystem);
       gitHostChecks.push({ path: gitPath, target: appMount.target, directories: gitDirectories });
@@ -260,7 +292,7 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
       persistentStorage: withArtifact.mounts.some((mount) => mount.type === "volume"),
     }))
       yield* Effect.fail(error);
-    const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities);
+    const servicePlanWithHome = realizeServiceMounts(withArtifact, input.providerCapabilities, accelerate);
 
     const routeRefs: Array<ServicePlan["routes"][number]> = [];
     if (authoredRoutes !== undefined) {
@@ -328,15 +360,15 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
         authoredInfo?.key,
       );
     }
-    if (input.fileSyncEngineId !== undefined) {
+    if (engine !== undefined) {
       fileSync.push(
         ...collectFileSyncEntries({
           appId: input.appId,
           appRoot: input.appRoot,
-          appName: input.appSlug,
+          appName: input.appName,
           serviceName: name,
           servicePlan: servicePlanWithRoutes,
-          engineId: input.fileSyncEngineId,
+          engineId: engine.id,
         }),
       );
     }
@@ -350,6 +382,11 @@ export const finalizeServices = Effect.fn("AppPlanner.finalizeServices")(functio
     serviceHostnames,
     stores,
     fileSync,
+    fileSyncPolicy: recordFileSyncPolicy({
+      selected: selectedEngine,
+      services: servicePolicies,
+      ordinaryReason: input.ordinaryFileSyncReason,
+    }),
     routes: prioritizeRoutes(routeAccumulator.routes),
   };
 });

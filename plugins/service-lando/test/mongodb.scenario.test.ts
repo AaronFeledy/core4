@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,7 +26,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -37,6 +40,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +182,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -225,20 +228,25 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
       expected: { kind: "command", command: ["custom-mongo-check"], timeoutSeconds: 9 },
     },
     { healthcheck: false, expected: { kind: "none" } },
-  ])("replaces both default probes with authored $healthcheck", async ({ healthcheck, expected }) => {
-    // Given
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "custom-probe",
-      services: { db: { type: "mongodb", home: false, healthcheck } },
-    });
-    // When
-    const plan = await planLandofile(landofile);
-    // Then
-    const service = plan.services[ServiceName.make("db")];
-    expect(service?.healthcheck).toMatchObject(expected);
-    expect(service?.readiness).toEqual(service?.healthcheck);
-    expect(service?.readiness?.target).toBeUndefined();
-  });
+  ])(
+    "replaces native health without losing MongoDB protocol readiness: $healthcheck",
+    async ({ healthcheck, expected }) => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "custom-probe",
+        services: { db: { type: "mongodb", home: false, healthcheck } },
+      });
+      // When
+      const plan = await planLandofile(landofile);
+      // Then
+      const service = plan.services[ServiceName.make("db")];
+      expect(service?.healthcheck).toMatchObject(expected);
+      expect(service?.readiness?.kind).toBe("command");
+      expect(service?.readiness?.command).not.toEqual(service?.healthcheck?.command);
+      expect(service?.readiness?.target?.port).toBe(27017);
+      expect(service?.readinessSource).toBe("contributed");
+    },
+  );
 
   test("`lando mongosh` tooling alias routes through provider.exec to the mongodb service", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -253,7 +261,10 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "mongosh", args: ["--eval", "db.runCommand('ping')"] }).pipe(Effect.provide(layer)),
+      runTooling({
+        name: "mongosh",
+        input: { _tag: "RawArgv", argv: ["--eval", "db.runCommand('ping')"] },
+      }).pipe(Effect.provide(layer)),
     );
 
     expect(result.tool).toBe("mongosh");
@@ -277,7 +288,10 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     await Effect.runPromise(
-      runTooling({ name: "mongosh", args: ["--quiet", "--eval", "show dbs"] }).pipe(Effect.provide(layer)),
+      runTooling({
+        name: "mongosh",
+        input: { _tag: "RawArgv", argv: ["--quiet", "--eval", "show dbs"] },
+      }).pipe(Effect.provide(layer)),
     );
 
     expect(calls[0]?.command).toEqual(["mongosh", "--quiet", "--eval", "show dbs"]);

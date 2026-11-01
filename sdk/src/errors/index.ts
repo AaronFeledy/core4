@@ -1,5 +1,6 @@
 export * from "./app.ts";
 export * from "./build.ts";
+export * from "./bun-self.ts";
 export * from "./cause-message.ts";
 export * from "./command.ts";
 export * from "./config.ts";
@@ -49,3 +50,4 @@ export * from "./tooling-step.ts";
 export * from "./tunnel.ts";
 export * from "./environment-value.ts";
 export { LandoInternalError } from "./internal.ts";
+export { ToolingCommandUnavailableError } from "./tooling-command-unavailable.ts";

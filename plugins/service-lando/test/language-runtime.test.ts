@@ -205,6 +205,20 @@ for (const fixture of fixtures) {
       expect(JSON.stringify(mounts)).toBe(JSON.stringify(fixture.mounts));
     });
 
+    test(`${fixture.language} ${source} idle default runs without a shell`, async () => {
+      // Given
+      const input = inputFor(serviceType);
+      // When
+      const plan = await composeServicePlan({
+        serviceType,
+        service: input.service,
+        appRoot: input.appRoot,
+        metadata: input.metadata,
+      });
+      // Then
+      expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
+    });
+
     test(`${fixture.language} ${source} intermediate composition projects webroot only when enabled`, async () => {
       // Given: an authored webroot on each shared-runtime consumer.
       const input = inputFor(serviceType);

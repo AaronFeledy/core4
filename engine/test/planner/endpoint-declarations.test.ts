@@ -17,13 +17,14 @@ import { emitYamlDocument } from "@lando/sdk/yaml";
 import { Effect, Layer, Schema } from "effect";
 import { bundledPluginModules } from "../../src/composition.ts";
 import { appConfigLint } from "../../src/operations/app-config-lint.ts";
-import { planApp } from "../../src/planner/assemble.ts";
 import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
+import { planApp } from "../plan-app.ts";
 
 const listener = (port: number): EndpointPlan => ({ _tag: "internal", protocol: "http", port });
 const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof definePlugin> => {
+  const metadata = Object.freeze({ "@test/resolution": Object.freeze({ listener: endpoint }) });
   const feature: ServiceFeatureDefinition = {
     id: "test.listener",
     priority: 700,
@@ -51,10 +52,13 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
         calls.push("app-declaration");
         expect("forEachSelected" in ctx).toBe(false);
         expect(ctx.selected.map((view) => view.serviceName)).toEqual(["web"]);
+        expect(ctx.selected[0]?.resolutionMetadata).toEqual(metadata);
         return { web: [{ ...listener(9000), name: "late" }] };
       }),
-    apply: () =>
+    apply: (ctx) =>
       Effect.sync(() => {
+        expect(ctx.selected[0]?.resolutionMetadata).toEqual(metadata);
+        ctx.forEachSelected((service) => expect(service.service.resolutionMetadata).toEqual(metadata));
         calls.push("app-apply");
       }),
   };
@@ -67,6 +71,7 @@ const buildPlugin = (calls: string[], endpoint: number): ReturnType<typeof defin
       Effect.succeed({
         base: "l337",
         normalizedConfig: service,
+        metadata,
         features: [{ id: feature.id, config: { port: endpoint } }],
       }),
   };
@@ -150,35 +155,32 @@ test("planning consumes the projected declarations once before applying features
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* planApp(
-        yield* PluginRegistry,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        yield* compileTestLandofile(
-          {
-            name: "declarations",
-            services: {
-              web: {
-                type: "declaration",
-                home: false,
-                routes: [{ hostname: "app.lndo.site", endpoint: "late" }],
+        {
+          landofile: yield* compileTestLandofile(
+            {
+              name: "declarations",
+              services: {
+                web: {
+                  type: "declaration",
+                  home: false,
+                  routes: [{ hostname: "app.lndo.site", endpoint: "late" }],
+                },
               },
             },
-          },
-          root,
-        ),
-        TestRuntimeProvider.capabilities,
-        root,
+            root,
+          ),
+          providerCapabilities: TestRuntimeProvider.capabilities,
+          appRoot: root,
+        },
+        Layer.succeed(PluginRegistry, yield* PluginRegistry),
       );
     }).pipe(Effect.provide(registry)),
   );
   // Then
   expect(calls).toEqual(["service-declaration", "app-declaration", "service-apply", "app-apply"]);
   expect(result.services[ServiceName.make("web")]?.endpoints).toEqual([
-    listener(8080),
-    { ...listener(9000), name: "late" },
+    { ...listener(8080), scan: { path: "/", okCodes: [] } },
+    { ...listener(9000), name: "late", scan: { path: "/", okCodes: [] } },
   ]);
   expect(result.routes[0]?.backend.port).toBe(9000);
 });
@@ -262,21 +264,18 @@ test("declarations receive original feature config before planner-owned SSH subs
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       return yield* planApp(
-        yield* PluginRegistry,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        yield* compileTestLandofile(
-          {
-            name: "original-config",
-            services: { web: { type: type.id, home: false, routes: ["original.lndo.site"] } },
-          },
-          "/srv/original-config",
-        ),
-        TestRuntimeProvider.capabilities,
-        "/srv/original-config",
+        {
+          landofile: yield* compileTestLandofile(
+            {
+              name: "original-config",
+              services: { web: { type: type.id, home: false, routes: ["original.lndo.site"] } },
+            },
+            "/srv/original-config",
+          ),
+          providerCapabilities: TestRuntimeProvider.capabilities,
+          appRoot: "/srv/original-config",
+        },
+        Layer.succeed(PluginRegistry, yield* PluginRegistry),
       );
     }).pipe(Effect.provide(registry)),
   );

@@ -33,7 +33,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | Entry point | Stable surface |
 |---|---|
 | `@lando/core` | `makeLandoRuntime`, `openLandoRuntime`, `resolveApp`, `LandoRuntimeOptions`, `LandoRuntimeServices`, `LandoRuntime`, `BootstrapLevel`, `App`, `AppSelector`, `AppResolveError`. |
-| `@lando/core/services` | Public service tags from §3.4, including registries, planning, lifecycle, IO, rendering, interaction, redaction, telemetry, diagnostics, host-proxy, tunnel, and MCP services plus §4.2 pluggable tags. |
+| `@lando/core/services` | Public service tags from §3.4, including registries, planning, lifecycle, IO, rendering, interaction, redaction, telemetry, diagnostics, tunnel, and MCP services plus §4.2 pluggable tags. |
 | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, `LandoRoots`, `LandoPaths`, and `RootOverrides` (§7.5.1). |
 | `@lando/core/schema` | Published schemas from §7.8. |
 | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, and `LandofileEmitError` (§7.8.1). |
@@ -46,7 +46,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | `@lando/core/docs/components` | Executable-guide JSX/Astro runtime and AST helpers (§19.3); unstable, outside the semver-stable set. |
 | `@lando/core/docs/redactions` | Canonical transcript redactions (§19.6); unstable, outside the semver-stable set. |
 
-The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. The renderer, event, subscriber, and plugin-context additions named in §8.9 and §9 remain additive compatibility-governed SDK surfaces. The authored remote-sync design keeps data movement in `RemoteSource`/`Dataset` and application-code movement in `CodeSync` (§10.12); implementation sequencing remains in the ROADMAP.
+The removed `@lando/core/oclif` adapter is not public. Anything not listed above is internal and MAY change between patch versions. Public schema types are inferred from schemas; parallel hand-written public types MUST NOT be introduced. App-handle operation results (`StartAppResult`, `StopAppResult`, `RestartAppResult`, `RebuildAppResult`, `DestroyAppResult`, `InfoAppResult`, `ExecAppResult`, `ToolingResult`, `ShareStopAppResult`, and the app remote results) are Effect Schemas exported from `@lando/sdk/schema` and registered in `publicSchemaRegistry`; `@lando/sdk/app` re-exports their inferred types, and the matching CLI commands use the same schemas as their `resultSchema`. The renderer, event, subscriber, and plugin-context additions named in §8.9 and §9 remain additive compatibility-governed SDK surfaces. The authored remote-sync design keeps data movement in `RemoteSource`/`Dataset` and application-code movement in `CodeSync` (§10.12); implementation sequencing remains in the ROADMAP.
 
 ### 16.3 The `LandoRuntime` factory
 
@@ -82,7 +82,7 @@ The returned opaque, SDK-published `App` handle captures app identity and runtim
 | `pull`, `push`, `switch`, `remote` | Authored remote-sync contract over source/Dataset plugins (including bundled `dotenv`) and core `CodeSync`. Code changes invalidate old plans/handles even with `noPull`; all selected bindings MUST be re-resolved (§10.12). Release sequencing remains in the ROADMAP. |
 | `config`, `events` | App-scoped configuration and lifecycle access. |
 
-Inputs are option objects. One-shot methods require no runtime services after binding; live resources and subscriptions retain `Scope.Scope`. Typed Effects are returned directly, not renderer envelopes. `app.start()` is managed by default; detached behavior requires explicit opt-in.
+Inputs are option objects. One-shot methods require no runtime services after binding; live resources and subscriptions retain `Scope.Scope`. Typed Effects are returned directly, not renderer envelopes. Exec and tooling output capture follows §8.11.3, including omission of captured-output fields when a host supplies a sink. `app.start()` is managed by default; detached behavior requires explicit opt-in.
 
 Remote methods MUST enforce §10.12.8 and retain applied-data/code side effects on failure. General approval MUST NOT assert protected typed confirmation. Non-interactive hosts MUST fail protected operations requiring that confirmation. Tether MUST NOT be exposed as a library method or through programmatic CLI dispatch, even with a custom interactive renderer. Session credentials and named overrides MUST remain with their owning scope; config pull MUST use the private file landing rules, not promise an overlay for a later start (§10.12.7).
 
@@ -138,7 +138,7 @@ App lifecycle hosts SHOULD use `App` methods. `@lando/core/cli` is the stable co
 - `appConfig` and `metaConfig` expose their subcommands as nested function namespaces.
 - Operations MUST NOT access process stdio or invoke OCLIF. They inherit runtime services through the Effect requirements channel.
 - The binary MUST use the same operations; there is no second implementation.
-- `runTooling(canonicalId, input)` invokes cached tooling programs with the CLI’s normalized input semantics (§8.6).
+- `runTooling({ name, input?, expectedInputRevision?, ...options })` and `app.tooling(id, options?)` share §8.5.1's input contract: `input` is `ToolingInvocationInput` (RawArgv or NamedMaps), and `expectedInputRevision` is the branded revision from discovery. The old options-level args vector and declaration-array snapshot are replaced. Omitted input means empty RawArgv; retained hosts MUST pass the discovered revision. Named inputs bind once against the invocation-authoritative declaration, preserving omission, false, and empty strings; only argv-only adapters lower them. App handles retain their captured configuration, so this check MUST NOT silently reload files behind a handle.
 - `appConfig.translate`, `appConfig.detectTranslators`, and `appConfig.listTranslators` are explicit authoring calls. Translation/refresh options MUST follow §7.4.2: explicit refresh may fetch metadata, check is local/read-only, and lifecycle refresh uses local snapshots only.
 
 `meta:setup`, `apps:init`, `meta:events:follow`, `meta:shellenv`, and `meta:uninstall` are not exported as command functions. Hosts compose their underlying services, provide `InteractionService` for init, subscribe to `EventService`, or keep installation concerns outside the runtime as applicable.

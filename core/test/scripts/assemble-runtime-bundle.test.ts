@@ -329,6 +329,53 @@ describe("committed runtime-bundle-sources.json", () => {
     expect(sources.runtimeVersion).toMatch(/^\d+\.\d+\.\d+$/u);
   });
 
+  test("recipe runtimeVersion is 0.1.8 while published pins stay independently versioned", async () => {
+    const sources = await readCommitted();
+    expect(sources.runtimeVersion).toBe("0.1.8");
+  });
+
+  test("pins typed Debian catatonit components for both Linux architectures", async () => {
+    const sources = await readCommitted();
+    for (const [hostKey, machine] of [
+      ["linux-x64", 62],
+      ["linux-arm64", 183],
+    ] as const) {
+      const catatonit = sources.bundles[hostKey]?.components.find(
+        (component) => component.name === "catatonit",
+      );
+      expect(catatonit).toBeDefined();
+      if (catatonit === undefined || !("archive" in catatonit) || catatonit.archive !== "deb") {
+        throw new Error(`expected Debian catatonit on ${hostKey}`);
+      }
+      expect(catatonit.version).toBe("0.2.1-2+b14");
+      expect(catatonit.member).toBe("usr/bin/catatonit");
+      expect(catatonit.installName).toBe("bin/catatonit");
+      expect(catatonit.elfMachine).toBe(machine);
+      expect(catatonit.binarySha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(catatonit.sha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(catatonit.sizeBytes).toBeGreaterThan(0);
+      expect(catatonit.binarySizeBytes).toBeGreaterThan(0);
+      expect(catatonit.source).toEqual({
+        url: "https://github.com/openSUSE/catatonit/archive/refs/tags/v0.2.1.tar.gz",
+        sha256: "771385049516fdd561fbb9164eddf376075c4c7de3900a8b18654660172748f1",
+        sizeBytes: 18479,
+      });
+      expect(catatonit.license.spdx).toBe("GPL-2.0-or-later AND LGPL-2.1-or-later");
+      expect(catatonit.license.source).toBe(catatonit.source.url);
+      expect(catatonit.license.source).not.toBe(catatonit.url);
+      expect(catatonit.license.texts.map((text) => text.file).sort()).toEqual([
+        "COPYING",
+        "COPYING.LIB",
+        "copyright",
+        "glibc-copyright",
+      ]);
+      expect(catatonit.license.texts.find((text) => text.file === "copyright")?.sha256).toBe(
+        "91b658413f8fa63a40060bb18aac958d407d454c0827c6fe78c003ea10d2018b",
+      );
+      expect(catatonit.url).toContain("catatonit_0.2.1-2+b14_");
+    }
+  });
+
   test("every component pins a real HTTPS url and non-placeholder sha256", async () => {
     const sources = await readCommitted();
     for (const group of Object.values(sources.bundles)) {

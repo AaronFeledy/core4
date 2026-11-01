@@ -105,8 +105,10 @@ describe("help dispatcher special", () => {
       command: "cli:help",
       ok: true,
     });
-    expect((envelope as { result: { all: ReadonlyArray<unknown> } }).result.all).toHaveLength(
-      nonHiddenBuiltInCount,
-    );
+    expect(
+      (envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all.filter(
+        (row) => row.source === "built-in",
+      ),
+    ).toHaveLength(nonHiddenBuiltInCount);
   });
 });

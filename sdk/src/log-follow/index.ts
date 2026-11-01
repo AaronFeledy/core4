@@ -332,6 +332,7 @@ export const followLogSource = (
   input: FollowLogSourceInput,
 ): Stream.Stream<LogFollowEvent, ProviderError> => {
   const { service, source, follow } = input;
+  if (source.strategy !== "follow") return Stream.empty;
   const maxLineBytes = input.maxLineBytes ?? DEFAULT_MAX_LINE_BYTES;
   const pollIntervalMillis = input.pollIntervalMillis ?? DEFAULT_POLL_INTERVAL_MILLIS;
   const readinessTimeoutMillis = input.readinessTimeoutMillis ?? DEFAULT_READINESS_TIMEOUT_MILLIS;

@@ -2,9 +2,9 @@ import { deserialize, serialize } from "node:v8";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
-import type { NormalizedToolingArg, NormalizedToolingFlag } from "@lando/landofile/tooling-normalize";
-import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
-import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
+import type { LandofileShape, ToolingInputDeclaration } from "@lando/sdk/schema";
+import { canonicalCacheJson } from "./canonical.ts";
+import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
 import {
@@ -12,11 +12,9 @@ import {
   getVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 5n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 6n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
-
-export const PLUGIN_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x50, 0x43]);
 
 export const COMMAND_INDEX_HEADER_BYTES = 12;
 const VERSION_OFFSET = 4;
@@ -25,12 +23,10 @@ export interface CommandIndexEntry {
   readonly id: string;
   readonly summary: string;
   readonly hidden: boolean;
+  readonly disabled?: true;
   readonly service?: string;
   readonly source?: "bun-script";
-  readonly input?: {
-    readonly flags: readonly NormalizedToolingFlag[];
-    readonly args: readonly NormalizedToolingArg[];
-  };
+  readonly input?: ToolingInputDeclaration;
 }
 
 interface CommandAliasPolicy {
@@ -68,68 +64,7 @@ export interface AppCommandIndexPayload {
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
 
-export interface PluginCommandIndexPayload {
-  readonly schemaVersion: number;
-  readonly landoVersion: string;
-  readonly pluginNames: ReadonlyArray<string>;
-  readonly pluginListSha?: string;
-  readonly commandsByPlugin?: Readonly<Record<string, ReadonlyArray<string>>>;
-  readonly manifestFingerprint?: string;
-  readonly generatedAtMs: number;
-  readonly entries: ReadonlyArray<CommandIndexEntry>;
-}
-
 const stableFingerprint = (value: unknown): string => sha256Hex(canonicalCacheJson(value));
-
-const normalizeManifest = (manifest: PluginManifest) => ({
-  name: manifest.name,
-  version: manifest.version,
-  api: manifest.api,
-  enabled: manifest.enabled ?? true,
-  bundled: manifest.bundled ?? false,
-  contributes: manifest.contributes ?? {},
-});
-
-export const derivePluginCommandManifestFingerprint = (manifests: ReadonlyArray<PluginManifest>): string =>
-  stableFingerprint(
-    manifests
-      .map(normalizeManifest)
-      .sort(
-        (a, b) =>
-          compareFingerprintText(a.name, b.name) ||
-          compareFingerprintText(a.version, b.version) ||
-          a.api - b.api,
-      ),
-  );
-
-export const derivePluginCommandPluginListSha = (manifests: ReadonlyArray<PluginManifest>): string =>
-  stableFingerprint(
-    manifests
-      .map((manifest) => ({ name: manifest.name, version: manifest.version, api: manifest.api }))
-      .sort(
-        (a, b) =>
-          compareFingerprintText(a.name, b.name) ||
-          compareFingerprintText(a.version, b.version) ||
-          a.api - b.api,
-      ),
-  );
-
-export const derivePluginCommandIdsByPlugin = (
-  manifests: ReadonlyArray<PluginManifest>,
-): Readonly<Record<string, ReadonlyArray<string>>> =>
-  Object.fromEntries(
-    manifests
-      .map(
-        (manifest) =>
-          [
-            manifest.name,
-            [...(manifest.contributes?.commands ?? [])]
-              .map((entry) => (typeof entry === "string" ? entry : entry.id))
-              .sort(),
-          ] as const,
-      )
-      .sort(([a], [b]) => compareFingerprintText(a, b)),
-  );
 
 export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>
   stableFingerprint({
@@ -164,14 +99,16 @@ const headerMatches = (bytes: Uint8Array, magic: Uint8Array): boolean => {
   return view.getBigUint64(VERSION_OFFSET, true) === COMMAND_INDEX_SCHEMA_VERSION;
 };
 
-const decodePayload = <T>(bytes: Uint8Array, magic: Uint8Array): T | null => {
+const decodePayload = (bytes: Uint8Array, magic: Uint8Array): unknown => {
   if (!headerMatches(bytes, magic)) return null;
   try {
-    const payload = deserialize(bytes.subarray(COMMAND_INDEX_HEADER_BYTES)) as T;
+    const payload: unknown = deserialize(bytes.subarray(COMMAND_INDEX_HEADER_BYTES));
     if (
       payload === null ||
       typeof payload !== "object" ||
-      (payload as { schemaVersion?: unknown }).schemaVersion !== Number(COMMAND_INDEX_SCHEMA_VERSION)
+      !Object.hasOwn(payload, "schemaVersion") ||
+      !("schemaVersion" in payload) ||
+      payload.schemaVersion !== Number(COMMAND_INDEX_SCHEMA_VERSION)
     ) {
       return null;
     }
@@ -184,11 +121,7 @@ const decodePayload = <T>(bytes: Uint8Array, magic: Uint8Array): T | null => {
 export const encodeAppCommandIndex = (payload: AppCommandIndexPayload): Uint8Array =>
   encodePayload(APP_COMMAND_MAGIC, payload);
 
-export const decodeAppCommandIndex = (bytes: Uint8Array): AppCommandIndexPayload | null =>
-  decodePayload<AppCommandIndexPayload>(bytes, APP_COMMAND_MAGIC);
-
-export const encodePluginCommandIndex = (payload: PluginCommandIndexPayload): Uint8Array =>
-  encodePayload(PLUGIN_COMMAND_MAGIC, payload);
-
-export const decodePluginCommandIndex = (bytes: Uint8Array): PluginCommandIndexPayload | null =>
-  decodePayload<PluginCommandIndexPayload>(bytes, PLUGIN_COMMAND_MAGIC);
+export const decodeAppCommandIndex = (bytes: Uint8Array): AppCommandIndexPayload | null => {
+  const payload = decodePayload(bytes, APP_COMMAND_MAGIC);
+  return isAppCommandIndexPayload(payload) ? payload : null;
+};

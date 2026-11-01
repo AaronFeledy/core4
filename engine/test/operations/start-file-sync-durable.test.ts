@@ -10,11 +10,14 @@ import {
   PortablePath,
   ProviderId,
   ServiceName,
+  fileSyncVolumeName,
 } from "@lando/sdk/schema";
-import { FileSyncEngine, type FileSyncEngineShape } from "@lando/sdk/services";
+import type { FileSyncEngineShape } from "@lando/sdk/services";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 import { Cause, DateTime, Deferred, Effect, Exit, Fiber, Option, Scope } from "effect";
 import { startFileSyncSessions } from "../../src/operations/start-file-sync.ts";
+import { provideFileSyncEngine } from "../file-sync-engine.ts";
+import { web } from "./start-progress-topology-support.ts";
 
 const root = AbsolutePath.make("/tmp/durable-sync-contract");
 const app = { kind: "user" as const, id: AppId.make("durable-sync-contract"), root };
@@ -23,9 +26,13 @@ const spec = (mountKey: string): FileSyncSessionSpec => ({
   service: ServiceName.make("web"),
   mountKey,
   source: root,
-  target: { _tag: "volume", name: `durable-${mountKey}`, path: PortablePath.make("/app") },
+  target: {
+    _tag: "volume",
+    name: fileSyncVolumeName(app.id, "web", mountKey),
+    path: PortablePath.make(`/${mountKey}`),
+  },
   mode: "two-way-safe",
-  excludes: [],
+  excludes: [".git"],
 });
 const plan: AppPlan = {
   id: AppId.make(app.id),
@@ -33,7 +40,19 @@ const plan: AppPlan = {
   slug: app.id,
   root,
   provider: ProviderId.make("lando"),
-  services: {},
+  services: {
+    [web.name]: {
+      ...web,
+      mounts: ["first", "second"].map((mountKey) => ({
+        type: "bind" as const,
+        source: root,
+        target: PortablePath.make(`/${mountKey}`),
+        readOnly: false,
+        realization: "accelerated" as const,
+        mountKey,
+      })),
+    },
+  },
   routes: [],
   stores: [],
   fileSync: ["first", "second"].map((mountKey) => ({ engineId: "mutagen", session: spec(mountKey) })),
@@ -125,7 +144,7 @@ describe("durable initial file-sync failure", () => {
         try {
           const exit = await Effect.runPromiseExit(
             startFileSyncSessions(plan, events, managed ? { scope } : undefined).pipe(
-              Effect.provideService(FileSyncEngine, engine),
+              provideFileSyncEngine(engine),
             ),
           );
           expect(Exit.isFailure(exit)).toBe(true);
@@ -156,9 +175,29 @@ describe("durable initial file-sync failure", () => {
         }),
     };
     const fiber = Effect.runFork(
-      startFileSyncSessions({ ...plan, fileSync: plan.fileSync.slice(0, 1) }, events, { scope }).pipe(
-        Effect.provideService(FileSyncEngine, engine),
-      ),
+      startFileSyncSessions(
+        {
+          ...plan,
+          fileSync: plan.fileSync.slice(0, 1),
+          services: {
+            [web.name]: {
+              ...web,
+              mounts: [
+                {
+                  type: "bind",
+                  source: root,
+                  target: PortablePath.make("/first"),
+                  readOnly: false,
+                  realization: "accelerated",
+                  mountKey: "first",
+                },
+              ],
+            },
+          },
+        },
+        events,
+        { scope },
+      ).pipe(provideFileSyncEngine(engine)),
     );
     try {
       await Effect.runPromise(Deferred.await(entered));

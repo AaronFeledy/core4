@@ -12,21 +12,10 @@ import { escapeDiagnosticText } from "../diagnostic-text";
 import type { RenderContext } from "../renderer-boundary";
 import { contextAllowsHyperlinks, isDecoratedContext, summaryPaintOptions } from "../renderer-boundary";
 import { connectionFields, scopedConnectionText, unambiguousHostHttpUrls } from "./connection-summary";
+import { fileSyncSection, plainFileSyncLines } from "./info-file-sync-render.ts";
+import { probeFields } from "./info-probes-render.ts";
 import { homeFields, plainStorageRows, storageFields, storageRemedy } from "./info-storage-render";
 import { INFO_STATUS_TONES, summaryToneFromTable } from "./service-summary";
-
-type InfoResultWithHostProxy = InfoAppResult & {
-  readonly hostProxy?: {
-    readonly runLando: {
-      readonly availability: "available" | "unavailable";
-      readonly reason?: string;
-    };
-  };
-};
-
-const hasHostProxy = (result: InfoAppResult): result is InfoResultWithHostProxy => "hostProxy" in result;
-
-const hostProxyFor = (result: InfoAppResult) => (hasHostProxy(result) ? result.hostProxy : undefined);
 
 const infoStatusTone = summaryToneFromTable(INFO_STATUS_TONES, "info");
 
@@ -40,7 +29,12 @@ const logSourceFields = (sources: ReadonlyArray<InfoLogSource>): NonNullable<Sum
   return [
     {
       label: "log sources",
-      value: sources.map((source) => `${source.id} [${availability(source)}]`).join(", "),
+      value: sources
+        .map(
+          (source) =>
+            `${source.id}${source.strategy === "console" ? ` (console/${source.stream})` : ""} [${availability(source)}]`,
+        )
+        .join(", "),
     },
     ...(reasons.length === 0 ? [] : [{ label: "log details", value: reasons.join(" ") }]),
   ];
@@ -80,17 +74,19 @@ const jsonDetailsNote = (hasLogSources: boolean, hasStorage: boolean): string =>
 };
 
 export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
-  const hostProxy = hostProxyFor(result);
+  const hostProxy = result.hostProxy;
+  const projectFiles = fileSyncSection(result.fileSync);
   const rows: SummaryRow[] = result.services.map((service) => {
     const remedy = storageRemedy(service);
     return {
       label: service.service,
-      tone: infoStatusTone(service.status),
+      tone: service.health?.state === "unhealthy" ? "warn" : infoStatusTone(service.status),
       value: service.status,
       fields: [
         { label: "type", value: service.type },
         { label: "provider", value: service.provider },
         ...planMetadataFields(service),
+        ...probeFields(service),
         ...connectionFields(service.connections),
         ...storageFields(service),
         ...homeFields(service),
@@ -140,7 +136,8 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
             ? { notes: [jsonDetailsNote(hasLogSources, hasStorage)] }
             : {}),
       },
-      ...(hostProxy === undefined
+      ...(projectFiles === undefined ? [] : [projectFiles]),
+      ...(hostProxy?.runLando.availability !== "unavailable"
         ? []
         : [
             {
@@ -148,7 +145,7 @@ export const buildInfoSummary = (result: InfoAppResult): SummaryDocument => {
               rows: [
                 {
                   label: "runLando",
-                  tone: (hostProxy.runLando.availability === "available" ? "ok" : "skipped") as SummaryTone,
+                  tone: "skipped" as const,
                   value: hostProxy.runLando.availability,
                   fields:
                     hostProxy.runLando.reason === undefined
@@ -171,8 +168,8 @@ const agentEnvLines = (result: InfoAppResult): ReadonlyArray<string> => {
 };
 
 const hostProxyLines = (result: InfoAppResult): ReadonlyArray<string> => {
-  const hostProxy = hostProxyFor(result);
-  if (hostProxy === undefined) return [];
+  const hostProxy = result.hostProxy;
+  if (hostProxy?.runLando.availability !== "unavailable") return [];
   const reason = hostProxy.runLando.reason === undefined ? "" : `\t${hostProxy.runLando.reason}`;
   return [`host-proxy\trunLando\t${hostProxy.runLando.availability}${reason}`];
 };
@@ -189,13 +186,14 @@ export const renderInfoAppResult = (result: InfoAppResult, ctx?: RenderContext):
 };
 
 const renderPlainInfoAppResult = (result: InfoAppResult): string => {
-  const extra = [...hostProxyLines(result), ...agentEnvLines(result)];
+  const extra = [...plainFileSyncLines(result.fileSync), ...hostProxyLines(result), ...agentEnvLines(result)];
   if (result.services.length === 0) return [`${result.app}`, "(no services)", ...extra].join("\n");
   const rows = result.services.flatMap((service) => {
     const base = `${service.service}\t${service.status}\t${scopedConnectionText(service.connections, "host") || "not published"}\t${scopedConnectionText(service.connections, "app") || "-"}`;
     const logRows = (service.logSources ?? []).map((source) => {
       const reason = source.reason === undefined ? "" : `\t${source.reason}`;
-      return `${service.service}\tlog-source\t${source.id}\t${source.path}\t${source.strategy}\t${source.availability}${reason}`;
+      const location = source.strategy === "console" ? `console/${source.stream}` : source.path;
+      return `${service.service}\tlog-source\t${source.id}\t${location}\t${source.strategy}\t${source.availability}${reason}`;
     });
     const credsRows =
       service.creds === undefined ? [] : [`${service.service}\tcreds\t${credsText(service.creds)}`];
@@ -205,7 +203,18 @@ const renderPlainInfoAppResult = (result: InfoAppResult): string => {
     const metadataRows = planMetadataFields(service).map(
       (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
     );
-    return [base, ...metadataRows, ...plainStorageRows(service), ...homeRows, ...logRows, ...credsRows];
+    const probes = probeFields(service).map(
+      (field) => `${escapeDiagnosticText(service.service)}\t${field.label}\t${field.value}`,
+    );
+    return [
+      base,
+      ...metadataRows,
+      ...probes,
+      ...plainStorageRows(service),
+      ...homeRows,
+      ...logRows,
+      ...credsRows,
+    ];
   });
   return [`app\t${result.app}`, "service\tstate\tHost\tApp Network", ...rows, ...extra].join("\n");
 };

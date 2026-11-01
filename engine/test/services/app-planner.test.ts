@@ -20,6 +20,7 @@ import {
   GlobalConfig,
   LandofileShape,
   LogSource,
+  LogSourceId,
   PluginManifest,
   PluginName,
   PortablePath,
@@ -29,9 +30,16 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
-import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  ConfigService,
+  LandofileService,
+  PluginRegistry,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { fileSyncEngineLayer } from "../file-sync-engine.ts";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -39,6 +47,8 @@ import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
+import { infoForPlan } from "../../src/operations/info.ts";
+import { selectInfoPlan } from "../../src/operations/service-selection.ts";
 import { resolvePinnedArtifactTag } from "../../src/planner/service-types.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
@@ -56,6 +66,7 @@ const providerLandoCapabilities: ProviderCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -92,6 +103,7 @@ const composePreservedPathCapabilities: ProviderCapabilities = {
 const slowBindMountCapabilities: ProviderCapabilities = {
   ...providerLandoCapabilities,
   bindMountPerformance: "slow",
+  fileSyncTargets: "prepared-volume",
 };
 
 const landofileFixture: LandofileShape = {
@@ -132,7 +144,12 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
       planTestLandofile(appPlanner, landofile, providerCapabilities),
     ).pipe(
       Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(PluginRegistryLayer.layer),
+      Effect.provide(
+        Layer.mergeAll(
+          PluginRegistryLayer.layer,
+          fileSyncEngineLayer({ ...TestFileSyncEngine, id: "mutagen" }),
+        ),
+      ),
       Effect.provideService(GlobalConfigSources, {
         env: { ...process.env },
         sources: { user: false, env: true },
@@ -826,50 +843,37 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("emits parent creation before each PHP-FPM redirect link", async () => {
+  test("keeps PHP-FPM native stderr aliases pathless without filesystem redirects", async () => {
     await withTempCwd(async () => {
-      const appPlan = await plan(
-        Schema.decodeUnknownSync(LandofileShape)({
-          name: "php-logs-app",
-          runtime: 4,
-          services: { appserver: { type: "php:8.2", via: "fpm" } },
-        }),
-      );
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "php-logs-app",
+        runtime: 4,
+        services: { appserver: { type: "php:8.2", via: "fpm" } },
+      });
+      // When
+      const appPlan = await plan(landofile);
 
+      // Then
       const appserver = appPlan.services[ServiceName.make("appserver")];
-      const buildSteps = (
-        appserver?.extensions["@lando/core/service-features"] as
-          | { readonly buildSteps?: ReadonlyArray<unknown> }
-          | undefined
-      )?.buildSteps;
-      // PHP prerequisite steps may precede the redirects; the invariant is that
-      // redirects are finalization steps with each mkdir immediately before its link.
-      expect(buildSteps?.slice(-4)).toEqual([
+      expect(appserver?.logSources).toEqual([
         {
-          id: "lando-log-redirect-mkdir:access",
-          phase: "build",
-          command: ["mkdir", "-p", "/var/log/php-fpm"],
-          user: "root",
+          id: LogSourceId.make("access"),
+          label: "php-fpm access (shared stderr)",
+          strategy: "console",
+          stream: "stderr",
         },
         {
-          id: "lando-log-redirect:access",
-          phase: "build",
-          command: ["ln", "-sf", "/dev/stdout", "/var/log/php-fpm/access.log"],
-          user: "root",
-        },
-        {
-          id: "lando-log-redirect-mkdir:error",
-          phase: "build",
-          command: ["mkdir", "-p", "/var/log/php-fpm"],
-          user: "root",
-        },
-        {
-          id: "lando-log-redirect:error",
-          phase: "build",
-          command: ["ln", "-sf", "/dev/stderr", "/var/log/php-fpm/error.log"],
-          user: "root",
+          id: LogSourceId.make("error"),
+          label: "php-fpm error (shared stderr)",
+          strategy: "console",
+          stream: "stderr",
         },
       ]);
+      const { buildSteps } = Schema.decodeUnknownSync(
+        Schema.Struct({ buildSteps: Schema.Array(Schema.Struct({ id: Schema.String })) }),
+      )(appserver?.extensions["@lando/core/service-features"]);
+      expect(buildSteps.filter(({ id }) => id.startsWith("lando-log-redirect"))).toEqual([]);
     });
   });
 
@@ -1423,6 +1427,70 @@ describe("AppPlannerLayer.layer", () => {
       });
     });
   });
+
+  test.each([
+    ["lando base", true, "native", false, "available"],
+    ["non-lando base", false, "none", false, undefined],
+    ["unsupported provider", true, "none", false, "unavailable"],
+    ["filter excludes eligible services", true, "none", true, undefined],
+  ] as const)(
+    "projects host-proxy capability from a real plan: %s",
+    async (_name, eligible, reachability, filtered, availability) => {
+      // Given
+      await withTempCwd(async () => {
+        const capabilities: ProviderCapabilities = {
+          ...providerLandoCapabilities,
+          hostReachability: reachability,
+          hostProxy: { containerTargets: [{ os: "linux", arch: "x64" }] },
+        };
+        const appPlan = await plan(
+          Schema.decodeUnknownSync(LandofileShape)({
+            name: "host-proxy-info",
+            runtime: 4,
+            services: {
+              ...(eligible ? { web: { type: "node:lts", base: "lando", home: false } } : {}),
+              worker: { type: "compose", image: "docker.io/library/node:22", home: false },
+            },
+          }),
+          capabilities,
+        );
+        const inspected: string[] = [];
+        const provider = {
+          ...TestRuntimeProvider,
+          capabilities,
+          inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) => {
+            inspected.push(String(target.service));
+            return TestRuntimeProvider.inspect(target);
+          },
+        };
+        const registry = RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          list: Effect.succeed([appPlan.provider]),
+          capabilities: Effect.succeed(capabilities),
+          select: () => Effect.succeed(provider),
+        });
+        // When
+        const selected = await Effect.runPromise(
+          selectInfoPlan(appPlan, filtered ? [ServiceName.make("worker")] : undefined),
+        );
+        const result = await Effect.runPromise(
+          infoForPlan(selected, appPlan).pipe(Effect.provideService(RuntimeProviderRegistry, registry)),
+        );
+        // Then
+        if (availability === undefined) expect(result).not.toHaveProperty("hostProxy");
+        else
+          expect(result.hostProxy?.runLando).toEqual({
+            availability,
+            ...(availability === "unavailable"
+              ? { reason: "Provider hostReachability is none; host-proxy runLando is disabled." }
+              : {}),
+          });
+        expect(inspected.sort()).toEqual(Object.keys(selected.services).sort());
+      });
+    },
+  );
 
   test("records host-proxy runLando unavailable when hostReachability is none without mutating service transport", async () => {
     await withTempCwd(async () => {
@@ -2770,7 +2838,14 @@ describe("AppPlannerLayer.layer", () => {
         ),
       ).toEqual([]);
       expect(web?.endpoints).toEqual([
-        { _tag: "internal", port: 3000, protocol: "http", primary: true, name: "web" },
+        {
+          _tag: "internal",
+          port: 3000,
+          protocol: "http",
+          primary: true,
+          name: "web",
+          scan: { path: "/", okCodes: [] },
+        },
         {
           _tag: "published",
           port: 3000,
@@ -2778,6 +2853,7 @@ describe("AppPlannerLayer.layer", () => {
           primary: true,
           name: "web",
           publication: { hostPort: 3000 },
+          scan: { path: "/", okCodes: [] },
         },
       ]);
       expect(web?.dependsOn).toEqual([
@@ -3080,6 +3156,31 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
+  test("keeps an opted-out slow-provider app mount ordinary without a session key", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        {
+          ...landofileFixture,
+          services: {
+            [ServiceName.make("web")]: {
+              image: "node:lts",
+              home: false,
+              appMount: { target: "/app", accelerate: false },
+            },
+          },
+        },
+        slowBindMountCapabilities,
+      );
+      expect(appPlan.fileSync).toEqual([]);
+      expect(serviceAppMount(appPlan.services[ServiceName.make("web")] ?? { mounts: [] })).toMatchObject({
+        realization: "passthrough",
+      });
+      expect(
+        serviceAppMount(appPlan.services[ServiceName.make("web")] ?? { mounts: [] })?.mountKey,
+      ).toBeUndefined();
+    });
+  });
+
   test("resolves the file-sync engine id once per plan for all slow bind-mount services", async () => {
     await withTempCwd(async () => {
       let fileSyncEngineIdReads = 0;
@@ -3124,7 +3225,19 @@ describe("AppPlannerLayer.layer", () => {
               serviceTypes: [serviceType.id],
               get fileSyncEngines() {
                 fileSyncEngineIdReads += 1;
-                return ["mutagen"];
+                return [
+                  {
+                    id: "mutagen",
+                    supports: { platform: ["linux", "darwin", "win32"] },
+                    capabilities: {
+                      modes: ["two-way-safe"],
+                      remoteAgentDeployment: "none",
+                      exclusionPatterns: true,
+                      conflictReporting: false,
+                      progressReporting: false,
+                    },
+                  },
+                ];
               },
             },
           } as unknown as PluginManifest,
@@ -3206,7 +3319,7 @@ describe("AppPlannerLayer.layer", () => {
       if (failure instanceof LandofileValidationError) {
         expect(failure._tag).toBe("LandofileValidationError");
         expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-          "services.worker",
+          "services.worker.type",
         ]);
         expect(failure.message).toContain("requires an image or build artifact");
       }
@@ -3993,9 +4106,9 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
-  test("drops partial healthcheck override on a service type with no default rather than producing a commandless plan", async () => {
+  test("rejects a partial healthcheck without a default command rather than silently dropping it", async () => {
     await withTempCwd(async () => {
-      const appPlan = await plan({
+      const exit = await planExit({
         name: "myapp",
         runtime: 4,
         services: {
@@ -4008,7 +4121,11 @@ describe("AppPlannerLayer.layer", () => {
           },
         },
       });
-      expect(appPlan.services[ServiceName.make("db")]?.healthcheck).toBeUndefined();
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.issues[0]?.path).toEqual(["services", "db", "healthcheck", "command"]);
+      }
     });
   });
 
@@ -5033,10 +5150,10 @@ describe("AppPlannerLayer.layer", () => {
         "services.web.dependsOn",
       ]);
       expect(failure.message).toContain(
-        "Service web depends on service db with condition service_healthy, but service db has no enabled healthcheck.",
+        "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
       );
       expect(failure.message).toContain(
-        "Add a healthcheck with kind: command to service db, or relax the dependency condition to service_started.",
+        "Configure an enabled command readiness for service db, remove readiness: false to inherit its healthcheck, or use condition service_started.",
       );
     }
   });
@@ -5068,7 +5185,7 @@ describe("AppPlannerLayer.layer", () => {
         "services.web.dependsOn",
       ]);
       expect(failure.message).toContain(
-        "Service web depends on service db with condition service_healthy, but service db has no enabled healthcheck.",
+        "Service web depends on service db with condition service_healthy, but service db has no enabled readiness probe.",
       );
       expect(failure.message).toContain(
         "Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.",
@@ -5275,7 +5392,7 @@ const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
 const allKnobServiceConfig = allKnobLandofile.services?.[ServiceName.make("web")] as Record<string, unknown>;
 
 const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter(
-  (key) => key !== "image" && key !== "tmpfs",
+  (key) => key !== "image" && key !== "tmpfs" && key !== "init",
 );
 
 const allKnobCapabilities: ProviderCapabilities = {
@@ -5294,7 +5411,6 @@ const allKnobCapabilities: ProviderCapabilities = {
       "dns_search",
       "dns_opt",
       "extra_hosts",
-      "init",
       "stop_signal",
       "stop_grace_period",
       "security_opt",
@@ -5341,6 +5457,7 @@ describe("Compose runtime knobs", () => {
 
       // Then
       expect(Object.keys(compose ?? {}).sort()).toEqual([...allKnobExtensionKeys].sort());
+      expect(first.services[ServiceName.make("web")]?.init).toBe(true);
       for (const key of allKnobExtensionKeys) {
         expect(JSON.stringify(compose?.[key])).toBe(JSON.stringify(allKnobServiceConfig[key]));
       }
@@ -5428,12 +5545,12 @@ describe("Compose runtime knobs", () => {
     });
   });
 
-  const initInjectingServiceType = makeLegacyServiceTypeFake({
-    id: "init-injecting",
+  const knobInjectingServiceType = makeLegacyServiceTypeFake({
+    id: "knob-injecting",
     toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
       Schema.decodeUnknownSync(ServicePlan)({
         name: ServiceName.make(name),
-        type: "init-injecting",
+        type: "knob-injecting",
         provider,
         primary,
         environment: {},
@@ -5443,21 +5560,21 @@ describe("Compose runtime knobs", () => {
         dependsOn: [],
         hostAliases: [],
         metadata,
-        extensions: { compose: { init: true } },
+        extensions: { compose: { read_only: true } },
       }),
   });
 
   const injectedLandofile: LandofileShape = {
     name: "injected-knobs",
     runtime: 4,
-    services: { [ServiceName.make("web")]: { type: "init-injecting", home: false } },
+    services: { [ServiceName.make("web")]: { type: "knob-injecting", home: false } },
   };
 
-  const initInjectingRegistry = {
-    ...registryWithServiceType(initInjectingServiceType),
+  const knobInjectingRegistry = {
+    ...registryWithServiceType(knobInjectingServiceType),
     loadServiceFeature: (id: string) =>
-      id === initInjectingServiceType.testFeature.id
-        ? Effect.succeed(initInjectingServiceType.testFeature)
+      id === knobInjectingServiceType.testFeature.id
+        ? Effect.succeed(knobInjectingServiceType.testFeature)
         : customPluginRegistry.loadServiceFeature(id),
   };
 
@@ -5467,7 +5584,7 @@ describe("Compose runtime knobs", () => {
         planTestLandofile(appPlanner, injectedLandofile, providerCapabilities),
       ).pipe(
         Effect.provide(AppPlannerLayer.layer),
-        Effect.provide(Layer.succeed(PluginRegistry, initInjectingRegistry)),
+        Effect.provide(Layer.succeed(PluginRegistry, knobInjectingRegistry)),
       ),
     );
 
@@ -5480,7 +5597,7 @@ describe("Compose runtime knobs", () => {
       expect(expectSomeFailure(exit)).toMatchObject({
         _tag: "CapabilityError",
         service: "web",
-        key: "init",
+        key: "read_only",
         capability: "composeSpec",
       });
     });

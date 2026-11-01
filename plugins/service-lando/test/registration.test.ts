@@ -19,6 +19,7 @@ const providerCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -153,7 +154,11 @@ describe("@lando/service-lando registration", () => {
       runtime: 4,
       services: {
         [ServiceName.make("queue")]: { type: "rabbitmq" },
-        [ServiceName.make("object-store")]: { type: "minio", database: "uploads" },
+        [ServiceName.make("object-store")]: {
+          type: "minio",
+          database: "uploads",
+          image: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z",
+        },
         [ServiceName.make("aws")]: { type: "localstack" },
       },
     };
@@ -184,7 +189,10 @@ describe("@lando/service-lando registration", () => {
     });
     expect(queue.healthcheck?.command).toEqual(["rabbitmq-diagnostics", "-q", "ping"]);
 
-    expect(objectStore.artifact).toEqual({ kind: "ref", ref: "quay.io/minio/minio:latest" });
+    expect(objectStore.artifact).toEqual({
+      kind: "ref",
+      ref: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z",
+    });
     expect(
       objectStore.endpoints.flatMap((endpoint) =>
         "port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [],
@@ -338,7 +346,7 @@ describe("@lando/service-lando registration", () => {
       kind: "cache",
       key: "nuget",
     });
-    expect(api.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(api.command).toEqual(["tail", "-f", "/dev/null"]);
   });
 
   test("AppPlanner composes mssql environment, storage, and healthcheck through PluginRegistry", async () => {

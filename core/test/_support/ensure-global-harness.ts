@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { DateTime, Effect, Layer, Queue, Schema, Stream } from "effect";
 
+import { makeLandoPaths } from "@lando/core/paths";
 import {
   AbsolutePath,
   type AppPlan,
@@ -34,6 +35,9 @@ import * as EnvironmentValueResolverLayer from "@lando/engine/services/environme
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { RedactionService } from "@lando/redaction/service";
+import { PathsService } from "@lando/sdk/services";
+import type { ServiceRuntimeInfo } from "@lando/sdk/services";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { testStateStoreLayer } from "./landofile-layer.ts";
 import { makeLegacyServiceTypeFake } from "./legacy-service-type.ts";
@@ -51,8 +55,10 @@ export interface Harness {
     | FileSystem
     | GlobalAppService
     | PluginRegistry
+    | PathsService
+    | PrivateFileAccessService
     | RuntimeProviderRegistry,
-    import("@lando/sdk/errors").ConfigError
+    import("@lando/sdk/errors").ConfigError | import("@lando/sdk/errors").PluginManifestError
   >;
   readonly applyCalls: Array<{
     readonly plan: AppPlan;
@@ -131,10 +137,17 @@ export const makeHarness = async (
   const events: Harness["events"] = [];
   const operations: Harness["operations"] = [];
   const selectedProviders: string[] = [];
+  const observed = new Map<string, ServiceRuntimeInfo>();
+  let recordedPlan: AppPlan | undefined;
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
+    appliedPlans: Effect.sync(() => (recordedPlan === undefined ? [] : [recordedPlan])),
+    list: (filter) =>
+      Effect.sync(() =>
+        [...observed.values()].filter((service) => filter.app === undefined || service.app === filter.app),
+      ),
     apply: (plan, options) =>
       Effect.gen(function* () {
         operations.push("apply");
@@ -150,21 +163,32 @@ export const makeHarness = async (
           ),
         );
         applyCalls.push({ plan, options, environments });
+        recordedPlan = options.recordedPlan ?? plan;
+        for (const service of Object.values(plan.services)) {
+          observed.set(String(service.name), {
+            app: plan.id,
+            appRoot: plan.root,
+            service: service.name,
+            providerId: plan.provider,
+            containerId: `fixture-${service.name}-${applyCalls.length}`,
+            status: "running",
+            state: "running",
+            lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
+            publications: {
+              status: "present",
+              bindings: [{ port: 8080, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8080 }],
+            },
+          });
+        }
         return { changed: true };
       }),
     inspect: (target) => {
       inspectCalls.push({ target });
-      return Effect.succeed({
-        app: target.app,
-        service: target.service,
-        providerId,
-        status: "running",
-        state: "running",
-        lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-        publications: {
-          status: "present",
-          bindings: [{ port: 8080, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8080 }],
-        },
+      return Effect.suspend(() => {
+        const service = observed.get(String(target.service));
+        return service === undefined
+          ? Effect.die(`Fixture inspected unapplied service ${target.service}`)
+          : Effect.succeed(service);
       });
     },
   };
@@ -179,6 +203,18 @@ export const makeHarness = async (
     loadAppFeature: () => Effect.die("not used"),
   });
   const layer = Layer.mergeAll(
+    PrivateFileAccessService.layer,
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        userDataRoot: dataRoot,
+        userCacheRoot: join(dataRoot, "cache"),
+        userConfRoot: process.env.LANDO_USER_CONF_ROOT ?? join(dataRoot, "conf"),
+        systemPluginRoot: join(dataRoot, "sys"),
+        env: {},
+        platform: "linux",
+      }),
+    ),
     testStateStoreLayer,
     LandoConfigService.layer,
     AppCacheService.layer,
@@ -196,6 +232,7 @@ export const makeHarness = async (
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<LandoEvent>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),
@@ -204,9 +241,15 @@ export const makeHarness = async (
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: (root) =>
+          Effect.sync(() => (recordedPlan?.root === root ? recordedPlan : undefined)),
+        resolveTeardownEvidence: (root) =>
+          Effect.sync(() =>
+            recordedPlan?.root === root
+              ? { kind: "applied" as const, plan: recordedPlan, provider }
+              : { kind: "absent" as const },
+          ),
+        appliedPlansFor: (root) => Effect.sync(() => (recordedPlan?.root === root ? [recordedPlan] : [])),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: (plan) =>

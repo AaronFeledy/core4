@@ -122,88 +122,91 @@ test("reads a current cache containing the retired networks field", async () => 
   expect(read).not.toHaveProperty("networks");
 });
 
-test.each([6, 27, 28, 31, 38])("ignores desired-plan revision %i without deleting it", async (revision) => {
-  // Given
-  const cacheRoot = await mkdtemp(join(tmpdir(), `lando-app-plan-v${revision}-`));
-  const appRoot = "/workspace/redirect-app";
-  const appName = "redirect-app";
-  const key = `revision-${revision}-key`;
-  const serviceName = ServiceName.make("web");
-  const metadata = {
-    resolvedAt: DateTime.makeUnsafe("2026-07-21T00:00:00Z"),
-    source: `${appRoot}/.lando.yml`,
-    runtime: 4 as const,
-  };
-  const oldPlan = Schema.encodeSync(AppPlan)({
-    valueModel: 1,
-    id: AppId.make(appName),
-    name: appName,
-    slug: appName,
-    root: AbsolutePath.make(appRoot),
-    provider: ProviderId.make("lando"),
-    services: {
-      [serviceName]: {
-        name: serviceName,
-        type: "apache",
-        provider: ProviderId.make("lando"),
-        primary: true,
-        environment: {},
-        mounts: [],
-        endpoints: [],
-        routes: [],
-        dependsOn: [],
-        hostAliases: [],
-        metadata,
-        extensions: {
-          "@lando/core/service-features": {
-            buildSteps: [
-              {
-                id: "lando-log-redirect:access",
-                phase: "build",
-                command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
-              },
-              {
-                id: "lando-log-redirect:error",
-                phase: "build",
-                command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
-              },
-            ],
+test.each([6, 27, 28, 31, 38, 39, 44])(
+  "ignores desired-plan revision %i without deleting it",
+  async (revision) => {
+    // Given
+    const cacheRoot = await mkdtemp(join(tmpdir(), `lando-app-plan-v${revision}-`));
+    const appRoot = "/workspace/redirect-app";
+    const appName = "redirect-app";
+    const key = `revision-${revision}-key`;
+    const serviceName = ServiceName.make("web");
+    const metadata = {
+      resolvedAt: DateTime.makeUnsafe("2026-07-21T00:00:00Z"),
+      source: `${appRoot}/.lando.yml`,
+      runtime: 4 as const,
+    };
+    const oldPlan = Schema.encodeSync(AppPlan)({
+      valueModel: 1,
+      id: AppId.make(appName),
+      name: appName,
+      slug: appName,
+      root: AbsolutePath.make(appRoot),
+      provider: ProviderId.make("lando"),
+      services: {
+        [serviceName]: {
+          name: serviceName,
+          type: "apache",
+          provider: ProviderId.make("lando"),
+          primary: true,
+          environment: {},
+          mounts: [],
+          endpoints: [],
+          routes: [],
+          dependsOn: [],
+          hostAliases: [],
+          metadata,
+          extensions: {
+            "@lando/core/service-features": {
+              buildSteps: [
+                {
+                  id: "lando-log-redirect:access",
+                  phase: "build",
+                  command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
+                },
+                {
+                  id: "lando-log-redirect:error",
+                  phase: "build",
+                  command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
+                },
+              ],
+            },
           },
         },
       },
-    },
-    routes: [],
-    stores: [],
-    fileSync: [],
-    metadata,
-    extensions: {},
-  });
-  const body = serialize({
-    schemaVersion: revision,
-    landoVersion: CORE_VERSION,
-    key,
-    versionConstraints: [],
-    shadowHostChecks: [],
-    gitHostChecks: [],
-    generatedAtMs: 1,
-    plan: oldPlan,
-  });
-  const header = Buffer.alloc(APP_PLAN_CACHE_HEADER_BYTES);
-  APP_PLAN_CACHE_MAGIC.copy(header, 0);
-  header.writeBigUInt64BE(BigInt(revision), 4);
-  createHash("sha256").update(body).digest().copy(header, 12);
-  const persisted = Buffer.concat([header, body]);
-  const path = appPlanCachePath(cacheRoot, appName, appRoot);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, persisted);
+      routes: [],
+      stores: [],
+      fileSync: [],
+      metadata,
+      extensions: {},
+    });
+    const body = serialize({
+      schemaVersion: revision,
+      landoVersion: CORE_VERSION,
+      key,
+      versionConstraints: [],
+      shadowHostChecks: [],
+      gitHostChecks: [],
+      generatedAtMs: 1,
+      plan: oldPlan,
+    });
+    const header = Buffer.alloc(APP_PLAN_CACHE_HEADER_BYTES);
+    APP_PLAN_CACHE_MAGIC.copy(header, 0);
+    header.writeBigUInt64BE(BigInt(revision), 4);
+    createHash("sha256").update(body).digest().copy(header, 12);
+    const persisted = Buffer.concat([header, body]);
+    const path = appPlanCachePath(cacheRoot, appName, appRoot);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, persisted);
 
-  // When
-  const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName, appRoot, key }));
+    // When
+    const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName, appRoot, key }));
 
-  // Then
-  expect(read).toBeNull();
-  expect(await readFile(path)).toEqual(persisted);
-});
+    // Then
+    expect(read).toBeNull();
+    expect(await readFile(path)).toEqual(persisted);
+  },
+);
 
 test("includes the canonical fingerprint revision in the app-plan cache key", () => {
   // Given
@@ -218,7 +221,7 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(39n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(46n);
   expect(key).not.toBe("52ac114b46244edd3741469e45ce9009aa2a3c67f99bc8c2983104e3f399b737");
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });

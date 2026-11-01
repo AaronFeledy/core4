@@ -1,3 +1,4 @@
+import type { ToolingInputDeclaration } from "@lando/sdk/schema";
 import type { OclifArgDefinition, OclifFlagDefinition } from "./compiled-argv";
 import { type OptInResultFormat, commandResultFormats, formatFlagDefsForCommand } from "./format-flags";
 import { type HelpAliasPolicy, typeableName } from "./help-names";
@@ -41,25 +42,7 @@ export type CommandHelpOptions = {
   readonly aliasPolicy?: HelpAliasPolicy;
 };
 
-export type ToolingHelpInput = {
-  readonly flags: readonly {
-    readonly name: string;
-    readonly alias?: string;
-    readonly boolean: boolean;
-    readonly choices?: readonly string[];
-    readonly default?: string | boolean;
-    readonly required: boolean;
-    readonly description?: string;
-  }[];
-  readonly args: readonly {
-    readonly name: string;
-    readonly order: number;
-    readonly choices?: readonly string[];
-    readonly default?: string;
-    readonly required: boolean;
-    readonly description?: string;
-  }[];
-};
+export type ToolingHelpInput = ToolingInputDeclaration;
 
 export type ToolingHelpEntry = {
   readonly id: string;
@@ -197,6 +180,7 @@ type HelpItemMeta = {
   readonly choices?: readonly string[];
   readonly default?: string | boolean;
   readonly required: boolean;
+  readonly sensitive: boolean;
 };
 
 const helpItemMeta = (item: HelpItemMeta): string => {
@@ -205,7 +189,7 @@ const helpItemMeta = (item: HelpItemMeta): string => {
     item.choices === undefined || item.choices.length === 0 ? "" : ` (${item.choices.join(", ")})`;
   const defaultText = item.default === undefined ? "" : ` [default: ${String(item.default)}]`;
   const requiredText = item.required ? " [required]" : "";
-  return `${description}${choices}${defaultText}${requiredText}`;
+  return `${description}${choices}${defaultText}${requiredText}${item.sensitive ? " [sensitive]" : ""}`;
 };
 
 const toolingSection = (title: string, rows: readonly string[], style: HelpStyle): readonly string[] =>
@@ -216,7 +200,7 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
   const names = typeableFor(entry.id, [], options?.aliasPolicy, true);
   const input = entry.input;
   const usage =
-    input === undefined
+    input === undefined || (input.acceptsArguments && input.flags.length + input.args.length === 0)
       ? `lando ${names.primary} [args...]`
       : `lando ${names.primary}${input.flags.length === 0 ? "" : " [flags]"}${
           input.args.length === 0
@@ -230,7 +214,7 @@ export const renderToolingHelp = (entry: ToolingHelpEntry, options?: CommandHelp
       ? []
       : input.flags.map((flag) => {
           const alias = flag.alias === undefined ? "" : `, -${flag.alias}`;
-          return `  --${flag.name}${alias}${helpItemMeta(flag)}`;
+          return `  --${flag.name}${flag.boolean ? "[=true|false]" : "=<value>"}${alias}${helpItemMeta(flag)}`;
         });
   const argRows = input === undefined ? [] : input.args.map((arg) => `  ${arg.name}${helpItemMeta(arg)}`);
   const lines = [

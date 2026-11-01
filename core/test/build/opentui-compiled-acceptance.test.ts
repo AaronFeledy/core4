@@ -4,8 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, extname, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { CommandResultEnvelope } from "@lando/sdk/schema";
+import { Schema } from "effect";
 
 import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/catalog.generated.ts";
+import { InitAppResultSchema } from "../../src/cli/commands/recipe-init-schemas.ts";
 import { removeAcceptanceRoot, withAcceptanceCleanup } from "./fixtures/opentui-acceptance-cleanup.ts";
 
 const binaryPath = process.env.LANDO_OPENTUI_ACCEPTANCE_BINARY;
@@ -135,6 +138,25 @@ const scrubPtyNoise = (text: string): string => {
     .trim();
 };
 
+const expectMachineInit = (output: string, cwd: string): void => {
+  const values: readonly unknown[] = scrubPtyNoise(output)
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const envelopes = values.filter(Schema.is(CommandResultEnvelope));
+  expect(envelopes).toHaveLength(1);
+  const envelope = envelopes[0];
+  expect(envelope).toMatchObject({ command: "apps:init", ok: true });
+  const result = Schema.decodeUnknownSync(InitAppResultSchema)(envelope?.result, {
+    onExcessProperty: "error",
+  });
+  expect(result.directory).toBe(cwd);
+  expect(result.receipt.created.map(({ path }) => path).sort()).toEqual([
+    ".lando.yml",
+    "package.json",
+    "server.js",
+  ]);
+};
+
 const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
   const taskkill = Bun.spawn({
     cmd: ["taskkill.exe", "/PID", String(pid), "/T", "/F"],
@@ -196,19 +218,24 @@ const runPrompt = async (
     };
     const stdout = consumeOutput(proc.stdout);
     const stderr = consumeOutput(proc.stderr);
+    let exited = false;
+    const completion = proc.exited.then((code) => {
+      exited = true;
+      return code;
+    });
     for (let attempt = 0; attempt < 500; attempt += 1) {
-      if (output.includes("╭") || output.includes("(value or index):")) break;
+      if (exited || output.includes("╭") || output.includes("(value or index):")) break;
       await Bun.sleep(20);
     }
     try {
-      await terminateWindowsProcessTree(proc.pid);
+      if (!exited) await terminateWindowsProcessTree(proc.pid);
     } catch (cause) {
       proc.kill();
       await proc.exited;
       await closeSpawnStdin(proc);
       throw cause;
     }
-    await proc.exited;
+    await completion;
     await closeSpawnStdin(proc);
     output = `${await stdout}${await stderr}`;
   } else {
@@ -224,15 +251,20 @@ const runPrompt = async (
         },
       },
     });
+    let exited = false;
+    const completion = proc.exited.then((code) => {
+      exited = true;
+      return code;
+    });
     try {
       for (let attempt = 0; attempt < 500; attempt += 1) {
-        if (output.includes("╭") || output.includes("(value or index):")) break;
+        if (exited || output.includes("╭") || output.includes("(value or index):")) break;
         await Bun.sleep(20);
       }
     } finally {
       proc.terminal?.close();
-      proc.kill("SIGKILL");
-      await proc.exited;
+      if (!exited) proc.kill("SIGKILL");
+      await completion;
     }
   }
   return output.replaceAll("\r\n", "\n");
@@ -283,6 +315,11 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
           ["init", `--renderer=${renderer}`],
           probeEnv(baseEnv, tracePath),
         );
+        if (renderer === "json") {
+          expectMachineInit(normal, appRoot);
+          await removeAcceptanceRoot(appRoot);
+          await mkdir(appRoot);
+        }
         const withoutOpenTui = await runPrompt(
           [relocatedBinary],
           appRoot,
@@ -290,8 +327,9 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
           { ...baseEnv, LANDO_NO_OPENTUI_PROMPTS: "1" },
         );
         expect(scrubPtyNoise(normal)).not.toContain("╭");
-        expect(scrubPtyNoise(normal)).toContain("(value or index):");
-        expect(scrubPtyNoise(normal)).toBe(scrubPtyNoise(withoutOpenTui));
+        if (renderer === "plain") expect(scrubPtyNoise(normal)).toContain("(value or index):");
+        else expectMachineInit(withoutOpenTui, appRoot);
+        expect(normalizeTiming(scrubPtyNoise(normal))).toBe(normalizeTiming(scrubPtyNoise(withoutOpenTui)));
         expect(await readProbe(tracePath)).toEqual([]);
       }
 
@@ -309,7 +347,7 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
 });
 
 describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acceptance", () => {
-  test("plain and json match the explicit line-mode baseline apart from per-run metadata", async () => {
+  test("plain prompts and json results match their native-disabled baselines", async () => {
     const root = await mkdtemp(resolve(tmpdir(), "lando-opentui-source-"));
     const appRoot = resolve(root, "app");
     await mkdir(appRoot);
@@ -334,12 +372,18 @@ describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acce
           ["init", `--renderer=${renderer}`],
           probeEnv(baseEnv, tracePath),
         );
+        if (renderer === "json") {
+          expectMachineInit(normal, appRoot);
+          await removeAcceptanceRoot(appRoot);
+          await mkdir(appRoot);
+        }
         const withoutOpenTui = await runPrompt(command, appRoot, ["init", `--renderer=${renderer}`], {
           ...baseEnv,
           LANDO_NO_OPENTUI_PROMPTS: "1",
         });
         expect(scrubPtyNoise(normal)).not.toContain("╭");
-        expect(scrubPtyNoise(normal)).toContain("(value or index):");
+        if (renderer === "plain") expect(scrubPtyNoise(normal)).toContain("(value or index):");
+        else expectMachineInit(withoutOpenTui, appRoot);
         expect(normalizeTiming(scrubPtyNoise(normal))).toBe(normalizeTiming(scrubPtyNoise(withoutOpenTui)));
         expect(await readProbe(tracePath)).toEqual([]);
       }

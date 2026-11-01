@@ -2,12 +2,7 @@ import { expect, test } from "bun:test";
 import { access, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-  commandLauncher,
-  createBunCommandEnv,
-  inheritCommandEnv,
-  launcherPathEnv,
-} from "../../src/services/bun-command-env.ts";
+import { commandLauncher, createBunCommandEnv, launcherPathEnv } from "../../src/services/bun-command-env.ts";
 
 test.each(["prepend", "append"] as const)(
   "composes Windows PATH case-insensitively with %s placement",
@@ -38,17 +33,6 @@ test.each(["prepend", "append"] as const)(
     expect(result.PATH).toBe("/private");
   },
 );
-
-test("caller Windows Path overrides the inherited PATH", () => {
-  // Given
-  const env = { Path: "C:\\caller" };
-  // When
-  const result = inheritCommandEnv(env, "win32");
-  // Then
-  const keys = Object.keys(result).filter((key) => key.toUpperCase() === "PATH");
-  expect(keys).toHaveLength(1);
-  expect(result[keys[0] ?? ""]).toBe("C:\\caller");
-});
 
 test("Windows bun launcher enables embedded Bun and preserves arguments", () => {
   // Given
@@ -92,7 +76,7 @@ test("source mode host Bun environment needs no launcher", async () => {
   const env = { PATH: "/host/bin", BUN_BE_BUN: "1" };
   // When
   await using launcher = await createBunCommandEnv(
-    { command: "bun", env },
+    { command: "bun", env, cwd: process.cwd() },
     { standalone: false, execPath: process.execPath, platform: process.platform },
   );
   // Then

@@ -180,6 +180,10 @@ describe("embedded command registry manifest", () => {
 
     // Then
     const reference = await readFile(fixture.commandReferencePath, "utf8");
+    expect(reference).toContain("## `lando db:export`");
+    expect(reference).toContain("Provided by `@lando/sql`.");
+    expect(reference).toContain("| `--yes, -y` |");
+    expect(reference).not.toContain("## `lando github-actions:list`");
     expect(reference).toContain(
       "| `command` | Command argv after `--`. An optional service name may come first. |",
     );

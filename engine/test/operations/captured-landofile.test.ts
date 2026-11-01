@@ -24,6 +24,7 @@ import type { ResolvedAppTarget } from "../../src/landofile/app-resolution.ts";
 import { execApp } from "../../src/operations/exec.ts";
 import { infoApp } from "../../src/operations/info.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
@@ -82,6 +83,7 @@ const fixture = () => {
     },
   };
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     testEnvironmentResolverLayer,
     PrivateFileAccessService.layer,
     ProviderExecToolingEngine.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),

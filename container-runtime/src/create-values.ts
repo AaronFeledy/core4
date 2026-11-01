@@ -1,4 +1,4 @@
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, ServiceName, type ServicePlan, probeTargetError } from "@lando/sdk/schema";
 import { compileServiceProbe } from "./service-probe.ts";
 
 export const normalizeCommand = (
@@ -23,6 +23,8 @@ export const containerHealthcheck = (
   service?: Pick<ServicePlan, "name" | "endpoints">,
 ) => {
   if (healthcheck === undefined) return undefined;
+  const invalid = probeTargetError(healthcheck, service?.name ?? ServiceName.make("unknown"), "healthcheck");
+  if (invalid !== undefined) throw invalid;
   switch (healthcheck.kind) {
     case "none":
       return { Test: ["NONE"] };

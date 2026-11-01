@@ -8,9 +8,10 @@ import {
   orderMounts,
 } from "@lando/sdk/schema";
 import { Option, Predicate, Schema } from "effect";
+import { migrateAppliedInit } from "./applied-init-migrate.ts";
 
-/** Durable applied-plan frame version after the one-mount-list shape. */
-export const APPLIED_STATE_VERSION = 2;
+/** Durable applied-plan frame version with canonical mounts and native init intent. */
+export const APPLIED_STATE_VERSION = 3;
 
 const APP_MOUNT_KEY = "app-mount";
 
@@ -254,8 +255,8 @@ const migrateV1PlanRaw = (raw: unknown): unknown | null => {
  * null when the shape cannot be converted (bucket treats null as absent).
  */
 export const migrateAppliedPlan = (raw: unknown, fromVersion: number): AppPlanShape | null => {
-  if (fromVersion !== 1) return null;
-  const transformed = migrateV1PlanRaw(raw);
+  if (fromVersion !== 1 && fromVersion !== 2) return null;
+  const transformed = migrateAppliedInit(fromVersion === 1 ? migrateV1PlanRaw(raw) : raw);
   if (transformed === null) return null;
   return Option.getOrNull(Schema.decodeUnknownOption(AppPlan)(transformed));
 };
@@ -267,11 +268,11 @@ export const migrateAppliedPlansRecord = (
   raw: unknown,
   fromVersion: number,
 ): Readonly<Record<string, AppPlanShape>> | null => {
-  if (fromVersion !== 1) return null;
+  if (fromVersion !== 1 && fromVersion !== 2) return null;
   if (!Predicate.isObject(raw) || Array.isArray(raw)) return null;
   const next: Record<string, AppPlanShape> = {};
   for (const [id, plan] of Object.entries(raw)) {
-    const migrated = migrateAppliedPlan(plan, 1);
+    const migrated = migrateAppliedPlan(plan, fromVersion);
     if (migrated === null) return null;
     next[id] = migrated;
   }

@@ -47,6 +47,7 @@ export interface DraftServicePlan {
   artifact?: ServicePlan["artifact"];
   command?: ServicePlan["command"];
   entrypoint?: ServicePlan["entrypoint"];
+  init?: boolean;
   environment: Record<string, EnvironmentValue>;
   readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;
@@ -64,6 +65,7 @@ export interface DraftServicePlan {
   dependsOn: Array<ServicePlan["dependsOn"][number]>;
   healthcheck?: ServicePlan["healthcheck"];
   readiness?: ServicePlan["readiness"];
+  readinessSource?: ServicePlan["readinessSource"];
   certs?: ServicePlan["certs"];
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
   provenance?: ServicePlan["provenance"];

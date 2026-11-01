@@ -112,7 +112,7 @@ The forms ship from the same source at the same version and MUST NOT drift.
 - Docker Compose as core's runtime model; only the documented input subset is supported (§7.4).
 - Required Traefik or Docker implementations.
 - Built-in Kubernetes, plugin sandboxing, registry push workflows, or core SQL helpers.
-- File-sync engines beyond passthrough and bundled Mutagen, or file-sync-owned TCP/UDP forwarding (§10.6).
+- Bundled file-sync engines beyond Mutagen (`passthrough` is a no-session policy, not an engine), or file-sync-owned TCP/UDP forwarding (§10.6).
 - Copy-on-write scratch isolation, scratch fleets, fork-source hot reload, or scratch apps as expression sources (§21.15).
 - Foreign automation dialects/protocols and the execution-platform features excluded by §22.1.
 
@@ -129,7 +129,7 @@ The following extension constraints apply without committing to an implementatio
 
 | Capability | Constraint |
 |---|---|
-| Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app `HostProxyService` worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
+| Persistent local agent | The runtime is transactional with no shared daemon/socket, but runtime, caches, and Scopes MUST permit future warm IPC ownership. No core code may assume one process per command in a way that prevents holding state across calls (e.g. argv stored in module-global mutable state, caches pinned to `process.pid`). The per-app host-proxy worker (§10.10) is not this agent and MUST NOT be relied on as a long-lived runtime cache. |
 | Explicit `dependsOn: ["global:<service>"]` | Add only if usage proves `AppFeature.requires.globalServices` plus explicit global start is insufficient. |
 | Service-type `topLevelAlias` enforcement | Enforce once the tooling schema lifts the current catalog-wide rejection of `topLevelAlias` (§6.11, §8.5). |
 | OS-keychain credential backend | Add a keychain-backed writable `SecretStore` (macOS Keychain, Windows Credential Manager, Secret Service) as a peer of the file-backed `lando` store once its threat model (§9.5.1) proves insufficient; the file store stays the default until then. |

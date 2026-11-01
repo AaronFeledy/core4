@@ -15,6 +15,7 @@ import {
   collectExecUmaskDoctorCheck,
   diagnoseExecUmask,
 } from "./doctor-exec-umask";
+import { selectedDoctorFileSyncEngine } from "./doctor-file-sync";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy";
 import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem";
 import { collectOomDoctorChecks } from "./doctor-oom";
@@ -120,6 +121,11 @@ export const doctor = Effect.fn("Doctor.collect")(
       execPath: options.execPath ?? process.execPath,
     });
     const graph = yield* Effect.serviceOption(PluginContributionGraph);
+    const enabledModules =
+      modules ??
+      (Option.isSome(graph)
+        ? graph.value.plugins.map(({ manifest }) => ({ name: String(manifest.name), manifest }))
+        : bundledPluginModules());
     const { reports, selfChecks: pluginSelfChecks } = yield* pluginDoctorReports(
       Effect.suspend(() => {
         const explicit = modules ?? (Option.isNone(graph) ? bundledPluginModules() : undefined);
@@ -202,8 +208,25 @@ export const doctor = Effect.fn("Doctor.collect")(
       selection,
     });
 
+    const fileSyncSelection = yield* isolateDoctorSection({
+      section: "file-sync-selection",
+      effect: selectedDoctorFileSyncEngine({
+        modules: enabledModules,
+        defaultEngine: yield* configService.get("defaultFileSyncEngine"),
+        platform,
+        capabilities: provider.capabilities,
+      }),
+      fallback: undefined,
+      budgetMs: probeBudget,
+      redact,
+    });
+    if (fileSyncSelection.self !== undefined) selfChecks.push(fileSyncSelection.self);
     const pluginChecks = reports
       .filter((entry) => isRelevantContribution(entry, provider.capabilities))
+      .filter(
+        ({ report }) =>
+          report.context.engineId === undefined || report.context.engineId === fileSyncSelection.value,
+      )
       .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider, selection }));
     const setupReadinessOutcome = yield* isolateDoctorSection({
       section: "setup-readiness",
@@ -297,20 +320,23 @@ export const doctor = Effect.fn("Doctor.collect")(
         selection,
         sourceEnv,
       }).pipe(Effect.provide(HostProxyDoctorFileSystem.layer)),
-      fallback: [] as ReadonlyArray<DoctorCheck>,
+      fallback: { checks: [] } as DoctorResult,
       redact,
     });
     if (hostProxyOutcome.self !== undefined) selfChecks.push(hostProxyOutcome.self);
 
-    return withSelfChecks([
-      diagnosis.check,
-      ...pluginChecks,
-      ...setupReadinessChecks,
-      ...runtimeServiceChecks,
-      execUmaskOutcome.value,
-      ...hostProxyOutcome.value,
-      ...oomChecks,
-    ]);
+    return {
+      ...withSelfChecks([
+        diagnosis.check,
+        ...pluginChecks,
+        ...setupReadinessChecks,
+        ...runtimeServiceChecks,
+        execUmaskOutcome.value,
+        ...hostProxyOutcome.value.checks,
+        ...oomChecks,
+      ]),
+      ...(hostProxyOutcome.value.skipped === undefined ? {} : { skipped: hostProxyOutcome.value.skipped }),
+    };
   },
   (effect, options?: DoctorOptions, _modules?: ReadonlyArray<LandoPluginModule>) =>
     interruptOnAbort(effect, options?.signal),

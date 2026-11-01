@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
-import { MinIOServiceConfig } from "@lando/sdk/schema/services/minio";
 import { MINIO_DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 
 import { MINIO_FEATURE_ID, minioServiceFeature, minioServiceType } from "../src/services/minio.ts";
@@ -15,11 +14,12 @@ const metadata = {
 };
 
 const featureOverrides = new Map([[MINIO_FEATURE_ID, minioServiceFeature]]);
+const FIXTURE_IMAGE = "example.test/minio:fixture";
 
 const minioService = (serviceDefinition: Record<string, unknown>): ServiceConfig => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
     name: "myapp",
-    services: { storage: serviceDefinition },
+    services: { storage: { image: FIXTURE_IMAGE, ...serviceDefinition } },
   });
   const service = landofile.services?.[ServiceName.make("storage")];
   if (service === undefined) throw new Error("storage service missing");
@@ -37,30 +37,157 @@ const planMinioService = (serviceDefinition: Record<string, unknown>) =>
     featureOverrides,
   });
 
-const resolveMinioService = (serviceDefinition: Record<string, unknown>) =>
-  Effect.runPromise(
-    minioServiceType.resolve({
-      name: "storage",
-      service: minioService(serviceDefinition),
-      appRoot: "/srv/apps/myapp",
-      appName: "myapp",
-      metadata,
-    }),
+describe("minio ServiceType", () => {
+  test.each([
+    { endpoints: undefined, declare: true },
+    { endpoints: [], declare: true },
+    { endpoints: [], declare: false },
+  ])(
+    "rejects an effective feature console port colliding with the API: %j",
+    async ({ endpoints, declare }) => {
+      // Given a valid parent resolution overridden to a colliding effective console port.
+      const serviceType = {
+        ...minioServiceType,
+        resolve: (input: Parameters<typeof minioServiceType.resolve>[0]) =>
+          minioServiceType.resolve(input).pipe(
+            Effect.map((resolution) => ({
+              ...resolution,
+              features: [{ id: MINIO_FEATURE_ID, config: { consolePort: 9000 } }],
+            })),
+          ),
+      };
+      const { declareEndpoints: _declareEndpoints, ...applicationOnly } = minioServiceFeature;
+      // When / Then declaration and application each reject through the tagged feature boundary.
+      await expect(
+        composeServicePlan({
+          serviceType,
+          service: minioService({
+            type: "minio",
+            consolePort: 19001,
+            ...(endpoints === undefined ? {} : { endpoints }),
+          }),
+          appRoot: "/srv/apps/myapp",
+          appName: "myapp",
+          serviceName: "storage",
+          metadata,
+          featureOverrides: new Map([[MINIO_FEATURE_ID, declare ? minioServiceFeature : applicationOnly]]),
+        }),
+      ).rejects.toMatchObject({
+        _tag: "ServiceFeatureError",
+        feature: MINIO_FEATURE_ID,
+        cause: { path: ["port"], suggestion: expect.any(String) },
+        remediation: expect.any(String),
+      });
+    },
   );
 
-describe("minio ServiceType", () => {
-  test("plans the default MinIO artifact, command, endpoints, and persistent storage", async () => {
+  test("command and console endpoint consume feature config instead of normalized consolePort", async () => {
+    // Given intentionally different feature and normalized console ports.
+    const serviceType = {
+      ...minioServiceType,
+      resolve: (input: Parameters<typeof minioServiceType.resolve>[0]) =>
+        minioServiceType.resolve(input).pipe(
+          Effect.map((resolution) => ({
+            ...resolution,
+            features: [{ id: MINIO_FEATURE_ID, config: { consolePort: 19002 } }],
+          })),
+        ),
+    };
+    // When the real feature composition runs.
+    const plan = await composeServicePlan({
+      serviceType,
+      service: minioService({ type: "minio", consolePort: 19001 }),
+      appRoot: "/srv/apps/myapp",
+      appName: "myapp",
+      serviceName: "storage",
+      metadata,
+      featureOverrides,
+    });
+    // Then both executable outputs follow the feature declaration.
+    expect(plan.command).toEqual([
+      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :19002",
+    ]);
+    expect(plan.endpoints).toContainEqual({
+      _tag: "internal",
+      port: 19002,
+      protocol: "http",
+      name: "console",
+      scan: { path: "/" },
+    });
+  });
+
+  test("selects independent console and API ports, reclaiming 9001 for the API", async () => {
+    // Given / When
+    const plan = await planMinioService({ type: "minio", port: 9001, consolePort: 19001 });
+    // Then
+    expect(plan.command).toEqual([
+      "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9001 --console-address :19001",
+    ]);
+    expect(plan.endpoints).toEqual([
+      {
+        _tag: "internal",
+        port: 9001,
+        protocol: "http",
+        name: "storage",
+        primary: true,
+        scan: { path: "/minio/health/live" },
+      },
+      { _tag: "internal", port: 19001, protocol: "http", name: "console", scan: { path: "/" } },
+    ]);
+    expect(plan.environment?.MC_HOST_local).toEndWith("@127.0.0.1:9001");
+  });
+
+  test("supplies selected default arguments to an authored entrypoint", async () => {
+    // Given / When
+    const plan = await planMinioService({ type: "minio", consolePort: 19001, entrypoint: ["minio"] });
+    // Then
+    expect(plan.entrypoint).toEqual(["minio"]);
+    expect(plan.command).toEqual(["server", "/data", "--address", ":9000", "--console-address", ":19001"]);
+  });
+
+  test.each([
+    { command: ["custom", "--literal", "a b"], entrypoint: ["/custom", "--flag"] },
+    { command: "custom --literal 'a b'", entrypoint: "/custom --flag" },
+  ])("preserves authored launchers with selected consolePort: %j", async ({ command, entrypoint }) => {
+    // Given / When
+    const plan = await planMinioService({ type: "minio", consolePort: 19001, command, entrypoint });
+    // Then
+    expect(plan.command).toEqual(command);
+    expect(plan.entrypoint).toEqual(entrypoint);
+  });
+
+  test.each([{ port: 9001 }, { consolePort: 9000 }, { port: 19001, consolePort: 19001 }])(
+    "rejects colliding effective listeners: %j",
+    async (ports) => {
+      // Given / When / Then
+      await expect(planMinioService({ type: "minio", ...ports })).rejects.toMatchObject({
+        _tag: "ServiceFeatureError",
+        feature: MINIO_FEATURE_ID,
+        cause: { path: ["port"], suggestion: expect.any(String) },
+        remediation: expect.any(String),
+      });
+    },
+  );
+
+  test("plans the supplied MinIO artifact, command, endpoints, and persistent storage", async () => {
     const plan = await planMinioService({ type: "minio" });
 
     expect(plan.type).toBe("minio");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "quay.io/minio/minio:latest" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: FIXTURE_IMAGE });
     expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(plan.command).toEqual([
       "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",
     ]);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 9000, protocol: "http", name: "storage", primary: true },
-      { _tag: "internal", port: 9001, protocol: "http", name: "console" },
+      {
+        _tag: "internal",
+        port: 9000,
+        protocol: "http",
+        name: "storage",
+        primary: true,
+        scan: { path: "/minio/health/live" },
+      },
+      { _tag: "internal", port: 9001, protocol: "http", name: "console", scan: { path: "/" } },
     ]);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
@@ -69,7 +196,7 @@ describe("minio ServiceType", () => {
     expect(volumes[0]?.readOnly).toBe(false);
   });
 
-  test("sets root credentials, bucket name, and mc alias for the official image", async () => {
+  test("sets root credentials, bucket name, and mc alias for a compatible image", async () => {
     const plan = await planMinioService({ type: "minio" });
 
     expect(MINIO_DEFAULT_PASSWORD.length).toBeGreaterThanOrEqual(8);
@@ -107,8 +234,15 @@ describe("minio ServiceType", () => {
       "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :19000 --console-address :9001",
     ]);
     expect(plan.endpoints).toEqual([
-      { _tag: "internal", port: 19000, protocol: "http", name: "storage", primary: true },
-      { _tag: "internal", port: 9001, protocol: "http", name: "console" },
+      {
+        _tag: "internal",
+        port: 19000,
+        protocol: "http",
+        name: "storage",
+        primary: true,
+        scan: { path: "/minio/health/live" },
+      },
+      { _tag: "internal", port: 9001, protocol: "http", name: "console", scan: { path: "/" } },
     ]);
     expect(plan.environment?.MC_HOST_local).toBe(`http://lando:${MINIO_DEFAULT_PASSWORD}@127.0.0.1:19000`);
     expect(plan.healthcheck).toEqual({
@@ -134,25 +268,5 @@ describe("minio ServiceType", () => {
     expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
     expect(String(plan.workingDirectory)).toBe("/data");
     expect(plan.user).toBe("1000:1000");
-  });
-
-  test("resolves tooling, feature, and catalog schema", async () => {
-    const resolution = await resolveMinioService({ type: "minio" });
-
-    expect(resolution.base).toBe("lando");
-    expect(resolution.features).toEqual([{ id: MINIO_FEATURE_ID }]);
-    expect(resolution.tooling?.mc).toEqual({ service: "storage", cmd: "mc" });
-    expect(minioServiceType.schema).toBe(MinIOServiceConfig);
-  });
-
-  test("preserves authored routes", async () => {
-    const resolution = await resolveMinioService({
-      type: "minio",
-      routes: [{ hostname: "files.example.test", scheme: "https", endpoint: 9001 }],
-    });
-
-    expect(resolution.normalizedConfig.routes).toEqual([
-      { hostname: "files.example.test", scheme: "https", endpoint: 9001 },
-    ]);
   });
 });

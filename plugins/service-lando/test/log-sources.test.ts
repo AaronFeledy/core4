@@ -65,20 +65,38 @@ describe("catalog service type logSources", () => {
     expect(String(byId(sources, "error")?.path)).toBe("/var/log/nginx/error.log");
   });
 
-  test("php declares Apache logs for its default serving mode", async () => {
+  test("php declares pathless Apache console aliases for its default serving mode", async () => {
+    // Given the stock PHP service in its default Apache mode.
+    // When resolving its declared log sources.
     const sources = await resolveSources(php83ServiceType, "php:8.3");
 
-    expect(byId(sources, "access")).toMatchObject({ strategy: "redirect", stream: "stdout" });
-    expect(String(byId(sources, "access")?.path)).toBe("/var/log/apache2/access.log");
-    expect(byId(sources, "error")).toMatchObject({ strategy: "redirect", stream: "stderr" });
-    expect(String(byId(sources, "error")?.path)).toBe("/var/log/apache2/error.log");
+    // Then access and error select their native pipes without file-only fields.
+    expect(sources.map(({ id, strategy, stream }) => ({ id: String(id), strategy, stream }))).toEqual([
+      { id: "access", strategy: "console", stream: "stdout" },
+      { id: "error", strategy: "console", stream: "stderr" },
+    ]);
+    for (const source of sources) {
+      expect(source).not.toHaveProperty("path");
+      expect(source).not.toHaveProperty("required");
+      expect(source).not.toHaveProperty("timestamps");
+    }
   });
 
-  test("php declares php-fpm logs only for via fpm", async () => {
+  test("php declares pathless shared-stderr console aliases for via fpm", async () => {
+    // Given the stock PHP service with via: fpm.
+    // When resolving its declared log sources.
     const sources = await resolveSources(php83ServiceType, "php:8.3", "fpm");
 
-    expect(String(byId(sources, "access")?.path)).toBe("/var/log/php-fpm/access.log");
-    expect(String(byId(sources, "error")?.path)).toBe("/var/log/php-fpm/error.log");
+    // Then both aliases select stderr without file-only fields.
+    expect(sources.map(({ id, strategy, stream }) => ({ id: String(id), strategy, stream }))).toEqual([
+      { id: "access", strategy: "console", stream: "stderr" },
+      { id: "error", strategy: "console", stream: "stderr" },
+    ]);
+    for (const source of sources) {
+      expect(source).not.toHaveProperty("path");
+      expect(source).not.toHaveProperty("required");
+      expect(source).not.toHaveProperty("timestamps");
+    }
   });
 
   test("php via cli has no server log sources", async () => {
