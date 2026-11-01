@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { Predicate } from "effect";
 import { SchemaTransformation } from "effect";
 
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { JsonSchemaName } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import * as AST from "effect/SchemaAST";
@@ -171,9 +171,6 @@ const runGenerator = (): void => {
   }).toMatchObject({ exitCode: 0 });
   generatorRan = true;
 };
-
-// Generate before the first test so the spawn is not charged to a 5s test timeout.
-beforeAll(runGenerator, 30_000);
 
 describe("schema snapshot artifact-set gate", () => {
   test("authored-input artifacts advertise null only where the encoded source accepts it", async () => {
