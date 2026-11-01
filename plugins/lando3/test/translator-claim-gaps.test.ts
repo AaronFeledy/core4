@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
+import { isResidualDiagnostic } from "../src/claims.ts";
 import { document, documentSet } from "./fixtures/fake-decomposers.ts";
 import { makeTestTranslator } from "./fixtures/test-ports.ts";
 
@@ -140,4 +141,22 @@ test("diagnoses an atomic l337 volume mapping rather than silently omitting it",
       keyPath: ["services", "s", "volumes"],
     }),
   );
+});
+
+test.each([
+  ["ssl: 4444", { _tag: "published", protocol: "https", port: 4444, publication: {} }],
+  ["ssl: 4444, sslExpose: false", { _tag: "internal", protocol: "https", port: 4444 }],
+])("treats a numeric node %s as the port its app serves HTTPS on", async (fields, endpoint) => {
+  // Given
+  const text = `services: {web: {type: "node:22", ${fields}}}`;
+  // When
+  const result = await translate(text);
+  // Then
+  expect(result.outputs[0]?.fragment).toMatchObject({
+    services: { web: { certs: true, endpoints: [endpoint] } },
+  });
+  expect(result.diagnostics).toContainEqual(
+    expect.objectContaining({ kind: "rewritten", keyPath: ["services", "web", "ssl"] }),
+  );
+  expect(result.diagnostics.filter(isResidualDiagnostic)).toEqual([]);
 });

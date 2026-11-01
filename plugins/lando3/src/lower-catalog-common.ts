@@ -114,7 +114,7 @@ export const lowerCatalogCommon = (
     }
   }
 
-  const ssl = lowerLegacySsl(service, claimedContext);
+  const ssl = lowerLegacySsl(service, claimedContext, resolution.id);
   Object.assign(patch, ssl.patch);
   diagnostics.push(...ssl.diagnostics);
 

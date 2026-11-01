@@ -3,7 +3,12 @@ import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import type { Lando3Path } from "./contract.ts";
 import type { ServiceLoweringContext } from "./lowering-contract.ts";
 import { hasPlainObjectPrototype } from "./lowering-contract.ts";
-import { droppedServiceKey, needsReviewServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
+import {
+  droppedServiceKey,
+  needsReviewServiceKey,
+  rewrittenServiceKey,
+  unsupportedServiceKey,
+} from "./service-diagnostics.ts";
 import { formatPath } from "./source.ts";
 
 const RESIDUAL_REMEDIATION =
@@ -72,6 +77,11 @@ export class ClaimCursor {
   reviewTree(path: Lando3Path, message: string, remediation: string): ConfigTranslateDiagnostic {
     this.mapTo(path);
     return needsReviewServiceKey({ ctx: this.ctx, relative: path, message, remediation });
+  }
+
+  rewriteTree(path: Lando3Path, message: string, remediation: string): ConfigTranslateDiagnostic {
+    this.mapTo(path);
+    return rewrittenServiceKey({ ctx: this.ctx, relative: path, message, remediation });
   }
 
   /**
