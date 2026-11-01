@@ -10,6 +10,9 @@ import { startDetachedHostProxyWorker as startDetachedHostProxyWorkerWithPrivate
 import { defaultSpawnWorker as spawnWithPrivateFileAccess } from "@lando/engine/subsystems/host-proxy/worker-process";
 import { workerStatePath } from "@lando/engine/subsystems/host-proxy/worker-state";
 import "../../../src/runtime/engine-composition.ts";
+import { hostProxyWorkerEntry } from "@lando/engine/composition";
+import * as WorkerConfig from "@lando/engine/services/config";
+import { hostProxyWorkerArgv } from "@lando/engine/subsystems/host-proxy/worker-process";
 import { ownerOnlyFileAccess } from "../../_support/private-file-access.ts";
 import { closedInputWorker } from "./closed-input-worker.ts";
 
@@ -21,7 +24,10 @@ const defaultSpawnWorker = (
 const startDetachedHostProxyWorker = (
   options: Omit<Parameters<typeof startDetachedHostProxyWorkerWithPrivateFileAccess>[0], "privateFileAccess">,
 ) =>
-  startDetachedHostProxyWorkerWithPrivateFileAccess({ ...options, privateFileAccess: ownerOnlyFileAccess });
+  startDetachedHostProxyWorkerWithPrivateFileAccess({
+    ...options,
+    privateFileAccess: ownerOnlyFileAccess,
+  }).pipe(Effect.provide(WorkerConfig.layerWith({ env: {}, sources: { user: false, env: false } })));
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/srv/apps/demo") };
 const plan: AppPlan = {
   id: AppId.make("demo"),
@@ -78,6 +84,22 @@ console.log(JSON.stringify({
 };
 
 describe("detached host-proxy worker payload delivery", () => {
+  test("invalid worker input never reflects secret-bearing snapshot bytes in diagnostics", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-secret-input-"));
+    const secret = "snapshot-credential-that-is-not-an-environment-secret";
+    const worker = await defaultSpawnWorker({
+      argv: hostProxyWorkerArgv({ ...hostProxyWorkerEntry(), appId: "demo" }),
+      logsDir: root,
+    });
+    try {
+      await worker.writeStdin(JSON.stringify({ config: { proxy: { credential: secret } }, plan: secret }));
+      await expect(worker.readReady()).rejects.toBeInstanceOf(Error);
+      expect(await Bun.file(worker.logPath).text()).not.toContain(secret);
+    } finally {
+      await worker.terminate();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   test("delivers the complete payload before closing worker stdin", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-input-"));
     const worker = await defaultSpawnWorker({ argv: [process.execPath, await makeInputWorker(root), "0"] });

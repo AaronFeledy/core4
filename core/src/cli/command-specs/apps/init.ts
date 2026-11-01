@@ -94,7 +94,7 @@ export const initOptionsFromInput = (input: unknown): InitCommandOptions => {
   };
 };
 
-export const initSpec: LandoCommandSpec<never> = {
+export const initSpec: LandoCommandSpec<typeof InitAppResultSchema.Type> = {
   resultSchema: InitAppResultSchema,
   id: "apps:init",
   helpGroup: "common",

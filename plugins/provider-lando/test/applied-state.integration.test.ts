@@ -213,7 +213,7 @@ describe("provider-lando applied state persistence", () => {
       expect(written).toBe(appliedPlanPath(stateDir, proxyPlan.id));
 
       const raw = JSON.parse(await readFile(written, "utf8"));
-      expect(raw.version).toBe(2);
+      expect(raw.version).toBe(3);
       expect(raw.data).toBeDefined();
 
       const loaded = await Effect.runPromise(loadAppliedPlan(stateB, proxyPlan.id));

@@ -290,7 +290,7 @@ describe("DeprecationServiceLayer.layer", () => {
           api: 4,
           deprecated: pluginNotice,
           contributes: {
-            commands: [{ id: "meta:legacy", deprecated: pluginNotice }],
+            commands: [{ id: "meta:legacy", summary: "Legacy command.", deprecated: pluginNotice }],
             serviceTypes: [{ id: "legacy:php", deprecated: pluginNotice }],
             globalServices: [{ id: "legacy-global", deprecated: pluginNotice }],
             setup: {

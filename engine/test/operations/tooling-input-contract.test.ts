@@ -111,19 +111,25 @@ for (const entry of ["direct", "event"] as const) {
     if (task === undefined) throw new Error("Missing client task");
     const snapshot = Result.getOrThrow(normalizeToolingTask("psql", task));
     // When
-    const result = await Effect.runPromise(
-      Effect.result(
-        entry === "direct"
-          ? runTooling({ name: "psql", expectedInputRevision: snapshot.input.revision })
-          : runEventToolingCommand({
-              plan: fixture.plan,
-              name: "psql",
-              task,
-              input: { _tag: "RawArgv", argv: [] },
-              expectedInputRevision: snapshot.input.revision,
-            }),
-      ).pipe(Effect.provide(fixture.layer)),
-    );
+    // The direct result omits uncaptured output while event steps always carry strings, so run each arm alone.
+    const result =
+      entry === "direct"
+        ? await Effect.runPromise(
+            Effect.result(runTooling({ name: "psql", expectedInputRevision: snapshot.input.revision })).pipe(
+              Effect.provide(fixture.layer),
+            ),
+          )
+        : await Effect.runPromise(
+            Effect.result(
+              runEventToolingCommand({
+                plan: fixture.plan,
+                name: "psql",
+                task,
+                input: { _tag: "RawArgv", argv: [] },
+                expectedInputRevision: snapshot.input.revision,
+              }),
+            ).pipe(Effect.provide(fixture.layer)),
+          );
     // Then
     expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "ToolingInputError", tool: "psql" } });
     expect(fixture.calls).toEqual([]);

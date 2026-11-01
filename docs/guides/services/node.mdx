@@ -133,7 +133,7 @@ services:
 
 An explicit `environment.PORT` still wins for the process environment. The endpoint continues to use `port:`, so keep those values aligned unless your command intentionally translates between them.
 
-Node has no default healthcheck, even with an authored `command:`. A command might be a server, an asset watcher, or a queue worker. Add `healthcheck:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. A command string is enough, and the official `node` image ships `curl`:
+Node has no default healthcheck or readiness probe, even with an authored `command:`. A command might be a server, an asset watcher, or a queue worker. Add `readiness:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. Use `healthcheck:` separately for ongoing native monitoring. A command string is enough, and the official `node` image ships `curl`:
 
 ```yaml
 services:
@@ -141,10 +141,58 @@ services:
     type: node
     primary: true
     command: ["node", "server.js"]
-    healthcheck: curl -fsS http://localhost:3000/
+    readiness: curl -fsS http://localhost:3000/
 ```
 
-Lando stops a service with SIGTERM. A string `command:` runs under `sh -lc`, and that shell does not pass the signal on. Write the command as a list, such as `["node", "server.mjs"]`, and handle SIGTERM in your app so it stops before the runtime's timeout.
+## Stop cleanly
+
+`lando stop` sends SIGTERM to the container and waits for the stop grace period before it kills the process. A Node service runs under a small init process by default, so your command does not become PID 1, where the kernel ignores a signal nobody handles. Init forwards the stop signal to the process it started and reaps orphaned children, so an unhandled SIGTERM ends Node right away instead of waiting out the grace period. Handle SIGTERM in your app when it should finish in-flight requests before it exits.
+
+Init forwards the signal only to the process it started. A string `command:` runs under `sh -lc`, and that shell receives the signal instead of your server; `npm start` and similar wrappers decide for themselves whether to pass it on. Write the command as a list, such as `["node", "server.mjs"]`, or `exec` your server from the shell, so the signal reaches it directly. You don't need `tini` or `dumb-init` in the image for this; Lando already runs init in front of your command.
+
+The default follows the service's Lando base, not its image name, so it also applies when you set a custom `image:` on a Node service. Set `init: false` when your image supplies its own init or its process must run as PID 1; that process then owns signal handling and child reaping, and Lando no longer needs an init helper for that service:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    init: false
+    command: ["node", "server.mjs"]
+```
+
+`init` accepts the booleans `true` and `false`. It also accepts quoted strings such as `"true"`, `"false"`, `"on"`, `"off"`, `"yes"`, `"no"`, `"1"`, and `"0"`, ignoring letter case. Other values fail planning before Lando starts a container.
+
+After a stop, the `stopped:` line repeats the exit code the runtime reported beside each service, such as `app (exit 143)` for a server that ended on SIGTERM, and `lando stop --format=json` carries the same facts under `result.shutdownObservations`. Those are runtime facts, not proof that your handler finished its work; [Read what stop reports](../tutorial/app-lifecycle.mdx#read-what-stop-reports) explains each value and its limits.
+
+  <Scenario id="init-opt-out" render>
+    <Step name="scaffold">
+      <UseFixture name="node-init-off" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"init\":\\s*false" } }} />
+    </Step>
+    <Step name="plan">
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: node-init-off" } }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-invalid-init" render={false} reason="Plan-time tagged failure for an init value that is not a boolean spelling">
+    <Step name="scaffold">
+      <UseFixture name="node-init-invalid" />
+    </Step>
+    <Step name="reject">
+      <Run command="lando app:cache:refresh" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "init" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
 
   <Scenario id="authored-port" render>
     <Step name="scaffold">

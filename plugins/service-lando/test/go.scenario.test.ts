@@ -22,11 +22,14 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
 const providerId = ProviderId.make("lando");
@@ -38,6 +41,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -192,8 +196,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -216,7 +219,14 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
 
     expect(web.type).toBe("go:1.22");
     expect(web.endpoints).toEqual([
-      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "internal",
+        port: 8080,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     expect(web.healthcheck).toBeUndefined();
     expect(String(web.workingDirectory)).toBe("/app");

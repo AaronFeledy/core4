@@ -8,8 +8,9 @@ import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { EventServiceShape, LandoEvent } from "@lando/sdk/services";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
-import { type BunSelfSpawner, bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
+import { bunSelfRun } from "../../src/cli/commands/bun-self-runner.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { withProcess } from "../_support/process-runner.ts";
 
 const secretEnv = { LANDO_SECRET_AC6: "ac6secretvalue" };
 const realRedactionLayer = EnvironmentResolver.layer.pipe(
@@ -27,19 +28,21 @@ describe("redaction integration on emitting surfaces", () => {
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<never>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       } satisfies EventServiceShape),
     );
-    const spawner: BunSelfSpawner = { spawn: async () => ({ exitCode: 0 }) };
 
     await Effect.runPromise(
       bunSelfRun({
         argv: ["install", "--token=ac6secretvalue"],
         env: { BUN_AUTH_TOKEN: "ac6secretvalue" },
-        spawner,
         execPath: "/bin/bun",
-      }).pipe(Effect.provide(Layer.mergeAll(eventLayer, realRedactionLayer))),
+      }).pipe(
+        withProcess(async () => ({ exitCode: 0 })),
+        Effect.provide(Layer.mergeAll(eventLayer, realRedactionLayer)),
+      ),
     );
 
     const payload = JSON.stringify(events);

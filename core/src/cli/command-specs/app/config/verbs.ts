@@ -25,7 +25,7 @@ const makeSpec = (
   ...metadata,
   run: (input) => runAppConfig({ ...appConfigOptionsFromInput(input), subcommand }),
   render: (result, input) =>
-    renderAppConfigResult(result as AppConfigResult, appConfigOptionsFromInput(input).format ?? "table"),
+    renderAppConfigResult(result, appConfigOptionsFromInput(input).format ?? "table"),
 });
 
 export const appConfigSetSpec = makeSpec("set", "Set a value in the app's Landofile.", {

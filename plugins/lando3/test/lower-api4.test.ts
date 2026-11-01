@@ -212,17 +212,22 @@ describe("API-4 service lowering", () => {
     expect(result.patch.ports ?? []).toEqual([]);
     expect(paths(result, "rewritten")).toEqual([path("ports")]);
   });
-  test("converts healthcheck timing and drops its user", () => {
+  test("converts healthcheck timing and preserves its user", () => {
     const result = lowerApi4Service(
       { healthcheck: { command: "true", user: "root", retry: 100, delay: 1000 } },
       ctx,
     );
-    expect(result.patch.healthcheck).toEqual({ command: "true", retries: 100, intervalSeconds: 1 });
-    expect(paths(result, "dropped")).toEqual([path("healthcheck", "user")]);
+    expect(result.patch.readiness).toEqual({
+      command: "true",
+      user: "root",
+      retries: 100,
+      intervalSeconds: 1,
+    });
+    expect(paths(result, "dropped")).toEqual([]);
   });
   test("keeps disabled healthchecks as the canonical false switch", () => {
     const result = lowerApi4Service({ healthcheck: false }, ctx);
-    expect(result.patch.healthcheck).toBe(false);
+    expect(result.patch.readiness).toBe(false);
   });
   test("canonicalizes CA aliases when cas is supplied", () => {
     const result = lowerApi4Service({ security: { cas: ["./ca.pem"] } }, ctx);

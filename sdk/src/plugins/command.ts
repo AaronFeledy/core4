@@ -74,7 +74,7 @@ export interface ExecutableCommandSpec<
   Input = ExecutableCommandInput,
 > {
   readonly id: string;
-  readonly summary: string;
+  readonly summary?: string;
   readonly namespace: ExecutableCommandNamespace;
   readonly bootstrap: BootstrapLevel;
   /** The CLI owns `yes` (`--yes`/`-y`). Declare it as a plain `type: "boolean"` flag defaulting to false; any other `yes` declaration fails to load. */
@@ -82,8 +82,10 @@ export interface ExecutableCommandSpec<
   readonly args?: Readonly<Record<string, ExecutableCommandArgSpec>>;
   readonly strict?: boolean;
   readonly run: (input: Input) => Effect.Effect<A, E, R>;
-  readonly resultSchema: Schema.Codec<unknown, unknown>;
-  readonly completion?: (result: A, input: Input) => CommandCompletion;
+  readonly resultSchema: Schema.Codec<A, unknown>;
+  readonly completion?: {
+    bivarianceHack(result: A, input: Input): CommandCompletion;
+  }["bivarianceHack"];
   /**
    * Optional post-run render hook. Receives the validated input, result, and
    * captured streams; returns an Effect that performs framework-neutral output.
@@ -93,7 +95,9 @@ export interface ExecutableCommandSpec<
    * Exact secret values to seed RedactionService when encoding the command
    * envelope. Tokens must not be required fields on resultSchema.
    */
-  readonly redactionTokens?: (result: A) => ReadonlyArray<string>;
+  readonly redactionTokens?: {
+    bivarianceHack(result: A): ReadonlyArray<string>;
+  }["bivarianceHack"];
 }
 
 export type ExecutableCommandLoader = () => Promise<ExecutableCommandSpec>;

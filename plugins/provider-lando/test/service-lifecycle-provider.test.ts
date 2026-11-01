@@ -256,7 +256,19 @@ describe("provider-lando service lifecycle", () => {
       await Effect.runPromise(quiesce({ app: plan.id, plan }));
       fake.calls.length = 0;
       await Effect.runPromise(persistAppliedPlan(store, appliedPlan));
-      await Effect.runPromise(quiesce({ app: plan.id, plan }));
+      const receipt = await Effect.runPromise(quiesce({ app: plan.id, plan }));
+      expect(receipt.shutdownObservations).toEqual(
+        expect.arrayContaining([
+          {
+            appId: plan.id,
+            providerId,
+            service: oldServiceName,
+            containerId: "lando-lifecycle-app-old-worker-id",
+            status: "unknown",
+            reason: "state-unavailable",
+          },
+        ]),
+      );
       const stopped = fake.calls.filter((call) => call.method === "POST" && call.path.endsWith("/stop"));
       expect(stopped.map((call) => call.path)).toContain(
         "/containers/lando-lifecycle-app-old-worker-id/stop",

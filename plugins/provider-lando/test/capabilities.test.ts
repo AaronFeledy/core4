@@ -45,6 +45,13 @@ const podmanApiForArch = (arch: string) => ({
 });
 
 describe("provider-lando capabilities", () => {
+  test("declares native service init on each managed platform", () => {
+    for (const platform of ["linux", "darwin", "win32"] as const) {
+      expect(mvpProviderCapabilities(platform, platform === "darwin" ? "arm64" : "x64").serviceInit).toBe(
+        true,
+      );
+    }
+  });
   test("declares prepared-volume targets only under the complete managed Windows preparation gate", async () => {
     const appliedPlanState = makePluginStateStore(
       makeTestStateStore().service,

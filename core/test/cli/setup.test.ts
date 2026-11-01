@@ -2,12 +2,11 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { gzipSync } from "node:zlib";
 import { GlobalConfigSources } from "@lando/engine/services/config";
 import { makeLandoPaths } from "@lando/paths";
 import { PathsService } from "@lando/sdk/services";
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
 
 import {
@@ -17,7 +16,6 @@ import {
   EventService,
   FileSyncEngine,
   GlobalAppService,
-  HostProxyService,
   InteractionService,
   type InteractionServiceShape,
   PrivilegeService,
@@ -29,7 +27,6 @@ import { TestRuntimeProvider, makeTestDownloader, makeTestInteractionService } f
 import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { hostProviderId } from "@lando/engine/providers/host-provider";
 import * as LandoConfigService from "@lando/engine/services/config";
-import * as HostProxyServiceLayer from "@lando/engine/subsystems/host-proxy/api";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { layerWith as httpClientLayerWith } from "@lando/http-client/live";
 import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/http-client/network-trust";
@@ -68,7 +65,6 @@ import {
   maybeSelectSetupProvider,
   setupDeferredFileSyncPath,
   setupSpec,
-  shouldDisableHostProxyForSetup,
 } from "../../src/cli/command-specs/meta/setup.ts";
 import {
   type ResolvedSetupNetworkTrust,
@@ -80,7 +76,9 @@ import { validateUnknownCliFlags } from "../../src/cli/flag-value-validation.ts"
 import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
+import { buildRuntimeTarGz, nativeInitBridgeFixture } from "../_support/runtime-bundle.ts";
 import { withEnvVar } from "../_support/temp-cwd.ts";
+import { stubContainerHelperDir } from "../build/fixtures/container-helper-stubs.ts";
 
 const makeConfigService = (
   overrides: Partial<typeof GlobalConfig.Encoded> = {},
@@ -183,35 +181,6 @@ const runCommand = async (
 };
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
-
-const tarOctal = (value: number, length: number): string =>
-  `${value.toString(8).padStart(length - 1, "0")}\0`;
-
-const buildRuntimeTarGz = (
-  entries: ReadonlyArray<{ readonly path: string; readonly bytes: Uint8Array }>,
-): Uint8Array => {
-  const chunks: Uint8Array[] = [];
-  for (const entry of entries) {
-    const header = new Uint8Array(512);
-    header.set(Buffer.from(entry.path, "latin1"), 0);
-    header.set(Buffer.from(tarOctal(0o644, 8), "ascii"), 100);
-    header.set(Buffer.from(tarOctal(0, 8), "ascii"), 108);
-    header.set(Buffer.from(tarOctal(0, 8), "ascii"), 116);
-    header.set(Buffer.from(tarOctal(entry.bytes.byteLength, 12), "ascii"), 124);
-    header.set(Buffer.from(tarOctal(0, 12), "ascii"), 136);
-    header.fill(0x20, 148, 156);
-    header[156] = "0".charCodeAt(0);
-    header.set(Buffer.from("ustar\0", "ascii"), 257);
-    header.set(Buffer.from("00", "ascii"), 263);
-    const checksum = header.reduce((sum, byte) => sum + byte, 0);
-    header.set(Buffer.from(tarOctal(checksum, 8), "ascii"), 148);
-    chunks.push(header, entry.bytes);
-    const padding = (512 - (entry.bytes.byteLength % 512)) % 512;
-    if (padding > 0) chunks.push(new Uint8Array(padding));
-  }
-  chunks.push(new Uint8Array(1024));
-  return gzipSync(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))));
-};
 
 const stripAnsi = (value: string): string => {
   let output = "";
@@ -680,6 +649,7 @@ describe("meta:setup command", () => {
         subscribe: () => Stream.empty,
         subscribeQueue: Effect.die("unused subscription queue"),
         waitFor: () => Effect.die("unused event wait"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("unused event wait"),
         query: () => Effect.succeed([]),
       });
@@ -1339,11 +1309,12 @@ describe("meta:setup command", () => {
       setupSpec.render?.({
         providerId: "docker",
         installDir: "/opt/lando",
+        fileSyncStatus: "satisfied",
         networkCaInjectionConfigured: false,
         providerSwitch: {
           fromProviderId: "lando",
           toProviderId: "docker",
-          remainingApps: [{ kind: "user", id: "demo", root: "/apps/demo" }],
+          remainingApps: [{ kind: "user", id: "demo", root: AbsolutePath.make("/apps/demo") }],
         },
       }) ?? "";
     const commands = [...output.matchAll(/`lando ([^`]+)`/gu)].map((match) => match[1] ?? "");
@@ -2802,55 +2773,6 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("podman"));
   });
 
-  test("host-proxy none remains honored when proxy setup is skipped", () => {
-    expect(shouldDisableHostProxyForSetup({ flags: { "skip-proxy": true, "host-proxy": "none" } })).toBe(
-      true,
-    );
-  });
-
-  test("host-proxy none uses the disabled no-op layer", async () => {
-    let setupCalls = 0;
-    const provider = {
-      ...TestRuntimeProvider,
-      id: "lando",
-      setup: () =>
-        Effect.sync(() => {
-          setupCalls += 1;
-        }),
-    };
-    const registry = {
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([ProviderId.make("lando")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    };
-
-    const result = await Effect.runPromise(
-      setupSpec
-        .run({ installDir: "/opt/lando", flags: { "host-proxy": "none" } })
-        .pipe(Effect.provide(buildSetupLayers(registry))),
-    );
-    const status = await Effect.runPromise(
-      Effect.gen(function* () {
-        const hostProxy = yield* HostProxyService;
-        yield* hostProxy.setup({ mode: "none" });
-        return yield* hostProxy.status();
-      }).pipe(Effect.provide(HostProxyServiceLayer.layerDisabled)),
-    );
-
-    expect(setupCalls).toBe(1);
-    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
-    expect(status).toEqual({
-      active: false,
-      mode: "none",
-      mechanism: "skipped",
-      baseDomain: "lndo.site",
-      loopback: "127.0.0.1",
-    });
-  });
-
   test("invokes provider-lando setup with fake bundle and Podman API clients", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-setup-command-"));
     const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
@@ -2858,6 +2780,7 @@ describe("meta:setup command", () => {
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
+        providerSocketPath: join(stateDir, "podman.sock"),
         podmanApi: {
           info: Effect.succeed({ version: { Version: "6.0.2" } }),
           ping: Effect.void,
@@ -2892,6 +2815,7 @@ describe("meta:setup command", () => {
         podmanVersion: "6.0.2",
         runtimeBundleVersion: "0.0.0-test",
         runtimeBundleSha256: sha256(bundleBytes),
+        socketPath: join(stateDir, "podman.sock"),
       });
     } finally {
       await rm(stateDir, { recursive: true, force: true });
@@ -2902,6 +2826,7 @@ describe("meta:setup command", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-setup-command-state-"));
     const runtimeRoot = await mkdtemp(join(tmpdir(), "lando-provider-setup-command-runtime-"));
     const runtimeBinDir = join(runtimeRoot, "runtime", "bin");
+    const helper = nativeInitBridgeFixture();
     const encoder = new TextEncoder();
     const bundleBytes = buildRuntimeTarGz([
       { path: "podman", bytes: encoder.encode("podman") },
@@ -2911,6 +2836,30 @@ describe("meta:setup command", () => {
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
+        arch: "x64",
+        providerSocketPath: join(runtimeRoot, "run", "podman.sock"),
+        providerPidPath: join(runtimeRoot, "run", "podman.pid"),
+        runtimeStorageDir: join(runtimeRoot, "storage"),
+        runtimeRunDir: join(runtimeRoot, "run"),
+        runtimeConfigDir: join(runtimeRoot, "config"),
+        artifactDownload: helper.download,
+        _catatonitPackage: helper.pkg,
+        podmanService: {
+          launch: () => Effect.succeed(4567),
+          isAlive: () => Effect.succeed(true),
+          isServiceProcess: () => Effect.succeed(true),
+          terminate: () => Effect.void,
+        },
+        rootlessProbes: {
+          probe: () => ({
+            subidConfigured: true,
+            subidRangeSufficient: true,
+            subidRangesDisjoint: true,
+            hasUidmapTools: true,
+            cgroupsV2Delegated: true,
+            hasXdgRuntimeDir: true,
+          }),
+        },
         podmanApi: {
           info: Effect.succeed({ version: { Version: "6.0.2" } }),
           ping: Effect.void,
@@ -2918,7 +2867,7 @@ describe("meta:setup command", () => {
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
           download: Effect.succeed({
-            version: "0.0.0-test",
+            version: helper.version,
             bytes: bundleBytes,
             sha256: sha256(bundleBytes),
           }),
@@ -2944,11 +2893,18 @@ describe("meta:setup command", () => {
       expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
       expect((await stat(join(runtimeBinDir, "podman"))).mode & 0o111).not.toBe(0);
       expect((await stat(join(runtimeBinDir, "gvproxy"))).mode & 0o111).not.toBe(0);
+      expect(new Uint8Array(await readFile(join(runtimeBinDir, "catatonit")))).toEqual(
+        new Uint8Array(helper.elf),
+      );
+      expect(new Uint8Array(await readFile(join(runtimeBinDir, "licenses/catatonit/COPYING")))).toEqual(
+        helper.licenseBytes,
+      );
       expect(JSON.parse(await readFile(providerStatePath(stateDir), "utf8"))).toEqual({
         podmanVersion: "6.0.2",
-        runtimeBundleVersion: "0.0.0-test",
+        runtimeBundleVersion: helper.version,
         runtimeBundleSha256: sha256(bundleBytes),
         runtimeBinDir,
+        socketPath: join(runtimeRoot, "run", "podman.sock"),
       });
     } finally {
       await rm(stateDir, { recursive: true, force: true });
@@ -3600,8 +3556,17 @@ describe("meta:setup command", () => {
 });
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled setup install dir", () => {
+  let helperDir = "";
+  beforeAll(async () => {
+    helperDir = await stubContainerHelperDir();
+  });
+  afterAll(async () => {
+    await rm(helperDir, { recursive: true, force: true });
+  });
   test("matches source setup failure output and points shellenv at the compiled binary", async () => {
-    const build = await runCommand([process.execPath, "run", "build"]);
+    const build = await runCommand([process.execPath, "run", "build"], coreRoot, {
+      LANDO_CONTAINER_HELPER_DIR: helperDir,
+    });
     expect(build.exitCode).toBe(0);
 
     const commandEnv = {

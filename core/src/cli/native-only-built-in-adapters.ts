@@ -1,9 +1,10 @@
 import { Effect } from "effect";
 
-import { EventService } from "@lando/sdk/services";
+import { EventService, Renderer } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeInteractionPrompter } from "../interaction/prompter";
 import { retainedRecipeSources } from "../recipes/runtime-sources";
 import { makeLandoRuntime } from "../runtime/layer";
 import type { BuiltInCommandEntry } from "./built-in-command-registry";
@@ -13,6 +14,7 @@ import { initOptionsFromInput } from "./command-specs/apps/init";
 import { renderAgentSkillsResult } from "./commands/agent-skills";
 import { initApp } from "./commands/init";
 import { makeInitOutput } from "./commands/init-output.ts";
+import { initUsesMachineOutput, makeInitReview, renderInitReviewNext } from "./commands/init-review.ts";
 import { compiledCommandInputFromArgv } from "./compiled-input";
 import { activeResultFormat, runCompiledCommand, runWithProcessAbortSignal } from "./compiled-runtime";
 
@@ -26,6 +28,7 @@ export const runNativeOnlyBuiltIn = async (
   switch (entry.spec.id) {
     case "apps:init": {
       const input = compiledCommandInputFromArgv(entry.spec.id, argv);
+      let reviewed = false;
       await runWithProcessAbortSignal(
         (signal) =>
           runCompiledCommand(
@@ -34,24 +37,42 @@ export const runNativeOnlyBuiltIn = async (
               const privateFileAccess = yield* PrivateFileAccessService;
               const postInitIO = yield* makeInitOutput(activeResultFormat);
               const options = initOptionsFromInput(input);
+              const renderer = yield* Renderer;
+              const nonInteractive =
+                options.nonInteractive === true || initUsesMachineOutput(activeResultFormat, renderer.id);
+              const interaction = yield* makeInteractionPrompter(signal);
+              const onPrepared = yield* makeInitReview({
+                format: activeResultFormat,
+                yes: options.yes === true,
+                nonInteractive,
+                ...(process.stderr.columns === undefined ? {} : { columns: process.stderr.columns }),
+              });
               const sources = yield* retainedRecipeSources(options.registryUrl);
-              return yield* Effect.tryPromise({
-                try: () =>
-                  initApp({
-                    ...sources,
-                    ...options,
-                    signal,
-                    onWarn: postInitIO.err,
-                    postInitIO,
-                    events,
-                    privateFileAccess,
-                  }),
-                catch: (error) => error,
+              return yield* initApp({
+                ...sources,
+                ...options,
+                nonInteractive,
+                interaction,
+                ...(onPrepared === undefined
+                  ? {}
+                  : {
+                      onPrepared: async (review, context) => {
+                        await onPrepared(review, context);
+                        reviewed = true;
+                      },
+                    }),
+                signal,
+                onWarn: postInitIO.err,
+                postInitIO,
+                events,
+                privateFileAccess,
               });
             }),
             makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
             (result) => {
-              const created = `Created ${result.appName} at ${result.directory}`;
+              const created = reviewed
+                ? renderInitReviewNext(result.directory)
+                : `Created ${result.appName} at ${result.directory}`;
               return result.agentSkills === undefined
                 ? created
                 : `${created}\n${renderAgentSkillsResult(result.agentSkills)}`;

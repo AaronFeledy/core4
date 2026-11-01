@@ -53,6 +53,25 @@ export const serviceResourceCapabilityErrors = (
   return errors;
 };
 
+export const assertServiceInitSupported = (
+  provider: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: Readonly<Record<string, { readonly name: string; readonly init?: boolean | undefined }>>,
+): Effect.Effect<void, CapabilityError> => {
+  const service = Object.values(services).find((service) => service.init === true);
+  return service === undefined || capabilities.serviceInit === true
+    ? Effect.void
+    : Effect.fail(
+        missingCapability(
+          provider,
+          service.name,
+          "native container init",
+          "serviceInit",
+          `Choose a provider with native service init support or set init: false on service ${service.name}.`,
+        ),
+      );
+};
+
 export const assertRouteNetworkingSupported = (
   provider: ProviderId,
   capabilities: ProviderCapabilities,

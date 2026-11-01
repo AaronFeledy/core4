@@ -200,10 +200,14 @@ export const runServiceCompositionContract = Effect.fnUntraced(function* (
       { index, source },
     );
     sourceIds.add(String(source.id));
-    yield* requireServiceComposition(source.path.startsWith("/"), "resolution logSource path is absolute", {
-      index,
-      source,
-    });
+    yield* requireServiceComposition(
+      source.path === undefined || source.path.startsWith("/"),
+      "resolution logSource path is absolute",
+      {
+        index,
+        source,
+      },
+    );
     yield* requireServiceComposition(
       resolution.base === "lando" || source.strategy !== "redirect",
       "resolution logSource strategy is supported by the base",
@@ -366,6 +370,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     },
     setCommand(command) {
       recorded.settings.command = command;
+    },
+    setInit(init) {
+      recorded.settings.init = init;
     },
     setArtifact(artifact) {
       recorded.settings.artifact = artifact;
@@ -622,6 +629,7 @@ const makeRecordingAppFeatureContext = (
       setCerts: recordMutation,
       setEntrypoint: recordMutation,
       setCommand: recordMutation,
+      setInit: recordMutation,
       setArtifact: recordMutation,
       setUser: recordMutation,
       setWorkingDirectory: recordMutation,

@@ -55,7 +55,7 @@ The manifest is an Effect Schema validated before module import.
 | `provides.serviceFeatures` | Single-service plan features. |
 | `provides.appFeatures` | App-wide plan features. |
 | `provides.globalServices` | Global-app service definitions (§20.4). |
-| `provides.commands` | Canonical command contributions. |
+| `provides.commands` | Command descriptors: canonical `id`, nonblank `summary`, and optional `hidden`, `aliases`, `topLevelAlias`, `mcpAllowed`, and `deprecated` (§8.1.2, §8.3). |
 | `provides.initSources` | `apps:init` sources: prompts, source auth, dynamic choices, and acquisition locators (§8.8.13). |
 | `provides.routerServices` | Router implementations. |
 | `provides.tunnelServices` | Public-sharing implementations (§10.2.2). |
@@ -83,9 +83,9 @@ The manifest is an Effect Schema validated before module import.
 | `requires` | Core version, service, and capability requirements. |
 | `conflicts` | Incompatible plugins. |
 
-Contribution entries use schema-defined identity plus a contained `module` path where code is required. They MAY carry `deprecated`; loading registers notices and use emits `deprecation-used` under §18. Entry-specific fields include provider `defaultFor`; service-type `base`, `extends`, `schema`, `creds`, `artifacts`, `tooling`, and `features`; global-service `enabledByDefault`, `requires`, `conflicts`, `summary`, and `commands`; command `id`, `namespace`, `aliases`, and `topLevelAlias`; panel `id`, `slot`, and `watch`; translator `inputKinds`, `detects`, `refreshable`, and `optionsSchema`; init-source `summary`; remote-source `capabilities`; template `extensions` and `capabilities`; doctor-check `summary` and `tags`; secret-store `schemes`; and subscriber `id`, `selectors`, `priority`, `abortOnError`, and `configKey`.
+Contribution entries use schema-defined identity plus a contained `module` path where code is required. They MAY carry `deprecated`; loading registers notices and use emits `deprecation-used` under §18. Entry-specific fields include provider `defaultFor`; service-type `base`, `extends`, `schema`, `creds`, `artifacts`, `tooling`, and `features`; global-service `enabledByDefault`, `requires`, `conflicts`, `summary`, and `commands`; command `id`, `summary`, `hidden`, `aliases`, `topLevelAlias`, `mcpAllowed`, and `deprecated`; panel `id`, `slot`, and `watch`; translator `inputKinds`, `detects`, `refreshable`, and `optionsSchema`; init-source `summary`; remote-source `capabilities`; template `extensions` and `capabilities`; doctor-check `summary` and `tags`; secret-store `schemes`; and subscriber `id`, `selectors`, `priority`, `abortOnError`, and `configKey`.
 
-Command ids MUST be canonical and namespaced. `namespace` MUST equal the id prefix and be `app`, `apps`, `meta`, or the plugin’s `cspace`. Plugins MUST NOT contribute under `plugin:` or reserved `meta:plugin:*`/`meta:global:*` namespaces. Namespaced aliases use `aliases`; bare aliases require `topLevelAlias` and follow §8.1.2 collision rules.
+Command ids MUST be canonical and namespaced. Command descriptors carry no `namespace` field: the `id` prefix is the namespace, and the executable module's `namespace` MUST equal it. Plugins MUST NOT contribute under `plugin:`, `global:`, `scratch:`, or the reserved `meta:plugin:*`, `meta:global:*`, and `apps:scratch:*` namespaces; manifest validation rejects such ids, and plugin aliases MUST NOT claim a registered command topic. Namespaced aliases use `aliases`; bare aliases require `topLevelAlias` and follow §8.1.2 collision rules.
 
 ### 9.5 Contribution surfaces
 
@@ -166,9 +166,11 @@ Bundled stores:
 
 ### 9.6 Plugin install and update
 
-`meta:plugin:add` (`lando plugin add`) resolves through `PluginSource`, validates the manifest, checks dependencies and API compatibility, installs through the embedded Bun execution contract (§3.4), and invalidates plugin and command caches. `meta:plugin:remove` (`lando plugin remove`) removes the selected user plugin and refreshes the same caches. A standalone Bun installation MUST NOT be required; library mode MAY use system Bun only when no embedded Bun exists.
+`meta:plugin:add` (`lando plugin add`) resolves through `PluginSource`, validates the manifest, checks dependencies and API compatibility, installs through the private Bun self-execution wrapper (`process.execPath` + `BUN_BE_BUN=1`, §2.1, §3.4, §8.2.4), and invalidates plugin and command caches. `meta:plugin:remove` (`lando plugin remove`) removes the selected user plugin and refreshes the same caches. A standalone host Bun installation MUST NOT be required. A failed `resolve`, `download`, `verify`, `extract`, trusted `postinstall`, or `remove` operation MUST surface as `PluginPackageOperationError` naming that operation, with `exitCode` present only when a package-manager child was observed to exit nonzero; acquisition downloads and extracts are not a `bun install`. A failed operation MUST stop before any later Lando activation, deletion, manifest, registry, cache, or trust mutation; it does not roll back side effects the Bun child already made, and explicit persistent trust grants are retained. Trusted postinstall streams through `Renderer` in human mode and collects in machine mode; `meta:plugin:remove` collects its child quietly in both modes. Neither inherits CLI stdin (§8.2.4).
 
 Install scripts are disabled by default. They MAY run only for explicitly trusted package identities or authoring roots; Git installs require per-install trust. Grants remain until removed by `meta:plugin:trust:revoke`, and `meta:plugin:trust:list` exposes current grants. Registry, Git, and local trust domains MUST NOT imply one another. Install lifecycle events MUST be observable, cancellable, and redacted.
+
+For batch updates, the no-later-mutation rule applies to the failed plugin, not a rollback of earlier successful candidates. Ordinary package failures may remain per-row results. Process execution, capture-overflow, and timeout failures abort the invocation before any later candidate or core replacement runs (§8.2.4).
 
 `meta:update` (`lando update`) checks plugin channels `stable`, `next`, and `dev` through `UpdateService`, honors manifest channel constraints, and updates plugins through the same install path. Binary self-update remains the separate §17.6 protocol.
 
@@ -182,13 +184,13 @@ App-declared plugins install only into their app-scoped store, use the same trus
 - Bundled modules are statically included; external modules use absolute file URLs. Cwd-relative imports and paths escaping the plugin root are forbidden.
 - External entries and contribution modules MUST use the host-owned SDK and Effect instances in §7.1.1, including when a contribution loads before its entry. Plugin-local peer copies MUST NOT override them; other bare packages resolve beside the importing file. Host ownership does not waive manifest compatibility checks.
 - App-scoped plugins load only from their lockfile-selected local copy.
-- The validated plugin-command cache is the sole command-metadata owner. It follows discovery precedence, invalidates on plugin-set or manifest change, and MUST NOT be treated as an executable registry.
-- Duplicate command ids retain the first occurrence in resolved manifest order. Executable plugin command loaders remain lazy and keyed by canonical id.
-- Native top-level dispatch of plugin-contributed commands is deferred until a public command implementation contract exists; command steps MAY invoke their lazy implementation.
+- One manifest-resolution pass selects plugins for discovery, the contribution graph, help, routing, MCP, and configuration validation, with ordinary discovery precedence, roots, app-local plugins, and disables. A later source replaces an earlier plugin with the same name. Across different plugins, the first command owner in precedence order keeps a command id and the shadowed declaration is reported as a diagnostic; a winner that later fails to load is never replaced by the shadowed command. A manifest that repeats a command id is invalid.
+- Plugin command identity, listing, routing, and MCP eligibility come from manifest command descriptors; CLI metadata listing and routing MUST NOT import plugin entry or command modules. MCP schema construction loads the implementations it exposes. There is no persisted plugin-command cache; bundled descriptors are also embedded at build time for level-`none` help (§12.1). Executable loaders stay lazy and keyed by canonical id; a declared command without a loader stays listed; declaration alone does not establish implementation availability, so the missing loader is reported when the command is used, its target help is requested, or MCP validates it.
+- Native top-level dispatch resolves a token that no built-in or tooling task owns (a plugin command id or one of its active aliases) through the graph, loads and validates its `ExecutableCommandSpec` (§8.3), and runs it under the declared `bootstrap` level. Event command steps MAY invoke the same lazy implementation. A command module that fails to load or validate fails only that command.
 - Each contribution module loads on first use. Config translators load only for explicit translation or the declared local-snapshot refresh phase (§7.4.2), never ordinary discovery/loading.
 - Layer results compose into the runtime; plain objects are wrapped as Layers.
-- A throwing module becomes `PluginLoadError`, marks that plugin unhealthy, and MUST NOT prevent unrelated plugins from loading.
-- Experimental-source runtime loading is not implemented; when added, it MUST join the same cache at final discovery precedence.
+- A throwing module becomes `PluginLoadError`, marks that plugin unhealthy, and MUST NOT prevent unrelated plugins from loading. A command module that throws or fails validation fails only that command; the plugin's other commands stay available.
+- Experimental-source runtime loading is not implemented; when added, it MUST join the same contribution graph at final discovery precedence.
 
 ### 9.8 The `LandoPluginContext`
 

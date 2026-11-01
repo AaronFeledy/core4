@@ -1,14 +1,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { ToolingCompileError } from "@lando/sdk/errors";
-import { LandofileShape, type PluginManifest } from "@lando/sdk/schema";
+import { LandofileShape } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import {
   compileAppCommands,
   compileBunShellScriptCommands,
-  compilePluginCommands,
   compileToolingCommands,
 } from "../../src/cache/command-compiler.ts";
 
@@ -225,41 +224,5 @@ describe("compileBunShellScriptCommands", () => {
     const entries = compileAppCommands(source, scripts);
     // Then
     expect(entries).toMatchObject([{ id: "app:quality", summary: "Tooling wins", hidden: false }]);
-  });
-});
-
-const manifest = (name: string, commands?: ReadonlyArray<string>): PluginManifest => ({
-  name: name as PluginManifest["name"],
-  version: "0.0.0",
-  api: 4,
-  bootstrap: "app",
-  ...(commands === undefined ? {} : { contributes: { commands } }),
-});
-
-describe("compilePluginCommands", () => {
-  test("returns an empty list when no plugin contributes commands", () => {
-    const entries = compilePluginCommands([manifest("@lando/a"), manifest("@lando/b", [])]);
-    expect(entries).toEqual([]);
-  });
-
-  test("flattens contributed command ids across plugins, sorted by id", () => {
-    const entries = compilePluginCommands([
-      manifest("@lando/b", ["b:bravo", "b:alpha"]),
-      manifest("@lando/a", ["a:zulu", "a:mike"]),
-    ]);
-    expect(entries).toEqual([
-      { id: "a:mike", summary: "", hidden: false },
-      { id: "a:zulu", summary: "", hidden: false },
-      { id: "b:alpha", summary: "", hidden: false },
-      { id: "b:bravo", summary: "", hidden: false },
-    ]);
-  });
-
-  test("deduplicates duplicate command ids across plugins", () => {
-    const entries = compilePluginCommands([
-      manifest("@lando/a", ["meta:plugin:add"]),
-      manifest("@lando/b", ["meta:plugin:add"]),
-    ]);
-    expect(entries).toEqual([{ id: "meta:plugin:add", summary: "", hidden: false }]);
   });
 });

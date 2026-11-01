@@ -1,5 +1,6 @@
 import { Effect, Queue, Stream } from "effect";
 
+import { hostDisablesColor } from "@lando/renderer";
 import type { ExecAppOptions } from "@lando/sdk/app";
 import type { HostTerminal } from "@lando/sdk/schema";
 import type { ToolingInvocation } from "@lando/sdk/services";
@@ -45,6 +46,7 @@ export const attachedHostTerminal = (
   const columns = output.columns;
   const rows = output.rows;
   return {
+    ...(hostDisablesColor(env) ? { noColor: true } : {}),
     ...(term === undefined || term.length === 0 ? {} : { term }),
     ...(colorterm === undefined || colorterm.length === 0 ? {} : { colorterm }),
     ...(typeof columns === "number" && Number.isInteger(columns) && columns > 0 ? { columns } : {}),

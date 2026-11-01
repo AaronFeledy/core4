@@ -18,6 +18,7 @@ import {
   ShellRunner,
   ToolingEngine,
 } from "@lando/sdk/services";
+import { ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
@@ -25,6 +26,7 @@ import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { makeShellRunnerService } from "../../src/services/shell-runner.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
@@ -51,14 +53,19 @@ const harness = (
   const plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     testEnvironmentResolverLayer,
     EventRuntime.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       ShellRunner,
-      makeShellRunnerService(() => {
-        throw new Error("unused REPL");
-      }, ownerOnlyFileAccess),
+      makeShellRunnerService(
+        () => {
+          throw new Error("unused REPL");
+        },
+        ownerOnlyFileAccess,
+        Effect.runSync(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer))),
+      ),
     ),
     Layer.succeed(
       ToolingEngine,
@@ -162,7 +169,9 @@ test("keeps a registered secret masked across separately executed host commands"
   // When
   const result = await h.run({ payload: true });
   // Then
-  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, stdout: "", stderr: "" } });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+  expect(result).not.toHaveProperty("success.stdout");
+  expect(result).not.toHaveProperty("success.stderr");
   expect(joined(h.frames, "stdout")).toBe("[redacted]");
   expect(joined(h.frames, "stderr")).toBe("[redacted]");
 });
@@ -198,7 +207,8 @@ test("delivers a host partial line before the body is allowed to finish", async 
       }),
     ]);
     // Then
-    expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0, stdout: "" } });
+    expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+    expect(result).not.toHaveProperty("success.stdout");
     expect(joined(h.frames, "stdout")).toBe("onetwo");
   } finally {
     clearTimeout(timer);
@@ -216,15 +226,17 @@ test("streams host channels through the sink without collecting the body", async
   });
   // When the body runs with a live sink.
   const result = await h.run();
-  // Then channels stream as authored and the collected result stays empty under a live sink.
+  // Then channels stream as authored and the result omits uncaptured output.
   expect(joined(h.frames, "stdout")).toBe("split-host-secret");
   expect(joined(h.frames, "stderr")).toBe("split-host-secret");
   expect(h.frames.every((frame) => frame.kind === "bytes")).toBe(true);
   expect(result).toMatchObject({
     _tag: "Success",
-    success: { stdout: "", stderr: "", exitCode: 0 },
+    success: { exitCode: 0 },
   });
-  if (result._tag === "Success") expect("rendered" in result.success).toBe(false);
+  expect(result).not.toHaveProperty("success.stdout");
+  expect(result).not.toHaveProperty("success.stderr");
+  expect(result).not.toHaveProperty("success.rendered");
 });
 
 test("emits failure stderr before returning the body exit code", async () => {
@@ -239,8 +251,9 @@ test("emits failure stderr before returning the body exit code", async () => {
   expect(joined(h.frames, "stderr")).toBe("diagnostic");
   expect(result).toMatchObject({
     _tag: "Success",
-    success: { exitCode: 7, stderr: "" },
+    success: { exitCode: 7 },
   });
+  expect(result).not.toHaveProperty("success.stderr");
 });
 
 test.each(["pre", "post"] as const)(

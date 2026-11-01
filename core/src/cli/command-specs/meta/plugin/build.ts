@@ -16,5 +16,5 @@ export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
   bootstrap: "minimal",
   run: () => pluginBuild(),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderPluginBuildResult(result as PluginBuildResult),
+  render: (result) => renderPluginBuildResult(result),
 };

@@ -7,6 +7,7 @@ import {
   addEnvRecord,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 import { servicePortEndpoints } from "./_port-helpers.ts";
@@ -49,7 +50,7 @@ interface LanguageRuntimeSpec<V extends string, F extends string> {
   readonly resolveFallback: (version: V) => string;
 }
 
-const DEFAULT_KEEP_ALIVE = ["sh", "-c", "tail -f /dev/null"] as const;
+const DEFAULT_KEEP_ALIVE = ["tail", "-f", "/dev/null"] as const;
 
 export const makeLanguageRuntime = <V extends string, F extends string>(spec: LanguageRuntimeSpec<V, F>) => {
   const validateFramework = (raw: string | undefined): F => {
@@ -89,7 +90,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
       framework,
       version,
       port,
-      ...(webroot === undefined ? {} : { webroot }),
+      ...(service.appMount === false || webroot === undefined ? {} : { webroot }),
     });
   };
 
@@ -97,6 +98,17 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     id: spec.featureId,
     schema: spec.featureSchema,
     priority: spec.priority,
+    validateEffective: serviceFeatureValidateEffective(spec.featureId, (ctx) => {
+      const { webroot } = spec.configFor(ctx);
+      return {
+        handledServiceFields:
+          spec.includeWebrootInFeatureConfig &&
+          ctx.normalizedConfig.appMount !== false &&
+          webroot !== undefined
+            ? ["webroot"]
+            : [],
+      };
+    }),
     declareEndpoints: (ctx) =>
       Effect.sync(() => {
         const { port } = spec.configFor(ctx);

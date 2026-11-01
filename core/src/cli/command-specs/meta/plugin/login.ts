@@ -11,7 +11,7 @@ import { EmptyResultSchema, type LandoCommandSpec } from "../../../spec/command-
  * plugin source for private packages.
  */
 
-export const pluginLoginSpec: LandoCommandSpec<never> = {
+export const pluginLoginSpec: LandoCommandSpec<object> = {
   resultSchema: EmptyResultSchema,
   id: "meta:plugin:login",
   summary: "Authenticate with a plugin source.",

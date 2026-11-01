@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect";
@@ -7,8 +7,8 @@ import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect"
 import { ShellExecError } from "@lando/sdk/errors";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
-import * as BunShellRunner from "../../src/services/shell-runner";
 import { withShellRedactionTokens } from "../../src/services/shell-runner";
+import * as BunShellRunner from "../shell-runner.ts";
 
 import { testRedactionLayer } from "../redaction.ts";
 
@@ -27,6 +27,7 @@ const captureEventsLayer = (events: LandoEvent[]) =>
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<never>(),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     } satisfies Context.Service.Shape<typeof EventService>),
@@ -45,6 +46,55 @@ const replInput = (...events: ReadonlyArray<ShellReplInput>): AsyncIterable<Shel
   })();
 
 describe("BunShellRunner.layer", () => {
+  test.each(["exec", "run"] as const)("%s derives PWD from supplied cwd", async (method) => {
+    // Given
+    const cwd = await mkdtemp(join(tmpdir(), "lando-shell-pwd-"));
+    try {
+      // When
+      const result = await Effect.runPromise(
+        Effect.flatMap(ShellRunner, (shell) => shell[method]('pwd; printf "%s\\n" "$PWD"', { cwd })).pipe(
+          Effect.provide(shellRunnerLayer),
+        ),
+      );
+      // Then
+      const canonical = await realpath(cwd);
+      expect(result).toEqual({ exitCode: 0, stdout: `${canonical}\n${canonical}\n`, stderr: "" });
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test.each([undefined, "caller-pwd", ""])("interactive honors cwd and PWD override %j", async (pwd) => {
+    // Given
+    const cwd = await mkdtemp(join(tmpdir(), "lando-shell-interactive-pwd-"));
+    let stdout = "";
+    try {
+      // When
+      const result = await Effect.runPromise(
+        Effect.flatMap(ShellRunner, (shell) =>
+          shell.interactive({
+            cwd,
+            ...(pwd === undefined ? {} : { env: { PWD: pwd } }),
+            resolveSecret: () => Effect.die("secret not expected"),
+            io: {
+              input: replInput({ _tag: "line", line: 'pwd; printf "%s\\n" "$PWD"' }, { _tag: "eof" }),
+              writeStdout: (chunk) => {
+                stdout += chunk;
+              },
+              writeStderr: () => {},
+            },
+          }),
+        ).pipe(Effect.provide(shellRunnerLayer)),
+      );
+      // Then
+      expect(result.exitCode).toBe(0);
+      const canonical = await realpath(cwd);
+      expect(stdout).toBe(`${canonical}\n${pwd ?? canonical}\n`);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   test("runs a command with env and captures stdout", async () => {
     const result = await execShell("echo $FOO", { env: { FOO: "bar" } });
 

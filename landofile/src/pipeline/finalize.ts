@@ -74,7 +74,11 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   const materialized = yield* materializeLandofileLayer(file, composed.document, scope);
   if (!isPlainRecord(materialized))
     return yield* Effect.fail(validationErrorFromCause(file, materialized, undefined));
-  const value = materialized;
+  // A whole-map expression can introduce service ids after the authored map was filtered.
+  const value =
+    context.overrides?.excludedServices === undefined
+      ? materialized
+      : applyFinalizeOverrides(materialized, { excludedServices: context.overrides.excludedServices });
   const acquisition = yield* Effect.try({
     try: () => includeAcquisitionView(value),
     catch: (cause) => validationErrorFromCause(file, value, cause),

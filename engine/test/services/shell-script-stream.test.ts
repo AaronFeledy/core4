@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
@@ -12,10 +12,41 @@ import {
   createCollectingStreamFrameSink,
 } from "../../src/operations/stream-frame-sink.ts";
 import { landoLauncher } from "../../src/services/bun-command-env.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const frameText = (frame: StreamFrameSinkFrame) =>
   typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk);
+
+test("private script capture retains output without forwarding it to an ambient sink", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-script-private-"));
+  const script = join(root, "private.bun.sh");
+  const frames: StreamFrameSinkFrame[] = [];
+  try {
+    await writeFile(script, "printf private; printf diagnostic 1>&2\n");
+    // When
+    const result = await Effect.runPromise(
+      Effect.flatMap(ShellRunner, (shell) => shell.runScript(script, { capture: true })).pipe(
+        Effect.provide(
+          BunShellRunner.layer(() => {
+            throw new TypeError("Interactive IO must not be opened");
+          }),
+        ),
+        Effect.provideService(StreamFrameSink, {
+          emit: (frame) =>
+            Effect.sync(() => {
+              frames.push(frame);
+            }),
+        }),
+      ),
+    );
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "private", stderr: "diagnostic" });
+    expect(frames).toEqual([]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("forwards unregistered assignments and binary script bytes without decoding", async () => {
   // Given
@@ -64,7 +95,7 @@ test.each([true, false])(
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-script-stdin-"));
     const scriptPath = join(root, "count.bun.sh");
-    const runnerPath = resolve(import.meta.dirname, "../../src/services/shell-runner.ts");
+    const runnerPath = resolve(import.meta.dirname, "../shell-runner.ts");
     try {
       await writeFile(scriptPath, "wc -l\n");
       const helper = `
@@ -102,7 +133,7 @@ test("terminal host IO inherits input but routes output through the live sink", 
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-script-terminal-"));
   const scriptPath = join(root, "prompt.bun.sh");
-  const runnerPath = resolve(import.meta.dirname, "../../src/services/shell-runner.ts");
+  const runnerPath = resolve(import.meta.dirname, "../shell-runner.ts");
   try {
     await writeFile(scriptPath, "echo -n 'name? '\necho to-stderr 1>&2\ncat\n");
     const helper = `
@@ -318,9 +349,16 @@ test("escapes percent signs and uses CRLF in a Windows launcher", () => {
   });
 });
 
-test.each(["collected", "live"] as const)(
-  "preserves script inputs and both output streams with restricted PATH in %s mode",
-  async (mode) => {
+test.each([
+  ["collected", undefined],
+  ["live", undefined],
+  ["collected", "caller-pwd"],
+  ["live", "caller-pwd"],
+  ["collected", ""],
+  ["live", ""],
+] as const)(
+  "preserves script inputs and both output streams with restricted PATH in %s mode and PWD %j",
+  async (mode, pwd) => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "lando-shell-runtime-"));
     const frames: StreamFrameSinkFrame[] = [];
@@ -331,12 +369,12 @@ test.each(["collected", "live"] as const)(
       const script = join(root, "probe.bun.sh");
       await writeFile(
         script,
-        'echo "$FOO"; echo "<$1>"; echo "<$2>"; echo "<$3>"; pwd; echo diagnostic 1>&2; echo -n tail\n',
+        'echo "$FOO"; echo "<$1>"; echo "<$2>"; echo "<$3>"; pwd; echo "$PWD"; echo diagnostic 1>&2; echo -n tail\n',
       );
       const run = Effect.flatMap(ShellRunner, (shell) =>
         shell.runScript(script, {
           cwd: root,
-          env: { PATH: root, FOO: "explicit-env" },
+          env: { PATH: root, FOO: "explicit-env", ...(pwd === undefined ? {} : { PWD: pwd }) },
           argv: ["two words", "", "$(echo injected)"],
         }),
       ).pipe(Effect.provide(shellLayer));
@@ -354,7 +392,8 @@ test.each(["collected", "live"] as const)(
             ),
       );
       // Then
-      const expectedStdout = `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${root}\ntail`;
+      const cwd = await realpath(root);
+      const expectedStdout = `explicit-env\n<two words>\n<>\n<$(echo injected)>\n${cwd}\n${pwd ?? cwd}\ntail`;
       const expectedStderr = "diagnostic\n";
       if (mode === "collected") {
         expect(result).toEqual({ exitCode: 0, stdout: expectedStdout, stderr: expectedStderr });
@@ -414,6 +453,7 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<never>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),

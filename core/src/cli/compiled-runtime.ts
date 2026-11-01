@@ -8,7 +8,6 @@ import type { EventService, Renderer } from "@lando/sdk/services";
 import type { BootstrapLevel } from "@lando/engine/runtime/bootstrap";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "@lando/engine/runtime/cli-options";
 import { defaultInterruptSignals } from "@lando/engine/runtime/process-signals";
-import "../runtime/bundled-plugins";
 import { makeLandoRuntime } from "../runtime/layer";
 
 import type { RendererIO } from "@lando/renderer/io";
@@ -25,7 +24,7 @@ import {
 } from "./compiled-session";
 import { type RenderContext, runWithRendererHandling } from "./renderer-boundary";
 import { activeRendererMode } from "./renderer-mode-state";
-import { EmptyResultSchema } from "./spec/command-base";
+import { EmptyResultSchema, type LandoCommandSpec } from "./spec/command-base";
 import { activeTrace } from "./trace-selection";
 
 type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;
@@ -88,6 +87,15 @@ export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
   return effectiveBootstrap === declaredBootstrap ? runtime : runtimeForBootstrap(effectiveBootstrap);
 };
 
+export const compiledCommandTransportOptions = (
+  spec: LandoCommandSpec | undefined,
+  streamingMode: "live" | undefined,
+) => ({
+  ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
+  ...(streamingMode === undefined ? {} : { streamingMode }),
+  ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+});
+
 export const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
   runtime: Layer.Layer<Exclude<R, EventService | Renderer>, RE>,
@@ -143,13 +151,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     command: activeCommandId,
     ...(options.preCommand !== true && invocation !== undefined ? { invocation } : {}),
     resultSchema: options.resultSchema ?? spec?.resultSchema ?? EmptyResultSchema,
-    ...(options.preCommand === true || spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
-    ...(options.preCommand === true || options.streamingMode === undefined
-      ? {}
-      : { streamingMode: options.streamingMode }),
-    ...(options.preCommand === true || spec?.streamFrames === undefined
-      ? {}
-      : { streamFrames: spec.streamFrames }),
+    ...(options.preCommand === true ? {} : compiledCommandTransportOptions(spec, options.streamingMode)),
     ...(redactionTokens === undefined ? {} : { redactionTokens }),
     ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
     ...(jqExpression === undefined ? {} : { jqExpression }),

@@ -215,9 +215,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     app: plan.name,
     service: String(service.name),
     command: split.command,
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
+    ...result,
     redactionTokens: collectAppPlanRedactionTokens(plan),
   };
   return withTokens;

@@ -57,6 +57,24 @@ export interface EventServiceShape {
    */
   readonly subscribeQueue: Effect.Effect<Queue.Dequeue<LandoEvent>, never, Scope.Scope>;
   /**
+   * Atomically snapshots retained redacted history and registers a bounded,
+   * nonblocking live queue. Each publication belongs to history or live delivery,
+   * never both. Overflow rejects new deliveries and increments `dropped` for this
+   * subscription. Capacity defaults to the service delivery capacity.
+   * `stop` idempotently unregisters without discarding queued events; releasing
+   * the caller's scope unregisters and shuts down the queue.
+   */
+  readonly subscribeWithHistory: (options?: { readonly capacity?: number }) => Effect.Effect<
+    {
+      readonly history: ReadonlyArray<LandoEvent>;
+      readonly queue: Queue.Dequeue<LandoEvent>;
+      readonly dropped: Effect.Effect<number>;
+      readonly stop: Effect.Effect<void>;
+    },
+    never,
+    Scope.Scope
+  >;
+  /**
    * Resolves with the first event named `name` (matching `filter`) from the
    * live stream. With `timeout`, fails `EventError({ reason: "timeout" })`
    * when the deadline elapses (driven through Effect `Clock`); without

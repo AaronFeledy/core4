@@ -10,6 +10,14 @@ const styledOn = {
 } as const;
 
 describe("shouldStyleHelp", () => {
+  test("turns style off when TERM is dumb", () => {
+    // Given
+    const input = { ...styledOn, env: { TERM: "dumb", FORCE_COLOR: "1" } };
+    // When
+    const styled = shouldStyleHelp(input);
+    // Then
+    expect(styled).toBe(false);
+  });
   test("turns style off when NO_COLOR is 1", () => {
     // Given a TTY lando session with NO_COLOR set
     const input = { ...styledOn, env: { NO_COLOR: "1" } };

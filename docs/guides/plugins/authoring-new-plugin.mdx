@@ -74,6 +74,27 @@ or building a plan. Keep the callback deterministic and resource-free. It receiv
 immutable service facts and the original decoded feature configuration, before
 planning substitutes certificate or SSH delivery configuration.
 
+Use an optional `validateEffective` callback for cross-field checks and explicit
+service-field support. Lando calls it once for each prepared feature occurrence
+after inheritance, before endpoint declaration and app-plan cache lookup. It
+receives the same immutable facts and original decoded feature configuration as
+declaration, not an application draft. Do not run `apply`, inspect images, resolve
+secrets, or acquire filesystem, network, or provider resources to validate.
+
+On success, return a `ServiceFeatureValidationResult` with `handledServiceFields`
+for the fields the feature actually consumes, currently `webroot` and
+`consolePort`. A property with the same name in feature configuration is not a
+support declaration. Claim `webroot` only when this feature really uses the root
+for server configuration or supported context; conditional mount-dependent
+features must not claim it when that context is absent.
+
+Reject expected invalid input through `ServiceFeatureError.issues`. Paths are
+relative to the service configuration, such as `["port"]`; include a useful
+`suggestion`. Core prefixes the service path and preserves structured findings
+for lint and machine output. Do not encode a path into prose or report an
+internal feature-config field as an authored Landofile field unless they really
+correspond. Validation still runs when the author supplies `endpoints: []`.
+
 ```ts
 import { Effect } from "effect";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
@@ -93,6 +114,16 @@ export const webFeature: ServiceFeatureDefinition = {
 For an app feature, return endpoint lists keyed by selected service name. The same
 `activatedBy` and `selectors` logic chooses services for declarations and application.
 Declaration contexts have no mutation methods; application contexts cannot add endpoints.
+
+If an app feature needs a fact established by a service type, return it in
+`ServiceTypeResolution.metadata`. Both declaration and application expose
+that record as the optional, read-only `AppFeatureServiceView.resolutionMetadata`.
+Use a namespaced key owned by your plugin and validate its value before relying
+on it. These are service-type-produced facts, not authored `x-*` fields,
+provider observations, or the final artifact after mutable feature application.
+Keep private implementation keys private rather than making them Landofile
+options. A missing fact is not permission to reconstruct it from a later image
+reference that may have changed.
 
 ```ts
 import { Effect } from "effect";
@@ -128,6 +159,54 @@ contributes:
 ```
 
 That key is `contributes.renderers`. Core still owns plain, JSON, and verbose fallbacks.
+
+## Contribute commands
+
+Describe each command under `contributes.commands` in the manifest. Every entry
+is an object with an `id` and a `summary`; `hidden`, `aliases`, `topLevelAlias`,
+`mcpAllowed`, and `deprecated` are optional. The bundled `@lando/sql` plugin is
+the shape to copy. This entry also gives `db:export` the shortcut `db:dump`:
+
+```yaml
+contributes:
+  commands:
+    - id: db:export
+      summary: Export a database dump from a service.
+      aliases: [db:dump]
+```
+
+Lando reads help, routing, aliases, and MCP eligibility from this manifest
+without running any plugin code, so the summary you write here is the one
+`lando help` shows. The command module may omit its own `summary`; if it sets
+one, it must match the manifest or the command fails validation when it runs.
+`aliases` take the colon form. `topLevelAlias: true` also registers the id
+without its first namespace segment (`db:export` as `export`); give it a token or
+a list of tokens to choose the bare names yourself. An alias that collides with
+a built-in command, a core help topic, a reserved word, or the current app's
+tooling is dropped while the id keeps working, and `lando help --format=json`
+reports the conflict in `result.pluginMetadata.diagnostics`.
+
+Then give `definePlugin` a `commands` map from the same ids to lazy loaders
+that resolve an `ExecutableCommandSpec` from `@lando/sdk/plugins`:
+
+```ts
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  commands: new Map([
+    ["db:export", () => import("./commands/export.ts").then((module) => module.spec)],
+  ]),
+});
+```
+
+Once the plugin is installed or linked, its commands appear in `lando help --all`
+next to the built-ins, `lando help <namespace>` (here, `lando help db`) lists
+them under the manifest `description`, and the root `lando --help` adds that
+topic to its MORE section. In `lando help --format=json`, each plugin row carries
+`source: "plugin"` plus the `plugin` name and its `provenance`. Lando loads the
+module only when someone runs the command or asks for its `--help`, so a module
+that fails to load still appears in listings; the load error surfaces at that
+point, naming the problem.
 
 ## Verify
 

@@ -14,7 +14,6 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | Cache | Location | Encoding | Contract |
 |---|---|---|---|
 | `core-command` | embedded plus `<userCacheRoot>/command-cache.bin` | binary | Built-in command, alias, and docs metadata; invalidated by core version or clear. |
-| `plugin-command` | `<userCacheRoot>/plugin-command-cache.bin` | binary | Sole metadata owner for precedence-merged bundled/external plugin commands; invalidated by plugin graph changes or clear. External plugin commands contribute metadata only; executable dispatch of them is governed by §9.7. |
 | `app-command` | `<userCacheRoot>/apps/<app-id>/commands.bin` | binary | App tooling routing metadata and app-plan key; invalidated by relevant app inputs, rebuild, refresh, or clear. |
 | `plugin` | `<userCacheRoot>/plugin-cache.json` | JSON | Resolved manifests, dependency graph, and contribution index. |
 | `app-plugin` | `<userCacheRoot>/apps/<app-id>/plugins.json` | JSON | App plugin lock resolution and local install metadata. |
@@ -29,10 +28,11 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `service-info` | `<userCacheRoot>/apps/<app-id>/info.json` | JSON | Last known user-app `ServiceInfo[]`. |
 | `provider` | `<userCacheRoot>/provider-cache.json` | JSON | Provider availability and version metadata. |
 | `command-registry-manifest` | embedded generated module | generated object | Built-in `LandoCommandSpec` projection for native routing; build-derived only and MUST NOT duplicate plugin metadata (§17.2). |
+| `bundled-command-descriptors` | embedded generated module | generated object | Bundled plugin manifests and command descriptors with their flag and arg declarations, for level-`none` help, the MCP default allowlist, and the command reference; build-derived only, type-only imports, never the runtime source of installed-plugin metadata (§17.2). |
 | `compiled-decoders` | embedded generated module | generated JavaScript plus declaration | Ahead-of-time compiled decoders for the fixed hot-path schema list (§2.5, §12.5); build-derived only, installed by the compiled CLI entry, never read from disk at runtime (§17.2). |
 | `template-compile` | `<userCacheRoot>/templates/<engineId>/<contentHash>.bin` | binary | Cross-app compiled `CompiledTemplate` content (§7.3.2). |
 | `template-render` | `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` | binary | Rendered output keyed by template and canonical resolved variables. |
-| `host-proxy-allowlist` | `<userCacheRoot>/host-proxy-allowlist.bin` | binary | Canonical ids permitted through `HostProxyService.runLando` (§10.10). |
+| `host-proxy-allowlist` | `<userCacheRoot>/host-proxy-allowlist.bin` | binary | Canonical ids permitted through host-proxy `runLando` (§10.10). |
 | `mcp-allowlist` | `<userCacheRoot>/mcp-allowlist.bin` | binary | Default non-destructive MCP command allowlist, refined by configured allow/deny policy (§10.14). |
 | `tunnel-registry` | `<userCacheRoot>/tunnels/registry.bin` | binary | Locked detached-tunnel registry with redacted public summaries (§10.2.2). |
 | `file-sync-sessions` | `<userCacheRoot>/file-sync/sessions/` | opaque | The bundled file-sync engine's configured `MUTAGEN_DATA_DIRECTORY`: daemon session history that is durable state, not regenerable plan-cache metadata. Stop, rebuild, and plan-cache invalidation MUST preserve it; verified disposal at destroy retires the app's session state (§10.6.2, §12.4). Listed here for its location only. |
@@ -40,7 +40,7 @@ This part defines Lando-owned caches, durable state, on-disk artifacts, atomicit
 | `update` | `<userCacheRoot>/update-cache.json` | JSON | Plugin update-channel metadata. |
 | `tool-downloads` | `<userCacheRoot>/tool-downloads/<toolId>/<filename>` | raw binary | Checksum-keyed verified tool artifacts; matching pinned artifacts require no network (§10.3.4). |
 
-Plugin-command compilation MUST derive ordered plugin identity, fingerprints, and command maps from the same resolved manifests. Duplicate command ids retain the first merged occurrence and the final index is deterministic. Router bootstrap validates known freshness metadata but MUST NOT parse Landofiles, resolve includes, import plugin modules, contact plugin sources, or initialize providers. Missing or stale app routing metadata omits app tooling and returns repair remediation rather than rebuilding on the hot path.
+Plugin command metadata is not cached; it is projected from the plugin contribution graph on demand (§9.7). Router bootstrap validates known freshness metadata but MUST NOT parse Landofiles, resolve includes, import plugin modules, contact plugin sources, or initialize providers. Missing or stale app routing metadata omits app tooling and returns repair remediation rather than rebuilding on the hot path.
 
 ### 12.2 Cache encoding
 
@@ -77,8 +77,9 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userDataRoot>/keys/`, `certs/`, `bin/` | Managed SSH keys (the §10.4 managed identity), certificates, and checksum/version-pinned helper binaries. |
 | `<userDataRoot>/secrets/` | Persistent writable `lando` user-grant store (§9.5.1), including refresh grants: private directory, owner-only files, locked atomic replacement; excluded from managed-file backups, journals, exports, and support bundles. Access tokens/resource credentials remain session-only. |
 | `<userDataRoot>/runtime/config/`, `bin/`, `storage/`, `run/`, `machines/` | Default-provider private config, binaries, storage, sockets/PIDs, and managed VM state. |
-| `<userDataRoot>/run/<app-id>-<root-hash>/host-proxy.sock` | Owner-only host-proxy socket for a user or scratch app (§10.10). `<root-hash>` is the first 12 hex digits of the SHA-256 of the app root. Removed at stop, destroy, or scratch scope close. |
-| `<userDataRoot>/run/<app-id>-<root-hash>/worker.json` | Owner-only host-proxy worker record (§10.10.1): pid, transport endpoint, protocol version, configuration digest, and the session id, bearer token, and control token a later start reuses. Removed at stop, destroy, uninstall, or replacement. |
+| `<userDataRoot>/run/<app-id>-<root-hash>/host-proxy.sock` | Host-proxy socket for a user or scratch app (§10.10), mode `0666` inside a verified current-user-owned, non-symlink `0700` run directory; the directory provides host privacy. `<root-hash>` is the first 12 hex digits of the SHA-256 of the app root. Removed at stop, destroy, or scratch scope close. |
+| `<userDataRoot>/run/<app-id>-<root-hash>/credentials` | Immutable session credentials JSON, published atomically with mode `0444` inside a verified host-private `0700`, current-user-owned, non-symlink directory (private ACL on Windows). Only this file is bound read-only into eligible services at `/run/lando/host-proxy/credentials`; the directory and control-token record are never mounted. Removed with the session; excluded from persisted plans and create fingerprints (§10.10). |
+| `<userDataRoot>/run/<app-id>-<root-hash>/worker.json` | Owner-only host-proxy worker record (§10.10.1): pid, transport endpoint, protocol version, structural digest including the installed Lando executable's stat-based identity (path, device, inode, size, and timestamps), not a content hash, session id, bearer token, and control token. Host paths use host roots and platform, not the provider's platform; a TCP host-gateway bridge's container-facing socket path is guest-side. Plan-only updates and fresh-child config/plugin reads preserve the record and session; global config is neither persisted here nor sent to the worker. Removed at stop, destroy, uninstall, or structural replacement. |
 | `<userDataRoot>/run/<app-id>-<root-hash>-<kind>-agent/worker.json` | Owner-only SSH or gpg relay worker record (§10.4): pid, control endpoint and token, delivered mount, protocol version, and configuration digest. Removed with the relay directory at stop, destroy, or uninstall; replacement keeps the mounted directories. |
 | `<userDataRoot>/run/tunnels/<session-id>.{pid,sock,json}` | Best-effort detached-tunnel process handles reconciled against `tunnel-registry`. |
 | `<userDataRoot>/bin/mutagen[.exe]`, `bin/mutagen-agents/` | Isolated verified Mutagen host and guest binaries; never sourced from containers. |
@@ -130,7 +131,7 @@ This durable provider-private identity record lets stop, destroy, and a convergi
 
 ### 12.5 Hot-path read budgets
 
-Warm router reads of core, plugin, app-command, and CWD-map indexes MUST complete in under 30 ms. Warm tooling reads of `app-plan` and compiled `ToolingProgram` MUST independently complete in under 30 ms. No provider contact, include resolution, expression parsing, or graph construction occurs on these paths. The perf-budget suite enforces both (§13.1), alongside the user-visible budgets in §2.1.
+Warm router reads of core, app-command, and CWD-map indexes MUST complete in under 30 ms. Warm tooling reads of `app-plan` and compiled `ToolingProgram` MUST independently complete in under 30 ms. No provider contact, include resolution, expression parsing, or graph construction occurs on these paths. The perf-budget suite enforces both (§13.1), alongside the user-visible budgets in §2.1.
 
 #### 12.5.1 Compiled hot-path decoders
 
@@ -140,7 +141,7 @@ Schema decoding on the CLI hot path uses ahead-of-time compiled decoders under t
 - The `compiled-decoders` derived codegen entry (§17.2) emits the gitignored generated module and its declaration. `runCompiledCli` installs them before any decode; `makeLandoRuntime` and other library entries never install them.
 - Compiled and interpreted decoding MUST agree on verdict, decoded value, and every issue path and message. The parity suite (§13.1) decodes the Landofile corpus in separate interpreted and compiled processes and fails on any difference.
 - Membership is earned and kept under §2.5: end-to-end measurement on compiled binaries against the §2.1 hot-path budgets, recorded with the change that adds the schema. Compiled decoders optimize the hot path; they are never a second source of truth for validity.
-- Binary hot-path caches (`core-command`, `plugin-command`, `app-command`) are V8-serialized behind header checks and perform no Schema decode, so they have nothing to compile. Effect Schema binary caches (`app-plan`, `global-app-plan`, `scratch-app-plan`) decode through the compiled `AppPlan` decoder when installed.
+- Binary hot-path caches (`core-command`, `app-command`) are V8-serialized behind header checks and perform no Schema decode, so they have nothing to compile. Effect Schema binary caches (`app-plan`, `global-app-plan`, `scratch-app-plan`) decode through the compiled `AppPlan` decoder when installed.
 
 ### 12.6 Disconnectable local-dev state
 
@@ -165,6 +166,8 @@ All mutations encode before atomic replace. Version mismatch either discards or 
 Hot-path caches remain under their existing readers and MAY adopt `StateStore` only while preserving §12.5 budgets.
 
 App mutation locks left by dead commands MUST be reclaimed without a contention warning. Reclaim and vanished-file attempts retain the normal acquire deadline and retry delay; only an observed live holder triggers the wait message. A lock path that can never be reclaimed (a symbolic link, not a regular file, hard-linked, or owned by another user) fails at once with a `StateStoreError` whose remediation names the path and why it is unusable, never with a contention message.
+
+Each process MUST own the mutation lease it uses. Nested canonical commands and SDK calls MAY reenter through the owning process's Effect context; another process MUST NOT borrow that lease through an inherited token or an ancestor PID. A recognized live ancestor or inherited-token owner MUST cause an immediate `StateStoreError` with reason `lock` and operation `nestedAppMutation`, with remediation to invoke the operation in process or run it separately after the owner finishes. Other processes acquire their own lease under the ordinary bounded wait. Once the earlier owner releases its lease or dies, a child MAY acquire a fresh lease normally. This contract applies to hook-launched CLI commands as well as unrelated callers.
 
 #### 12.7.2 Reference consumers
 

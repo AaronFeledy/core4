@@ -116,7 +116,17 @@ The scanner skips `tcp://`, `udp://`, and database connections; `lando info` sti
 curl --fail http://localhost:9080/
 ```
 
-The default probe hits `/`, accepts any 2xx, retries twice after the first attempt, and gives up on a URL after 20 seconds. Change that under `services.<name>.scanner`:
+Without an endpoint-specific default, the probe hits `/` and accepts any 2xx.
+Service features can supply different paths for different HTTP listeners: for
+example, MinIO's API uses `/minio/health/live` while its console uses `/`. This
+avoids treating a normal unauthenticated S3 root response as a failed health
+probe. The scanner does not accept `401` or `403` globally.
+
+Explicit global settings override endpoint defaults, and explicit service
+settings override global values. Setting `path: /` or `okCodes: []` is an
+override too, not an omitted value. The default retry budget remains two retries
+after the first attempt, with a 20-second deadline per URL. Change those settings
+under `services.<name>.scanner`:
 
 ```yaml
 services:
@@ -132,8 +142,8 @@ services:
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `path` | `/` | Path appended to each scanned URL before probing. A route's own `pathPrefix` stays in front of it. |
-| `okCodes` | none | Extra HTTP statuses to accept beyond 2xx. Handy for a `301` on `/` or a `401` behind basic auth. |
+| `path` | Endpoint default, otherwise `/` | Explicit path used for every scanned HTTP listener in this service. A route's own `pathPrefix` stays in front of it. |
+| `okCodes` | Endpoint default, otherwise none | Extra HTTP statuses to accept beyond 2xx. An explicit empty list clears endpoint/global extras. |
 | `retries` | `2` | Retries after the first attempt, so the default is three tries. |
 | `timeout` | `20000` | Deadline in milliseconds for the whole probe of one URL, retries included. |
 
@@ -164,7 +174,11 @@ Skip every service on this machine by setting the same key in your global config
 scanner: false
 ```
 
-Per-service `scanner:` settings override the global one. A global `false` turns scanning off unless a service authors an object to opt back in. Pick this for a service that has no HTTP surface worth probing, or when you deliberately want to skip the post-start HTTP check.
+Global `scanner: false` disables scanning for every service. A service object or
+an endpoint default cannot opt back in while that global switch is off. Remove
+the global `false` to resume scanning, then use service-level `scanner: false`
+for individual exceptions. This keeps an app's configuration from silently
+re-enabling requests you disabled for the whole machine.
 
 <Guide>
   <Scenario id="router-disabled" render>

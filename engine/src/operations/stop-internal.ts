@@ -1,4 +1,4 @@
-import { DateTime, Effect, Option, Schema } from "effect";
+import { DateTime, Effect, Option } from "effect";
 
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
@@ -14,7 +14,7 @@ import {
   PreServiceStopEvent,
   PreStopEvent,
 } from "@lando/sdk/events";
-import type { AppPlan, FileSyncSessionInfo } from "@lando/sdk/schema";
+import type { AppPlan, FileSyncSessionInfo, ServiceShutdownObservation } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type AppliedFileSyncInspection,
@@ -46,11 +46,6 @@ import { resolveLandofileEventPlan } from "./landofile-events.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
-
-export const StopAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStopped: Schema.Array(Schema.String),
-});
 
 type StopAppServices =
   | AppPlanner
@@ -203,13 +198,15 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     );
   }
 
-  yield* provider
+  const destroyOutcome = yield* provider
     .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
     .pipe(
       Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
       Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
       Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
     );
+  const shutdownObservations: readonly ServiceShutdownObservation[] | undefined =
+    destroyOutcome.shutdownObservations;
 
   if (
     appliedFileSync.status === "accelerated" &&
@@ -253,6 +250,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
       app: plan.name,
       servicesStopped: services.map((service) => String(service.name)),
       landofileEvents,
+      ...(shutdownObservations === undefined ? {} : { shutdownObservations }),
     },
     plan,
   };

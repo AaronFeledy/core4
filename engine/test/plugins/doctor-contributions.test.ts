@@ -17,7 +17,7 @@ describe("doctor contribution projection", () => {
   test("supports direct and descriptor exports without validating unrelated manifest-only capabilities", () => {
     const declared = Schema.decodeSync(PluginManifest)({
       ...manifest,
-      contributes: { commands: ["example:unloaded"] },
+      contributes: { commands: [{ id: "example:unloaded", summary: "Unloaded command." }] },
     });
     for (const module of [
       { doctorChecks: [check] },

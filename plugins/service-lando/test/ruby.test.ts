@@ -145,7 +145,7 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.environment.RAILS_ENV).toBe("development");
     expect(plan.environment.RAILS_LOG_TO_STDOUT).toBe("true");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app/public");
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
 
     expect(plan.extensions["lando-service-ruby"]).toEqual({
       framework: "rails",

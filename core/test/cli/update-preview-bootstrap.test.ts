@@ -51,7 +51,11 @@ test.each([false, true])("update preview bootstrap preserves persistent bytes (w
     await mkdir(join(root, directory));
   }
   process.env.LANDO_TELEMETRY_ENABLED = "false";
-  if (warm) await writeFile(join(root, "cache", "plugin-command-cache.bin"), new Uint8Array([0, 255, 42]));
+  if (warm) {
+    const toolingDir = join(root, "cache", "apps", "tooling-previewfixture");
+    await mkdir(toolingDir, { recursive: true });
+    await writeFile(join(toolingDir, "commands.bin"), new Uint8Array([0, 255, 42]));
+  }
   const entry = resolveBuiltInCommand("meta:update");
   if (entry === undefined) throw new Error("missing update command");
   const input = compiledCommandInputFromArgv(entry.spec.id, ["--only=plugins", "--dry-run"]);

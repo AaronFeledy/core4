@@ -9,7 +9,7 @@ import {
 } from "@lando/sdk/schema";
 
 import { CREATE_CONFIG_LABEL } from "../create-fingerprint.ts";
-import { HOST_PROXY_SESSION_LABEL } from "../labels.ts";
+import { HOST_PROXY_SESSION_LABEL, hostProxySessionDigest } from "../labels.ts";
 import { commonContainerLabels, fingerprintPlannedPublishPorts } from "../plan.ts";
 
 // Private SSH sidecar protocol: the optional POSIX host socket bind endpoint.
@@ -142,13 +142,14 @@ export const bindSourceChanged = (service: ServicePlan, inspected: BringUpInspec
     );
     if (hostSocketMount?.source !== source(SSH_SIDECAR_HOST_SOCKET_DIRECTORY)) return true;
   }
-  const socketTarget = service.environment.LANDO_HOST_PROXY_SOCKET;
-  if (typeof socketTarget !== "string") return false;
-  const plannedSocket = service.mounts.find(
-    (mount): mount is BindMountPlan =>
-      mount.type === "bind" && mount.realization === "passthrough" && mount.target === socketTarget,
-  );
-  return plannedSocket?.source !== undefined && source(socketTarget) !== plannedSocket.source;
+  if (hostProxySessionDigest(service.extensions) === undefined) return false;
+  return ["/run/lando/host-proxy.sock", "/run/lando/host-proxy/credentials"].some((target) => {
+    const planned = service.mounts.find(
+      (mount): mount is BindMountPlan =>
+        mount.type === "bind" && mount.realization === "passthrough" && mount.target === target,
+    );
+    return planned !== undefined && source(target) !== planned.source;
+  });
 };
 
 export const plannedNetworkMissing = (
@@ -188,7 +189,7 @@ export const bringUpRecreateReasons = (
     if (bindSourceChanged(service, inspected)) reasons.push("bind-source");
   }
   if (
-    service.environment.LANDO_HOST_PROXY_SESSION !== undefined &&
+    hostProxySessionDigest(service.extensions) !== undefined &&
     (!skipAbsent || inspected.labels !== undefined)
   ) {
     if (

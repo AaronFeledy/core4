@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { access, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -55,6 +55,7 @@ const isolate = async () => {
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
@@ -75,20 +76,25 @@ const exists = async (path: string): Promise<boolean> =>
   );
 
 describe("per-app mutation lock", () => {
-  test("reclaims a dead holder without a wait event", async () => {
+  test("reclaims a dead holder despite its inherited token without a wait event", async () => {
     // Given a fresh app lock left by a dead command.
     const isolated = await isolate();
     const app = { id: "dead-holder", root: isolated.appRoot };
     const path = lockPathFor(isolated.userDataRoot, app.id, await realpath(app.root));
     await mkdir(join(isolated.userDataRoot, "operation-locks"), { recursive: true });
     await writeFile(path, JSON.stringify({ pid: 99_999_999, token: "dead", createdAt: Date.now() }));
+    process.env[APP_LOCK_HOLDERS_ENV] = `${appMutationLockKey(app.id, await realpath(app.root))}:dead`;
     try {
       // When the next mutation acquires that lock.
       const result = await Effect.runPromise(
-        withAppMutationLock(app, Effect.succeed("entered")).pipe(Effect.provide(isolated.layer)),
+        withAppMutationLock(
+          app,
+          Effect.promise(() => Bun.file(path).json()),
+        ).pipe(Effect.provide(isolated.layer)),
       );
       // Then it proceeds without reporting live contention.
-      expect(result).toBe("entered");
+      expect(result.pid).toBe(process.pid);
+      expect(result.token).not.toBe("dead");
       expect(
         isolated.events.filter(
           (event) => event._tag === "message.warn" && event.body === APP_LOCK_WAIT_MESSAGE,
@@ -283,56 +289,77 @@ describe("per-app mutation lock", () => {
     }
   });
 
-  test("parent-held lock lets a child mutate on the same app without hanging", async () => {
-    const isolated = await isolate();
-    try {
-      const app = { id: "child-reentry", root: isolated.appRoot };
-      const started = await Effect.runPromise(
-        withAppMutationLock(
-          app,
-          Effect.promise(async () => {
-            const child = Bun.spawn(
-              [
-                process.execPath,
-                "--eval",
-                `
-              import { Effect, Layer } from ${JSON.stringify(import.meta.resolve("effect"))};
-              import { PathsService } from ${JSON.stringify(import.meta.resolve("@lando/sdk/services"))};
-              import { makeLandoPaths } from ${JSON.stringify(import.meta.resolve("@lando/paths"))};
-              import { PrivateFileAccessService } from ${JSON.stringify(import.meta.resolve("@lando/state-store/private-file-access"))};
-              import { withAppMutationLock } from ${JSON.stringify(import.meta.resolve("../../src/operations/app-mutation-lock.ts"))};
-              const userDataRoot = ${JSON.stringify(isolated.userDataRoot)};
-              const app = { id: "child-reentry", root: ${JSON.stringify(isolated.appRoot)} };
-              const started = Date.now();
-              await Effect.runPromise(
-                withAppMutationLock(app, Effect.succeed("ok")).pipe(
-                  Effect.provide(Layer.mergeAll(
-                    PrivateFileAccessService.layer,
-                    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
-                  )),
-                ),
+  test.each(["inherited", "removed"] as const)(
+    "child with %s holder environment refuses borrowed ownership immediately",
+    async (marker) => {
+      const isolated = await isolate();
+      try {
+        const app = { id: "child-reentry", root: isolated.appRoot };
+        const observed = await Effect.runPromise(
+          withAppMutationLock(
+            app,
+            Effect.promise(async () => {
+              const path = lockPathFor(isolated.userDataRoot, app.id, isolated.appRoot);
+              const before = await readFile(path, "utf8");
+              const env = { ...process.env, [APP_LOCK_TIMEOUT_ENV]: "10000" };
+              if (marker === "removed") Reflect.deleteProperty(env, APP_LOCK_HOLDERS_ENV);
+              const child = Bun.spawn(
+                [
+                  process.execPath,
+                  "--eval",
+                  `
+          import { Effect, Layer } from ${JSON.stringify(import.meta.resolve("effect"))};
+          import { PathsService } from ${JSON.stringify(import.meta.resolve("@lando/sdk/services"))};
+          import { makeLandoPaths } from ${JSON.stringify(import.meta.resolve("@lando/paths"))};
+          import { PrivateFileAccessService } from ${JSON.stringify(import.meta.resolve("@lando/state-store/private-file-access"))};
+          import { withAppMutationLock } from ${JSON.stringify(import.meta.resolve("../../src/operations/app-mutation-lock.ts"))};
+          const layer = Layer.mergeAll(PrivateFileAccessService.layer,Layer.succeed(PathsService,makeLandoPaths({userDataRoot:${JSON.stringify(isolated.userDataRoot)}})));
+          let entered = false;
+          const started=Date.now();
+          const result=await Effect.runPromise(withAppMutationLock(${JSON.stringify(app)},Effect.sync(()=>{entered=true})).pipe(Effect.result,Effect.provide(layer)));
+          const independent=await Effect.runPromise(withAppMutationLock({id:"independent",root:${JSON.stringify(app.root)}},Effect.succeed("own lease")).pipe(Effect.provide(layer)));
+          console.log(JSON.stringify({result,entered,elapsed:Date.now()-started,independent}));
+        `,
+                ],
+                { env, stdout: "pipe", stderr: "pipe" },
               );
-              if (Date.now() - started > 2000) throw new Error("child hung on inherited app lock");
-              process.stdout.write("ok");
-            `,
-              ],
-              { stdout: "pipe", stderr: "pipe" },
-            );
-            const [exitCode, stdout, stderr] = await Promise.all([
-              child.exited,
-              new Response(child.stdout).text(),
-              new Response(child.stderr).text(),
-            ]);
-            return { exitCode, stdout, stderr };
-          }),
-        ).pipe(Effect.provide(isolated.layer)),
-      );
-      expect(started).toEqual({ exitCode: 0, stdout: "ok", stderr: "" });
-    } finally {
-      await rm(isolated.userDataRoot, { recursive: true, force: true });
-      await rm(isolated.appRoot, { recursive: true, force: true });
-    }
-  });
+              const deadline = setTimeout(() => child.kill(), 5000);
+              try {
+                const [code, stdout, stderr] = await Promise.all([
+                  child.exited,
+                  new Response(child.stdout).text(),
+                  new Response(child.stderr).text(),
+                ]);
+                return {
+                  code,
+                  stderr,
+                  receipt: JSON.parse(stdout),
+                  sameOwner: before === (await readFile(path, "utf8")),
+                };
+              } finally {
+                clearTimeout(deadline);
+              }
+            }),
+          ).pipe(Effect.provide(isolated.layer)),
+        );
+        expect(observed.code).toBe(0);
+        expect(observed.stderr).toBe("");
+        expect(observed.sameOwner).toBe(true);
+        expect(observed.receipt).toMatchObject({
+          entered: false,
+          independent: "own lease",
+          result: {
+            _tag: "Failure",
+            failure: { _tag: "StateStoreError", reason: "lock", operation: "nestedAppMutation" },
+          },
+        });
+        expect(observed.receipt.elapsed).toBeLessThan(2000);
+      } finally {
+        await rm(isolated.userDataRoot, { recursive: true, force: true });
+        await rm(isolated.appRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("fiber interrupt releases the app lock", async () => {
     const isolated = await isolate();

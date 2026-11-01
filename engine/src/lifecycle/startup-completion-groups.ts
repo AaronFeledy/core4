@@ -1,4 +1,4 @@
-import type { ServiceNotReadyError } from "@lando/sdk/errors";
+import type { HealthcheckTargetUnsupportedError, ServiceNotReadyError } from "@lando/sdk/errors";
 import { Effect, Result } from "effect";
 import { publishGlobalRoutes } from "../operations/global-routes.ts";
 import { globalServiceGroupError, serviceGroups } from "../operations/global-service-groups.ts";
@@ -39,11 +39,20 @@ export const completeGlobalGroups = Effect.fn("StartupCompletion.globalGroups")(
     ready: groups.flatMap((group) => (Result.isSuccess(group.result) ? group.result.success : [])),
     failures,
   };
-  const error = globalServiceGroupError<E | ServiceNotReadyError>(request.operation, completed);
+  const error = globalServiceGroupError<E | ServiceNotReadyError | HealthcheckTargetUnsupportedError>(
+    request.operation,
+    completed,
+  );
   if (error !== undefined) return yield* Effect.fail(error);
-  yield* publishGlobalRoutes(request.router, provider, outcome.builtPlan, {
-    started: new Set(completed.services.map((service) => service.name)),
-    failed: new Set(),
-  });
+  yield* publishGlobalRoutes(
+    request.router,
+    provider,
+    outcome.builtPlan,
+    {
+      started: new Set(completed.services.map((service) => service.name)),
+      failed: new Set(),
+    },
+    request.beforeRoutes,
+  );
   return completed;
 });

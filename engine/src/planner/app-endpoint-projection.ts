@@ -13,9 +13,10 @@ import {
   snapshotAppFeatureEnv,
 } from "../services/app-feature-selection.ts";
 import type { ComposeAppFeature } from "../services/app-feature-types.ts";
+import { appFeatureError } from "./app-feature-error.ts";
 import { type ServiceEndpointProjection, blockContributions } from "./endpoint-availability.ts";
 import { type PlannerIssue, attributePlannerIssue } from "./resolved-validation.ts";
-import { appFeatureError, contributionId } from "./service-types.ts";
+import { contributionId } from "./service-types.ts";
 
 export const declareAppEndpoints = Effect.fnUntraced(function* (input: {
   readonly rows: Map<string, ServiceEndpointProjection>;

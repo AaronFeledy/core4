@@ -113,6 +113,14 @@ describe("SDK public-surface snapshot", () => {
       );
     }
   });
+  test("matches the optional effective feature validation signature", () => {
+    const member = interfaces
+      .get("ServiceFeatureDefinition")
+      ?.members.find((entry) => entry.name?.getText() === "validateEffective");
+    expect(normalizeSignature(member?.getText() ?? "")).toBe(
+      normalizeSignature(publicSurface.featureEffectiveValidation),
+    );
+  });
   test("matches every Landofile service failure tag", () => {
     const tags = {
       ComposeKeyRejectedError: true,

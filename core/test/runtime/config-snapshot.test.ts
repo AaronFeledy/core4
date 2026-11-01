@@ -173,7 +173,7 @@ test("notify validation accepts host-explicit global plugin commands", async () 
     name: "@example/notify-host",
     version: "1.0.0",
     api: 4,
-    contributes: { commands: ["example:release"] },
+    contributes: { commands: [{ id: "example:release", summary: "Release example." }] },
   });
   // When the runtime validates its notification policy before building plugins.
   const config = await Effect.runPromise(

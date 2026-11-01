@@ -10,17 +10,12 @@ import { Effect, Schema } from "effect";
 
 import { CORE_VERSION } from "@lando/engine/version";
 
-export interface VersionResult {
-  readonly core: string;
-  readonly bun: string;
-  readonly platform: NodeJS.Platform;
-}
-
 export const VersionResultSchema = Schema.Struct({
   core: Schema.String,
   bun: Schema.String,
   platform: Schema.String,
 });
+export type VersionResult = typeof VersionResultSchema.Type;
 
 export const version: Effect.Effect<VersionResult, never, never> = Effect.sync(() => ({
   core: CORE_VERSION,

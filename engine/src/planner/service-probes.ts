@@ -1,18 +1,27 @@
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { type AppPlan, serviceListenerTarget } from "@lando/sdk/schema";
+import { type AppPlan, probeTargetError, serviceListenerTarget, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 
 export const validateServiceProbes = Effect.fn("AppPlanner.validateServiceProbes")(function* (plan: AppPlan) {
   for (const service of Object.values(plan.services)) {
-    for (const probe of [service.healthcheck, service.readiness]) {
-      if (probe === undefined || probe.kind === "none") continue;
-      if (probe.kind !== "command")
+    for (const role of ["healthcheck", "readiness"] as const) {
+      const probe = service[role];
+      if (probe === undefined) continue;
+      const invalidTarget = probeTargetError(probe, service.name, role);
+      if (invalidTarget !== undefined) return yield* Effect.fail(invalidTarget);
+      if (probe.kind === "none") continue;
+      if (probe.kind !== "command" || probe.command === undefined)
         return yield* Effect.fail(
           new LandofileValidationError({
             file: ".lando.yml",
-            issues: [],
+            issues: [
+              validationIssue(
+                ["services", String(service.name), role, probe.kind === "command" ? "command" : "kind"],
+                "Configure an enabled command probe.",
+              ),
+            ],
             message: `Service ${service.name} requires a command probe.`,
-            remediation: "Use kind: command or disable the authored healthcheck.",
+            remediation: `Supply a command for ${role}, or explicitly disable it with false.`,
           }),
         );
       if (probe.target === undefined) continue;

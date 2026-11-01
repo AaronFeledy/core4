@@ -69,6 +69,7 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
     ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
     ...(draft.command === undefined ? {} : { command: draft.command }),
     ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
+    ...(draft.init === undefined ? {} : { init: draft.init }),
     environment: sortRecord(draft.environment),
     ...(draft.connection !== undefined
       ? { connection: draft.connection }
@@ -83,6 +84,7 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
     dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
     ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
     ...(draft.readiness === undefined ? {} : { readiness: draft.readiness }),
+    ...(draft.readinessSource === undefined ? {} : { readinessSource: draft.readinessSource }),
     ...(draft.certs === undefined ? {} : { certs: draft.certs }),
     hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
     metadata: deterministicMetadata,

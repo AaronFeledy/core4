@@ -64,7 +64,7 @@ test.each([undefined, 8123])("omits listener and probe for CLI even with port %s
     metadata: { resolvedAt: "2026-10-24T00:00:00Z", source: "php-listener.test.ts", runtime: 4 },
   });
   // Then: the idle command cannot acquire a fictitious HTTP listener or TCP probe.
-  expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+  expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
   expect(plan.endpoints).toEqual([]);
   expect(plan.healthcheck).toBeUndefined();
 });
