@@ -8,7 +8,7 @@ import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } fr
 import {
   type ListenerContract,
   assertListenerConfig,
-  listenerAuthority,
+  applicationAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -44,7 +44,7 @@ const applyDotnetFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   const port = plannedPort(service, DOTNET_LISTENER);
   ctx.addEnv("ASPNETCORE_HTTP_PORTS", String(port));
-  ctx.setListenerAuthority(listenerAuthority(DOTNET_LISTENER, "application", port));
+  ctx.setListenerAuthority(applicationAuthority(DOTNET_LISTENER, port));
   ctx.addStorage({
     store: NUGET_CACHE.store,
     target: NUGET_CACHE.target,

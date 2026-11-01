@@ -60,13 +60,14 @@ services:
 
 Lando starts `memcached` with `-p 11212`. Other services connect to
 `cache:11212`. Memcached has no daemon-native port environment variable.
+Update any tooling that hardcodes `11211` when you move the port.
 
-If you author `command:`, include `-p 11212` yourself; Lando never appends it
-to a command you wrote. An authored `entrypoint:` still receives Lando's
-`memcached` command, port included. Update any tooling that hardcodes `11211`
-when you move the port.
-If startup fails with an authored command, Lando includes a hint naming
-`-p 11212`.
+An authored `command:` owns the listener configuration: pass the planned port
+with `-p 11212`. An authored `entrypoint:` still receives Lando's command
+with `-p` and must execute the supplied command and arguments. If Memcached
+never becomes ready, `lando start` reports the ports it actually observed and
+names the `-p` setting your command must pass. See
+[Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
 
 Apply the change with `lando rebuild`.
 

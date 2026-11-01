@@ -4,6 +4,7 @@ export * from "./app-plan.ts";
 export * from "./file-sync-policy.ts";
 export * from "./image-reference.ts";
 export * from "./service-probe.ts";
+export * from "./listener-observation.ts";
 export * from "./environment-value.ts";
 export * from "./compiled-landofile.ts";
 export * from "./database-connection.ts";
@@ -177,13 +178,4 @@ export {
 } from "./layer-merge.ts";
 export * from "./resource-ownership.ts";
 export * from "./applied-state.ts";
-export {
-  ListenerAuthorityOwner,
-  ListenerAuthority,
-  ObservedListener,
-  ListenerStatus,
-  ListenerDiagnosis,
-  formatListenerAuthority,
-  formatListenerDiagnosis,
-  listenerRemediation,
-} from "./listener.ts";
+export { ListenerAuthority, formatListenerAuthority } from "./listener.ts";

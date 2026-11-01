@@ -2,10 +2,11 @@ import { Effect, Schema } from "effect";
 
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { listenerAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "valkey/valkey:8";
@@ -26,7 +27,7 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
-    ctx.setListenerAuthority(listenerAuthority(VALKEY_LISTENER, "launcher", port));
+    ctx.setListenerAuthority(launcherAuthority(VALKEY_LISTENER, port));
   } else {
     ctx.setCommand(["valkey-server", "--appendonly", "yes", "--port", String(port)]);
   }
@@ -35,7 +36,7 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
+  ctx.setHealthcheck(tcpProbe(port, 30));
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };

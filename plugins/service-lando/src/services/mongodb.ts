@@ -17,7 +17,7 @@ import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   assertListenerConfig,
-  listenerAuthority,
+  launcherAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -108,7 +108,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     (serverConfig || service.port !== undefined) &&
     (service.command !== undefined || service.entrypoint !== undefined)
   ) {
-    ctx.setListenerAuthority(listenerAuthority(MONGODB_LISTENER, "launcher", port));
+    ctx.setListenerAuthority(launcherAuthority(MONGODB_LISTENER, port));
   }
 
   applyAuthoredProcessFields(ctx);

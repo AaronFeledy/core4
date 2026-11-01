@@ -16,6 +16,7 @@ import {
   LandofileSourceValue,
 } from "./landofile-source.ts";
 import { LayerMergeRule } from "./layer-merge.ts";
+import { ListenerObservation } from "./listener-observation.ts";
 import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 
 import {
@@ -341,13 +342,7 @@ import {
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
-import {
-  ListenerAuthority,
-  ListenerAuthorityOwner,
-  ListenerDiagnosis,
-  ListenerStatus,
-  ObservedListener,
-} from "./listener.ts";
+import { ListenerAuthority } from "./listener.ts";
 import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
 import {
   CommandCompletion,
@@ -721,17 +716,14 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProxyApplyResult,
   ProxyStatus,
   HealthcheckPlan,
+  ListenerObservation,
   ScannerConfig,
   ScanPlan,
   EndpointScan,
   ServiceFeatureValidationResult,
   CheckResult,
   CertificatePlan,
-  ListenerAuthorityOwner,
   ListenerAuthority,
-  ObservedListener,
-  ListenerStatus,
-  ListenerDiagnosis,
   HostAliasPlan,
   ServiceDependencyCondition,
   DependencyPlan,

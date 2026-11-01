@@ -25,7 +25,9 @@ export const validateServiceProbes = Effect.fn("AppPlanner.validateServiceProbes
           }),
         );
       if (probe.target === undefined) continue;
-      const target = serviceListenerTarget(plan, service, probe.target);
+      // Contributed probes name their own service listener; an `endpoints:` override
+      // changes exposure, not the port the daemon still listens on.
+      const target = serviceListenerTarget(plan, service, probe.target, { requireDeclared: false });
       if (Result.isFailure(target)) return yield* Effect.fail(target.failure);
     }
   }

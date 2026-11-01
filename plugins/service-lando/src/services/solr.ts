@@ -19,7 +19,7 @@ import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
   assertListenerConfig,
-  listenerAuthority,
+  launcherAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -138,7 +138,7 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
-    ctx.setListenerAuthority(listenerAuthority(SOLR_LISTENER, "launcher", port));
+    ctx.setListenerAuthority(launcherAuthority(SOLR_LISTENER, port));
   } else {
     ctx.setCommand(defaultCommand(port, cores, hasConfigDir));
   }

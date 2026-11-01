@@ -3,7 +3,10 @@ import { escapeDiagnosticText } from "./diagnostic-text";
 
 export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
   const renderText = (text: string) => text.split("\n").map(escapeDiagnosticText).join("\n");
-  const lines = [renderText(envelope.body), `  ↳ ${renderText(envelope.remediation)}`];
+  const lines = [
+    renderText(envelope.body),
+    ...envelope.remediation.split("\n").map((line) => `  ↳ ${escapeDiagnosticText(line)}`),
+  ];
   for (const error of envelope.additionalErrors ?? []) {
     const label = { rollback: "Rollback also failed", cleanup: "Cleanup also failed", peer: "Also failed" }[
       error.role

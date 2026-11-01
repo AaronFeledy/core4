@@ -1,9 +1,10 @@
 import { Effect, Schema } from "effect";
 
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
-import { listenerAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "memcached:1.6";
@@ -22,11 +23,11 @@ const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
-    ctx.setListenerAuthority(listenerAuthority(MEMCACHED_LISTENER, "launcher", port));
+    ctx.setListenerAuthority(launcherAuthority(MEMCACHED_LISTENER, port));
   } else {
     ctx.setCommand(["memcached", "-p", String(port)]);
   }
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
+  ctx.setHealthcheck(tcpProbe(port, 30));
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };

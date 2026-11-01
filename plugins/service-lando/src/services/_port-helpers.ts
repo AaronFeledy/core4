@@ -3,7 +3,6 @@ import { Schema } from "effect";
 import {
   type EndpointPlan,
   type ListenerAuthority,
-  type ListenerAuthorityOwner,
   PortNumber,
   type ServiceConfig,
 } from "@lando/sdk/schema";
@@ -20,15 +19,16 @@ export interface ReservedListener {
 /**
  * How a service type's primary listener follows `port:`.
  *
- * `variables` are the integer port variables Lando derives from the planned
- * port and projects into the service environment; the first is the primary
- * one published in service-type facts. An authored value must equal the
- * planned port. `bindVariables` is the application-authority projection list
- * when it differs from validation `variables`. `reserved` lists the secondary
- * listeners that are open in the configuration being validated, so callers
- * pass effective ports, not defaults that a moved secondary no longer occupies.
- * `launcher` / `image` supply structured ownership settings. `hostDefaults`
- * and `when` are registry/docs metadata only.
+ * `variables` are integer port variables Lando derives from the planned port;
+ * an authored value must equal it, and the first is published in service-type
+ * facts. `bindVariables` are host:port wildcard binds derived the same way.
+ * `reserved` lists the secondary listeners open in the configuration being
+ * validated, so callers pass effective ports rather than defaults a moved
+ * secondary no longer occupies. `launcher` is the argument an authored
+ * launcher must pass and `image` the setting a custom image must carry when
+ * only Lando-owned configuration sets the listener. `hostDefaults` ride along
+ * with application-owned port variables. `when` describes, for docs, the
+ * configuration a variant applies to.
  */
 export interface ListenerContract {
   readonly port: number;
@@ -39,60 +39,47 @@ export interface ListenerContract {
   readonly launcher?: { readonly setting: (port: number) => string };
   readonly image?: { readonly setting: (port: number) => string; readonly file?: string };
   readonly hostDefaults?: Readonly<Record<string, string>>;
-  /** Docs-only condition describing when this contract applies. */
   readonly when?: string;
 }
+
+type AuthorityOf<O extends ListenerAuthority["owner"]> = Extract<ListenerAuthority, { readonly owner: O }>;
 
 export const plannedPort = (service: ServiceConfig, listener: ListenerContract): PortNumber =>
   PortNumber.make(service.port ?? listener.port);
 
-/**
- * Structured listener ownership for a planned port. Setting and file values
- * come from the contract's launcher/image metadata for that owner.
- */
-export const listenerAuthority = (
-  contract: ListenerContract,
-  owner: ListenerAuthorityOwner,
+/** The application owns the listener; Lando projects the contract's port variables. */
+export const applicationAuthority = (
+  contract: ListenerContract & Pick<Required<ListenerContract>, "variables">,
   port: number,
-): ListenerAuthority => {
-  const planned = PortNumber.make(port);
-  switch (owner) {
-    case "application": {
-      const variables = contract.bindVariables ?? contract.variables;
-      return {
-        owner,
-        daemon: contract.daemon,
-        port: planned,
-        ...(variables === undefined || variables.length === 0
-          ? {}
-          : { variables: variables as [string, ...string[]] }),
-      };
-    }
-    case "launcher":
-      return {
-        owner,
-        daemon: contract.daemon,
-        port: planned,
-        ...(contract.launcher === undefined ? {} : { setting: contract.launcher.setting(port) }),
-      };
-    case "image":
-      return {
-        owner,
-        daemon: contract.daemon,
-        port: planned,
-        ...(contract.image === undefined
-          ? {}
-          : {
-              setting: contract.image.setting(port),
-              ...(contract.image.file === undefined ? {} : { file: contract.image.file }),
-            }),
-      };
-    default: {
-      const exhaustive: never = owner;
-      return exhaustive;
-    }
-  }
-};
+): AuthorityOf<"application"> => ({
+  owner: "application",
+  daemon: contract.daemon,
+  port: PortNumber.make(port),
+  variables: [...contract.variables],
+});
+
+/** An authored command or entrypoint replaced the launcher that set the listener. */
+export const launcherAuthority = (
+  contract: ListenerContract & Pick<Required<ListenerContract>, "launcher">,
+  port: number,
+): AuthorityOf<"launcher"> => ({
+  owner: "launcher",
+  daemon: contract.daemon,
+  port: PortNumber.make(port),
+  setting: contract.launcher.setting(port),
+});
+
+/** A custom image or build owns the configuration that sets the listener. */
+export const imageAuthority = (
+  contract: ListenerContract & Pick<Required<ListenerContract>, "image">,
+  port: number,
+): AuthorityOf<"image"> => ({
+  owner: "image",
+  daemon: contract.daemon,
+  port: PortNumber.make(port),
+  setting: contract.image.setting(port),
+  ...(contract.image.file === undefined ? {} : { file: contract.image.file }),
+});
 
 export const parseWildcardBind = (
   address: unknown,

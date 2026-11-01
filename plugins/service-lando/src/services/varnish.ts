@@ -4,21 +4,17 @@ import { ServiceTypeError } from "@lando/sdk/errors";
 import { PortNumber, ServiceName, parseShortVolume } from "@lando/sdk/schema";
 import { VarnishServiceConfig } from "@lando/sdk/schema/services/varnish";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import {
-  loopbackTcpHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceFeatureValidateEffective,
-} from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
 
 import {
   type ListenerContract,
   assertListenerConfig,
-  listenerAuthority,
+  launcherAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
 export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
@@ -83,7 +79,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
   ctx.addEnv("VARNISH_BACKEND_HOST", backend);
   ctx.addEnv("VARNISH_BACKEND_PORT", service.environment?.VARNISH_BACKEND_PORT ?? DEFAULT_BACKEND_PORT);
   // Primary HTTP loopback works for both Lando and authored launchers; varnishadm needs the management interface.
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 5));
+  ctx.setHealthcheck(tcpProbe(port, 5));
   if (backend.length > 0) {
     ctx.addDependency({
       service: ServiceName.make(backend),
@@ -108,7 +104,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
       ctx.setCommand([varnishdCommand(VCL_TARGET, port)]);
     }
   } else {
-    ctx.setListenerAuthority(listenerAuthority(VARNISH_LISTENER, "launcher", port));
+    ctx.setListenerAuthority(launcherAuthority(VARNISH_LISTENER, port));
   }
 };
 

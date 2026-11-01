@@ -13,7 +13,7 @@ import {
 import {
   type ListenerContract,
   assertListenerConfig,
-  listenerAuthority,
+  applicationAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -21,6 +21,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 export interface LanguageFrameworkPreset extends ListenerContract {
+  readonly variables: readonly [string, ...string[]];
   readonly env?: ReadonlyMap<string, string>;
   readonly webroot?: string;
 }
@@ -90,7 +91,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
     for (const variable of spec.presets[framework].variables ?? []) env[variable] = String(port);
     addEnvRecord(ctx, env);
-    ctx.setListenerAuthority(listenerAuthority(spec.presets[framework], "application", port));
+    ctx.setListenerAuthority(applicationAuthority(spec.presets[framework], port));
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
     applyAuthoredProcessFields(ctx, ["user"]);
     applyAuthoredProcessFields(ctx, ["entrypoint"]);

@@ -12,7 +12,7 @@ import {
   serviceFeatureDeclareEndpoints,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, listenerAuthority, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, launcherAuthority, plannedPort } from "./_port-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -91,7 +91,7 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
     if (service.command !== undefined) {
       ctx.setCommand(service.command);
       ctx.setListenerAuthority({
-        ...listenerAuthority(MINIO_LISTENER, "launcher", apiPort),
+        ...launcherAuthority(MINIO_LISTENER, apiPort),
         setting: `--address :${apiPort} --console-address :${consolePort}`,
       });
     } else {

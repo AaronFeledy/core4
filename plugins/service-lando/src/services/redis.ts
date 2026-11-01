@@ -6,7 +6,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { listenerAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "redis:7";
@@ -38,7 +38,7 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   ];
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
-    ctx.setListenerAuthority(listenerAuthority(REDIS_LISTENER, "launcher", port));
+    ctx.setListenerAuthority(launcherAuthority(REDIS_LISTENER, port));
   } else {
     ctx.setCommand(
       service.password === undefined ? command : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)],

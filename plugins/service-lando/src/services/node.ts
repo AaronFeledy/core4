@@ -21,7 +21,7 @@ import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_pac
 import {
   type ListenerContract,
   assertListenerConfig,
-  listenerAuthority,
+  applicationAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -311,7 +311,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? artifactFor(version) });
   ctx.setCommand(service.command ?? [...DEFAULT_COMMAND]);
   ctx.addEnv("PORT", String(port));
-  ctx.setListenerAuthority(listenerAuthority(NODE_LISTENER, "application", port));
+  ctx.setListenerAuthority(applicationAuthority(NODE_LISTENER, port));
   applyAuthoredProcessFields(ctx, ["user"]);
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);

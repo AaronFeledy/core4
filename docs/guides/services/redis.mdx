@@ -110,6 +110,8 @@ options can't be combined with an authored `command:` or `entrypoint:`.
 If startup fails with an authored command, Lando includes a hint naming
 `--port 6380`.
 
+If Redis never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+
 Apply the change with `lando rebuild`, then probe the planned port:
 
 ```sh

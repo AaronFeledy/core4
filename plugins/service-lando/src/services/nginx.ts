@@ -16,14 +16,14 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import {
-  commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
-import { listenerAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
@@ -111,7 +111,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   applyAuthoredProcessFields(ctx, ["user"]);
-  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
+  ctx.setHealthcheck(tcpProbe(port, 10));
 
   if (backend.length > 0) {
     ctx.addDependency({
@@ -129,7 +129,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
         : defaultStaticCommand("nginx", webroot, port, service.user),
     );
   } else {
-    ctx.setListenerAuthority(listenerAuthority(NGINX_LISTENER, "launcher", port));
+    ctx.setListenerAuthority(launcherAuthority(NGINX_LISTENER, port));
   }
 
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);

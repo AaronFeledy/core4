@@ -4,17 +4,17 @@ import { PortNumber } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
-  loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import {
   type ListenerContract,
   assertListenerConfig,
-  listenerAuthority,
+  imageAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -57,7 +57,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const port = plannedPort(service, TOMCAT_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
+  ctx.setHealthcheck(tcpProbe(port, 20));
   if (ownsImageConfig) {
     ctx.addBuildStep({
       id: "service-lando.tomcat:server-config",
@@ -82,7 +82,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
       ],
     });
   } else {
-    ctx.setListenerAuthority(listenerAuthority(TOMCAT_LISTENER, "image", port));
+    ctx.setListenerAuthority(imageAuthority(TOMCAT_LISTENER, port));
   }
 
   applyAuthoredProcessFields(ctx);

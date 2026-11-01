@@ -1,14 +1,10 @@
 import { DEBUGGER_HOST_ALIAS, HOST_GATEWAY_TARGET } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
-import {
-  addEnvRecord,
-  loopbackTcpHealthcheck,
-  serviceFeatureApply,
-  serviceFeatureValidateEffective,
-} from "./_feature-helpers.ts";
-import { assertListenerConfig, listenerAuthority, servicePortEndpoints } from "./_port-helpers.ts";
+import { addEnvRecord, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
+import { assertListenerConfig, launcherAuthority, imageAuthority, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpBaselineBuildStep } from "./php-baseline.ts";
@@ -99,15 +95,15 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     default:
       absurd(mode);
   }
-  if (mode.listener !== undefined) ctx.setHealthcheck(loopbackTcpHealthcheck(mode.listener.port, 10));
+  if (mode.listener !== undefined) ctx.setHealthcheck(tcpProbe(mode.listener.port, 10));
   if (mode.listener !== undefined) {
     const contract = mode.via === "fpm" ? PHP_LISTENERS.fpm : PHP_LISTENERS.apache;
     switch (policy.processAuthority) {
       case "authored":
-        ctx.setListenerAuthority(listenerAuthority(contract, "launcher", mode.listener.port));
+        ctx.setListenerAuthority(launcherAuthority(contract, mode.listener.port));
         break;
       case "image-default":
-        ctx.setListenerAuthority(listenerAuthority(contract, "image", mode.listener.port));
+        ctx.setListenerAuthority(imageAuthority(contract, mode.listener.port));
         break;
       case "lando":
         break;
