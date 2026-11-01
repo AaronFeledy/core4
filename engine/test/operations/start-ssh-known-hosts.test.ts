@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CREATE_CONFIG_LABEL } from "@lando/container-runtime/create-fingerprint";
@@ -26,6 +26,7 @@ for (const mode of ["host", "sidecar"] as const) {
           services: { [web.name]: { ...web, extensions: { "@lando/core/ssh-agent": { mode } } } },
         };
         const harness = makeHarness({ plannedApp: input });
+        const stats = present ? await stat(knownHostsFile, { bigint: true }) : undefined;
         const result = await Effect.runPromise(
           withStartedSshAgent(
             input,
@@ -57,6 +58,7 @@ for (const mode of ["host", "sidecar"] as const) {
                   type: "bind",
                   origin: "integration",
                   source: knownHostsFile,
+                  sourceIdentity: `${stats?.dev}:${stats?.ino}`,
                   target: PortablePath.make("/etc/ssh/ssh_known_hosts"),
                   readOnly: true,
                   createHostPath: false,

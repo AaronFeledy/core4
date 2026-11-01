@@ -126,7 +126,12 @@ for (const kind of ["ssh", "gpg"] as const) {
                 return yield* withSshAgentOverlay(
                   eligible,
                   runtimeSession,
-                  knownHostsFile === undefined ? {} : { knownHostsFile },
+                  knownHostsFile === undefined
+                    ? {}
+                    : {
+                        knownHostsFile: knownHostsFile.path,
+                        knownHostsSourceIdentity: knownHostsFile.sourceIdentity,
+                      },
                 );
               }),
             )
@@ -193,7 +198,12 @@ test.each(["lando", "docker", "podman"])(
           socketName: SSH_AGENT_SOCKET_NAME,
           mount: { _tag: "volume", volume: "retained-agent" },
         },
-        knownHostsFile === undefined ? {} : { knownHostsFile },
+        knownHostsFile === undefined
+          ? {}
+          : {
+              knownHostsFile: knownHostsFile.path,
+              knownHostsSourceIdentity: knownHostsFile.sourceIdentity,
+            },
       ),
     );
     const bindSources = runtimeBindSources(runtimePlan);

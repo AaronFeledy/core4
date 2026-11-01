@@ -28,6 +28,26 @@ export const serviceHasSshAgentFeature = (service: ServicePlan): boolean => {
 export const sshAgentEligibleServices = (plan: AppPlan) =>
   Object.values(plan.services).filter(serviceHasSshAgentFeature);
 
+export const validateSshAgentOverlay = (plan: AppPlan) =>
+  Effect.forEach(
+    sshAgentEligibleServices(plan),
+    (service) => {
+      const duplicate =
+        duplicateMountTarget(orderMounts(service.mounts)) ??
+        service.mounts.find((mount) => mount.target === target)?.target;
+      return duplicate === undefined
+        ? Effect.void
+        : Effect.fail(
+            new SshAgentTransportError({
+              message: `SSH agent mount target ${duplicate} collides with a planned mount on ${service.name}.`,
+              stage: "bridge",
+              remediation: "Remove the conflicting mount or disable the ssh-agent feature for this service.",
+            }),
+          );
+    },
+    { discard: true },
+  );
+
 export const agentSocketOverlayFeature = (session: OverlaySession) => ({
   apply: (service: {
     readonly addEnv: (name: string, value: string) => void;
@@ -61,7 +81,7 @@ export const stripSshAgentOverlay = (plan: AppPlan): AppPlan => ({
 export const withSshAgentOverlay = Effect.fnUntraced(function* (
   plan: AppPlan,
   session: OverlaySession,
-  options?: { readonly knownHostsFile?: string },
+  options?: { readonly knownHostsFile?: string; readonly knownHostsSourceIdentity?: string },
 ): Effect.fn.Return<AppPlan, SshAgentTransportError> {
   const services = { ...plan.services };
   for (const service of Object.values(plan.services)) {
@@ -86,6 +106,9 @@ export const withSshAgentOverlay = Effect.fnUntraced(function* (
         type: "bind",
         origin: "integration",
         source: options.knownHostsFile,
+        ...(options.knownHostsSourceIdentity === undefined
+          ? {}
+          : { sourceIdentity: options.knownHostsSourceIdentity }),
         target: knownHostsTarget,
         readOnly: true,
         createHostPath: false,

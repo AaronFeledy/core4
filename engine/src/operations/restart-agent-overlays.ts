@@ -5,21 +5,26 @@ import { type AppPlan, type AppRef, SSH_AGENT_SOCKET_NAME } from "@lando/sdk/sch
 import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Option } from "effect";
-import { gpgAgentEligibleServices, withGpgAgentOverlay } from "../subsystems/gpg-agent/overlay.ts";
 import { hostKnownHostsFile } from "../subsystems/ssh-agent/host-known-hosts.ts";
-import { sshAgentEligibleServices, withSshAgentOverlay } from "../subsystems/ssh-agent/overlay.ts";
 import { readAgentRelayWorkerRecord } from "../subsystems/ssh-agent/worker-state.ts";
 import { sshAgentPlanExtension } from "../subsystems/ssh/intent.ts";
+import { startOverlayRegistry } from "../subsystems/start-overlay-registry.ts";
 
 export const withRetainedAgentOverlays = Effect.fnUntraced(function* (plan: AppPlan, app: AppRef) {
   const paths = yield* PathsService;
   const privateFileAccess = yield* PrivateFileAccessService;
   let overlaid = plan;
   for (const kind of ["ssh", "gpg"] as const) {
-    const eligible = kind === "ssh" ? sshAgentEligibleServices(plan) : gpgAgentEligibleServices(plan);
+    const eligible = startOverlayRegistry[kind].eligible(plan);
     if (eligible.length === 0) continue;
     const knownHostsFile = kind === "ssh" ? yield* hostKnownHostsFile(homedir()) : undefined;
-    const sshOptions = knownHostsFile === undefined ? {} : { knownHostsFile };
+    const sshOptions =
+      knownHostsFile === undefined
+        ? {}
+        : {
+            knownHostsFile: knownHostsFile.path,
+            knownHostsSourceIdentity: knownHostsFile.sourceIdentity,
+          };
     const record = yield* readAgentRelayWorkerRecord(app, {
       kind,
       paths: { ...paths.roots, platform: paths.platform },
@@ -37,8 +42,8 @@ export const withRetainedAgentOverlays = Effect.fnUntraced(function* (plan: AppP
       }
       overlaid =
         kind === "ssh"
-          ? yield* withSshAgentOverlay(overlaid, record, sshOptions)
-          : yield* withGpgAgentOverlay(
+          ? yield* startOverlayRegistry.ssh.project(overlaid, record, sshOptions)
+          : yield* startOverlayRegistry.gpg.project(
               overlaid,
               record,
               join(paths.agentRelayRunDir("gpg", app.id, app.root), "keyring"),
@@ -72,7 +77,7 @@ export const withRetainedAgentOverlays = Effect.fnUntraced(function* (plan: AppP
             )
           : undefined;
         if (plan.provider === globalProvider && socket.runtimeVolume !== undefined) {
-          overlaid = yield* withSshAgentOverlay(
+          overlaid = yield* startOverlayRegistry.ssh.project(
             overlaid,
             {
               kind: "ssh",

@@ -191,7 +191,7 @@ for (const target of [
   "/",
 ]) {
   test(`keeps authored ownership at ${target} instead of binding known hosts`, async () => {
-    const { withSshAgentOverlay, stripSshAgentOverlay } = await import(
+    const { withSshAgentOverlay, stripSshAgentOverlay, validateSshAgentOverlay } = await import(
       "../../../src/subsystems/ssh-agent/overlay.ts"
     );
     const plan = overlayFixture();
@@ -207,11 +207,12 @@ for (const target of [
       realization: "passthrough",
     };
     const input = { ...plan, services: { ...plan.services, [web.name]: { ...web, mounts: [authored] } } };
+    Effect.runSync(validateSshAgentOverlay(input));
     const result = Effect.runSync(
       withSshAgentOverlay(
         input,
         { kind: "ssh", socketName: "agent.sock", mount: { _tag: "volume", volume: "agent-volume" } },
-        { knownHostsFile: "/home/user/.ssh/known_hosts" },
+        { knownHostsFile: "/home/user/.ssh/known_hosts", knownHostsSourceIdentity: "2049:9007199254740993" },
       ),
     );
     expect(result.services[web.name]?.mounts).toHaveLength(2);

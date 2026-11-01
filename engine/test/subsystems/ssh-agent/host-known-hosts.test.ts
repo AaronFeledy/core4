@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, rename, rm, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -28,7 +28,12 @@ for (const kind of ["file", "missing", "directory", "symlink"] as const) {
           kind satisfies never;
       }
       const result = await Effect.runPromise(hostKnownHostsFile(home));
-      expect(result).toBe(kind === "file" || kind === "symlink" ? path : undefined);
+      if (kind === "file" || kind === "symlink") {
+        const stats = await stat(path, { bigint: true });
+        expect(result).toEqual({ path, sourceIdentity: `${stats.dev}:${stats.ino}` });
+      } else {
+        expect(result).toBeUndefined();
+      }
     } finally {
       await rm(home, { recursive: true, force: true });
     }
@@ -43,3 +48,48 @@ test("treats inaccessible known hosts as absent", async () => {
   );
   expect(result).toBeUndefined();
 });
+
+for (const change of ["append", "replace", "retarget", "remove"] as const) {
+  test(`tracks known hosts source identity across ${change}`, async () => {
+    // Given a real source, optionally reached through a symlink.
+    const home = await mkdtemp(join(tmpdir(), "lando-known-hosts-identity-"));
+    try {
+      await mkdir(join(home, ".ssh"));
+      const path = join(home, ".ssh", "known_hosts");
+      const original = change === "retarget" ? join(home, "original") : path;
+      await writeFile(original, "host-a ssh-ed25519 fixture-a");
+      if (change === "retarget") await symlink(original, path);
+      const before = await Effect.runPromise(hostKnownHostsFile(home));
+      // When the source changes without changing its authored path.
+      switch (change) {
+        case "append":
+          await appendFile(path, "\nhost-b ssh-ed25519 fixture-b");
+          break;
+        case "replace":
+          await writeFile(join(home, "replacement"), "host-c ssh-ed25519 fixture-c");
+          await rename(join(home, "replacement"), path);
+          break;
+        case "retarget":
+          await writeFile(join(home, "replacement"), "host-c ssh-ed25519 fixture-c");
+          await symlink(join(home, "replacement"), join(home, "new-link"));
+          await rename(join(home, "new-link"), path);
+          break;
+        case "remove":
+          await unlink(path);
+          break;
+        default:
+          change satisfies never;
+      }
+      const after = await Effect.runPromise(hostKnownHostsFile(home));
+      // Then append preserves the mounted inode, replacement changes it, and absence skips it.
+      if (change === "remove") expect(after).toBeUndefined();
+      else if (change === "append") expect(after).toEqual(before);
+      else {
+        expect(after?.path).toBe(path);
+        expect(after?.sourceIdentity).not.toBe(before?.sourceIdentity);
+      }
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+}

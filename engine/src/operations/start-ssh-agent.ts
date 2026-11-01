@@ -277,6 +277,15 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
   if (session === undefined) return yield* options.use(stripSshAgentOverlay(plan));
   const knownHostsFile = yield* hostKnownHostsFile(options.home ?? homedir());
   return yield* options.use(
-    yield* withSshAgentOverlay(plan, session, knownHostsFile === undefined ? {} : { knownHostsFile }),
+    yield* withSshAgentOverlay(
+      plan,
+      session,
+      knownHostsFile === undefined
+        ? {}
+        : {
+            knownHostsFile: knownHostsFile.path,
+            knownHostsSourceIdentity: knownHostsFile.sourceIdentity,
+          },
+    ),
   );
 });
