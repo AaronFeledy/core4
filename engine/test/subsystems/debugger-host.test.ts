@@ -205,16 +205,16 @@ for (const failure of [
   });
 }
 
-test("prefers eth0 over a lower metric on another interface", () => {
+test.each(["eth1", "tun0"])("uses eth0 despite a lower metric on %s", (iface) => {
   // Given
-  const table = `${route("eth1", "0100000A", 0)}\n${route("eth0", "01301BAC", 100)}`;
+  const table = `${route(iface, "0100000A", 0)}\n${route("eth0", "01301BAC", 100)}`;
   // When
   const result = windowsDefaultGateway(table);
   // Then
   expect(result).toBe("172.27.48.1");
 });
 
-test("chooses the lowest metric on the preferred interface", () => {
+test("chooses the lowest metric on eth0", () => {
   // Given
   const table = `${route("eth0", "0100000A", 100)}\n${route("eth0", "01301BAC", 10)}`;
   // When
@@ -223,21 +223,37 @@ test("chooses the lowest metric on the preferred interface", () => {
   expect(result).toBe("172.27.48.1");
 });
 
-test("rejects routes without a nonzero up gateway", async () => {
+test.each(["eth1", "tun0"])("rejects a valid %s default when eth0 is absent", (iface) => {
   // Given
-  const table = [route("eth0", "00000000"), route("eth0", "0100000A", 0, "0001"), "malformed"].join("\n");
+  const table = route(iface);
+  // When
+  const result = windowsDefaultGateway(table);
+  // Then
+  expect(result).toBeUndefined();
+});
+
+test.each([
+  [route("eth0", "00000000"), route("eth0", "0100000A", 0, "0001"), "malformed"].join("\n"),
+  route("eth1"),
+  route("tun0"),
+  `${route("eth0", "00000000")}\n${route("eth1")}`,
+])("fails discovery with no usable eth0 default: %s", async (table) => {
+  // Given
+  const options = discovery();
   // When
   const error = await Effect.runPromise(
     discoverWindowsDebuggerHost({
-      ...discovery(),
+      ...options,
       readFile: async (path) => (path.endsWith("osrelease") ? "microsoft-standard" : table),
     }).pipe(Effect.flip),
   );
   // Then
-  expect(error.reason).toBe("no-default-route");
+  expect(error).toMatchObject({ _tag: "DebuggerHostUnavailableError", reason: "no-default-route" });
 });
 
 test.each([
+  route("eth0", "00000000"),
+  route("eth0", "01301BAC", 0, "0001"),
   "eth0 0100000A 01301BAC 0003 0 0 0 00000000",
   "eth0 00000000 01301BAC 0003 0 0 0 00FFFFFF",
   "eth0 00000000 invalid! 0003 0 0 0 00000000",
@@ -246,13 +262,13 @@ test.each([
   "eth0 00000000 01301BAC 0003 0 0 -1 00000000",
   "eth0 00000000 01301BAC 0003 0 0 1x 00000000",
   "eth0 00000000 01301BAC",
-])("ignores invalid default route %s", (invalid) => {
+])("rejects invalid eth0 default without falling back to eth1: %s", (invalid) => {
   // Given
   const table = `${invalid}\n${route("eth1", "0100000A", 100)}`;
   // When
   const result = windowsDefaultGateway(table);
   // Then
-  expect(result).toBe("10.0.0.1");
+  expect(result).toBeUndefined();
 });
 
 test("rewrites only the debugger alias and strips it back to a neutral plan", () => {

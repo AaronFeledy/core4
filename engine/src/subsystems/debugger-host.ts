@@ -26,14 +26,14 @@ export interface DebuggerHostDiscovery {
 export const windowsDefaultGateway = (table: string): string | undefined => {
   const routes = table.split(/\r?\n/u).flatMap((row) => {
     const [iface, destination, gateway, flags, , , metric, mask] = row.trim().split(/\s+/u);
-    if (destination !== "00000000" || mask !== "00000000") return [];
+    if (iface !== "eth0" || destination !== "00000000" || mask !== "00000000") return [];
     if (gateway === undefined || !/^[0-9a-f]{8}$/iu.test(gateway) || gateway === "00000000") return [];
     if (flags === undefined || !/^[0-9a-f]+$/iu.test(flags) || (Number.parseInt(flags, 16) & 3) !== 3)
       return [];
     if (metric === undefined || !/^\d+$/u.test(metric)) return [];
-    return [{ iface, gateway, metric: Number(metric) }];
+    return [{ gateway, metric: Number(metric) }];
   });
-  routes.sort((a, b) => Number(b.iface === "eth0") - Number(a.iface === "eth0") || a.metric - b.metric);
+  routes.sort((a, b) => a.metric - b.metric);
   const route = routes[0];
   if (route === undefined) return undefined;
   return [6, 4, 2, 0].map((offset) => Number.parseInt(route.gateway.slice(offset, offset + 2), 16)).join(".");
