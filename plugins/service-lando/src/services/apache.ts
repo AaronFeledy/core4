@@ -6,6 +6,7 @@ import {
   LogSourceId,
   PortNumber,
   type ValidationIssuePath,
+  sameImageReference,
 } from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
@@ -180,8 +181,8 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setHealthcheck(tcpProbe(port, 10));
 
   if (service.command === undefined && service.entrypoint === undefined) {
-    const ownedListen =
-      service.image === undefined || service.image === DEFAULT_IMAGE ? listenPort : undefined;
+    const ownsImage = service.image === undefined || sameImageReference(service.image, DEFAULT_IMAGE);
+    const ownedListen = ownsImage ? listenPort : undefined;
     ctx.setCommand(
       apacheStartCommand(
         literalEnvironmentValue(documentRoot, ["environment", "APACHE_DOCUMENT_ROOT"]),
@@ -192,8 +193,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
       ),
     );
     if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
-    if (service.image !== undefined && service.image !== DEFAULT_IMAGE)
-      ctx.setListenerAuthority(imageAuthority(APACHE_LISTENER, port));
+    if (!ownsImage) ctx.setListenerAuthority(imageAuthority(APACHE_LISTENER, port));
   } else {
     ctx.setListenerAuthority(launcherAuthority(APACHE_LISTENER, port));
   }

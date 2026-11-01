@@ -231,11 +231,14 @@ describe("apache ServiceType", () => {
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
-  test("an explicitly selected catalog image retains listener ownership", async () => {
-    const plan = await composeApachePlan({ type: "apache", image: "httpd:2.4-alpine", port: 8080 });
-    expect(plan.listenerAuthority).toBeUndefined();
-    expect(apacheDirectives(plan.command)).toContain("Listen 8080");
-  });
+  test.each(["httpd:2.4-alpine", "library/httpd:2.4-alpine", "docker.io/library/httpd:2.4-alpine"])(
+    "catalog image %s retains listener ownership",
+    async (image) => {
+      const plan = await composeApachePlan({ type: "apache", image, port: 8080 });
+      expect(plan.listenerAuthority).toBeUndefined();
+      expect(apacheDirectives(plan.command)).toContain("Listen 8080");
+    },
+  );
 
   test("serves an authored webroot through Apache config and LANDO env", async () => {
     // Given / When
