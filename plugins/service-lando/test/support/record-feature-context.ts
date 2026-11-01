@@ -28,6 +28,7 @@ export const recordFeatureContext = (
     setCerts: record("setCerts"),
     setEntrypoint: record("setEntrypoint"),
     setCommand: record("setCommand"),
+    setInit: record("setInit"),
     setArtifact: record("setArtifact"),
     setUser: record("setUser"),
     setWorkingDirectory: record("setWorkingDirectory"),

@@ -46,6 +46,16 @@ export const linuxRuntimeIsHealthy = (
     ),
   );
 
+export const linuxRuntimeHasOwnedService = Effect.fnUntraced(function* (
+  deps: LinuxRuntimeHealthDeps,
+): Effect.fn.Return<boolean> {
+  if ((yield* Effect.result(deps.podmanApi.ping))._tag === "Failure") return false;
+  const pid = yield* readRuntimePid(deps.pidPath);
+  if (pid === undefined || !(yield* deps.serviceRunner.isAlive(pid))) return false;
+  return yield* deps.serviceRunner.isServiceProcess?.(pid, buildPodmanServiceArgs(deps)) ??
+    Effect.succeed(false);
+});
+
 const findAliveServicePids = Effect.fnUntraced(function* (
   deps: LinuxRuntimeHealthDeps,
   find:

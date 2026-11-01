@@ -21,6 +21,7 @@ export interface McpCommandSpec {
   readonly summary: string;
   readonly description?: string;
   readonly mcpAllowed?: boolean;
+  readonly bindInput?: (input: McpRunInput) => Effect.Effect<McpRunInput, unknown>;
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly toolingInput?: ToolingInputDeclaration;
@@ -35,8 +36,17 @@ export interface McpCommandSpec {
 }
 
 /** A single command projected as an MCP tool. */
+export type McpPluginProvenance = "bundled" | "system" | "user" | "app" | "explicit";
+
 export interface McpCommandEntry {
   readonly spec: McpCommandSpec;
+  readonly plugin?: {
+    readonly name: string;
+    /** Authorization class: only reviewed bundled contributions inherit default allowance. */
+    readonly source: "bundled" | "external";
+    /** Discovery tier the selected contribution came from. */
+    readonly provenance?: McpPluginProvenance;
+  };
   /** True only for tooling-task tools (projection); false for command tools. */
   readonly tooling?: boolean;
 }

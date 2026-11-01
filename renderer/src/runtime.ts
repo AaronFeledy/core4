@@ -124,7 +124,7 @@ const makeOutputChannel = (io: RendererIO) => ({
 });
 
 const capabilitiesForFallback = (id: "plain" | "json" | "verbose", io: RendererIO): RendererCapabilities => {
-  if (id === "verbose" && io.isTTY === true) return RENDERER_CAPABILITIES_VERBOSE_TTY;
+  if (id === "verbose" && io.isTTY === true && io.noColor !== true) return RENDERER_CAPABILITIES_VERBOSE_TTY;
   return RENDERER_CAPABILITIES_NONE;
 };
 

@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer, Queue, Stream } from "effect";
 
-import { EventService, type LandoEvent } from "@lando/sdk/services";
+import { EventService, type LandoEvent, ProcessRunner } from "@lando/sdk/services";
+import { processRunnerFor } from "../_support/process-runner.ts";
 
 import { pluginTest, renderPluginTestResult } from "../../src/cli/commands/plugin-test.ts";
 import { listTree } from "./_util/fs-tree.ts";
@@ -65,7 +66,12 @@ describe("meta:plugin:test command", () => {
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     try {
       const result = await Effect.runPromise(
-        pluginTest({ cwd: root, spawner: { spawn: async () => ({ exitCode: 0 }) } }),
+        pluginTest({ cwd: root }).pipe(
+          Effect.provideService(
+            ProcessRunner,
+            processRunnerFor(() => Effect.succeed({ exitCode: 0 })),
+          ),
+        ),
       );
       expect(result.exitCode).toBe(0);
     } finally {
@@ -85,13 +91,17 @@ describe("meta:plugin:test command", () => {
       pluginTest({
         cwd: join(root, "src", "nested"),
         execPath: "/opt/bun",
-        spawner: {
-          spawn: async ({ cmd, cwd }) => {
-            spawns.push({ cmd, cwd });
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) =>
+            Effect.sync(() => {
+              spawns.push({ cmd: [input.cmd, ...input.args], cwd: input.cwd ?? "" });
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+      ),
     );
 
     expect(result.pluginName).toBe("@acme/lando-plugin-test");
@@ -113,13 +123,17 @@ describe("meta:plugin:test command", () => {
     const result = await Effect.runPromise(
       pluginTest({
         cwd: nested,
-        spawner: {
-          spawn: async ({ cwd }) => {
-            spawns.push({ cwd });
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) =>
+            Effect.sync(() => {
+              spawns.push({ cwd: input.cwd ?? "" });
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+      ),
     );
 
     expect(result.pluginRoot).toBe(root);
@@ -138,13 +152,17 @@ describe("meta:plugin:test command", () => {
     const result = await Effect.runPromise(
       pluginTest({
         cwd: child,
-        spawner: {
-          spawn: async ({ cwd }) => {
-            spawns.push({ cwd });
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) =>
+            Effect.sync(() => {
+              spawns.push({ cwd: input.cwd ?? "" });
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+      ),
     );
 
     expect(result.pluginRoot).toBe(root);
@@ -177,13 +195,17 @@ describe("meta:plugin:test command", () => {
     const result = await Effect.runPromise(
       pluginTest({
         cwd: root,
-        spawner: {
-          spawn: async ({ cwd }) => {
-            spawns.push({ cwd });
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) =>
+            Effect.sync(() => {
+              spawns.push({ cwd: input.cwd ?? "" });
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+      ),
     );
 
     expect(result.pluginName).toBe("@acme/lando-plugin-keyword");
@@ -201,13 +223,17 @@ describe("meta:plugin:test command", () => {
     const result = await Effect.runPromise(
       pluginTest({
         cwd: root,
-        spawner: {
-          spawn: async ({ cwd }) => {
-            spawns.push({ cwd });
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) =>
+            Effect.sync(() => {
+              spawns.push({ cwd: input.cwd ?? "" });
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+      ),
     );
 
     expect(result.pluginName).toBe("@acme/lando-plugin-bare");
@@ -224,13 +250,17 @@ describe("meta:plugin:test command", () => {
         cwd: root,
         argv: ["test/plugin.test.ts", "--", "--watch", "--timeout", "1000"],
         execPath: "/opt/bun",
-        spawner: {
-          spawn: async ({ cmd }) => {
-            spawns.push({ cmd });
-            return { exitCode: 0 };
-          },
-        },
-      }),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) =>
+            Effect.sync(() => {
+              spawns.push({ cmd: [input.cmd, ...input.args] });
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+      ),
     );
 
     expect(spawns[0]?.cmd).toEqual([
@@ -252,8 +282,13 @@ describe("meta:plugin:test command", () => {
         cwd: root,
         argv: ["test/plugin.test.ts", "--", "--bail"],
         execPath: "/opt/bun",
-        spawner: { spawn: async () => ({ exitCode: 7 }) },
-      }).pipe(Effect.provide(recordingEventLayer(events))),
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor(() => Effect.succeed({ exitCode: 7 })),
+        ),
+        Effect.provide(recordingEventLayer(events)),
+      ),
     );
 
     expect(result.exitCode).toBe(7);

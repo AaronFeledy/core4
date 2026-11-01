@@ -11,16 +11,16 @@ import {
   PluginManifest,
   type ResolvedPluginInput,
 } from "@lando/sdk/schema";
-import { CertificateAuthority, Logger, PathsService } from "@lando/sdk/services";
+import { CertificateAuthority, PathsService } from "@lando/sdk/services";
 
-import { findAppRoot } from "@lando/landofile/discovery";
 import { bundledPluginModules } from "../composition.ts";
+import { resolveGraphCommands } from "./command-contributions.ts";
+import { loadInstalledPluginEntry } from "./installed-plugin-loader.ts";
+export { pluginCommandCandidates } from "./command-contributions.ts";
+import { PluginManifestResolution, resolvePluginManifests } from "./manifest-resolution.ts";
+import { type ManifestDiagnostic, selectPluginManifests } from "./manifest-selection.ts";
 import { type PluginCapabilityIndexError, makePluginCapabilityIndex } from "./module-set.ts";
-import {
-  type DiscoveredPlugin,
-  discoverInstalledPlugins,
-  systemPluginsFromModules,
-} from "./plugin-discovery.ts";
+import { type DiscoveredPlugin, systemPluginsFromModules } from "./plugin-discovery.ts";
 
 export type PluginContributionSource = "bundled" | "system" | "user" | "app" | "explicit";
 
@@ -47,9 +47,11 @@ export interface GraphCommandCandidate {
   readonly pluginName: string;
   readonly source: PluginContributionSource;
   readonly load: ExecutableCommandLoader;
+  readonly descriptor: import("@lando/sdk/schema").CommandContribution;
 }
 
 export interface PluginContributionGraphShape {
+  readonly diagnostics?: readonly ManifestDiagnostic[];
   readonly plugins: ReadonlyArray<LoadedPluginContribution>;
   readonly globalPlugins: ReadonlyArray<LoadedPluginContribution>;
   readonly certificateAuthorities: ReadonlyArray<GraphCertificateAuthorityCandidate>;
@@ -69,8 +71,7 @@ export class PluginContributionGraph extends Context.Service<
       this,
       Effect.gen(function* () {
         const paths = yield* PathsService;
-        const loggerOption = yield* Effect.serviceOption(Logger);
-        const logger = Option.getOrUndefined(loggerOption);
+        const resolutionOption = yield* Effect.serviceOption(PluginManifestResolution);
         const scope = yield* Scope.Scope;
         let rawContext = Context.empty();
         const rawCandidates: GraphCertificateAuthorityCandidate[] = [];
@@ -93,46 +94,87 @@ export class PluginContributionGraph extends Context.Service<
         const bundled = policy.discovery.bundled
           ? systemPluginsFromModules(modules).map((plugin, index) => ({
               ...plugin,
-              entry: modules[index],
+              ...(modules[index] === undefined ? {} : { entry: modules[index] }),
             }))
           : [];
-        const external = policy.externalImports;
-        const system =
-          external && policy.discovery.system
-            ? yield* discoverInstalledPlugins("system", paths.systemPluginsDir, logger)
-            : [];
-        const user =
-          external && policy.discovery.user
-            ? yield* discoverInstalledPlugins("user", paths.pluginsDir, logger)
-            : [];
-        const appRoot = external && policy.discovery.app ? yield* findAppRoot(policy.cwd) : undefined;
-        const app =
-          appRoot === undefined
-            ? []
-            : yield* discoverInstalledPlugins("app", `${appRoot}/.lando/plugins`, logger);
-        const explicit = yield* Effect.forEach(policy.manifests, (input) =>
-          Result.match(validateResolvedPlugin(input), {
-            onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
-            onSuccess: Effect.succeed,
-          }),
+        const validationDiagnostics: ManifestDiagnostic[] = [];
+        const explicit = policy.manifests.map(
+          (input): LoadedPluginContribution =>
+            Result.match(validateResolvedPlugin(input), {
+              onFailure: (cause) => {
+                validationDiagnostics.push({
+                  _tag: cause._tag,
+                  message: cause.message,
+                  remediation: cause.remediation,
+                  loser: { pluginName: String(input.manifest.name), source: "explicit" },
+                });
+                return { manifest: input.manifest, source: "explicit" };
+              },
+              onSuccess: (plugin) => plugin,
+            }),
         );
-        const globalPlugins = mergeLoadedPluginSources(
-          [bundled, system, user, explicit],
-          policy.discovery.disable,
+        const suppliedResolution = Option.isSome(resolutionOption)
+          ? resolutionOption
+          : Context.getOption(rawContext, PluginManifestResolution);
+        const selected = Option.isSome(suppliedResolution)
+          ? suppliedResolution.value
+          : yield* resolvePluginManifests({
+              bundled,
+              explicit,
+              directories: policy.externalImports
+                ? [
+                    ...(policy.discovery.system
+                      ? [{ source: "system" as const, path: paths.systemPluginsDir }]
+                      : []),
+                    ...(policy.discovery.user ? [{ source: "user" as const, path: paths.pluginsDir }] : []),
+                  ]
+                : [],
+              ...(policy.externalImports && policy.discovery.app ? { cwd: policy.cwd } : {}),
+              disable: policy.discovery.disable,
+            });
+        const diagnostics = [...validationDiagnostics, ...selected.diagnostics].slice(0, 100);
+        const loadedPlugins = yield* Effect.forEach(
+          [
+            ...selected.plugins,
+            ...selected.globalPlugins.filter((plugin) => !selected.plugins.includes(plugin)),
+          ],
+          (plugin) => {
+            const loaded = [...explicit, ...bundled].find(
+              (entry) => entry.source === plugin.source && entry.manifest.name === plugin.manifest.name,
+            );
+            if (loaded !== undefined) return Effect.succeed({ ...loaded, manifest: plugin.manifest });
+            return Effect.tryPromise({
+              try: async (): Promise<LoadedPluginContribution> => {
+                const module = await loadInstalledPluginEntry(plugin.path ?? "", plugin.manifest);
+                return { ...plugin, ...(module === undefined ? {} : { module }) };
+              },
+              catch: (cause) => cause,
+            }).pipe(
+              Effect.catch((cause) => {
+                diagnostics.push({
+                  _tag: "PluginLoadError",
+                  message: String(cause),
+                  remediation: "Repair the plugin entry.",
+                  loser: { pluginName: String(plugin.manifest.name), source: plugin.source },
+                });
+                return Effect.succeed(plugin);
+              }),
+            );
+          },
         );
-        const merged = mergeLoadedPluginSources(
-          [bundled, system, user, app, explicit],
-          policy.discovery.disable,
+        const merged = loadedPlugins.filter((plugin) =>
+          selected.plugins.some((entry) => entry.manifest === plugin.manifest),
         );
-        const commands = yield* Result.match(pluginCommandCandidates(merged), {
-          onFailure: (cause) => Effect.fail(bootstrapFailure(cause.message, cause)),
-          onSuccess: Effect.succeed,
-        });
+        const globalPlugins = loadedPlugins.filter((plugin) =>
+          selected.globalPlugins.some((entry) => entry.manifest === plugin.manifest),
+        );
+        const resolvedCommands = resolveGraphCommands(merged, selected.commands);
         const graph: PluginContributionGraphShape = {
           plugins: merged,
           globalPlugins,
           certificateAuthorities: [...rawCandidates, ...manifestCandidates(merged)],
-          commands,
+          commands: resolvedCommands.commands,
+          diagnostics: [...diagnostics, ...resolvedCommands.diagnostics].slice(0, 100),
           hostContext: rawContext,
         };
         return PluginContributionGraph.of(graph);
@@ -164,12 +206,7 @@ export const mergeLoadedPluginSources = (
   sources: ReadonlyArray<ReadonlyArray<LoadedPluginContribution>>,
   disable: ReadonlyArray<string>,
 ): ReadonlyArray<LoadedPluginContribution> => {
-  const merged = new Map<string, LoadedPluginContribution>();
-  for (const source of sources) {
-    for (const plugin of source) merged.set(plugin.manifest.name, plugin);
-  }
-  const disabled = new Set(disable);
-  return [...merged.values()].filter((plugin) => !disabled.has(plugin.manifest.name));
+  return selectPluginManifests(sources, disable).plugins;
 };
 
 const validateResolvedPlugin = (
@@ -233,66 +270,6 @@ const manifestCandidates = (
       };
     }),
   );
-
-const commandLoaders = (plugin: LoadedPluginContribution): ReadonlyMap<string, ExecutableCommandLoader> => {
-  const direct = plugin.entry?.commands ?? plugin.module?.commands;
-  if (direct instanceof Map) return direct;
-  const nested = plugin.module !== undefined && "plugin" in plugin.module ? plugin.module.plugin : undefined;
-  if (
-    typeof nested === "object" &&
-    nested !== null &&
-    "commands" in nested &&
-    nested.commands instanceof Map
-  ) {
-    return nested.commands;
-  }
-  return new Map();
-};
-
-export const pluginCommandCandidates = (
-  plugins: ReadonlyArray<LoadedPluginContribution>,
-): Result.Result<ReadonlyArray<GraphCommandCandidate>, PluginDescriptorMismatchError> => {
-  const candidates: GraphCommandCandidate[] = [];
-  const owners = new Map<string, string>();
-  for (const plugin of plugins) {
-    const declared = (plugin.manifest.contributes?.commands ?? []).map((value) =>
-      typeof value === "string" ? value : value.id,
-    );
-    const loaders = commandLoaders(plugin);
-    const provided = [...loaders.keys()];
-    const declaredIds = new Set(declared);
-    if (provided.some((id) => !declaredIds.has(id))) {
-      return Result.fail(
-        new PluginDescriptorMismatchError({
-          pluginName: String(plugin.manifest.name),
-          kind: "commands",
-          declared,
-          provided,
-          message: `Plugin ${String(plugin.manifest.name)} manifest and descriptor disagree for commands.`,
-          remediation: `Align ${String(plugin.manifest.name)}'s manifest command ids with its executable command loaders.`,
-        }),
-      );
-    }
-    for (const [id, load] of loaders) {
-      const owner = owners.get(id);
-      if (owner !== undefined) {
-        return Result.fail(
-          new PluginDescriptorMismatchError({
-            pluginName: String(plugin.manifest.name),
-            kind: "commands",
-            declared: [id],
-            provided: [id],
-            message: `Plugin ${String(plugin.manifest.name)} duplicates command id ${id} from ${owner}.`,
-            remediation: `Rename or remove the duplicate command ${id}.`,
-          }),
-        );
-      }
-      owners.set(id, String(plugin.manifest.name));
-      candidates.push({ id, pluginName: String(plugin.manifest.name), source: plugin.source, load });
-    }
-  }
-  return Result.succeed(candidates);
-};
 
 const bootstrapFailure = (message: string, cause: unknown) =>
   new LandoRuntimeBootstrapError({

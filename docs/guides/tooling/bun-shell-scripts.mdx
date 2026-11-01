@@ -170,7 +170,7 @@ The error also carries `commandId`, `tool`, and `remediation`, with `staleReason
 lando help --format=json
 ```
 
-Read `result.toolingMetadata.status`: `fresh`, `not-app`, or `unavailable`. An unavailable result includes the recovery reason and remediation instead of stale tooling declarations. Human help shows the same recovery guidance. After refreshing successfully, inspect help again before retrying the command.
+Read `result.toolingMetadata.status`: `fresh`, `not-app`, or `unavailable`. An unavailable result includes the recovery reason and remediation instead of stale tooling declarations. Human help shows the same recovery guidance. After refreshing successfully, inspect help again before retrying the command. `toolingMetadata` covers only scripts and Landofile tooling; plugin commands report through the separate `result.pluginMetadata` and don't depend on this cache.
 
 For a newly added script with declared inputs, `lando <name> --help` can show those inputs before an inventory refresh, provided the existing cache is otherwise fresh. Scripts without input declarations receive `--help` as a raw argument. If any declared flag is named `help` or aliased to `h`, Lando leaves both help spellings to the script's input parser instead of showing its own help.
 
@@ -182,7 +182,7 @@ Run `lando --help` inside the app after refreshing. Enabled scripts show up unde
 lando --help
 ```
 
-`lando help --all` prints the same list after every built-in command.
+`lando help --all` prints the same list after every built-in and plugin command. In `--format=json`, your scripts are the `all[]` rows with `source: "tooling"`; plugin commands carry `source: "plugin"`.
 
 ## Pass arguments
 
@@ -240,6 +240,8 @@ With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still a
 
 Add `--format=json` or `--format=yaml` and Lando collects the script instead of streaming it. You get one envelope on stdout with the script's output and exit code under `result`:
 
+Captured `result.stdout` and `result.stderr` are present even for empty output. A result returned through a live sink omits both fields because the sink already received the bytes; MCP carries them in `output.chunks` instead.
+
 ```sh
 lando stamp abc1234 --format=json
 lando stamp abc1234 --format=yaml
@@ -251,7 +253,7 @@ lando stamp abc1234 --format=yaml
 | `result.stderr` | Everything it wrote to stderr |
 | `result.exitCode` | The script's exit code |
 
-A script that exits nonzero still gets its output collected, and `lando` exits with that same code. The envelope's `ok` only says Lando ran the script, so branch on `result.exitCode`, not on `ok`. Without a format flag, output streams to your terminal as it happens. Both formats run the script with Lando's embedded Bun, so a host with no Bun installed works the same.
+A script that exits nonzero still gets its output collected, and `lando` exits with that same code. With `--format=json` or `--format=yaml`, the envelope sets `ok: false`, keeps the script payload under `result` (including `result.exitCode`), and adds a tagged `LandoCommandError`. Branch on `result.exitCode` when you care about the script's status; use `ok` and `error._tag` when you care about the command outcome. Without a format flag, output streams to your terminal as it happens. Both formats run the script with the Bun that Lando ships, so a host with no separate Bun install works the same.
 
 The envelope, `--json=<key>`, and `--jq` work the way they do for every other command. See [Script Lando with JSON](../../scripting-with-json/) for the full contract.
 
@@ -330,9 +332,9 @@ lando peek
 
 That starts the app, then prints the stamped SHA from inside `web`. The app and its URL stay up after the script exits, the same as a `lando start` you type yourself.
 
-`lando` in a script is the `lando` on your `PATH`. If your `PATH` has none, it is the Lando that started the script, so `./lando peek` from a download folder works too. Call it by name: a path such as `./bin/lando` inside the script runs as Bun instead of Lando.
+`lando` in a script is the `lando` on your `PATH`. If your `PATH` has none, it is the Lando that started the script, so `./lando peek` from a download folder works too. Call it by name. A path-qualified binary such as `./bin/lando` inside the script still runs as Bun instead of Lando: Bun Shell file mode exports Lando's embedded-Bun switches (`BUN_BE_BUN` and related flags) and has no `unset` for them. That upstream shell limitation also applies to other Bun-compiled CLIs the script starts by path. Prefer the bare `lando` name for nested Lando calls.
 
-Package scripts you run with `lando bun run` follow the same rule: `lando` in them runs Lando, and `bun` runs the Bun Lando ships. A nested `lando bun` is refused.
+Package scripts you run with `lando bun run` follow the same rule: `lando` in them runs Lando, and `bun` runs the Bun the Lando executable provides. A nested `lando bun` inside one of those scripts fails with `BunSelfReentryError` before another Bun child starts; call `bun` directly instead. How `lando bun` reports its child's exit and output is in [Script Lando with JSON](../../scripting-with-json/#capture-bun-backed-commands).
 
 ## Run service work from the Landofile
 

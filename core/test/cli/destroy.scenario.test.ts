@@ -74,6 +74,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -297,7 +298,7 @@ const makeDestroyLayer = (
     apply: () => Effect.succeed({ changed: false }),
     ...(options.quiesceEffect === undefined
       ? {}
-      : { quiesceForFileSync: () => options.quiesceEffect ?? Effect.void }),
+      : { quiesceForFileSync: () => (options.quiesceEffect ?? Effect.void).pipe(Effect.as({})) }),
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
@@ -484,6 +485,7 @@ const makeDestroyLayer = (
       subscribe: () => Stream.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.die("not used"),
       query: () => Effect.succeed([]),
     }),

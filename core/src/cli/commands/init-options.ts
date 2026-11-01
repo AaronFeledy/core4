@@ -4,10 +4,10 @@ import type { InteractionPrompter } from "../../interaction/prompter";
 import type { GitRecipeCloner } from "../../recipes/git-source";
 import type { NpmRegistryClient } from "../../recipes/npm-source";
 import type { PostInitIO } from "../../recipes/post-init/runtime";
+import type { RecipeInitReview } from "../../recipes/prepared-init-types";
 import type { ChoicesCommandRunner } from "../../recipes/prompts/index";
 import type { RecipeRegistryClient } from "../../recipes/registry-source";
 import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../../recipes/tarball-source";
-import type { BunSelfSpawner } from "./bun-self-runner";
 
 export interface InitAppOptions {
   readonly signal?: AbortSignal;
@@ -34,9 +34,12 @@ export interface InitAppOptions {
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly interaction?: InteractionPrompter;
+  readonly onPrepared?: (
+    review: RecipeInitReview,
+    context: { readonly interaction: InteractionPrompter; readonly signal?: AbortSignal },
+  ) => Promise<void>;
   readonly choicesRunner?: ChoicesCommandRunner;
   readonly postInitCommandRunner?: ChoicesCommandRunner;
-  readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
   readonly privateFileAccess: PrivateFileAccess;
   readonly onWarn?: (message: string) => void | Promise<void>;

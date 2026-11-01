@@ -68,6 +68,6 @@ export const appsScratchRunSpec: LandoCommandSpec<ScratchRunResult, ScratchRunEr
           });
     return scratchRun({ ...options, ...hostIo, hostIo: "cli", envelopeFormat });
   },
-  redactionTokens: (value) => scratchRunRedactionTokens(value as ScratchRunResult),
+  redactionTokens: (value) => scratchRunRedactionTokens(value),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
 };

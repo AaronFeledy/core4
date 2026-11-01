@@ -53,14 +53,27 @@ const tty: RenderContext = {
   format: "text",
   isTTY: true,
   columns: 80,
-  env: { TERM: "xterm-256color" },
+  noColor: false,
 };
 const renderers = {
   info: (ctx: RenderContext) => renderInfoAppResult(info, ctx),
   start: (ctx: RenderContext) => renderStartAppResult(started, ctx),
   rebuild: (ctx: RenderContext) => renderRebuildAppResult({ ...started, servicesRebuilt: ["web"] }, ctx),
   restart: (ctx: RenderContext) => renderRestartAppResult(started, ctx),
-  global: (ctx: RenderContext) => renderGlobalStatusResult({ ...info, materialized: true }, "table", ctx),
+  global: (ctx: RenderContext) =>
+    renderGlobalStatusResult(
+      {
+        ...info,
+        materialized: true,
+        policyState: "available",
+        runtimeState: "available",
+        pending: [],
+        diagnostics: [],
+        services: info.services.map((service) => ({ ...service, desired: "enabled", pending: [] })),
+      },
+      "table",
+      ctx,
+    ),
 };
 
 describe("typed connection rendering", () => {

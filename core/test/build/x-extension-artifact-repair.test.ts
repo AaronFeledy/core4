@@ -33,10 +33,12 @@ import {
   withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
 import { configOutputLandofile } from "./x-extension-config-output.ts";
+import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
@@ -60,27 +62,31 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalToolingSensitivity(
-    evolveHistoricalAppMountAcceleration(
-      evolveHistoricalToolingShorthand(
-        evolveHistoricalEnvironment(
-          evolveHistoricalEndpointMetadata(
-            evolveHistoricalServicePort(
-              evolveHistoricalTimestamps(
-                evolveHistoricalContainerUser(
-                  evolveHistoricalReadiness(
-                    evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+  evolveHistoricalConsolePort(
+    evolveHistoricalToolingSensitivity(
+      evolveHistoricalAppMountAcceleration(
+        evolveHistoricalToolingShorthand(
+          evolveHistoricalEnvironment(
+            evolveHistoricalEndpointMetadata(
+              evolveHistoricalServicePort(
+                evolveHistoricalTimestamps(
+                  evolveHistoricalContainerUser(
+                    evolveHistoricalReadiness(
+                      evolveHistoricalShorthand(
+                        evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+                      ),
+                    ),
                   ),
+                  "bare",
                 ),
-                "bare",
               ),
             ),
           ),
+          "bare",
         ),
-        "bare",
       ),
+      "bare",
     ),
-    "bare",
   );
 
 describe("closed x-* extension artifact repair", () => {

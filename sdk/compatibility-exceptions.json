@@ -1,5 +1,35 @@
 [
   {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.init.anyOf",
+    "justification": "Intentional pre-release #1199 init input narrowing: booleans and ASCII case-insensitive true/false, on/off, yes/no, and quoted 1/0 remain accepted and normalize to a boolean. Arbitrary strings, surrounding whitespace, trailing line breaks, numeric 1/0, and null are rejected. The published pattern now matches runtime acceptance; focused schema parity and round-trip regressions cover valid spellings and rejected input. This is not a backward-compatibility claim for formerly unconstrained strings."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.init.anyOf",
+    "justification": "Intentional pre-release #1199 authoring-schema correction: init accepts booleans or the same ASCII case-insensitive boolean spellings as ServiceConfig, not arbitrary strings. The flag-free JSON Schema pattern and runtime matcher share one definition and reject whitespace, trailing line breaks, numeric 1/0, and null. Published-versus-runtime acceptance regressions cover the narrowing; no legacy string-acceptance shim is retained."
+  },
+  {
+    "surface": "command:meta:global:list",
+    "changeKind": "enum-widened",
+    "path": "$.services.items.state",
+    "justification": "Pre-release global policy distinguishes unverified capability or dependency evidence from known unsupported intent. Agents must handle enabled, disabled, blocked, and unverified catalog states; policy choices remain separate from observed runtime status."
+  },
+  {
+    "surface": "command:meta:global:uninstall",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release #1257 replaces global:uninstall with explicit global:disable policy and ownership-verified cleanup. Disable preserves named volumes; deliberate deletion remains global:destroy --yes --purge. No unreleased command alias is retained."
+  },
+  {
+    "surface": "command:meta:global:install",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Pre-release #1257 separates durable global:enable intent from global:reconcile configuration repair and global:start runtime changes. The previous install command mixed those meanings; the new commands expose policy impact previews and preserve explicit choices during repair."
+  },
+  {
     "surface": "schema:LogSourceStrategy",
     "changeKind": "enum-widened",
     "path": "$",
@@ -4827,13 +4857,13 @@
     "surface": "schema:EndpointPlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved plan extension adds optional primary:true to network endpoint variants and optional opaque appProtocol to internal network endpoints; published appProtocol already exists. Unix variants and publication requirements are unchanged. Optional metadata preserves decoding of ownership-bearing applied plans without migration."
+    "justification": "Approved plan extensions add optional primary:true and opaque appProtocol to network endpoints and sparse plan-only scan path/okCodes metadata to endpoint variants. No existing field becomes required; historical ownership-bearing applied plans remain decodable without migration. Scan defaults do not add authoring syntax or readiness semantics."
   },
   {
     "surface": "schema:InternalEndpoint",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Approved internal network endpoint extension adds optional primary:true and opaque appProtocol. The Unix-socket variant is unchanged, neither field becomes required, and existing applied endpoints remain decodable."
+    "justification": "Approved internal endpoint extensions add optional primary:true and opaque appProtocol to network listeners and optional sparse plan-only scan path/okCodes metadata to endpoint variants. No field becomes required; historical applied endpoints remain decodable. Authoring and readiness semantics remain separate."
   },
   {
     "surface": "schema:LocalStackServiceConfig",
@@ -5440,5 +5470,35 @@
     "changeKind": "enum-narrowed",
     "path": "$.composeKnobs.supported.items",
     "justification": "Pre-release: Compose tmpfs is no longer a preserved runtime knob; service tmpfs and volumes tmpfs normalize into tmpfs mount entries every bundled provider realizes, so providers no longer declare tmpfs knob support."
+  },
+  {
+    "surface": "schema:EndpointInvariantIssue",
+    "changeKind": "enum-widened",
+    "path": "$.kind",
+    "justification": "Approved pre-release effective service contracts add scan-conflict for contradictory defined path or status defaults on one logical endpoint. Omitted defaults inherit and equivalent status sets remain valid; consumers must handle the additional diagnostic kind."
+  },
+  {
+    "surface": "command:app:share:stop",
+    "changeKind": "property-removed",
+    "path": "$.status",
+    "justification": "Pre-release stop acknowledgement drops the constant status; successful completion plus sessionId and optional provider already acknowledge the completed stop."
+  },
+  {
+    "surface": "command:app:cache:refresh",
+    "changeKind": "property-removed",
+    "path": "$.pluginCommandCachePath",
+    "justification": "Reviewed pre-release removal: the plugin-command cache was written but never read by any consumer and is deleted. Plugin command metadata now comes from manifest command descriptors on demand, so app:cache:refresh no longer writes or reports that cache. Plugin-set changes still invalidate app tooling caches; refresh and plugin add/link/unlink/remove/trust regressions cover that."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "unsupported-construct",
+    "path": "$.commands.items.anyOf",
+    "justification": "Reviewed pre-release contract change: contributes.commands entries become CommandContribution descriptors (canonical id, nonblank bounded summary, optional hidden, aliases, topLevelAlias, mcpAllowed, deprecated) instead of bare ids or { id, deprecated }. Help, routing, aliases, and MCP eligibility read these descriptors without importing plugin code. Every in-repo manifest and fixture is converted; no string-form shim is retained for this unreleased surface."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "unsupported-construct",
+    "path": "$.contributes.commands.items.anyOf",
+    "justification": "Reviewed pre-release contract change propagated from PluginContribution: manifest command contributions are CommandContribution descriptors, and a manifest that repeats a command id is rejected. Bundled manifests keep plugin.yaml, package.json landoPlugin, and src/index.ts identical under descriptor parity tests; no string-form shim is retained for this unreleased surface."
   }
 ]

@@ -9,10 +9,10 @@ import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { Cause, Deferred, Duration, Effect, Exit, Fiber, Layer, Queue, Result, Stream } from "effect";
 import { StreamFrameSink } from "../../../src/operations/stream-frame-sink.ts";
 import * as BunProcessRunner from "../../../src/services/process-runner.ts";
-import * as BunShellRunner from "../../../src/services/shell-runner.ts";
 import { captureHostProbeRunners } from "../../../src/subsystems/healthcheck/attempt.ts";
 import { makeHealthcheckRunner } from "../../../src/subsystems/healthcheck/runner-factory.ts";
 import { planWith } from "../../services/build-app-runner-test-support.ts";
+import * as BunShellRunner from "../../shell-runner.ts";
 import { commandPlan, execSequence, runExitUnderClock } from "./support.ts";
 
 const plan = planWith({ web: [] });
@@ -201,6 +201,7 @@ test.each(["argv", "shell"])("real host %s runs captured in the app root", async
             subscribe: () => Stream.empty,
             subscribeQueue: Queue.unbounded<never>(),
             waitFor: () => Effect.never,
+            subscribeWithHistory: () => Effect.never,
             waitForAny: () => Effect.never,
             query: () => Effect.succeed([]),
           }),

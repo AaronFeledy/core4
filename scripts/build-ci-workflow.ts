@@ -272,6 +272,11 @@ ${renderSmokeCommands(platform)}
           LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
         run: bun test core/test/build/host-execution-compiled.test.ts
 
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/renderer-output-compiled.test.ts
+
       - name: Upload ${platform.id} binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -506,6 +511,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         env:
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
+          LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
+          LANDO_NATIVE_INIT_E2E: "1"
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail

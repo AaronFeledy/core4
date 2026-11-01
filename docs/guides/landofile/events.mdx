@@ -40,6 +40,13 @@ A plain-string step runs inside a service by default. Before start, that service
 
 Host commands use Lando's embedded Bun Shell, not Bash, zsh, or the container's shell. They use the same language as [host tooling and project scripts](../tooling/bun-shell-scripts.mdx#use-bun-shell-and-your-host-tools).
 
+App mutations hold a process-owned lock. A hook that launches a child `lando`
+cannot lend it the running command's lock for the same app. Recognized parent
+ownership causes an immediate refusal; other contention uses the normal bounded
+wait. Run that mutation separately after the parent operation finishes. Nested
+in-process `command:` steps and SDK calls keep their normal admission and event
+recursion checks.
+
 <Guide>
   <Scenario id="ordered-lifecycle-tasks" render>
     <Step name="start">
@@ -90,7 +97,7 @@ If that root has no Landofile, Lando prints an info notice and skips the Landofi
 
 **Check backup hooks before removing data.** If a Landofile is present but unusable, a `pre-destroy` backup step might not run. With `lando destroy --volumes`, `--purge`, or `--purge-caches`, Lando asks before proceeding without those steps. Fix the Landofile to run them. Pass `--yes` only if you intend to remove data without them. A non-interactive run without `--yes` fails with `LandofileEventsSkippedError` before changing the app. This extra confirmation does not apply when the root has no Landofile.
 
-For scripts, inspect the result of `lando stop --format=json` or `lando destroy --format=json`. When the operation tears down an app whose steps could have run, `landofileEvents` contains:
+For scripts, inspect the result of `lando stop --format=json` or `lando destroy --format=json`. When the operation tears down an app whose steps could have run, [`landofileEvents`](../../reference/schemas/landofile-events-outcome.mdx) contains:
 
 - `{ status: "ran" }` when Lando could use the Landofile's event plan.
 - `{ status: "skipped", reason }` when it could not.

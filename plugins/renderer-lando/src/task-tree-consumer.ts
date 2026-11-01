@@ -44,6 +44,7 @@ export const layer = (
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
   raiseInterrupt: () => void,
   prefetchLiveRegion: () => void,
+  color: boolean,
 ): Layer.Layer<never, never, EventService | TranscriptTailReader> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -60,13 +61,13 @@ export const layer = (
       let handleResize = (_width: number, _height: number): void => {};
       let unsubscribe: (() => void) | undefined;
       let session: TaskTreeSession = idleSession();
-      const toolingStatus = createToolingStatusPainter(undefined, () => closing);
+      const toolingStatus = createToolingStatusPainter(color, undefined, () => closing);
       let active:
         | (SessionSubstrate & { readonly dispose: () => void; readonly hasTasks: () => boolean })
         | undefined;
 
       const line = (event: LandoEvent): void => {
-        const text = renderLandoLine(event, true, io.terminalColumns);
+        const text = renderLandoLine(event, true, io.terminalColumns, color);
         if (text !== null) journal.writeStderr(`${text}\n`);
       };
       const reportDegradation = Effect.suspend(() => {
@@ -94,6 +95,7 @@ export const layer = (
         const acquired = yield* Effect.tryPromise(() =>
           createLiveRegion({
             stdout,
+            noColor: !color,
             width: io.terminalColumns ?? 80,
             height: io.terminalRows ?? 24,
             onResize: (width, height) => handleResize(width, height),
@@ -116,7 +118,7 @@ export const layer = (
           closeSession,
           hasTasks,
           dispose,
-        } = makeTaskTreeSubstrateHandler(io, controller);
+        } = makeTaskTreeSubstrateHandler(io, controller, color);
         const transcriptTail = yield* makeTranscriptTailController({
           reader: transcriptReader,
           viewModel,
@@ -227,6 +229,7 @@ export const layer = (
           });
         }
         active = {
+          color,
           controller,
           consume,
           dispose,

@@ -23,5 +23,5 @@ export const pluginUnlinkSpec: LandoCommandSpec<PluginUnlinkResult> = {
     name: Args.string({ description: "Plugin name.", required: true }),
   },
   run: (input) => pluginUnlink({ name: extractName(input) }),
-  render: (result) => renderPluginUnlinkResult(result as PluginUnlinkResult),
+  render: (result) => renderPluginUnlinkResult(result),
 };

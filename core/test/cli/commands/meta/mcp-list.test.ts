@@ -112,9 +112,24 @@ describe("buildMcpListResult", () => {
 });
 
 describe("renderMcpListResult", () => {
+  test("renders excluded plugin diagnostics alongside the tool listing", () => {
+    const result = buildMcpListResult({
+      defaultAllowlist: [],
+      commandEntries: [],
+      diagnostics: [
+        { _tag: "McpAllowlistConflictError", message: "fixture:inspect requires explicit allowance" },
+      ],
+    });
+    expect(renderMcpListResult(result)).toContain(
+      "McpAllowlistConflictError: fixture:inspect requires explicit allowance",
+    );
+  });
   test("renders a tab-separated plain fallback", () => {
     // Given: a result with one tool.
-    const result = { tools: [{ id: "app:info", summary: "Show app info", source: "default" }] };
+    const result = {
+      tools: [{ id: "app:info", summary: "Show app info", source: "default" }],
+      diagnostics: [],
+    };
 
     // When: rendering without a decorated context.
     const output = renderMcpListResult(result);
@@ -125,7 +140,7 @@ describe("renderMcpListResult", () => {
 
   test("renders a friendly empty plain message", () => {
     // Given: an empty result.
-    const result = { tools: [] };
+    const result = { tools: [], diagnostics: [] };
 
     // When: rendering without a decorated context.
     const output = renderMcpListResult(result);

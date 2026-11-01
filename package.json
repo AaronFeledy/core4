@@ -89,6 +89,7 @@
     "codegen:bootstrap-layers": "bun run scripts/build-bootstrap-layers.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
     "codegen:setup-plugin-flags": "bun run scripts/build-setup-plugin-flags.ts",
+    "codegen:bundled-command-descriptors": "bun run scripts/build-bundled-command-descriptors.ts",
     "codegen:mcp-allowlist": "bun run scripts/build-mcp-allowlist.ts",
     "codegen:host-proxy-allowlist": "bun run scripts/build-host-proxy-allowlist.ts",
     "codegen:command-registry-manifest": "bun run scripts/build-command-registry-manifest.ts",

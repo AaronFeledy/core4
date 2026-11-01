@@ -6,6 +6,7 @@ import type {
   LiveRegionRendererLike,
   OpenTuiLiveRegionModuleLike,
 } from "./live-region-types.ts";
+import { installMonochromePromptAdapters, monochromePromptTerminal } from "./prompt-monochrome.ts";
 import { recordOpenTuiSubstrateFailure } from "./substrate-availability.ts";
 
 export interface LiveRegionSubstrate<TRenderer extends LiveRegionRendererLike> {
@@ -81,11 +82,13 @@ export async function acquireLiveRegionSubstrate(
         clearOnShutdown: false,
         exitOnCtrlC: false,
         externalOutputMode: "passthrough",
-        stdout: options.stdout,
+        stdout: options.noColor === true ? monochromePromptTerminal(options.stdout) : options.stdout,
+        ...(options.noColor === true ? { backgroundColor: module.RGBA.defaultBackground() } : {}),
         remote: false,
         width: options.width,
         height: options.height,
       }));
+    if (options.noColor === true) installMonochromePromptAdapters(module, renderer);
     return { module, renderer };
   } catch (cause) {
     recordOpenTuiSubstrateFailure(cause);

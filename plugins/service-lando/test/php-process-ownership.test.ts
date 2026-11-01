@@ -31,12 +31,18 @@ describe("PHP process ownership", () => {
   test.each([
     { via: "apache", executable: "apache2-foreground" },
     { via: "fpm", executable: "php-fpm" },
-    { via: "cli", executable: "tail -f /dev/null" },
   ])("keeps the normal $via default without an authored process", async ({ via, executable }) => {
     // Given / When
     const plan = await compose({ via });
     // Then
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain(executable);
+  });
+
+  test("keeps the CLI idle process as direct argv", async () => {
+    // Given / When
+    const plan = await compose({ via: "cli" });
+    // Then
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
   });
 });

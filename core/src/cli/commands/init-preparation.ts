@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { RecipeMissingAnswerError } from "@lando/sdk/errors";
-import type { PromptBatchOptions, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
+import type { PromptBatchOptions, RecipeManifest, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
@@ -8,11 +8,11 @@ import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../
 import { getInteractionServiceOverride } from "../../interaction/testing-override";
 import { acquireInitRecipe } from "../../recipes/acquire";
 import { getRecipeCatalog } from "../../recipes/catalog";
-import { prepareRecipeInit } from "../../recipes/prepared-init";
+import { type PreparedRecipeInit, prepareRecipeInit } from "../../recipes/prepared-init";
 import type { ChoicesCommandRunner, PromptAnswers } from "../../recipes/prompts/index";
 import { readAnswersFile } from "../prompts/answer-flags";
 import { activeRendererMode } from "../renderer-mode-state";
-import { defaultAppNameFromCwd, withAppNameDefault } from "./init-app-name";
+import { withAppNameDefault } from "./init-app-name";
 import { chromeForInitNamePrompt } from "./init-app-name-chrome";
 import { resolveInitDestination } from "./init-destination";
 import {
@@ -90,7 +90,10 @@ const composeAnswers = async (
 };
 
 // Standalone callers still route through the single InteractionService chokepoint.
-const defaultInitPrompter = (choicesRunner?: ChoicesCommandRunner): InteractionPrompter =>
+const defaultInitPrompter = (
+  choicesRunner?: ChoicesCommandRunner,
+  signal?: AbortSignal,
+): InteractionPrompter =>
   makePromiseInteractionPrompter(
     getInteractionServiceOverride() ??
       makeInteractionService({
@@ -98,6 +101,7 @@ const defaultInitPrompter = (choicesRunner?: ChoicesCommandRunner): InteractionP
           activeRendererMode === "lando" ? makeDefaultResolveInteractionDriver() : async () => undefined,
         ...(choicesRunner === undefined ? {} : { choicesRunner }),
       }),
+    signal,
   );
 
 type InternalPromptBatchOptions = PromptBatchOptions & {
@@ -105,9 +109,19 @@ type InternalPromptBatchOptions = PromptBatchOptions & {
   readonly chrome?: ReturnType<typeof chromeForInitNamePrompt>;
 };
 
-export const prepareInitApp = async (options: InitAppOptions) => {
+export const prepareInitApp = async (
+  options: InitAppOptions,
+): Promise<{
+  readonly prepared: PreparedRecipeInit;
+  readonly directory: string;
+  readonly publicAnswers: PromptAnswers;
+  readonly appName: string;
+  readonly manifest: RecipeManifest;
+  readonly interaction: InteractionPrompter;
+  readonly reviewEligible: boolean;
+}> => {
   const { cwd } = options;
-  const prompter = options.interaction ?? defaultInitPrompter(options.choicesRunner);
+  const prompter = options.interaction ?? defaultInitPrompter(options.choicesRunner, options.signal);
   const interactivePrompter = options.nonInteractive === true ? undefined : prompter;
   const sourceOptions = parseInitSourceFlags({
     source: options.source,
@@ -121,7 +135,11 @@ export const prepareInitApp = async (options: InitAppOptions) => {
     sourceOptions.source !== undefined && remoteRef !== undefined
       ? remoteRef
       : await resolveRecipeSelection(options, interactivePrompter);
-  const { compiled, manifest } = await acquireInitRecipe(options, recipeRef, interactivePrompter);
+  const { resolution, questionnaire: manifest } = await acquireInitRecipe(
+    options,
+    recipeRef,
+    interactivePrompter,
+  );
   const directory = resolveInitDestination({
     cwd,
     ...(options.destination === undefined ? {} : { destination: options.destination }),
@@ -141,25 +159,12 @@ export const prepareInitApp = async (options: InitAppOptions) => {
     options.destination ?? cwd,
   );
   const presetAnswers = await composeAnswers(options, prompts);
-  const previewAppName =
-    typeof presetAnswers[APP_NAME_PROMPT] === "string" && presetAnswers[APP_NAME_PROMPT] !== ""
-      ? presetAnswers[APP_NAME_PROMPT]
-      : defaultAppNameFromCwd(options.destination ?? cwd);
-  const encoder = await loadRecipeEncoder();
-  const preview = await Effect.runPromise(
-    prepareRecipeInit({
-      compiled,
-      appRoot: directory,
-      appName: previewAppName,
-      answers: typedInitAnswers(
-        compiled.snapshot.optionTypes,
-        stripSecretInitAnswers(prompts, presetAnswers),
-      ),
-      encoder,
-    }),
-  );
-  const previewYaml = preview.status === "ready" ? preview.preview.landofile : undefined;
-
+  typedInitAnswers(manifest.snapshot.optionTypes, stripSecretInitAnswers(prompts, presetAnswers));
+  const reviewEligible =
+    options.yes !== true &&
+    options.nonInteractive !== true &&
+    ((sourceOptions.source === undefined && (options.recipe === undefined || options.recipe === "")) ||
+      prompts.some(({ name }) => !Object.hasOwn(presetAnswers, name)));
   const promptOptions = {
     answers: presetAnswers,
     cwd,
@@ -167,16 +172,16 @@ export const prepareInitApp = async (options: InitAppOptions) => {
     interactive: options.nonInteractive !== true,
     ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
     ...(options.choicesRunner === undefined ? {} : { choicesRunner: options.choicesRunner }),
-    ...(previewYaml === undefined
-      ? {}
-      : {
-          chrome: chromeForInitNamePrompt({
-            appRoot: options.destination ?? cwd,
-            landofileYaml: previewYaml,
-          }),
-        }),
+    chrome: chromeForInitNamePrompt({ appRoot: options.destination ?? cwd }),
   } satisfies InternalPromptBatchOptions;
   const prompted = await prompter.promptAll(prompts, promptOptions);
+  options.signal?.throwIfAborted();
+  const { compileResolvedRecipe } = await import("../../recipes/compiled-source");
+  const compiled = await Effect.runPromise(
+    compileResolvedRecipe(resolution),
+    options.signal === undefined ? undefined : { signal: options.signal },
+  );
+  const encoder = await loadRecipeEncoder();
 
   // Prompt collection validates declared prompts. Preserve additional explicit
   // options for decomposers, which own their recipe-specific option contract.
@@ -206,6 +211,7 @@ export const prepareInitApp = async (options: InitAppOptions) => {
       secretAnswers,
       encoder,
     }),
+    options.signal === undefined ? undefined : { signal: options.signal },
   );
   if (prepared.status === "requires-input")
     throw new RecipeMissingAnswerError({
@@ -213,5 +219,13 @@ export const prepareInitApp = async (options: InitAppOptions) => {
       message: "Recipe initialization requires additional answers.",
       remediation: "Supply the missing declared options using --answer name=value.",
     });
-  return { prepared, directory, publicAnswers: { ...publicAnswers, ...prepared.answers }, appName, manifest };
+  return {
+    prepared,
+    directory,
+    publicAnswers: { ...publicAnswers, ...prepared.answers },
+    appName,
+    manifest: compiled.manifest,
+    interaction: prompter,
+    reviewEligible,
+  };
 };

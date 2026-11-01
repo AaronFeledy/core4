@@ -33,9 +33,13 @@ const copyPrivateKey = (dependencies: TraefikProxyDependencies, source: string, 
 
 export const removeAppCertificates = (dependencies: TraefikProxyDependencies, app: AppId) => {
   const files = appCertificateFiles(dependencies.paths, app);
-  return Effect.all([dependencies.fileSystem.remove(files.cert), dependencies.fileSystem.remove(files.key)], {
-    discard: true,
-  });
+  return Effect.all(
+    [
+      Effect.uninterruptible(dependencies.fileSystem.remove(files.cert)),
+      Effect.uninterruptible(dependencies.fileSystem.remove(files.key)),
+    ],
+    { discard: true },
+  );
 };
 
 export const ensureTlsFiles = Effect.fn("TraefikRouter.ensureTlsFiles")(function* (

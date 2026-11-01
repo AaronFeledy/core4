@@ -2,13 +2,16 @@ import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { readInstalledPluginRegistry, recordInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import { ProcessExecError } from "@lando/sdk/errors";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Layer } from "effect";
+import { ChildOutput, makeChildOutputPolicy } from "../../src/cli/child-output.ts";
 import { makePluginUpdateRunner } from "../../src/cli/commands/update-plugins";
+import { withProcess } from "../_support/process-runner.ts";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -88,13 +91,13 @@ async function fixture() {
             await writeFile(join(pkg, "index.js"), "export {};\n");
           },
         },
-        bunSelfSpawner: {
-          spawn: async (request) => {
-            await lifecycle(request.cwd);
-            return { exitCode: 0 };
-          },
-        },
-      }).pipe(Effect.provide(layer)),
+      }).pipe(
+        withProcess(async (request) => {
+          await lifecycle(request.cwd);
+          return { exitCode: 0 };
+        }),
+        Effect.provide(layer),
+      ),
     );
     return Effect.runPromise(
       runner({
@@ -105,7 +108,7 @@ async function fixture() {
       }),
     );
   };
-  return { root, pluginsRoot, current, trust, run };
+  return { root, pluginsRoot, current, trust, layer, run };
 }
 
 test("lifecycle can acquire the mutation lock before the finalizer publishes", async () => {
@@ -170,3 +173,93 @@ test.each(["trust", "manifest", "other-entry"] as const)(
     expect(await readdir(join(f.pluginsRoot, name))).toEqual(["1.0.0"]);
   },
 );
+
+test("output overflow stops a plugin update batch before later activation", async () => {
+  const f = await fixture();
+  const names = [name, "next-plugin", "z-last-plugin"] as const;
+  for (const candidate of names.slice(1)) {
+    const path = join(f.pluginsRoot, candidate, "1.0.0");
+    await mkdir(path, { recursive: true });
+    await writeFile(
+      join(path, "package.json"),
+      JSON.stringify({ landoPlugin: { ...manifest("1.0.0"), name: candidate } }),
+    );
+    await writeFile(join(path, "index.js"), "export {};\n");
+    await recordInstalledPlugin(f.pluginsRoot, {
+      name: candidate,
+      version: "1.0.0",
+      path,
+      requestedSelector: "latest",
+    });
+    await Effect.runPromise(f.trust.trustPlugin(candidate));
+  }
+  const bytes = new TextEncoder().encode("verified package fixture");
+  const policy = makeChildOutputPolicy({ native: false, stdin: false, stream: undefined });
+  let children = 0;
+  const extracted: string[] = [];
+  const exit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const update = yield* makePluginUpdateRunner({
+        userDataRoot: f.root,
+        pluginsRoot: f.pluginsRoot,
+        cacheRoot: join(f.root, "cache"),
+        registryClient: {
+          fetchPackument: async (candidate) => ({
+            "dist-tags": { latest: "1.1.0" },
+            versions: {
+              "1.1.0": {
+                name: candidate,
+                version: "1.1.0",
+                landoPlugin: { ...manifest("1.1.0"), name: candidate },
+                dist: {
+                  tarball: "https://fixture.invalid/package.tgz",
+                  integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
+                },
+              },
+            },
+          }),
+        },
+        fetcher: { fetch: async () => bytes },
+        extractor: {
+          extract: async (_bytes, destination) => {
+            const candidate = basename(dirname(destination));
+            extracted.push(candidate);
+            const path = join(destination, "package");
+            await mkdir(path, { recursive: true });
+            await writeFile(
+              join(path, "package.json"),
+              JSON.stringify({
+                scripts: { postinstall: "fixture" },
+                landoPlugin: { ...manifest("1.1.0"), name: candidate },
+              }),
+            );
+            await writeFile(join(path, "index.js"), "export {};\n");
+          },
+        },
+      });
+      return yield* update({
+        currentCoreVersion: "4.1.0",
+        targetCoreVersion: "4.1.0",
+        combined: false,
+        dryRun: false,
+      });
+    }).pipe(
+      withProcess(async () => {
+        children++;
+        return { exitCode: 0, stdout: "x".repeat(600_000) };
+      }),
+      Effect.provide(f.layer),
+      Effect.provideService(ChildOutput, policy),
+    ),
+  );
+  expect(exit._tag).toBe("Failure");
+  if (exit._tag !== "Failure") throw new Error("Expected terminal output failure");
+  const failure = Cause.findErrorOption(exit.cause);
+  expect(failure._tag === "Some" && failure.value).toBeInstanceOf(ProcessExecError);
+  expect(children).toBe(2);
+  expect(extracted).toEqual(names.slice(0, 2));
+  const registry = await readInstalledPluginRegistry(f.pluginsRoot);
+  expect(registry[name]?.version).toBe("1.1.0");
+  expect(registry["next-plugin"]?.version).toBe("1.0.0");
+  expect(registry["z-last-plugin"]?.version).toBe("1.0.0");
+});

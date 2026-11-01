@@ -195,8 +195,13 @@ for (const phase of phases) {
         };
         return (options.publish?.(session) ?? Effect.void).pipe(Effect.as(session));
       });
-      const barrier = spyOn(readiness, "waitForServiceReadiness").mockImplementation(() =>
-        phase === "readiness" ? gate(errors.readiness) : Effect.succeed([]),
+      const globalReadiness = readiness.waitForServiceReadiness;
+      const barrier = spyOn(readiness, "waitForServiceReadiness").mockImplementation((input) =>
+        input.plan.id === "global"
+          ? globalReadiness(input)
+          : phase === "readiness"
+            ? gate(errors.readiness)
+            : Effect.succeed([]),
       );
       try {
         const operation = startApp(

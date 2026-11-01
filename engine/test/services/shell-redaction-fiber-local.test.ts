@@ -3,8 +3,8 @@ import { RedactionService, makeRedactionService } from "@lando/redaction/service
 import { createRedactor } from "@lando/sdk/secrets";
 import { ShellRunner } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer } from "effect";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { withShellRedactionTokens } from "../../src/services/shell-runner.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const layer = Layer.mergeAll(
   BunShellRunner.layer(() => {

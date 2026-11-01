@@ -70,7 +70,7 @@ test("service type field issues are prefixed without losing their suggestions", 
   });
   expect(servicePlanError("/app", "db", error).issues).toEqual([
     { path: ["services", "db", "environment", "PGPORT"], message: "Use port", suggestion: "Set port: 5433" },
-    { path: ["services", "db", "port"], message: "Reserved port" },
+    { path: ["services", "db", "port"], message: "Reserved port", suggestion: "Set port: 5433" },
   ]);
 });
 
@@ -85,7 +85,12 @@ test.each([{ issues: undefined }, { issues: [] }])(
         "Correct the `synthetic` service configuration in the Landofile (see the reported field path), then re-run.",
     });
     expect(servicePlanError("/app", "db", error).issues).toEqual([
-      { path: ["services", "db"], message: "Bad service" },
+      {
+        path: ["services", "db"],
+        message: "Bad service",
+        suggestion:
+          "Correct the `synthetic` service configuration in the Landofile (see the reported field path), then re-run.",
+      },
     ]);
   },
 );

@@ -29,6 +29,7 @@ import type {
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
+  ServiceFeatureValidationResult,
   TmpfsMountPlan,
   VolumeMountPlan,
 } from "../schema/index.ts";
@@ -172,6 +173,8 @@ export interface ServiceFeatureContext {
   setEntrypoint(entrypoint: CommandSpec): void;
   /** Set the default command. */
   setCommand(command: CommandSpec): void;
+  /** Set native container init intent. Authored init takes precedence. */
+  setInit(init: boolean): void;
   /** Set the artifact (image ref or build spec). */
   setArtifact(artifact: ArtifactRef | ArtifactBuildSpec): void;
   /** Set the in-container user. */
@@ -192,6 +195,10 @@ export interface ServiceFeatureDefinition {
   readonly schema?: Schema.Codec<unknown>;
   readonly priority: number;
   readonly requires?: ReadonlyArray<keyof ProviderCapabilities>;
+  /** Validate final inherited facts with Original decoded config, no mutators or runtime IO. */
+  readonly validateEffective?: (
+    ctx: ServiceEndpointContext,
+  ) => Effect.Effect<ServiceFeatureValidationResult, ServiceFeatureError>;
   /** Declare listeners without applying features or acquiring runtime resources. */
   readonly declareEndpoints?: (
     ctx: ServiceEndpointContext,

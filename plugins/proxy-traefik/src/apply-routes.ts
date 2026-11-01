@@ -58,7 +58,7 @@ export const makeRouteApplication = (
       yield* ensureDashboardFile(dependencies, domain);
       const hadFile = yield* dependencies.fileSystem.exists(file);
       if (windowsStore !== undefined) yield* invalidateAcknowledgement(windowsStore, app);
-      yield* dependencies.fileSystem.remove(file);
+      yield* Effect.uninterruptible(dependencies.fileSystem.remove(file));
       yield* removeAppCertificates(dependencies, app);
       routes.delete(appKey);
       if (hadFile) pendingReload.add(appKey);

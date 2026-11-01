@@ -1,0 +1,8 @@
+name: mailhog-moved-listener
+services:
+  inbox:
+    type: mailhog
+    port: 8025
+    environment:
+      MH_UI_BIND_ADDR: "0.0.0.0:18026"
+      MH_API_BIND_ADDR: "0.0.0.0:18026"

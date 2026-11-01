@@ -179,3 +179,24 @@ describe("BunFileSystem.layer", () => {
     });
   });
 });
+
+test("atomic route writes settle before interruption releases publication ownership", async () => {
+  const child = Bun.spawn([process.execPath, join(import.meta.dir, "fixtures", "atomic-route-cancel.ts")], {
+    cwd: join(import.meta.dir, "../../.."),
+    timeout: 3000,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  expect(stderr).toBe("");
+  expect(code).toBe(0);
+  expect(JSON.parse(stdout)).toMatchObject({
+    interruption: "pending",
+    prematurePolicy: "Failure",
+    final: "withdrawn-B-route",
+  });
+});

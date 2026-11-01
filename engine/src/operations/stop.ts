@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
@@ -31,24 +31,17 @@ import {
   validateResolvedAppTarget,
   withTeardownResolution,
 } from "./applied-state-target.ts";
-import { LandofileEventsOutcomeSchema } from "./landofile-events.ts";
 import { tearDownOrphans } from "./orphan-teardown.ts";
 import {
   ownedCleanupChanged,
   prepareOwnedResourceCleanup,
   tearDownOwnedResources,
 } from "./owned-resource-teardown.ts";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 import { preflightStopApp, stopAppWithPlanUnlocked } from "./stop-internal.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
-
-export const StopAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  outcome: Schema.optionalKey(Schema.Literals(["stopped", "unchanged"])),
-  servicesStopped: Schema.Array(Schema.String),
-  landofileEvents: Schema.optionalKey(LandofileEventsOutcomeSchema),
-});
 
 type StopAppServices =
   | AppPlanner
@@ -216,12 +209,13 @@ const stopOrphans = (
     groups: resolution.groups,
     options: { volumes: false, purgeCaches: false },
   }).pipe(
-    Effect.map(
-      (removed): StopAppResult =>
+    Effect.map((removed): StopAppResult => {
+      const base: StopAppResult =
         removed.services.length === 0 && !removed.ownedChanged
           ? unchangedResult(removed.app)
-          : { app: removed.app, outcome: "stopped", servicesStopped: removed.services },
-    ),
+          : { app: removed.app, outcome: "stopped", servicesStopped: removed.services };
+      return withShutdownObservations(base, removed.shutdownObservations);
+    }),
   );
 
 const stopDesiredOrUnchanged = (

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runBunShellScript } from "@lando/engine/operations/tooling-bun-script";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { parseScriptFile } from "@lando/landofile/bun-sh-discovery";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { dispatchTool } from "@lando/mcp/dispatch";
@@ -57,7 +58,13 @@ test("tooling events stay value-free when current admission newly marks retained
                 }),
                 Effect.exit,
                 Effect.flatMap(outcomeFromExit),
-                Effect.provide(Layer.merge(PrivateFileAccessService.layer, environmentResolverLayer())),
+                Effect.provide(
+                  Layer.mergeAll(
+                    BunProcessRunner.layer,
+                    PrivateFileAccessService.layer,
+                    environmentResolverLayer(),
+                  ),
+                ),
               ),
             publish: (event) =>
               Effect.sync(() => {

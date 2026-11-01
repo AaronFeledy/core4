@@ -2,13 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize";
 import { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
-import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache/command-index.ts";
-import { abi6Bytes, app, encodedInput, entry, plugin } from "./fixtures/command-index-codec.ts";
+import { decodeAppCommandIndex } from "../../src/cache/command-index.ts";
+import { abi6Bytes, app, encodedInput, entry } from "./fixtures/command-index-codec.ts";
 
-for (const [magic, payload, decode] of [
-  ["LCAC", app, decodeAppCommandIndex],
-  ["LCPC", plugin, decodePluginCommandIndex],
-] as const) {
+for (const [magic, payload, decode] of [["LCAC", app, decodeAppCommandIndex]] as const) {
   describe(`${magic} canonical input policy`, () => {
     test("accepts SDK-encoded normalized boolean, string, and sensitive inputs", () => {
       // Given

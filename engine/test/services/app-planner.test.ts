@@ -30,7 +30,13 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
-import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  ConfigService,
+  LandofileService,
+  PluginRegistry,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
@@ -41,6 +47,8 @@ import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
+import { infoForPlan } from "../../src/operations/info.ts";
+import { selectInfoPlan } from "../../src/operations/service-selection.ts";
 import { resolvePinnedArtifactTag } from "../../src/planner/service-types.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
@@ -58,6 +66,7 @@ const providerLandoCapabilities: ProviderCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -1419,6 +1428,70 @@ describe("AppPlannerLayer.layer", () => {
     });
   });
 
+  test.each([
+    ["lando base", true, "native", false, "available"],
+    ["non-lando base", false, "none", false, undefined],
+    ["unsupported provider", true, "none", false, "unavailable"],
+    ["filter excludes eligible services", true, "none", true, undefined],
+  ] as const)(
+    "projects host-proxy capability from a real plan: %s",
+    async (_name, eligible, reachability, filtered, availability) => {
+      // Given
+      await withTempCwd(async () => {
+        const capabilities: ProviderCapabilities = {
+          ...providerLandoCapabilities,
+          hostReachability: reachability,
+          hostProxy: { containerTargets: [{ os: "linux", arch: "x64" }] },
+        };
+        const appPlan = await plan(
+          Schema.decodeUnknownSync(LandofileShape)({
+            name: "host-proxy-info",
+            runtime: 4,
+            services: {
+              ...(eligible ? { web: { type: "node:lts", base: "lando", home: false } } : {}),
+              worker: { type: "compose", image: "docker.io/library/node:22", home: false },
+            },
+          }),
+          capabilities,
+        );
+        const inspected: string[] = [];
+        const provider = {
+          ...TestRuntimeProvider,
+          capabilities,
+          inspect: (target: Parameters<typeof TestRuntimeProvider.inspect>[0]) => {
+            inspected.push(String(target.service));
+            return TestRuntimeProvider.inspect(target);
+          },
+        };
+        const registry = RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+          list: Effect.succeed([appPlan.provider]),
+          capabilities: Effect.succeed(capabilities),
+          select: () => Effect.succeed(provider),
+        });
+        // When
+        const selected = await Effect.runPromise(
+          selectInfoPlan(appPlan, filtered ? [ServiceName.make("worker")] : undefined),
+        );
+        const result = await Effect.runPromise(
+          infoForPlan(selected, appPlan).pipe(Effect.provideService(RuntimeProviderRegistry, registry)),
+        );
+        // Then
+        if (availability === undefined) expect(result).not.toHaveProperty("hostProxy");
+        else
+          expect(result.hostProxy?.runLando).toEqual({
+            availability,
+            ...(availability === "unavailable"
+              ? { reason: "Provider hostReachability is none; host-proxy runLando is disabled." }
+              : {}),
+          });
+        expect(inspected.sort()).toEqual(Object.keys(selected.services).sort());
+      });
+    },
+  );
+
   test("records host-proxy runLando unavailable when hostReachability is none without mutating service transport", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
@@ -2765,7 +2838,14 @@ describe("AppPlannerLayer.layer", () => {
         ),
       ).toEqual([]);
       expect(web?.endpoints).toEqual([
-        { _tag: "internal", port: 3000, protocol: "http", primary: true, name: "web" },
+        {
+          _tag: "internal",
+          port: 3000,
+          protocol: "http",
+          primary: true,
+          name: "web",
+          scan: { path: "/", okCodes: [] },
+        },
         {
           _tag: "published",
           port: 3000,
@@ -2773,6 +2853,7 @@ describe("AppPlannerLayer.layer", () => {
           primary: true,
           name: "web",
           publication: { hostPort: 3000 },
+          scan: { path: "/", okCodes: [] },
         },
       ]);
       expect(web?.dependsOn).toEqual([
@@ -3238,7 +3319,7 @@ describe("AppPlannerLayer.layer", () => {
       if (failure instanceof LandofileValidationError) {
         expect(failure._tag).toBe("LandofileValidationError");
         expect(failure.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
-          "services.worker",
+          "services.worker.type",
         ]);
         expect(failure.message).toContain("requires an image or build artifact");
       }
@@ -5311,7 +5392,7 @@ const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
 const allKnobServiceConfig = allKnobLandofile.services?.[ServiceName.make("web")] as Record<string, unknown>;
 
 const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter(
-  (key) => key !== "image" && key !== "tmpfs",
+  (key) => key !== "image" && key !== "tmpfs" && key !== "init",
 );
 
 const allKnobCapabilities: ProviderCapabilities = {
@@ -5330,7 +5411,6 @@ const allKnobCapabilities: ProviderCapabilities = {
       "dns_search",
       "dns_opt",
       "extra_hosts",
-      "init",
       "stop_signal",
       "stop_grace_period",
       "security_opt",
@@ -5377,6 +5457,7 @@ describe("Compose runtime knobs", () => {
 
       // Then
       expect(Object.keys(compose ?? {}).sort()).toEqual([...allKnobExtensionKeys].sort());
+      expect(first.services[ServiceName.make("web")]?.init).toBe(true);
       for (const key of allKnobExtensionKeys) {
         expect(JSON.stringify(compose?.[key])).toBe(JSON.stringify(allKnobServiceConfig[key]));
       }
@@ -5464,12 +5545,12 @@ describe("Compose runtime knobs", () => {
     });
   });
 
-  const initInjectingServiceType = makeLegacyServiceTypeFake({
-    id: "init-injecting",
+  const knobInjectingServiceType = makeLegacyServiceTypeFake({
+    id: "knob-injecting",
     toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
       Schema.decodeUnknownSync(ServicePlan)({
         name: ServiceName.make(name),
-        type: "init-injecting",
+        type: "knob-injecting",
         provider,
         primary,
         environment: {},
@@ -5479,21 +5560,21 @@ describe("Compose runtime knobs", () => {
         dependsOn: [],
         hostAliases: [],
         metadata,
-        extensions: { compose: { init: true } },
+        extensions: { compose: { read_only: true } },
       }),
   });
 
   const injectedLandofile: LandofileShape = {
     name: "injected-knobs",
     runtime: 4,
-    services: { [ServiceName.make("web")]: { type: "init-injecting", home: false } },
+    services: { [ServiceName.make("web")]: { type: "knob-injecting", home: false } },
   };
 
-  const initInjectingRegistry = {
-    ...registryWithServiceType(initInjectingServiceType),
+  const knobInjectingRegistry = {
+    ...registryWithServiceType(knobInjectingServiceType),
     loadServiceFeature: (id: string) =>
-      id === initInjectingServiceType.testFeature.id
-        ? Effect.succeed(initInjectingServiceType.testFeature)
+      id === knobInjectingServiceType.testFeature.id
+        ? Effect.succeed(knobInjectingServiceType.testFeature)
         : customPluginRegistry.loadServiceFeature(id),
   };
 
@@ -5503,7 +5584,7 @@ describe("Compose runtime knobs", () => {
         planTestLandofile(appPlanner, injectedLandofile, providerCapabilities),
       ).pipe(
         Effect.provide(AppPlannerLayer.layer),
-        Effect.provide(Layer.succeed(PluginRegistry, initInjectingRegistry)),
+        Effect.provide(Layer.succeed(PluginRegistry, knobInjectingRegistry)),
       ),
     );
 
@@ -5516,7 +5597,7 @@ describe("Compose runtime knobs", () => {
       expect(expectSomeFailure(exit)).toMatchObject({
         _tag: "CapabilityError",
         service: "web",
-        key: "init",
+        key: "read_only",
         capability: "composeSpec",
       });
     });

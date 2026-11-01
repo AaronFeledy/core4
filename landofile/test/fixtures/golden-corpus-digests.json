@@ -221,7 +221,7 @@
     },
     {
       "fixture": "docs/guides/defaults-and-aliases/fixtures/command-aliases",
-      "digest": "3c1e445ebedff08876515593e08d3c33d4dfa0fa514104a4f3092d5cfdb9d2fc"
+      "digest": "7e4b7455d8085da03471a44baf5df66379d7010b27abc1880295ac8f51cd15d0"
     },
     {
       "fixture": "docs/guides/defaults-and-aliases/fixtures/tooling-defaults",
@@ -480,12 +480,28 @@
       "digest": "1a813e0ee00435605c4d9dce72db846f0e6ce9f86b7674510df1547ec4a4baf6"
     },
     {
+      "fixture": "docs/guides/mailpit/fixtures/loopback-bind",
+      "digest": "79de5266c9115602e949c4f4ff8d9193c87d0e92fd1e95f89084dea49ae0b7b6"
+    },
+    {
       "fixture": "docs/guides/mailpit/fixtures/mailhog-legacy",
       "digest": "680a96b342884bf6afdde51e94fbd9f46a4cecd663f77511a690a57cf4cd0a55"
     },
     {
+      "fixture": "docs/guides/mailpit/fixtures/mailhog-moved-http-listener",
+      "digest": "44e64648181b0e046a6003d95ab3db034ee2f7537e36ca42172e45d910d7669c"
+    },
+    {
+      "fixture": "docs/guides/mailpit/fixtures/mailhog-smtp-ui-collision",
+      "digest": "b3e8699464b8ccbe041864a95d0824b3751ff564f0961fa878ab0536bc2e6dd4"
+    },
+    {
       "fixture": "docs/guides/mailpit/fixtures/mailpit-demo",
       "digest": "4f0b83eed9321a3857c974bd2f0193308f00681c747c415257070be807e7ab36"
+    },
+    {
+      "fixture": "docs/guides/mailpit/fixtures/moved-http-listener",
+      "digest": "76e12c758bc59d6b5e594af9e527d0a95887844f37cfd84ee51e3ce7f7253698"
     },
     {
       "fixture": "docs/guides/mailpit/fixtures/replacement-sender",
@@ -494,6 +510,10 @@
     {
       "fixture": "docs/guides/mailpit/fixtures/selected-php",
       "digest": "9e0d728afa636d94ce8083aed0027c684db2a9fcf0acefc58f1c41241e2bde86"
+    },
+    {
+      "fixture": "docs/guides/mailpit/fixtures/smtp-ui-collision",
+      "digest": "2f3a444137913d9c7f60b6757b930303b1b80da5d117cc689560ac9703c413ed"
     },
     {
       "fixture": "docs/guides/mariadb/fixtures/mariadb-demo",
@@ -530,8 +550,20 @@
       }
     },
     {
+      "fixture": "docs/guides/minio/fixtures/custom-listeners",
+      "digest": "0c2b5f0dc39ba7773e6ecdae9c08f3e0ee94e294d809d7609d048848710e1f39"
+    },
+    {
+      "fixture": "docs/guides/minio/fixtures/listener-collision",
+      "digest": "a8674f3440a87a21fa52bcb95086117b41aa580143de517e1a49547a0724d2f3"
+    },
+    {
       "fixture": "docs/guides/minio/fixtures/minio-demo",
-      "digest": "79f208993b344ac83d9e11c69b60fe84c5dd8ec0d812138f626602e27f79ea35"
+      "digest": "0446342a288090ae211c4171c9aa4a0fd0eb63974775e1d3534b83d653e92010"
+    },
+    {
+      "fixture": "docs/guides/minio/fixtures/missing-artifact",
+      "digest": "629be45b7d21cb81055005922fea2522818256d06c4c187b6fa93715207f29f5"
     },
     {
       "fixture": "docs/guides/mongodb/fixtures/mongodb-demo",
@@ -643,6 +675,17 @@
     {
       "fixture": "docs/guides/node/fixtures/node-inference",
       "digest": "8058b8279ce6c19da800eeff5c85c7f9ca180a58c23ab2e11ed8b175aaf9d531"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-init-invalid",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-init-off",
+      "digest": "795cfc700131d5e05f3132b1b440405a6bd8f5bfbc7e6ad3158743a1588fe224"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-port",
@@ -1276,6 +1319,15 @@
         "digest": "8e847d5d93a75949225f673715954e533cfeee2e8b25925e74e97442eca36134"
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+    },
+    "docs/guides/lando3-transition-options/fixtures/scoped-services": {
+      "before": {
+        "digest": "3df20fd7811e1e9ea9b8a5c766b11eb66788e7ff2453c7ab6b45609052643a74"
+      },
+      "after": {
+        "digest": "bc62146b254691eb416dadb3b16157a8253d6f3640d4bcb9deaf37c43f1199ad"
+      },
+      "reason": "The service-selection fixture now explicitly disables routing, so the encoded document includes that authored setting. Service identities, primary selection and dependency edges are unchanged."
     },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {

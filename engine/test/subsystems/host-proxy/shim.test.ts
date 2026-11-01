@@ -23,7 +23,6 @@ describe("filterHostProxyEnv", () => {
       HOME: "/root",
     });
     expect(filtered).toEqual({
-      LANDO_APP: "demo",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",
@@ -54,7 +53,7 @@ describe("buildRunLandoRequest", () => {
     expect(request.argv).toEqual(["open", "--print"]);
     expect(String(request.cwd)).toBe("/app");
     expect(request.tty).toBe(false);
-    expect(request.env).toEqual({ LANDO_APP: "demo", OPENCODE: "1" });
+    expect(request.env).toEqual({ OPENCODE: "1" });
   });
 
   test("omits env when the filtered set is empty", () => {

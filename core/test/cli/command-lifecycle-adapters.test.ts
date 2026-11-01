@@ -217,6 +217,7 @@ describe("CLI lifecycle adapters", () => {
           return yield* Queue.unbounded<LandoEvent>();
         }),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       });

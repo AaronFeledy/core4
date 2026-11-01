@@ -7,8 +7,8 @@ import { Cause, type Context, Effect, Exit, Layer, Queue, Stream } from "effect"
 import { ShellExecError } from "@lando/sdk/errors";
 import { EventService, ShellRunner } from "@lando/sdk/services";
 import type { LandoEvent, ShellCommandOptions, ShellReplInput } from "@lando/sdk/services";
-import * as BunShellRunner from "../../src/services/shell-runner";
 import { withShellRedactionTokens } from "../../src/services/shell-runner";
+import * as BunShellRunner from "../shell-runner.ts";
 
 import { testRedactionLayer } from "../redaction.ts";
 
@@ -27,6 +27,7 @@ const captureEventsLayer = (events: LandoEvent[]) =>
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<never>(),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     } satisfies Context.Service.Shape<typeof EventService>),

@@ -7,7 +7,11 @@ import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 import { BuildBlock } from "./build-block.ts";
 import { HealthcheckInput } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
-import { ComposeServiceKnobFields, ComposeTmpfsServiceField } from "./compose-service-knobs.ts";
+import {
+  ComposeInitServiceField,
+  ComposeServiceKnobFields,
+  ComposeTmpfsServiceField,
+} from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { ServiceCreds } from "./database-connection.ts";
 import { DeprecationNotice } from "./deprecation.ts";
@@ -647,6 +651,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     port: Schema.optionalKey(PortNumber).annotate({
       description: "Primary container TCP port number (integer 1-65535) exposed by the service.",
     }),
+    consolePort: Schema.optionalKey(PortNumber).annotate({
+      description:
+        "MinIO console TCP port number (integer 1-65535); defaults to 9001, independently of the API port.",
+    }),
     framework: Schema.optionalKey(Schema.String),
     packageRoot: Schema.optionalKey(Schema.String).annotate({
       description:
@@ -690,6 +698,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     labels: Schema.optionalKey(ComposeLabelsInput),
 
     ...ComposeServiceKnobFields,
+    init: ComposeInitServiceField,
 
     ports: Schema.optionalKey(ComposePortsField),
     expose: Schema.optionalKey(ComposeExposeField),
@@ -913,7 +922,7 @@ export type ToolingStepShape = typeof ToolingStepShape.Type;
  * `passThrough:`, `sources:`, `generates:`, `method:`, `status:`,
  * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
  * `silent:`, `output:`, `failFast:`, `aliases:`,
- * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
+ * `topLevelAlias:`, `namespace:`, `internal:`,
  * `examples:`, `usage:`.
  */
 export const ToolingTaskShape = Schema.Struct({

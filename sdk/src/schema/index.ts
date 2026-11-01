@@ -83,6 +83,7 @@ export {
   ObservedPublication,
   PublicationObservation,
   EndpointPublication,
+  EndpointScan,
   InternalEndpointInput,
   PublishedEndpointInput,
 } from "./endpoint.ts";
@@ -150,6 +151,8 @@ export * from "./recipe-source.ts";
 export { RecipeSourceCompileError } from "./recipe-source-error.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
+export * from "./app-results.ts";
+export * from "./service-shutdown.ts";
 export * from "./renderer-capabilities.ts";
 export * from "./renderer-panel.ts";
 export * from "./keymap.ts";
@@ -159,6 +162,7 @@ export * from "./service-info.ts";
 export * from "./service-mount.ts";
 export * from "./service-connection.ts";
 export * from "./service-dependency.ts";
+export * from "./service-feature-validation.ts";
 export * from "./services/index.ts";
 export * from "./template.ts";
 export * from "./tool-manifest.ts";

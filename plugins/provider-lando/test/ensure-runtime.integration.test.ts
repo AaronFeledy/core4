@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
@@ -24,6 +24,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { LEGACY_NATIVE_INIT_BRIDGE_VERSION, catatonitFixture } from "./fixtures/catatonit.ts";
 import { decodeNetworkCreate } from "./network-fixture.ts";
 import { makeRuntimeProvider } from "./provider-fixture.ts";
 import { runScoped, runScopedExit } from "./scope-helpers.ts";
@@ -49,6 +50,7 @@ const service: ServicePlan = {
   type: "node",
   provider: providerId,
   primary: true,
+  init: true,
   artifact: { kind: "ref", ref: "node:22-alpine" },
   command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
@@ -213,17 +215,29 @@ const makeFakeServiceRunner = (events: string[]): PodmanServiceRunner => {
 
 const withRuntimeProvider = async <A>(
   events: string[],
-  use: (provider: RuntimeProviderShape) => Promise<A>,
+  use: (provider: RuntimeProviderShape, tempDir: string) => Promise<A>,
   pingSuccessesBeforeEnsureFailure = 1,
   launchesBeforePingSuccess = 1,
   readinessPolicy: RetryPolicy = fastReadinessPolicy,
 ): Promise<A> => {
   const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
   try {
+    const init = catatonitFixture();
+    await mkdir(join(tempDir, "bin"), { mode: 0o700 });
+    await writeFile(
+      join(tempDir, "bin", ".runtime-installed-version"),
+      `${LEGACY_NATIVE_INIT_BRIDGE_VERSION}\n`,
+    );
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
         sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
+        arch: "x64",
+        _catatonitPackage: init.pkg,
+        artifactDownload: (request) => {
+          events.push("artifact.download");
+          return init.download(request);
+        },
         podmanApi: makeFakePodmanApi(events, pingSuccessesBeforeEnsureFailure, launchesBeforePingSuccess),
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         podmanService: makeFakeServiceRunner(events),
@@ -246,34 +260,43 @@ const withRuntimeProvider = async <A>(
         },
       }),
     );
-    return await use(provider);
+    return await use(provider, tempDir);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
 };
 
 describe("provider-lando ensureRuntime factory wiring", () => {
-  test("logs ensures runtime readiness before opening the log stream", async () => {
-    // Given: a managed runtime that must be launched.
+  test("logs uses the existing runtime without downloading, configuring, or launching it", async () => {
+    // Given: an answering runtime transport with no prepared native init helper.
     const events: string[] = [];
     // When: planful logs are requested through the provider.
-    await withRuntimeProvider(events, async (provider) => {
-      await Effect.runPromise(
+    await withRuntimeProvider(events, async (provider, tempDir) => {
+      const logs = await Effect.runPromise(
         Stream.runCollect(provider.logs({ app: appId, service: serviceName, plan }, { follow: false })),
       );
+      expect(Array.from(logs).map((entry) => entry.line)).toEqual(["ok"]);
+      expect(await readdir(tempDir)).toEqual(["bin"]);
+      expect(await readdir(join(tempDir, "bin"))).toEqual([".runtime-installed-version"]);
     });
-    // Then: launch precedes the log transport.
-    expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
-    expect(events.indexOf("service.launch")).toBeLessThan(
-      events.findIndex((event) => event.startsWith("api.stream")),
-    );
+    // Then: only the existing transport is used; no runtime preparation occurs.
+    expect(events.filter((event) => event === "service.launch")).toHaveLength(0);
+    expect(events.filter((event) => event === "artifact.download")).toHaveLength(0);
+    expect(events.filter((event) => event.startsWith("api.stream GET /containers/"))).toHaveLength(1);
   });
   test("apply triggers ensureRuntime launch before bringUp", async () => {
     const events: string[] = [];
-    await withRuntimeProvider(events, async (provider) => {
+    await withRuntimeProvider(events, async (provider, tempDir) => {
       await runScoped(provider.apply(plan, { reconcile: true }));
+      expect(new Uint8Array(await readFile(join(tempDir, "bin", "catatonit")))).toEqual(
+        new Uint8Array(catatonitFixture().elf),
+      );
+      expect(await readFile(join(tempDir, "config", "containers.conf"), "utf8")).toContain(
+        `init_path = "${join(tempDir, "bin", "catatonit")}"`,
+      );
     });
 
+    expect(events.filter((event) => event === "artifact.download")).toHaveLength(2);
     expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
     expect(events.indexOf("service.launch")).toBeLessThan(
       events.findIndex((event) => event.startsWith("api.request")),
@@ -307,32 +330,41 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     expect(events.filter((event) => event === "service.launch")).toHaveLength(2);
   });
 
-  test("exec triggers ensureRuntime before exec", async () => {
+  test("exec uses the existing runtime without downloading, configuring, or launching it", async () => {
     const events: string[] = [];
-    await withRuntimeProvider(events, async (provider) => {
-      await Effect.runPromise(
+    await withRuntimeProvider(events, async (provider, tempDir) => {
+      const result = await Effect.runPromise(
         provider.exec({ app: appId, service: serviceName, plan }, { command: ["echo", "hi"] }),
       );
+      expect(result).toEqual({ exitCode: 0, stdout: "ok\n", stderr: "" });
+      expect(await readdir(tempDir)).toEqual(["bin"]);
+      expect(await readdir(join(tempDir, "bin"))).toEqual([".runtime-installed-version"]);
     });
 
-    expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
-    expect(events.indexOf("service.launch")).toBeLessThan(
-      events.findIndex((event) => event.includes("/exec")),
-    );
+    expect(events.filter((event) => event === "service.launch")).toHaveLength(0);
+    expect(events.filter((event) => event === "artifact.download")).toHaveLength(0);
+    expect(events).toContain("api.request POST /containers/lando-ensureapp-node/exec");
   });
 
-  test("setup runs ensureRuntime as the final readiness step and shares the cached effect", async () => {
+  test("setup prepares verified native init and apply reuses the ready runtime", async () => {
     const events: string[] = [];
     await withRuntimeProvider(
       events,
-      async (provider) => {
+      async (provider, tempDir) => {
         const setupPlan = await Effect.runPromise(provider.planSetup({ force: false }));
         await runScoped(provider.setup(setupPlan, { force: false }));
+        expect(new Uint8Array(await readFile(join(tempDir, "bin", "catatonit")))).toEqual(
+          new Uint8Array(catatonitFixture().elf),
+        );
+        expect(await readFile(join(tempDir, "config", "containers.conf"), "utf8")).toContain(
+          `init_path = "${join(tempDir, "bin", "catatonit")}"`,
+        );
         await runScoped(provider.apply(plan, { reconcile: true }));
       },
       2,
     );
 
+    expect(events.filter((event) => event === "artifact.download")).toHaveLength(2);
     expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
     const launchIndex = events.indexOf("service.launch");
     expect(
@@ -341,7 +373,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     expect(events.at(launchIndex + 1)).toBe("api.ping");
   });
 
-  test("providerSocketPath alone constructs the runtime API client and triggers ensureRuntime", async () => {
+  test("providerSocketPath alone does not prepare the runtime for exec", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const events: string[] = [];
@@ -349,6 +381,17 @@ describe("provider-lando ensureRuntime factory wiring", () => {
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
+          artifactDownload: () => {
+            events.push("artifact.download");
+            return Effect.fail(
+              new ProviderUnavailableError({
+                providerId: "lando",
+                operation: "setup",
+                message: "unexpected download",
+                remediation: "fix fixture",
+              }),
+            );
+          },
           podmanApi: makeFakePodmanApi(events),
           podmanService: makeFakeServiceRunner(events),
           runtimeBinDir: join(tempDir, "bin"),
@@ -371,12 +414,14 @@ describe("provider-lando ensureRuntime factory wiring", () => {
         }),
       );
 
-      await runScopedExit(
+      const result = await runScoped(
         provider.exec({ app: appId, service: serviceName, plan }, { command: ["echo", "hi"] }),
       );
 
-      expect(events.filter((event) => event === "service.launch")).toHaveLength(1);
-      expect(await readFile(join(tempDir, "run", "podman.pid"), "utf8")).toBe("42");
+      expect(result.exitCode).toBe(0);
+      expect(events.filter((event) => event === "service.launch")).toHaveLength(0);
+      expect(events.filter((event) => event === "artifact.download")).toHaveLength(0);
+      expect(await readdir(tempDir)).toEqual([]);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }

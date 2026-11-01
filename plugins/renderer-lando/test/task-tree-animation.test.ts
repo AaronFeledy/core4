@@ -103,7 +103,7 @@ describe("TaskTreeAnimationController — task.detail is activity", () => {
 
   beforeEach(() => {
     jest.useFakeTimers();
-    viewModel = new TaskTreeViewModel();
+    viewModel = new TaskTreeViewModel({ color: true });
     calls = { render: 0, requestLive: 0, dropLive: 0 };
     animation = new TaskTreeAnimationController(viewModel, {
       render: () => {

@@ -59,6 +59,7 @@ import {
   loadUserLandofileFile,
   makeEngineUserAppResolution,
 } from "../landofile/app-resolution.ts";
+import { captureGlobalConsumerAdmission } from "../operations/global-consumer-admission.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { makeScratchReaper } from "./destroy.ts";
@@ -502,6 +503,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   const environmentResolver = yield* EnvironmentValueResolver;
   const planner = yield* AppPlanner;
   const providerRegistry = yield* RuntimeProviderRegistry;
+  const consumerAdmission = yield* captureGlobalConsumerAdmission;
   const scratchRegistry = yield* ScratchRegistry;
   const scanner = yield* ScratchResourceScanner;
   const dataMover = yield* DataMover;
@@ -731,6 +733,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       {
         provider,
         environmentResolver,
+        ...(consumerAdmission === undefined ? {} : { admissionContext: consumerAdmission }),
         ...(Option.isSome(proxy) ? { router: proxy.value } : {}),
       },
     );

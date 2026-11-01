@@ -77,5 +77,5 @@ export const appsScratchStartSpec: LandoCommandSpec<ScratchStartResult> = {
     }),
   },
   run: (input) => scratchStart(scratchStartOptionsFromInput(input)),
-  render: (result) => renderScratchStartResult(result as ScratchStartResult),
+  render: (result) => renderScratchStartResult(result),
 };

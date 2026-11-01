@@ -5,7 +5,6 @@ import { dirname, join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { pluginCommandCachePath } from "@lando/engine/cache/paths";
 import { ConfigService } from "@lando/sdk/services";
 import {
   type PluginLinkOptions,
@@ -77,11 +76,12 @@ afterEach(async () => {
 });
 
 describe("meta:plugin:link command", () => {
-  test("defaults to cwd, symlinks the plugin, records linked registry state, and invalidates plugin command cache", async () => {
+  test("defaults to cwd, symlinks the plugin, records linked registry state, and invalidates app tooling caches", async () => {
     const pluginRoot = await makePluginRoot("@acme/lando-plugin-linked", "linked");
     await mkdir(cacheRoot, { recursive: true });
-    const cachePath = pluginCommandCachePath(cacheRoot);
-    await writeFile(cachePath, "stale cache");
+    const toolingCacheDir = join(cacheRoot, "apps", "tooling-linkfixture");
+    await mkdir(toolingCacheDir, { recursive: true });
+    await writeFile(join(toolingCacheDir, "commands.bin"), "stale tooling cache");
 
     const result = await runPluginLink({ cwd: pluginRoot, cacheRoot });
 
@@ -122,7 +122,7 @@ describe("meta:plugin:link command", () => {
       linkedPath: resolve(pluginRoot),
       registryEntry,
     });
-    expect(await exists(cachePath)).toBe(false);
+    expect(await exists(toolingCacheDir)).toBe(false);
   });
 
   test("resolves an explicit relative path before tracking the link", async () => {
@@ -166,7 +166,6 @@ describe("meta:plugin:link command", () => {
     expect(exit._tag).toBe("Failure");
     expect(await readFile(sourceSentinel, "utf8")).toBe("unchanged");
     expect((await lstat(existing)).isDirectory()).toBe(true);
-    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
     if (exit._tag === "Failure") {
       const cause = JSON.stringify(exit.cause);
       expect(cause).toContain("PluginLinkConflictError");
@@ -188,7 +187,6 @@ describe("meta:plugin:link command", () => {
     }
     expect(await exists(pluginsRoot)).toBe(false);
     expect(await exists(join(userDataRoot, "escape"))).toBe(false);
-    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
   });
 
   test("rejects a manifest name that targets a managed plugins-root file", async () => {
@@ -206,7 +204,6 @@ describe("meta:plugin:link command", () => {
       expect(cause).toContain("PluginManifestError");
       expect(cause).toContain("reserved plugins root entry registry.json");
     }
-    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
   });
 
   test("rejects a manifest name that targets linked-state metadata", async () => {
@@ -221,7 +218,6 @@ describe("meta:plugin:link command", () => {
       expect(cause).toContain("reserved plugins root entry .lando-linked.json");
     }
     expect(await exists(join(userDataRoot, "plugins", ".lando-linked.json"))).toBe(false);
-    expect(await exists(pluginCommandCachePath(cacheRoot))).toBe(false);
   });
 
   test("refuses stale linked state when registry records a non-linked plugin", async () => {

@@ -17,9 +17,11 @@ import {
   schemaAt,
   withIntentionalChangesSinceCapture,
 } from "./x-extension-closed-record.ts";
+import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalContainerUser } from "./x-extension-container-user-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
+import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
@@ -147,29 +149,34 @@ test.each([
   const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
   const repaired = repairClosedExtension(withIntentionalChangesSinceCapture(captured.landofile));
   if (!isJsonObject(repaired)) throw new TypeError("Missing repaired Landofile");
-  const expected = evolveHistoricalToolingSensitivity(
-    evolveHistoricalAppMountAcceleration(
-      evolveHistoricalToolingShorthand(
-        evolveHistoricalEnvironment(
-          evolveHistoricalEndpointMetadata(
-            evolveHistoricalServicePort(
-              evolveHistoricalTimestamps(
-                evolveHistoricalContainerUser(
-                  evolveHistoricalReadiness(
-                    evolveHistoricalShorthand(
-                      evolveHistoricalNetworks(normalizeJsonSchema(repaired), "bare"),
+  const expected = evolveHistoricalConsolePort(
+    evolveHistoricalToolingSensitivity(
+      evolveHistoricalAppMountAcceleration(
+        evolveHistoricalToolingShorthand(
+          evolveHistoricalEnvironment(
+            evolveHistoricalEndpointMetadata(
+              evolveHistoricalServicePort(
+                evolveHistoricalTimestamps(
+                  evolveHistoricalContainerUser(
+                    evolveHistoricalReadiness(
+                      evolveHistoricalShorthand(
+                        evolveHistoricalNetworks(
+                          evolveHistoricalNativeInit(normalizeJsonSchema(repaired)),
+                          "bare",
+                        ),
+                      ),
                     ),
                   ),
+                  "bare",
                 ),
-                "bare",
               ),
             ),
           ),
+          "bare",
         ),
-        "bare",
       ),
+      "bare",
     ),
-    "bare",
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
   expect(jsonEquals(expected, current)).toBe(true);

@@ -31,7 +31,7 @@ Later commands stay on Docker without repeating the flag. See [What persists](./
 
 ## What doctor checks
 
-Doctor probes the managed runtime. If the runtime stopped, the next command that needs it starts it again.
+Doctor probes the managed runtime. If the runtime stopped, the next command that creates or starts containers, such as `lando start`, starts it again. Commands that only read or remove what already exists, such as `lando logs`, `lando stop`, and `lando destroy`, use the runtime as it is: they never start, repair, or download anything, and they report an unreachable runtime instead of guessing at its state.
 
 `lando poweroff` stops apps and then the managed runtime. Uninstall tears the runtime down before it removes Lando's private runtime directory.
 

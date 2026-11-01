@@ -91,7 +91,7 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLaye
     }),
   },
   run: (input) => resilientDoctorReport(inputDoctorOptions(input)),
-  render: (result, input, ctx) => renderDoctorReportForInput(result as DoctorReport, input, ctx),
+  render: (result, input, ctx) => renderDoctorReportForInput(result, input, ctx),
   // A `self` check means doctor could not complete a section, which must not
   // look like a clean run to a script or agent reading the exit code.
   completion: (result) =>

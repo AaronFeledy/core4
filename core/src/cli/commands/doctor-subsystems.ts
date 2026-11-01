@@ -2,7 +2,7 @@
  * Subsystem diagnostics for `lando doctor`.
  *
  * Aggregates the status of each `lando doctor` subsystem (proxy, certificate
- * authority, SSH agent, healthcheck engine, endpoint scanner, host DNS proxy)
+ * authority, SSH agent, healthcheck engine, endpoint scanner, host DNS)
  * into a diagnostic record with `status`, `severity`, `recovery`, `context`,
  * and `solution` fields.
  *
@@ -19,7 +19,7 @@
  */
 import { Effect, Option } from "effect";
 
-import { HostProxyService, RouterService, SshService } from "@lando/sdk/services";
+import { RouterService, SshService } from "@lando/sdk/services";
 
 import {
   type CertsDoctorStatus,
@@ -28,7 +28,7 @@ import {
   certsSubsystemId,
 } from "./doctor-certs-status";
 import { HostDnsResolver } from "./doctor-host-dns";
-import { buildHostProxyCheck } from "./doctor-host-proxy-check";
+import { buildHostDnsCheck } from "./doctor-host-dns-check";
 import { doctorSolutionPayloads, orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson";
 import type { NetworkTrustDoctorStatus } from "./doctor-network-trust";
 import { buildProxyCheck } from "./doctor-proxy-check";
@@ -70,7 +70,6 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
   const fix = options.fix === true;
   const proxy = Option.getOrUndefined(yield* Effect.serviceOption(RouterService));
   const ssh = Option.getOrUndefined(yield* Effect.serviceOption(SshService));
-  const hostProxy = Option.getOrUndefined(yield* Effect.serviceOption(HostProxyService));
   const resolver = yield* Effect.serviceOption(HostDnsResolver);
 
   const proxyChecks = proxy === undefined ? [] : [yield* buildProxyCheck(proxy, fix)];
@@ -90,20 +89,16 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
         );
   const sshChecks =
     ssh === undefined ? [] : [yield* sshAgentPostureCheck({ ...options.sshAgent, sshService: ssh, fix })];
-  const hostProxyChecks = Option.isNone(resolver)
+  const hostDnsChecks = Option.isNone(resolver)
     ? []
-    : [
-        yield* buildHostProxyCheck(hostProxy, fix).pipe(
-          Effect.provideService(HostDnsResolver, resolver.value),
-        ),
-      ];
+    : [yield* buildHostDnsCheck(fix).pipe(Effect.provideService(HostDnsResolver, resolver.value))];
 
   return {
     checks: [
       ...proxyChecks,
       ...(certsCheck === undefined ? [] : [certsCheck]),
       ...sshChecks,
-      ...hostProxyChecks,
+      ...hostDnsChecks,
       ...(options.networkTrust === undefined ? [] : [options.networkTrust]),
     ],
     skipped: [
@@ -131,7 +126,7 @@ export const subsystemDoctor = Effect.fn("DoctorSubsystems.check")(function* (
       ...(Option.isNone(resolver)
         ? [
             {
-              section: "host-proxy",
+              section: "host-dns",
               status: "skipped" as const,
               reason: "Host DNS resolver was not provided; no host DNS inspection was performed.",
             },
@@ -171,13 +166,11 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "certsCandidateIds",
   "certsPlugin",
   "certsDetail",
-  "active",
   "mode",
   "reason",
   "socketPath",
   "danglingEnvSocket",
   "note",
-  "mechanism",
   "baseDomain",
   "loopback",
   "dnsHostname",

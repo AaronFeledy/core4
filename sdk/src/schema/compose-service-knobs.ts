@@ -11,6 +11,7 @@ import {
   ComposeDnsOptField,
   ComposeDnsSearchField,
   ComposeGroupAddField,
+  ComposeInitField,
   ComposePullPolicyField,
   ComposeRestartField,
   ComposeSecurityOptField,
@@ -33,6 +34,13 @@ export const ComposeTmpfsServiceField = Schema.optionalKey(
 ).annotate({
   description: "Temporary filesystem mounts normalized into tmpfs entries in the service mount list.",
 });
+
+export const ComposeInitServiceField = Schema.optionalKey(
+  describeEncodedField(
+    ComposeInitField,
+    "Native container init for direct-child signal forwarding and orphan reaping; boolean spellings normalize to booleans.",
+  ),
+).annotate({ description: "Whether to use native container init; false explicitly opts out." });
 
 export const ComposeServiceKnobFields = {
   restart: Schema.optionalKey(ComposeRestartField).annotate({
@@ -121,9 +129,6 @@ export const ComposeServiceKnobFields = {
     ),
   ).annotate({
     description: "Additional hostname mappings as a map or HOST:IP list, canonicalized to a map.",
-  }),
-  init: Schema.optionalKey(ComposeBooleanOrStringField).annotate({
-    description: "Whether an init process forwards signals and reaps child processes in the container.",
   }),
   stop_signal: Schema.optionalKey(Schema.String).annotate({
     description: "Signal used to request graceful container shutdown, such as SIGTERM.",

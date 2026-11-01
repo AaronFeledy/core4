@@ -4,18 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Result } from "effect";
 
-import type { StateStore } from "@lando/sdk/services";
 import {
   globalConfigEdit,
   globalConfigSet,
   globalConfigUnset,
   globalConfigValidate,
 } from "../../../src/cli/commands/meta/global-config.ts";
-import { testStateStoreLayer } from "../../_support/landofile-layer.ts";
+import { type GlobalConfigTestServices, globalConfigLayer } from "../../_support/global-config-layer.ts";
 import { withEnvVar } from "../../_support/temp-cwd.ts";
 
-const run = <A, E>(effect: Effect.Effect<A, E, StateStore>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(testStateStoreLayer)));
+const run = <A, E>(effect: Effect.Effect<A, E, GlobalConfigTestServices>) =>
+  Effect.runPromise(effect.pipe(Effect.provide(globalConfigLayer(root))));
 
 let root = "";
 const file = (): string => join(root, ".lando.yml");

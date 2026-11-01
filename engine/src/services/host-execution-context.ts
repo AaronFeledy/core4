@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { posix, win32 } from "node:path";
 import { FileIoError } from "@lando/sdk/errors";
 
@@ -10,6 +11,12 @@ export interface CapturedHostExecutionContext {
   readonly explicitEnv: Readonly<Record<string, string>>;
   readonly pwdKey: string;
   readonly explicitPwd: string | undefined;
+  readonly runtime: {
+    readonly platform: NodeJS.Platform;
+    readonly execPath: string;
+    readonly standalone: boolean;
+    readonly tempRoot: string;
+  };
 }
 
 export interface HostExecutionContext {
@@ -18,10 +25,14 @@ export interface HostExecutionContext {
 }
 
 export const captureHostExecutionContext = (
-  input: { readonly cwd?: string; readonly env?: Readonly<Record<string, string>> },
+  input: {
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string>>;
+    readonly replaceEnv?: boolean;
+  },
   host = { cwd: process.cwd(), env: process.env, platform: process.platform },
 ): CapturedHostExecutionContext => {
-  const parent = { ...host.env };
+  const parent = input.replaceEnv === true ? {} : { ...host.env };
   const overrides = { ...input.env };
   const keyOf = (key: string) => (host.platform === "win32" ? key.toUpperCase() : key);
   const env: Record<string, string> = {};
@@ -44,6 +55,12 @@ export const captureHostExecutionContext = (
     explicitEnv: overrides,
     pwdKey: Object.keys(env).find((key) => keyOf(key) === "PWD") ?? "PWD",
     explicitPwd: callerPwd === undefined ? undefined : overrides[callerPwd],
+    runtime: {
+      platform: host.platform,
+      execPath: process.execPath,
+      standalone: Bun.isStandaloneExecutable,
+      tempRoot: tmpdir(),
+    },
   };
 };
 

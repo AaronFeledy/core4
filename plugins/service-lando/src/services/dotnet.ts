@@ -9,7 +9,7 @@ import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = 5000;
-const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
+const DEFAULT_COMMAND = ["tail", "-f", "/dev/null"] as const;
 const VERSIONS = ["8.0", "9.0"] as const;
 const ARTIFACTS = {
   "8.0": "mcr.microsoft.com/dotnet/sdk:8.0",

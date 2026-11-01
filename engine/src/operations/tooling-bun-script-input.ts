@@ -37,7 +37,7 @@ export const prepareBunShellScript = Effect.fnUntraced(function* (
 export type PreparedBunShellScript = Effect.Success<ReturnType<typeof prepareBunShellScript>>;
 
 export const withBunShellScriptInputs = Effect.fnUntraced(function* <
-  A extends { readonly stdout: string; readonly stderr: string },
+  A extends { readonly stdout?: string; readonly stderr?: string },
   E,
   R,
 >(prepared: PreparedBunShellScript, execute: Effect.Effect<A, E, R>): Effect.fn.Return<A, E, R> {
@@ -63,8 +63,8 @@ export const withBunShellScriptInputs = Effect.fnUntraced(function* <
   });
   return {
     ...result,
-    stdout: redactor.redactString(result.stdout),
-    stderr: redactor.redactString(result.stderr),
+    ...(result.stdout === undefined ? {} : { stdout: redactor.redactString(result.stdout) }),
+    ...(result.stderr === undefined ? {} : { stderr: redactor.redactString(result.stderr) }),
   };
 });
 

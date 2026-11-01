@@ -298,6 +298,7 @@ describe("nginx PHP FPM app-feature wire", () => {
     setCerts: () => undefined,
     setEntrypoint: () => undefined,
     setArtifact: () => undefined,
+    setInit: () => undefined,
     setUser: () => undefined,
     setWorkingDirectory: () => undefined,
   } satisfies Omit<AppFeatureServiceMutators, "service" | "setCommand">;
