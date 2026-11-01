@@ -75,7 +75,8 @@ const readText = async (path: string): Promise<string> => {
   if (!(await file.exists())) {
     throw notFound(path);
   }
-  return await file.text();
+  // exists() caches size zero for virtual files; read with an uninspected BunFile.
+  return await Bun.file(path).text();
 };
 
 const write = async (path: string, content: string | Uint8Array): Promise<void> => {
