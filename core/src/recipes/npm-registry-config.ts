@@ -88,7 +88,9 @@ export const parseNpmRegistryConfig = (
     const request = new URL(requestUrl);
     const base = new URL(registry);
     if (request.host !== base.host) return undefined;
-    return walk(request) ?? (request.href !== base.href ? walk(base) : undefined);
+    const isRegistryBase = request.pathname === base.pathname;
+    if (!base.pathname.endsWith("/")) base.pathname += "/";
+    return isRegistryBase ? walk(base) : (walk(request) ?? walk(base));
   };
   const tokens = [...config].flatMap(([key, value]) => {
     if (
