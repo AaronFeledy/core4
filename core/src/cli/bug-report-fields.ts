@@ -1,4 +1,6 @@
 import type { TaggedErrorJson } from "@lando/sdk/schema";
+import { ListenerObservation } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { formatStructuredIssue } from "./validation-issue-text";
 
 const consumed = new Set([
@@ -60,6 +62,12 @@ export const diagnosticFields = (
         })
         .join("\n");
       if (text) out.push([key, `\n${text}`]);
+    } else if (key === "listener" && Schema.is(ListenerObservation)(value)) {
+      const ports = [...new Set(value.listening.map((binding) => binding.port))];
+      out.push([
+        key,
+        `${value.state} on ${value.port} (observed ${ports.length === 0 ? "none" : ports.join(", ")})`,
+      ]);
     } else if (key === "logTail") {
       const tail = logTailField(value);
       if (tail !== undefined) out.push(tail);

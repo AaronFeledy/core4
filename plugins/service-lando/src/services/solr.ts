@@ -18,7 +18,7 @@ import { isAppRelativeSource, resolveBindSource } from "./_volume-helpers.ts";
 const DEFAULT_IMAGE = "solr:9";
 const VERSIONS = ["9"] as const;
 const ARTIFACTS = { "9": DEFAULT_IMAGE } as const;
-const DEFAULT_PORT = 8983;
+export const DEFAULT_PORT = 8983;
 const DATA_TARGET = PortablePath.make("/var/solr");
 const CORE_NAME = /^[A-Za-z0-9._-]+$/u;
 const RESERVED_CORE_NAMES = new Set([".", ".."]);

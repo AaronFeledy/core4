@@ -27,7 +27,7 @@ const ARTIFACTS = {
   "18": "postgres:18",
 } as const;
 const DEFAULT_IMAGE = ARTIFACTS["16"];
-const POSTGRES_LISTENER = { port: 5432, variable: "PGPORT", daemon: "Postgres" } as const;
+export const POSTGRES_LISTENER = { port: 5432, variable: "PGPORT", daemon: "Postgres" } as const;
 const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
 export const POSTGRES_FEATURE_ID = "service-lando.postgres";
 export const POSTGRES_CONFIG_TARGET = PortablePath.make("/etc/lando/postgresql.conf");

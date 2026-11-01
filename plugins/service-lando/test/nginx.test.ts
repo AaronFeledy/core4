@@ -8,6 +8,7 @@ import type {
   AppFeatureServiceView,
 } from "@lando/sdk/services";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
 import {
   NGINX_FEATURE_ID,
@@ -140,7 +141,7 @@ describe("nginx ServiceType", () => {
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
     ]);
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
   });
 
   test("omits the worker user directive when standalone runs as non-root", async () => {
@@ -207,7 +208,7 @@ describe("nginx ServiceType", () => {
       { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(80, 10));
   });
 
   test("uses the authored service name in endpoint and lando env", async () => {
@@ -298,6 +299,7 @@ describe("nginx PHP FPM app-feature wire", () => {
     setCerts: () => undefined,
     setEntrypoint: () => undefined,
     setArtifact: () => undefined,
+    setInit: () => undefined,
     setUser: () => undefined,
     setWorkingDirectory: () => undefined,
   } satisfies Omit<AppFeatureServiceMutators, "service" | "setCommand">;

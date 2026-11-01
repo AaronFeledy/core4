@@ -75,7 +75,16 @@ test("publishes paired stop events for each service when containers are already 
         .map((event) => event._tag),
     ).toEqual(["pre-service-stop", "post-service-stop"]);
   }
-  expect(result).toEqual({ changed: false });
+  expect(result).toEqual({
+    changed: false,
+    shutdownObservations: ["database", "web"].map((service) => ({
+      appId: plan.id,
+      providerId: provider,
+      service: ServiceName.make(service),
+      status: "unknown",
+      reason: "container-absent",
+    })),
+  });
   expect(requests.map((request) => `${request.method} ${request.path}`)).toEqual([
     "GET /containers/lando-absent-database/json",
     "GET /containers/lando-absent-web/json",

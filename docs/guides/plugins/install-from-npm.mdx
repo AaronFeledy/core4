@@ -39,7 +39,106 @@ without that script takes the trust-prompt path and fails with
 
 Packages land at `<userDataRoot>/plugins/<name>/<version>/`. A directory that already exists is left in place.
 
+If a step fails, the command stops with `PluginPackageOperationError` and
+exits `1`. The error names the operation that failed (`resolve`, `download`,
+`verify`, `extract`, or `postinstall`), the package spec, and the child's exit
+code when a Bun child ran and exited nonzero. Nothing after that step runs, so
+a failed add never activates the plugin or refreshes the command cache. Lando
+doesn't undo what the step already wrote on disk. Fix the cause the message
+points at
+(a bad spec, a registry problem, or the package's own script), then run
+`lando plugin:add` again. `lando plugin:remove` reports its failures the same
+way with operation `remove`. The full field list and the `--format=json` shape
+are in [Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-commands).
+
 `lando plugin:add` is the top-level alias of `meta:plugin:add`.
+
+## Install from a private registry
+
+Add your team's scope and registry token reference to your npm user config,
+`~/.npmrc`. If you set `NPM_CONFIG_USERCONFIG`, edit that file instead:
+
+```ini
+@acme:registry=https://npm.example.com/
+//npm.example.com/:_authToken=${NPM_TOKEN}
+```
+
+Replace the example scope and host with your team's values. In your host shell,
+export the token supplied by your registry, then install the plugin:
+
+```sh
+export NPM_TOKEN='<your-registry-token>'
+lando plugin:add @acme/lando-plugin-x
+```
+
+When the install succeeds, the command reports the plugin name and version, and
+the package lands at `<userDataRoot>/plugins/@acme/lando-plugin-x/<version>/`.
+Trust prompts and postinstall rules are the same as for public packages.
+
+Lando reads the scope's registry first, then `registry`, then the public npm
+registry. `NPM_CONFIG_REGISTRY` overrides the file's default registry; a scoped
+registry still takes precedence. Plugin updates and npm recipe sources use the
+same configuration. Lando's registry reader doesn't store credentials or read a
+project's `.npmrc` or npm certificate settings.
+
+If your registry uses Basic authentication instead, put its username and
+base64-encoded password references at the same host and path in your npm user
+config:
+
+```ini
+//npm.example.com/:username=${NPM_USER}
+//npm.example.com/:_password=${NPM_PASSWORD_BASE64}
+```
+
+Export both variables before installing. `NPM_PASSWORD_BASE64` must contain the
+base64 encoding of the password, not the plaintext password. A matching `_auth`
+entry containing base64-encoded `username:password` also works. Base64 is not
+encryption; protect these values as you would a token.
+
+Lando chooses the most specific matching registry path first. At that path it
+prefers `_authToken`, then `_auth`, then `username` with `_password`. It never
+pairs a username from one path with a password from another. Unexpanded
+placeholders are not credentials, and credentials aren't sent to tarballs on
+another host.
+
+When a remediation names a missing `//host/path/:_authToken` line, the complete
+`${NPM_TOKEN}` or `${NPM_TOKEN?}` placeholder stays readable in logs and machine
+output. The resolved token value is still registered and redacted.
+
+If installation reports HTTP 401 or 403, read the error's remediation. It names
+your npm user config and the `//host/path/:_authToken` key Lando matched:
+
+- If it says a variable such as `NPM_TOKEN` is not set, export that variable in
+  the shell that runs Lando and retry.
+- If it says the registry rejected the token, replace it with a token that can
+  read the package.
+- If no token matched, add the line it shows for your registry.
+
+A private registry can also answer 404 for an unauthenticated request; the
+remediation then shows the token line to add.
+
+For a private registry signed by your company's CA, select its PEM file in the
+host shell before installing:
+
+```sh
+export LANDO_NETWORK_CA_CERTS='["/path/to/company-ca.pem"]'
+lando plugin:add @acme/lando-plugin-x --trust
+```
+
+The PEM file can contain several certificates. Lando uses this trust for its own
+registry requests and passes a certificate-only cached bundle to the Bun child
+that runs a trusted plugin's postinstall. With the default host trust policy,
+`NODE_EXTRA_CA_CERTS` adds that bundle to Bun's host roots and preserves an
+inherited extra-CA file. With `network.ca.trustHost: false`, package commands use
+`--cafile` to trust only the configured certificates; an empty strict trust set
+fails before the child runs.
+
+Lando projects its resolved proxy settings into canonical `HTTP_PROXY`,
+`HTTPS_PROXY`, and `NO_PROXY` variables, clearing conflicting spellings and
+`ALL_PROXY`. This doesn't isolate every Bun config source: Bun may still read
+your own project or home config. Lando doesn't change `HOME` or invent a child
+`NPM_CONFIG_USERCONFIG` override. Postinstall scripts are arbitrary programs,
+not a network sandbox.
 
 ## Trust the name
 
@@ -63,6 +162,20 @@ lando plugin:add file:./my-plugin
 ```
 
 ## Verify
+
+Check the flags available in your installed version without contacting a registry:
+
+<Guide>
+  <Scenario id="inspect-install-options" render>
+    <Step name="check-install-trust-flag">
+      <Run command="lando plugin:add --help" />
+      <Verify command="lando plugin:add --help" expect={{ stdout: { regex: "--trust" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+After installing, check the trusted name and repeat the add to confirm that the
+existing package is retained:
 
 ```sh
 lando plugin:trust list

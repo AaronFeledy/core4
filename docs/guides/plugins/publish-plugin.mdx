@@ -10,8 +10,8 @@ tags: [beta, docs, plugins, authoring]
 
 Use a publish dry run to check the package before release. Run it from the
 plugin root: it rebuilds a stale `dist/`, runs tests, and lists the artifact
-without contacting a registry. A live registry publish is not a supported
-how-to in this Beta.
+without contacting a registry. After checking that result, publish to the
+registry selected by your configuration or `--registry`.
 
 ```sh
 lando meta:plugin:publish --dry-run
@@ -19,6 +19,15 @@ lando meta:plugin:publish --dry-run
 
 Confirm that the command exits successfully and lists the artifact you intend
 to release. This verifies the dry run, not a registry publication.
+
+If the rebuild or retest that runs first exits nonzero, publication stops with
+`PluginPublishValidationError` before anything is published. Fix the build or
+test, or run [test or build directly](./test-and-build-plugin.mdx) to see the
+failure on its own. If the `bun publish` child itself exits nonzero, Lando
+exits with that code and, under `--format=json`, reports it as
+`result.exitCode` with the child's output in the envelope. Registry credentials
+Lando hands the child are redacted everywhere they could appear. Details are in
+[Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-commands).
 
 ## Flags that work
 
@@ -31,11 +40,79 @@ lando meta:plugin:publish --dry-run --no-test
 
 `--no-test` skips the retest. A stale `dist/package.json` still triggers `meta:plugin:build`.
 
+## Where publish credentials come from
+
+A publish without `--dry-run` reads registry credentials from your npm user
+config (`~/.npmrc`, or the file named by `NPM_CONFIG_USERCONFIG`), the same file
+[private plugin installs](./install-from-npm.mdx#install-from-a-private-registry)
+use. Lando has no separate login command and stores no credentials.
+
+```ini
+@acme:registry=https://npm.example.com/
+//npm.example.com/:_authToken=${NPM_TOKEN}
+```
+
+Bearer auth uses that path-matched `_authToken` line. Basic auth uses the
+matching `//host/path/:_auth` or `username` / `_password` keys from the same
+file. `_auth` is base64-encoded `username:password`; `_password` is the
+base64-encoded password alone. Lando chooses the most specific matching path,
+then `_authToken`, `_auth`, or the complete username/password pair at that path.
+Unexpanded variables don't count as credentials. The registry is `--registry`, then `package.json`'s
+`publishConfig.registry`, then the scope's registry or default registry from
+your npm configuration, then the public npm registry.
+
+Lando never puts credentials on argv or writes them into the package. Bearer
+publish passes the selected registry explicitly and sets `BUN_CONFIG_TOKEN`,
+not Bun's ignored `BUN_AUTH_TOKEN`. Basic publish sets
+`LANDO_NPM_BASIC_USERNAME` and `LANDO_NPM_BASIC_PASSWORD` in the child environment.
+Both modes use an owner-only temporary Bun config outside the package to select
+the registry, including the scope for a scoped package, through references to
+the child credential variables.
+It contains no credentials and is removed on success, failure, or cancellation.
+Punctuation in the password is passed literally, not encoded into a registry URL.
+Conflicting inherited token and registry environment variables are removed.
+
+The same [CA and proxy policy as installation](./install-from-npm.mdx#install-from-a-private-registry)
+applies to publication. Default host trust adds `NODE_EXTRA_CA_CERTS`; strict
+trust uses `--cafile` with only your configured certificates. Lando does not
+change `HOME` or claim complete isolation from Bun's own config sources.
+When no credential matches, `PluginPublishAuthError` names
+the npm config file and the key to add. Passwords, tokens, and authorization
+headers are redacted from managed output; complete `${IDENT}` placeholders in
+remediation stay readable. These managed credential and trust settings are not a network
+sandbox for arbitrary scripts run during a build or publish.
+
 ## Verify
+
+Inspect the publish flags locally without changing a registry:
+
+<Guide>
+  <Scenario id="inspect-publish-options" render>
+    <Step name="check-publish-registry-flag">
+      <Run command="lando meta:plugin:publish --help" />
+      <Verify command="lando meta:plugin:publish --help" expect={{ stdout: { regex: "--registry" } }} />
+    </Step>
+  </Scenario>
+</Guide>
 
 ```sh
 lando meta:plugin:publish --dry-run
 ```
+
+## Publish the checked artifact
+
+Publication changes the selected remote registry. Confirm the package name,
+version, registry, and tag in the dry-run result before running this command
+from the plugin root:
+
+```sh
+lando meta:plugin:publish --tag latest --format=json
+```
+
+A successful publication reports `ok: true` and `result.published: true` in the
+JSON envelope. A registry rejection leaves `published: false` and returns a
+nonzero exit code; inspect the captured child output before retrying. Don't
+retry a version that your registry already accepted.
 
 The command should exit 0.
 

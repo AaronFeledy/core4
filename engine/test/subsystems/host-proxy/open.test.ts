@@ -95,7 +95,9 @@ test.each([
   const runner = recorder();
   const result = await Effect.runPromise(
     Effect.result(
-      openHostProxyTarget({ _tag: "openUrl", url }, mount, ["file"]).pipe(Effect.provide(runner.layer)),
+      openHostProxyTarget({ _tag: "openUrl", url }, mount, ["file", "FILE"]).pipe(
+        Effect.provide(runner.layer),
+      ),
     ),
   );
   expect(result._tag).toBe("Failure");
@@ -106,7 +108,7 @@ test.each([
 test("service-level scheme extensions do not replace defaults", async () => {
   const runner = recorder();
   await Effect.runPromise(
-    openHostProxyTarget({ _tag: "openUrl", url: "custom:abc" }, mount, ["custom"]).pipe(
+    openHostProxyTarget({ _tag: "openUrl", url: "custom:abc" }, mount, ["CuStOm"]).pipe(
       Effect.provide(runner.layer),
     ),
   );
@@ -231,13 +233,18 @@ test("serves openUrl/openPath over the authenticated transport without widening 
       executor: () => Effect.die("runLando must not execute"),
       openExecutor: (request) =>
         request._tag === "openUrl" && request.url.startsWith("file:")
-          ? Effect.fail(
-              new HostProxyOpenUrlSchemeError({ message: "forbidden", remediation: "Use an app path." }),
-            )
+          ? Effect.succeed({
+              _tag: "error" as const,
+              code: "scheme-not-allowed" as const,
+              message: "forbidden",
+              remediation: "Use an app path.",
+            })
           : Effect.sync(() => {
               calls.push(request);
+              return { _tag: "ok" as const };
             }),
-      paths: { userDataRoot: root, userCacheRoot: root, platform: "win32" },
+      paths: { userDataRoot: root, userCacheRoot: root },
+      hostGatewayName: "host.containers.internal",
       shimArtifactPath: shim,
     }).pipe(Effect.provide(recorded.layer)),
   );

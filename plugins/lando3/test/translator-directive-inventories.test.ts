@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { isPlainRecord } from "@lando/sdk/landofile";
 import { Effect } from "effect";
-import { lando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet } from "./fixtures/fake-decomposers.ts";
+import { testTranslator as lando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 test.each(["events", "endpoints", "member endpoints"])(
   "inventories overridden established maps for %s",

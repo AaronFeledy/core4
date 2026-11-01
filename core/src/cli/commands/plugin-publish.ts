@@ -1,22 +1,20 @@
-import { readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { DateTime, Effect, Schema } from "effect";
 
-import { type FileIoError, type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import { RedactionService } from "@lando/redaction/service";
+import { PluginManifestError, RecipeSourceError } from "@lando/sdk/errors";
 
-import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
-import { makeLandoPaths } from "@lando/paths";
-import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
+import { hostConfigReadPolicy } from "@lando/engine/services/config";
+import { type NpmRegistryConfig, loadNpmRegistryConfig } from "../../recipes/npm-registry-config";
+import { publishWithCredential } from "./npm-publish-runner";
 import { publishOptionalEvent } from "./optional-event-publish";
 import { pluginBuild } from "./plugin-build";
-import { type PluginBuildMixedTreeError, listOutputs, outputDirectoryExists } from "./plugin-build-files";
-import { type PackageJson, entriesFromExports, readPackageJson } from "./plugin-build-package";
+import { isArtifactStale, listOutputs, outputDirectoryExists } from "./plugin-build-files";
+import { entriesFromExports, readPackageJson } from "./plugin-build-package";
 import { resolvePluginPackageRoot } from "./plugin-package-root";
 import { pluginTest } from "./plugin-test";
-
-const DEFAULT_PLUGIN_REGISTRY = "https://registry.npmjs.org/";
 
 /** A publish artifact failed manifest, registry, or tag validation. */
 export class PluginPublishValidationError extends Schema.TaggedError<PluginPublishValidationError>()(
@@ -37,12 +35,6 @@ export class PluginPublishAuthError extends Schema.TaggedError<PluginPublishAuth
   },
 ) {}
 
-export interface PluginRegistryAuth {
-  readonly registries?: Readonly<Record<string, { readonly token?: unknown } | undefined>>;
-}
-
-export type PluginAuthReader = (authPath: string) => Promise<PluginRegistryAuth | undefined>;
-
 export interface PluginPublishOptions {
   readonly cwd?: string;
   readonly tag?: string;
@@ -50,24 +42,11 @@ export interface PluginPublishOptions {
   readonly dryRun?: boolean;
   readonly noTest?: boolean;
   readonly nonInteractive?: boolean;
-  readonly spawner?: BunSelfSpawner;
   readonly execPath?: string;
-  readonly userDataRoot?: string;
-  readonly authReader?: PluginAuthReader;
+  readonly npmConfig?: () => Promise<NpmRegistryConfig>;
 }
 
-export interface PluginPublishResult {
-  readonly pluginName: string;
-  readonly pluginRoot: string;
-  readonly registry: string;
-  readonly tag: string;
-  readonly packageContents: ReadonlyArray<string>;
-  readonly dryRun: boolean;
-  readonly rebuilt: boolean;
-  readonly tested: boolean;
-  readonly published: boolean;
-  readonly exitCode: number;
-}
+export type PluginPublishResult = typeof PluginPublishResultSchema.Type;
 
 export const PluginPublishResultSchema = Schema.Struct({
   pluginName: Schema.String,
@@ -82,86 +61,9 @@ export const PluginPublishResultSchema = Schema.Struct({
   exitCode: Schema.Number,
 });
 
-type PluginPublishError =
-  | NotImplementedError
-  | FileIoError
-  | PluginManifestError
-  | PluginBuildMixedTreeError
-  | PluginPublishValidationError
-  | PluginPublishAuthError;
-
-const fileMtime = async (path: string): Promise<number | undefined> =>
-  stat(path).then(
-    (entry) => entry.mtimeMs,
-    () => undefined,
-  );
-
-/**
- * An artifact is stale when `dist/package.json` (written last by the build) is
- * missing, or when package metadata or any source entrypoint is newer than that
- * marker.
- */
-const isArtifactStale = async (pluginRoot: string, sources: ReadonlyArray<string>): Promise<boolean> => {
-  const distMarker = await fileMtime(join(pluginRoot, "dist", "package.json"));
-  if (distMarker === undefined) return true;
-  const packageJsonMtime = await fileMtime(join(pluginRoot, "package.json"));
-  if (packageJsonMtime !== undefined && packageJsonMtime > distMarker) return true;
-  for (const source of sources) {
-    const sourceMtime = await fileMtime(resolve(pluginRoot, source));
-    if (sourceMtime !== undefined && sourceMtime > distMarker) return true;
-  }
-  return false;
-};
-
-const normalizeRegistry = (registry: string): string => registry.replace(/\/+$/, "");
-
-const isHttpUrl = (value: string): boolean => {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-};
-
-const publishConfigRegistry = (pkg: PackageJson): string | undefined => {
-  const config = (pkg as { readonly publishConfig?: unknown }).publishConfig;
-  if (typeof config !== "object" || config === null || Array.isArray(config)) return undefined;
-  const registry = (config as { readonly registry?: unknown }).registry;
-  return typeof registry === "string" ? registry : undefined;
-};
-
-const defaultAuthReader: PluginAuthReader = async (authPath) => {
-  let raw: string;
-  try {
-    raw = await readFile(authPath, "utf8");
-  } catch {
-    return undefined;
-  }
-  try {
-    return JSON.parse(raw) as PluginRegistryAuth;
-  } catch {
-    return undefined;
-  }
-};
-
-const registryToken = (auth: PluginRegistryAuth | undefined, registry: string): string | undefined => {
-  const registries = auth?.registries;
-  if (typeof registries !== "object" || registries === null) return undefined;
-  const target = normalizeRegistry(registry);
-  for (const [key, value] of Object.entries(registries)) {
-    if (normalizeRegistry(key) !== target) continue;
-    const token = value?.token;
-    if (typeof token !== "string") continue;
-    const trimmed = token.trim();
-    if (trimmed !== "") return trimmed;
-  }
-  return undefined;
-};
-
 export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
   options: PluginPublishOptions = {},
-): Effect.fn.Return<PluginPublishResult, PluginPublishError> {
+) {
   const dryRun = options.dryRun === true;
   const tag = options.tag ?? "latest";
 
@@ -200,11 +102,44 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
           }),
   });
   const bunOptions = {
-    ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
     ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
   };
 
-  const registry = options.registry ?? publishConfigRegistry(pkg) ?? DEFAULT_PLUGIN_REGISTRY;
+  const readPolicy = yield* hostConfigReadPolicy;
+  const npmConfig = yield* Effect.tryPromise({
+    try: () => (options.npmConfig ?? (() => loadNpmRegistryConfig(readPolicy)))(),
+    catch: (cause) =>
+      cause instanceof RecipeSourceError
+        ? cause
+        : new PluginPublishValidationError({
+            message: "Could not read npm user configuration.",
+            remediation: "Check your npm user config file permissions and retry.",
+          }),
+  });
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (redaction._tag === "Some") yield* redaction.value.registerValues(npmConfig.redactionTokens);
+  const publishConfig = pkg.publishConfig;
+  const packageRegistry =
+    typeof publishConfig === "object" &&
+    publishConfig !== null &&
+    "registry" in publishConfig &&
+    typeof publishConfig.registry === "string"
+      ? publishConfig.registry
+      : undefined;
+  const registry =
+    options.registry ??
+    packageRegistry ??
+    npmConfig.registryFor(typeof pkg.name === "string" ? pkg.name : manifest.name);
+  const registryUrl = URL.parse(registry);
+  if (registryUrl !== null && (registryUrl.username !== "" || registryUrl.password !== "")) {
+    return yield* Effect.fail(
+      new PluginPublishValidationError({
+        message: "Publish registry URLs must not contain credentials.",
+        remediation:
+          "Remove URL userinfo and move credentials to the registry's nerf-key _authToken, _auth, or username plus _password fields in npm user configuration.",
+      }),
+    );
+  }
   yield* publishOptionalEvent({
     _tag: "cli-meta:plugin:publish-start",
     pluginName: manifest.name,
@@ -238,7 +173,7 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
         }),
       );
     }
-    if (!isHttpUrl(registry)) {
+    if (registryUrl?.protocol !== "http:" && registryUrl?.protocol !== "https:") {
       return yield* Effect.fail(
         new PluginPublishValidationError({
           message: `Invalid publish registry ${JSON.stringify(registry)} for ${manifest.name}.`,
@@ -290,34 +225,33 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
     let published = false;
     let exitCode = 0;
     if (!dryRun) {
-      const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
-      const authPath = makeLandoPaths({ userDataRoot }).pluginAuthFile;
-      const auth = yield* Effect.promise(() => (options.authReader ?? defaultAuthReader)(authPath));
-      const token = registryToken(auth, registry);
-      if (token === undefined) {
+      const credential = npmConfig.credentialFor(registry, registry);
+      if (credential === undefined) {
         return yield* Effect.fail(
           new PluginPublishAuthError({
-            message: `No registry auth for ${registry} in ${authPath}.`,
-            remediation: `Run \`lando plugin:login --registry ${registry}\` to store a publish token, then retry.`,
+            message: `No registry auth for ${registry} in ${npmConfig.path}.`,
+            remediation: npmConfig.authRemediation(registry),
             registry,
           }),
         );
       }
-      const publish = yield* bunSelfRun({
-        argv: ["publish", "--tag", tag, "--registry", registry],
-        cwd: join(pluginRoot, "dist"),
-        env: { BUN_AUTH_TOKEN: token },
-        verb: "publish",
-        callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
-        ...bunOptions,
-      });
+      const publish = yield* publishWithCredential(
+        credential,
+        { registry, packageName: typeof pkg.name === "string" ? pkg.name : manifest.name, tag },
+        {
+          cwd: join(pluginRoot, "dist"),
+          verb: "publish",
+          callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
+          ...bunOptions,
+        },
+      );
       exitCode = publish.exitCode;
       published = exitCode === 0;
     }
 
     yield* publishCompleteEvent(published, exitCode);
 
-    return {
+    const completed: PluginPublishResult = {
       pluginName: manifest.name,
       pluginRoot,
       registry,
@@ -329,21 +263,8 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
       published,
       exitCode,
     };
+    return completed;
   }).pipe(Effect.tapError(() => publishCompleteEvent(false, 1)));
 });
 
-export const renderPluginPublishResult = (result: PluginPublishResult): string => {
-  const outcome = result.dryRun
-    ? "dry-run (no publish)"
-    : result.published
-      ? "published"
-      : `failed (exit ${result.exitCode})`;
-  return [
-    `plugin-publish: ${result.pluginName}`,
-    `registry: ${result.registry}`,
-    `tag: ${result.tag}`,
-    `contents: ${result.packageContents.join(", ")}`,
-    "validation: ok",
-    `result: ${outcome}`,
-  ].join("\n");
-};
+export { renderPluginPublishResult } from "./plugin-publish-render";

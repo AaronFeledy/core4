@@ -194,6 +194,13 @@
       "digest": "09cb67cb6bd8b615a2c276a7f1b0ea5c5ed6e13fefacc934e206744f0abc4c60"
     },
     {
+      "fixture": "docs/guides/convert-from-lando-3/fixtures/lando3-ports-mounts",
+      "invalid": {
+        "status": "invalid",
+        "tag": "Lando3LandofileDetected"
+      }
+    },
+    {
       "fixture": "docs/guides/convert-from-lando-3/fixtures/pantheon-app",
       "invalid": {
         "status": "invalid",
@@ -221,7 +228,7 @@
     },
     {
       "fixture": "docs/guides/defaults-and-aliases/fixtures/command-aliases",
-      "digest": "3c1e445ebedff08876515593e08d3c33d4dfa0fa514104a4f3092d5cfdb9d2fc"
+      "digest": "7e4b7455d8085da03471a44baf5df66379d7010b27abc1880295ac8f51cd15d0"
     },
     {
       "fixture": "docs/guides/defaults-and-aliases/fixtures/tooling-defaults",
@@ -460,6 +467,10 @@
       "digest": "327f073ed97ef99d37bbbeab31398043483b11459b40b9a5f200150cf783801e"
     },
     {
+      "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
+      "digest": "47c334d453ee06e682ccd196d4d4b27dc04408fe0c7cdc679c62b84821bd9356"
+    },
+    {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
       "digest": "020f24b8d43a8efd4f99e762ec00d472fb5bb78c11a54bf154ec202b8588ce07"
     },
@@ -671,6 +682,17 @@
     {
       "fixture": "docs/guides/node/fixtures/node-inference",
       "digest": "8058b8279ce6c19da800eeff5c85c7f9ca180a58c23ab2e11ed8b175aaf9d531"
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-init-invalid",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/node/fixtures/node-init-off",
+      "digest": "795cfc700131d5e05f3132b1b440405a6bd8f5bfbc7e6ad3158743a1588fe224"
     },
     {
       "fixture": "docs/guides/node/fixtures/node-port",
@@ -994,6 +1016,10 @@
       "digest": "3467551888c3fb5100e7b24d46197f2261db37bff7137c08fef8946adb346d4a"
     },
     {
+      "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
+      "digest": "28400ad2c41892cb206a495eb3b9289ffbb8139f910d4a4acbf81ca3a6daf7ce"
+    },
+    {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",
       "digest": "6b376bae7b430d2124401e4ff54fb8a3628b3cbb4bc4bedd68532d18a0f6c1ac"
     },
@@ -1305,6 +1331,15 @@
       },
       "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
     },
+    "docs/guides/lando3-transition-options/fixtures/scoped-services": {
+      "before": {
+        "digest": "3df20fd7811e1e9ea9b8a5c766b11eb66788e7ff2453c7ab6b45609052643a74"
+      },
+      "after": {
+        "digest": "bc62146b254691eb416dadb3b16157a8253d6f3640d4bcb9deaf37c43f1199ad"
+      },
+      "reason": "The service-selection fixture now explicitly disables routing, so the encoded document includes that authored setting. Service identities, primary selection and dependency edges are unchanged."
+    },
     "docs/guides/migrating-recipes/fixtures/bare-recipe": {
       "before": {
         "invalid": {
@@ -1445,9 +1480,9 @@
         "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
       },
       "after": {
-        "digest": "c63a0c661016d391a1cf9651b07dbcd9e3d43ad456b1ac489565b5ef22a29d0b"
+        "digest": "d2b87f8d1c2dfa909616ec98dc42f2a97d9541b5e201b41c354d04bca8e3f938"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false and adds read-only nginx and PHP ini mounts for the large-profile troubleshooting configuration."
     }
   }
 }

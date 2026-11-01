@@ -16,12 +16,12 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import {
-  commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -32,7 +32,8 @@ import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultStaticCommand } from "./static.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
-const DEFAULT_PORT = 80;
+export const DEFAULT_PORT = 80;
+export const APP_MOUNT_TARGET = "/app";
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -105,7 +106,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   applyAuthoredProcessFields(ctx, ["user"]);
-  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
+  ctx.setHealthcheck(tcpProbe(port, 10));
 
   if (backend.length > 0) {
     ctx.addDependency({
@@ -210,7 +211,7 @@ export const nginxServiceType: ServiceType = {
           },
           {
             id: "lando.app-mount",
-            config: { target: "/app", workingDirectory: webroot },
+            config: { target: APP_MOUNT_TARGET, workingDirectory: webroot },
           },
         ],
       };

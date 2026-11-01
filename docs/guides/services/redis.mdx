@@ -105,6 +105,8 @@ Lando passes `--port 6380` to `redis-server`, with or without persistence or pas
 
 If you author `command:`, include `--port 6380` yourself; Lando won't append it to a command you wrote. An authored `entrypoint:` still receives Lando's `redis-server` command, port included. The managed `password:` and `persist:` options can't be combined with an authored `command:` or `entrypoint:`.
 
+If Redis never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+
 Apply the change with `lando rebuild`, then probe the planned port:
 
 ```sh

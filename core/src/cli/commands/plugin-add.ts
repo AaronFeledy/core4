@@ -1,265 +1,39 @@
-import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { rm } from "node:fs/promises";
 
-import { Effect, type Scope } from "effect";
+import { Effect } from "effect";
 
 import {
-  type ConfigError,
-  type FileIoError,
   InteractionRequiredError,
-  type LandoCommandError,
   NotImplementedError,
   PluginManifestError,
-  RecipeSourceError,
+  PluginPackageOperationError,
 } from "@lando/sdk/errors";
-import type { PluginManifest } from "@lando/sdk/schema";
-import { type ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
+import { PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
 import {
   type PluginAddResult,
   finalizePluginInstall,
   validatePluginManifest,
 } from "@lando/engine/operations/plugin-install";
-import type { InstalledPluginRegistryEntry } from "@lando/engine/plugins/installed-registry";
-import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
-import { makeInteractionService } from "../../interaction/service";
 import { retainedRecipeSources } from "../../recipes/runtime-sources";
-import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner";
+import { bunSelfInstall } from "./bun-self-runner";
+import { failPluginNetworkPolicy, redactPluginPackageError } from "./plugin-package-error";
 import { resolvePluginsRoot } from "./plugin-roots";
 
+import { parseNpmPackageSpec } from "../../recipes/npm-source";
+import type { PluginAddOptions } from "./plugin-add-options";
+import { ensureTrust, globalTrustStore } from "./plugin-add-trust";
 import {
-  DEFAULT_NPM_REGISTRY_URL,
-  type NpmPackument,
-  type NpmRegistryClient,
-  defaultNpmRegistryClient,
-  parseNpmPackageSpec,
-  resolveNpmPackageVersion,
-  verifyNpmPackageDistIntegrity,
-} from "../../recipes/npm-source";
-import {
-  type TarballRecipeExtractor,
-  type TarballRecipeFetcher,
-  defaultTarballRecipeExtractor,
-  defaultTarballRecipeFetcher,
-} from "../../recipes/tarball-source";
-
-export interface PluginAddSpawner {
-  readonly install: (request: {
-    readonly spec: string;
-    readonly cwd: string;
-  }) => Promise<{
-    readonly exitCode: number;
-    readonly stderr: string;
-    readonly packageRoot: string;
-  }>;
-}
-
-export interface PluginAddPrompter {
-  readonly confirmTrust: (request: {
-    readonly pluginName: string;
-    readonly spec: string;
-  }) => Promise<boolean>;
-}
-
-export type PluginTrustStore = Set<string>;
-
-export const globalTrustStore: PluginTrustStore = new Set<string>();
-
-export interface PluginAddOptions {
-  readonly spec: string;
-  readonly trust?: boolean;
-  readonly nonInteractive?: boolean;
-  readonly pluginsRoot?: string;
-  readonly userDataRoot?: string;
-  readonly cacheRoot?: string;
-  readonly spawner?: PluginAddSpawner;
-  readonly registryUrl?: string;
-  readonly registryClient?: NpmRegistryClient;
-  readonly fetcher?: TarballRecipeFetcher;
-  readonly extractor?: TarballRecipeExtractor;
-  readonly bunSelfSpawner?: BunSelfSpawner;
-  readonly prompter?: PluginAddPrompter;
-  readonly interaction?: InteractionPrompter;
-  readonly trustStore?: PluginTrustStore;
-  readonly requestedSelector?: string;
-  readonly expectedManifest?: {
-    readonly name: string;
-    readonly version: string;
-    readonly requires?: Readonly<Record<string, string>>;
-  };
-  readonly expectedActivation?: InstalledPluginRegistryEntry;
-  readonly expectedRegistry?: Readonly<Record<string, InstalledPluginRegistryEntry>>;
-}
+  acquirePluginPackage,
+  ensurePluginsRoot,
+  packageDeclaresPostinstall,
+} from "./plugin-package-acquisition";
+export type { PluginAddOptions, PluginAddPrompter, PluginTrustStore } from "./plugin-add-options";
+export { globalTrustStore } from "./plugin-add-trust";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*(@[^/\s]+)?$/i;
 
-const trustNonInteractiveError = (spec: string): InteractionRequiredError =>
-  new InteractionRequiredError({
-    message: "Plugin trust prompt cannot run non-interactively without --trust.",
-    promptName: "trust",
-    remediation: `Re-run \`lando plugin:add ${spec} --trust\` to confirm the plugin should run as trusted host code, or persist trust first with \`lando plugin:trust <name>\`.`,
-  });
-
-const trustRejectedError = (pluginName: string): NotImplementedError =>
-  new NotImplementedError({
-    message: `User declined to trust plugin ${pluginName}.`,
-    commandId: "meta:plugin:add",
-    remediation: "Re-run with --trust if you intend to trust the plugin as host code.",
-  });
-
-const installFailure = (spec: string, stderr: string): NotImplementedError =>
-  new NotImplementedError({
-    message: `BunSelfExecError: bun add failed for ${spec}.`,
-    commandId: "meta:plugin:add",
-    remediation: `Resolve the underlying bun error and retry:\n${stderr.trim()}`,
-  });
-
-const ensurePluginsRoot = async (root: string): Promise<void> => {
-  await mkdir(root, { recursive: true });
-  const pkgPath = join(root, "package.json");
-  if (!existsSync(pkgPath)) {
-    await writeFile(
-      pkgPath,
-      `${JSON.stringify(
-        { name: "lando-plugin-root", private: true, version: "0.0.0", description: "Managed by Lando." },
-        null,
-        2,
-      )}\n`,
-    );
-  }
-};
-
-const fileExists = async (path: string): Promise<boolean> =>
-  stat(path).then(
-    () => true,
-    () => false,
-  );
-
-const parsePackageName = (spec: string): string => {
-  if (spec.startsWith("@")) {
-    const slash = spec.indexOf("/");
-    if (slash === -1) return spec;
-    const after = spec.slice(slash + 1);
-    const at = after.indexOf("@");
-    return at === -1 ? spec : `${spec.slice(0, slash + 1)}${after.slice(0, at)}`;
-  }
-  const at = spec.indexOf("@");
-  return at === -1 ? spec : spec.slice(0, at);
-};
-
-const packageDeclaresPostinstall = async (packageDir: string): Promise<boolean> => {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
-  } catch {
-    return false;
-  }
-  const scripts = (parsed as { scripts?: unknown }).scripts;
-  if (typeof scripts !== "object" || scripts === null || Array.isArray(scripts)) return false;
-  const postinstall = (scripts as Record<string, unknown>).postinstall;
-  return typeof postinstall === "string" && postinstall.trim() !== "";
-};
-
-interface InstalledPluginPackage {
-  readonly created: boolean;
-  readonly packageDir: string;
-  readonly targetDir?: string;
-  readonly stagingRoot?: string;
-}
-
-const npmInstallFailure = (message: string, spec: string): NotImplementedError =>
-  new NotImplementedError({
-    message,
-    commandId: "meta:plugin:add",
-    remediation: `Check the npm package spec and registry metadata, then retry \`lando plugin:add ${spec}\`.`,
-  });
-
-const assertSafeInstallSegment = (value: string, label: string, spec: string): void => {
-  const slashPath = value.replace(/\\/gu, "/");
-  const segments = slashPath.split("/");
-  if (
-    value.trim() === "" ||
-    isAbsolute(value) ||
-    slashPath.startsWith("/") ||
-    value.includes("\\") ||
-    segments.some((segment) => segment === "" || segment === "." || segment === "..")
-  ) {
-    throw npmInstallFailure(`Resolved npm plugin ${label} escapes the plugin root: ${value}`, spec);
-  }
-};
-
-const installTargetFor = (pluginsRoot: string, name: string, version: string, spec: string): string => {
-  assertSafeInstallSegment(name, "name", spec);
-  assertSafeInstallSegment(version, "version", spec);
-  const packageDir = join(pluginsRoot, name, version);
-  const rel = relative(pluginsRoot, packageDir);
-  if (rel === "" || rel === ".." || rel.startsWith("../") || isAbsolute(rel)) {
-    throw npmInstallFailure(`Resolved npm plugin install path escapes the plugin root: ${packageDir}`, spec);
-  }
-  return packageDir;
-};
-
-const installFromNpm = async (
-  options: PluginAddOptions,
-  pluginsRoot: string,
-): Promise<InstalledPluginPackage> => {
-  const parsed = parseNpmPackageSpec(options.spec);
-  const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
-  const client = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
-  let packument: NpmPackument | undefined;
-  try {
-    packument = await client.fetchPackument(parsed.name);
-  } catch (cause) {
-    throw npmInstallFailure(
-      `Could not fetch npm metadata for "${parsed.name}" from ${registryUrl}: ${String(cause)}`,
-      options.spec,
-    );
-  }
-  if (packument === undefined) {
-    throw npmInstallFailure(
-      `npm package "${parsed.name}" was not found in the registry ${registryUrl}.`,
-      options.spec,
-    );
-  }
-  const resolvedVersion = resolveNpmPackageVersion(packument, parsed.version, options.spec);
-  const dist = packument.versions?.[resolvedVersion]?.dist;
-  if (dist === undefined || dist.tarball === undefined || dist.tarball.trim() === "") {
-    throw npmInstallFailure(
-      `npm package "${parsed.name}@${resolvedVersion}" has no published tarball URL.`,
-      options.spec,
-    );
-  }
-
-  const packageDir = installTargetFor(pluginsRoot, parsed.name, resolvedVersion, options.spec);
-  if (options.expectedActivation === undefined && (await fileExists(packageDir))) {
-    return { created: false, packageDir };
-  }
-
-  let archiveBytes: Uint8Array;
-  try {
-    archiveBytes = await (options.fetcher ?? defaultTarballRecipeFetcher).fetch(dist.tarball);
-  } catch (cause) {
-    throw npmInstallFailure(`Could not download npm tarball ${dist.tarball}: ${String(cause)}`, options.spec);
-  }
-  verifyNpmPackageDistIntegrity(archiveBytes, dist, dist.tarball);
-
-  const finalParent = dirname(packageDir);
-  await mkdir(finalParent, { recursive: true });
-  const stagingRoot = await mkdtemp(join(finalParent, ".staging-"));
-  try {
-    await (options.extractor ?? defaultTarballRecipeExtractor).extract(archiveBytes, stagingRoot);
-    const extractedPackageDir = join(stagingRoot, "package");
-    await validatePluginManifest(extractedPackageDir);
-    return { created: true, packageDir: extractedPackageDir, targetDir: packageDir, stagingRoot };
-  } catch (cause) {
-    await rm(stagingRoot, { recursive: true, force: true });
-    throw cause;
-  }
-};
-
-const defaultInteractionPrompter = (): InteractionPrompter =>
-  makePromiseInteractionPrompter(makeInteractionService());
+const PLUGIN_ADD_COMMAND_ID = "meta:plugin:add" as const;
 
 const equalRequirements = (
   left: Readonly<Record<string, string>> | undefined,
@@ -270,250 +44,220 @@ const equalRequirements = (
   return JSON.stringify(leftEntries) === JSON.stringify(rightEntries);
 };
 
-const trustPrompterFromInteraction = (interaction: InteractionPrompter): PluginAddPrompter => ({
-  confirmTrust: ({ pluginName }) =>
-    interaction.confirm({
-      message: `Plugin ${pluginName} will run as TRUSTED HOST CODE.\nTrust this plugin for the current Lando session?`,
-      name: "trust",
-      default: false,
-    }),
-});
-
-const ensureTrust = async (
-  manifest: PluginManifest,
-  trustName: string,
-  options: PluginAddOptions,
-  persistentStore?: typeof PersistentPluginTrustStore.Service,
-): Promise<"flag" | "persistent" | "prompt" | "session"> => {
-  const store = options.trustStore ?? globalTrustStore;
-  if (store.has(trustName)) return "session";
-  if (
-    persistentStore !== undefined &&
-    (await Effect.runPromise(persistentStore.isPluginTrusted(trustName)))
-  ) {
-    store.add(trustName);
-    return "persistent";
-  }
-  if (options.trust === true) {
-    store.add(trustName);
-    if (persistentStore !== undefined) await Effect.runPromise(persistentStore.trustPlugin(trustName));
-    return "flag";
-  }
-  if (options.nonInteractive === true) {
-    throw trustNonInteractiveError(options.spec);
-  }
-  const prompter =
-    options.prompter ?? trustPrompterFromInteraction(options.interaction ?? defaultInteractionPrompter());
-  const ok = await prompter.confirmTrust({ pluginName: manifest.name, spec: options.spec });
-  if (!ok) throw trustRejectedError(manifest.name);
-  store.add(trustName);
-  return "prompt";
-};
-
-export const pluginAdd = Effect.fn("PluginAdd.add")(function* (
-  inputOptions: PluginAddOptions,
-): Effect.fn.Return<
-  PluginAddResult,
-  | ConfigError
-  | FileIoError
-  | InteractionRequiredError
-  | LandoCommandError
-  | NotImplementedError
-  | PluginManifestError
-  | RecipeSourceError,
-  ConfigService | PersistentPluginTrustStore | Scope.Scope
-> {
-  const sources = yield* retainedRecipeSources(inputOptions.registryUrl);
-  const options = {
-    ...inputOptions,
-    registryClient: inputOptions.registryClient ?? sources.npmRegistryClient,
-    fetcher: inputOptions.fetcher ?? sources.tarballRecipeFetcher,
-  };
-  if (typeof options.spec !== "string" || options.spec.trim().length === 0) {
-    return yield* Effect.fail(
-      new NotImplementedError({
-        message: "Plugin spec is required.",
-        commandId: "meta:plugin:add",
-        remediation: "Pass an npm package spec, e.g. `lando plugin:add @lando/plugin-php`.",
-      }),
-    );
-  }
-  if (!REGISTRY_NAME_RE.test(options.spec)) {
-    return yield* Effect.fail(
-      new NotImplementedError({
-        message: `meta:plugin:add only supports npm registry specs (got ${options.spec}).`,
-        commandId: "meta:plugin:add",
-        remediation:
-          "Git URL, tarball, and file: sources are not supported. Pass a registry spec like `@lando/plugin-php@1.0.0`.",
-      }),
-    );
-  }
-
-  const pluginsRoot = options.pluginsRoot ?? (yield* resolvePluginsRoot(options, "meta:plugin:add"));
-  yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
-
-  const packageName = parsePackageName(options.spec);
-  const requestedSelector =
-    options.requestedSelector ?? parseNpmPackageSpec(options.spec).version ?? "latest";
-  let createdPackageDir: string | undefined;
-  let targetDir: string | undefined;
-  const packageDir = yield* Effect.acquireRelease(
-    Effect.tryPromise({
-      try: async () => {
-        if (options.spawner !== undefined) {
-          const installed = await options.spawner.install({ spec: options.spec, cwd: pluginsRoot });
-          if (installed.exitCode !== 0) throw installFailure(options.spec, installed.stderr);
-          return installed.packageRoot ?? join(pluginsRoot, "node_modules", packageName);
-        }
-        const installed = await installFromNpm(options, pluginsRoot);
-        if (installed.created) createdPackageDir = installed.stagingRoot;
-        targetDir = installed.targetDir;
-        return installed.packageDir;
-      },
-      catch: (cause) =>
-        cause instanceof RecipeSourceError
-          ? npmInstallFailure(cause.message, options.spec)
-          : cause instanceof NotImplementedError || cause instanceof PluginManifestError
-            ? cause
-            : new NotImplementedError({
-                message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
-                commandId: "meta:plugin:add",
-                remediation: "Check the plugin package and retry.",
-              }),
-    }),
-    () =>
-      Effect.promise(async () => {
-        if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
-      }),
-  );
-
-  const { manifest } = yield* Effect.tryPromise({
-    try: () => validatePluginManifest(packageDir),
-    catch: (cause) =>
-      cause instanceof PluginManifestError
-        ? cause
-        : new PluginManifestError({
-            message: `Failed to validate plugin manifest: ${String(cause)}`,
-            issues: [{ path: [], message: String(cause) }],
-            remediation:
-              "Check the plugin package.json and correct the reported manifest issues before adding it.",
-          }),
-  });
-  if (
-    options.expectedManifest !== undefined &&
-    (manifest.name !== options.expectedManifest.name ||
-      manifest.version !== options.expectedManifest.version ||
-      !equalRequirements(manifest.requires, options.expectedManifest.requires))
-  ) {
-    const mismatchedPackageDir = createdPackageDir;
-    if (mismatchedPackageDir !== undefined) {
-      yield* Effect.promise(() => rm(mismatchedPackageDir, { recursive: true, force: true }));
+export const pluginAdd = Effect.fn("PluginAdd.add")(
+  function* (inputOptions: PluginAddOptions) {
+    const sources = yield* retainedRecipeSources(inputOptions.registryUrl);
+    const options = {
+      ...inputOptions,
+      registryClient: inputOptions.registryClient ?? sources.npmRegistryClient,
+      fetcher: inputOptions.fetcher ?? sources.tarballRecipeFetcher,
+    };
+    if (typeof options.spec !== "string" || options.spec.trim().length === 0) {
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: "Plugin spec is required.",
+          commandId: "meta:plugin:add",
+          remediation: "Pass an npm package spec, e.g. `lando plugin:add @lando/plugin-php`.",
+        }),
+      );
     }
-    return yield* Effect.fail(
-      new PluginManifestError({
-        message: `Extracted plugin manifest for ${manifest.name}@${manifest.version} does not match advertised npm metadata.`,
-        pluginName: manifest.name,
-        issues: [{ path: [], message: "name, version, and requires must match the registry packument" }],
-        remediation: "Publish a package whose name, version, and requires match its npm registry metadata.",
+    if (!REGISTRY_NAME_RE.test(options.spec)) {
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: `meta:plugin:add only supports npm registry specs (got ${options.spec}).`,
+          commandId: "meta:plugin:add",
+          remediation:
+            "Git URL, tarball, and file: sources are not supported. Pass a registry spec like `@lando/plugin-php@1.0.0`.",
+        }),
+      );
+    }
+
+    const pluginsRoot = options.pluginsRoot ?? (yield* resolvePluginsRoot(options, "meta:plugin:add"));
+    yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
+
+    const { name: packageName, version } = parseNpmPackageSpec(options.spec);
+    const requestedSelector = options.requestedSelector ?? version ?? "latest";
+    let createdPackageDir: string | undefined;
+    let targetDir: string | undefined;
+    const packageDir = yield* Effect.acquireRelease(
+      Effect.tryPromise({
+        try: async () => {
+          const installed = await acquirePluginPackage(options, pluginsRoot);
+          if (installed.created) createdPackageDir = installed.stagingRoot;
+          targetDir = installed.targetDir;
+          return installed.packageDir;
+        },
+        catch: (cause) =>
+          cause instanceof PluginManifestError || cause instanceof PluginPackageOperationError
+            ? cause
+            : new PluginPackageOperationError({
+                message: "Could not prepare plugin acquisition.",
+                commandId: PLUGIN_ADD_COMMAND_ID,
+                operation: "resolve",
+                packageSpec: options.spec,
+                cwd: pluginsRoot,
+                remediation: "Check the package specification and plugin directory permissions.",
+              }),
       }),
-    );
-  }
-
-  const hasPostinstall = yield* Effect.promise(() => packageDeclaresPostinstall(packageDir));
-  const persistentStoreOption = yield* Effect.serviceOption(PersistentPluginTrustStore);
-  const persistentStore = persistentStoreOption._tag === "Some" ? persistentStoreOption.value : undefined;
-  const trustName = packageName;
-
-  const trustStoreForRollback = options.trustStore ?? globalTrustStore;
-  const hadTrustBefore = trustStoreForRollback.has(trustName);
-  const trustSource = yield* Effect.tryPromise({
-    try: async (): Promise<PluginAddResult["trustSource"]> => {
-      if (hasPostinstall && options.trust !== true && options.expectedActivation === undefined) {
-        if (trustStoreForRollback.has(trustName)) return "session";
-        if (
-          persistentStore !== undefined &&
-          (await Effect.runPromise(persistentStore.isPluginTrusted(trustName)))
-        ) {
-          trustStoreForRollback.add(trustName);
-          return "persistent";
-        }
-        return "untrusted";
-      }
-      return ensureTrust(manifest, trustName, options, persistentStore);
-    },
-    catch: (cause) =>
-      cause instanceof NotImplementedError || cause instanceof InteractionRequiredError
-        ? cause
-        : new NotImplementedError({
-            message: `Unexpected trust failure: ${String(cause)}`,
-            commandId: "meta:plugin:add",
-            remediation: "Re-run with --trust to bypass the prompt.",
-          }),
-  });
-
-  if (
-    hasPostinstall &&
-    trustSource !== "untrusted" &&
-    (createdPackageDir !== undefined || options.spawner !== undefined)
-  ) {
-    const postinstallExit = yield* bunSelfInstall({
-      cwd: packageDir,
-      spawner: options.bunSelfSpawner ?? defaultBunSelfSpawner,
-      callerSubsystem: `plugin-install:meta:plugin:add:${manifest.name}`,
-    }).pipe(
-      Effect.tapError(() =>
+      () =>
         Effect.promise(async () => {
           if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
-          if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(trustName);
+        }),
+    ).pipe(
+      Effect.catchIf(
+        (cause): cause is PluginPackageOperationError => cause instanceof PluginPackageOperationError,
+        (cause) => redactPluginPackageError(cause).pipe(Effect.flip),
+      ),
+    );
+
+    const { manifest } = yield* Effect.tryPromise({
+      try: () => validatePluginManifest(packageDir),
+      catch: (cause) =>
+        cause instanceof PluginManifestError
+          ? cause
+          : new PluginManifestError({
+              message: `Failed to validate plugin manifest: ${String(cause)}`,
+              issues: [{ path: [], message: String(cause) }],
+              remediation:
+                "Check the plugin package.json and correct the reported manifest issues before adding it.",
+            }),
+    });
+    if (
+      options.expectedManifest !== undefined &&
+      (manifest.name !== options.expectedManifest.name ||
+        manifest.version !== options.expectedManifest.version ||
+        !equalRequirements(manifest.requires, options.expectedManifest.requires))
+    ) {
+      const mismatchedPackageDir = createdPackageDir;
+      if (mismatchedPackageDir !== undefined) {
+        yield* Effect.promise(() => rm(mismatchedPackageDir, { recursive: true, force: true }));
+      }
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message: `Extracted plugin manifest for ${manifest.name}@${manifest.version} does not match advertised npm metadata.`,
+          pluginName: manifest.name,
+          issues: [{ path: [], message: "name, version, and requires must match the registry packument" }],
+          remediation: "Publish a package whose name, version, and requires match its npm registry metadata.",
+        }),
+      );
+    }
+
+    const hasPostinstall = yield* Effect.promise(() => packageDeclaresPostinstall(packageDir));
+    const persistentStoreOption = yield* Effect.serviceOption(PersistentPluginTrustStore);
+    const persistentStore = persistentStoreOption._tag === "Some" ? persistentStoreOption.value : undefined;
+    const trustName = packageName;
+
+    const trustStoreForRollback = options.trustStore ?? globalTrustStore;
+    const hadTrustBefore = trustStoreForRollback.has(trustName);
+    const trustSource = yield* Effect.tryPromise({
+      try: async (): Promise<PluginAddResult["trustSource"]> => {
+        if (hasPostinstall && options.trust !== true && options.expectedActivation === undefined) {
+          if (trustStoreForRollback.has(trustName)) return "session";
+          if (
+            persistentStore !== undefined &&
+            (await Effect.runPromise(persistentStore.isPluginTrusted(trustName)))
+          ) {
+            trustStoreForRollback.add(trustName);
+            return "persistent";
+          }
+          return "untrusted";
+        }
+        return ensureTrust({ packageName: trustName, manifestName: manifest.name }, options, persistentStore);
+      },
+      catch: (cause) =>
+        cause instanceof NotImplementedError || cause instanceof InteractionRequiredError
+          ? cause
+          : new NotImplementedError({
+              message: `Unexpected trust failure: ${String(cause)}`,
+              commandId: "meta:plugin:add",
+              remediation: "Re-run with --trust to bypass the prompt.",
+            }),
+    });
+
+    if (hasPostinstall && trustSource !== "untrusted" && createdPackageDir !== undefined) {
+      const postinstallExit = yield* bunSelfInstall({
+        cwd: packageDir,
+        callerSubsystem: `plugin-install:meta:plugin:add:${manifest.name}`,
+      }).pipe(
+        Effect.tapError(() =>
+          Effect.promise(async () => {
+            if (createdPackageDir !== undefined)
+              await rm(createdPackageDir, { recursive: true, force: true });
+            if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(trustName);
+          }),
+        ),
+        Effect.catchTag("BunChildNetworkPolicyError", (error) =>
+          failPluginNetworkPolicy(error, {
+            commandId: PLUGIN_ADD_COMMAND_ID,
+            packageSpec: options.spec,
+            cwd: packageDir,
+          }),
+        ),
+      );
+      if (postinstallExit.exitCode !== 0) {
+        const failedPackageDir = createdPackageDir;
+        if (failedPackageDir !== undefined) {
+          yield* Effect.promise(() => rm(failedPackageDir, { recursive: true, force: true }));
+        }
+        if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(trustName);
+        return yield* Effect.fail(
+          yield* redactPluginPackageError(
+            new PluginPackageOperationError({
+              message: `Trusted plugin postinstall failed for ${options.spec}.`,
+              remediation:
+                "Resolve the underlying postinstall error and retry `lando plugin:add` with --trust.",
+              commandId: PLUGIN_ADD_COMMAND_ID,
+              operation: "postinstall",
+              packageSpec: options.spec,
+              cwd: packageDir,
+              exitCode: postinstallExit.exitCode,
+              ...(postinstallExit.mode === "collected"
+                ? {}
+                : { detail: "Child output was already shown above." }),
+            }),
+            postinstallExit.mode === "collected" ? postinstallExit : undefined,
+          ),
+        );
+      }
+    }
+
+    yield* finalizePluginInstall({
+      pluginsRoot,
+      entry: {
+        name: manifest.name,
+        version: manifest.version,
+        path: targetDir ?? packageDir,
+        requestedSelector,
+      },
+      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+      ...(options.expectedActivation === undefined ? {} : { expectedActivation: options.expectedActivation }),
+      ...(options.expectedRegistry === undefined ? {} : { expectedRegistry: options.expectedRegistry }),
+      expectedManifest: manifest,
+      ...(targetDir === undefined ? {} : { stagedPath: packageDir }),
+    }).pipe(
+      Effect.tapCause(() =>
+        Effect.promise(async () => {
+          if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
+          if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
+            trustStoreForRollback.delete(trustName);
+          }
         }),
       ),
     );
-    if (postinstallExit.exitCode !== 0) {
-      const failedPackageDir = createdPackageDir;
-      if (failedPackageDir !== undefined) {
-        yield* Effect.promise(() => rm(failedPackageDir, { recursive: true, force: true }));
-      }
-      if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(trustName);
-      return yield* Effect.fail(
-        installFailure(options.spec, `trusted postinstall exited ${postinstallExit.exitCode}`),
-      );
-    }
-  }
 
-  yield* finalizePluginInstall({
-    pluginsRoot,
-    entry: {
-      name: manifest.name,
-      version: manifest.version,
-      path: targetDir ?? packageDir,
-      requestedSelector,
-    },
-    ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-    ...(options.expectedActivation === undefined ? {} : { expectedActivation: options.expectedActivation }),
-    ...(options.expectedRegistry === undefined ? {} : { expectedRegistry: options.expectedRegistry }),
-    expectedManifest: manifest,
-    ...(targetDir === undefined ? {} : { stagedPath: packageDir }),
-  }).pipe(
-    Effect.tapCause(() =>
-      Effect.promise(async () => {
-        if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
-        if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
-          trustStoreForRollback.delete(trustName);
-        }
-      }),
-    ),
-  );
-
-  return {
-    pluginName: manifest.name,
-    pluginVersion: manifest.version,
-    trustName,
-    pluginsRoot,
-    entry: targetDir ?? packageDir,
-    trusted: trustSource !== "untrusted",
-    trustSource,
-  };
-}, Effect.scoped);
+    return {
+      pluginName: manifest.name,
+      pluginVersion: manifest.version,
+      trustName,
+      pluginsRoot,
+      entry: targetDir ?? packageDir,
+      trusted: trustSource !== "untrusted",
+      trustSource,
+    };
+  },
+  Effect.scoped,
+  Effect.map((result): PluginAddResult => result),
+);
 
 export const renderPluginAddResult = (result: PluginAddResult): string =>
   `installed: ${result.pluginName}@${result.pluginVersion}\ntrusted: ${result.trustSource}\nplugins-root: ${result.pluginsRoot}${

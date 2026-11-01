@@ -25,7 +25,14 @@
     "description": "Optional offline GitHub Actions workflow inspection for Lando.",
     "enabled": true,
     "entry": "./src/index.ts",
-    "contributes": { "commands": ["github-actions:list"] }
+    "contributes": {
+      "commands": [
+        {
+          "id": "github-actions:list",
+          "summary": "Inspect local GitHub Actions workflows without executing or fetching anything."
+        }
+      ]
+    }
   },
   "dependencies": {
     "@actions/expressions": "0.3.61",

@@ -13,6 +13,7 @@ import {
   EventService,
   type LandoEvent,
   type ProcessResult,
+  ProcessRunner,
   type ShellCommandOptions,
   type ShellReplIO,
   ShellRunner,
@@ -175,6 +176,7 @@ const execWithEvents = Effect.fn("ShellRunner.exec")(function* <Options extends 
 export const makeShellRunnerService = (
   makeReplIO: () => ShellReplIO,
   privateFileAccess: PrivateFileAccess,
+  runner: import("@lando/sdk/services").ProcessRunner["Service"],
 ): Context.Service.Shape<typeof ShellRunner> => {
   const service: Context.Service.Shape<typeof ShellRunner> = ShellRunner.of({
     exec: (command, options) =>
@@ -185,6 +187,7 @@ export const makeShellRunnerService = (
               ? Option.none<StreamFrameSink["Service"]>()
               : yield* Effect.serviceOption(StreamFrameSink);
           const result = yield* streamBunCommand(command, snapshot, { sink, context }).pipe(
+            Effect.provideService(ProcessRunner, runner),
             Effect.mapError((cause) => shellError(command, snapshot, cause)),
           );
           return yield* result.exitCode === 0
@@ -212,6 +215,7 @@ export const makeShellRunnerService = (
             sink: Option.getOrUndefined(sink),
             context,
           }).pipe(
+            Effect.provideService(ProcessRunner, runner),
             Effect.mapError((cause) => shellError(command, snapshot, cause)),
             Effect.flatMap((result) =>
               result.exitCode === 0
@@ -234,15 +238,15 @@ export const makeShellRunnerService = (
   return service;
 };
 
-export const layer = (makeReplIO: () => ShellReplIO): Layer.Layer<ShellRunner> =>
+export const layer = (makeReplIO: () => ShellReplIO): Layer.Layer<ShellRunner, never, ProcessRunner> =>
   layerWithPrivateFileAccess(makeReplIO).pipe(Layer.provide(PrivateFileAccessService.layer));
 
 export const layerWithPrivateFileAccess = (
   makeReplIO: () => ShellReplIO,
-): Layer.Layer<ShellRunner, never, PrivateFileAccessService> =>
+): Layer.Layer<ShellRunner, never, PrivateFileAccessService | ProcessRunner> =>
   Layer.effect(
     ShellRunner,
-    Effect.map(PrivateFileAccessService, (privateFileAccess) =>
-      makeShellRunnerService(makeReplIO, privateFileAccess),
-    ),
+    Effect.gen(function* () {
+      return makeShellRunnerService(makeReplIO, yield* PrivateFileAccessService, yield* ProcessRunner);
+    }),
   );

@@ -29,6 +29,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -168,13 +169,11 @@ describe("lando app:cache:refresh", () => {
         expect(result.app).toBe("test-app-cache");
         expect(result.commandsCompiled).toBe(2);
         expect(result.appCommandCachePath).toMatch(/apps\/test-app-cache-[a-f0-9]{12}\/commands\.bin$/u);
-        expect(result.pluginCommandCachePath).toContain("plugin-command-cache.bin");
+        expect(result).not.toHaveProperty("pluginCommandCachePath");
         expect(renderAppCacheRefreshResult(result)).toBe("refreshed: test-app-cache (2 commands)");
 
         const appStat = await stat(result.appCommandCachePath ?? "");
         expect(appStat.size).toBeGreaterThan(0);
-        const pluginStat = await stat(result.pluginCommandCachePath ?? "");
-        expect(pluginStat.size).toBeGreaterThan(0);
       } finally {
         await rm(cacheRoot, { recursive: true, force: true });
       }

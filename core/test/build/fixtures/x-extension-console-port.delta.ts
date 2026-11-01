@@ -1,11 +1,8 @@
-import {
-  authoringExpressionSlot,
-  deriveAuthoringAst,
-  getJsonSchemaWithDeprecations,
-} from "@lando/sdk/schema";
+import { deriveAuthoringAst, getJsonSchemaWithDeprecations } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { normalizeJsonSchema } from "../../../../scripts/schema-compatibility/normalize.ts";
 import { wireObject } from "../x-extension-wire-proof.ts";
+import { historicalExpressionSlot } from "./x-extension-historical-expression.ts";
 
 // Independently modeled addition from 991e7fc11ce31f6910a03e47494965b14d48c6d3.
 // Do not import the live ServiceConfig or PortNumber contract into this proof.
@@ -24,7 +21,7 @@ export const consolePortDeltas = (["bare", "authoring", "fragment"] as const).ma
           deriveAuthoringAst(authoringModel.ast, {
             partial: mode === "fragment",
             directives: mode === "fragment",
-            slotFor: (kind) => authoringExpressionSlot(kind).ast,
+            slotFor: (kind) => historicalExpressionSlot(kind).ast,
             rootExpression: false,
           }),
         );

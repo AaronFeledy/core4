@@ -17,7 +17,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 const DEFAULT_IMAGE = "getmeili/meilisearch:v1.11";
 const VERSIONS = ["1"] as const;
 const ARTIFACTS = { "1": DEFAULT_IMAGE } as const;
-const DEFAULT_PORT = 7700;
+export const DEFAULT_PORT = 7700;
 const DATA_TARGET = PortablePath.make("/meili_data");
 
 export const MEILISEARCH_FEATURE_ID = "service-lando.meilisearch";

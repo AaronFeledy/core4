@@ -2,9 +2,9 @@ import { deserialize, serialize } from "node:v8";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import type { LandofileReferencedFile } from "@lando/landofile/load-expression-provenance";
-import type { LandofileShape, PluginManifest, ToolingInputDeclaration } from "@lando/sdk/schema";
-import { canonicalCacheJson, compareFingerprintText } from "./canonical.ts";
-import { isAppCommandIndexPayload, isPluginCommandIndexPayload } from "./command-index-validation.ts";
+import type { LandofileShape, ToolingInputDeclaration } from "@lando/sdk/schema";
+import { canonicalCacheJson } from "./canonical.ts";
+import { isAppCommandIndexPayload } from "./command-index-validation.ts";
 import type { CommandScriptFingerprint } from "./command-script-freshness.ts";
 
 import {
@@ -15,8 +15,6 @@ import {
 export const COMMAND_INDEX_SCHEMA_VERSION = 6n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
-
-export const PLUGIN_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x50, 0x43]);
 
 export const COMMAND_INDEX_HEADER_BYTES = 12;
 const VERSION_OFFSET = 4;
@@ -66,68 +64,7 @@ export interface AppCommandIndexPayload {
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
 
-export interface PluginCommandIndexPayload {
-  readonly schemaVersion: number;
-  readonly landoVersion: string;
-  readonly pluginNames: ReadonlyArray<string>;
-  readonly pluginListSha?: string;
-  readonly commandsByPlugin?: Readonly<Record<string, ReadonlyArray<string>>>;
-  readonly manifestFingerprint?: string;
-  readonly generatedAtMs: number;
-  readonly entries: ReadonlyArray<CommandIndexEntry>;
-}
-
 const stableFingerprint = (value: unknown): string => sha256Hex(canonicalCacheJson(value));
-
-const normalizeManifest = (manifest: PluginManifest) => ({
-  name: manifest.name,
-  version: manifest.version,
-  api: manifest.api,
-  enabled: manifest.enabled ?? true,
-  bundled: manifest.bundled ?? false,
-  contributes: manifest.contributes ?? {},
-});
-
-export const derivePluginCommandManifestFingerprint = (manifests: ReadonlyArray<PluginManifest>): string =>
-  stableFingerprint(
-    manifests
-      .map(normalizeManifest)
-      .sort(
-        (a, b) =>
-          compareFingerprintText(a.name, b.name) ||
-          compareFingerprintText(a.version, b.version) ||
-          a.api - b.api,
-      ),
-  );
-
-export const derivePluginCommandPluginListSha = (manifests: ReadonlyArray<PluginManifest>): string =>
-  stableFingerprint(
-    manifests
-      .map((manifest) => ({ name: manifest.name, version: manifest.version, api: manifest.api }))
-      .sort(
-        (a, b) =>
-          compareFingerprintText(a.name, b.name) ||
-          compareFingerprintText(a.version, b.version) ||
-          a.api - b.api,
-      ),
-  );
-
-export const derivePluginCommandIdsByPlugin = (
-  manifests: ReadonlyArray<PluginManifest>,
-): Readonly<Record<string, ReadonlyArray<string>>> =>
-  Object.fromEntries(
-    manifests
-      .map(
-        (manifest) =>
-          [
-            manifest.name,
-            [...(manifest.contributes?.commands ?? [])]
-              .map((entry) => (typeof entry === "string" ? entry : entry.id))
-              .sort(),
-          ] as const,
-      )
-      .sort(([a], [b]) => compareFingerprintText(a, b)),
-  );
 
 export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>
   stableFingerprint({
@@ -187,12 +124,4 @@ export const encodeAppCommandIndex = (payload: AppCommandIndexPayload): Uint8Arr
 export const decodeAppCommandIndex = (bytes: Uint8Array): AppCommandIndexPayload | null => {
   const payload = decodePayload(bytes, APP_COMMAND_MAGIC);
   return isAppCommandIndexPayload(payload) ? payload : null;
-};
-
-export const encodePluginCommandIndex = (payload: PluginCommandIndexPayload): Uint8Array =>
-  encodePayload(PLUGIN_COMMAND_MAGIC, payload);
-
-export const decodePluginCommandIndex = (bytes: Uint8Array): PluginCommandIndexPayload | null => {
-  const payload = decodePayload(bytes, PLUGIN_COMMAND_MAGIC);
-  return isPluginCommandIndexPayload(payload) ? payload : null;
 };

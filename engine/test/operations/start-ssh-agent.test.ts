@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect } from "effect";
 import * as operation from "../../src/operations/start-ssh-agent.ts";
 import * as LandoEventService from "../../src/services/event-service.ts";
+import * as relayWorker from "../../src/subsystems/ssh-agent/detached-worker.ts";
 import type { AgentRelaySession } from "../../src/subsystems/ssh-agent/session.ts";
 
 const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/app/demo") };
@@ -186,6 +187,54 @@ test("dangling SSH_AUTH_SOCK with a live 1Password agent publishes an info note"
     expect(notes[0]).toContain("no longer exists");
     expect(notes[0]).toContain("1Password");
   } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a Windows provider hint cannot change host agent discovery or relay filesystem paths", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ssh-agent-host-paths-"));
+  const socketPath = join(root, "agent.sock");
+  const server = createServer((socket) =>
+    socket.once("data", () => socket.end(Buffer.from([0, 0, 0, 5, 12, 0, 0, 0, 0]))),
+  );
+  await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+  const spawn = spyOn(relayWorker, "startDetachedAgentRelayWorker").mockReturnValue(
+    Effect.succeed({
+      appId: app.id,
+      sessionId: "host-paths",
+      kind: "ssh",
+      socketName: "agent.sock",
+      mount: { _tag: "bind-directory", directory: AbsolutePath.make(root) },
+      close: async () => undefined,
+      closed: Promise.resolve(),
+    }),
+  );
+  try {
+    const paths = makeLandoPaths({ userDataRoot: root, platform: "linux" });
+    const result = await run(
+      operation
+        .startSshAgentSession(
+          plan,
+          app,
+          capabilities,
+          { mode: "host" },
+          {
+            platform: "win32",
+            env: { SSH_AUTH_SOCK: socketPath },
+            home: root,
+          },
+        )
+        .pipe(Effect.provideService(PathsService, paths)),
+    );
+    expect(result?.sessionId).toBe("host-paths");
+    expect(spawn.mock.calls[0]?.[0]).toMatchObject({
+      upstream: { _tag: "unix", path: socketPath },
+      delivery: "bind-directory",
+      paths: { ...paths.roots, platform: "linux" },
+    });
+  } finally {
+    spawn.mockRestore();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(root, { recursive: true, force: true });
   }

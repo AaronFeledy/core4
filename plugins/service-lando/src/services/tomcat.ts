@@ -4,19 +4,20 @@ import { PortNumber } from "@lando/sdk/schema";
 import { TomcatServiceConfig } from "@lando/sdk/schema/services/tomcat";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
-  loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { TOMCAT_CATALOG } from "./generated/tomcat-catalog.ts";
 
-const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
+export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
+export const APP_MOUNT_TARGET = "/app";
 const TomcatFeatureConfig = Schema.Struct({
   webroot: Schema.String,
   ownsImageConfig: Schema.Boolean,
@@ -37,7 +38,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
   const { webroot, ownsImageConfig, major } = Schema.decodeUnknownSync(TomcatFeatureConfig)(ctx.config);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS["11"] });
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
+  ctx.setHealthcheck(tcpProbe(port, 20));
   if (ownsImageConfig) {
     ctx.addBuildStep({
       id: "service-lando.tomcat:server-config",
@@ -115,7 +116,7 @@ const makeTomcatServiceType = (id: string, major: (typeof VERSIONS)[number]): Se
             },
           },
           { id: "lando.env", config: { webroot } },
-          { id: "lando.app-mount", config: { target: "/app" } },
+          { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
       };
     });

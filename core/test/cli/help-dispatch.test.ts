@@ -63,7 +63,7 @@ describe("help dispatcher special", () => {
 
     // Then
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("meta:plugin:login");
+    expect(result.stdout).toContain("meta:events:follow");
   });
 
   test("Given the full catalog, when --help --all is requested, then deferred ids appear", async () => {
@@ -72,7 +72,7 @@ describe("help dispatcher special", () => {
 
     // Then
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("meta:plugin:login");
+    expect(result.stdout).toContain("meta:events:follow");
   });
 
   test("Given a registered alias, when help start is requested, then command help renders", async () => {
@@ -105,8 +105,10 @@ describe("help dispatcher special", () => {
       command: "cli:help",
       ok: true,
     });
-    expect((envelope as { result: { all: ReadonlyArray<unknown> } }).result.all).toHaveLength(
-      nonHiddenBuiltInCount,
-    );
+    expect(
+      (envelope as { result: { all: ReadonlyArray<{ source: string }> } }).result.all.filter(
+        (row) => row.source === "built-in",
+      ),
+    ).toHaveLength(nonHiddenBuiltInCount);
   });
 });

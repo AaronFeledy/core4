@@ -16,7 +16,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.17.0";
 const VERSIONS = ["8"] as const;
 const ARTIFACTS = { "8": DEFAULT_IMAGE } as const;
-const DEFAULT_PORT = 9200;
+export const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/elasticsearch/data");
 export const ELASTICSEARCH_FEATURE_ID = "service-lando.elasticsearch";
 

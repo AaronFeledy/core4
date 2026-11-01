@@ -1,4 +1,4 @@
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import {
@@ -15,17 +15,17 @@ import {
   readInstalledPluginRegistry,
 } from "@lando/engine/plugins/installed-registry";
 import { makeLandoPaths } from "@lando/paths";
-import type { ConfigError, NotImplementedError } from "@lando/sdk/errors";
-import type { PluginManifest } from "@lando/sdk/schema";
-import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 import {
-  DEFAULT_NPM_REGISTRY_URL,
-  type NpmPackument,
-  type NpmRegistryClient,
-} from "../../recipes/npm-source";
+  type ConfigError,
+  type NotImplementedError,
+  ProcessExecError,
+  ProcessTimeoutError,
+} from "@lando/sdk/errors";
+import type { PluginManifest } from "@lando/sdk/schema";
+import { ConfigService, PluginTrustStore, ProcessRunner } from "@lando/sdk/services";
+import type { NpmPackument, NpmRegistryClient } from "../../recipes/npm-source";
 import { retainedRecipeSources } from "../../recipes/runtime-sources";
 import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../../recipes/tarball-source";
-import type { BunSelfSpawner } from "./bun-self-runner";
 import { pluginAdd } from "./plugin-add";
 
 export interface PluginUpdateAdapterOptions {
@@ -36,7 +36,6 @@ export interface PluginUpdateAdapterOptions {
   readonly registryClient?: NpmRegistryClient;
   readonly fetcher?: TarballRecipeFetcher;
   readonly extractor?: TarballRecipeExtractor;
-  readonly bunSelfSpawner?: BunSelfSpawner;
 }
 
 const advertisedMetadata = (packument: NpmPackument): PluginUpdateMetadata => {
@@ -103,19 +102,24 @@ const inventoryFor = Effect.fnUntraced(function* (
 
 export const makePluginUpdateRunner = Effect.fnUntraced(function* (
   options: PluginUpdateAdapterOptions = {},
-): Effect.fn.Return<PluginUpdateRunner, ConfigError | NotImplementedError, ConfigService | PluginTrustStore> {
+): Effect.fn.Return<
+  PluginUpdateRunner,
+  ConfigError | NotImplementedError,
+  ConfigService | PluginTrustStore | ProcessRunner
+> {
   const config = yield* ConfigService;
   const trustStore = yield* PluginTrustStore;
+  const runner = yield* ProcessRunner;
   let userDataRoot = options.userDataRoot;
   if (userDataRoot === undefined) userDataRoot = yield* config.get("userDataRoot");
   const paths = makeLandoPaths(userDataRoot === undefined ? {} : { userDataRoot });
   const pluginsRoot = options.pluginsRoot ?? paths.pluginsDir;
-  const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
-  const sources = yield* retainedRecipeSources(registryUrl);
-  const registryClient = options.registryClient ?? sources.npmRegistryClient;
+  const registryUrl = options.registryUrl;
 
   return (input) =>
     Effect.gen(function* () {
+      const sources = yield* retainedRecipeSources(registryUrl);
+      const registryClient = options.registryClient ?? sources.npmRegistryClient;
       const inventory = yield* inventoryFor(
         pluginsRoot,
         trustStore,
@@ -158,11 +162,10 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
             spec: `${row.name}@${row.targetVersion}`,
             pluginsRoot,
             ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-            registryUrl,
+            ...(registryUrl === undefined ? {} : { registryUrl }),
             registryClient,
             fetcher: options.fetcher ?? sources.tarballRecipeFetcher,
             ...(options.extractor === undefined ? {} : { extractor: options.extractor }),
-            ...(options.bunSelfSpawner === undefined ? {} : { bunSelfSpawner: options.bunSelfSpawner }),
             trustStore: new Set(),
             requestedSelector: row.selector,
             expectedManifest: advertised,
@@ -172,6 +175,7 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
           }).pipe(
             Effect.provideService(ConfigService, config),
             Effect.provideService(PluginTrustStore, trustStore),
+            Effect.provideService(ProcessRunner, runner),
           ),
         );
         if (Exit.isSuccess(exit)) {
@@ -184,6 +188,13 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
           updatedPlugins.push(row.name);
           rows.push(row);
         } else {
+          const failure = Cause.findErrorOption(exit.cause);
+          if (
+            failure._tag === "Some" &&
+            (failure.value instanceof ProcessExecError || failure.value instanceof ProcessTimeoutError)
+          ) {
+            return yield* Effect.failCause(exit.cause);
+          }
           rows.push({ ...row, status: "failed", reason: "apply-failed" });
         }
       }

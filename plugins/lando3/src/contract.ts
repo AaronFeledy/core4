@@ -113,8 +113,17 @@ export interface Lando3Source {
  * never grows a second recipe expansion.
  */
 export interface Lando3TranslatorPorts {
+  readonly serviceFacts: Readonly<Record<string, Lando3ServiceFacts>>;
   readonly decomposers: ReadonlyMap<string, RecipeDecomposerFactory>;
   readonly redactor: Redactor;
 }
+
+export type Lando3ServiceFacts = {
+  readonly versions: readonly string[];
+  readonly listener?: { readonly port: number; readonly variable?: string };
+  readonly httpPort?: number;
+  readonly appMountTarget?: string;
+  readonly configTargets?: { readonly server?: string; readonly dir?: string };
+};
 
 export const LANDO3_TRANSLATOR_ID = "lando3";

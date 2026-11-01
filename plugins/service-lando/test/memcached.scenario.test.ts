@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,9 +26,9 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
@@ -37,6 +41,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +183,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -207,7 +211,7 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     ]);
     expect(cache.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
     expect(cache.healthcheck?.kind).toBe("command");
-    expect(cache.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/11211"]);
+    expect(cache.healthcheck).toEqual(tcpProbe(11211, 30));
     expect(cache.environment.LANDO_SERVICE_TYPE).toBe("memcached");
   });
 

@@ -9,7 +9,7 @@ import { makeRuntimeProvider } from "../src/index.ts";
 import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, ProviderId, ServiceName, planAppIdentity } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import {
   listAppliedPlans,
@@ -98,6 +98,53 @@ const withFailingModify = (state: PluginStateStore): PluginStateStore => ({
 });
 
 describe("provider-podman applied state", () => {
+  test.each([true, false, undefined, "off", "invalid"])(
+    "loads v2 init %s atomically without losing ownership",
+    async (init) => {
+      // Given
+      await withStateRoot(async (root) => {
+        const state = stateFor(root);
+        const plan = planFor("init-migration");
+        const sibling = planFor("sibling");
+        const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+        const encoded = Schema.encodeSync(AppPlan)(plan);
+        const bytes = JSON.stringify({
+          version: 2,
+          data: {
+            [sibling.id]: Schema.encodeSync(AppPlan)(sibling),
+            [plan.id]: {
+              ...encoded,
+              services: {
+                web: {
+                  ...encoded.services[serviceName],
+                  extensions: {
+                    compose: {
+                      ...(init === undefined ? {} : { init }),
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+        await writeFile(path, bytes);
+        // When
+        const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
+        // Then
+        if (init === "invalid") {
+          expect(loaded).toBeUndefined();
+          expect(await readFile(path, "utf8")).toBe(bytes);
+        } else {
+          if (loaded === undefined) throw new Error("missing migrated plan");
+          expect(loaded.services[serviceName]?.init).toBe(init === "off" ? false : init);
+          expect(loaded.services[serviceName]?.extensions.compose).not.toHaveProperty("init");
+          expect(planAppIdentity(loaded)).toEqual(planAppIdentity(plan));
+          const peer = await Effect.runPromise(loadAppliedPlan(state, sibling.id));
+          expect(peer?.root).toBe(sibling.root);
+        }
+      });
+    },
+  );
   for (const damage of ["corrupt", "migration", "decode", "bad-member"] as const) {
     for (const operation of [
       "apply",

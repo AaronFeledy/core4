@@ -22,6 +22,7 @@ import type {
   ComposeKeyRejectedError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
+  DebuggerHostUnavailableError,
   EventError,
   FileSyncDriftError,
   FileSyncSelectionError,
@@ -434,6 +435,7 @@ describe("SDK plan-carrying error channels", () => {
         StartAppError,
         | LegacyStartAppError
         | ServiceNotReadyError
+        | DebuggerHostUnavailableError
         | import("@lando/sdk/errors").AppPlacementError
         | import("@lando/sdk/errors").AppResolveError
       >

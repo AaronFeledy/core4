@@ -71,7 +71,9 @@ Lando sets `RABBITMQ_NODE_PORT` from `port:`. An authored `RABBITMQ_NODE_PORT` m
 
 Ports `4369` (EPMD), `15672` (management UI), and `15692` (Prometheus) can't be the AMQP port. The AMQP port must leave room for distribution: at most `45535` unless you set `RABBITMQ_DIST_PORT` under `environment:`. That distribution port must be a TCP port number (1-65535), different from the AMQP port and all three reserved ports. Invalid or conflicting ports fail planning, and `lando app:config:lint` reports them at `services.<name>.port` or `services.<name>.environment.RABBITMQ_DIST_PORT`.
 
-The healthcheck and `rabbitmqctl` use the local Erlang node, not an AMQP connection. The management UI and `rabbitmqadmin` stay on `15672`: `port:` only moves AMQP. Apply the change with `lando rebuild`, then check the broker's listeners:
+Ongoing health checks make a TCP connection to the planned AMQP port. Startup readiness makes that connection first, then pings the local Erlang node with `rabbitmq-diagnostics`. Waiting for the listener prevents the probe from creating the broker's cookie before the broker starts. Neither probe checks AMQP protocol or authentication, or proves the management API is ready. Set `readiness: false` to disable startup readiness, or `healthcheck: false` to disable ongoing health checks; these settings are independent.
+
+`rabbitmqctl` uses the local Erlang node. The management UI and `rabbitmqadmin` stay on `15672`: `port:` only moves AMQP. Apply the change with `lando rebuild`, then check the broker's listeners:
 
 ```sh
 lando rabbitmqctl eval 'rabbit_networking:active_listeners().'

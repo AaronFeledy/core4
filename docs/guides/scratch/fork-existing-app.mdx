@@ -28,7 +28,7 @@ lando scratch:start --fork --detach
 lando scratch --fork --name review --detach
 ```
 
-`lando scratch` and `lando scratch:start` are aliases of `apps:scratch:start`. Pass exactly one of `--fork` or `--from`.
+`lando scratch` and `lando scratch:start` are aliases of `apps:scratch:start`. Pass exactly one of `--fork` or `--from`. Bare `lando scratch --help` shows the scratch topic page, the same as `lando help scratch`; ask `lando scratch:start --help` for this command's flags.
 
 `--detach` returns only after the fork passes startup readiness, including enabled healthchecks. Without it the session stays attached until Ctrl+C, then the scratch is destroyed. Readiness failure or interruption during acquisition cleans up the scratch unless you passed `--keep-on-failure`; user-app start retention does not apply to scratch apps.
 
@@ -73,6 +73,7 @@ To materialize a recipe instead of forking the app, use [Start a scratch app fro
       <Run command="lando scratch:start --help" />
       <Verify command="lando scratch:start --help" expect={{ stdout: { regex: "--fork" } }} />
       <Verify command="lando scratch:start --help" expect={{ stdout: { regex: "--keep-on-failure" } }} />
+      <Verify command="lando scratch --help" expect={{ stdout: { regex: "lando help scratch" } }} />
     </Step>
   </Scenario>
 </Guide>

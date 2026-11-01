@@ -1,4 +1,5 @@
 import { ProviderId } from "@lando/sdk/schema";
+import { Effect } from "effect";
 import { yesFlag } from "../../../spec/confirmation-flag";
 import { Flags } from "../../../spec/metadata";
 
@@ -7,8 +8,9 @@ import {
   type GlobalDestroyResult,
   GlobalDestroyResultSchema,
   globalDestroy,
-  renderGlobalDestroyResult,
-} from "../../../commands/meta/global-destroy";
+} from "@lando/engine/operations/global-destroy";
+import { renderGlobalDestroyResult } from "../../../commands/meta/global-destroy";
+import { publishShutdownWarnings } from "../../../commands/shutdown-summary";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { specFlagsOf } from "../../../spec/input-coercion";
 
@@ -22,7 +24,7 @@ export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOpti
   };
 };
 
-export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
+export const metaGlobalDestroySpec = {
   resultSchema: GlobalDestroyResultSchema,
   id: "meta:global:destroy",
   summary: "Destroy the host-level global Lando app provider resources.",
@@ -38,6 +40,7 @@ export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
       default: false,
     }),
   },
-  run: (input) => globalDestroy(globalDestroyOptionsFromInput(input)),
+  run: (input) =>
+    globalDestroy(globalDestroyOptionsFromInput(input)).pipe(Effect.tap(publishShutdownWarnings)),
   render: (result) => renderGlobalDestroyResult(result),
-};
+} satisfies LandoCommandSpec<GlobalDestroyResult>;

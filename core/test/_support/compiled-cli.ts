@@ -26,10 +26,9 @@ const compileCli = async (): Promise<string> => {
   return defaultCompiledCli;
 };
 
-// Memoization alone is unsound here: suite-mates like
-// core/test/build/no-runtime-tsbuildinfo.test.ts run `bun run clean`, which
-// deletes core/dist/lando mid-suite. Re-verify the binary on every call and
-// rebuild when it vanished, matching the old build-in-every-beforeAll safety.
+// Memoization alone is unsound when another build or clean removes the binary.
+// Re-verify it on every call and rebuild when it vanished, matching the old
+// build-in-every-beforeAll safety.
 export const ensureCompiledCli = async (): Promise<string> => {
   if (compiledCliPromise === undefined) {
     compiledCliPromise = compileCli();

@@ -84,6 +84,9 @@ const landofileRuntimeInputs = {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
+      fetchTarball: async () => {
+        throw new Error("Unexpected npm download");
+      },
       resolve: (packageSpec) =>
         Promise.resolve({
           packageName: packageSpec,
@@ -111,6 +114,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -334,7 +338,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     ),
     options.configLayer ?? LandoConfigService.layer,
     EnvSecretStore.layer,
-  ).pipe(Layer.provide(PrivateFileAccessService.layer));
+  ).pipe(Layer.provide(Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer)));
 };
 
 const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {

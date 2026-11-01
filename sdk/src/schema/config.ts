@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { Schema } from "effect";
 import { GpgAgentConfig, SshAgentConfig } from "./agent-forwarding.ts";
 
+import { BindAddress } from "./endpoint.ts";
 import { isCoreServiceEnvKey } from "./generated/core-service-env.ts";
 import { HostEvents } from "./host-events.ts";
 import { DomainName } from "./hostname.ts";
@@ -155,6 +156,32 @@ export const McpConfig = Schema.Struct({
 });
 export type McpConfig = typeof McpConfig.Type;
 
+// ============================================================================
+// Host-proxy URL scheme policy
+// ============================================================================
+
+const HostProxyScheme = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(/^[A-Za-z][A-Za-z0-9+.-]*$/u, {
+      message: "Expected an RFC 3986 scheme token without a trailing colon",
+    }),
+  ),
+  Schema.check(
+    Schema.makeFilter((value) => value.toLowerCase() !== "file", {
+      message: "file: is always forbidden; reveal files by path instead",
+      toJsonSchema: () => [{ not: { pattern: "^[Ff][Ii][Ll][Ee]$" } }, true],
+    }),
+  ),
+);
+
+export const HostProxyConfig = Schema.Struct({
+  allowedSchemes: Schema.optionalKey(Schema.Array(HostProxyScheme)).annotate({
+    description:
+      "Additional URL schemes allowed beyond host-proxy defaults, without trailing colons; file is always forbidden (global hostProxy.allowedSchemes).",
+  }),
+});
+export type HostProxyConfig = typeof HostProxyConfig.Type;
+
 export const AgentEnvConfig = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean).annotate({
     default: true,
@@ -196,6 +223,29 @@ export const TracingConfig = Schema.Struct({
 });
 export type TracingConfig = typeof TracingConfig.Type;
 
+export const DebuggerHost = Schema.Union([
+  Schema.Literal("windows"),
+  BindAddress.check(Schema.isPattern(/^(?!0\.0\.0\.0$)(?![0:.]*:[0:.]*$).+$/u)),
+]).annotate({
+  identifier: "DebuggerHost",
+  title: "Debugger Host",
+  description:
+    "Reachable IDE address (`windows` or a specific IPv4/IPv6 literal). Unspecified addresses such as 0.0.0.0 and :: are rejected.",
+});
+export type DebuggerHost = typeof DebuggerHost.Type;
+
+export const DebuggerConfig = Schema.Struct({
+  host: Schema.optionalKey(DebuggerHost).annotate({
+    description:
+      "Where your IDE's debugger listens for connect-back debuggers such as Xdebug (global debugger.host): unset for the machine running Lando, `windows` for the Windows host when Lando runs in WSL 2 with NAT networking, or an IPv4/IPv6 address.",
+  }),
+}).annotate({
+  identifier: "DebuggerConfig",
+  title: "Debugger Config",
+  description: "Global debugger host reachability (global debugger).",
+});
+export type DebuggerConfig = typeof DebuggerConfig.Type;
+
 /**
  * Global configuration resolved at the `global` bootstrap level.
  *
@@ -205,6 +255,9 @@ export type TracingConfig = typeof TracingConfig.Type;
  * unknown tokens fail later at resolve, not at config load.
  */
 export const GlobalConfig = Schema.Struct({
+  debugger: Schema.optionalKey(DebuggerConfig).annotate({
+    description: "Global debugger host reachability (global debugger).",
+  }),
   sshAgent: Schema.optionalKey(SshAgentConfig).annotate({
     description: "Global SSH-agent forwarding defaults, overridden by each app per field.",
   }),
@@ -296,6 +349,9 @@ export const GlobalConfig = Schema.Struct({
   }),
   mcp: Schema.optionalKey(McpConfig).annotate({
     description: "Global MCP command exposure policy (global mcp).",
+  }),
+  hostProxy: Schema.optionalKey(HostProxyConfig).annotate({
+    description: "Global container-to-host URL opening policy (global hostProxy).",
   }),
   agentEnv: Schema.optionalKey(AgentEnvConfig).annotate({
     description: "Global host agent-context env forwarding policy (global agentEnv).",

@@ -289,6 +289,7 @@ export const renderCompose = (plan: AppPlan, ctx: ProviderErrorContext): string 
     lines.push(`  ${yamlMappingKeyText(serviceName)}:`, `    image: ${quoteYamlScalar(service.image)}`);
     const plannedService = Object.values(plan.services).find((candidate) => candidate.name === serviceName);
     if (plannedService !== undefined) lines.push(...composeHealthcheck(plan, plannedService));
+    if (plannedService?.init !== undefined) lines.push(`    init: ${plannedService.init ? "true" : "false"}`);
 
     if (service.ports !== undefined) {
       lines.push("    ports:");

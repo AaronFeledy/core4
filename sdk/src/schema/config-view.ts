@@ -6,6 +6,7 @@ import { GlobalConfig } from "./config.ts";
 export const GlobalConfigView = Schema.toType(
   Schema.Struct(
     Struct.pick(GlobalConfig.fields, [
+      "debugger",
       "userDataRoot",
       "userConfRoot",
       "userCacheRoot",
@@ -30,6 +31,7 @@ export const GlobalConfigView = Schema.toType(
       "router",
       "scanner",
       "mcp",
+      "hostProxy",
       "agentEnv",
       "notify",
       "events",

@@ -216,7 +216,7 @@ describe("renderCommandHelp", () => {
 
   test("keeps the deferred STATUS block", () => {
     // Given a deferred built-in
-    const entry = requireBuiltIn("plugin:login");
+    const entry = requireBuiltIn("meta:events:follow");
 
     // When per-command help is rendered
     const help = renderCommandHelp(entry);

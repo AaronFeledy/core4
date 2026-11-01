@@ -1,0 +1,11 @@
+name: lando-memcached
+services:
+  defaults:
+    type: memcached:1
+  patch:
+    type: memcached:1.5.21
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/memcached": ../..

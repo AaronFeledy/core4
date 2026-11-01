@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { completeLando3CommitSet } from "../src/commit-set.ts";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 test.each(["full", "single-layer"] as const)("preserves an empty planned commit set in %s mode", (mode) => {
   // Given

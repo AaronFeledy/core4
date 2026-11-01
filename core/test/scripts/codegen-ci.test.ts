@@ -192,6 +192,7 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("bun run check:runtime-bundle-manifest --live");
       expect(firstWorkflow).toContain("refresh-test-timings-linux-x64:");
       expect(firstWorkflow).toContain("bun run scripts/update-test-timings.ts");
+      expect(firstWorkflow).toContain("include-hidden-files: true");
       expect(firstWorkflow).toContain("mysql-arm-client-linux-arm64:");
       expect(firstWorkflow).toContain("runs-on: ubuntu-24.04-arm");
       expect(firstWorkflow).toContain("bun run scripts/assemble-runtime-bundle.ts --platform linux-arm64");
@@ -337,7 +338,7 @@ describe("ci workflow codegen", () => {
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(41);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(13);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(14);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(1);
       expect(releaseWorkflow).not.toContain("bun-version: ");

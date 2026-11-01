@@ -3,6 +3,7 @@ import { ServiceStartError } from "@lando/sdk/errors";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { DateTime, Deferred, Effect, Fiber } from "effect";
+import { withGlobalActivationScope } from "../../src/global-app/activation-scope.ts";
 import { completeStartup } from "../../src/lifecycle/startup-completion.ts";
 import { plan, web } from "../operations/start-progress-topology-support.ts";
 import { failureOf, successOf } from "../subsystems/healthcheck/support.ts";
@@ -107,7 +108,7 @@ test.each([false, true])(
         expect(calls).toEqual([]);
         yield* Effect.forEach(gates, (gate) => Deferred.succeed(gate, undefined));
         return yield* Fiber.join(fiber);
-      }),
+      }).pipe(withGlobalActivationScope),
     );
     // Then failed checks aggregate with apply failures; only all-ready groups publish routes.
     expect(calls.filter((call) => call !== "routes").sort()).toEqual(["one", "three", "two"]);

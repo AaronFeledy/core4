@@ -56,7 +56,7 @@ export interface ServiceStartHandlers<E, R> {
   readonly execHealthcheck: (
     service: ServicePlan,
     probe: HealthcheckPlan,
-  ) => Effect.Effect<{ readonly exitCode: number }, unknown, R>;
+  ) => Effect.Effect<{ readonly exitCode: number; readonly stderr?: string }, unknown, R>;
   /** Waits for a one-shot service to exit. */
   readonly waitForExit: (service: ServicePlan) => Effect.Effect<{ readonly exitCode: number }, unknown, R>;
 }
@@ -125,7 +125,13 @@ const probeHealthy = Effect.fnUntraced(function* <E, R>(
     const result = yield* Effect.result(handlers.execHealthcheck(service, healthcheck));
     timedOut = false;
     if (result._tag === "Success") {
-      lastError = undefined;
+      lastError =
+        result.success.exitCode === 0 || !result.success.stderr
+          ? undefined
+          : (handlers.redactProbeError?.(result.success.stderr) ?? "Readiness command failed.").slice(
+              0,
+              2048,
+            );
       lastExitCode = result.success.exitCode;
       return result.success.exitCode === 0 ? "green" : "red";
     }

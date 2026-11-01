@@ -1,0 +1,28 @@
+name: lando-php-extensions
+services:
+  83scripted:
+    type: php:8.3
+    build_as_root:
+      - install-php-extensions swoole-^6.1@stable
+  buildsteps:
+    type: php:8.3
+    build_as_root:
+      - apt-get update -y
+      - apt install libxslt1-dev libgearman-dev -y
+      - pecl install gearman-2.1.4
+      - docker-php-ext-install xsl
+      - docker-php-ext-enable gearman
+  dockerfile:
+    type: php:custom
+    overrides:
+      image: lando/php:8.3-custom
+      build:
+        context: ./
+        dockerfile: Dockerfile.custom
+      ports:
+        - "80"
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/php": ../..

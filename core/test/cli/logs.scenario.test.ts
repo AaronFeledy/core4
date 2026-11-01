@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Schema, Stream, Struct } from "effect";
 
 import { StreamFrameSink, followLogsApp, logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -23,6 +23,7 @@ import {
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -36,35 +37,19 @@ interface RunResult {
 }
 
 const capabilities: ProviderCapabilities = {
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceLogSources: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: true,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: "native",
-  copyMounts: true,
-  copyOnWriteAppRoot: false,
+  ...Struct.omit(TestRuntimeProvider.capabilities, [
+    "composeKnobs",
+    "composeServiceFields",
+    "authoredNetworks",
+    "composeProjectFields",
+  ]),
   volumeSnapshot: "none",
   serviceFileCopy: "none",
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
-  providerExtensions: [],
 };
 
 const metadata = {

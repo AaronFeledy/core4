@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { php83ServiceType } from "../src/services/php.ts";
 import { apacheLauncherDirectives } from "./support/apache-directives.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -30,7 +31,7 @@ test.each([
   expect(plan.endpoints).toEqual([
     { _tag: "internal", name: "web", primary: true, port: input.effective, protocol: input.protocol },
   ]);
-  expect(plan.healthcheck?.command).toEqual(["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${input.effective}`]);
+  expect(plan.healthcheck).toEqual(tcpProbe(input.effective, 10));
   switch (input.via) {
     case "apache": {
       const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
@@ -64,7 +65,7 @@ test.each([undefined, 8123])("omits listener and probe for CLI even with port %s
     metadata: { resolvedAt: "2026-10-24T00:00:00Z", source: "php-listener.test.ts", runtime: 4 },
   });
   // Then: the idle command cannot acquire a fictitious HTTP listener or TCP probe.
-  expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+  expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
   expect(plan.endpoints).toEqual([]);
   expect(plan.healthcheck).toBeUndefined();
 });

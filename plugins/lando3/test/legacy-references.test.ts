@@ -4,7 +4,7 @@ import { ConfigTranslateInput, ConfigTranslateSourceId } from "@lando/sdk/schema
 import { Effect, Schema } from "effect";
 import { mergeLegacySources, toMergedValue } from "../src/legacy-merge.ts";
 import { legacyReferenceDiagnostics } from "../src/legacy-references.ts";
-import { lando3ConfigTranslator } from "../src/translator.ts";
+import { testTranslator as lando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 const translate = (text: string) =>
   Effect.runPromise(
@@ -170,7 +170,7 @@ test("uses merged scalar provenance and skips identity, global state, and tags",
     mergeLegacySources(sources),
     ConfigTranslateSourceId.make("fallback"),
   );
-  // Then paths use merged indexes while spans and source ids point to authored occurrences.
+  // Then paths, spans and source ids all point to authored occurrences.
   expect(
     diagnostics.map(({ kind, keyPath, sourceId, span }) => ({
       kind,
@@ -188,7 +188,7 @@ test("uses merged scalar provenance and skips identity, global state, and tags",
     { kind: "needs-review", keyPath: ["x-list", 0], sourceId: ConfigTranslateSourceId.make("base"), line: 6 },
     {
       kind: "needs-review",
-      keyPath: ["x-list", 1],
+      keyPath: ["x-list", 0],
       sourceId: ConfigTranslateSourceId.make("local"),
       line: 2,
     },

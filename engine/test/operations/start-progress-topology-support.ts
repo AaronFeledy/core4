@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { EventError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import {
@@ -24,10 +25,7 @@ import {
   BuildOrchestrator,
   EventService,
   type FileSyncEngine,
-  GlobalAppService,
   LandofileService,
-  PathsService,
-  PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -38,20 +36,14 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { emptySnapshotsLayer } from "./data-mover-support.ts";
-
-import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, makeRedactionService } from "@lando/redaction/service";
-import * as GlobalAppServiceLayer from "../../src/global-app/service.ts";
 import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { startApp } from "../../src/operations/start.ts";
-import * as LandoConfigService from "../../src/services/config.ts";
 import * as EnvironmentValueResolverLayer from "../../src/services/environment-value-resolver.ts";
-import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeEnvSecretStore } from "../../src/services/secret-store.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import * as TestLandofileLayers from "../services/landofile-layer.ts";
+import * as BunShellRunner from "../shell-runner.ts";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -96,6 +88,10 @@ export const web: ServicePlan = {
   extensions: {},
 };
 
+const harnessRoots: string[] = [];
+process.once("exit", () => {
+  for (const root of harnessRoots) rmSync(root, { recursive: true, force: true });
+});
 const testAppRoot = mkdtempSync(join(tmpdir(), "lando-test-start-"));
 process.once("exit", () => rmSync(testAppRoot, { recursive: true, force: true }));
 
@@ -129,6 +125,7 @@ export const appliedPlanRecord = ({ events: _events, ...plan }: AppPlan): AppPla
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly globalServiceIds?: ReadonlyArray<string>;
     readonly appliedPlans?: ReadonlyArray<AppPlan>;
     readonly providerOverrides?: Partial<RuntimeProviderShape>;
     readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
@@ -173,6 +170,21 @@ export const makeHarness = (
   const redaction = makeRedactionService();
   const plannedApp = options.plannedApp ?? plan;
   const stateStore = options.stateStore ?? makeTestStateStore();
+  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
+  harnessRoots.push(userDataRoot);
+  const fixtureStore = StateStore.of({
+    ...stateStore.service,
+    withLock: (key, body) =>
+      Effect.sync(() => options.onVolumeLock?.(key)).pipe(
+        Effect.andThen(stateStore.service.withLock(key, body)),
+      ),
+  });
+  const globalAdmission = makeGlobalAdmissionFixture({
+    directory: userDataRoot,
+    template: plannedApp,
+    stateStore: fixtureStore,
+    ids: options.globalServiceIds ?? [TestRouterService.id],
+  });
   const events: LandoEvent[] = [];
   let signalApplyTreeStart = (): void => undefined;
   const applyTreeStarted = new Promise<void>((resolve) => {
@@ -198,7 +210,7 @@ export const makeHarness = (
         ),
         Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
       ));
-  const provider: RuntimeProviderShape = {
+  const userProvider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     ...options.providerOverrides,
     id: "lando",
@@ -241,7 +253,7 @@ export const makeHarness = (
               };
             }),
         }),
-    quiesceForFileSync: () => Effect.void,
+    quiesceForFileSync: () => Effect.succeed({}),
     ...(options.quiesceRetainedFileSync === undefined
       ? {}
       : { quiesceRetainedFileSync: options.quiesceRetainedFileSync }),
@@ -300,15 +312,29 @@ export const makeHarness = (
     exec: options.exec ?? TestRuntimeProvider.exec,
     logs: options.logs ?? (() => Stream.empty),
   };
+  const provider = globalAdmission.wrapProvider(userProvider);
   const runtimeProviderRegistry = {
     appliedPlansFor: (root: AbsolutePath) =>
-      Effect.succeed((options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root)),
+      Effect.sync(() => {
+        const persisted = (options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root);
+        if (persisted.length > 0) return persisted;
+        const global = globalAdmission.appliedPlan();
+        return root === globalAdmission.root && global !== undefined ? [global] : [];
+      }),
     ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
-    select: options.selectProvider ?? (() => Effect.succeed(provider)),
+    select: (target?: AppPlan | ProviderId) => {
+      const select = options.selectProvider;
+      return select === undefined
+        ? Effect.succeed(provider)
+        : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
+    },
     // What a provider really hands back: a decoded record, never the planner's object, with no events.
-    resolveAppliedPlan: options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))),
+    resolveAppliedPlan: (root: AbsolutePath) =>
+      root === globalAdmission.root
+        ? Effect.sync(() => globalAdmission.appliedPlan())
+        : (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root),
     resolveTeardownEvidence:
       options.resolveTeardownEvidence ??
       ((root: AbsolutePath) =>
@@ -318,20 +344,10 @@ export const makeHarness = (
           ),
         )),
   };
-  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
     emptySnapshotsLayer,
     PrivateFileAccessService.layer,
-    Layer.succeed(
-      StateStore,
-      StateStore.of({
-        ...stateStore.service,
-        withLock: (key, body) =>
-          Effect.sync(() => options.onVolumeLock?.(key)).pipe(
-            Effect.andThen(stateStore.service.withLock(key, body)),
-          ),
-      }),
-    ),
+    Layer.succeed(StateStore, fixtureStore),
     TestLandofileLayers.layerTransactionGuard,
     Layer.succeed(
       LandofileService,
@@ -348,7 +364,14 @@ export const makeHarness = (
     ),
     Layer.succeed(
       AppPlanner,
-      AppPlanner.of({ plan: () => Effect.succeed({ ...plannedApp, valueModel: 1 as const }) }),
+      AppPlanner.of({
+        plan: (landofile) =>
+          Effect.succeed(
+            landofile.document.name === "global"
+              ? globalAdmission.globalPlan
+              : { ...plannedApp, valueModel: 1 as const },
+          ),
+      }),
     ),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistry),
     Layer.succeed(
@@ -379,28 +402,6 @@ export const makeHarness = (
       RedactionService.of({
         ...redaction,
       }),
-    ),
-    Layer.succeed(
-      PluginRegistry,
-      PluginRegistry.of({
-        list: Effect.succeed([]),
-        load: () => Effect.die("not used"),
-        loadServiceType: () => Effect.die("not used"),
-        loadServiceFeature: () => Effect.die("not used"),
-        loadAppFeature: () => Effect.die("not used"),
-      }),
-    ),
-    LandoConfigService.layer,
-    BunFileSystem.layer,
-    Layer.effect(
-      GlobalAppService,
-      Effect.map(GlobalAppService, (service) => ({ ...service, providerId: Effect.succeed(providerId) })),
-    ).pipe(
-      Layer.provide(
-        GlobalAppServiceLayer.layer.pipe(
-          Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
-        ),
-      ),
     ),
     Layer.succeed(
       RouterService,
@@ -439,10 +440,17 @@ export const makeHarness = (
     ),
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
     ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
-    // After LandoConfigService.layer: that snapshot also provides PathsService, and the later layer wins.
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
+    globalAdmission.layer,
   );
-  return { layer, events, applyTreeStarted, stateStore, runtimeProviderRegistry, userDataRoot };
+  return {
+    layer,
+    events,
+    applyTreeStarted,
+    stateStore,
+    runtimeProviderRegistry,
+    userDataRoot,
+    globalAdmission,
+  };
 };
 
 export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan = plan) =>
@@ -457,3 +465,4 @@ export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: Ap
     ).pipe(Effect.provide(harness.layer)),
   );
 import { fileSyncEngineLayer } from "../file-sync-engine.ts";
+import { makeGlobalAdmissionFixture } from "./global-admission-support.ts";

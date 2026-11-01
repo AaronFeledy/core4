@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Schema, Stream } from "effect";
+import { DateTime, Effect, Layer, Schema, Stream, Struct } from "effect";
 
 import { buildInfoSummary, infoApp, renderInfoAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -28,7 +28,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRouterService } from "@lando/sdk/test";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { AGENT_CONTEXT_ENV_ALLOWLIST } from "@lando/engine/config/agent-env";
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
@@ -44,35 +44,19 @@ interface RunResult {
 }
 
 const capabilities: ProviderCapabilities = {
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceLogSources: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: true,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: "native",
-  copyMounts: true,
-  copyOnWriteAppRoot: false,
+  ...Struct.omit(TestRuntimeProvider.capabilities, [
+    "composeKnobs",
+    "composeServiceFields",
+    "authoredNetworks",
+    "composeProjectFields",
+  ]),
   volumeSnapshot: "none",
   serviceFileCopy: "none",
   artifactExport: false,
   artifactImport: false,
   ephemeralMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
   architectureEmulation: false,
   composeSpec: "portable",
-  providerExtensions: [],
 };
 
 const metadata = {

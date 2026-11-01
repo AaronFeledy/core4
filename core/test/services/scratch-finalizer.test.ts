@@ -11,7 +11,6 @@ import {
   type LandoEvent,
   PathsService,
   RuntimeProvider,
-  RuntimeProviderRegistry,
   type RuntimeProviderShape,
   ScratchAppService,
 } from "@lando/core/services";
@@ -40,6 +39,7 @@ const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunne
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
+import { scratchGlobalAdmissionFixture } from "../_support/scratch-global-admission.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -48,6 +48,9 @@ const landofileRuntimeInputs = {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
+      fetchTarball: async () => {
+        throw new Error("Unexpected npm download");
+      },
       resolve: (packageSpec) =>
         Promise.resolve({
           packageName: packageSpec,
@@ -84,6 +87,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -241,18 +245,9 @@ const makeRecordingLayer = (
   const plannerLive = AppPlannerLayer.layer.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, AppCacheService.layer, LandoConfigService.layer)),
   );
-  const registryLive = Layer.succeed(
-    RuntimeProviderRegistry,
-    RuntimeProviderRegistry.of({
-      resolveAppliedPlan: () => Effect.succeed(undefined),
-      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-      appliedPlansFor: () => Effect.succeed([]),
-      list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(provider),
-    }),
-  );
+  const { registryLayer: registryLive, admissionLayer } = scratchGlobalAdmissionFixture(provider);
   const scratchDeps = Layer.mergeAll(
+    admissionLayer,
     environmentResolverLayer(),
     Layer.effect(
       EventService,
@@ -313,6 +308,14 @@ const waitUntil = Effect.fnUntraced(function* (predicate: () => boolean) {
   }
 });
 
+const waitForScratchPhase = <A, E>(entered: Deferred.Deferred<void>, fiber: Fiber.Fiber<A, E>) =>
+  Effect.raceFirst(
+    Deferred.await(entered),
+    Fiber.join(fiber).pipe(
+      Effect.andThen(Effect.die("Scratch acquisition completed before the expected phase.")),
+    ),
+  ).pipe(Effect.onExit((exit) => (Exit.isFailure(exit) ? Fiber.interrupt(fiber) : Effect.void)));
+
 describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
   test.each([false, true])("apply interrupt obeys scratch keep-on-failure=%s", async (keepOnFailure) => {
     await withTempProject(async () => {
@@ -325,7 +328,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
           const fiber = yield* Effect.forkChild(
             Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: false, keepOnFailure })),
           );
-          yield* Deferred.await(created);
+          yield* waitForScratchPhase(created, fiber);
           yield* Fiber.interrupt(fiber);
           return yield* Fiber.await(fiber);
         }).pipe(
@@ -412,7 +415,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
               }),
             ),
           );
-          yield* Deferred.await(inspecting);
+          yield* waitForScratchPhase(inspecting, fiber);
           yield* Fiber.interrupt(fiber);
           return yield* Fiber.await(fiber);
         }).pipe(
@@ -487,6 +490,8 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
       expect(destroyCalls[1]?.volumes).toBe(true);
       expect(await directoryExists(instanceRoot)).toBe(false);
       expect(events.filter((event) => !event._tag.startsWith("task.")).map((event) => event._tag)).toEqual([
+        "pre-global-start",
+        "post-global-start",
         "pre-scratch-destroy",
         "pre-stop",
         "post-stop",
@@ -494,7 +499,10 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
         "post-destroy",
         "post-scratch-destroy",
       ]);
-      expect(events.at(0)).toMatchObject({ reason: "scope-close", app: { kind: "scratch" } });
+      expect(events.find((event) => event._tag === "pre-scratch-destroy")).toMatchObject({
+        reason: "scope-close",
+        app: { kind: "scratch" },
+      });
       expect(events.at(-1)).toMatchObject({ reason: "scope-close", app: { kind: "scratch" } });
     });
   });
@@ -583,7 +591,7 @@ describe("ScratchAppServiceLayer.layer scope-bound finalizer", () => {
               ),
             ),
           );
-          yield* Deferred.await(ready);
+          yield* waitForScratchPhase(ready, fiber);
           yield* Fiber.interrupt(fiber);
           return yield* Fiber.await(fiber);
         }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),

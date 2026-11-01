@@ -17,7 +17,7 @@ import { assertListenerConfig } from "./_port-helpers.ts";
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
-const DEFAULT_API_PORT = 9000;
+export const DEFAULT_API_PORT = 9000;
 const DEFAULT_CONSOLE_PORT = 9001;
 const DATA_TARGET = PortablePath.make("/data");
 

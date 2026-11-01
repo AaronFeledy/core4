@@ -10,6 +10,7 @@ import {
 import { isJsonObject, jsonEquals } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { evolveHistoricalAppMountAcceleration } from "./x-extension-app-mount-acceleration-proof.ts";
+import { evolveHistoricalAuthoringProjection } from "./x-extension-authoring-projection-proof.ts";
 import { loadNormalizedArtifact, repairClosedExtension, schemaAt } from "./x-extension-closed-record.ts";
 import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts";
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
@@ -80,7 +81,7 @@ const evolvedTypedCache = new Map<
 const evolvedTyped = (source: keyof typeof typedCaptured) => {
   const cached = evolvedTypedCache.get(source);
   if (cached !== undefined) return cached;
-  const evolved = evolveHistoricalConsolePort(
+  const historical = evolveHistoricalConsolePort(
     evolveHistoricalToolingSensitivity(
       evolveHistoricalAppMountAcceleration(
         evolveHistoricalToolingShorthand(
@@ -109,6 +110,7 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
+  const evolved = evolveHistoricalAuthoringProjection(historical, source);
   evolvedTypedCache.set(source, evolved);
   return evolved;
 };
@@ -150,7 +152,7 @@ describe("embedded wire closed x-* artifact repair", () => {
   }, 120_000);
 
   test("collapses an identifier-only local ref onto the same normalized graph", async () => {
-    const repaired = evolveHistoricalConsolePort(
+    const historical = evolveHistoricalConsolePort(
       evolveHistoricalAppMountAcceleration(
         evolveHistoricalEnvironment(
           evolveHistoricalEndpointMetadata(
@@ -171,6 +173,7 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
+    const repaired = evolveHistoricalAuthoringProjection(historical, "services");
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",

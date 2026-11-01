@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,9 +26,9 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
@@ -37,6 +41,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +183,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -214,7 +218,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     ]);
     expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.healthcheck?.kind).toBe("command");
-    expect(web.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(web.healthcheck).toEqual(tcpProbe(80, 10));
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("static:nginx");
     expect(web.environment.LANDO_WEBROOT).toBe("/app");
   });
