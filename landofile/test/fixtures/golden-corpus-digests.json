@@ -1467,7 +1467,7 @@
       "after": {
         "digest": "d2b87f8d1c2dfa909616ec98dc42f2a97d9541b5e201b41c354d04bca8e3f938"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed. The guide fixture also mounts an nginx site config and a PHP ini into xhgui so large profiles upload."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false and adds read-only nginx and PHP ini mounts for the large-profile troubleshooting configuration."
     }
   }
 }
