@@ -189,6 +189,8 @@ With `config.server` and no `port:`, Lando pins the default `27017` on its comma
 
 If you author `command:` or `entrypoint:`, you own the daemon's flags. Include `--port 27018` in your own launcher; Lando won't append it for you.
 
+If MongoDB never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+
 Apply the change with `lando rebuild` on an existing app, or `lando start` on a fresh one. Then ask the server which port it parsed from its command line:
 
 ```sh

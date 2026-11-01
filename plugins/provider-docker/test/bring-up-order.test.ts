@@ -200,6 +200,52 @@ const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
 };
 
 describe("provider-docker bringUp dependency order", () => {
+  test("failed healthy dependency uses the shared listener collector", async () => {
+    const db = {
+      ...healthyDb,
+      endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+    } satisfies ServicePlan;
+    const plan = planWith([
+      db,
+      service("web", { dependsOn: [{ service: db.name, condition: "service_healthy", required: true }] }),
+    ]);
+    const fake = makeFakeApi(1);
+    const api: DockerApiClient = {
+      ...fake.api,
+      request: (request) => {
+        const body = request.body;
+        if (
+          request.path.endsWith("/exec") &&
+          typeof body === "object" &&
+          body !== null &&
+          "Cmd" in body &&
+          Array.isArray(body.Cmd) &&
+          body.Cmd[0] === "cat"
+        )
+          return Effect.succeed({ status: 201, body: '{"Id":"listener"}' });
+        if (request.path === "/exec/listener/json")
+          return Effect.succeed({ status: 200, body: '{"ExitCode":1}' });
+        if (fake.api.request === undefined) throw new TypeError("Missing request");
+        return fake.api.request(request);
+      },
+      stream: (request) => {
+        if (request.path !== "/exec/listener/start") return fake.api.stream?.(request) ?? Stream.empty;
+        const payload = new TextEncoder().encode(
+          "sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n0: 00000000:18EB 00000000:0000 0A 0:0 0:0 0 0 0 1\n",
+        );
+        const frame = new Uint8Array(8 + payload.length);
+        frame[0] = 1;
+        new DataView(frame.buffer).setUint32(4, payload.length);
+        frame.set(payload, 8);
+        return Stream.make(frame);
+      },
+    };
+    const error = await applyFailure(plan, api);
+    expect(error).toMatchObject({
+      _tag: "ServiceStartError",
+      listener: { service: "db", state: "not-listening", port: 6380 },
+    });
+  });
   test("service readiness fallback executes with the exact per-probe user and raw argv", async () => {
     // Given
     const db = {

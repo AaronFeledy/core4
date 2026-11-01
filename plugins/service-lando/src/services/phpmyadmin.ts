@@ -13,12 +13,7 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
-import {
-  loopbackTcpHealthcheck,
-  rootIdentity,
-  serviceFeatureApply,
-  serviceTypeResolve,
-} from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply, serviceTypeResolve } from "./_feature-helpers.ts";
 import {
   type AuthoredHostsWire,
   type PmaCreds,
@@ -27,6 +22,7 @@ import {
 } from "./_phpmyadmin-hosts.ts";
 import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
 export const PHPMYADMIN_LISTENER = {
@@ -51,7 +47,7 @@ const applyPhpMyAdminFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? ARTIFACTS.latest });
   ctx.addEnv("APACHE_PORT", String(port));
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 20));
+  ctx.setHealthcheck(tcpProbe(port, 20));
 
   applyAuthoredProcessFields(ctx);
 };

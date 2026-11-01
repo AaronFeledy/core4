@@ -45,6 +45,9 @@ export const nativeListenPortSuite = (input: {
           expect(result.endpoints).toContainEqual(
             expect.objectContaining({ port: 15672, name: "management" }),
           );
+        }
+        if (result.healthcheck?.target !== undefined) {
+          expect(result.healthcheck.target.port).toBe(port);
         } else {
           expect(JSON.stringify(result.healthcheck?.command)).toContain(String(port));
         }

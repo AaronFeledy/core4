@@ -15,13 +15,13 @@ import type {
 } from "@lando/sdk/services";
 import {
   ServiceConfigIssue,
-  commandHealthcheck,
   literalEnvironmentValue,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -170,7 +170,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   applyAuthoredProcessFields(ctx, ["user"]);
-  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
+  ctx.setHealthcheck(tcpProbe(port, 10));
 
   if (service.command === undefined && service.entrypoint === undefined) {
     const ownedListen =

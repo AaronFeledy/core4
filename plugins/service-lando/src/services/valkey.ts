@@ -2,7 +2,8 @@ import { Effect, Schema } from "effect";
 
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { servicePortEndpoints } from "./_port-helpers.ts";
@@ -25,7 +26,7 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
+  ctx.setHealthcheck(tcpProbe(port, 30));
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };

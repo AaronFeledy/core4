@@ -190,6 +190,16 @@ services:
 
 Start, restart, and rebuild normally wait for effective readiness. If it exhausts its attempts, the command fails with `ServiceNotReadyError` and retains the applied app, routes, and volumes. When a restart policy allows recovery, an exit or observed restart can instead produce a warning and a `restarting` result before the probe passes.
 
+When the failing check targets a TCP port, Lando looks at the ports the service is actually listening on and leads the error with what it found:
+
+- **No listener on the expected port.** For example, `no TCP listener observed on 6380; observed ports: 6379` means the daemon came up on a different port. Make it listen on 6380, or set `port: 6379` if that's the port it uses.
+- **Loopback only.** The daemon listens on `127.0.0.1`, so other services can't reach it. Bind it to `0.0.0.0`.
+- **Port is bound.** Something listens on the expected port, but the check still failed. The error's `lastStatus` shows the check's last output.
+
+The same report appears when a `service_healthy` dependency or an app-build step waits on a service that never becomes healthy. With `--format=json`, it's on `error.listener` (`port`, `state`, and the observed `listening` addresses). The observation covers the container's network namespace, which pod siblings can share, so it shows which ports are bound, not which process bound them. If Lando can't read the container's socket table, the error leaves the report out rather than guess.
+
+Lando's built-in TCP checks connect through the service's network name, the same way other services reach it, so a daemon bound only to loopback fails them. They need `bash` or `nc` in the image; a custom image with neither fails with a message saying so, and you can replace the check with your own `healthcheck:` or `readiness:`.
+
 ```sh
 lando app:config --format=json
 lando logs -s app

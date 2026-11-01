@@ -12,6 +12,7 @@ import {
   staticServiceFeature,
 } from "../src/services/static.ts";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { NGINX_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/nginx-config.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
@@ -135,7 +136,7 @@ describe("static ServiceType", () => {
       expect.stringContaining("exec nginx -c /tmp/lando-nginx.conf -g 'daemon off;'"),
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(80, 10));
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", webroot: "/app" });
   });
 
@@ -227,7 +228,7 @@ describe("static ServiceType", () => {
       { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(80, 10));
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy", webroot: "/app" });
   });
 

@@ -68,11 +68,18 @@ export const authoredProbeTargetError = (
   );
 };
 
-/** Resolve only declared listeners on managed DNS, never interface addresses or loopback. */
+/**
+ * Resolve a declared listener on managed DNS, never an interface address or loopback.
+ *
+ * `requireDeclared` keeps authoring honest about which listeners exist. A contributed
+ * probe relaxes it: an `endpoints:` list replaces exposure and routing declarations, so a
+ * service the author hid still listens on its own port, and health must keep dialling it.
+ */
 export const serviceListenerTarget = (
   plan: Pick<AppPlan, "slug" | "networking">,
   service: Pick<ServicePlan, "name" | "endpoints"> & Partial<Pick<ServicePlan, "hostAliases" | "extensions">>,
   endpoint: EndpointRef,
+  options: { readonly requireDeclared?: boolean } = {},
 ) => {
   const privateNetwork = landoAppNetworkName(plan);
   const network = privateNetwork ?? landoSharedNetworkName(plan);
@@ -91,7 +98,7 @@ export const serviceListenerTarget = (
         issues: [],
       }),
     );
-  if (!declared) return refuse("the listener is not declared");
+  if (!declared && options.requireDeclared !== false) return refuse("the listener is not declared");
   if (network === undefined || host === undefined) return refuse("no managed network realizes the listener");
   if (
     /^(?:localhost6?(?:\.localdomain6?)?\.?|ip6-localhost\.?|ip6-loopback\.?|::1|(?:0x[\da-f]+|\d+)(?:\.(?:0x[\da-f]+|\d+)){0,3})$/iu.test(

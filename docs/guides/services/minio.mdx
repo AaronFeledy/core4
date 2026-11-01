@@ -201,6 +201,8 @@ If you supply your own `command:` or `entrypoint:`, Lando preserves it. Your
 launcher must bind the API and console to the ports you declared; changing
 `port:` or `consolePort:` does not rewrite an authored launcher.
 
+An entrypoint without an authored command receives Lando's server arguments, including both ports, and must execute them. If MinIO never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores the API `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+
 The service also adds `mc` tooling, so you can run the MinIO client in the
 object-store service:
 

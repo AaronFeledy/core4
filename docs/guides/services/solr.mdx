@@ -114,6 +114,8 @@ The copy runs as the planned `user:`, so the same ownership rule as [precreating
 
 If you also set `command:` on the service, yours wins. Your command owns core creation, config copying, and Solr's startup mode.
 
+Your command also owns the listener configuration: pass the planned `port:` with `-p`. An authored `entrypoint:` without an authored command still receives Lando's launcher and must execute the supplied command and arguments. If Solr never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+
 ## Pin a version
 
 Set `image:` when the default `solr:9` line is not the tag you want:

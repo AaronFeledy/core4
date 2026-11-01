@@ -6,7 +6,6 @@ import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   ServiceConfigIssue,
-  commandHealthcheck,
   literalEnvironmentValue,
   rootIdentity,
   serviceFeatureApply,
@@ -16,6 +15,7 @@ import {
 import { appNameFor } from "../app-name.ts";
 import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { rabbitmqProbes } from "./rabbitmq-probes.ts";
 
 const DEFAULT_AMQP_PORT = Schema.decodeUnknownSync(PortNumber)(5672);
 export const MANAGEMENT_PORT = Schema.decodeUnknownSync(PortNumber)(15672);
@@ -87,7 +87,9 @@ const applyRabbitMQFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.setHealthcheck(commandHealthcheck(["rabbitmq-diagnostics", "-q", "ping"], 30));
+  const probes = rabbitmqProbes(port);
+  ctx.setHealthcheck(probes.healthcheck);
+  ctx.setReadiness(probes.readiness);
 
   applyAuthoredProcessFields(ctx);
 };

@@ -28,6 +28,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
@@ -210,7 +211,7 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     ]);
     expect(cache.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
     expect(cache.healthcheck?.kind).toBe("command");
-    expect(cache.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/11211"]);
+    expect(cache.healthcheck).toEqual(tcpProbe(11211, 30));
     expect(cache.environment.LANDO_SERVICE_TYPE).toBe("memcached");
   });
 

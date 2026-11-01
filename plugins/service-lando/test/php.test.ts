@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { APACHE_LISTEN_BUILD_STEP_ID } from "../src/services/apache.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID, apacheErrorPageDirectives } from "../src/services/http-errors.ts";
 import { resolvePhpRuntimePolicy } from "../src/services/php-runtime-policy.ts";
@@ -132,7 +133,8 @@ describe("php:8.2 ServiceType", () => {
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80"],
+      command: tcpProbe(80, 10).command,
+      target: { port: 80, transport: "tcp", names: [], primary: false },
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -242,7 +244,7 @@ describe("php:8.2 ServiceType", () => {
       { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
   });
 });
 
@@ -533,7 +535,7 @@ describe("php serving modes (via:)", () => {
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 9000, protocol: "tcp", name: "web", primary: true },
     ]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(9000, 10));
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain("listen = 9000");
@@ -589,7 +591,7 @@ describe("php serving modes (via:)", () => {
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 9070, protocol: "tcp", name: "web", primary: true },
     ]);
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9070"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(9070, 10));
     expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
     expect(plan.command?.[2]).toContain("listen = 9070");
     expect(plan.command?.[2]).toContain("exec php-fpm");
