@@ -23,7 +23,7 @@ export const workflowScripts = (yaml: string) => {
 
 export type MaintenanceScenario = {
   readonly domain: "tomcat" | "compose";
-  readonly mode?: "current" | "changed" | "checks-fail" | "update-fail" | "report-fail";
+  readonly mode?: "current" | "changed" | "checks-fail" | "update-fail" | "report-fail" | "dispatch-fail";
   readonly pending?: "bump" | "manual-only";
   readonly existingPr?: boolean;
   readonly ghFailure?: {
@@ -141,6 +141,7 @@ fi
 case "$1 $2" in
   'api --paginate') printf '%s\\n' "$TAGS" ;;
   'pr list') printf '%s' "$EXISTING_PR" ;;
+  'workflow run') if [ "$MODE" = dispatch-fail ]; then exit 37; fi ;;
   'issue list') test -n "$GH_REPO"; printf '%s' "$ISSUES" | jq -r "\${@: -1}" ;;
 esac`,
       bun: `if [ "$1" = -e ]; then exec "$REAL_BUN" "$@"; fi

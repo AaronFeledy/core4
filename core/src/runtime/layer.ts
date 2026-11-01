@@ -75,6 +75,7 @@ import type { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 import type { GlobalConfigSnapshot, GlobalConfigSources } from "@lando/engine/services/config";
 import type { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
 import type { EventDeliveryMetrics } from "@lando/engine/services/event-service";
+import type { EventDispatchControl } from "@lando/engine/services/event-service";
 import type { ManagedFileServiceFactory } from "@lando/managed-file/service";
 import type { RedactionService } from "@lando/redaction/service";
 import { InteractionService as InteractionServiceTag } from "@lando/sdk/services";
@@ -109,6 +110,7 @@ type MinimalRuntimeServices =
   | ConfigService
   | EventService
   | EventDeliveryMetrics
+  | EventDispatchControl
   | PathsService
   | FileSystem
   | CacheService

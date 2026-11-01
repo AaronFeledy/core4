@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildCommandResultEnvelope } from "@lando/sdk/command-result";
 import { LandofileValidationError } from "@lando/sdk/errors";
@@ -15,8 +18,17 @@ const response = Schema.decodeUnknownSync(
 
 test("keeps the real default tools/list within discovery budgets and accepts doctor envelopes", async () => {
   // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-mcp-catalog-"));
   const child = Bun.spawn([process.execPath, "core/bin/lando.ts", "mcp"], {
     cwd: fileURLToPath(new URL("../../", import.meta.url)),
+    env: {
+      ...process.env,
+      LANDO_USER_DATA_ROOT: join(root, "data"),
+      LANDO_USER_CONF_ROOT: join(root, "conf"),
+      LANDO_USER_CACHE_ROOT: join(root, "cache"),
+      LANDO_PROVIDER: "podman",
+      PATH: "/no-such-path",
+    },
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
@@ -70,6 +82,7 @@ test("keeps the real default tools/list within discovery budgets and accepts doc
     clearTimeout(timeout);
     child.kill();
     await child.exited;
+    await rm(root, { recursive: true, force: true });
   }
   // Then
   const tools = Schema.decodeUnknownSync(

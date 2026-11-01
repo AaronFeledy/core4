@@ -6,6 +6,7 @@ import { destroyApp, destroyAppAtRoot } from "@lando/engine/operations/destroy";
 import { DestroyAppResult, ProviderId } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { renderDestroyAppResult } from "../../commands/destroy";
+import { publishShutdownWarnings } from "../../commands/shutdown-summary";
 import { requireConfirmation } from "../../require-confirmation";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { yesFlag } from "../../spec/confirmation-flag";
@@ -53,7 +54,9 @@ export const runDestroyCommand = Effect.fn("DestroyCommand.run")(function* (inpu
     purgeSnapshots: booleanFlag(flags, "purge"),
     yes: booleanFlag(flags, "yes"),
   };
-  return yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
+  const result = yield* root === undefined ? destroyApp(options) : destroyAppAtRoot(root, options);
+  yield* publishShutdownWarnings(result);
+  return result;
 });
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {

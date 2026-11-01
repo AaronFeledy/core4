@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { makeRedactionService } from "@lando/redaction/service";
+import { sha256Hex } from "@lando/sdk/digest";
 import {
   AbsolutePath,
   AppId,
@@ -13,7 +14,11 @@ import {
 } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
-import { AGENT_SESSION_LABEL } from "../src/labels.ts";
+import {
+  AGENT_SESSION_LABEL,
+  HOST_PROXY_SESSION_LABEL,
+  HOST_PROXY_TRANSPORT_EXTENSION_KEY,
+} from "../src/labels.ts";
 import { commonContainerLabels, containerCreateBodyFragment } from "../src/plan.ts";
 import { renderCompose } from "../src/podman/compose.ts";
 
@@ -81,6 +86,15 @@ test("fingerprints probe identity, execution locus, argv/shell semantics and hos
 const fixtureRedaction = makeRedactionService();
 
 describe("desired immutable create config", () => {
+  test("distinguishes unspecified, enabled and disabled native init", () => {
+    // Given / When
+    const absent = fingerprint(service);
+    const enabled = fingerprint({ ...service, init: true });
+    const disabled = fingerprint({ ...service, init: false });
+    // Then
+    expect(new Set([absent, enabled, disabled]).size).toBe(3);
+    expect(fingerprint({ ...service, init: true })).toBe(enabled);
+  });
   test("pins the mount-list-only default fingerprint bytes", () => {
     // Given the default plan without authored networks or bridge aliases.
     // When / Then the mount-only create projection stays pinned.
@@ -330,52 +344,71 @@ describe("desired immutable create config", () => {
     );
   });
 
-  test("normalizes owned session overlays but preserves authored environment and mounts", () => {
-    // Given an apply-time overlay absent from the durable desired plan.
+  const hostProxySessionDigestOf = (session: string): string => sha256Hex(session).slice(0, 16);
+  const trustedHostProxyExtension = (session: string): ServicePlan["extensions"] => ({
+    [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionDigest: hostProxySessionDigestOf(session) },
+  });
+  const hostProxySessionMounts = (source: string): ServicePlan["mounts"] =>
+    [
+      "/run/lando/host-proxy.sock",
+      "/run/lando/host-proxy/credentials",
+      "/usr/local/bin/lando",
+      "/usr/local/bin/xdg-open",
+      "/usr/local/bin/open",
+    ].map((target) => ({
+      type: "bind" as const,
+      source,
+      target: PortablePath.make(target),
+      readOnly: true,
+      realization: "passthrough" as const,
+    }));
+
+  test("normalizes trusted host-proxy overlays without token/session/app env", () => {
+    // Given a credentials-file overlay: trusted extension digest, socket/credentials/shim binds, no credential env.
     const overlay: ServicePlan = {
       ...service,
       environment: {
         ...service.environment,
         LANDO_HOST_IP: "192.0.2.9",
-        LANDO_HOST_PROXY_SESSION: "session-1",
-        LANDO_HOST_PROXY_TOKEN: "token-1",
+        LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
         LANDO_HOST_PROXY_URL: "http://gateway:32001",
         LANDO_HOST_PROXY_TRANSPORT: "tcp-host-gateway",
+        LANDO_HOST_PROXY_DEPTH: "0",
         SSH_AUTH_SOCK: "/run/lando/ssh-agent/agent.sock",
         GNUPGHOME: "/tmp/lando-gnupg",
         LANDO_GPG_AGENT_SOCKET: "/run/lando/gpg-agent/S.gpg-agent",
         LANDO_GPG_KEYRING: "/run/lando/gpg-agent-keys",
       },
       mounts: [
-        "/usr/local/bin/lando",
-        "/usr/local/bin/xdg-open",
-        "/usr/local/bin/open",
-        "/run/lando/ssh-agent",
-        "/run/lando/gpg-agent",
-        "/run/lando/gpg-agent-keys",
-      ].map((target) => ({
-        type: "bind",
-        source: "/session/one",
-        target: PortablePath.make(target),
-        readOnly: true,
-        realization: "passthrough",
-      })),
+        ...hostProxySessionMounts("/session/one"),
+        ...["/run/lando/ssh-agent", "/run/lando/gpg-agent", "/run/lando/gpg-agent-keys"].map((target) => ({
+          type: "bind" as const,
+          source: "/session/one",
+          target: PortablePath.make(target),
+          readOnly: true,
+          realization: "passthrough" as const,
+        })),
+      ],
+      extensions: trustedHostProxyExtension("session-1"),
     };
-    // When the label is computed for the actual overlay-bearing plan.
+    // When the label is computed for the overlay-bearing plan.
     const actual = fingerprint(overlay);
-    // Then sessions do not cause config drift, while authored identity remains significant.
+    // Then trusted session binds (including credentials) and remaining host-proxy env do not drift create-config.
     expect(actual).toBe(fingerprint(service));
     expect(actual).toBe(
       fingerprint({
         ...overlay,
         environment: {
           ...overlay.environment,
-          LANDO_HOST_PROXY_TOKEN: "token-2",
-          LANDO_HOST_PROXY_SESSION: "session-2",
           LANDO_HOST_PROXY_URL: "http://gateway:32002",
+          LANDO_HOST_PROXY_DEPTH: "1",
         },
         mounts: overlay.mounts.map((mount) => ({ ...mount, source: "/session/two" })),
+        extensions: trustedHostProxyExtension("session-2"),
       }),
+    );
+    expect(commonContainerLabels(plan, overlay)[HOST_PROXY_SESSION_LABEL]).toBe(
+      hostProxySessionDigestOf("session-1"),
     );
     expect(actual).not.toBe(
       fingerprint({
@@ -400,6 +433,69 @@ describe("desired immutable create config", () => {
         ],
       }),
     );
+  });
+
+  test("legacy env-only host-proxy overlay does not exclude session binds from create-config", () => {
+    // Given the pre-credentials-file overlay: SESSION/TOKEN/APP env and socket/shim binds, no trusted extension.
+    const legacy: ServicePlan = {
+      ...service,
+      environment: {
+        ...service.environment,
+        LANDO_HOST_PROXY_SESSION: "session-1",
+        LANDO_HOST_PROXY_TOKEN: "token-1",
+        LANDO_HOST_PROXY_APP: "app-1",
+        LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+        LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
+      },
+      mounts: hostProxySessionMounts("/session/legacy").filter(
+        (mount) => mount.target !== "/run/lando/host-proxy/credentials",
+      ),
+    };
+    // When fingerprints are compared against the bare service and a source rotation.
+    const bare = fingerprint(service);
+    const withBinds = fingerprint(legacy);
+    const rotated = fingerprint({
+      ...legacy,
+      mounts: legacy.mounts.map((mount) => ({ ...mount, source: "/session/legacy-2" })),
+    });
+    // Then env alone never stamps a session label or excludes host-proxy binds from the digest.
+    expect(commonContainerLabels(plan, legacy)[HOST_PROXY_SESSION_LABEL]).toBeUndefined();
+    expect(withBinds).not.toBe(bare);
+    expect(rotated).not.toBe(withBinds);
+    // And a forged session label still cannot unlock bind exclusion without the trusted extension.
+    expect(
+      fingerprint({
+        ...legacy,
+        extensions: {
+          compose: { labels: { [HOST_PROXY_SESSION_LABEL]: hostProxySessionDigestOf("session-1") } },
+        },
+      }),
+    ).toBe(withBinds);
+  });
+
+  test("trusted extension excludes the credentials bind the same way as the socket bind", () => {
+    // Given only the credentials bind under a trusted extension.
+    const withCredentials: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "bind",
+          source: "/run/session/credentials",
+          target: PortablePath.make("/run/lando/host-proxy/credentials"),
+          readOnly: true,
+          realization: "passthrough",
+        },
+      ],
+      extensions: trustedHostProxyExtension("session-credentials"),
+    };
+    // When sources rotate under the same trusted digest.
+    const rotated = {
+      ...withCredentials,
+      mounts: withCredentials.mounts.map((mount) => ({ ...mount, source: "/run/session/credentials-2" })),
+    };
+    // Then credentials remain outside create-config identity.
+    expect(fingerprint(withCredentials)).toBe(fingerprint(service));
+    expect(fingerprint(rotated)).toBe(fingerprint(service));
   });
 
   test("overrides a user-supplied fingerprint and excludes the agent session label", () => {

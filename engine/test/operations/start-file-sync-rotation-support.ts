@@ -231,6 +231,7 @@ export const rotationHarness = Effect.fnUntraced(function* (
         calls.push("quiesce");
         if (plan !== oldPlan) return yield* Effect.die("quiesced desired plan");
         yield* trip("quiesce");
+        return {};
       }),
     disposeFileSyncTargets: (plan: AppPlan) =>
       Effect.gen(function* () {

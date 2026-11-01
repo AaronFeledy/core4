@@ -253,7 +253,12 @@ describe("managed Windows published lifecycle", () => {
         expect(calls).toEqual([]);
         await Effect.runPromise(persistAppliedPlan(stateStore, newer));
         releaseLock.resolve();
-        await teardown;
+        const receipt = await teardown;
+        expect(receipt.shutdownObservations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ service: "metrics", containerId: "lando-global-metrics-id" }),
+          ]),
+        );
         expect(calls).toContain("POST /containers/lando-global-metrics-id/stop");
       } finally {
         releaseLock.resolve();

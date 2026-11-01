@@ -38,7 +38,7 @@ All tests run under `bun test` unless a gate names another tool.
 | Subscriber selector and config-projection contract | Selectors close over the canonical event registry; indexes are prebuilt, factories lazy, and config projections bounded. |
 | Keymap schema and conflict-check split contract | Raw key syntax decodes independently from same-surface collision detection; cross-surface reuse remains legal. |
 | Desktop notification bounds contract | Notification fields validate before publication and sanitization precedes capability-gated presentation. Default TTY notifications use query-free OSC 99 without loading OpenTUI (§8.9.7). |
-| HostProxy exact-union contract | `HostProxyRequest` contains exactly `openUrl`, `openPath`, `runLando`, and `runBun`. |
+| HostProxy exact-union contract | `HostProxyRequest` contains exactly three members: `openUrl`, `openPath`, and `runLando`. |
 | OpenTUI native one-of-eight pruning contract | Each release target embeds one matching native package and stubs the other seven without redirecting testing or relative imports. |
 | SDK compatibility/schema-snapshot artifact-set contract | The SDK public surface and every schema-backed surface match `sdk/test/fixtures/sdk-public-surface.json` and generated artifacts. |
 | Tooling engine contract | Engines execute dependency-ordered programs, cancel children, publish redacted events, honor up-to-date checks, and tag failures. |

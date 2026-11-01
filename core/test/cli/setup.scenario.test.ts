@@ -68,6 +68,7 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     makeRuntimeProvider({
       sanitizeAppliedPlan: stripHostProxyRunLando,
       platform: "linux",
+      providerSocketPath: join(stateDir, "podman.sock"),
       podmanApi: {
         info: Effect.succeed({ version: { Version: "6.0.2" } }),
         ping: Effect.void,
@@ -211,6 +212,7 @@ describe("meta:setup task tree progress", () => {
         makeRuntimeProvider({
           sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
+          providerSocketPath: join(stateDir, "podman.sock"),
           podmanApi,
           podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
           runtimeBundleDownloader: {

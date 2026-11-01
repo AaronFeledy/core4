@@ -15,7 +15,7 @@ test.each([
 ])(
   "library report inspects host DNS without runtime subsystems: $addresses",
   async ({ addresses, status }) => {
-    // Given a library runtime with a resolver but no HostProxyService.
+    // Given a library runtime with a resolver but no router or SSH service.
     const config = Schema.decodeUnknownSync(GlobalConfig)({});
     const hostnames: string[] = [];
     // When the public report collects diagnostics.
@@ -55,12 +55,12 @@ test.each([
     );
     // Then the injected resolver determines the verdict without invented service status.
     expect(hostnames).toEqual(["lando-doctor-probe.lndo.site"]);
-    const check = report.subsystems.checks.find((entry) => entry.name === "host-proxy");
+    const check = report.subsystems.checks.find((entry) => entry.name === "host-dns");
     expect(check).toMatchObject({ status, context: { dnsResolved: String(status === "pass") } });
     for (const key of ["active", "mode", "mechanism", "subsystemId"]) {
       expect(check?.context).not.toHaveProperty(key);
     }
-    expect(report.skipped?.some((entry) => ["subsystems", "host-proxy"].includes(entry.section))).toBe(false);
+    expect(report.skipped?.some((entry) => ["subsystems", "host-dns"].includes(entry.section))).toBe(false);
     if (status === "warn") expect(check?.solutions[0]?.description).toContain("DNS-rebinding protection");
   },
 );

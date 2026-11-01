@@ -13,7 +13,6 @@ import {
   type ConfigService,
   DeprecationService,
   FileSystem,
-  HostProxyService,
   type PathsService,
   type PluginRegistry,
   RouterService,
@@ -272,6 +271,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   });
   // Provider-section self checks are lifted here so the report has one home for them.
   selfChecks.push(...(provider.selfChecks ?? []));
+  skipped.push(...(provider.skipped ?? []));
   const certs = yield* section(
     "certificate-authority",
     input.certs ?? certsDoctorStatus(redact),
@@ -410,9 +410,8 @@ export const doctorReport = Effect.fn("Doctor.report")(
     Effect.gen(function* () {
       const router = yield* Effect.serviceOption(RouterService);
       const ssh = yield* Effect.serviceOption(SshService);
-      const hostProxy = yield* Effect.serviceOption(HostProxyService);
       const resolver = yield* Effect.serviceOption(HostDnsResolver);
-      const hasRuntimeSubsystems = Option.isSome(router) || Option.isSome(ssh) || Option.isSome(hostProxy);
+      const hasRuntimeSubsystems = Option.isSome(router) || Option.isSome(ssh);
       return yield* collectDoctorReport<
         ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
       >({

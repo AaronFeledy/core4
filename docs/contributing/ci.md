@@ -9,6 +9,59 @@ Use this runbook to reproduce a failing CI job and find its diagnostics. Run com
 
 For a pre-PR check, use `bun run gate:pr` as described in the root repository instructions. To investigate a specific failure, go directly to [static checks](#static-checks), [generated schema checks](#generated-schema-and-bundled-codegen-gates), [guide scenarios](#guide-e2e-smoke-subset), or the [docs build](#docs-build). Live provider sections have additional host prerequisites; do not run their setup commands as part of a static-only check.
 
+## Record PR evidence
+
+Attach this checklist and the evidence tables below to every PR description or a linked PR evidence report. This is a human review record. The selected `ci` check must pass, and the broader acceptance requirements below must also be satisfied before merge. A green selected profile establishes only the work that profile executed. This checklist does not override CI selection or authorize a branch-protection bypass.
+
+Record immutable full Git object IDs, not branch names alone:
+
+| Revision field | Value |
+| --- | --- |
+| PR head commit and tree | |
+| Target base commit and tree | |
+| Merge-base commit | |
+| Tested commit and tree for each run | |
+| Combined head-plus-base tested commit and tree | |
+| Clean working tree before and after each run | |
+
+Test the combined head and target base in a clean checkout and identify both the resulting commit and tree, even if they equal the head. Record how that combination was produced. If a conflict or unavailable environment prevents testing it, record `blocked` and the reason. Head-only evidence does not establish that the combined result passes. Refresh the record and rerun affected checks whenever the head or base changes; explain any reused evidence against the new combined tree. Dirty-tree results cannot establish acceptance for the recorded commit.
+
+For every command, platform cell, and conditional requirement, add a row. Expand grouped suites into the actual commands executed. Link retained logs, reports, binary artifacts and checksums where produced, and CI run/job URLs when available. Manual or agent executions may supply equivalent evidence when they execute the required scope against the identified tree with the same prerequisites. Identify the executor and environment; do not claim a missing runner, native run, or live-provider run occurred.
+
+| Requirement / command and arguments | Mandatory, conditional, or advisory; applicability reason | Host OS/version and architecture; compile target; provider/runtime | Tested commit and tree | Outcome; exit code; positive test count | Skips and reasons | Evidence artifacts / logs | Blocker and next action |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| | | | | not run | | | |
+
+Use only `pass`, `fail`, `not run`, `blocked`, or `not applicable` for outcomes. `pass` requires a successful command and, for test commands, a positive executed test count. Record passed, failed, and skipped counts separately. A zero-test filter, cancellation, unexplained skip, absent row, or missing log is never green. Use `not run` for unexecuted work, `blocked` for a named impediment, and `not applicable` only for a conditional requirement whose trigger is absent, with a reason. For non-test commands, record the test count as `not applicable` and verify the expected output or artifact. A skipped mandatory suite remains unmet even if its wrapper exits successfully.
+
+Keep host OS and architecture separate from the compile target: cross-compiling on Linux proves a target build, not native execution on that target. Portable static checks, builds, relocated-binary smoke, and scenario guides on all six targets do not establish full native unit-suite or live-provider coverage.
+
+Complete these mandatory per-PR review requirements, with a row for each platform where required. These are broader acceptance requirements, not a claim that every selected CI profile executes them. The [CI tier table](#choose-the-ci-tier) describes automation: ordinary PRs run static checks on Linux x64; `guides` and higher profiles add the Linux x64 build and Linux/Windows x64 guide scenarios; `runtime` and higher add unit shards and performance gates; `providers` adds live Linux x64 provider integration. Broad CI adds all six builds, static cells, and guide platforms. Record policy-excluded CI jobs as skipped with their selection reason, but supply separate evidence for any broader mandatory requirement they leave untested. Changing the PR template selects `runtime`, even when the rest of the patch is documentation.
+
+- [ ] Selected CI profile, selection reason, selected jobs, and required `ci` result recorded and passing.
+- [ ] Portable static gates, compiled builds, relocated-binary smoke, and scenario guides pass for `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `windows-x64`, and `windows-arm64`.
+- [ ] Scenario and recipe suites pass on all six platforms listed above as broader review evidence. The automated recipe jobs run on Linux x64; guide-scenario platform coverage follows the selected profile.
+- [ ] Linux x64 unit tests, e2e smoke, and gating performance suites pass. Performance evidence includes startup and first-output budgets plus compiled renderer whole-process exit duration, piped and under a PTY; the TTY median must not exceed the piped median by more than 150 ms.
+- [ ] Separately measured Linux x64 compiled tooling against an actual running app meets the end-to-end budgets of < 600 ms cold and < 250 ms hot, including provider exec. Record the command, app, provider, binary identity, cold/hot timings, and provider request counts. A host-only tooling benchmark pass does not satisfy this row.
+- [ ] Tests, TypeScript typecheck, Biome/lint, codegen pure drift, schema compatibility, schema/docs generation, and docs build pass. Pure drift success does not establish semantic gate success.
+- [ ] Provider, plugin-abstraction, library API, machine-output, deprecation, redaction, managed-file, coexistence, scenario, recipe, and executable-guide contracts pass.
+- [ ] Guide lint, coverage, public transcripts, source-mapper, and guide component-schema gates pass.
+- [ ] Shared boundary gates and command, service, event, deprecation, export, and package-DAG registry drift checks pass.
+- [ ] Setup verification passes against a current-commit local runtime bundle using `LANDO_RUNTIME_BUNDLE_MANIFEST` to select its local manifest. Follow the [setup-driven provider preparation](#provider-integration); checksum verification is always enforced, including for local bundles.
+
+Record each conditional requirement as `pass` or explain why it is `not applicable`; unresolved required work is `fail`, `not run`, or `blocked`:
+
+- [ ] Applicable renderer/OpenTUI contracts pass.
+- [ ] Compiled-decoder parity passes when the [decoder target list](../../core/src/cli/compiled-decoder-targets.ts), a schema on that list, `scripts/build-compiled-decoders.ts`, or the Effect version changes. Regenerate with `bun run codegen`, then run `bun test core/test/cli/compiled-decoders.test.ts`. This is a review trigger, not a dedicated CI path filter; the test also runs in the selected Linux unit shards.
+- [ ] New CLI or library behavior has passing scenario coverage; new CLI behavior also has passing e2e coverage.
+- [ ] New recipes have passing recipe and e2e smoke coverage; new schemas have annotations and passing round-trip coverage.
+- [ ] Public `@lando/core` or `@lando/sdk` additions have documentation and passing corresponding library/schema tests.
+- [ ] Install/update/uninstall/shellenv changes pass side-by-side coexistence; network-sensitive changes pass offline-after-build coverage.
+
+Record per-PR macOS and Windows performance results as advisory. Treat nightly performance failures as release blockers in review; this checklist does not add a release-workflow dependency. Scheduled nightly and weekly provider/runtime evidence adds live coverage; it does not replace the broader per-PR review requirements above. Compilation and relocated-binary smoke do not establish live setup/doctor readiness.
+
+Finish the report with separate conclusions for **selected CI** and **broader acceptance**, each using the outcome vocabulary above. List every outstanding mandatory or applicable conditional row and its blocker or next action. Broader acceptance is `pass` only when all required evidence is current and passing; absent evidence must remain visible even when selected CI passes.
+
 ## Choose the CI tier
 
 Pull requests select the highest profile needed by their changed paths:
@@ -288,6 +341,8 @@ Do not commit profile dumps or `*.metafile.md` artifacts.
 ## Startup and tooling perf budgets
 
 The `perf-budget-linux-x64` job runs for `runtime` and `providers` PRs and broad CI. It runs `bun run bench:opentui-startup -- --binary <binary>` and the tooling hot-path benchmark against the `build-linux-x64` binary artifact. The tracked budgets live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code. `openTuiStartup` keeps the 50 ms startup and first-output p95 budgets for `lando --version`. `ttyRendererOverhead` runs `lando version --renderer=lando` 20 times piped and 20 times under a Bun PTY, then requires the TTY median to stay within 150 ms of the piped median. The explicit renderer flag bypasses the app-free `version` fast path so every sample constructs the default renderer. This catches renderer work that keeps the process alive after output. The tooling gate checks its warm p95 baseline and regression budget separately.
+
+The tooling hot-path benchmark runs a host-only fixture with no provider exec. The CI gate enforces a 25% allowance over its current 900 ms warm p95 baseline (a 1,125 ms warm p95 ceiling); the listed 150 ms warm target is an optimization target, not the pass threshold. The separate live-tooling review budgets defined in [Record PR evidence](#record-pr-evidence), < 600 ms cold and < 250 ms hot including provider exec, are manual acceptance requirements, not thresholds enforced by this benchmark or the selected `ci` check. Separately measure a compiled tooling command against an actual running app through provider exec. Record same-toolchain cold and hot end-to-end timings, the app and provider, binary identity, provider request counts, timing method, and logs in the PR evidence table. A skipped or missing live measurement leaves broader acceptance unmet even when the selected `ci` check passes.
 
 ```bash
 bun run build

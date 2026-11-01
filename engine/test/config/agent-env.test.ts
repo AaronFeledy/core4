@@ -251,7 +251,7 @@ describe("resolveForwardedAgentEnvNames — names present on the host and so for
 });
 
 describe("filterHostProxyEnv — shim filter with agent-context append", () => {
-  test("keeps safe LANDO_*, LC_*, LANG, TERM and appends the agent-context allowlist", () => {
+  test("keeps locale and agent context but rejects container LANDO_*", () => {
     const filtered = filterHostProxyEnv({
       LANDO_APP_NAME: "demo",
       LANDO_HOST_PROXY_TOKEN: "tok",
@@ -271,7 +271,6 @@ describe("filterHostProxyEnv — shim filter with agent-context append", () => {
       SECRET_TOKEN: "shh",
     });
     expect(filtered).toEqual({
-      LANDO_APP_NAME: "demo",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",

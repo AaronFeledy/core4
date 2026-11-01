@@ -15,7 +15,6 @@ const SOURCES = [
   "sdk/src/database-creds/index.ts",
   "engine/src/subsystems/networking.ts",
   "engine/src/subsystems/host-proxy/transport-feature.ts",
-  "engine/src/subsystems/host-proxy/session-env.ts",
 ] as const;
 
 const CORE_ENV_KEY = /(?:["'`](LANDO(?:_[A-Z0-9]+)*)["'`]|\b(LANDO(?:_[A-Z0-9]+)*)\s*:)/gu;

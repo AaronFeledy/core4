@@ -4,6 +4,8 @@ export class BridgeCommandError extends Error {}
 
 export interface MachineSshBridgeProcess {
   readonly waitReady: () => Promise<void>;
+  /** Resolves with the child exit code when the reverse-forward process ends. */
+  readonly exited: Promise<number>;
   readonly close: () => Promise<void>;
 }
 export interface MachineSshBridgeHost {
@@ -31,6 +33,7 @@ export const defaultHost: Omit<MachineSshBridgeHost, "run"> = {
         stderr = (stderr + new TextDecoder().decode(chunk)).slice(-4096);
     })();
     return {
+      exited: child.exited,
       waitReady: async () => {
         const reader = child.stdout.getReader();
         const timeout = setTimeout(() => child.kill(), 15_000);

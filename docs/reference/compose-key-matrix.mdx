@@ -22,7 +22,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Scope | Normalized | Preserved | Rejected | Total |
 | --- | --- | --- | --- | --- |
 | Top-level keys | 6 | 3 | 1 | 10 |
-| Service keys | 56 | 83 | 223 | 362 |
+| Service keys | 57 | 82 | 223 | 362 |
 | YAML tags | 2 | 0 | 0 | 2 |
 
 ## Top-level keys
@@ -95,7 +95,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | [`healthcheck`](#healthcheck) | normalized | 8 | Normalizes into `ServicePlan.healthcheck` |
 | `hostname` | rejected | — | Translate hostname with a Compose-to-Lando config translator. |
 | `image` | normalized | — | Normalizes into `ServicePlan.artifact` |
-| `init` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `init` | normalized | — | Normalizes into `ServicePlan.init` |
 | `ipc` | rejected | — | Translate ipc with a Compose-to-Lando config translator. |
 | `isolation` | rejected | — | Translate isolation with a Compose-to-Lando config translator. |
 | `label_file` | rejected | — | Translate label_file with a Compose-to-Lando config translator. |

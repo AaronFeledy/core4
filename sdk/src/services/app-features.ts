@@ -84,6 +84,7 @@ export interface AppFeatureServiceMutators {
   setCerts(certs: Parameters<ServiceFeatureContext["setCerts"]>[0]): void;
   setEntrypoint(entrypoint: Parameters<ServiceFeatureContext["setEntrypoint"]>[0]): void;
   setCommand(command: Parameters<ServiceFeatureContext["setCommand"]>[0]): void;
+  setInit(init: boolean): void;
   setArtifact(artifact: Parameters<ServiceFeatureContext["setArtifact"]>[0]): void;
   setUser(user: string): void;
   setWorkingDirectory(path: Parameters<ServiceFeatureContext["setWorkingDirectory"]>[0]): void;

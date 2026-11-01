@@ -67,9 +67,7 @@ import {
 } from "@lando/container-runtime/redact";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
-  DESTROYED,
   DESTROY_NO_OP,
-  observedRemoval,
   postExactServiceLifecycle,
   postServiceLifecycle,
   removeObservedContainer,
@@ -674,7 +672,10 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
                     : { purgeCaches: destroyOptions.purgeCaches }),
                 }).pipe(
                   Effect.tap(() => forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions)),
-                  Effect.as(DESTROYED),
+                  Effect.map(({ shutdownObservations }) => ({
+                    kind: "destroyed" as const,
+                    shutdownObservations,
+                  })),
                 ),
           ),
         );
@@ -682,10 +683,7 @@ const makeRuntimeProviderWithContext = (options: ProviderLayerOptions, DOCKER_CT
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
         appliedPlans
           .resolveMutationPlan(observed.app)
-          .pipe(
-            Effect.andThen(removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX })),
-            Effect.map(observedRemoval),
-          ),
+          .pipe(Effect.andThen(removeObservedContainer(observed, { api: dockerApi, ctx: DOCKER_CTX }))),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(

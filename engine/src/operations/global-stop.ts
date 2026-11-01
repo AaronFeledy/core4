@@ -17,6 +17,7 @@ import * as DeferredCertificateAuthority from "../subsystems/proxy/deferred-cert
 import { RouterServiceRegistry } from "../subsystems/proxy/registry.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { withGlobalLifecycleEvents } from "./global-common";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 
 import {
   executeGlobalStopSelection,
@@ -35,6 +36,7 @@ export const GlobalStopResultSchema = Schema.Struct({
     description: "Whether the global app has a materialized Landofile.",
   }),
   servicesStopped: StopAppResult.fields.servicesStopped,
+  shutdownObservations: StopAppResult.fields.shutdownObservations,
 });
 
 export type GlobalStopResult = typeof GlobalStopResultSchema.Type;
@@ -116,12 +118,15 @@ export const globalStop = Effect.fn("GlobalStop.stop")(
           yield* router.removeRoutes(app.id);
           yield* recordGlobalResourceCleanup();
         }
-        return {
-          app: "global",
-          outcome: receipt.changed ? ("stopped" as const) : ("unchanged" as const),
-          materialized: loaded.materialized,
-          servicesStopped: receipt.services,
-        };
+        return withShutdownObservations(
+          {
+            app: "global",
+            outcome: receipt.changed ? ("stopped" as const) : ("unchanged" as const),
+            materialized: loaded.materialized,
+            servicesStopped: receipt.services,
+          },
+          receipt.shutdownObservations,
+        );
       }),
     );
   },

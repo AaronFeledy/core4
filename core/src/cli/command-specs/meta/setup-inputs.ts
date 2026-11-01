@@ -68,17 +68,11 @@ export const inputStringFlag = (input: unknown, name: string): string | undefine
 
 export const inputBooleanFlag = (input: unknown, name: string): boolean => inputFlags(input)?.[name] === true;
 
-const inputHostProxyMode = (input: unknown): "auto" | "none" =>
-  inputFlags(input)?.["host-proxy"] === "none" ? "none" : "auto";
-
 export const inputNetworkProbe = (input: unknown): SetupNetworkTrustProbe | undefined => {
   if (typeof input !== "object" || input === null || !("_networkProbe" in input)) return undefined;
   const probe = input._networkProbe;
   return typeof probe === "function" ? (probe as SetupNetworkTrustProbe) : undefined;
 };
-
-export const shouldDisableHostProxyForSetup = (input: unknown): boolean =>
-  inputHostProxyMode(input) === "none";
 
 export const contributedSetupInputFlags = (input: unknown): Record<string, unknown> | undefined =>
   inputFlags(input);

@@ -1,4 +1,5 @@
 // allow: SIZE_OK — cross-platform compiled-binary PTY acceptance is one release-artifact scenario.
+import { realpathSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, resolve } from "node:path";
@@ -138,10 +139,36 @@ const scrubPtyNoise = (text: string): string => {
     .trim();
 };
 
+/**
+ * Decode NDJSON captured through a PTY. Git for Windows' winpty scrapes a fixed-width
+ * console and splits long records across rows, so rows are joined until they parse.
+ */
+const parseCapturedNdjson = (output: string): readonly unknown[] => {
+  const values: unknown[] = [];
+  let pending = "";
+  for (const row of scrubPtyNoise(output).split("\n")) {
+    pending += row;
+    try {
+      values.push(JSON.parse(pending));
+      pending = "";
+    } catch (cause) {
+      if (!(cause instanceof SyntaxError)) throw cause;
+    }
+  }
+  if (pending !== "") throw new Error(`PTY capture is not NDJSON after joining wrapped rows:\n${output}`);
+  return values;
+};
+
+/** Compare machine records rather than PTY row layout, which wraps at the console width on Windows. */
+const capturedTranscript = (output: string, renderer: "plain" | "json"): string =>
+  renderer === "json"
+    ? parseCapturedNdjson(output)
+        .map((value) => JSON.stringify(value))
+        .join("\n")
+    : scrubPtyNoise(output);
+
 const expectMachineInit = (output: string, cwd: string): void => {
-  const values: readonly unknown[] = scrubPtyNoise(output)
-    .split("\n")
-    .map((line) => JSON.parse(line));
+  const values = parseCapturedNdjson(output);
   const envelopes = values.filter(Schema.is(CommandResultEnvelope));
   expect(envelopes).toHaveLength(1);
   const envelope = envelopes[0];
@@ -149,7 +176,8 @@ const expectMachineInit = (output: string, cwd: string): void => {
   const result = Schema.decodeUnknownSync(InitAppResultSchema)(envelope?.result, {
     onExcessProperty: "error",
   });
-  expect(result.directory).toBe(cwd);
+  // Init reports the canonical app root; macOS temp roots sit under the /var -> /private/var symlink.
+  expect(realpathSync(result.directory)).toBe(realpathSync(cwd));
   expect(result.receipt.created.map(({ path }) => path).sort()).toEqual([
     ".lando.yml",
     "package.json",
@@ -329,7 +357,9 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
         expect(scrubPtyNoise(normal)).not.toContain("╭");
         if (renderer === "plain") expect(scrubPtyNoise(normal)).toContain("(value or index):");
         else expectMachineInit(withoutOpenTui, appRoot);
-        expect(normalizeTiming(scrubPtyNoise(normal))).toBe(normalizeTiming(scrubPtyNoise(withoutOpenTui)));
+        expect(normalizeTiming(capturedTranscript(normal, renderer))).toBe(
+          normalizeTiming(capturedTranscript(withoutOpenTui, renderer)),
+        );
         expect(await readProbe(tracePath)).toEqual([]);
       }
 
@@ -384,7 +414,9 @@ describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acce
         expect(scrubPtyNoise(normal)).not.toContain("╭");
         if (renderer === "plain") expect(scrubPtyNoise(normal)).toContain("(value or index):");
         else expectMachineInit(withoutOpenTui, appRoot);
-        expect(normalizeTiming(scrubPtyNoise(normal))).toBe(normalizeTiming(scrubPtyNoise(withoutOpenTui)));
+        expect(normalizeTiming(capturedTranscript(normal, renderer))).toBe(
+          normalizeTiming(capturedTranscript(withoutOpenTui, renderer)),
+        );
         expect(await readProbe(tracePath)).toEqual([]);
       }
       const failureTrace = resolve(root, "failure.jsonl");

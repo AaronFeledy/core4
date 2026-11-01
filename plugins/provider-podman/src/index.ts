@@ -71,9 +71,7 @@ import {
 } from "@lando/container-runtime/redact";
 import { readAppEnvironment } from "@lando/container-runtime/runtime-provider";
 import {
-  DESTROYED,
   DESTROY_NO_OP,
-  observedRemoval,
   postExactServiceLifecycle,
   postServiceLifecycle,
   removeObservedContainer,
@@ -847,22 +845,19 @@ const assembleRuntimeProvider = (
         const previous = yield* appliedPlans.resolveMutationPlan(target.app);
         const plan = target.plan ?? previous;
         if (plan === undefined) return DESTROY_NO_OP;
-        yield* bringDown(plan, {
+        const { shutdownObservations } = yield* bringDown(plan, {
           api: podmanApi,
           ctx: PODMAN_CTX,
           volumes: destroyOptions.volumes,
           ...(destroyOptions.purgeCaches === undefined ? {} : { purgeCaches: destroyOptions.purgeCaches }),
         });
         yield* forgetAppliedPlanUnlessKept(appliedPlans, target.app, destroyOptions);
-        return DESTROYED;
+        return { kind: "destroyed", shutdownObservations };
       }),
       removeObservedService: Effect.fn("RuntimeProvider.removeObservedService")((observed) =>
         appliedPlans
           .resolveMutationPlan(observed.app)
-          .pipe(
-            Effect.andThen(removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX })),
-            Effect.map(observedRemoval),
-          ),
+          .pipe(Effect.andThen(removeObservedContainer(observed, { api: podmanApi, ctx: PODMAN_CTX }))),
       ),
       logs: (target, logOptions) =>
         Stream.unwrap(

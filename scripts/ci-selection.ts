@@ -54,9 +54,17 @@ const affectsProviders = (path: string): boolean =>
     path,
   );
 
+const affectsPlatformBuild = (path: string): boolean =>
+  path.startsWith("core/test/build/") ||
+  /^scripts\/(?:codegen|build-command-registry-manifest|build-compiled-binary|sanitize-compiled-binary|smoke-windows-binary|check-compiled-binary-notices)\.ts$/.test(
+    path,
+  );
+
 export const selectPaths = (paths: readonly string[]): CiSelection => {
   if (paths.includes(".bun-version"))
     return { profile: "runtime", broad: true, reason: "Bun toolchain change" };
+  if (paths.some(affectsPlatformBuild))
+    return { profile: "runtime", broad: true, reason: "platform build path" };
   if (paths.length === 0) return { profile: "runtime", broad: false, reason: "empty diff" };
   if (paths.some(affectsProviders))
     return { profile: "providers", broad: false, reason: "provider or CI coverage path" };

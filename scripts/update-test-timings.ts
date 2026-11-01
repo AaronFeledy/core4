@@ -5,6 +5,7 @@
  * Native `bun test --shard` balances from this file.
  * The ownership inventory supplies the same unit file set to local and CI runs.
  */
+import { mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import {
@@ -29,21 +30,75 @@ export const timingRefreshCommand = (
   ...testFileArguments(files),
 ];
 
-const main = async (): Promise<never> => {
-  const files = await collectShardedTestFiles();
+interface RefreshOptions {
+  readonly files: ReadonlyArray<string>;
+  readonly repoRoot: string;
+  readonly runTests: (cmd: ReadonlyArray<string>, cwd: string) => Promise<number>;
+}
+
+const runTests = async (cmd: ReadonlyArray<string>, cwd: string): Promise<number> => {
+  const proc = Bun.spawn({ cmd: [...cmd], cwd, stdout: "inherit", stderr: "inherit" });
+  return await proc.exited;
+};
+
+const validateCandidate = (contents: string, files: ReadonlyArray<string>): void => {
+  let candidate: unknown;
+  try {
+    candidate = JSON.parse(contents);
+  } catch {
+    throw new Error("update-test-timings produced invalid JSON");
+  }
+  if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)) {
+    throw new Error("update-test-timings produced an invalid timing document");
+  }
+  const document = candidate as Record<string, unknown>;
+  const timings = document.files;
+  if (document.version !== 1 || typeof timings !== "object" || timings === null || Array.isArray(timings)) {
+    throw new Error("update-test-timings produced an invalid timing document");
+  }
+  const entries = Object.entries(timings);
+  const expected = new Set(files);
+  if (
+    expected.size !== files.length ||
+    entries.length !== expected.size ||
+    entries.some(
+      ([path, duration]) =>
+        !expected.has(path) ||
+        typeof duration !== "number" ||
+        !Number.isSafeInteger(duration) ||
+        duration < 0,
+    )
+  ) {
+    throw new Error("update-test-timings produced incomplete or invalid file timings");
+  }
+};
+
+export const refreshTestTimings = async ({
+  files,
+  repoRoot,
+  runTests: execute,
+}: RefreshOptions): Promise<number> => {
   if (files.length === 0) {
     throw new Error("update-test-timings resolved to zero test files");
   }
-  console.error(`[update-test-timings] measuring ${files.length} files -> ${TEST_TIMINGS_FILE}`);
-  const proc = Bun.spawn({
-    cmd: [...timingRefreshCommand(files)],
-    cwd: REPO_ROOT,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  process.exit(await proc.exited);
+  const candidateRoot = await mkdtemp(resolve(repoRoot, ".bun-test-timings-"));
+  const candidatePath = resolve(candidateRoot, "candidate.json");
+  try {
+    console.error(`[update-test-timings] measuring ${files.length} files -> ${TEST_TIMINGS_FILE}`);
+    const exitCode = await execute(timingRefreshCommand(files, candidatePath), repoRoot);
+    if (exitCode !== 0) return exitCode;
+    validateCandidate(await readFile(candidatePath, "utf8"), files);
+    await rename(candidatePath, resolve(repoRoot, TEST_TIMINGS_FILE));
+    return 0;
+  } finally {
+    await rm(candidateRoot, { recursive: true, force: true });
+  }
 };
 
 if (import.meta.main) {
-  await main();
+  process.exitCode = await refreshTestTimings({
+    files: await collectShardedTestFiles(),
+    repoRoot: REPO_ROOT,
+    runTests,
+  });
 }

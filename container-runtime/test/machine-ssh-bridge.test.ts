@@ -12,7 +12,12 @@ afterEach(async () => {
   for (const dir of directories.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
-const fixture = async (sshBinary: "ssh" | "ssh.exe" = "ssh", readyError?: Error, cleanupFails = false) => {
+const fixture = async (
+  sshBinary: "ssh" | "ssh.exe" = "ssh",
+  readyError?: Error,
+  cleanupFails = false,
+  exitControl?: { resolve: (code: number) => void; promise: Promise<number> },
+) => {
   const stateDir = await mkdtemp(join(tmpdir(), "lando-agent-bridge-"));
   directories.push(stateDir);
   const calls: Array<{ readonly command: string; readonly args: readonly string[] }> = [];
@@ -44,6 +49,7 @@ const fixture = async (sshBinary: "ssh" | "ssh.exe" = "ssh", readyError?: Error,
       calls.push({ command, args });
       events.push("start");
       return {
+        exited: exitControl?.promise ?? Promise.resolve(0),
         waitReady: async () => {
           if (readyError !== undefined) throw readyError;
           events.push("ready");
@@ -171,4 +177,36 @@ test("a failed cleanup does not hide why the reverse forward failed", async () =
     expect(cause).toBeInstanceOf(AggregateError);
     if (cause instanceof AggregateError) expect(cause.errors[0]).toBe(readyError);
   }
+});
+
+test("host-proxy bridge threads child.exited for liveness observation", async () => {
+  // Given: a fake reverse-forward child whose exit is under test control.
+  const pending = Promise.withResolvers<number>();
+  const f = await fixture("ssh", undefined, false, pending);
+  // When: the host-proxy bridge opens inside a retained scope.
+  const handle = await Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const opened = yield* f.bridge.openHostProxyBridge({
+          appId: AppId.make("my-app"),
+          sessionId: "bridge-live",
+          loopbackUrl: "http://127.0.0.1:49160",
+        });
+        // Then: callers receive the real exit promise, not a synthetic ready handle.
+        expect(opened.socketPath).toContain("/host-proxy/");
+        const raced = yield* Effect.promise(() =>
+          Promise.race([
+            opened.exited.then((code) => ({ _tag: "exited" as const, code })),
+            Promise.resolve({ _tag: "pending" as const }),
+          ]),
+        );
+        expect(raced).toEqual({ _tag: "pending" });
+        pending.resolve(42);
+        expect(yield* Effect.promise(() => opened.exited)).toBe(42);
+        return opened.socketPath;
+      }),
+    ),
+  );
+  expect(handle).toContain("host-proxy.sock");
+  expect(f.events).toContain("close");
 });

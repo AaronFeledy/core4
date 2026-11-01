@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { Schema } from "effect";
 import { jsonEquals } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
 import { environmentDeltas } from "./fixtures/x-extension-environment.delta.ts";
+import { historicalExpressionSlot } from "./fixtures/x-extension-historical-expression.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { wireObject } from "./x-extension-wire-proof.ts";
 
@@ -50,3 +52,10 @@ for (const [index, { mode, before, after }] of environmentDeltas.entries()) {
     });
   }
 }
+
+test("historical expression slots never reuse the shared Schema.String AST", () => {
+  // Given / When: the frozen slots for kinds that historically projected to plain strings.
+  const slots = ["string", "unknown"].map((kind) => historicalExpressionSlot(kind).ast);
+  // Then: slot registration cannot mark every plain string in the process as an expression slot.
+  for (const ast of slots) expect(ast).not.toBe(Schema.String.ast);
+});

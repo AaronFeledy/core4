@@ -223,6 +223,7 @@
     "./subsystems/host-proxy/api": "./src/subsystems/host-proxy/api.ts",
     "./subsystems/host-proxy/detached-worker": "./src/subsystems/host-proxy/detached-worker.ts",
     "./subsystems/host-proxy/dispatch": "./src/subsystems/host-proxy/dispatch.ts",
+    "./subsystems/host-proxy/open-target": "./src/subsystems/host-proxy/open-target.ts",
     "./subsystems/host-proxy/plan-sanitizer-live": "./src/subsystems/host-proxy/plan-sanitizer-live.ts",
     "./subsystems/host-proxy/proxy-bypass": "./src/subsystems/host-proxy/proxy-bypass.ts",
     "./subsystems/host-proxy/session-env": "./src/subsystems/host-proxy/session-env.ts",
