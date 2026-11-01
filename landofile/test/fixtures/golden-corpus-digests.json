@@ -460,6 +460,10 @@
       "digest": "327f073ed97ef99d37bbbeab31398043483b11459b40b9a5f200150cf783801e"
     },
     {
+      "fixture": "docs/guides/laravel-vite/fixtures/laravel-vite",
+      "digest": "47c334d453ee06e682ccd196d4d4b27dc04408fe0c7cdc679c62b84821bd9356"
+    },
+    {
       "fixture": "docs/guides/locale/fixtures/locale-demo",
       "digest": "020f24b8d43a8efd4f99e762ec00d472fb5bb78c11a54bf154ec202b8588ce07"
     },
@@ -1005,6 +1009,10 @@
       "digest": "3467551888c3fb5100e7b24d46197f2261db37bff7137c08fef8946adb346d4a"
     },
     {
+      "fixture": "docs/guides/symfony-messenger/fixtures/symfony-messenger",
+      "digest": "28400ad2c41892cb206a495eb3b9289ffbb8139f910d4a4acbf81ca3a6daf7ce"
+    },
+    {
       "fixture": "docs/guides/task-events/fixtures/bracketed-build",
       "digest": "6b376bae7b430d2124401e4ff54fb8a3628b3cbb4bc4bedd68532d18a0f6c1ac"
     },
@@ -1465,9 +1473,9 @@
         "digest": "031653c61f162c7c09b55cd0d6a8097da6c5a47538467235c91da55180531e9e"
       },
       "after": {
-        "digest": "c63a0c661016d391a1cf9651b07dbcd9e3d43ad456b1ac489565b5ef22a29d0b"
+        "digest": "d2b87f8d1c2dfa909616ec98dc42f2a97d9541b5e201b41c354d04bca8e3f938"
       },
-      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false, so the encoded document no longer carries that key; nothing else changed."
+      "reason": "Home persistence no longer needs an opt-out on a Landofile-supplied image: planning keeps no home store when it cannot locate a home. The guide fixture dropped its dodge-only home: false and adds read-only nginx and PHP ini mounts for the large-profile troubleshooting configuration."
     }
   }
 }

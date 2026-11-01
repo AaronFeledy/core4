@@ -3,11 +3,33 @@ import { resolve } from "node:path";
 
 import { renderComposeVendorBumpWorkflow } from "../../../scripts/build-compose-vendor-bump-workflow.ts";
 import { RUNTIME_BUNDLE_ACTION_PINS } from "../../../scripts/runtime-bundle-supply-chain.ts";
+import { createMaintenanceFixture } from "./support/maintenance-workflow-harness.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const workflowPath = resolve(repoRoot, ".github/workflows/compose-vendor-bump.yml");
 
 describe("compose-go bump workflow", () => {
+  test.skipIf(process.platform === "win32").each([false, true])(
+    "fails when CI dispatch is rejected after PR reconciliation (existing PR: %s)",
+    async (existingPr) => {
+      // Given: either a new proposal or a pending rolling branch.
+      await using fixture = await createMaintenanceFixture({
+        domain: "compose",
+        mode: "dispatch-fail",
+        existingPr,
+        ...(existingPr ? { pending: "bump" } : {}),
+      });
+      // When: execute the actual generated proposal shell.
+      const result = await fixture.proposal(renderComposeVendorBumpWorkflow());
+      // Then: dispatch occurs after PR create/edit and its failure fails the job.
+      expect(result.exitCode, result.stderr).toBe(37);
+      const commands = await fixture.commands();
+      const pr = commands.indexOf(`gh pr ${existingPr ? "edit" : "create"}`);
+      expect(pr).toBeGreaterThanOrEqual(0);
+      expect(commands.indexOf(`gh workflow run ci.yml --ref ${fixture.branch}`)).toBeGreaterThan(pr);
+    },
+  );
+
   test("committed workflow matches its generator and parses as YAML", async () => {
     const committed = await Bun.file(workflowPath).text();
 

@@ -4,7 +4,7 @@ import { chmod, lstat, readFile, readdir, unlink, writeFile } from "node:fs/prom
 import { basename, dirname, join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
 import { Effect, Schema } from "effect";
-import { Journal, journalDirectory, openJournal } from "../src/transaction-journal.ts";
+import { Journal, openJournal } from "../src/transaction-journal.ts";
 import { fixture, ownerOnlyFileAccess, scoped } from "./transaction-fixture.ts";
 
 test("derives its journal from the full canonical-root digest and existing paths primitive", async () => {
@@ -115,9 +115,7 @@ test("refuses to skip the committing journal transition", async () => {
   // Given a durable prepared journal
   const { appRoot, dataRoot, transactions } = await fixture();
   await scoped(transactions.prepare({ appRoot, operations: [] }));
-  const store = await scoped(
-    openJournal(appRoot, journalDirectory(appRoot, dataRoot), { privateFileAccess: ownerOnlyFileAccess }),
-  );
+  const store = await scoped(openJournal(appRoot, dataRoot, { privateFileAccess: ownerOnlyFileAccess }));
   const journal = await scoped(store.read);
   if (journal === null) throw new Error("missing journal");
   // When the persistence layer is asked to jump directly to committed
@@ -131,9 +129,7 @@ test("refuses journal removal before committed", async () => {
   // Given a durable prepared journal
   const { appRoot, dataRoot, transactions } = await fixture();
   await scoped(transactions.prepare({ appRoot, operations: [] }));
-  const store = await scoped(
-    openJournal(appRoot, journalDirectory(appRoot, dataRoot), { privateFileAccess: ownerOnlyFileAccess }),
-  );
+  const store = await scoped(openJournal(appRoot, dataRoot, { privateFileAccess: ownerOnlyFileAccess }));
   // When cleanup is attempted prematurely
   const result = await scoped(Effect.result(store.removeCommitted));
   // Then the recovery plan is preserved

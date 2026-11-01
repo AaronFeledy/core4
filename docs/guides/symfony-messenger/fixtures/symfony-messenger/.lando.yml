@@ -1,0 +1,68 @@
+name: symfony-messenger
+runtime: 4
+recipe:
+  id: symfony
+  version: 0.1.0
+  producer:
+    sourceKind: bundled
+    packageName: "@lando/recipe-symfony"
+    recipeId: symfony
+    manifestVersion: 0.1.0
+    contentDigest: sha256:6f31652ef51ad96bd098f06da67392374d6aded4f2d860daa7d1ef878134f709
+  options:
+    php: "8.4"
+    database: postgres:16
+    composer: "2"
+    webroot: public
+services:
+  appserver:
+    type: "php:{{ recipe.php }}"
+    primary: true
+    framework: symfony
+    webroot: "{{ recipe.webroot }}"
+    composer: "{{ recipe.composer }}"
+    allowOverride: true
+    port: 80
+    environment:
+      DATABASE_URL: "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8"
+      REDIS_URL: "redis://cache:6379"
+    appMount:
+      target: /app
+      includes:
+        - vendor
+    dependsOn:
+      - database
+      - cache
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+  database:
+    type: "{{ recipe.database }}"
+  cache:
+    type: redis
+  worker:
+    type: "php:{{ recipe.php }}"
+    via: cli
+    framework: symfony
+    command: "php bin/console messenger:consume async --time-limit=3600 -vv"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql://{{ url.encodeComponent(services.database.creds.user) }}:{{ url.encodeComponent(services.database.creds.password) }}@database:{{ services.database.port }}/{{ url.encodeComponent(services.database.creds.database) }}?serverVersion=16&charset=utf8"
+    appMount:
+      target: /app
+      includes:
+        - vendor
+    dependsOn:
+      database:
+        condition: service_healthy
+tooling:
+  composer:
+    cmds:
+      - composer
+    description: "Run Composer inside the appserver service."
+    service: appserver
+  console:
+    cmds:
+      - "php bin/console"
+    description: "Run the Symfony console inside the appserver service."
+    service: appserver

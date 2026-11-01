@@ -74,16 +74,24 @@ export const statMaybe = async (path: string) => {
   }
 };
 
-export const ensureDirectory = async (path: string): Promise<void> => {
+export const ensureDirectory = async (
+  path: string,
+  boundary: string,
+  createDirectory = true,
+): Promise<void> => {
   const parent = dirname(path);
-  if (parent !== path) await ensureDirectory(parent);
+  if (path !== boundary) {
+    if (parent === path) throw transactionError("path", "prepare", path);
+    await ensureDirectory(parent, boundary, createDirectory);
+  }
   const stats = await statMaybe(path);
   if (stats !== null) {
     if (!stats.isDirectory() || stats.isSymbolicLink()) throw transactionError("path", "prepare", path);
     return;
   }
+  if (!createDirectory) return;
   try {
-    await mkdir(path, { mode: 0o700 });
+    await mkdir(path, { mode: 0o700, recursive: path === boundary });
   } catch (cause) {
     if (!isErrnoCode(cause, "EEXIST")) throw cause;
   }
