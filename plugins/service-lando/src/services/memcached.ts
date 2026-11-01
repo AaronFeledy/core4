@@ -1,7 +1,8 @@
 import { Effect, Schema } from "effect";
 
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
+import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -16,7 +17,7 @@ const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.setCommand(service.command ?? ["memcached", "-p", String(port)]);
-  ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
+  ctx.setHealthcheck(tcpProbe(port, 30));
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
 };

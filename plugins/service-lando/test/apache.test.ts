@@ -3,6 +3,7 @@ import { Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import {
   APACHE_FEATURE_ID,
   APACHE_LISTEN_BUILD_STEP_ID,
@@ -109,7 +110,8 @@ describe("apache ServiceType", () => {
     ]);
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["sh", "-c", "nc -z 127.0.0.1 80"],
+      command: tcpProbe(80, 10).command,
+      target: { port: 80, transport: "tcp", names: [], primary: false },
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -124,7 +126,7 @@ describe("apache ServiceType", () => {
       { _tag: "internal", port: 8080, protocol: "http", name: "backend", primary: true },
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
     expect(apacheDirectives(plan.command)).toContain("Listen 8080");
     expect(plan.environment).toMatchObject({
       APACHE_DOCUMENT_ROOT: "/app",

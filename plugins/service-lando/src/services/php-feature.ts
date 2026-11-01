@@ -1,13 +1,9 @@
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
-import {
-  addEnvRecord,
-  loopbackTcpHealthcheck,
-  serviceFeatureApply,
-  serviceFeatureValidateEffective,
-} from "./_feature-helpers.ts";
+import { addEnvRecord, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpBaselineBuildStep } from "./php-baseline.ts";
@@ -87,7 +83,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     default:
       absurd(mode);
   }
-  if (mode.listener !== undefined) ctx.setHealthcheck(loopbackTcpHealthcheck(mode.listener.port, 10));
+  if (mode.listener !== undefined) ctx.setHealthcheck(tcpProbe(mode.listener.port, 10));
   applyAuthoredProcessFields(ctx, ["user", "command", "entrypoint"]);
   ctx.addExtension("lando-service-php", { allowOverride, webroot, version, via });
 };

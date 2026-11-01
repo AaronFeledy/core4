@@ -5,6 +5,7 @@ import { composeService } from "@lando/engine/services/feature";
 import { LandofileShape, ProviderId, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   TOMCAT_FEATURE_ID,
@@ -131,7 +132,8 @@ describe("tomcat ServiceType", () => {
         expect(String(plan.workingDirectory)).toBe("/app");
         expect(plan.healthcheck).toEqual({
           kind: "command",
-          command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"],
+          command: tcpProbe(8080, 20).command,
+          target: { port: 8080, transport: "tcp", names: [], primary: false },
           intervalSeconds: 10,
           timeoutSeconds: 5,
           retries: 5,

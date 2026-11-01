@@ -4,12 +4,12 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   ServiceConfigIssue,
-  commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -102,7 +102,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
   applyAuthoredProcessFields(ctx, ["user"]);
-  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
+  ctx.setHealthcheck(tcpProbe(port, 10));
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
 

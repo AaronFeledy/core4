@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { Schema } from "effect";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { php83ServiceType } from "../src/services/php.ts";
 import { apacheLauncherDirectives } from "./support/apache-directives.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -30,7 +31,7 @@ test.each([
   expect(plan.endpoints).toEqual([
     { _tag: "internal", name: "web", primary: true, port: input.effective, protocol: input.protocol },
   ]);
-  expect(plan.healthcheck?.command).toEqual(["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${input.effective}`]);
+  expect(plan.healthcheck).toEqual(tcpProbe(input.effective, 10));
   switch (input.via) {
     case "apache": {
       const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
