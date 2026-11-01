@@ -153,7 +153,10 @@ test("timings can target a fresh candidate without changing the baseline or sele
   try {
     for (const path of [file, `docs/test/${file}`]) {
       await mkdir(dirname(join(root, path)), { recursive: true });
-      await writeFile(join(root, path), 'import { test } from "bun:test"; test("fixture", () => {});');
+      await writeFile(
+        join(root, path),
+        'import { test } from "bun:test"; test("fixture", async () => { await Bun.sleep(5200); });',
+      );
     }
     await writeFile(join(root, TEST_TIMINGS_FILE), "baseline bytes");
     const child = Bun.spawn([...timingRefreshCommand([file], candidate)], {
@@ -177,4 +180,4 @@ test("timings can target a fresh candidate without changing the baseline or sele
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-});
+}, 30_000);

@@ -7,7 +7,12 @@
  */
 import { resolve } from "node:path";
 
-import { TEST_TIMINGS_FILE, collectShardedTestFiles, testFileArguments } from "./test-shards.ts";
+import {
+  SHARD_RUNTIME_FLAGS,
+  TEST_TIMINGS_FILE,
+  collectShardedTestFiles,
+  testFileArguments,
+} from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
@@ -18,6 +23,7 @@ export const timingRefreshCommand = (
   process.execPath,
   "--no-orphans",
   "test",
+  ...SHARD_RUNTIME_FLAGS,
   `--timings=${timingsFile}`,
   "--update-timings",
   ...testFileArguments(files),

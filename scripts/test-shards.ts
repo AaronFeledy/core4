@@ -38,7 +38,7 @@ export { FAKE_CLIENT_PROVIDER_TESTS, NIGHTLY_TIER_TESTS } from "./test-ownership
  * (2828 pass / 0 fail).
  */
 // CI matrix runners can spend more than Bun's default 5s in a subprocess-based test.
-const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
+export const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
 
 export const isShardedUnitTest = (path: string): boolean => testOwnership(path)?.owner === "unit";
 
