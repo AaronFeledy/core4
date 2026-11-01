@@ -78,6 +78,12 @@ Read the orphan report before deleting anything. Without `--prune`, this command
       <Verify command="lando snapshots:gc --format=json" expect={{ stdout: { regex: "totalCount" } }} />
     </Step>
   </Scenario>
+  <Scenario id="listeners-without-applied-plan" render={false} reason="The test provider cannot observe real container listeners; verify the no-applied-plan skip instead.">
+    <Step name="inspect-unstarted-app">
+      <Run command="lando doctor --app --format=json" />
+      <Verify command="lando doctor --app --format=json" expect={{ stdout: { regex: "No applied plan was found" } }} />
+    </Step>
+  </Scenario>
 </Guide>
 
 **`lando snapshots:gc --prune` deletes eligible native images.** It does not prune your catalogued manual or recovery snapshots; use the [database snapshot commands](../tooling/db-import-export.mdx) for those.
@@ -180,7 +186,43 @@ The router has its own, separate watcher record. That one reports what the Traef
 lando doctor --app
 ```
 
-That adds Landofile lint and version-constraint checks for this app. A missing or invalid Landofile shows up as its own section. The rest of the report still runs.
+That adds Landofile lint, version-constraint checks, and a point-in-time TCP
+listener check for this app. A missing or invalid Landofile shows up as its own
+section. The rest of the report still runs.
+
+### Check the app's TCP listeners
+
+Run from the app directory after starting it:
+
+```sh
+lando doctor --app --all
+```
+
+Doctor uses the last applied plan and its provider, even if you've since changed
+the Landofile's provider or port. For each running service with an expected TCP
+listener, it reads the container's network-namespace listener tables. It does
+not run your readiness command or scan URLs. Each read is limited to two seconds
+and 128 KiB, with at most four reads at once and an overall section deadline.
+
+| Result | Meaning and next action |
+| --- | --- |
+| `pass`, `listening` | A non-loopback binding exists on the planned port. This does not prove that the application is ready or that a particular process owns the socket. |
+| `warn`, `loopback-only` | Only loopback bindings were found on that port. Bind the server to `0.0.0.0` so other services can reach it. |
+| `warn`, `not-listening` | No binding was found on that port at this instant. If the app is still starting, rerun `lando doctor --app`; otherwise follow the action line. |
+| `skipped` | There is no applied plan, the service isn't running, no expected TCP listener is recorded, or the observation is unavailable. An unreadable table or expired budget is not evidence of an absent listener. |
+
+A not-listening finding for planned port `8080` reads:
+
+```text
+finding: No TCP listener was observed on planned port 8080 at this instant. If the application is still starting, rerun `lando doctor --app`.
+```
+
+The action also names what your application, command, or custom image must
+configure when it owns that listener. `--fix` does not change your server's
+configuration. Without `--app`, doctor does not perform this listener check.
+JSON keeps observations in `provider.checks`, with string context fields
+`service`, `port`, `listenerState`, `finding`, and `bindings`, plus `solutions`.
+Unavailable observations go in the report's `skipped` array.
 
 ## Machine-readable output
 

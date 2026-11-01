@@ -20,6 +20,7 @@ export const DEFAULT_PORT = 8080;
 export const GO_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "Go",
+  when: "All Go services; framework omitted or none",
   variables: ["PORT"],
 } as const satisfies ListenerContract;
 

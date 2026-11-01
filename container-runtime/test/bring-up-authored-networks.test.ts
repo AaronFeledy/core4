@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type AppPlan, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, type ListenerAuthority, ServiceName } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
@@ -17,7 +17,15 @@ test("omits listener advice on network-connect failure", async () => {
     services: Object.fromEntries(
       Object.entries(networkPlan.services).map(([name, service]) => [
         name,
-        { ...service, startupFailureHint: "Listener advice must not appear." },
+        {
+          ...service,
+          listenerAuthority: {
+            owner: "launcher",
+            daemon: "node",
+            port: 3000,
+            setting: "--port 3000",
+          } satisfies ListenerAuthority,
+        },
       ]),
     ),
   };

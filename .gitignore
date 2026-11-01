@@ -16,6 +16,7 @@ test/scenarios/generated/guides/**
 /core/src/cli/allowlists/recipe-post-init.ts
 /docs/reference/recipe-post-init.mdx
 /docs/reference/service-types.mdx
+/docs/reference/service-listeners.mdx
 /mcp/src/generated/
 /container-runtime/src/generated/provider-images.ts
 /engine/src/deprecation/generated/

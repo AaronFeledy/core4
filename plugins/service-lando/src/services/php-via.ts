@@ -20,12 +20,14 @@ export const PHP_LISTENERS = {
   apache: {
     port: PHP_APACHE_PORT,
     daemon: "Apache",
+    when: "via omitted or apache",
     launcher: { setting: (port: number) => `Listen ${port}` },
     image: { setting: (port: number) => `Listen ${port}` },
   },
   fpm: {
     port: PHP_FPM_PORT,
     daemon: "php-fpm",
+    when: "via: fpm",
     launcher: { setting: (port: number) => `listen = ${port}` },
     image: { setting: (port: number) => `listen = ${port}` },
   },

@@ -30,6 +30,7 @@ const firstDerivedConsumer: Readonly<Record<string, readonly [name: string, comm
   ],
   "provider-lando-e2e-linux-x64": ["Build Linux x64 binary", "build:manifest"],
   "service-listeners-linux-x64": ["Compile current listener CLI", "build:manifest"],
+  "service-listener-matrix-linux-x64": ["Compile current matrix CLI", "build:manifest"],
   "published-manifest-setup-linux-x64": ["Build Linux x64 binary", "build:manifest"],
   "mysql-arm-client-linux-arm64": ["Build Linux arm64 binary", "build:manifest"],
   "nightly-tier-unit-tests-linux-x64": [
@@ -105,6 +106,7 @@ test("nightly managed-runtime jobs provision the binary under test before runnin
   // Then: the compiled binary and rootless prerequisites precede setup, socket verification, and tests.
   expect(socketJobs.map(([id]) => id).sort()).toEqual([
     "provider-lando-e2e-linux-x64",
+    "service-listener-matrix-linux-x64",
     "service-listeners-linux-x64",
   ]);
   for (const [, { steps, needs }] of socketJobs) {

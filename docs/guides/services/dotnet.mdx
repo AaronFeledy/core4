@@ -52,9 +52,7 @@ Set `command:` to your project's development-server command. The example uses `d
 
 ## Pass `port:` to ASP.NET Core
 
-| Variable | Value | Who reads it |
-| --- | --- | --- |
-| `ASPNETCORE_HTTP_PORTS` | `port:`, default `5000` | ASP.NET Core 8+ binds HTTP on all interfaces at that port |
+ASP.NET Core 8+ reads `ASPNETCORE_HTTP_PORTS` and binds HTTP on all interfaces at that port. See the [.NET listener reference](../../reference/service-listeners.mdx#dotnet) for the default port and projected variable.
 
 Lando uses the same port for this variable and the internal HTTP endpoint, replacing the official SDK image's `8080` environment default. To move the listener, set `port:` on `appserver`; you do not need `--urls` for the normal case.
 

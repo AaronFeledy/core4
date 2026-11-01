@@ -26,6 +26,7 @@ export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
 export const TOMCAT_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "Tomcat",
+  when: "All Tomcat services; catalog images own server.xml, custom images/builds own their listener",
   reserved: [{ port: 8005, use: "shutdown listener" }],
   image: {
     setting: (port: number) => `<Connector port="${port}">`,

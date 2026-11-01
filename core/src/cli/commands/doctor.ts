@@ -18,6 +18,7 @@ import {
 import { selectedDoctorFileSyncEngine } from "./doctor-file-sync";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy";
 import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem";
+import { listenerDoctorChecks } from "./doctor-listeners";
 import { collectOomDoctorChecks } from "./doctor-oom";
 import {
   isRelevantContribution,
@@ -80,7 +81,8 @@ export const doctor = Effect.fn("Doctor.collect")(
     const registry = yield* RuntimeProviderRegistry;
     const sourceEnv = { ...(options.env ?? process.env) };
     const { redactor, redact } = yield* resolveSecretsRedactor({ sourceEnv });
-    const probeBudget = probeBudgetMs(doctorSectionBudgetMs(sourceEnv));
+    const sectionBudget = doctorSectionBudgetMs(sourceEnv);
+    const probeBudget = probeBudgetMs(sectionBudget);
     const selfChecks: DoctorSelfCheck[] = [];
 
     const gathered = yield* gatherSelectionInputs(options);
@@ -154,8 +156,13 @@ export const doctor = Effect.fn("Doctor.collect")(
       probeBudget,
     );
     selfChecks.push(...pluginSelfChecks);
+    const listeners =
+      options.app === true
+        ? yield* listenerDoctorChecks({ budgetMs: sectionBudget, redact })
+        : ({ checks: [] } satisfies DoctorResult);
     const withSelfChecks = (checks: ReadonlyArray<DoctorCheck>): DoctorResult => ({
-      checks,
+      checks: [...checks, ...listeners.checks],
+      ...(listeners.skipped === undefined ? {} : { skipped: listeners.skipped }),
       ...(selfChecks.length === 0 ? {} : { selfChecks: [...selfChecks] }),
     });
     const preemptiveReports = reports
@@ -335,7 +342,9 @@ export const doctor = Effect.fn("Doctor.collect")(
         ...hostProxyOutcome.value.checks,
         ...oomChecks,
       ]),
-      ...(hostProxyOutcome.value.skipped === undefined ? {} : { skipped: hostProxyOutcome.value.skipped }),
+      ...(hostProxyOutcome.value.skipped === undefined
+        ? {}
+        : { skipped: [...(listeners.skipped ?? []), ...hostProxyOutcome.value.skipped] }),
     };
   },
   (effect, options?: DoctorOptions, _modules?: ReadonlyArray<LandoPluginModule>) =>

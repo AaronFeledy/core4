@@ -13,6 +13,7 @@ const DEFAULT_IMAGE = "valkey/valkey:8";
 export const VALKEY_LISTENER = {
   port: 6379,
   daemon: "Valkey",
+  when: "All Valkey services",
   launcher: { setting: (port: number) => `--port ${port}` },
 } as const;
 export const DEFAULT_PORT = VALKEY_LISTENER.port;

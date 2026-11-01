@@ -117,7 +117,12 @@ describe("AppRef", () => {
 describe("ServicePlan", () => {
   test("preserves listener authority through service and executable app plan codecs", () => {
     // Given service-type advice in a current executable plan.
-    const listenerAuthority = { owner: "launcher", daemon: "mongod", port: 27018, setting: "--port 27018" } as const;
+    const listenerAuthority = {
+      owner: "launcher",
+      daemon: "mongod",
+      port: 27018,
+      setting: "--port 27018",
+    } as const;
     const service = Schema.decodeUnknownSync(ServicePlan)({ ...servicePlanFixture, listenerAuthority });
     const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
       ...appPlanFixture,

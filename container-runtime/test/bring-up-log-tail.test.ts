@@ -7,6 +7,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type ListenerAuthority,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -25,6 +26,14 @@ const appId = AppId.make("bring-up-log-tail-app");
 const slug = "bring-up-log-tail-app";
 const webName = ServiceName.make("web");
 const dbName = ServiceName.make("db");
+const dependencyRemediation =
+  "Run `lando logs -s db` to diagnose dependency db, fix it, then run `lando start`; it reuses what this attempt created.";
+const authority = (setting: string): ListenerAuthority => ({
+  owner: "launcher",
+  daemon: "postgres",
+  port: 5432,
+  setting,
+});
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-10-10T00:00:00Z"),
   source: "container-runtime/bring-up-log-tail.test.ts",
@@ -233,15 +242,15 @@ const expectServiceStartError = (error: unknown): ServiceStartError => {
 };
 
 describe("bringUp start-failure log tail", () => {
-  test("omits listener hints when a completed-successfully dependency gate fails", async () => {
+  test("omits listener authority when a completed-successfully dependency gate fails", async () => {
     // Given
     const original = dependentPlan();
     const plan = {
       ...original,
       services: {
-        db: servicePlan(dbName, false, { startupFailureHint: "Dependency listener advice." }),
+        db: servicePlan(dbName, false, { listenerAuthority: authority("dependency advice") }),
         web: servicePlan(webName, true, {
-          startupFailureHint: "Consumer listener advice.",
+          listenerAuthority: authority("consumer advice"),
           dependsOn: [{ service: dbName, condition: "service_completed_successfully", required: true }],
         }),
       },
@@ -252,16 +261,16 @@ describe("bringUp start-failure log tail", () => {
     // Then
     expect(error.service).toBe("web");
     expect(error.message).toContain("db:completed");
-    expect(error.remediation).toBe(APPLY_REMEDIATION);
+    expect(error.remediation).toBe(dependencyRemediation);
   });
 
-  test("appends the service listener hint on its own create failure", async () => {
+  test("omits service listener authority on its own create failure", async () => {
     // Given
     const original = standalonePlan();
     const plan = {
       ...original,
       services: {
-        web: servicePlan(webName, true, { startupFailureHint: "Configure the listener." }),
+        web: servicePlan(webName, true, { listenerAuthority: authority("--port 5432") }),
       },
     };
     const { api } = makeApi({ createStatus: 500 });
@@ -269,20 +278,22 @@ describe("bringUp start-failure log tail", () => {
     const error = expectServiceStartError(await flipBringUp(plan, api));
     // Then
     expect(error.operation).toBe("bringUp.create");
-    expect(error.remediation).toBe(`${APPLY_REMEDIATION} Configure the listener.`);
+    expect(error.remediation).toBe(APPLY_REMEDIATION);
   });
   test.each(["podman", "docker", "lando"])(
-    "%s dependency failures append only the dependency's redacted startup hint",
+    "%s healthy gate without observation uses only the dependency's redacted authority",
     async (providerId) => {
-      // Given distinct dependency and consumer advice, with a secret in the dependency's hint.
+      // Given distinct dependency and consumer authorities, with a secret in the dependency's setting.
       const original = dependentPlan();
-      const hint = "Configure the database launcher with --token dependency-secret.";
       const plan = {
         ...original,
         services: Object.fromEntries(
           Object.entries(original.services).map(([name, service]) => [
             name,
-            { ...service, startupFailureHint: name === "db" ? hint : "Consumer-only advice." },
+            {
+              ...service,
+              listenerAuthority: authority(name === "db" ? "--token dependency-secret" : "consumer-only"),
+            },
           ]),
         ),
       };
@@ -298,8 +309,9 @@ describe("bringUp start-failure log tail", () => {
 
       // Then the blocked consumer is identified but only the dependency's advice is appended.
       expect(error.service).toBe("web");
+      expect(error.listener).toBeUndefined();
       expect(error.remediation).toBe(
-        `${APPLY_REMEDIATION} Configure the database launcher with --token [redacted].`,
+        `Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for postgres, pass \`--token [redacted]\`.\n${dependencyRemediation}`,
       );
       expect(JSON.stringify(error)).not.toContain("dependency-secret");
       expect(requests.some((request) => request.endsWith(`${serviceContainerName(plan, "web")}/start`))).toBe(
@@ -308,7 +320,7 @@ describe("bringUp start-failure log tail", () => {
     },
   );
 
-  test("does not substitute consumer advice when a blocked dependency has no hint", async () => {
+  test("does not substitute consumer authority when a blocked dependency has none", async () => {
     // Given a healthy-gated consumer with advice and a dependency without advice.
     const original = dependentPlan();
     const plan = {
@@ -316,7 +328,7 @@ describe("bringUp start-failure log tail", () => {
       services: Object.fromEntries(
         Object.entries(original.services).map(([name, service]) => [
           name,
-          name === "web" ? { ...service, startupFailureHint: "Consumer-only advice." } : service,
+          name === "web" ? { ...service, listenerAuthority: authority("consumer-only") } : service,
         ]),
       ),
     };
@@ -326,10 +338,10 @@ describe("bringUp start-failure log tail", () => {
     const error = expectServiceStartError(await flipBringUp(plan, api));
 
     // Then the original remediation is unchanged.
-    expect(error.remediation).toBe(APPLY_REMEDIATION);
+    expect(error.remediation).toBe(dependencyRemediation);
   });
 
-  test("appends service advice after provider-specific remediation on direct start failure", async () => {
+  test("preserves provider-specific remediation without authority on direct start failure", async () => {
     // Given an authored launcher and a provider-specific diagnostic.
     const original = standalonePlan();
     const plan = {
@@ -337,7 +349,7 @@ describe("bringUp start-failure log tail", () => {
       services: Object.fromEntries(
         Object.entries(original.services).map(([name, service]) => [
           name,
-          { ...service, startupFailureHint: "An authored launcher must configure its listener." },
+          { ...service, listenerAuthority: authority("--port 5432") },
         ]),
       ),
     };
@@ -350,8 +362,8 @@ describe("bringUp start-failure log tail", () => {
       ),
     );
 
-    // Then provider advice is preserved before the separate launcher sentence.
-    expect(error.remediation).toBe("Repair the provider. An authored launcher must configure its listener.");
+    // Then provider advice is preserved without unrelated listener advice.
+    expect(error.remediation).toBe("Repair the provider.");
   });
 
   test("captures whole lines from split multiplexed writes on a failed service", async () => {

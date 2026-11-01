@@ -35,6 +35,7 @@ const DEFAULT_IMAGE = "nginx:1.26-alpine";
 export const NGINX_LISTENER = {
   port: 80,
   daemon: "nginx",
+  when: "All nginx services",
   launcher: { setting: (port: number) => `listen ${port};` },
 } as const;
 export const DEFAULT_PORT = NGINX_LISTENER.port;

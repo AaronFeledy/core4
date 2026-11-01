@@ -31,6 +31,7 @@ const DEFAULT_IMAGE = "httpd:2.4-alpine";
 export const APACHE_LISTENER = {
   port: 80,
   daemon: "Apache",
+  when: "All Apache services",
   launcher: { setting: (port: number) => `Listen ${port}` },
 } as const;
 export const DEFAULT_PORT = APACHE_LISTENER.port;

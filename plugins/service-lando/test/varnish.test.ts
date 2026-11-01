@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName, VarnishServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 
 import {
   VARNISH_FEATURE_ID,
@@ -81,14 +82,7 @@ describe("varnish ServiceType", () => {
           VARNISH_BACKEND_PORT: "80",
           VARNISH_VCL_FILE: "/tmp/lando-backend.vcl",
         });
-        expect(plan.healthcheck).toEqual({
-          kind: "command",
-          command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80"],
-          intervalSeconds: 10,
-          timeoutSeconds: 5,
-          retries: 5,
-          startPeriodSeconds: 5,
-        });
+        expect(plan.healthcheck).toEqual(tcpProbe(80, 5));
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(plan.command?.[0]).toContain("lando-backend.vcl");
         expect(plan.command?.[0]).toContain("varnishd -F");
@@ -236,10 +230,10 @@ describe("varnish ServiceType", () => {
       setting: "-a :6082",
       port: 6082,
     });
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6082"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(6082, 5));
   });
 
-  test("hints authored entrypoints to configure the HTTP listener", async () => {
+  test("records launcher authority for authored entrypoints", async () => {
     const plan = await planVarnishService(varnishServiceType, {
       type: "varnish",
       backend: "appserver",
@@ -262,7 +256,7 @@ describe("varnish ServiceType", () => {
       port: 8080,
     });
     expect(plan.command?.[0]).toContain("-a :8080");
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 5));
     expect(plan.endpoints).toContainEqual(expect.objectContaining({ port: 8080, primary: true }));
   });
 });

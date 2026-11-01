@@ -65,9 +65,7 @@ lando exec web -- go run .
 
 ## Pass `port:` to your Go server
 
-| Variable | Value | Who reads it |
-| --- | --- | --- |
-| `PORT` | `port:`, default `8080` | Your application via `os.Getenv("PORT")` |
+See the [Go listener reference](../../reference/service-listeners.mdx#go) for the default port and projected variable.
 
 Lando sets `PORT` from the same port used by the internal HTTP endpoint. Go's `net/http`, Echo, and Fiber do not read it automatically. Read it in your application and bind a non-loopback address, for example `http.ListenAndServe(":" + os.Getenv("PORT"), handler)`. The empty host listens on all interfaces so the proxy can reach it.
 

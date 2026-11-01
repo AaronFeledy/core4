@@ -21,6 +21,7 @@ export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
 export const VARNISH_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "Varnish",
+  when: "All Varnish services; management reservation applies to the bundled launcher",
   reserved: [{ port: 6082, use: "management interface" }],
   launcher: { setting: (port: number) => `-a :${port}` },
 } as const satisfies ListenerContract;

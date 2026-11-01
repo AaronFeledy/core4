@@ -98,20 +98,9 @@ names and rootless mode are not proof of effective bind permission.
 
 ## Language runtime listeners
 
-Set `port:` to change the internal HTTP endpoint and the corresponding process variables together:
+Set `port:` to change the internal HTTP endpoint and the corresponding process variables together. The generated [service listener reference](https://aaronfeledy.github.io/core4/reference/service-listeners/) lists default ports, port and bind variables, host defaults, secondary listeners, and launcher or custom-image requirements for each family and variant.
 
-| Runtime / framework | Default port | Port variables | Ordinary host defaults |
-| --- | --- | --- | --- |
-| Node | `3000` | `PORT` | None |
-| Python `none` / `django` | `8000` | `PORT` | None |
-| Python `fastapi` | `8000` | `PORT`, `UVICORN_PORT` | `UVICORN_HOST=0.0.0.0` |
-| Python `flask` | `5000` | `PORT`, `FLASK_RUN_PORT` | `FLASK_RUN_HOST=0.0.0.0` |
-| Ruby `none` | `3000` | `PORT` | None |
-| Ruby `rails` | `3000` | `PORT` | `BINDING=0.0.0.0` |
-| Go | `8080` | `PORT` | None |
-| .NET | `5000` | `ASPNETCORE_HTTP_PORTS` | None (ASP.NET Core 8+ binds all interfaces) |
-
-Each runtime exports its `ListenerContract` constants from its service module. The feature validates authored port variables through `validateEffective` before plan-cache lookup. A malformed value or one unequal to the planned port fails at `services.<name>.environment.<VAR>`, including inherited `appEnv` and env-file values. Set `port:` instead. Authored host variables still win over the ordinary defaults above.
+Each runtime exports its `ListenerContract` constants from its service module. The feature validates authored port variables through `validateEffective` before plan-cache lookup. A malformed value or one unequal to the planned port fails at `services.<name>.environment.<VAR>`, including inherited `appEnv` and env-file values. Set `port:` instead. Authored host variables still win over the ordinary defaults in the reference.
 
 Next.js, Nuxt, Remix, Gunicorn, Rails, and Sinatra read `PORT`; Uvicorn CLI reads `UVICORN_*`, and `flask run` reads `FLASK_RUN_*`. FastAPI CLI reads `PORT`, not `UVICORN_*`: `fastapi run` binds all interfaces, while `fastapi dev` still needs `--host 0.0.0.0`. Django `runserver` needs `0.0.0.0:<port>` in argv. Vite needs matching `--port` and `--host` flags or configuration. Sinatra in development still needs `-o 0.0.0.0`. Go applications must read `os.Getenv("PORT")` themselves; net/http, Echo, and Fiber do not do so automatically.
 

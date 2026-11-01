@@ -11,11 +11,15 @@ import {
 export const MAILPIT_LISTENER: ListenerContract = {
   port: MAILPIT_SMTP_PORT,
   daemon: "mailpit",
+  bindVariables: ["MP_SMTP_BIND_ADDR"],
+  when: "All Mailpit services; HTTP reservations follow the effective UI bind",
   reserved: [{ port: MAILPIT_WEB_PORT, use: "HTTP UI listener" }],
 };
 export const MAILHOG_LISTENER: ListenerContract = {
   port: MAILPIT_SMTP_PORT,
   daemon: "mailhog",
+  bindVariables: ["MH_SMTP_BIND_ADDR"],
+  when: "All MailHog services; HTTP reservations follow the effective UI/API binds",
   reserved: [{ port: MAILPIT_WEB_PORT, use: "HTTP UI listener" }],
 };
 
@@ -28,13 +32,6 @@ export const resolveMailListeners = (service: ServiceConfig, type: "mailpit" | "
   const smtpPort = plannedPort(service, listener);
   const smtpVariable = `${prefix}_SMTP_BIND_ADDR`;
   const smtp = nativeBind(service, smtpVariable, `0.0.0.0:${smtpPort}`);
-  if (smtp.port !== smtpPort) {
-    throw new ServiceConfigIssue(
-      ["environment", smtpVariable],
-      `${smtpVariable} must match the primary SMTP port.`,
-      `Set its port to ${smtpPort}, change port: to match, or omit ${smtpVariable}.`,
-    );
-  }
   const ui = nativeBind(service, `${prefix}_UI_BIND_ADDR`, `0.0.0.0:${MAILPIT_WEB_PORT}`);
   const api =
     type === "mailhog" ? nativeBind(service, "MH_API_BIND_ADDR", `0.0.0.0:${MAILPIT_WEB_PORT}`) : ui;

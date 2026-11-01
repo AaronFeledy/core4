@@ -4,8 +4,9 @@ import { Effect } from "effect";
 import type { ListenerAuthority } from "@lando/sdk/schema";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
+import { serviceTypes } from "../src/index.ts";
 
-import { listenerAuthority } from "../src/services/_port-helpers.ts";
+import { imageAuthority, launcherAuthority } from "../src/services/_port-helpers.ts";
 import { APACHE_LISTENER, apacheServiceFeature, apacheServiceType } from "../src/services/apache.ts";
 import {
   MEMCACHED_LISTENER,
@@ -28,6 +29,7 @@ import {
 import { TOMCAT_LISTENER, tomcatServiceFeature, tomcatServiceType } from "../src/services/tomcat.ts";
 import { VALKEY_LISTENER, valkeyServiceFeature, valkeyServiceType } from "../src/services/valkey.ts";
 import { VARNISH_LISTENER, varnishServiceFeature, varnishServiceType } from "../src/services/varnish.ts";
+import { composeServicePlan } from "./support/compose-harness.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
 const APP_ROOT = "/srv/apps/myapp";
@@ -90,21 +92,21 @@ const cases: readonly AuthorityCase[] = [
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", port: 27018, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(MONGODB_LISTENER, "launcher", 27018),
+    authority: launcherAuthority(MONGODB_LISTENER, 27018),
   },
   {
     id: "mongodb port+entrypoint authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", port: 27018, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    authority: listenerAuthority(MONGODB_LISTENER, "launcher", 27018),
+    authority: launcherAuthority(MONGODB_LISTENER, 27018),
   },
   {
     id: "mongodb config+command authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", config: { server: "config/mongod.conf" }, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(MONGODB_LISTENER, "launcher", 27017),
+    authority: launcherAuthority(MONGODB_LISTENER, 27017),
   },
   {
     id: "mongodb config+entrypoint authority",
@@ -115,7 +117,7 @@ const cases: readonly AuthorityCase[] = [
       config: { server: "config/mongod.conf" },
       entrypoint: [...CUSTOM_ENTRYPOINT],
     },
-    authority: listenerAuthority(MONGODB_LISTENER, "launcher", 27017),
+    authority: launcherAuthority(MONGODB_LISTENER, 27017),
   },
   {
     id: "mongodb command-only without port/config omits authority",
@@ -152,7 +154,7 @@ const cases: readonly AuthorityCase[] = [
     serviceType: redisServiceType,
     feature: redisServiceFeature,
     service: { type: "redis", port: 16379, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(REDIS_LISTENER, "launcher", 16379),
+    authority: launcherAuthority(REDIS_LISTENER, 16379),
   },
   {
     id: "redis entrypoint-only omits authority",
@@ -175,7 +177,7 @@ const cases: readonly AuthorityCase[] = [
     serviceType: valkeyServiceType,
     feature: valkeyServiceFeature,
     service: { type: "valkey", port: 6380, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(VALKEY_LISTENER, "launcher", 6380),
+    authority: launcherAuthority(VALKEY_LISTENER, 6380),
   },
   {
     id: "valkey entrypoint-only omits authority",
@@ -198,7 +200,7 @@ const cases: readonly AuthorityCase[] = [
     serviceType: memcachedServiceType,
     feature: memcachedServiceFeature,
     service: { type: "memcached", port: 11212, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(MEMCACHED_LISTENER, "launcher", 11212),
+    authority: launcherAuthority(MEMCACHED_LISTENER, 11212),
   },
   {
     id: "memcached entrypoint-only omits authority",
@@ -221,7 +223,7 @@ const cases: readonly AuthorityCase[] = [
     serviceType: solrServiceType,
     feature: solrServiceFeature,
     service: { type: "solr", port: 8984, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(SOLR_LISTENER, "launcher", 8984),
+    authority: launcherAuthority(SOLR_LISTENER, 8984),
   },
   {
     id: "solr entrypoint-only omits authority",
@@ -251,7 +253,7 @@ const cases: readonly AuthorityCase[] = [
       command: [...CUSTOM_COMMAND],
     },
     authority: {
-      ...listenerAuthority(MINIO_LISTENER, "launcher", 9100),
+      ...launcherAuthority(MINIO_LISTENER, 9100),
       setting: "--address :9100 --console-address :9101",
     },
   },
@@ -294,14 +296,14 @@ const cases: readonly AuthorityCase[] = [
     serviceType: staticNginxServiceType,
     feature: staticServiceFeature,
     service: { type: "static", port: 8080, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(STATIC_LISTENERS.nginx, "launcher", 8080),
+    authority: launcherAuthority(STATIC_LISTENERS.nginx, 8080),
   },
   {
     id: "static caddy command authority",
     serviceType: staticCaddyServiceType,
     feature: staticServiceFeature,
     service: { type: "static:caddy", port: 8080, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(STATIC_LISTENERS.caddy, "launcher", 8080),
+    authority: launcherAuthority(STATIC_LISTENERS.caddy, 8080),
   },
   {
     id: "static entrypoint-only omits authority",
@@ -324,14 +326,14 @@ const cases: readonly AuthorityCase[] = [
     serviceType: nginxServiceType,
     feature: nginxServiceFeature,
     service: { type: "nginx", port: 8080, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(NGINX_LISTENER, "launcher", 8080),
+    authority: launcherAuthority(NGINX_LISTENER, 8080),
   },
   {
     id: "nginx entrypoint authority",
     serviceType: nginxServiceType,
     feature: nginxServiceFeature,
     service: { type: "nginx", port: 8080, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    authority: listenerAuthority(NGINX_LISTENER, "launcher", 8080),
+    authority: launcherAuthority(NGINX_LISTENER, 8080),
   },
   {
     id: "nginx stock omits authority",
@@ -347,14 +349,14 @@ const cases: readonly AuthorityCase[] = [
     serviceType: apacheServiceType,
     feature: apacheServiceFeature,
     service: { type: "apache", port: 8080, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(APACHE_LISTENER, "launcher", 8080),
+    authority: launcherAuthority(APACHE_LISTENER, 8080),
   },
   {
     id: "apache entrypoint authority",
     serviceType: apacheServiceType,
     feature: apacheServiceFeature,
     service: { type: "apache", port: 8080, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    authority: listenerAuthority(APACHE_LISTENER, "launcher", 8080),
+    authority: launcherAuthority(APACHE_LISTENER, 8080),
   },
   {
     id: "apache stock omits authority",
@@ -370,28 +372,28 @@ const cases: readonly AuthorityCase[] = [
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", port: 8080, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(PHP_LISTENERS.apache, "launcher", 8080),
+    authority: launcherAuthority(PHP_LISTENERS.apache, 8080),
   },
   {
     id: "php apache authored entrypoint authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", port: 8080, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    authority: listenerAuthority(PHP_LISTENERS.apache, "launcher", 8080),
+    authority: launcherAuthority(PHP_LISTENERS.apache, 8080),
   },
   {
     id: "php fpm authored command authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "fpm", port: 9001, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(PHP_LISTENERS.fpm, "launcher", 9001),
+    authority: launcherAuthority(PHP_LISTENERS.fpm, 9001),
   },
   {
     id: "php fpm authored entrypoint authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "fpm", port: 9001, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    authority: listenerAuthority(PHP_LISTENERS.fpm, "launcher", 9001),
+    authority: launcherAuthority(PHP_LISTENERS.fpm, 9001),
   },
   {
     id: "php cli authored command omits authority",
@@ -405,14 +407,14 @@ const cases: readonly AuthorityCase[] = [
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", image: "acme/php:custom", port: 8080 },
-    authority: listenerAuthority(PHP_LISTENERS.apache, "image", 8080),
+    authority: imageAuthority(PHP_LISTENERS.apache, 8080),
   },
   {
     id: "php fpm replacement build authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "fpm", build: { context: "." }, port: 9001 },
-    authority: listenerAuthority(PHP_LISTENERS.fpm, "image", 9001),
+    authority: imageAuthority(PHP_LISTENERS.fpm, 9001),
   },
   {
     id: "php cli image-default omits authority",
@@ -426,14 +428,14 @@ const cases: readonly AuthorityCase[] = [
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "fpm", image: "acme/php:custom", port: 9001 },
-    authority: listenerAuthority(PHP_LISTENERS.fpm, "image", 9001),
+    authority: imageAuthority(PHP_LISTENERS.fpm, 9001),
   },
   {
     id: "php apache replacement build authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", build: { context: "." }, port: 8080 },
-    authority: listenerAuthority(PHP_LISTENERS.apache, "image", 8080),
+    authority: imageAuthority(PHP_LISTENERS.apache, 8080),
   },
   {
     id: "php stock apache omits authority",
@@ -463,14 +465,14 @@ const cases: readonly AuthorityCase[] = [
     serviceType: tomcatServiceType,
     feature: tomcatServiceFeature,
     service: { type: "tomcat", image: "acme/tomcat:custom", port: 9090 },
-    authority: listenerAuthority(TOMCAT_LISTENER, "image", 9090),
+    authority: imageAuthority(TOMCAT_LISTENER, 9090),
   },
   {
     id: "tomcat build context authority",
     serviceType: tomcatServiceType,
     feature: tomcatServiceFeature,
     service: { type: "tomcat", build: { context: "." }, port: 9090 },
-    authority: listenerAuthority(TOMCAT_LISTENER, "image", 9090),
+    authority: imageAuthority(TOMCAT_LISTENER, 9090),
   },
 
   // --- varnish: authored cmd/entrypoint authority; stock none ---
@@ -479,7 +481,7 @@ const cases: readonly AuthorityCase[] = [
     serviceType: varnishServiceType,
     feature: varnishServiceFeature,
     service: { type: "varnish", backend: "appserver", port: 8080, command: [...CUSTOM_COMMAND] },
-    authority: listenerAuthority(VARNISH_LISTENER, "launcher", 8080),
+    authority: launcherAuthority(VARNISH_LISTENER, 8080),
   },
   {
     id: "varnish entrypoint authority",
@@ -491,7 +493,7 @@ const cases: readonly AuthorityCase[] = [
       port: 8080,
       entrypoint: [...CUSTOM_ENTRYPOINT],
     },
-    authority: listenerAuthority(VARNISH_LISTENER, "launcher", 8080),
+    authority: launcherAuthority(VARNISH_LISTENER, 8080),
   },
   {
     id: "varnish stock omits authority",
@@ -518,4 +520,41 @@ describe("launcher listener authority via feature.apply", () => {
     }
     assertCalls?.(calls);
   });
+});
+
+describe("application listener authority", () => {
+  for (const [type, framework, daemon, variables] of [
+    ["node:22", undefined, "Node.js", ["PORT"]],
+    ["python:3.12", undefined, "Python", ["PORT"]],
+    ["python:3.12", "django", "Django", ["PORT"]],
+    ["python:3.12", "fastapi", "FastAPI", ["PORT", "UVICORN_PORT"]],
+    ["python:3.12", "flask", "Flask", ["PORT", "FLASK_RUN_PORT"]],
+    ["ruby:3.3", undefined, "Ruby", ["PORT"]],
+    ["ruby:3.3", "rails", "Rails", ["PORT"]],
+    ["go:1.23", undefined, "Go", ["PORT"]],
+    ["dotnet:8.0", undefined, "ASP.NET Core", ["ASPNETCORE_HTTP_PORTS"]],
+  ] as const) {
+    for (const [authorship, process] of [
+      ["keep-alive", {}],
+      ["command", { command: [...CUSTOM_COMMAND] }],
+      ["entrypoint", { entrypoint: [...CUSTOM_ENTRYPOINT] }],
+      ["both", { command: [...CUSTOM_COMMAND], entrypoint: [...CUSTOM_ENTRYPOINT] }],
+    ] as const) {
+      test(`${type}/${framework ?? "none"} retains application authority with ${authorship}`, async () => {
+        const serviceType = serviceTypes.get(type);
+        if (serviceType === undefined) throw new Error(`Missing service type ${type}`);
+        const plan = await composeServicePlan({
+          serviceType,
+          service: { type, port: 43210, ...(framework === undefined ? {} : { framework }), ...process },
+          serviceName: "web",
+          appRoot: APP_ROOT,
+          appName: "myapp",
+          metadata: METADATA,
+        });
+        expect(plan.listenerAuthority).toEqual({ owner: "application", daemon, port: 43210, variables });
+        if (process.command !== undefined) expect(plan.command).toEqual(process.command);
+        if (process.entrypoint !== undefined) expect(plan.entrypoint).toEqual(process.entrypoint);
+      });
+    }
+  }
 });

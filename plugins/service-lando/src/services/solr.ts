@@ -32,6 +32,7 @@ const ARTIFACTS = { "9": DEFAULT_IMAGE } as const;
 export const SOLR_LISTENER = {
   port: 8983,
   daemon: "Solr",
+  when: "All Solr services; stop-port reservation follows the effective launcher",
   launcher: { setting: (port: number) => `-p ${port}` },
 } as const;
 export const DEFAULT_PORT = SOLR_LISTENER.port;

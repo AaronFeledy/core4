@@ -10,7 +10,7 @@ export interface DoctorOptions {
   readonly platform?: HostPlatform | undefined;
   /** Re-run setup for degraded subsystems whose recovery is safe to automate. */
   readonly fix?: boolean | undefined;
-  /** Additionally lint the current app's Landofile against the canonical schema. */
+  /** Additionally inspect the current app's config, version constraints, and applied TCP listeners. */
   readonly app?: boolean | undefined;
   readonly deprecations?: boolean | undefined;
   /** Render-only: list passing checks too instead of only degraded ones. */

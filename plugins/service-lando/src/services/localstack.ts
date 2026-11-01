@@ -28,6 +28,7 @@ const DEFAULT_DNS_PORT = 53;
 export const LOCALSTACK_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "LocalStack",
+  when: "All LocalStack services; gateway lists and DNS reservations follow effective configuration",
   reserved: [{ port: DEFAULT_DNS_PORT, use: "DNS server" }],
 } as const satisfies ListenerContract;
 const DATA_TARGET = PortablePath.make("/var/lib/localstack");

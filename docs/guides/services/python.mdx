@@ -53,23 +53,13 @@ tooling:
     cmd: python
 ```
 
-| Framework | Default port | Useful bits |
-| --- | --- | --- |
-| `fastapi` | `8000` | Sets `UVICORN_HOST=0.0.0.0`; author the Uvicorn command below |
-| `django` | `8000` | Sets `DJANGO_SETTINGS_MODULE=config.settings` |
-| `flask` | `5000` | Sets `FLASK_APP=app` |
-| `none` (default) | `8000` | Plain Python service |
+The `django` preset sets `DJANGO_SETTINGS_MODULE=config.settings`, and `flask` sets `FLASK_APP=app`. Without a framework, the service stays plain Python.
 
 ## Pass `port:` to your Python server
 
-Lando derives these variables from the same port as the internal HTTP endpoint. An explicit `port:` replaces the framework default:
+Lando derives the port variables from the internal HTTP endpoint, and an explicit `port:` replaces the framework default. See the [Python listener reference](../../reference/service-listeners.mdx#python) for each framework's variables, default port, and host defaults.
 
-| Framework | Port variables | Default host variable | Servers that read them |
-| --- | --- | --- | --- |
-| `none` | `PORT` (`8000`) | None | Gunicorn reads `PORT` and binds `0.0.0.0` |
-| `django` | `PORT` (`8000`) | None | Gunicorn reads `PORT`; Django `runserver` does not |
-| `fastapi` | `PORT`, `UVICORN_PORT` (`8000`) | `UVICORN_HOST=0.0.0.0` | Uvicorn CLI reads `UVICORN_*`; FastAPI CLI reads `PORT` |
-| `flask` | `PORT`, `FLASK_RUN_PORT` (`5000`) | `FLASK_RUN_HOST=0.0.0.0` | `flask run` reads `FLASK_RUN_*`; Gunicorn reads `PORT` |
+Gunicorn reads `PORT` and binds `0.0.0.0`; Uvicorn CLI reads `UVICORN_*`, and `flask run` reads `FLASK_RUN_*`.
 
 Port variables are not independent overrides. If an authored value is malformed or differs from the planned port, planning fails at `services.app.environment.<VAR>`. This includes inherited `appEnv` and env-file values. Set `port:` instead. Host variables are ordinary defaults: your authored host value wins, but a loopback address makes the server unreachable through the proxy.
 

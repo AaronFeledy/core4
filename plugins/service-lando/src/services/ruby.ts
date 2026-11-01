@@ -3,7 +3,6 @@ import { Schema } from "effect";
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";
-import type { ListenerContract } from "./_port-helpers.ts";
 
 export const SUPPORTED_RUBY_VERSIONS = ["3.3"] as const;
 export type SupportedRubyVersion = (typeof SUPPORTED_RUBY_VERSIONS)[number];
@@ -17,27 +16,29 @@ export type SupportedRubyFramework = (typeof SUPPORTED_RUBY_FRAMEWORKS)[number];
 export const RUBY_FEATURE_ID = "service-lando.ruby" as const;
 export const RUBY_FEATURE_PRIORITY = 600;
 
-export const RUBY_LISTENERS = {
-  rails: { port: 3000, daemon: "Rails", variables: ["PORT"] },
-  none: { port: 3000, daemon: "Ruby", variables: ["PORT"] },
-} as const satisfies Readonly<Record<SupportedRubyFramework, ListenerContract>>;
-
 export const FRAMEWORK_PRESETS: Readonly<Record<SupportedRubyFramework, LanguageFrameworkPreset>> = {
   rails: {
-    ...RUBY_LISTENERS.rails,
+    port: 3000,
+    daemon: "Rails",
+    variables: ["PORT"],
+    hostDefaults: { BINDING: "0.0.0.0" },
+    when: "framework: rails",
     webroot: "public",
     env: new Map([
       ["RAILS_ENV", "development"],
       ["RAILS_LOG_TO_STDOUT", "true"],
-      ["BINDING", "0.0.0.0"],
     ]),
   },
   none: {
-    ...RUBY_LISTENERS.none,
+    port: 3000,
+    daemon: "Ruby",
+    variables: ["PORT"],
+    when: "framework omitted or none",
     webroot: ".",
     env: new Map(),
   },
 };
+export const RUBY_LISTENERS = FRAMEWORK_PRESETS;
 
 const RubyFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_RUBY_FRAMEWORKS]),

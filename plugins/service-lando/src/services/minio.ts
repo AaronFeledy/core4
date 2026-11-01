@@ -25,6 +25,7 @@ const DATA_TARGET = PortablePath.make("/data");
 export const MINIO_LISTENER = {
   port: DEFAULT_API_PORT,
   daemon: "MinIO",
+  when: "All MinIO services; console reservation follows consolePort",
   reserved: [{ port: DEFAULT_CONSOLE_PORT, use: "console listener (consolePort:)" }],
   launcher: {
     setting: (port: number) => `--address :${port} --console-address :${DEFAULT_CONSOLE_PORT}`,

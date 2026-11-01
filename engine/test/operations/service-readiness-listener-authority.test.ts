@@ -15,8 +15,8 @@ const authorityWithSecret = {
   setting: `--token ${secret}`,
 };
 
-test.each(["not-running", "healthcheck-failed", "healthcheck-timeout"] as const)(
-  "appends the failing service's redacted listener authority when readiness reports %s",
+test.each(["healthcheck-failed", "healthcheck-timeout"] as const)(
+  "leads with the failing service's redacted listener authority without observation for %s",
   async (reason) => {
     // Given structured authority containing a registered secret in its setting.
     const target: ReadinessTarget = {
@@ -37,11 +37,23 @@ test.each(["not-running", "healthcheck-failed", "healthcheck-timeout"] as const)
 
     // Then existing remediation survives and authority advice is a separate, redacted sentence.
     expect(error.remediation).toBe(
-      `${baseline.remediation} Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for web, pass \`--token ${REDACTED}\`.`,
+      `Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for web, pass \`--token ${REDACTED}\`.\n${baseline.remediation}`,
     );
     expect(JSON.stringify(error)).not.toContain(secret);
   },
 );
+
+test("omits listener authority when the process is not running", async () => {
+  const target: ReadinessTarget = {
+    provider: TestRuntimeProvider,
+    plan: { ...plan, services: { [web.name]: { ...web, listenerAuthority: authorityWithSecret } } },
+    service: web.name,
+  };
+  const error = failureOf(await Effect.runPromiseExit(failReadiness(target, { reason: "not-running" })));
+  expect(error.remediation).toBe(
+    "Run `lando logs -s web` to diagnose the service and fix it. Then retry `lando start`.",
+  );
+});
 
 test("omits listener authority advice when provider inspection fails", async () => {
   // Given a service with listener authority.

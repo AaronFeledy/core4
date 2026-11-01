@@ -12,8 +12,8 @@ import {
 } from "./_feature-helpers.ts";
 import {
   type ListenerContract,
-  assertListenerConfig,
   applicationAuthority,
+  assertListenerConfig,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -87,7 +87,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     const service = ctx.normalizedConfig;
     const { framework, version, port, webroot } = spec.configFor(ctx);
     ctx.setArtifact({ kind: "ref", ref: service.image ?? spec.artifactFor(version) });
-    const env = { ...spec.baseEnv };
+    const env = { ...spec.baseEnv, ...spec.presets[framework].hostDefaults };
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
     for (const variable of spec.presets[framework].variables ?? []) env[variable] = String(port);
     addEnvRecord(ctx, env);

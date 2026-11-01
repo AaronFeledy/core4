@@ -19,6 +19,7 @@ const AUTH_START =
 export const REDIS_LISTENER = {
   port: 6379,
   daemon: "Redis",
+  when: "All Redis services",
   launcher: { setting: (port: number) => `--port ${port}` },
 } as const;
 export const DEFAULT_PORT = REDIS_LISTENER.port;

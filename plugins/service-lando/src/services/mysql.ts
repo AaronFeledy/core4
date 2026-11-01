@@ -41,6 +41,7 @@ export const MYSQL_LISTENER = {
   port: 3306,
   variables: ["MYSQL_TCP_PORT"],
   daemon: "MySQL",
+  when: "All MySQL services",
   reserved: [{ port: 33060, use: "X Protocol listener" }],
 } as const;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");

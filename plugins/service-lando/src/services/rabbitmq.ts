@@ -23,6 +23,7 @@ export const RABBITMQ_LISTENER = {
   port: DEFAULT_AMQP_PORT,
   variables: ["RABBITMQ_NODE_PORT"],
   daemon: "RabbitMQ",
+  when: "All RabbitMQ services",
   reserved: [
     { port: 4369, use: "EPMD" },
     { port: MANAGEMENT_PORT, use: "management UI" },

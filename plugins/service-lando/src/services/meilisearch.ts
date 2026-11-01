@@ -9,7 +9,6 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import {
-  ServiceConfigIssue,
   commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
@@ -19,7 +18,7 @@ import {
 import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
-  parseWildcardBind,
+  assertListenerConfig,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -29,7 +28,12 @@ const DEFAULT_IMAGE = "getmeili/meilisearch:v1.11";
 const VERSIONS = ["1"] as const;
 const ARTIFACTS = { "1": DEFAULT_IMAGE } as const;
 export const DEFAULT_PORT = 7700;
-export const MEILISEARCH_LISTENER: ListenerContract = { port: DEFAULT_PORT, daemon: "Meilisearch" };
+export const MEILISEARCH_LISTENER: ListenerContract = {
+  port: DEFAULT_PORT,
+  daemon: "Meilisearch",
+  bindVariables: ["MEILI_HTTP_ADDR"],
+  when: "All Meilisearch services",
+};
 const DATA_TARGET = PortablePath.make("/meili_data");
 
 export const MEILISEARCH_FEATURE_ID = "service-lando.meilisearch";
@@ -71,22 +75,7 @@ export const meilisearchServiceFeature: ServiceFeatureDefinition = {
   schema: Schema.Unknown,
   priority: 600,
   validateEffective: serviceFeatureValidateEffective(MEILISEARCH_FEATURE_ID, (ctx) => {
-    const port = plannedPort(ctx.normalizedConfig, MEILISEARCH_LISTENER);
-    const authored = ctx.normalizedConfig.environment?.MEILI_HTTP_ADDR;
-    if (authored !== undefined) {
-      const bind = parseWildcardBind(
-        authored,
-        "MEILI_HTTP_ADDR",
-        `Remove it and set port: ${port} instead; Lando sets MEILI_HTTP_ADDR from port:.`,
-      );
-      if (bind.port !== port) {
-        throw new ServiceConfigIssue(
-          ["environment", "MEILI_HTTP_ADDR"],
-          `MEILI_HTTP_ADDR binds port ${bind.port}, but the service listens on ${port}.`,
-          `Set port: ${bind.port} instead; Lando sets MEILI_HTTP_ADDR from port:.`,
-        );
-      }
-    }
+    assertListenerConfig(ctx.normalizedConfig, MEILISEARCH_LISTENER);
     return { handledServiceFields: [] };
   }),
   declareEndpoints: (ctx) =>

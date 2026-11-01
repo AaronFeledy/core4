@@ -61,7 +61,10 @@ const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
 
 test("excludes startup failure advice from the v3 container create identity", () => {
   // Given two plans differing only in service-type advice.
-  const advised = { ...service, startupFailureHint: "An authored launcher must pass --port 27018." };
+  const advised: ServicePlan = {
+    ...service,
+    listenerAuthority: { owner: "launcher", daemon: "mongod", port: 27018, setting: "--port 27018" },
+  };
   const advisedPlan = { ...plan, services: { [service.name]: advised } };
 
   // When each plan's create identity is calculated.

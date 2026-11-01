@@ -1,11 +1,6 @@
 import { Schema } from "effect";
 
-import {
-  type EndpointPlan,
-  type ListenerAuthority,
-  PortNumber,
-  type ServiceConfig,
-} from "@lando/sdk/schema";
+import { type EndpointPlan, type ListenerAuthority, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceEndpointContext } from "@lando/sdk/services";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
@@ -101,6 +96,19 @@ export const parseWildcardBind = (
 export const assertListenerConfig = (service: ServiceConfig, listener: ListenerContract): void => {
   for (const variable of listener.variables ?? []) assertListenerVariable(service, listener, variable);
   const port = plannedPort(service, listener);
+  for (const variable of listener.bindVariables ?? []) {
+    const authored = service.environment?.[variable];
+    if (authored === undefined) continue;
+    const suggestion = `Remove it and set port: ${port} instead; Lando sets ${variable} from port:. Use :port, 0.0.0.0:port, or [::]:port for app-network reachability.`;
+    const bind = parseWildcardBind(authored, variable, suggestion);
+    if (bind.port !== port) {
+      throw new ServiceConfigIssue(
+        ["environment", variable],
+        `${variable} binds port ${bind.port}, but the service listens on ${port}.`,
+        `Set port: ${bind.port} instead; Lando sets ${variable} from port:.`,
+      );
+    }
+  }
   const reserved = listener.reserved?.find((entry) => entry.port === port);
   if (reserved !== undefined) {
     throw new ServiceConfigIssue(

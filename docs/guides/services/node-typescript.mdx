@@ -169,9 +169,7 @@ Open the `app` URL from `lando info`. The sample server answers `hello lando` wi
 
 ## Pass `port:` to your TypeScript server
 
-| Variable | Value | Who reads it |
-| --- | --- | --- |
-| `PORT` | `port:`, default `3000` | The sample's `process.env.PORT`, Next.js, Nuxt, and Remix |
+Lando derives `PORT` from `port:`; see the [service listener reference](../../reference/service-listeners.mdx#node) for defaults and variables. Next.js, Nuxt, and Remix read it, as does the sample's `process.env.PORT`.
 
 The sample reads `PORT` and binds `0.0.0.0`, so changing `port:` changes both its listener and Lando's endpoint. An authored `environment.PORT` must be a literal integer equal to that port; otherwise planning fails at `services.app.environment.PORT`. This also applies to inherited `appEnv` and env-file values. Change `port:` rather than overriding `PORT`.
 

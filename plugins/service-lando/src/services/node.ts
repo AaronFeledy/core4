@@ -20,8 +20,8 @@ import {
 import { type PackageEntry, normalizeNpmGlobals, shellSingleQuote } from "./_package-specs.ts";
 import {
   type ListenerContract,
-  assertListenerConfig,
   applicationAuthority,
+  assertListenerConfig,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -64,6 +64,7 @@ export const DEFAULT_PORT = 3000;
 export const NODE_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "Node.js",
+  when: "All Node.js services; application-owned listener",
   variables: ["PORT"],
 } as const satisfies ListenerContract;
 export const APP_MOUNT_TARGET = "/app";

@@ -31,6 +31,7 @@ const ARTIFACTS = { "7": DEFAULT_IMAGE } as const;
 export const MONGODB_LISTENER = {
   port: 27017,
   daemon: "MongoDB",
+  when: "All MongoDB services",
   launcher: { setting: (port: number) => `--port ${port}` },
 } as const;
 export const DEFAULT_PORT = MONGODB_LISTENER.port;

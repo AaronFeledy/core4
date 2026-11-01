@@ -7,8 +7,8 @@ import { rootIdentity, serviceFeatureApply, serviceFeatureValidateEffective } fr
 
 import {
   type ListenerContract,
-  assertListenerConfig,
   applicationAuthority,
+  assertListenerConfig,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -18,6 +18,7 @@ export const DEFAULT_PORT = 5000;
 export const DOTNET_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "ASP.NET Core",
+  when: "All .NET services; application-owned listener",
   variables: ["ASPNETCORE_HTTP_PORTS"],
 } as const satisfies ListenerContract;
 export const APP_MOUNT_TARGET = "/app";

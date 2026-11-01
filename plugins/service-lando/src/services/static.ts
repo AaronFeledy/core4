@@ -37,11 +37,13 @@ export const STATIC_LISTENERS = {
   nginx: {
     port: 80,
     daemon: "nginx",
+    when: "type: static or static:nginx",
     launcher: { setting: (port: number) => `listen ${port};` },
   },
   caddy: {
     port: 80,
     daemon: "caddy",
+    when: "type: static:caddy",
     launcher: { setting: (port: number) => `--listen :${port}` },
   },
 } as const satisfies Readonly<Record<SupportedStaticServer, ListenerContract>>;

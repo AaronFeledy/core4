@@ -1,3 +1,4 @@
+import { observeTcpListener } from "@lando/container-runtime/listener-observation";
 import { DateTime, Effect, Option } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
@@ -395,6 +396,13 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
             plan: runtimePlan,
             events,
             urls: startupScanUrls(runtimePlan, servicesStarted),
+            observeListener: (service) =>
+              observeTcpListener(service, (command) =>
+                provider.execStream(
+                  { app: runtimePlan.id, service: service.name, plan: runtimePlan },
+                  command,
+                ),
+              ),
           })
         : undefined;
 

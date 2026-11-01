@@ -11,6 +11,7 @@ const DEFAULT_IMAGE = "memcached:1.6";
 export const MEMCACHED_LISTENER = {
   port: 11211,
   daemon: "Memcached",
+  when: "All Memcached services",
   launcher: { setting: (port: number) => `-p ${port}` },
 } as const;
 export const DEFAULT_PORT = MEMCACHED_LISTENER.port;

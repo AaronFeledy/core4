@@ -31,6 +31,7 @@ export const DEFAULT_TRANSPORT_PORT = 9300;
 export const ELASTICSEARCH_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "Elasticsearch",
+  when: "All Elasticsearch services; transport reservation follows effective configuration",
   variables: ["http.port"],
   reserved: [{ port: DEFAULT_TRANSPORT_PORT, use: "transport listener" }],
 } as const satisfies ListenerContract;

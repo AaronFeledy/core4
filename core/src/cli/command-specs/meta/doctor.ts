@@ -74,7 +74,7 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, RuntimeLaye
       default: false,
     }),
     app: Flags.boolean({
-      description: "Also lint the current app's Landofile against the canonical schema.",
+      description: "Also lint the current app's Landofile and check its running services' listeners.",
       default: false,
     }),
     deprecations: Flags.boolean({

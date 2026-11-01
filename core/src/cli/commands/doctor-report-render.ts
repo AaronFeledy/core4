@@ -143,7 +143,13 @@ const groupToRow = (group: ReadonlyArray<DoctorCheckLike>): SummaryRow => {
   const head = group[0];
   if (head === undefined) throw new Error("doctor summary group cannot be empty");
   const tone = doctorStatusTone(head.status);
-  if (head.status === "pass") return { label: head.name, tone, value: "pass" };
+  if (head.status === "pass")
+    return {
+      label: head.name,
+      tone,
+      value: "pass",
+      ...(head.name === "app-listener" ? { fields: groupFields(group) } : {}),
+    };
   const fields = groupFields(group);
   const remedy = remedyText(head.solutions);
   return {

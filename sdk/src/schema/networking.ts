@@ -148,7 +148,8 @@ export const CheckResult = Schema.Struct({
   message: Schema.optionalKey(Schema.String).annotate({ description: "Redacted result summary." }),
   detail: Schema.optionalKey(Schema.String).annotate({ description: "Redacted diagnostic detail." }),
   listener: Schema.optionalKey(ListenerObservation).annotate({
-    description: "TCP bindings observed in the service when an unreachable check targets its expected listener.",
+    description:
+      "TCP bindings observed in the service when an unreachable check targets its expected listener.",
   }),
 }).annotate({ identifier: "CheckResult", description: "An owner-classified post-start HTTP check." });
 export type CheckResult = typeof CheckResult.Type;

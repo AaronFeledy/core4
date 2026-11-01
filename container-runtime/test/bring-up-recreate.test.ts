@@ -777,7 +777,15 @@ describe("Podman publish-port recreate", () => {
       services: Object.fromEntries(
         Object.entries(original.services).map(([name, service]) => [
           name,
-          { ...service, startupFailureHint: "Listener advice must not appear." },
+          {
+            ...service,
+            listenerAuthority: {
+              owner: "launcher" as const,
+              daemon: "node",
+              port: 3000,
+              setting: "--port 3000",
+            },
+          },
         ]),
       ),
     };

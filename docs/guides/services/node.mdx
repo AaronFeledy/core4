@@ -121,11 +121,7 @@ lando exec app -- node server.js
 
 ## Pass `port:` to your app
 
-Lando uses the same port for the internal HTTP endpoint and the process environment:
-
-| Variable | Value | Who reads it |
-| --- | --- | --- |
-| `PORT` | `port:`, default `3000` | Next.js, Nuxt, Remix, or your own code via `process.env.PORT` |
+Lando derives `PORT` from `port:` for the internal HTTP endpoint; see the [service listener reference](../../reference/service-listeners.mdx#node) for defaults and variables. Next.js, Nuxt, and Remix read `PORT`, and your own server can read `process.env.PORT`.
 
 Your server must listen on an interface reachable from other containers, such as `0.0.0.0`.
 

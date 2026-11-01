@@ -31,7 +31,12 @@ import { addServerConfigMount } from "./_volume-helpers.ts";
 const DEFAULT_IMAGE = "mariadb:11.4";
 const VERSIONS = ["11.4"] as const;
 const ARTIFACTS = { "11.4": DEFAULT_IMAGE } as const;
-export const MARIADB_LISTENER = { port: 3306, variables: ["MYSQL_TCP_PORT"], daemon: "MariaDB" } as const;
+export const MARIADB_LISTENER = {
+  port: 3306,
+  variables: ["MYSQL_TCP_PORT"],
+  daemon: "MariaDB",
+  when: "All MariaDB services",
+} as const;
 const DATA_TARGET = PortablePath.make("/var/lib/mysql");
 export const MARIADB_FEATURE_ID = "service-lando.mariadb";
 export const MARIADB_CONFIG_TARGET = PortablePath.make("/etc/mysql/conf.d/99-lando.cnf");
