@@ -195,9 +195,14 @@ test("preserves interruption", async () => {
   expect(Exit.isFailure(result) && Cause.hasInterruptsOnly(result.cause)).toBe(true);
 });
 
-test("limits the port-setting suggestion to a typed primary listener and one observed port", () => {
+test("limits the port-setting suggestion to an author-owned typed primary and one observed port", () => {
   const observation = classifyTcpListeners(expected, [{ address: "0.0.0.0", port: 6379, loopback: false }]);
-  expect(listenerDiagnostic(observation, service).action).toContain("`port: 6379`");
+  const advised = {
+    ...service,
+    listenerAuthority: { owner: "launcher" as const, daemon: "Redis", port: 6380, setting: "--port 6380" },
+  };
+  expect(listenerDiagnostic(observation, advised).action).toContain("`port: 6379`");
+  expect(listenerDiagnostic(observation, service).action).not.toContain("`port:");
   expect(listenerDiagnostic(observation, { ...service, type: "compose" }).action).not.toContain("`port:");
   expect(listenerDiagnostic({ ...observation, port: 9000 }, service).action).not.toContain("`port:");
 });

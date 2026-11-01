@@ -107,3 +107,44 @@ test("a bound scan endpoint gets network advice without readiness or authority a
     action: "Check the network path and HTTP/TLS configuration for this endpoint.",
   });
 });
+
+test.each([
+  { type: "elasticsearch", address: "0.0.0.0", port: 9300, authority: false, secondary: false },
+  { type: "solr", address: "127.0.0.1", port: 7983, authority: true, secondary: false },
+  { type: "mailpit", address: "0.0.0.0", port: 8025, authority: true, secondary: true },
+])("does not suggest an unrelated secondary for $type", (item) => {
+  const planned: ServicePlan = {
+    ...service,
+    type: item.type,
+    ...(item.authority
+      ? {
+          listenerAuthority: {
+            owner: "application" as const,
+            daemon: "app",
+            port: 3000,
+            variables: ["PORT"],
+          },
+        }
+      : {}),
+    endpoints: [
+      ...service.endpoints,
+      ...(item.secondary ? [{ _tag: "internal" as const, protocol: "http" as const, port: item.port }] : []),
+    ],
+  };
+  const diagnostic = listenerDiagnostic(
+    { ...observation("not-listening"), listening: [{ address: item.address, port: item.port }] },
+    planned,
+  );
+  expect(diagnostic.action).toBe("Make app listen on 3000.");
+});
+
+test("suggests a different non-loopback port for an author-owned primary listener", () => {
+  const diagnostic = listenerDiagnostic(
+    { ...observation("not-listening"), listening: [{ address: "0.0.0.0", port: 3001 }] },
+    {
+      ...service,
+      listenerAuthority: { owner: "application", daemon: "Node", port: 3000, variables: ["PORT"] },
+    },
+  );
+  expect(diagnostic.action).toContain("or set `port: 3001`");
+});

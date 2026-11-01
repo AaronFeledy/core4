@@ -22,12 +22,16 @@ export const listenerDiagnostic = (
   switch (listener.state) {
     case "not-listening": {
       const [other] = ports;
-      const primary = groupLogicalEndpoints(service.endpoints).filter((endpoint) => endpoint.primary);
+      const endpoints = groupLogicalEndpoints(service.endpoints);
+      const primary = endpoints.filter((endpoint) => endpoint.primary);
       const portOption =
         service.type !== "compose" &&
+        service.listenerAuthority?.port === listener.port &&
         primary.length === 1 &&
         primary[0]?.transport === "tcp" &&
-        primary[0]?.port === listener.port;
+        primary[0]?.port === listener.port &&
+        !endpoints.some((endpoint) => !endpoint.primary && endpoint.port === other) &&
+        listener.listening.some((binding) => binding.port === other && !isLoopbackAddress(binding.address));
       return {
         finding: `no TCP listener observed on ${listener.port}; observed ports: ${ports.length === 0 ? "none" : ports.join(", ")}`,
         action: `Make ${listener.service} listen on ${listener.port}${ports.length === 1 && portOption ? `, or set \`port: ${other}\` if that is the port it uses` : ""}.`,
@@ -52,3 +56,6 @@ export const listenerDiagnostic = (
       };
   }
 };
+
+const isLoopbackAddress = (address: string): boolean =>
+  address === "::1" || address.startsWith("127.") || address.startsWith("::ffff:127.");
