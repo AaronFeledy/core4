@@ -170,7 +170,13 @@ describe("Tomcat authored HTTP port", () => {
     const plan = await planTomcat(definition);
     expect(listenerStep(plan)).toBeUndefined();
     expect(plan.endpoints).toContainEqual(expect.objectContaining({ port: 8005, primary: true }));
-    expect(plan.startupFailureHint).toContain('`<Connector port="8005">` in server.xml');
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "image",
+      daemon: "Tomcat",
+      setting: '<Connector port="8005">',
+      file: "server.xml",
+      port: 8005,
+    });
   });
 
   test("keeps shutdown reserved when the catalog image is explicitly authored", async () => {
@@ -183,6 +189,12 @@ describe("Tomcat authored HTTP port", () => {
 
   test("hints custom images about the HTTP connector", async () => {
     const plan = await planTomcat({ type: "tomcat", image: "acme/tomcat:custom", port: 9090 });
-    expect(plan.startupFailureHint).toContain('`<Connector port="9090">` in server.xml');
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "image",
+      daemon: "Tomcat",
+      setting: '<Connector port="9090">',
+      file: "server.xml",
+      port: 9090,
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import { ListenerDiagnosis } from "../schema/listener.ts";
 import { ProviderId } from "../schema/primitives.ts";
 
 const Remediation = Schema.NonEmptyString.check(Schema.isPattern(/\S/u));
@@ -64,6 +65,9 @@ export type ServiceStartLogTail = typeof ServiceStartLogTail.Type;
 
 /** Post-apply readiness failure; the applied app remains available for diagnosis. */
 export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyError>()("ServiceNotReadyError", {
+  listener: Schema.optionalKey(ListenerDiagnosis).annotate({
+    description: "Bounded listener evidence for the service readiness failure.",
+  }),
   message: Schema.String.annotate({ description: "Human-readable post-apply readiness failure." }),
   app: Schema.String.annotate({ description: "Name of the app whose service failed readiness." }),
   service: Schema.String.annotate({ description: "Planned service that failed readiness." }),
@@ -91,6 +95,9 @@ export class ServiceNotReadyError extends Schema.TaggedError<ServiceNotReadyErro
 }) {}
 
 export class ServiceStartError extends Schema.TaggedError<ServiceStartError>()("ServiceStartError", {
+  listener: Schema.optionalKey(ListenerDiagnosis).annotate({
+    description: "Bounded listener evidence for the service startup failure.",
+  }),
   ...ProviderErrorBase,
   service: Schema.String,
   logTail: Schema.optional(ServiceStartLogTail),

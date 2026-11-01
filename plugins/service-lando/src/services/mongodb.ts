@@ -17,7 +17,7 @@ import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
 import {
   assertListenerConfig,
-  authoredLauncherHint,
+  listenerAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -28,7 +28,11 @@ import { mongodbProbes } from "./mongodb-probes.ts";
 const DEFAULT_IMAGE = "mongo:7";
 const VERSIONS = ["7"] as const;
 const ARTIFACTS = { "7": DEFAULT_IMAGE } as const;
-export const MONGODB_LISTENER = { port: 27017, daemon: "MongoDB" } as const;
+export const MONGODB_LISTENER = {
+  port: 27017,
+  daemon: "MongoDB",
+  launcher: { setting: (port: number) => `--port ${port}` },
+} as const;
 export const DEFAULT_PORT = MONGODB_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
@@ -104,7 +108,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     (serverConfig || service.port !== undefined) &&
     (service.command !== undefined || service.entrypoint !== undefined)
   ) {
-    ctx.setStartupFailureHint(authoredLauncherHint(MONGODB_LISTENER.daemon, `--port ${port}`));
+    ctx.setListenerAuthority(listenerAuthority(MONGODB_LISTENER, "launcher", port));
   }
 
   applyAuthoredProcessFields(ctx);

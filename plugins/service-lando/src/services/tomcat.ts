@@ -14,7 +14,7 @@ import {
 import {
   type ListenerContract,
   assertListenerConfig,
-  authoredImageHint,
+  listenerAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -27,6 +27,10 @@ export const TOMCAT_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "Tomcat",
   reserved: [{ port: 8005, use: "shutdown listener" }],
+  image: {
+    setting: (port: number) => `<Connector port="${port}">`,
+    file: "server.xml",
+  },
 } as const satisfies ListenerContract;
 export const APP_MOUNT_TARGET = "/app";
 const TomcatFeatureConfig = Schema.Struct({
@@ -78,7 +82,7 @@ const applyTomcatFeature = (ctx: ServiceFeatureContext): void => {
       ],
     });
   } else {
-    ctx.setStartupFailureHint(authoredImageHint("Tomcat", `\`<Connector port="${port}">\` in server.xml`));
+    ctx.setListenerAuthority(listenerAuthority(TOMCAT_LISTENER, "image", port));
   }
 
   applyAuthoredProcessFields(ctx);

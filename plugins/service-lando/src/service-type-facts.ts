@@ -21,6 +21,7 @@ import { MYSQL_CONFIG_TARGET, MYSQL_LISTENER } from "./services/mysql.ts";
 import { APP_MOUNT_TARGET as NGINX_APP_MOUNT, NGINX_LISTENER } from "./services/nginx.ts";
 import { APP_MOUNT_TARGET as NODE_APP_MOUNT, NODE_LISTENER } from "./services/node.ts";
 import { OPENSEARCH_LISTENER } from "./services/opensearch.ts";
+import { PHP_LISTENERS } from "./services/php-via.ts";
 import { APP_MOUNT_TARGET as PHP_APP_MOUNT, PHP_LISTENER } from "./services/php.ts";
 import { PHPMYADMIN_LISTENER } from "./services/phpmyadmin.ts";
 import { POSTGRES_CONFIG_TARGET, POSTGRES_LISTENER } from "./services/postgres.ts";
@@ -29,11 +30,20 @@ import { MANAGEMENT_PORT, RABBITMQ_LISTENER } from "./services/rabbitmq.ts";
 import { REDIS_LISTENER } from "./services/redis.ts";
 import { RUBY_LISTENERS } from "./services/ruby.ts";
 import { SOLR_CONFIG_TARGET, SOLR_LISTENER } from "./services/solr.ts";
-import { APP_MOUNT_TARGET as STATIC_APP_MOUNT, STATIC_LISTENER } from "./services/static.ts";
+import {
+  APP_MOUNT_TARGET as STATIC_APP_MOUNT,
+  STATIC_LISTENER,
+  STATIC_LISTENERS,
+} from "./services/static.ts";
 import { APP_MOUNT_TARGET as TOMCAT_APP_MOUNT, TOMCAT_LISTENER } from "./services/tomcat.ts";
 import { VALKEY_LISTENER } from "./services/valkey.ts";
 import { VARNISH_LISTENER } from "./services/varnish.ts";
 
+/**
+ * Frozen registry of listener contracts. Family keys are the default variant;
+ * `family/variant` keys cover non-default variants (python/ruby frameworks,
+ * php/fpm, static/caddy).
+ */
 export const listenerContracts = (): Readonly<Record<string, ListenerContract>> => ({
   apache: APACHE_LISTENER,
   dotnet: DOTNET_LISTENER,
@@ -53,14 +63,20 @@ export const listenerContracts = (): Readonly<Record<string, ListenerContract>> 
   node: NODE_LISTENER,
   opensearch: OPENSEARCH_LISTENER,
   php: PHP_LISTENER,
+  "php/fpm": PHP_LISTENERS.fpm,
   phpmyadmin: PHPMYADMIN_LISTENER,
   postgres: POSTGRES_LISTENER,
   python: PYTHON_LISTENERS.none,
+  "python/django": PYTHON_LISTENERS.django,
+  "python/fastapi": PYTHON_LISTENERS.fastapi,
+  "python/flask": PYTHON_LISTENERS.flask,
   rabbitmq: RABBITMQ_LISTENER,
   redis: REDIS_LISTENER,
   ruby: RUBY_LISTENERS.none,
+  "ruby/rails": RUBY_LISTENERS.rails,
   solr: SOLR_LISTENER,
   static: STATIC_LISTENER,
+  "static/caddy": STATIC_LISTENERS.caddy,
   tomcat: TOMCAT_LISTENER,
   valkey: VALKEY_LISTENER,
   varnish: VARNISH_LISTENER,

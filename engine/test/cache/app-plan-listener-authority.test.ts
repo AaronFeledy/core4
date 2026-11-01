@@ -2,24 +2,29 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type AppPlan, PortNumber, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { DateTime, Effect } from "effect";
 import { readCachedAppPlan, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import * as AppCacheService from "../../src/cache/service.ts";
 
-test("preserves service startup advice through the persisted plan cache codec", async () => {
-  // Given an executable plan with service-type startup advice.
-  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plan-startup-hint-"));
+test("preserves service listener authority through the persisted plan cache codec", async () => {
+  // Given an executable plan with structured listener authority.
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plan-listener-authority-"));
   const name = ServiceName.make("database");
   const provider = ProviderId.make("lando");
-  const startupFailureHint = "An authored mongod launcher must pass --port 27018.";
-  const metadata = { resolvedAt: DateTime.makeUnsafe(0), source: "startup-hint", runtime: 4 as const };
+  const listenerAuthority = {
+    owner: "launcher" as const,
+    daemon: "MongoDB",
+    port: PortNumber.make(27018),
+    setting: "--port 27018",
+  };
+  const metadata = { resolvedAt: DateTime.makeUnsafe(0), source: "listener-authority", runtime: 4 as const };
   const plan: AppPlan = {
     valueModel: 1,
-    id: AppId.make("startup-hint"),
-    name: "Startup Hint",
-    slug: "startup-hint",
-    root: AbsolutePath.make("/workspace/startup-hint"),
+    id: AppId.make("listener-authority"),
+    name: "Listener Authority",
+    slug: "listener-authority",
+    root: AbsolutePath.make("/workspace/listener-authority"),
     provider,
     services: {
       [name]: {
@@ -35,7 +40,7 @@ test("preserves service startup advice through the persisted plan cache codec", 
         hostAliases: [],
         metadata,
         extensions: {},
-        startupFailureHint,
+        listenerAuthority,
       },
     },
     routes: [],
@@ -44,7 +49,7 @@ test("preserves service startup advice through the persisted plan cache codec", 
     metadata,
     extensions: {},
   };
-  const input = { cacheRoot, appName: plan.slug, appRoot: plan.root, key: "startup-hint" };
+  const input = { cacheRoot, appName: plan.slug, appRoot: plan.root, key: "listener-authority" };
   try {
     // When the real cache writer and reader serialize the plan to disk and back.
     await Effect.runPromise(
@@ -52,8 +57,8 @@ test("preserves service startup advice through the persisted plan cache codec", 
     );
     const restored = await Effect.runPromise(readCachedAppPlan(input));
 
-    // Then the cache hit preserves the advice exactly.
-    expect(restored?.services[name]?.startupFailureHint).toBe(startupFailureHint);
+    // Then the cache hit preserves the authority exactly.
+    expect(restored?.services[name]?.listenerAuthority).toEqual(listenerAuthority);
   } finally {
     await rm(cacheRoot, { recursive: true, force: true });
   }

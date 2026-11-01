@@ -86,8 +86,8 @@ const makeContext = (
     draft.readiness = { ...readiness };
     draft.readinessSource = "contributed";
   },
-  setStartupFailureHint: (hint) => {
-    draft.startupFailureHint = hint;
+  setListenerAuthority: (authority) => {
+    draft.listenerAuthority = authority;
   },
   setCerts: (certs) => {
     draft.certs = { ...certs };

@@ -5,7 +5,7 @@ import { Predicate } from "effect";
 
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import type { DraftServicePlan } from "../services/draft.ts";
-import { sortRecord } from "../services/draft.ts";
+import { pickDraftOptionalServicePlanFields, sortRecord } from "../services/draft.ts";
 
 export const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
 export const LOG_SOURCES_EXTENSION_KEY = "@lando/core/log-sources";
@@ -111,7 +111,6 @@ export const toAppFeatureDraft = (
     name: servicePlan.name,
     serviceName: name,
     type: servicePlan.type,
-    ...(servicePlan.serviceTypeId === undefined ? {} : { serviceTypeId: servicePlan.serviceTypeId }),
     serviceType: servicePlan.type,
     provider: servicePlan.provider,
     primary: servicePlan.primary,
@@ -120,15 +119,10 @@ export const toAppFeatureDraft = (
     featureIds,
     normalizedConfig: serviceResolution.normalizedConfig,
     resolutionMetadata: serviceResolution.metadata,
-    ...(servicePlan.artifact === undefined ? {} : { artifact: servicePlan.artifact }),
-    ...(servicePlan.command === undefined ? {} : { command: servicePlan.command }),
-    ...(servicePlan.entrypoint === undefined ? {} : { entrypoint: servicePlan.entrypoint }),
-    ...(servicePlan.init === undefined ? {} : { init: servicePlan.init }),
+    ...pickDraftOptionalServicePlanFields(servicePlan),
     environment: { ...servicePlan.environment },
     ...(servicePlan.connection === undefined ? {} : { connection: servicePlan.connection }),
     ...(servicePlan.nonSqlCreds === undefined ? {} : { nonSqlCreds: servicePlan.nonSqlCreds }),
-    ...(servicePlan.user === undefined ? {} : { user: servicePlan.user }),
-    ...(servicePlan.workingDirectory === undefined ? {} : { workingDirectory: servicePlan.workingDirectory }),
     ...(appMount === undefined
       ? {}
       : {
@@ -164,13 +158,6 @@ export const toAppFeatureDraft = (
     storageOwnership: serviceFeatureDataTrees(servicePlan.extensions),
     endpoints: servicePlan.endpoints.map((endpoint) => ({ ...endpoint })),
     dependsOn: servicePlan.dependsOn.map((dependency) => ({ ...dependency })),
-    ...(servicePlan.healthcheck === undefined ? {} : { healthcheck: servicePlan.healthcheck }),
-    ...(servicePlan.readiness === undefined ? {} : { readiness: servicePlan.readiness }),
-    ...(servicePlan.readinessSource === undefined ? {} : { readinessSource: servicePlan.readinessSource }),
-    ...(servicePlan.startupFailureHint === undefined
-      ? {}
-      : { startupFailureHint: servicePlan.startupFailureHint }),
-    ...(servicePlan.certs === undefined ? {} : { certs: servicePlan.certs }),
     hostAliases: servicePlan.hostAliases.map((alias) => ({ ...alias })),
     ...(serviceResolution.metadata === undefined ? {} : { provenance: serviceResolution.metadata }),
   };
@@ -184,21 +171,15 @@ export const servicePlanFromDraft = (
 ): ServicePlan => ({
   name: draft.name,
   type: draft.type,
-  ...(draft.serviceTypeId === undefined ? {} : { serviceTypeId: draft.serviceTypeId }),
   provider: draft.provider,
   primary: draft.primary,
-  ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
-  ...(draft.command === undefined ? {} : { command: draft.command }),
-  ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
-  ...(draft.init === undefined ? {} : { init: draft.init }),
+  ...pickDraftOptionalServicePlanFields(draft),
   environment: sortRecord(draft.environment),
   ...(draft.connection !== undefined
     ? { connection: draft.connection }
     : draft.nonSqlCreds === undefined
       ? {}
       : { nonSqlCreds: draft.nonSqlCreds }),
-  ...(draft.user === undefined ? {} : { user: draft.user }),
-  ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
   mounts: [
     ...(draft.appMount === undefined
       ? []
@@ -222,14 +203,8 @@ export const servicePlanFromDraft = (
   endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
   routes: routes.map((route) => ({ ...route })),
   dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
-  ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
-  ...(draft.readiness === undefined ? {} : { readiness: draft.readiness }),
-  ...(draft.readinessSource === undefined ? {} : { readinessSource: draft.readinessSource }),
-  ...(draft.startupFailureHint === undefined ? {} : { startupFailureHint: draft.startupFailureHint }),
-  ...(draft.certs === undefined ? {} : { certs: draft.certs }),
   hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
   metadata,
-  ...(draft.provenance === undefined ? {} : { provenance: draft.provenance }),
   extensions: servicePlanExtensionsFromDraft(draft, extensions),
 });
 

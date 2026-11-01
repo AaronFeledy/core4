@@ -5,11 +5,15 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { loopbackTcpHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { listenerAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "valkey/valkey:8";
-export const VALKEY_LISTENER = { port: 6379, daemon: "Valkey" } as const;
+export const VALKEY_LISTENER = {
+  port: 6379,
+  daemon: "Valkey",
+  launcher: { setting: (port: number) => `--port ${port}` },
+} as const;
 export const DEFAULT_PORT = VALKEY_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/data");
 export const VALKEY_FEATURE_ID = "service-lando.valkey";
@@ -22,7 +26,7 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
-    ctx.setStartupFailureHint(authoredLauncherHint(VALKEY_LISTENER.daemon, `--port ${port}`));
+    ctx.setListenerAuthority(listenerAuthority(VALKEY_LISTENER, "launcher", port));
   } else {
     ctx.setCommand(["valkey-server", "--appendonly", "yes", "--port", String(port)]);
   }

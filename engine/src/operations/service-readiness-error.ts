@@ -3,7 +3,7 @@ import { capRedactedLogLines } from "@lando/container-runtime/podman/bring-up";
 import { isSupervisedService } from "@lando/container-runtime/supervision";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { ServiceNotReadyError } from "@lando/sdk/errors";
-import type { AppPlan, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, type ServiceName, listenerRemediation } from "@lando/sdk/schema";
 import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { Cause, DateTime, Duration, Effect, Option, Stream } from "effect";
 
@@ -68,9 +68,9 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   );
   const name = String(target.service);
   const commands = readinessCommands(target);
-  const startupFailureHint = target.plan.services[target.service]?.startupFailureHint;
-  const startupRemediation =
-    startupFailureHint === undefined ? "" : ` ${redactor.redactString(startupFailureHint)}`;
+  const authority = target.plan.services[target.service]?.listenerAuthority;
+  const listenerAdvice = authority === undefined ? undefined : listenerRemediation({ authority });
+  const startupRemediation = listenerAdvice === undefined ? "" : ` ${redactor.redactString(listenerAdvice)}`;
   const healthcheckRemediation =
     evidence.reason === "not-running" || evidence.reason === "inspect-failed"
       ? ""

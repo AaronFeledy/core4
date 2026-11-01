@@ -12,7 +12,7 @@ import {
   serviceFeatureDeclareEndpoints,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig, authoredLauncherHint, plannedPort } from "./_port-helpers.ts";
+import { assertListenerConfig, listenerAuthority, plannedPort } from "./_port-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -26,6 +26,9 @@ export const MINIO_LISTENER = {
   port: DEFAULT_API_PORT,
   daemon: "MinIO",
   reserved: [{ port: DEFAULT_CONSOLE_PORT, use: "console listener (consolePort:)" }],
+  launcher: {
+    setting: (port: number) => `--address :${port} --console-address :${DEFAULT_CONSOLE_PORT}`,
+  },
 } as const;
 
 export const MINIO_FEATURE_ID = "service-lando.minio";
@@ -87,12 +90,10 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
   } else {
     if (service.command !== undefined) {
       ctx.setCommand(service.command);
-      ctx.setStartupFailureHint(
-        authoredLauncherHint(
-          MINIO_LISTENER.daemon,
-          `--address :${apiPort} --console-address :${consolePort}`,
-        ),
-      );
+      ctx.setListenerAuthority({
+        ...listenerAuthority(MINIO_LISTENER, "launcher", apiPort),
+        setting: `--address :${apiPort} --console-address :${consolePort}`,
+      });
     } else {
       // Entrypoint-only: Lando still owns the argv that configures both listeners.
       ctx.setCommand(["server", "/data", "--address", `:${apiPort}`, "--console-address", `:${consolePort}`]);

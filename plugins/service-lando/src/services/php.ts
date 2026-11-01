@@ -39,7 +39,7 @@ export {
   renderPhpBaselineIni,
 } from "./php-baseline.ts";
 export { PHP_FPM_LOG_SOURCES, SUPPORTED_PHP_VERSIONS, type SupportedPhpVersion } from "./php-via.ts";
-export { PHP_LISTENER } from "./php-via.ts";
+export { PHP_LISTENER, PHP_LISTENERS } from "./php-via.ts";
 export const APP_MOUNT_TARGET = "/app";
 const PhpVersion = Schema.Literals(SUPPORTED_PHP_VERSIONS);
 const PHP_ARTIFACTS = Object.fromEntries(

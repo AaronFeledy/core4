@@ -19,7 +19,7 @@ import { appNameFor } from "../app-name.ts";
 import {
   type ListenerContract,
   assertListenerConfig,
-  authoredLauncherHint,
+  listenerAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -29,7 +29,11 @@ import { isAppRelativeSource, resolveBindSource } from "./_volume-helpers.ts";
 const DEFAULT_IMAGE = "solr:9";
 const VERSIONS = ["9"] as const;
 const ARTIFACTS = { "9": DEFAULT_IMAGE } as const;
-export const SOLR_LISTENER = { port: 8983, daemon: "Solr" } as const;
+export const SOLR_LISTENER = {
+  port: 8983,
+  daemon: "Solr",
+  launcher: { setting: (port: number) => `-p ${port}` },
+} as const;
 export const DEFAULT_PORT = SOLR_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/var/solr");
 const CORE_NAME = /^[A-Za-z0-9._-]+$/u;
@@ -134,7 +138,7 @@ const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
-    ctx.setStartupFailureHint(authoredLauncherHint(SOLR_LISTENER.daemon, `-p ${port}`));
+    ctx.setListenerAuthority(listenerAuthority(SOLR_LISTENER, "launcher", port));
   } else {
     ctx.setCommand(defaultCommand(port, cores, hasConfigDir));
   }

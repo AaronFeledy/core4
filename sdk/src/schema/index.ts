@@ -177,3 +177,13 @@ export {
 } from "./layer-merge.ts";
 export * from "./resource-ownership.ts";
 export * from "./applied-state.ts";
+export {
+  ListenerAuthorityOwner,
+  ListenerAuthority,
+  ObservedListener,
+  ListenerStatus,
+  ListenerDiagnosis,
+  formatListenerAuthority,
+  formatListenerDiagnosis,
+  listenerRemediation,
+} from "./listener.ts";

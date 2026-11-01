@@ -230,7 +230,12 @@ describe("varnish ServiceType", () => {
       primary: true,
     });
     expect(plan.command).toEqual(["varnishd", "-F", "-a", ":6082"]);
-    expect(plan.startupFailureHint).toContain("-a :6082");
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "launcher",
+      daemon: "Varnish",
+      setting: "-a :6082",
+      port: 6082,
+    });
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6082"]);
   });
 
@@ -242,7 +247,12 @@ describe("varnish ServiceType", () => {
       entrypoint: ["/custom-entrypoint"],
     });
     expect(plan.entrypoint).toEqual(["/custom-entrypoint"]);
-    expect(plan.startupFailureHint).toContain("-a :8080");
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "launcher",
+      daemon: "Varnish",
+      setting: "-a :8080",
+      port: 8080,
+    });
   });
 
   test("moves the Lando launcher HTTP listener with port:", async () => {

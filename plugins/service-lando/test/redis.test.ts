@@ -129,7 +129,7 @@ describe("redis ServiceType", () => {
     expect(resolution.tooling?.["redis-cli"]).toEqual({ service: "cache", cmd: ["redis-cli"] });
   });
 
-  test("sets a startup failure hint when an authored command replaces the Lando port launcher", async () => {
+  test("sets launcher listener authority when an authored command replaces the Lando port launcher", async () => {
     const plan = await composeServicePlan({
       serviceType: redisServiceType,
       service: Schema.decodeUnknownSync(ServiceConfig)({
@@ -142,11 +142,15 @@ describe("redis ServiceType", () => {
       featureOverrides: new Map([[REDIS_FEATURE_ID, redisServiceFeature]]),
     });
     expect(plan.command).toEqual(["redis-server", "--maxmemory", "256mb"]);
-    expect(plan.startupFailureHint).toContain("--port 16379");
-    expect(plan.startupFailureHint).toContain("Redis");
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "launcher",
+      daemon: "Redis",
+      setting: "--port 16379",
+      port: 16379,
+    });
   });
 
-  test("omits the startup failure hint when only an entrypoint is authored", async () => {
+  test("omits listener authority when only an entrypoint is authored", async () => {
     const plan = await composeServicePlan({
       serviceType: redisServiceType,
       service: Schema.decodeUnknownSync(ServiceConfig)({
@@ -159,10 +163,10 @@ describe("redis ServiceType", () => {
       featureOverrides: new Map([[REDIS_FEATURE_ID, redisServiceFeature]]),
     });
     expect(plan.command).toEqual(["redis-server", "--appendonly", "yes", "--port", "16379"]);
-    expect(plan.startupFailureHint).toBeUndefined();
+    expect(plan.listenerAuthority).toBeUndefined();
   });
 
-  test("omits the startup failure hint when Lando owns the redis-server launcher", async () => {
+  test("omits listener authority when Lando owns the redis-server launcher", async () => {
     const plan = await composeServicePlan({
       serviceType: redisServiceType,
       service: Schema.decodeUnknownSync(ServiceConfig)({ type: "redis", port: 16379 }),
@@ -170,6 +174,6 @@ describe("redis ServiceType", () => {
       metadata,
       featureOverrides: new Map([[REDIS_FEATURE_ID, redisServiceFeature]]),
     });
-    expect(plan.startupFailureHint).toBeUndefined();
+    expect(plan.listenerAuthority).toBeUndefined();
   });
 });

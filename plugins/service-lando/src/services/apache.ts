@@ -23,12 +23,16 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { listenerAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
-export const APACHE_LISTENER = { port: 80, daemon: "Apache" } as const;
+export const APACHE_LISTENER = {
+  port: 80,
+  daemon: "Apache",
+  launcher: { setting: (port: number) => `Listen ${port}` },
+} as const;
 export const DEFAULT_PORT = APACHE_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
 
@@ -187,7 +191,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
     );
     if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
   } else {
-    ctx.setStartupFailureHint(authoredLauncherHint(APACHE_LISTENER.daemon, `Listen ${port}`));
+    ctx.setListenerAuthority(listenerAuthority(APACHE_LISTENER, "launcher", port));
   }
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
 };

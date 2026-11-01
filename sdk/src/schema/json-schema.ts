@@ -341,6 +341,13 @@ import {
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
+import {
+  ListenerAuthority,
+  ListenerAuthorityOwner,
+  ListenerDiagnosis,
+  ListenerStatus,
+  ObservedListener,
+} from "./listener.ts";
 import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
 import {
   CommandCompletion,
@@ -720,6 +727,11 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceFeatureValidationResult,
   CheckResult,
   CertificatePlan,
+  ListenerAuthorityOwner,
+  ListenerAuthority,
+  ObservedListener,
+  ListenerStatus,
+  ListenerDiagnosis,
   HostAliasPlan,
   ServiceDependencyCondition,
   DependencyPlan,

@@ -14,7 +14,7 @@ import {
 import {
   type ListenerContract,
   assertListenerConfig,
-  authoredLauncherHint,
+  listenerAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -26,6 +26,7 @@ export const VARNISH_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "Varnish",
   reserved: [{ port: 6082, use: "management interface" }],
+  launcher: { setting: (port: number) => `-a :${port}` },
 } as const satisfies ListenerContract;
 const DEFAULT_BACKEND_PORT = "80";
 const VCL_TARGET = "/etc/varnish/default.vcl";
@@ -107,7 +108,7 @@ const applyVarnishFeature = (ctx: ServiceFeatureContext): void => {
       ctx.setCommand([varnishdCommand(VCL_TARGET, port)]);
     }
   } else {
-    ctx.setStartupFailureHint(authoredLauncherHint("Varnish", `-a :${port}`));
+    ctx.setListenerAuthority(listenerAuthority(VARNISH_LISTENER, "launcher", port));
   }
 };
 

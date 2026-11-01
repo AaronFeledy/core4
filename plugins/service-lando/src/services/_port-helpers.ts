@@ -1,6 +1,12 @@
 import { Schema } from "effect";
 
-import { type EndpointPlan, PortNumber, type ServiceConfig } from "@lando/sdk/schema";
+import {
+  type EndpointPlan,
+  type ListenerAuthority,
+  type ListenerAuthorityOwner,
+  PortNumber,
+  type ServiceConfig,
+} from "@lando/sdk/schema";
 import type { ServiceEndpointContext } from "@lando/sdk/services";
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
@@ -17,30 +23,76 @@ export interface ReservedListener {
  * `variables` are the integer port variables Lando derives from the planned
  * port and projects into the service environment; the first is the primary
  * one published in service-type facts. An authored value must equal the
- * planned port. `reserved` lists the secondary listeners that are open in the
- * configuration being validated, so callers pass effective ports, not
- * defaults that a moved secondary no longer occupies.
+ * planned port. `bindVariables` is the application-authority projection list
+ * when it differs from validation `variables`. `reserved` lists the secondary
+ * listeners that are open in the configuration being validated, so callers
+ * pass effective ports, not defaults that a moved secondary no longer occupies.
+ * `launcher` / `image` supply structured ownership settings. `hostDefaults`
+ * and `when` are registry/docs metadata only.
  */
 export interface ListenerContract {
   readonly port: number;
   readonly daemon: string;
   readonly variables?: readonly [string, ...string[]];
+  readonly bindVariables?: readonly string[];
   readonly reserved?: readonly ReservedListener[];
+  readonly launcher?: { readonly setting: (port: number) => string };
+  readonly image?: { readonly setting: (port: number) => string; readonly file?: string };
+  readonly hostDefaults?: Readonly<Record<string, string>>;
+  /** Docs-only condition describing when this contract applies. */
+  readonly when?: string;
 }
 
 export const plannedPort = (service: ServiceConfig, listener: ListenerContract): PortNumber =>
   PortNumber.make(service.port ?? listener.port);
 
 /**
- * Startup-failure advice for a listener only a Lando-owned launcher configures.
- * `setting` is what the authored launcher must pass, e.g. `--port 27018`.
+ * Structured listener ownership for a planned port. Setting and file values
+ * come from the contract's launcher/image metadata for that owner.
  */
-export const authoredLauncherHint = (daemon: string, setting: string): string =>
-  `Lando configures the listener from port: only in its own launcher. An authored command or entrypoint must configure it: for ${daemon}, pass \`${setting}\`.`;
-
-/** Startup-failure advice when an author-owned artifact replaces listener configuration. */
-export const authoredImageHint = (daemon: string, setting: string): string =>
-  `Lando configures the listener from port: only in configuration it owns. A custom image or build must configure it: for ${daemon}, set ${setting}.`;
+export const listenerAuthority = (
+  contract: ListenerContract,
+  owner: ListenerAuthorityOwner,
+  port: number,
+): ListenerAuthority => {
+  const planned = PortNumber.make(port);
+  switch (owner) {
+    case "application": {
+      const variables = contract.bindVariables ?? contract.variables;
+      return {
+        owner,
+        daemon: contract.daemon,
+        port: planned,
+        ...(variables === undefined || variables.length === 0
+          ? {}
+          : { variables: variables as [string, ...string[]] }),
+      };
+    }
+    case "launcher":
+      return {
+        owner,
+        daemon: contract.daemon,
+        port: planned,
+        ...(contract.launcher === undefined ? {} : { setting: contract.launcher.setting(port) }),
+      };
+    case "image":
+      return {
+        owner,
+        daemon: contract.daemon,
+        port: planned,
+        ...(contract.image === undefined
+          ? {}
+          : {
+              setting: contract.image.setting(port),
+              ...(contract.image.file === undefined ? {} : { file: contract.image.file }),
+            }),
+      };
+    default: {
+      const exhaustive: never = owner;
+      return exhaustive;
+    }
+  }
+};
 
 export const parseWildcardBind = (
   address: unknown,

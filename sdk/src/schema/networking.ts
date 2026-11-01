@@ -8,6 +8,7 @@ import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabil
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { RouteHostname, RoutePathPrefix } from "./hostname.ts";
+import { ListenerDiagnosis } from "./listener.ts";
 import { AbsolutePath, PortNumber, ServiceName } from "./primitives.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { scanFields } from "./scan-fields.ts";
@@ -138,6 +139,9 @@ const ScanVerdictSchema = Schema.Literals(["ready", "app-error", "service-error"
 export type ScanVerdict = typeof ScanVerdictSchema.Type;
 
 export const CheckResult = Schema.Struct({
+  listener: Schema.optionalKey(ListenerDiagnosis).annotate({
+    description: "Bounded service listener evidence associated with this check.",
+  }),
   id: Schema.String.annotate({ description: "Stable check identifier: http:<service>:<url>." }),
   kind: Schema.Literal("http").annotate({ description: "Observation kind." }),
   service: ServiceName.annotate({ description: "Service that owns the checked endpoint." }),

@@ -7,12 +7,7 @@ import {
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-import {
-  assertListenerConfig,
-  authoredImageHint,
-  authoredLauncherHint,
-  servicePortEndpoints,
-} from "./_port-helpers.ts";
+import { assertListenerConfig, listenerAuthority, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
@@ -23,7 +18,7 @@ import { PhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
   PHP_FPM_PORT,
-  PHP_LISTENER,
+  PHP_LISTENERS,
   SUPPORTED_PHP_VERSIONS,
   apacheDefaultSiteRemovalBuildStep,
   apacheStartCommand,
@@ -52,7 +47,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   if (mode.listener !== undefined) {
     assertListenerConfig(
       service,
-      mode.via === "fpm" ? { ...PHP_LISTENER, port: PHP_FPM_PORT, daemon: "php-fpm" } : PHP_LISTENER,
+      mode.via === "fpm" ? { ...PHP_LISTENERS.fpm, port: PHP_FPM_PORT } : PHP_LISTENERS.apache,
     );
   }
   if (policy.reference !== undefined) ctx.setArtifact({ kind: "ref", ref: policy.reference });
@@ -106,14 +101,13 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   }
   if (mode.listener !== undefined) ctx.setHealthcheck(loopbackTcpHealthcheck(mode.listener.port, 10));
   if (mode.listener !== undefined) {
-    const daemon = mode.via === "fpm" ? "php-fpm" : "Apache";
-    const setting = mode.via === "fpm" ? `listen = ${mode.listener.port}` : `Listen ${mode.listener.port}`;
+    const contract = mode.via === "fpm" ? PHP_LISTENERS.fpm : PHP_LISTENERS.apache;
     switch (policy.processAuthority) {
       case "authored":
-        ctx.setStartupFailureHint(authoredLauncherHint(daemon, setting));
+        ctx.setListenerAuthority(listenerAuthority(contract, "launcher", mode.listener.port));
         break;
       case "image-default":
-        ctx.setStartupFailureHint(authoredImageHint(daemon, `\`${setting}\``));
+        ctx.setListenerAuthority(listenerAuthority(contract, "image", mode.listener.port));
         break;
       case "lando":
         break;

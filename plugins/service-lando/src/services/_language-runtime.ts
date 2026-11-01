@@ -13,6 +13,7 @@ import {
 import {
   type ListenerContract,
   assertListenerConfig,
+  listenerAuthority,
   plannedPort,
   servicePortEndpoints,
 } from "./_port-helpers.ts";
@@ -89,6 +90,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
     for (const [key, value] of spec.presets[framework].env ?? []) env[key] = value;
     for (const variable of spec.presets[framework].variables ?? []) env[variable] = String(port);
     addEnvRecord(ctx, env);
+    ctx.setListenerAuthority(listenerAuthority(spec.presets[framework], "application", port));
     ctx.setCommand(service.command ?? [...DEFAULT_KEEP_ALIVE]);
     applyAuthoredProcessFields(ctx, ["user"]);
     applyAuthoredProcessFields(ctx, ["entrypoint"]);

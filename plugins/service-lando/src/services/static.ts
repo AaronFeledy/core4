@@ -11,7 +11,12 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  listenerAuthority,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
@@ -28,7 +33,19 @@ export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
 export const STATIC_FEATURE_ID = "service-lando.static" as const;
 export const STATIC_FEATURE_PRIORITY = 600;
 
-export const STATIC_LISTENER = { port: 80, daemon: "nginx" } as const;
+export const STATIC_LISTENERS = {
+  nginx: {
+    port: 80,
+    daemon: "nginx",
+    launcher: { setting: (port: number) => `listen ${port};` },
+  },
+  caddy: {
+    port: 80,
+    daemon: "caddy",
+    launcher: { setting: (port: number) => `--listen :${port}` },
+  },
+} as const satisfies Readonly<Record<SupportedStaticServer, ListenerContract>>;
+export const STATIC_LISTENER = STATIC_LISTENERS.nginx;
 export const DEFAULT_PORT = STATIC_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
 
@@ -105,9 +122,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   // receives Lando's listen-port argv.
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
-    ctx.setStartupFailureHint(
-      authoredLauncherHint(server, server === "caddy" ? `--listen :${port}` : `listen ${port};`),
-    );
+    ctx.setListenerAuthority(listenerAuthority(STATIC_LISTENERS[server], "launcher", port));
   } else {
     ctx.setCommand(defaultStaticCommand(server, docRoot, port, service.user));
   }

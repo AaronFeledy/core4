@@ -115,10 +115,10 @@ describe("AppRef", () => {
 });
 
 describe("ServicePlan", () => {
-  test("preserves startup failure advice through service and executable app plan codecs", () => {
+  test("preserves listener authority through service and executable app plan codecs", () => {
     // Given service-type advice in a current executable plan.
-    const startupFailureHint = "An authored mongod launcher must pass --port 27018.";
-    const service = Schema.decodeUnknownSync(ServicePlan)({ ...servicePlanFixture, startupFailureHint });
+    const listenerAuthority = { owner: "launcher", daemon: "mongod", port: 27018, setting: "--port 27018" };
+    const service = Schema.decodeUnknownSync(ServicePlan)({ ...servicePlanFixture, listenerAuthority });
     const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
       ...appPlanFixture,
       valueModel: 1,
@@ -132,8 +132,8 @@ describe("ServicePlan", () => {
     );
 
     // Then the exact advice survives both boundaries.
-    expect(serviceRoundTrip.startupFailureHint).toBe(startupFailureHint);
-    expect(planRoundTrip.services[ServiceName.make("web")]?.startupFailureHint).toBe(startupFailureHint);
+    expect(serviceRoundTrip.listenerAuthority).toEqual(listenerAuthority);
+    expect(planRoundTrip.services[ServiceName.make("web")]?.listenerAuthority).toEqual(listenerAuthority);
   });
 
   test.each(["redis-password", { _tag: "SecretRef", reference: "REDIS_PASSWORD" }])(

@@ -107,6 +107,7 @@ const toServiceInfo = (
     ...(certs === undefined ? {} : { certs }),
     ...projectServiceProbes(service, runtimeHealth),
     ...(service.home === undefined ? {} : { home: service.home }),
+    ...(service.listenerAuthority === undefined ? {} : { listenerAuthority: service.listenerAuthority }),
     connections,
     ...(logSources.length === 0 ? {} : { logSources }),
     ...(creds === undefined ? {} : { creds }),

@@ -3,11 +3,15 @@ import { Effect, Schema } from "effect";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { listenerAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "memcached:1.6";
-export const MEMCACHED_LISTENER = { port: 11211, daemon: "Memcached" } as const;
+export const MEMCACHED_LISTENER = {
+  port: 11211,
+  daemon: "Memcached",
+  launcher: { setting: (port: number) => `-p ${port}` },
+} as const;
 export const DEFAULT_PORT = MEMCACHED_LISTENER.port;
 export const MEMCACHED_FEATURE_ID = "service-lando.memcached";
 
@@ -18,7 +22,7 @@ const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.command !== undefined) {
     ctx.setCommand(service.command);
-    ctx.setStartupFailureHint(authoredLauncherHint(MEMCACHED_LISTENER.daemon, `-p ${port}`));
+    ctx.setListenerAuthority(listenerAuthority(MEMCACHED_LISTENER, "launcher", port));
   } else {
     ctx.setCommand(["memcached", "-p", String(port)]);
   }

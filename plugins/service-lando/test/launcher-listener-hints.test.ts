@@ -1,26 +1,33 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import type { ListenerAuthority } from "@lando/sdk/schema";
 import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition, ServiceType, ServiceTypeResolution } from "@lando/sdk/services";
 
-import { authoredImageHint, authoredLauncherHint } from "../src/services/_port-helpers.ts";
-import { apacheServiceFeature, apacheServiceType } from "../src/services/apache.ts";
-import { memcachedServiceFeature, memcachedServiceType } from "../src/services/memcached.ts";
-import { minioServiceFeature, minioServiceType } from "../src/services/minio.ts";
-import { mongodbServiceFeature, mongodbServiceType } from "../src/services/mongodb.ts";
-import { nginxServiceFeature, nginxServiceType } from "../src/services/nginx.ts";
-import { php83ServiceType, phpServiceFeature } from "../src/services/php.ts";
-import { redisServiceFeature, redisServiceType } from "../src/services/redis.ts";
-import { solrServiceFeature, solrServiceType } from "../src/services/solr.ts";
+import { listenerAuthority } from "../src/services/_port-helpers.ts";
+import { APACHE_LISTENER, apacheServiceFeature, apacheServiceType } from "../src/services/apache.ts";
 import {
+  MEMCACHED_LISTENER,
+  memcachedServiceFeature,
+  memcachedServiceType,
+} from "../src/services/memcached.ts";
+import { MINIO_LISTENER, minioServiceFeature, minioServiceType } from "../src/services/minio.ts";
+import { MONGODB_LISTENER, mongodbServiceFeature, mongodbServiceType } from "../src/services/mongodb.ts";
+import { NGINX_LISTENER, nginxServiceFeature, nginxServiceType } from "../src/services/nginx.ts";
+import { PHP_LISTENERS } from "../src/services/php-via.ts";
+import { php83ServiceType, phpServiceFeature } from "../src/services/php.ts";
+import { REDIS_LISTENER, redisServiceFeature, redisServiceType } from "../src/services/redis.ts";
+import { SOLR_LISTENER, solrServiceFeature, solrServiceType } from "../src/services/solr.ts";
+import {
+  STATIC_LISTENERS,
   staticCaddyServiceType,
   staticNginxServiceType,
   staticServiceFeature,
 } from "../src/services/static.ts";
-import { tomcatServiceFeature, tomcatServiceType } from "../src/services/tomcat.ts";
-import { valkeyServiceFeature, valkeyServiceType } from "../src/services/valkey.ts";
-import { varnishServiceFeature, varnishServiceType } from "../src/services/varnish.ts";
+import { TOMCAT_LISTENER, tomcatServiceFeature, tomcatServiceType } from "../src/services/tomcat.ts";
+import { VALKEY_LISTENER, valkeyServiceFeature, valkeyServiceType } from "../src/services/valkey.ts";
+import { VARNISH_LISTENER, varnishServiceFeature, varnishServiceType } from "../src/services/varnish.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
 const APP_ROOT = "/srv/apps/myapp";
@@ -33,16 +40,14 @@ const METADATA = {
 const CUSTOM_ENTRYPOINT = ["custom-start"] as const;
 const CUSTOM_COMMAND = ["custom-command"] as const;
 
-type HintCase = {
+type AuthorityCase = {
   readonly id: string;
   readonly serviceType: ServiceType;
   readonly feature: ServiceFeatureDefinition;
   readonly service: ServiceConfig;
-  /** Exact setting fragment passed to authoredLauncherHint, or undefined when no hint. */
-  readonly setting: string | undefined;
-  readonly daemon?: string;
-  readonly imageOwned?: boolean;
-  /** Extra assertions against recorded apply calls (beyond the hint). */
+  /** Expected authority, or undefined when none is set. */
+  readonly authority: ListenerAuthority | undefined;
+  /** Extra assertions against recorded apply calls (beyond the authority). */
   readonly assertCalls?: (calls: readonly (readonly unknown[])[]) => void;
 };
 
@@ -59,7 +64,10 @@ const resolveService = (serviceType: ServiceType, service: ServiceConfig): Servi
 const applyFeature = (
   feature: ServiceFeatureDefinition,
   resolution: ServiceTypeResolution,
-): { readonly calls: readonly (readonly unknown[])[]; readonly hints: readonly string[] } => {
+): {
+  readonly calls: readonly (readonly unknown[])[];
+  readonly authorities: readonly ListenerAuthority[];
+} => {
   const featureRef = resolution.features.find((entry) => entry.id === feature.id);
   if (featureRef === undefined) throw new Error(`Missing resolved feature ${feature.id}`);
   const { ctx, calls } = recordFeatureContext({
@@ -69,40 +77,37 @@ const applyFeature = (
     connection: resolution.connection,
   });
   Effect.runSync(feature.apply(ctx));
-  const hints = calls
-    .filter((call): call is ["setStartupFailureHint", string] => call[0] === "setStartupFailureHint")
+  const authorities = calls
+    .filter((call): call is ["setListenerAuthority", ListenerAuthority] => call[0] === "setListenerAuthority")
     .map((call) => call[1]);
-  return { calls, hints };
+  return { calls, authorities };
 };
 
-const cases: readonly HintCase[] = [
-  // --- mongodb: hint only when port or config AND authored process override ---
+const cases: readonly AuthorityCase[] = [
+  // --- mongodb: authority only when port or config AND authored process override ---
   {
-    id: "mongodb port+command hints",
+    id: "mongodb port+command authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", port: 27018, command: [...CUSTOM_COMMAND] },
-    daemon: "MongoDB",
-    setting: "--port 27018",
+    authority: listenerAuthority(MONGODB_LISTENER, "launcher", 27018),
   },
   {
-    id: "mongodb port+entrypoint hints",
+    id: "mongodb port+entrypoint authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", port: 27018, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    daemon: "MongoDB",
-    setting: "--port 27018",
+    authority: listenerAuthority(MONGODB_LISTENER, "launcher", 27018),
   },
   {
-    id: "mongodb config+command hints",
+    id: "mongodb config+command authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", config: { server: "config/mongod.conf" }, command: [...CUSTOM_COMMAND] },
-    daemon: "MongoDB",
-    setting: "--port 27017",
+    authority: listenerAuthority(MONGODB_LISTENER, "launcher", 27017),
   },
   {
-    id: "mongodb config+entrypoint hints",
+    id: "mongodb config+entrypoint authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: {
@@ -110,137 +115,132 @@ const cases: readonly HintCase[] = [
       config: { server: "config/mongod.conf" },
       entrypoint: [...CUSTOM_ENTRYPOINT],
     },
-    daemon: "MongoDB",
-    setting: "--port 27017",
+    authority: listenerAuthority(MONGODB_LISTENER, "launcher", 27017),
   },
   {
-    id: "mongodb command-only without port/config omits hint",
+    id: "mongodb command-only without port/config omits authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", command: [...CUSTOM_COMMAND] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "mongodb entrypoint-only without port/config omits hint",
+    id: "mongodb entrypoint-only without port/config omits authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", entrypoint: [...CUSTOM_ENTRYPOINT] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "mongodb stock port omits hint",
+    id: "mongodb stock port omits authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb", port: 27018 },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "mongodb default stock omits hint",
+    id: "mongodb default stock omits authority",
     serviceType: mongodbServiceType,
     feature: mongodbServiceFeature,
     service: { type: "mongodb" },
-    setting: undefined,
+    authority: undefined,
   },
 
-  // --- redis: command hints; entrypoint-only preserves Lando argv / no hint ---
+  // --- redis: command authority; entrypoint-only preserves Lando argv / no authority ---
   {
-    id: "redis command hints",
+    id: "redis command authority",
     serviceType: redisServiceType,
     feature: redisServiceFeature,
     service: { type: "redis", port: 16379, command: [...CUSTOM_COMMAND] },
-    daemon: "Redis",
-    setting: "--port 16379",
+    authority: listenerAuthority(REDIS_LISTENER, "launcher", 16379),
   },
   {
-    id: "redis entrypoint-only omits hint",
+    id: "redis entrypoint-only omits authority",
     serviceType: redisServiceType,
     feature: redisServiceFeature,
     service: { type: "redis", port: 16379, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "redis stock omits hint",
+    id: "redis stock omits authority",
     serviceType: redisServiceType,
     feature: redisServiceFeature,
     service: { type: "redis", port: 16379 },
-    setting: undefined,
+    authority: undefined,
   },
 
   // --- valkey ---
   {
-    id: "valkey command hints",
+    id: "valkey command authority",
     serviceType: valkeyServiceType,
     feature: valkeyServiceFeature,
     service: { type: "valkey", port: 6380, command: [...CUSTOM_COMMAND] },
-    daemon: "Valkey",
-    setting: "--port 6380",
+    authority: listenerAuthority(VALKEY_LISTENER, "launcher", 6380),
   },
   {
-    id: "valkey entrypoint-only omits hint",
+    id: "valkey entrypoint-only omits authority",
     serviceType: valkeyServiceType,
     feature: valkeyServiceFeature,
     service: { type: "valkey", port: 6380, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "valkey stock omits hint",
+    id: "valkey stock omits authority",
     serviceType: valkeyServiceType,
     feature: valkeyServiceFeature,
     service: { type: "valkey", port: 6380 },
-    setting: undefined,
+    authority: undefined,
   },
 
   // --- memcached ---
   {
-    id: "memcached command hints",
+    id: "memcached command authority",
     serviceType: memcachedServiceType,
     feature: memcachedServiceFeature,
     service: { type: "memcached", port: 11212, command: [...CUSTOM_COMMAND] },
-    daemon: "Memcached",
-    setting: "-p 11212",
+    authority: listenerAuthority(MEMCACHED_LISTENER, "launcher", 11212),
   },
   {
-    id: "memcached entrypoint-only omits hint",
+    id: "memcached entrypoint-only omits authority",
     serviceType: memcachedServiceType,
     feature: memcachedServiceFeature,
     service: { type: "memcached", port: 11212, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "memcached stock omits hint",
+    id: "memcached stock omits authority",
     serviceType: memcachedServiceType,
     feature: memcachedServiceFeature,
     service: { type: "memcached", port: 11212 },
-    setting: undefined,
+    authority: undefined,
   },
 
   // --- solr ---
   {
-    id: "solr command hints",
+    id: "solr command authority",
     serviceType: solrServiceType,
     feature: solrServiceFeature,
     service: { type: "solr", port: 8984, command: [...CUSTOM_COMMAND] },
-    daemon: "Solr",
-    setting: "-p 8984",
+    authority: listenerAuthority(SOLR_LISTENER, "launcher", 8984),
   },
   {
-    id: "solr entrypoint-only omits hint",
+    id: "solr entrypoint-only omits authority",
     serviceType: solrServiceType,
     feature: solrServiceFeature,
     service: { type: "solr", port: 8984, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "solr stock omits hint",
+    id: "solr stock omits authority",
     serviceType: solrServiceType,
     feature: solrServiceFeature,
     service: { type: "solr", port: 8984 },
-    setting: undefined,
+    authority: undefined,
   },
 
-  // --- minio: command hints; entrypoint-only keeps generated args / no hint ---
+  // --- minio: command authority; entrypoint-only keeps generated args / no authority ---
   {
-    id: "minio command hints",
+    id: "minio command authority",
     serviceType: minioServiceType,
     feature: minioServiceFeature,
     service: {
@@ -250,11 +250,13 @@ const cases: readonly HintCase[] = [
       consolePort: 9101,
       command: [...CUSTOM_COMMAND],
     },
-    daemon: "MinIO",
-    setting: "--address :9100 --console-address :9101",
+    authority: {
+      ...listenerAuthority(MINIO_LISTENER, "launcher", 9100),
+      setting: "--address :9100 --console-address :9101",
+    },
   },
   {
-    id: "minio entrypoint-only preserves generated args and omits hint",
+    id: "minio entrypoint-only preserves generated args and omits authority",
     serviceType: minioServiceType,
     feature: minioServiceFeature,
     service: {
@@ -264,7 +266,7 @@ const cases: readonly HintCase[] = [
       consolePort: 9101,
       entrypoint: [...CUSTOM_ENTRYPOINT],
     },
-    setting: undefined,
+    authority: undefined,
     assertCalls: (calls) => {
       expect(calls).toContainEqual([
         "setCommand",
@@ -274,7 +276,7 @@ const cases: readonly HintCase[] = [
     },
   },
   {
-    id: "minio stock omits hint",
+    id: "minio stock omits authority",
     serviceType: minioServiceType,
     feature: minioServiceFeature,
     service: {
@@ -283,227 +285,204 @@ const cases: readonly HintCase[] = [
       port: 9100,
       consolePort: 9101,
     },
-    setting: undefined,
+    authority: undefined,
   },
 
-  // --- static: command hints; entrypoint-only no hint ---
+  // --- static: command authority; entrypoint-only no authority ---
   {
-    id: "static command hints",
+    id: "static command authority",
     serviceType: staticNginxServiceType,
     feature: staticServiceFeature,
     service: { type: "static", port: 8080, command: [...CUSTOM_COMMAND] },
-    daemon: "nginx",
-    setting: "listen 8080;",
+    authority: listenerAuthority(STATIC_LISTENERS.nginx, "launcher", 8080),
   },
   {
-    id: "static caddy command hints",
+    id: "static caddy command authority",
     serviceType: staticCaddyServiceType,
     feature: staticServiceFeature,
     service: { type: "static:caddy", port: 8080, command: [...CUSTOM_COMMAND] },
-    daemon: "caddy",
-    setting: "--listen :8080",
+    authority: listenerAuthority(STATIC_LISTENERS.caddy, "launcher", 8080),
   },
   {
-    id: "static entrypoint-only omits hint",
+    id: "static entrypoint-only omits authority",
     serviceType: staticNginxServiceType,
     feature: staticServiceFeature,
     service: { type: "static", port: 8080, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "static stock omits hint",
+    id: "static stock omits authority",
     serviceType: staticNginxServiceType,
     feature: staticServiceFeature,
     service: { type: "static", port: 8080 },
-    setting: undefined,
+    authority: undefined,
   },
 
-  // --- nginx: command and entrypoint both hint ---
+  // --- nginx: command and entrypoint both authority ---
   {
-    id: "nginx command hints",
+    id: "nginx command authority",
     serviceType: nginxServiceType,
     feature: nginxServiceFeature,
     service: { type: "nginx", port: 8080, command: [...CUSTOM_COMMAND] },
-    daemon: "nginx",
-    setting: "listen 8080;",
+    authority: listenerAuthority(NGINX_LISTENER, "launcher", 8080),
   },
   {
-    id: "nginx entrypoint hints",
+    id: "nginx entrypoint authority",
     serviceType: nginxServiceType,
     feature: nginxServiceFeature,
     service: { type: "nginx", port: 8080, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    daemon: "nginx",
-    setting: "listen 8080;",
+    authority: listenerAuthority(NGINX_LISTENER, "launcher", 8080),
   },
   {
-    id: "nginx stock omits hint",
+    id: "nginx stock omits authority",
     serviceType: nginxServiceType,
     feature: nginxServiceFeature,
     service: { type: "nginx", port: 8080 },
-    setting: undefined,
+    authority: undefined,
   },
 
-  // --- apache: command and entrypoint both hint ---
+  // --- apache: command and entrypoint both authority ---
   {
-    id: "apache command hints",
+    id: "apache command authority",
     serviceType: apacheServiceType,
     feature: apacheServiceFeature,
     service: { type: "apache", port: 8080, command: [...CUSTOM_COMMAND] },
-    daemon: "Apache",
-    setting: "Listen 8080",
+    authority: listenerAuthority(APACHE_LISTENER, "launcher", 8080),
   },
   {
-    id: "apache entrypoint hints",
+    id: "apache entrypoint authority",
     serviceType: apacheServiceType,
     feature: apacheServiceFeature,
     service: { type: "apache", port: 8080, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    daemon: "Apache",
-    setting: "Listen 8080",
+    authority: listenerAuthority(APACHE_LISTENER, "launcher", 8080),
   },
   {
-    id: "apache stock omits hint",
+    id: "apache stock omits authority",
     serviceType: apacheServiceType,
     feature: apacheServiceFeature,
     service: { type: "apache", port: 8080 },
-    setting: undefined,
+    authority: undefined,
   },
 
-  // --- php: apache/fpm author-owned configuration hints; CLI omits ---
+  // --- php: apache/fpm author-owned configuration authority; CLI omits ---
   {
-    id: "php apache authored command hints",
+    id: "php apache authored command authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", port: 8080, command: [...CUSTOM_COMMAND] },
-    daemon: "Apache",
-    setting: "Listen 8080",
+    authority: listenerAuthority(PHP_LISTENERS.apache, "launcher", 8080),
   },
   {
-    id: "php apache authored entrypoint hints",
+    id: "php apache authored entrypoint authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", port: 8080, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    daemon: "Apache",
-    setting: "Listen 8080",
+    authority: listenerAuthority(PHP_LISTENERS.apache, "launcher", 8080),
   },
   {
-    id: "php fpm authored command hints",
+    id: "php fpm authored command authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "fpm", port: 9001, command: [...CUSTOM_COMMAND] },
-    daemon: "php-fpm",
-    setting: "listen = 9001",
+    authority: listenerAuthority(PHP_LISTENERS.fpm, "launcher", 9001),
   },
   {
-    id: "php fpm authored entrypoint hints",
+    id: "php fpm authored entrypoint authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "fpm", port: 9001, entrypoint: [...CUSTOM_ENTRYPOINT] },
-    daemon: "php-fpm",
-    setting: "listen = 9001",
+    authority: listenerAuthority(PHP_LISTENERS.fpm, "launcher", 9001),
   },
   {
-    id: "php cli authored command omits hint",
+    id: "php cli authored command omits authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "cli", command: [...CUSTOM_COMMAND] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "php apache image-default hints",
+    id: "php apache image-default authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", image: "acme/php:custom", port: 8080 },
-    setting: "`Listen 8080`",
-    daemon: "Apache",
-    imageOwned: true,
+    authority: listenerAuthority(PHP_LISTENERS.apache, "image", 8080),
   },
   {
-    id: "php fpm replacement build hints",
+    id: "php fpm replacement build authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "fpm", build: { context: "." }, port: 9001 },
-    setting: "`listen = 9001`",
-    daemon: "php-fpm",
-    imageOwned: true,
+    authority: listenerAuthority(PHP_LISTENERS.fpm, "image", 9001),
   },
   {
-    id: "php cli image-default omits hint",
+    id: "php cli image-default omits authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "cli", image: "acme/php:custom" },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "php fpm image-default hints",
+    id: "php fpm image-default authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "fpm", image: "acme/php:custom", port: 9001 },
-    setting: "`listen = 9001`",
-    daemon: "php-fpm",
-    imageOwned: true,
+    authority: listenerAuthority(PHP_LISTENERS.fpm, "image", 9001),
   },
   {
-    id: "php apache replacement build hints",
+    id: "php apache replacement build authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", build: { context: "." }, port: 8080 },
-    setting: "`Listen 8080`",
-    daemon: "Apache",
-    imageOwned: true,
+    authority: listenerAuthority(PHP_LISTENERS.apache, "image", 8080),
   },
   {
-    id: "php stock apache omits hint",
+    id: "php stock apache omits authority",
     serviceType: php83ServiceType,
     feature: phpServiceFeature,
     service: { type: "php:8.3", via: "apache", port: 8080 },
-    setting: undefined,
+    authority: undefined,
   },
 
-  // --- tomcat: stock (incl. authored command) no hint; custom image/build hint ---
+  // --- tomcat: stock (incl. authored command) no authority; custom image/build authority ---
   {
-    id: "tomcat stock omits hint",
+    id: "tomcat stock omits authority",
     serviceType: tomcatServiceType,
     feature: tomcatServiceFeature,
     service: { type: "tomcat", port: 9090 },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "tomcat stock authored command omits hint",
+    id: "tomcat stock authored command omits authority",
     serviceType: tomcatServiceType,
     feature: tomcatServiceFeature,
     service: { type: "tomcat", port: 9090, command: [...CUSTOM_COMMAND] },
-    setting: undefined,
+    authority: undefined,
   },
   {
-    id: "tomcat custom image hints",
+    id: "tomcat custom image authority",
     serviceType: tomcatServiceType,
     feature: tomcatServiceFeature,
     service: { type: "tomcat", image: "acme/tomcat:custom", port: 9090 },
-    daemon: "Tomcat",
-    setting: '`<Connector port="9090">` in server.xml',
-    imageOwned: true,
+    authority: listenerAuthority(TOMCAT_LISTENER, "image", 9090),
   },
   {
-    id: "tomcat build context hints",
+    id: "tomcat build context authority",
     serviceType: tomcatServiceType,
     feature: tomcatServiceFeature,
     service: { type: "tomcat", build: { context: "." }, port: 9090 },
-    daemon: "Tomcat",
-    setting: '`<Connector port="9090">` in server.xml',
-    imageOwned: true,
+    authority: listenerAuthority(TOMCAT_LISTENER, "image", 9090),
   },
 
-  // --- varnish: authored cmd/entrypoint hint; stock none ---
+  // --- varnish: authored cmd/entrypoint authority; stock none ---
   {
-    id: "varnish command hints",
+    id: "varnish command authority",
     serviceType: varnishServiceType,
     feature: varnishServiceFeature,
     service: { type: "varnish", backend: "appserver", port: 8080, command: [...CUSTOM_COMMAND] },
-    daemon: "Varnish",
-    setting: "-a :8080",
+    authority: listenerAuthority(VARNISH_LISTENER, "launcher", 8080),
   },
   {
-    id: "varnish entrypoint hints",
+    id: "varnish entrypoint authority",
     serviceType: varnishServiceType,
     feature: varnishServiceFeature,
     service: {
@@ -512,34 +491,30 @@ const cases: readonly HintCase[] = [
       port: 8080,
       entrypoint: [...CUSTOM_ENTRYPOINT],
     },
-    daemon: "Varnish",
-    setting: "-a :8080",
+    authority: listenerAuthority(VARNISH_LISTENER, "launcher", 8080),
   },
   {
-    id: "varnish stock omits hint",
+    id: "varnish stock omits authority",
     serviceType: varnishServiceType,
     feature: varnishServiceFeature,
     service: { type: "varnish", backend: "appserver", port: 8080 },
-    setting: undefined,
+    authority: undefined,
   },
 ];
 
-describe("launcher listener startup failure hints via feature.apply", () => {
-  test.each(cases)("$id", ({ serviceType, feature, service, setting, daemon, imageOwned, assertCalls }) => {
+describe("launcher listener authority via feature.apply", () => {
+  test.each(cases)("$id", ({ serviceType, feature, service, authority, assertCalls }) => {
     // Given a resolved service type (feature config + connection facts) and a recording context
     const resolution = resolveService(serviceType, service);
 
     // When the real service feature applies
-    const { calls, hints } = applyFeature(feature, resolution);
+    const { calls, authorities } = applyFeature(feature, resolution);
 
-    // Then the recorded setStartupFailureHint matches exact authorship conditions
-    if (setting === undefined) {
-      expect(hints).toEqual([]);
+    // Then the recorded setListenerAuthority matches exact authorship conditions
+    if (authority === undefined) {
+      expect(authorities).toEqual([]);
     } else {
-      const expectedDaemon = daemon ?? "daemon";
-      expect(hints).toEqual([
-        (imageOwned ? authoredImageHint : authoredLauncherHint)(expectedDaemon, setting),
-      ]);
+      expect(authorities).toEqual([authority]);
     }
     assertCalls?.(calls);
   });

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { PortNumber } from "@lando/sdk/schema";
 import { REDACTED } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { Effect } from "effect";
@@ -7,14 +8,20 @@ import { type ReadinessTarget, failReadiness } from "../../src/operations/servic
 import { failureOf, secret } from "../subsystems/healthcheck/support.ts";
 import { plan, web } from "./start-progress-topology-support.ts";
 
+const authorityWithSecret = {
+  owner: "launcher" as const,
+  daemon: "web",
+  port: PortNumber.make(3000),
+  setting: `--token ${secret}`,
+};
+
 test.each(["not-running", "healthcheck-failed", "healthcheck-timeout"] as const)(
-  "appends the failing service's redacted hint when readiness reports %s",
+  "appends the failing service's redacted listener authority when readiness reports %s",
   async (reason) => {
-    // Given service-type advice containing a registered secret.
-    const hint = `Configure the authored launcher with --token ${secret}.`;
+    // Given structured authority containing a registered secret in its setting.
     const target: ReadinessTarget = {
       provider: TestRuntimeProvider,
-      plan: { ...plan, services: { [web.name]: { ...web, startupFailureHint: hint } } },
+      plan: { ...plan, services: { [web.name]: { ...web, listenerAuthority: authorityWithSecret } } },
       service: web.name,
     };
     const baseline = failureOf(await Effect.runPromiseExit(failReadiness({ ...target, plan }, { reason })));
@@ -28,19 +35,32 @@ test.each(["not-running", "healthcheck-failed", "healthcheck-timeout"] as const)
       ),
     );
 
-    // Then existing remediation survives and advice is a separate, redacted sentence.
+    // Then existing remediation survives and authority advice is a separate, redacted sentence.
     expect(error.remediation).toBe(
-      `${baseline.remediation} Configure the authored launcher with --token ${REDACTED}.`,
+      `${baseline.remediation} Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for web, pass \`--token ${REDACTED}\`.`,
     );
     expect(JSON.stringify(error)).not.toContain(secret);
   },
 );
 
-test("omits launcher advice when provider inspection fails", async () => {
-  // Given a service with launcher advice.
+test("omits listener authority advice when provider inspection fails", async () => {
+  // Given a service with listener authority.
   const target: ReadinessTarget = {
     provider: TestRuntimeProvider,
-    plan: { ...plan, services: { [web.name]: { ...web, startupFailureHint: "Configure the launcher." } } },
+    plan: {
+      ...plan,
+      services: {
+        [web.name]: {
+          ...web,
+          listenerAuthority: {
+            owner: "launcher",
+            daemon: "web",
+            port: PortNumber.make(3000),
+            setting: "--port 3000",
+          },
+        },
+      },
+    },
     service: web.name,
   };
 

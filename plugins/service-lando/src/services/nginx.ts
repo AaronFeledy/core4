@@ -23,7 +23,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { listenerAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
@@ -32,7 +32,11 @@ import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultStaticCommand } from "./static.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
-export const NGINX_LISTENER = { port: 80, daemon: "nginx" } as const;
+export const NGINX_LISTENER = {
+  port: 80,
+  daemon: "nginx",
+  launcher: { setting: (port: number) => `listen ${port};` },
+} as const;
 export const DEFAULT_PORT = NGINX_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
 
@@ -125,7 +129,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
         : defaultStaticCommand("nginx", webroot, port, service.user),
     );
   } else {
-    ctx.setStartupFailureHint(authoredLauncherHint(NGINX_LISTENER.daemon, `listen ${port};`));
+    ctx.setListenerAuthority(listenerAuthority(NGINX_LISTENER, "launcher", port));
   }
 
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
