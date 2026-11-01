@@ -61,15 +61,6 @@ export const PluginPublishResultSchema = Schema.Struct({
   exitCode: Schema.Number,
 });
 
-const isHttpUrl = (value: string): boolean => {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-};
-
 export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
   options: PluginPublishOptions = {},
 ) {
@@ -139,6 +130,16 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
     options.registry ??
     packageRegistry ??
     npmConfig.registryFor(typeof pkg.name === "string" ? pkg.name : manifest.name);
+  const registryUrl = URL.parse(registry);
+  if (registryUrl !== null && (registryUrl.username !== "" || registryUrl.password !== "")) {
+    return yield* Effect.fail(
+      new PluginPublishValidationError({
+        message: "Publish registry URLs must not contain credentials.",
+        remediation:
+          "Remove URL userinfo and move credentials to the registry's nerf-key _authToken, _auth, or username plus _password fields in npm user configuration.",
+      }),
+    );
+  }
   yield* publishOptionalEvent({
     _tag: "cli-meta:plugin:publish-start",
     pluginName: manifest.name,
@@ -172,7 +173,7 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
         }),
       );
     }
-    if (!isHttpUrl(registry)) {
+    if (registryUrl?.protocol !== "http:" && registryUrl?.protocol !== "https:") {
       return yield* Effect.fail(
         new PluginPublishValidationError({
           message: `Invalid publish registry ${JSON.stringify(registry)} for ${manifest.name}.`,
