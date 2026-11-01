@@ -1,4 +1,5 @@
 import { FileSyncStopError } from "@lando/sdk/errors";
+import type { FileSyncQuiesceResult } from "@lando/sdk/schema";
 import {
   FileSyncEngine,
   type FileSyncEngineShape,
@@ -19,7 +20,7 @@ type DestroyFileSync = {
   readonly applicable: boolean;
   readonly resumed: boolean;
   readonly quiesceRetained: Effect.Effect<void, FileSyncStopError | ProviderError>;
-  readonly dispose: Effect.Effect<void, FileSyncError | ProviderError>;
+  readonly dispose: Effect.Effect<FileSyncQuiesceResult, FileSyncError | ProviderError>;
   readonly complete: Effect.Effect<void, FileSyncStopError>;
 };
 
@@ -87,7 +88,7 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
         applicable: false,
         resumed,
         quiesceRetained: Effect.void,
-        dispose: Effect.void,
+        dispose: Effect.succeed({}),
         complete: retained?.clear ?? Effect.void,
       };
     case "accelerated":
@@ -123,8 +124,8 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
     }
   });
   const dispose = Effect.gen(function* () {
-    if (phase === "completed") return;
-    if (!retainedUnapplied && quiesce !== undefined) yield* quiesce({ app: plan.id, plan });
+    if (phase === "completed") return {};
+    const receipt = !retainedUnapplied && quiesce !== undefined ? yield* quiesce({ app: plan.id, plan }) : {};
     if (lifecycle !== undefined) {
       if (phase !== "disposing" && phase !== "absent") yield* lifecycle.drain(app);
       if (phase !== "absent") yield* lifecycle.dispose(app);
@@ -137,6 +138,7 @@ export const prepareDestroyFileSync = Effect.fn("AppOperation.prepareDestroyFile
       yield* terminateFileSyncSessions(app, sessions).pipe(Effect.provideService(FileSyncEngine, engine));
       if (disposeTargets !== undefined) yield* disposeTargets(plan);
     }
+    return receipt;
   });
   return {
     applicable,

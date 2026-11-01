@@ -2,7 +2,7 @@ import { AppResolveError } from "@lando/sdk/errors";
 import { PostGlobalDestroyEvent, PreGlobalDestroyEvent } from "@lando/sdk/events";
 import { DateTime, Effect } from "effect";
 
-import { AbsolutePath, AppId } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, type ServiceShutdownObservation } from "@lando/sdk/schema";
 import {
   EventService,
   FileSystem,
@@ -13,12 +13,14 @@ import {
 } from "@lando/sdk/services";
 
 import { globalObserveProviderId } from "../global-app/placement.ts";
+import { type GlobalResolution, readGlobalResolution } from "../global-app/resolution.ts";
 import { TeardownProvider } from "../providers/app-placement.ts";
 import { type AppliedStateProvider, resolveTeardownEvidence } from "../providers/applied-state-resolution.ts";
 import { canonicalMissingAppRoot } from "./app-mutation-lock.ts";
 import { missingRootAppliedTarget } from "./applied-state-target.ts";
 import { withDestroyProgress } from "./destroy-progress.ts";
 import { removeGlobalResources } from "./global-teardown-resources.ts";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 import { unknownPlanServiceError } from "./unknown-service.ts";
 
 const runtimeOnline = (provider: Pick<RuntimeProviderShape, "isAvailable" | "getStatus">) =>
@@ -57,6 +59,7 @@ export type GlobalTeardown = Effect.Success<ReturnType<typeof resolveGlobalTeard
 export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelection")(function* (
   resolved: GlobalTeardown,
   requested: ReadonlyArray<string>,
+  options?: { readonly requireOnline?: boolean; readonly resolution?: GlobalResolution },
 ) {
   const evidence = resolved.evidence;
   let services: ReadonlyArray<{ readonly name: string }>;
@@ -110,7 +113,25 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
       return unreachable;
     }
   }
-  const online = yield* runtimeOnline(resolved.provider);
+  const online = options?.requireOnline
+    ? yield* resolved.provider.isAvailable.pipe(
+        Effect.flatMap((available) =>
+          available
+            ? Effect.map(resolved.provider.getStatus, (status) => status.running)
+            : Effect.succeed(false),
+        ),
+      )
+    : yield* runtimeOnline(resolved.provider);
+  if (options?.requireOnline && !online)
+    return yield* Effect.fail(
+      new AppResolveError({
+        message:
+          "The applied global provider is offline; selected containers and routes could not be removed.",
+        reason: "mismatch",
+        detail: "provider-resources",
+        remediation: "Start the applied provider and repeat the selected cleanup command.",
+      }),
+    );
   const observed = online
     ? yield* resolved.provider.list({ app: evidence.plan.id, includeUnplanned: true })
     : [];
@@ -130,6 +151,22 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
       .map((service) => String(service.service)),
   );
   const selected = new Set(requested);
+  const updateRoutes = online && evidence.plan.routes.some((route) => selected.has(String(route.service)));
+  const retainedRoutes = evidence.plan.routes.filter(
+    (route) => !selected.has(String(route.service)) && activeNames.has(String(route.service)),
+  );
+  // Applied routes may outlive a failed disable; blocked but enabled siblings still own their routes.
+  const routePolicy =
+    updateRoutes && retainedRoutes.length > 0
+      ? yield* (
+          options?.resolution === undefined ? readGlobalResolution() : Effect.succeed(options.resolution)
+        ).pipe(Effect.result)
+      : undefined;
+  const disabled = new Set(
+    routePolicy?._tag === "Success"
+      ? routePolicy.success.entries.filter((entry) => !entry.enabled).map((entry) => entry.id)
+      : [],
+  );
   return {
     plan: evidence.plan,
     services: Object.values(evidence.plan.services)
@@ -139,12 +176,8 @@ export const resolveGlobalStopSelection = Effect.fn("GlobalApp.resolveStopSelect
           ? owned.filter((observation) => observation.service === service.name)
           : [],
       ),
-    routes:
-      online && evidence.plan.routes.some((route) => selected.has(String(route.service)))
-        ? evidence.plan.routes.filter(
-            (route) => !selected.has(String(route.service)) && activeNames.has(String(route.service)),
-          )
-        : undefined,
+    routes: updateRoutes ? retainedRoutes.filter((route) => !disabled.has(String(route.service))) : undefined,
+    routePolicyError: routePolicy?._tag === "Failure" ? routePolicy.failure : undefined,
   };
 });
 
@@ -153,8 +186,10 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
   selection: Effect.Success<ReturnType<typeof resolveGlobalStopSelection>>,
 ) {
   const services: string[] = [];
+  const observationSources: Array<readonly ServiceShutdownObservation[] | undefined> = [];
   for (const service of selection.services) {
     const result = yield* resolved.provider.removeObservedService(service);
+    observationSources.push(result.shutdownObservations);
     switch (result.kind) {
       case "removed":
         services.push(String(service.service));
@@ -167,14 +202,18 @@ export const executeGlobalStopSelection = Effect.fn("GlobalApp.stopSelection")(f
       }
     }
   }
+  if (selection.routePolicyError !== undefined) return yield* Effect.fail(selection.routePolicyError);
   if (selection.routes !== undefined) {
     const router = yield* RouterService;
     yield* router.applyRoutes(selection.routes, selection.plan.id);
   }
-  return {
-    changed: services.length > 0,
-    services,
-  };
+  return withShutdownObservations(
+    {
+      changed: services.length > 0,
+      services,
+    },
+    ...observationSources,
+  );
 });
 
 export const globalTeardownAppRef = (resolved: GlobalTeardown) => ({

@@ -4,8 +4,9 @@ import { AppRef } from "../schema/networking.ts";
 import { Timestamp } from "./_shared.ts";
 
 /**
- * Host-proxy `runLando` dispatch lifecycle events. Published for every
- * dispatched request, including rejected ones. Payloads are redacted summaries
+ * Execution hooks inside a host-proxy child's initialized runtime, including
+ * execution failures. Bootstrap and admission rejections are not execution
+ * hooks; these events are not an audit trail. Payloads are redacted summaries
  * only: the request kind, canonical command id, a redacted argv summary, and the
  * remapped host cwd. Raw env values, secret-bearing argv tails, and un-redacted
  * URLs must never appear in these events.
@@ -29,9 +30,9 @@ export const PreHostProxyCallEvent = Schema.TaggedStruct("pre-host-proxy-call", 
   /** Correlates the pre/post pair for one dispatched request. */
   callId: Schema.String,
   request: HostProxyRequestRedacted,
-  /** Service the container request originated from. */
+  /** Reported caller service, not an authenticated identity. */
   callerService: Schema.String,
-  /** Host-proxy re-entry depth (`LANDO_HOST_PROXY_DEPTH`). */
+  /** Nonnegative re-entry depth: an accidental-loop guard, not authorization. */
   depth: Schema.Number,
   timestamp: Timestamp,
 });

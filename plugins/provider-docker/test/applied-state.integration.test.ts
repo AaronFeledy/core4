@@ -17,6 +17,7 @@ import {
   ProviderId,
   ServiceName,
   type ServicePlan,
+  planAppIdentity,
 } from "@lando/sdk/schema";
 import { makeStateStore as makeStateStoreUsing } from "@lando/state-store/service";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
@@ -139,6 +140,47 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
 };
 
 describe("provider-docker applied state persistence", () => {
+  test.each([true, false, undefined, "off", "invalid"])(
+    "loads v2 init %s without losing ownership or corrupt source bytes",
+    async (init) => {
+      // Given
+      await withStateDir(async (root) => {
+        const state = makePluginStateStore(makeStateStore(), AbsolutePath.make(root));
+        const path = await Effect.runPromise(persistAppliedPlan(state, plan));
+        const encoded = Schema.encodeSync(AppPlan)(plan);
+        const bytes = JSON.stringify({
+          version: 2,
+          data: {
+            ...encoded,
+            services: {
+              ...encoded.services,
+              web: {
+                ...encoded.services[web.name],
+                extensions: {
+                  compose: {
+                    ...(init === undefined ? {} : { init }),
+                  },
+                },
+              },
+            },
+          },
+        });
+        await writeFile(path, bytes);
+        // When
+        const loaded = await Effect.runPromise(loadAppliedPlan(state, plan.id));
+        // Then
+        if (init === "invalid") {
+          expect(loaded).toBeUndefined();
+          expect(await readFile(path, "utf8")).toBe(bytes);
+        } else {
+          if (loaded === undefined) throw new Error("missing migrated plan");
+          expect(loaded.services[web.name]?.init).toBe(init === "off" ? false : init);
+          expect(loaded.services[web.name]?.extensions.compose).not.toHaveProperty("init");
+          expect(planAppIdentity(loaded)).toEqual(planAppIdentity(plan));
+        }
+      });
+    },
+  );
   for (const damage of ["corrupt", "migration", "decode"] as const) {
     for (const operation of [
       "apply",
@@ -272,7 +314,7 @@ describe("provider-docker applied state persistence", () => {
       expect(written).toBe(appliedPlanPath(stateDir, proxyPlan.id));
 
       const raw = JSON.parse(await readFile(written, "utf8"));
-      expect(raw.version).toBe(2);
+      expect(raw.version).toBe(3);
       expect(raw.data).toBeDefined();
 
       const loaded = await Effect.runPromise(loadAppliedPlan(stateB, proxyPlan.id));

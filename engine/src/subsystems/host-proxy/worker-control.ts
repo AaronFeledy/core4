@@ -100,7 +100,7 @@ const identifyWorker = (record: ControlRecord) =>
 
 export const probeWorker = (
   record: ControlRecord,
-  options: { readonly requireSessionIdentity?: boolean } = {},
+  options: { readonly requireSessionIdentity?: boolean; readonly requireHealthyBridge?: boolean } = {},
 ): Effect.Effect<ProbeWorkerResult> =>
   runProbe(
     {
@@ -109,7 +109,10 @@ export const probeWorker = (
       classify: {
         success: (value) => {
           const identity = value as HostProxyWorkerIdentity;
-          return identity.appId === record.appId &&
+          return (options.requireHealthyBridge === false ||
+            identity.bridge === "none" ||
+            identity.bridge === "alive") &&
+            identity.appId === record.appId &&
             identity.protocolVersion === record.protocolVersion &&
             identity.pid === record.pid &&
             (options.requireSessionIdentity !== true ||
@@ -227,8 +230,10 @@ export const terminateControlRecord = (
     ...(record.socketPath === undefined ? {} : { socketPath: record.socketPath }),
     ...(record.url === undefined ? {} : { url: record.url }),
   };
-  return probeWorker(record).pipe(
-    Effect.flatMap((status) => (status === "live" ? Effect.succeed(status) : probeWorker(control))),
+  return probeWorker(record, { requireHealthyBridge: false }).pipe(
+    Effect.flatMap((status) =>
+      status === "live" ? Effect.succeed(status) : probeWorker(control, { requireHealthyBridge: false }),
+    ),
     Effect.flatMap((status) =>
       status === "dead"
         ? removeDir

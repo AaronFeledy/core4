@@ -6,9 +6,15 @@ import {
   type RouterServiceShape,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, type Context, Effect, Exit } from "effect";
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
+import {
+  type GlobalConsumerAdmissionServices,
+  requiresGlobalConsumerAdmission,
+  withGlobalConsumerAdmission,
+} from "../operations/global-consumer-admission.ts";
+import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import type { makeScratchReaper } from "./destroy.ts";
 import type { ScratchRegistry } from "./registry.ts";
@@ -23,41 +29,79 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     readonly provider: RuntimeProviderShape;
     readonly environmentResolver: typeof EnvironmentValueResolver.Service;
     readonly router?: RouterServiceShape;
+    readonly admissionContext?: Context.Context<GlobalConsumerAdmissionServices>;
   },
 ) {
   const { id, plan } = request;
-  yield* Effect.scoped(
-    applyWithResolvedEnvironment(services.provider, plan, {
-      reconcile: false,
-      onVolumeCreated: yield* volumeCreationRecorder(services.provider, plan),
-    }).pipe(Effect.provideService(EnvironmentValueResolver, services.environmentResolver)),
+  const activate = Effect.gen(function* () {
+    yield* Effect.scoped(
+      applyWithResolvedEnvironment(
+        services.provider,
+        plan,
+        {
+          reconcile: false,
+          onVolumeCreated: yield* volumeCreationRecorder(services.provider, plan),
+        },
+        verifyGlobalConsumerAdmission,
+      ).pipe(Effect.provideService(EnvironmentValueResolver, services.environmentResolver)),
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ScratchAppError({
+            operation: "start",
+            message: `Unable to start scratch app ${id}.`,
+            cause,
+            remediation: "Run `lando doctor`, fix the provider failure, then retry scratch start.",
+          }),
+      ),
+    );
+    yield* completeStartup({
+      policy: "scratch",
+      provider: services.provider,
+      plan,
+      services: Object.values(plan.services).map((service) => service.name),
+      ...(services.router === undefined ? {} : { router: services.router }),
+      ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
+    }).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof AppPlacementError
+          ? cause
+          : new ScratchAppError({
+              operation: "start",
+              message: `Unable to ready scratch app ${id}.`,
+              cause,
+              remediation: "Wait for services to become healthy, or run `lando doctor` and retry.",
+            }),
+      ),
+    );
+  });
+  if (!requiresGlobalConsumerAdmission(plan)) return yield* activate;
+  if (services.admissionContext === undefined)
+    return yield* Effect.fail(
+      new ScratchAppError({
+        operation: "start",
+        message: `Global service admission is unavailable for scratch app ${id}.`,
+        remediation:
+          "Provide the global runtime services when constructing ScratchAppService before starting dependent scratch applications.",
+      }),
+    );
+  return yield* withGlobalConsumerAdmission(
+    {
+      plan,
+      ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
+    },
+    activate,
   ).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ScratchAppError({
-          operation: "start",
-          message: `Unable to start scratch app ${id}.`,
-          cause,
-          remediation: "Run `lando doctor`, fix the provider failure, then retry scratch start.",
-        }),
-    ),
-  );
-  yield* completeStartup({
-    policy: "scratch",
-    provider: services.provider,
-    plan,
-    services: Object.values(plan.services).map((service) => service.name),
-    ...(services.router === undefined ? {} : { router: services.router }),
-    ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
-  }).pipe(
+    Effect.provide(services.admissionContext),
     Effect.mapError((cause) =>
-      cause instanceof AppPlacementError
+      cause instanceof AppPlacementError || cause instanceof ScratchAppError
         ? cause
         : new ScratchAppError({
             operation: "start",
-            message: `Unable to ready scratch app ${id}.`,
+            message: `Required global services could not be admitted for scratch app ${id}.`,
             cause,
-            remediation: "Wait for services to become healthy, or run `lando doctor` and retry.",
+            remediation:
+              "Inspect global service policy and restore the required services before retrying scratch startup.",
           }),
     ),
   );

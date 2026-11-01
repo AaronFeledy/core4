@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -92,6 +92,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -257,8 +258,20 @@ const fileSyncWebWithExtra: ServicePlan = {
 
 const containerHelperRoots: string[] = [];
 let previousContainerHelperDir: string | undefined;
+let scenarioProfileRoot: string | undefined;
+let previousProfileRoots: Record<string, string | undefined> = {};
 
 beforeEach(async () => {
+  previousProfileRoots = Object.fromEntries(
+    ["LANDO_USER_DATA_ROOT", "LANDO_USER_CONF_ROOT", "LANDO_USER_CACHE_ROOT"].map((key) => [
+      key,
+      process.env[key],
+    ]),
+  );
+  scenarioProfileRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-start-profile-")));
+  process.env.LANDO_USER_DATA_ROOT = join(scenarioProfileRoot, "data");
+  process.env.LANDO_USER_CONF_ROOT = join(scenarioProfileRoot, "conf");
+  process.env.LANDO_USER_CACHE_ROOT = join(scenarioProfileRoot, "cache");
   previousContainerHelperDir = process.env.LANDO_CONTAINER_HELPER_DIR;
   process.env.LANDO_CONTAINER_HELPER_DIR = await fakeContainerHelperDir();
 });
@@ -268,6 +281,19 @@ afterEach(async () => {
     Reflect.deleteProperty(process.env, "LANDO_CONTAINER_HELPER_DIR");
   else process.env.LANDO_CONTAINER_HELPER_DIR = previousContainerHelperDir;
   previousContainerHelperDir = undefined;
+  for (const [key, value] of Object.entries(previousProfileRoots)) {
+    if (value === undefined) Reflect.deleteProperty(process.env, key);
+    else process.env[key] = value;
+  }
+  if (scenarioProfileRoot !== undefined) {
+    await Effect.runPromise(
+      terminateOwnedHostProxyWorkersInRoot(join(scenarioProfileRoot, "data"), {
+        privateFileAccess: ownerOnlyFileAccess,
+      }),
+    );
+    await rm(scenarioProfileRoot, { recursive: true, force: true });
+    scenarioProfileRoot = undefined;
+  }
   for (const root of containerHelperRoots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
@@ -409,9 +435,38 @@ const fakeContainerHelperDir = async (): Promise<string> => {
   return root;
 };
 
+const recordAppliedServices = (observed: Map<string, ServiceRuntimeInfo>, appPlan: AppPlan): void => {
+  for (const service of Object.values(appPlan.services))
+    observed.set(`${appPlan.id}:${service.name}`, {
+      app: appPlan.id,
+      appRoot: appPlan.root,
+      service: service.name,
+      providerId: appPlan.provider,
+      containerId: `scenario-${appPlan.id}-${service.name}`,
+      status: "running",
+      state: "running",
+      lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
+      publications: {
+        status: "present",
+        bindings: service.endpoints.flatMap((endpoint) =>
+          endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
+            ? [
+                {
+                  port: endpoint.port,
+                  transport: endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
+                  bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
+                  hostPort: endpoint.publication.hostPort,
+                },
+              ]
+            : [],
+        ),
+      },
+    });
+};
+
 const makeStartLayer = (
   options: {
-    readonly signalSeen?: boolean[];
+    readonly signalSeen?: AbortSignal[];
     readonly applyFailure?: ProviderUnavailableError;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
     readonly inspectEffect?: Effect.Effect<ServiceRuntimeInfo, ProviderUnavailableError>;
@@ -437,6 +492,33 @@ const makeStartLayer = (
 ) => {
   const plannedApp = options.plannedApp ?? plan;
   const providerCapabilities = options.providerCapabilities ?? capabilities;
+  const globalAppPlan = globalPlan(["recording"]);
+  const moduleRoot = mkdtempSync(join(tmpdir(), "lando-start-router-module-"));
+  containerHelperRoots.push(moduleRoot);
+  const modulePath = join(moduleRoot, "recording.mjs");
+  writeFileSync(
+    modulePath,
+    `import {Effect} from ${JSON.stringify(import.meta.resolve("effect"))}; export default Effect.succeed({type:"lando"});`,
+  );
+  const routerManifest = Schema.decodeSync(PluginManifest)({
+    name: "@lando/scenario-router",
+    version: "1.0.0",
+    api: 4,
+    contributes: {
+      serviceTypes: [globalServiceType.id],
+      globalServices: [{ id: "recording", module: modulePath, enabledByDefault: true }],
+    },
+  });
+  const routerRegistry = PluginRegistry.of({
+    list: Effect.succeed([routerManifest]),
+    load: () => Effect.succeed(routerManifest),
+    loadServiceType: () => Effect.succeed(globalServiceType),
+    loadServiceFeature: () => Effect.die("not used"),
+    loadAppFeature: () => Effect.die("not used"),
+  });
+  const observed = new Map<string, ServiceRuntimeInfo>();
+  const recordedPlans = new Map<string, AppPlan>();
+  const globalApplyPlans: AppPlan[] = [];
   const events: string[] = [];
   const taskEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const applyPlans: AppPlan[] = [];
@@ -527,16 +609,26 @@ const makeStartLayer = (
     removeArtifact: () => Effect.void,
     apply: (appPlan, applyOptions) =>
       Effect.sync(() => {
-        buildOrder.push("apply");
-        applyPlans.push(appPlan);
-        options.signalSeen?.push(applyOptions.signal?.aborted ?? false);
+        if (appPlan.id === "global") globalApplyPlans.push(appPlan);
+        else {
+          buildOrder.push("apply");
+          applyPlans.push(appPlan);
+          if (applyOptions.signal !== undefined) options.signalSeen?.push(applyOptions.signal);
+        }
       }).pipe(
-        Effect.flatMap(
-          () =>
-            options.applyEffect ??
-            (options.applyFailure === undefined
-              ? Effect.succeed({ changed: true })
-              : Effect.fail(options.applyFailure)),
+        Effect.flatMap(() =>
+          appPlan.id === "global"
+            ? Effect.succeed({ changed: true })
+            : (options.applyEffect ??
+              (options.applyFailure === undefined
+                ? Effect.succeed({ changed: true })
+                : Effect.fail(options.applyFailure))),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            recordedPlans.set(String(appPlan.id), applyOptions.recordedPlan ?? appPlan);
+            recordAppliedServices(observed, appPlan);
+          }),
         ),
       ),
     start: () => Effect.void,
@@ -560,38 +652,51 @@ const makeStartLayer = (
     logs: () => Stream.die("not used"),
     inspect: (target) =>
       Effect.sync(() => {
-        if (options.recordReadiness === true) buildOrder.push(`inspect:${String(target.service)}`);
+        if (options.recordReadiness === true && target.app !== "global")
+          buildOrder.push(`inspect:${String(target.service)}`);
       }).pipe(
         Effect.andThen(
-          options.inspectEffect ??
-            (options.inspectFailure === undefined
-              ? Effect.succeed<ServiceRuntimeInfo>({
-                  app: plannedApp.id,
-                  service: target.service,
-                  providerId,
-                  status: "running",
-                  state: "running",
-                  lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-                  publications: {
-                    status: "present",
-                    bindings: (plannedApp.services[target.service]?.endpoints ?? []).flatMap((endpoint) =>
-                      endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
-                        ? [
-                            {
-                              port: endpoint.port,
-                              transport: endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
-                              bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
-                              hostPort: endpoint.publication.hostPort,
-                            },
-                          ]
-                        : [],
-                    ),
-                  },
-                })
-              : Effect.fail(options.inspectFailure)),
+          target.app === "global"
+            ? Effect.sync(() => {
+                const runtime = observed.get(`global:${target.service}`);
+                if (runtime === undefined)
+                  throw new Error(`Global fixture service ${target.service} was not applied`);
+                return runtime;
+              })
+            : (options.inspectEffect ??
+                (options.inspectFailure === undefined
+                  ? Effect.succeed<ServiceRuntimeInfo>({
+                      app: plannedApp.id,
+                      service: target.service,
+                      providerId,
+                      status: "running",
+                      state: "running",
+                      lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
+                      publications: {
+                        status: "present",
+                        bindings: (plannedApp.services[target.service]?.endpoints ?? []).flatMap(
+                          (endpoint) =>
+                            endpoint._tag === "published" && endpoint.publication.hostPort !== undefined
+                              ? [
+                                  {
+                                    port: endpoint.port,
+                                    transport:
+                                      endpoint.protocol === "udp" ? ("udp" as const) : ("tcp" as const),
+                                    bindAddress: endpoint.publication.bindAddress ?? "127.0.0.1",
+                                    hostPort: endpoint.publication.hostPort,
+                                  },
+                                ]
+                              : [],
+                        ),
+                      },
+                    })
+                  : Effect.fail(options.inspectFailure))),
         ),
       ),
-    list: () => Effect.succeed([]),
+    list: (filter = {}) =>
+      Effect.sync(() =>
+        [...observed.values()].filter((service) => filter.app === undefined || service.app === filter.app),
+      ),
   };
 
   const layer = Layer.mergeAll(
@@ -616,13 +721,27 @@ const makeStartLayer = (
       }),
     ),
     makeTestStateStore().layer,
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plannedApp)) })),
+    Layer.succeed(
+      AppPlanner,
+      AppPlanner.of({
+        plan: (landofile) =>
+          Effect.succeed(currentTestPlan(landofile.document.name === "global" ? globalAppPlan : plannedApp)),
+      }),
+    ),
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: (root) =>
+          Effect.sync(() => [...recordedPlans.values()].find((applied) => applied.root === root)),
+        resolveTeardownEvidence: (root) =>
+          Effect.sync(() => {
+            const applied = [...recordedPlans.values()].find((plan) => plan.root === root);
+            return applied === undefined
+              ? { kind: "absent" as const }
+              : { kind: "applied" as const, plan: applied, provider };
+          }),
+        appliedPlansFor: (root) =>
+          Effect.sync(() => [...recordedPlans.values()].filter((applied) => applied.root === root)),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(providerCapabilities),
         select: () => Effect.succeed(provider),
@@ -671,7 +790,11 @@ const makeStartLayer = (
             taskEvents.push(event);
             if (event._tag === "pre-app-start") buildOrder.push("pre-app-start");
             if (event._tag === "task.detail") buildOrder.push(`detail:${String(event.line)}`);
-            if (event._tag === "task.tree.complete") buildOrder.push(`tree:${String(event.summary)}`);
+            if (
+              event._tag === "task.tree.complete" &&
+              String(event.summary).startsWith(`${plannedApp.name} `)
+            )
+              buildOrder.push(`tree:${String(event.summary)}`);
             if (event._tag === "post-app-start" && options.postStartFailure !== undefined) {
               return;
             }
@@ -696,10 +819,14 @@ const makeStartLayer = (
     ),
     unusedGlobalServicesLayer,
     Layer.succeed(RouterService, proxy),
+    Layer.succeed(PluginRegistry, routerRegistry),
     Layer.succeed(
       BuildOrchestrator,
       BuildOrchestrator.of({
-        build: (appPlan) => Effect.sync(() => void buildOrder.push("artifact")).pipe(Effect.as(appPlan)),
+        build: (appPlan) =>
+          Effect.sync(() => {
+            if (appPlan.id !== "global") buildOrder.push("artifact");
+          }).pipe(Effect.as(appPlan)),
         buildApp: () =>
           Effect.sync(() => void buildOrder.push("app")).pipe(
             Effect.andThen(options.buildAppEffect ?? Effect.void),
@@ -710,7 +837,7 @@ const makeStartLayer = (
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
   );
 
-  return { layer, events, applyPlans, buildOrder, destroyCalls, taskEvents };
+  return { layer, events, applyPlans, globalApplyPlans, buildOrder, destroyCalls, taskEvents };
 };
 
 const globalServiceType = makeLegacyServiceTypeFake({
@@ -790,7 +917,7 @@ const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
     id: AppId.make("global"),
     name: "global",
     slug: "global",
-    root: AbsolutePath.make("/tmp/global"),
+    root: AbsolutePath.make(makeLandoPaths().globalAppRoot),
     services,
     routes: [],
     stores: [],
@@ -807,6 +934,8 @@ const makeAutoStartLayer = async (options: {
   const modulePath = await writeGlobalServiceModule(options.moduleRoot);
   const events: Array<LandoEvent> = [];
   const applyPlans: AppPlan[] = [];
+  const observed = new Map<string, ServiceRuntimeInfo>();
+  const recordedPlans = new Map<string, AppPlan>();
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -837,7 +966,7 @@ const makeAutoStartLayer = async (options: {
         }),
       ),
     removeArtifact: () => Effect.void,
-    apply: (appPlan) =>
+    apply: (appPlan, applyOptions) =>
       Effect.sync(() => {
         applyPlans.push(appPlan);
       }).pipe(
@@ -845,6 +974,12 @@ const makeAutoStartLayer = async (options: {
           options.failGlobalApply !== undefined && String(appPlan.id) === "global"
             ? Effect.fail(options.failGlobalApply)
             : Effect.succeed({ changed: true }),
+        ),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            recordedPlans.set(String(appPlan.id), applyOptions.recordedPlan ?? appPlan);
+            recordAppliedServices(observed, appPlan);
+          }),
         ),
       ),
     start: () => Effect.void,
@@ -856,18 +991,16 @@ const makeAutoStartLayer = async (options: {
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.die("not used"),
     inspect: (target) =>
-      Effect.succeed({
-        app: target.app,
-        service: target.service,
-        providerId,
-        status: "running",
-        state: "running",
-        publications: {
-          status: "present",
-          bindings: [{ port: 8080, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8080 }],
-        },
+      Effect.sync(() => {
+        const runtime = observed.get(`${target.app}:${target.service}`);
+        if (runtime === undefined)
+          throw new Error(`Fixture service ${target.app}:${target.service} was not applied`);
+        return runtime;
       }),
-    list: () => Effect.succeed([]),
+    list: (filter = {}) =>
+      Effect.sync(() =>
+        [...observed.values()].filter((service) => filter.app === undefined || service.app === filter.app),
+      ),
   };
   const manifest = Schema.decodeSync(PluginManifest)({
     name: "@lando/fake-start-global",
@@ -930,9 +1063,17 @@ const makeAutoStartLayer = async (options: {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
-        resolveAppliedPlan: () => Effect.succeed(undefined),
-        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
-        appliedPlansFor: () => Effect.succeed([]),
+        resolveAppliedPlan: (root) =>
+          Effect.sync(() => [...recordedPlans.values()].find((applied) => applied.root === root)),
+        resolveTeardownEvidence: (root) =>
+          Effect.sync(() => {
+            const applied = [...recordedPlans.values()].find((plan) => plan.root === root);
+            return applied === undefined
+              ? { kind: "absent" as const }
+              : { kind: "applied" as const, plan: applied, provider };
+          }),
+        appliedPlansFor: (root) =>
+          Effect.sync(() => [...recordedPlans.values()].filter((applied) => applied.root === root)),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),
@@ -1236,6 +1377,9 @@ describe("lando start", () => {
     const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
     // Then
+    expect(harness.globalApplyPlans).toHaveLength(1);
+    expect(harness.globalApplyPlans[0]?.services[ServiceName.make("recording")]).toBeDefined();
+    expect(harness.globalApplyPlans[0]?.root).toBe(AbsolutePath.make(makeLandoPaths().globalAppRoot));
     expect(harness.buildOrder.slice(0, 10)).toEqual([
       "pre-app-start",
       "artifact",
@@ -1419,7 +1563,12 @@ describe("lando start", () => {
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       const appliedDatabase = harness.applyPlans[0]?.services[ServiceName.make("database")];
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
-      expect(typeof appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBe("string");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_APP).toBeUndefined();
+      expect(appliedWeb?.mounts).toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+      );
       expect(appliedWeb?.mounts).toContainEqual(
         expect.objectContaining({ target: "/run/lando/host-proxy.sock", readOnly: true }),
       );
@@ -1687,15 +1836,16 @@ describe("lando start", () => {
       const appliedWeb = harness.applyPlans[0]?.services[ServiceName.make("web")];
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_TRANSPORT).toBe("tcp-host-gateway");
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_URL).toStartWith("http://host.containers.internal:");
-      expect(typeof appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBe("string");
+      expect(appliedWeb?.environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+      expect(appliedWeb?.mounts).toContainEqual(
+        expect.objectContaining({ target: "/run/lando/host-proxy/credentials", readOnly: true }),
+      );
       expect(appliedWeb?.environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
       expect(appliedWeb?.mounts).not.toContainEqual(
         expect.objectContaining({ target: "/run/lando/host-proxy.sock" }),
       );
       expect(appliedWeb?.hostAliases).toEqual([]);
-      await stat(
-        makeLandoPaths({ platform: "win32", userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root),
-      );
+      await stat(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
     });
   });
 
@@ -1726,7 +1876,9 @@ describe("lando start", () => {
       expect(persistedPlanJson).not.toContain("LANDO_HOST_PROXY_DEPTH");
       expect(persistedPlanJson).not.toContain("host-proxy.sock");
       expect(persistedPlanJson).not.toContain("/usr/local/bin/lando");
-      expect(appliedPlanJson).toContain("LANDO_HOST_PROXY_TOKEN");
+      expect(appliedPlanJson).not.toContain("LANDO_HOST_PROXY_TOKEN");
+      expect(appliedPlanJson).toContain("/run/lando/host-proxy/credentials");
+      expect(persistedPlanJson).not.toContain("/run/lando/host-proxy/credentials");
     });
   });
 
@@ -2091,18 +2243,34 @@ describe("lando start", () => {
     expect(rendered).toContain("database (running)");
   });
 
-  test("passes an AbortSignal to provider apply for cancellation", async () => {
-    const signalSeen: boolean[] = [];
+  test("passes the same AbortSignal to provider apply and cancels an in-flight apply", async () => {
+    const signalSeen: AbortSignal[] = [];
+    const controller = new AbortController();
+    const harness = makeStartLayer({
+      signalSeen,
+      applyEffect: Effect.sync(() => controller.abort()).pipe(Effect.andThen(Effect.never)),
+    });
+    const exit = await Effect.runPromiseExit(
+      startApp({ signal: controller.signal }).pipe(
+        Effect.provide(harness.layer),
+        Effect.timeout("2 seconds"),
+      ),
+    );
+    expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+    expect(signalSeen).toEqual([controller.signal]);
+    expect(signalSeen[0]?.aborted).toBe(true);
+    expect(harness.applyPlans).toHaveLength(1);
+  });
+
+  test("does not apply providers when the AbortSignal is already aborted", async () => {
     const controller = new AbortController();
     controller.abort();
-    const harness = makeStartLayer({ signalSeen });
-
+    const harness = makeStartLayer();
     const exit = await Effect.runPromiseExit(
       startApp({ signal: controller.signal }).pipe(Effect.provide(harness.layer)),
     );
     expect(Exit.isFailure(exit) && Cause.hasInterruptsOnly(exit.cause)).toBe(true);
-
-    expect(signalSeen).toEqual([true]);
+    expect(harness.applyPlans).toEqual([]);
   });
 
   test("publishes pre-start before auto-starting required global services", async () => {
@@ -2142,7 +2310,18 @@ describe("lando start", () => {
         );
         expect(globalCompleteAt).toBeGreaterThan(-1);
         expect(userApplyStartAt).toBeGreaterThan(globalCompleteAt);
-        expect(harness.applyPlans.map((applied) => String(applied.id))).toEqual(["global", "test-start"]);
+        const globalApplies = harness.applyPlans.slice(0, -1);
+        expect(globalApplies.length).toBeGreaterThan(0);
+        expect(
+          globalApplies.every(
+            (applied) =>
+              applied.id === "global" &&
+              applied.root === makeLandoPaths().globalAppRoot &&
+              Object.hasOwn(applied.services, "traefik"),
+          ),
+        ).toBe(true);
+        expect(harness.applyPlans.at(-1)?.id).toBe(userPlan.id);
+        expect(harness.applyPlans.filter((applied) => applied.id === userPlan.id)).toHaveLength(1);
       } finally {
         await rm(moduleRoot, { recursive: true, force: true });
       }
@@ -2181,7 +2360,7 @@ describe("lando start", () => {
           expect(error.services).toEqual(["traefik"]);
           expect(error.cause).toBeInstanceOf(GlobalServiceMissingError);
           expect(error.remediation).toBe(
-            "Run `lando global:install <plugin>` to enable the required global service(s).",
+            "Install the plugin that contributes traefik, then run `lando global:list`.",
           );
           expect(error.remediation).not.toContain("manually");
           expect(error.remediation).not.toContain("global:start");

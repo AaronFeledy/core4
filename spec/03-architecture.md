@@ -37,8 +37,8 @@ Levels form a chain `none` → `minimal` → `plugins` → `commands`; `tooling`
 | `tooling` | Command services plus cache-only `ToolingProgram` and app-plan access | `commands` + lazy selected `ToolingEngine`; no live provider or full planner |
 | `provider` | Provider selection and provider-dependent subsystems | `commands` + eager `RuntimeProviderRegistry`, engine-private `FileSyncResolver`; lazy `CertificateAuthority`, `RouterService`, `DataMover` |
 | `global` | Global-app lifecycle (§20) | `provider` + eager `GlobalAppService` and global-root `LandofileService`; lazy `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner` |
-| `scratch` | Scoped scratch-app lifecycle (§21) | `provider` + eager `ScratchAppService` and arbitrary-root `LandofileService`; lazy `AppPlanner`, `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner`, conditional `HostProxyService`, conditional `GlobalAppService` |
-| `app` | Full user-app planning and lifecycle | `global` + eager user-root `AppPlanner` and `LandofileService`; lazy `HealthcheckRunner`, `CheckRunner`, `HostProxyService`, `TunnelService`, `BuildOrchestrator`; no globally provided `FileSyncEngine` (selected engines are scope-acquired through the provider-tier `FileSyncResolver`) |
+| `scratch` | Scoped scratch-app lifecycle (§21) | `provider` + eager `ScratchAppService` and arbitrary-root `LandofileService`; lazy `AppPlanner`, `BuildOrchestrator`, `HealthcheckRunner`, `CheckRunner`, conditional host-proxy worker, conditional `GlobalAppService` |
+| `app` | Full user-app planning and lifecycle | `global` + eager user-root `AppPlanner` and `LandofileService`; lazy `HealthcheckRunner`, `CheckRunner`, host-proxy worker, `TunnelService`, `BuildOrchestrator`; no globally provided `FileSyncEngine` (selected engines are scope-acquired through the provider-tier `FileSyncResolver`) |
 
 The `LandoCommandSpec` registry is canonical for built-in command-to-level assignment, and a plugin command's validated `ExecutableCommandSpec` `bootstrap` is canonical for that command (§8.3). Levels `minimal` through `app` emit `pre-bootstrap-<level>` and `post-bootstrap-<level>`, followed by `post-bootstrap` and `ready`; `none` emits no events through the command-base path.
 
@@ -110,7 +110,6 @@ All services are consumed through their tags inside Effect. Core-provided does n
 | `InteractionService` | Typed prompt and answer-source resolution (§8.10) |
 | `DeprecationService` | Record, deduplicate, publish, and query deprecated-surface use (§18) |
 | `DoctorService` | Isolated host, app, provider, plugin, and deprecation diagnostics (§10.9) |
-| `HostProxyService` | Authenticated per-app container-to-host RPC (§10.10) |
 | `TunnelService` | Public sharing sessions; core ships no always-on default (§10.2.2) |
 | `McpService` | Retained-runtime MCP projection and dispatch (§10.14); not plugin-replaceable |
 | `GlobalAppService` | Global app regeneration, planning, lifecycle, and auto-start (§20) |

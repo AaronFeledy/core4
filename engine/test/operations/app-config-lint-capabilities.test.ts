@@ -26,6 +26,34 @@ const lint = (root: string, capabilities: ProviderCapabilities | undefined) =>
   );
 
 test.each([
+  ["node", undefined, true],
+  ["node", false, true],
+  ["node", true, false],
+  ["compose", undefined, true],
+  ["compose", true, false],
+  ["compose", false, true],
+] as const)("lint admits %s init=%s without support: %s", async (type, init, valid) => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-init-lint-"));
+  try {
+    await writeFile(
+      join(root, ".lando.yml"),
+      `name: initlint\nservices:\n  web:\n    type: ${type === "node" ? "node:22" : type}\n    image: node:22-alpine\n    home: false\n    appMount: false\n${init === undefined ? "" : `    init: ${init}\n`}`,
+    );
+    // When
+    const result = await lint(root, { ...TestRuntimeProvider.capabilities, serviceInit: false });
+    // Then
+    expect(result.valid).toBe(valid);
+    const findings = result.violations.filter((issue) => issue.path.join(".") === "services.web.init");
+    expect(findings.map((issue) => issue.severity)).toEqual(
+      init === undefined ? ["warning"] : valid ? [] : ["error"],
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
   "ipv4_address",
   "ipv6_address",
   "link_local_ips",

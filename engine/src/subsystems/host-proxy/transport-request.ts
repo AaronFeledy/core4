@@ -96,7 +96,7 @@ export const messageHeaders = (
     appId: headerValue(request, "x-lando-host-proxy-app"),
     token: authorization.startsWith(bearerPrefix) ? authorization.slice(bearerPrefix.length) : "",
     callerService: headerValue(request, "x-lando-host-proxy-caller") || options.callerService,
-    depth: Number.isFinite(depth) ? depth : 0,
+    depth,
   };
 };
 

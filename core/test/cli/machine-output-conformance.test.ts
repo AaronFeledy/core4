@@ -6,6 +6,7 @@ import { Arbitrary, Effect, Option, Schema } from "effect";
 
 import { makeTestRuntime } from "@lando/core/testing";
 import type { AppConfigResult } from "@lando/engine/operations/app-config-result";
+import type { GlobalPolicyChangeResult } from "@lando/engine/operations/global-policy";
 import type { LogsAppResult } from "@lando/engine/operations/logs";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { RedactionService } from "@lando/redaction/service";
@@ -105,6 +106,37 @@ const globalConfigResultCommandIds = new Set<string>([
   "meta:global:config:validate",
 ]);
 
+// Large nested policy results exhaust the YAML-safe arbitrary filter; use valid no-op previews.
+const globalPolicySuccessValues = new Map<string, GlobalPolicyChangeResult>(
+  (["enable", "disable", "reconcile"] as const).map((operation) => [
+    `meta:global:${operation}`,
+    {
+      operation,
+      dryRun: true,
+      revision: 1,
+      policySaved: false,
+      contributions: [],
+      plugins: [],
+      states: [],
+      servicesRemoved: [],
+      pending: [],
+      impact: {
+        desired: operation === "reconcile" ? "unchanged" : operation === "enable" ? "enabled" : "disabled",
+        policyChanges: false,
+        contributions: [],
+        plugins: [],
+        dependencyBlockers: [],
+        consumers: [],
+        allowDisruption: false,
+        routes: [],
+        volumes: "retained",
+        uncertainties: [],
+        validationErrors: [],
+      },
+    },
+  ]),
+);
+
 // Effect 4's string arbitrary can emit lone surrogates, which no YAML document can carry.
 const isWellFormedDeep = (value: unknown): boolean => {
   if (typeof value === "string") return value.isWellFormed();
@@ -119,6 +151,8 @@ const successValueFor = (spec: LandoCommandSpec): unknown => {
   const appConfigValue = appConfigSuccessValues.get(spec.id);
   if (appConfigValue !== undefined) return appConfigValue;
   if (globalConfigResultCommandIds.has(spec.id)) return {};
+  const globalPolicyValue = globalPolicySuccessValues.get(spec.id);
+  if (globalPolicyValue !== undefined) return globalPolicyValue;
   if (spec.id === "app:share") return tunnelSessionSample;
   if (spec.id === "app:share:list") return [tunnelSessionSample];
   if (spec.id === "app:logs" || spec.id === "meta:global:logs") {

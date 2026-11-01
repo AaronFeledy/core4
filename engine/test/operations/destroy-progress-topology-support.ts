@@ -123,7 +123,7 @@ export const makeHarness = (
         }),
     ...(options.quiesceEffect === undefined
       ? {}
-      : { quiesceForFileSync: () => options.quiesceEffect ?? Effect.void }),
+      : { quiesceForFileSync: () => (options.quiesceEffect ?? Effect.void).pipe(Effect.as({})) }),
     execStream: () => Stream.empty,
     logs: () => Stream.empty,
   };

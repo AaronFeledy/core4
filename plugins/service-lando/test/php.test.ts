@@ -611,7 +611,7 @@ describe("php serving modes (via:)", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-cli-bookworm" });
     expect(plan.endpoints).toEqual([]);
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
   });
 

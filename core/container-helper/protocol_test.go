@@ -83,11 +83,9 @@ func TestRunLandoRequestMatchesSharedFixture(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	var stdout, stderr bytes.Buffer
-	env := map[string]string{
-		"LANDO_HOST_PROXY_URL": server.URL, "LANDO_HOST_PROXY_SESSION": "session",
-		"LANDO_HOST_PROXY_APP": "app", "LANDO_HOST_PROXY_TOKEN": "token",
-		"LANG": "C.UTF-8", "TERM": "xterm-256color", "SECRET_TOKEN": "not-forwarded",
-	}
+	env := proxyEnv(t)
+	env["LANDO_HOST_PROXY_URL"] = server.URL
+	env["LANG"], env["TERM"], env["SECRET_TOKEN"] = "C.UTF-8", "xterm-256color", "not-forwarded"
 
 	code := runHostProxy(ctx, []string{"info", "a b", ""}, helperIO{strings.NewReader(""), &stdout, &stderr, env})
 

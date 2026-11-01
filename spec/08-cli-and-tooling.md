@@ -110,16 +110,17 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `plugins` | Read or write the global app Landofile without an eager provider runtime |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
+| `meta:global:disable` | `global:disable` | `global` | Save disabled policy for selectors or `--all`; protect running/unknown consumers unless invocation-scoped `--allow-disruption`; ownership-verified selected cleanup and generation; named volumes retained; `--dry-run` previews without writes |
+| `meta:global:enable` | `global:enable` | `global` | Enable contribution/package selectors or `--all`; regenerate without starting; `--dry-run` previews without writes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |
-| `meta:global:install` | `global:install` | `global` | Enable `globalServices:`, write `global.config.yml`, regenerate `dist`; does not start |
-| `meta:global:list` | `global:list` | `minimal` | List global services, enablement, source, status |
+| `meta:global:list` | `global:list` | `plugins` | List current contribution eligibility, policy source, capability evidence, and retained policies without provider runtime construction |
 | `meta:global:logs` | `global:logs` | `global` | Stream global logs |
 | `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then revalidate the router (§20.6.5) |
+| `meta:global:reconcile` | `global:reconcile` | `global` | Preserve policy, repeat consumer protection, retry pending cleanup, and generate eligible config without starting; invocation-scoped `--allow-disruption`; `--dry-run` previews without writes |
 | `meta:global:restart` | `global:restart` | `global` | Global stop, then start, then router startup revalidation (§20.6.5) |
 | `meta:global:start` | `global:start` | `global` | Start all or repeated `--service` subset |
-| `meta:global:status` | `global:status` | `global` | Report global app status |
+| `meta:global:status` | `global:status` | `global` | Report desired policy, observed state, and pending work without requiring a valid desired Landofile |
 | `meta:global:stop` | `global:stop` | `global` | Stop global services |
-| `meta:global:uninstall` | `global:uninstall` | `global` | Disable contributions and stop affected services |
 | `meta:mcp` | `mcp` | `plugins` | MCP over stdio; `--allow`, `--deny`, `--tooling`, `--list` |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install plugin |
 | `meta:plugin:build` | none | `minimal` | Build (including declarations) through the private Bun self-execution wrapper |
@@ -294,6 +295,8 @@ Process-backed commands explicitly classify their typed process exit code: nonze
 
 Read-only and non-destructive commands MAY set `mcpAllowed`; destructive commands MUST NOT. A command is destructive for MCP when it is on the core forbidden list, its id ends in a §8.3.1 destructive verb, or it declares `yes`. `mcpAllowed` nominates a command for the default set; omitting it does not prevent explicit allowance of a validated command. MCP's destructive classification and confirmation apply even when a command's `yes` declaration is a no-op on the direct CLI. A destructive built-in self-allow returns `McpAllowlistConflictError` at registration; a destructive plugin descriptor with `mcpAllowed` is excluded from defaults and reported as an `McpAllowlistConflictError` diagnostic, and stays explicitly allowable with confirmation through `yes` or elicitation. Host-proxy lifecycle commands MUST NOT self-allow; denied requests return `HostProxyCommandNotAllowedError`. Missing required registry metadata or `resultSchema` returns `CommandRegistrationError`.
 
+The core forbidden list includes `meta:global:disable` and `meta:global:reconcile` because they can remove containers and routes. Their explicitly allowed MCP tools MUST report `destructive: true`. These policy commands retain their separate acknowledgement contract (§20.3.1): no `yes` flag or generic elicitation is added; `allow-disruption` acknowledges consumer impact for that invocation only and never bypasses ownership, dependency, or active-admission safeguards.
+
 Command registration and invocation preserve these schema-backed `_tag` values:
 
 | `_tag` | Boundary |
@@ -361,7 +364,7 @@ Metadata MUST normalize once after layers/includes and drive CLI, help, machine 
 `ToolingTask` includes:
 
 - Command graph: `cmd`, ordered `cmds`, `deps`, `aliases`, `namespace`, `topLevelAlias`, `internal`, `disabled`.
-- Execution: `service`, `engine`, `bootstrap`, `user`, `dir`, `appMount`, `stdio`, `interactive`, `passThrough`, `hostProxyAllowed`.
+- Execution: `service`, `engine`, `bootstrap`, `user`, `dir`, `appMount`, `stdio`, `interactive`, `passThrough`.
 - Data: `vars`, `env`, `dotenv`, `flags: FlagSpec`, `args: ArgSpec`.
 - Freshness and policy: `sources`, `generates`, `method`, `status`, `preconditions`, `if`, `run`, `platforms`, `output`, `failFast`, `silent`.
 - Documentation and evolution: `desc`, `summary`, `description`, `usage`, `examples`, `deprecated: DeprecationNotice`.
@@ -385,7 +388,7 @@ MCP tooling call events MUST NOT project request-derived `appRef` before authori
 
 MCP tooling input schemas MUST project the canonical declaration into real `enum`, typed `default`, boolean type (including false), member `required` plus required parent groups, and `additionalProperties: false`. Sensitive members use `writeOnly: true`; `x-lando-input-revision` and `x-lando-accepts-arguments` expose the revision and raw policy. Defaults MUST NOT exist only in descriptions. Generic MCP/event admission MUST NOT bind against retained metadata; authoritative execution remains the single binder.
 
-`ToolingTaskInput` accepts a `ToolingTaskShape` object, literal `false`, or a non-empty string other than the exact string `disabled`. Literal `false` decodes to `{ disabled: true }`; a command string decodes to `{ cmd: <string> }`. The bare string `disabled` is rejected with remediation to use `false`; object-form `cmd: disabled` remains valid. Shorthands are interpreted after layer composition and replace an inherited task of the same name wholesale. An empty shorthand string is invalid; an object may still contain `cmd: ""`. `cmd` normalizes to one ordered `cmds` step. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
+`ToolingTaskInput` accepts a `ToolingTaskShape` object, literal `false`, or a non-empty string other than the exact string `disabled`. Literal `false` decodes to `{ disabled: true }`; a command string decodes to `{ cmd: <string> }`. The bare string `disabled` is rejected with remediation to use `false`; object-form `cmd: disabled` remains valid. Shorthands are interpreted after layer composition and replace an inherited task of the same name wholesale. An empty shorthand string is invalid; an object may still contain `cmd: ""`. `cmd` normalizes to one ordered `cmds` step. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. Tooling tasks are never host-proxy eligible (§10.10, §12.1).
 
 #### 8.5.2 Commands and dependencies
 
@@ -500,7 +503,7 @@ Tooling caches and paths are persisted contracts:
 |---|---|
 | `app-command` / app command index | Routing metadata at `<userCacheRoot>/apps/<app-id>/commands.bin` |
 | app-plan cache | Compiled `ToolingProgram` and app plan (§12.1) |
-| `host-proxy-allowlist` | Canonical host-proxy command/task ids |
+| `host-proxy-allowlist` | Canonical built-in command ids permitted through host-proxy |
 | `.lando/scripts/**/*.bun.sh` | Auto-discovered CLI task source |
 | `LANDO_INPUT` | Data-only `ToolingInputValues` JSON: exactly `{ flags, args }` for script tasks (§8.5.9) |
 

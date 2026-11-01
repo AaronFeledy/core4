@@ -69,6 +69,7 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
     ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
     ...(draft.command === undefined ? {} : { command: draft.command }),
     ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
+    ...(draft.init === undefined ? {} : { init: draft.init }),
     environment: sortRecord(draft.environment),
     ...(draft.connection !== undefined
       ? { connection: draft.connection }

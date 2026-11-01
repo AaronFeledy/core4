@@ -8,6 +8,7 @@ import { Effect, Layer } from "effect";
 import { readGlobalLandofile } from "../../src/operations/global-plan.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { globalPolicyFixture } from "./global-policy-fixture.ts";
 
 test.each(["node:22", "compose"])("merges global declared logs before decoding (%s)", async (type) => {
   // Given a generated global service and an authored override for the same log source.
@@ -42,6 +43,7 @@ test.each(["node:22", "compose"])("merges global declared logs before decoding (
       readGlobalLandofile().pipe(
         Effect.provide(
           Layer.mergeAll(
+            globalPolicyFixture,
             makeTestStateStore().layer,
             BunFileSystem.layer,
             Layer.succeed(GlobalAppService, globalApp),

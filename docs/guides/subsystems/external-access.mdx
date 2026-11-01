@@ -105,7 +105,7 @@ Many home and office resolvers/routers also drop DNS answers that map a public-l
 
 Lando has no flag that changes host DNS or turns that protection off. Choose the fix for your network:
 
-- Configure a local dnsmasq or OS resolver rule that maps `*.<domain>` to `127.0.0.1`, or add hosts entries for individual names. Use your `proxy.defaultDomain` (default `lndo.site`). See [Resolve lndo.site on this machine](./host-proxy.mdx).
+- Configure a local dnsmasq or OS resolver rule that maps `*.<domain>` to `127.0.0.1`, or add hosts entries for individual names. Use your `proxy.defaultDomain` (default `lndo.site`). See [Resolve lndo.site on this machine](./host-dns.mdx).
 - If your resolver blocks loopback answers, allowlist the specific development zone, including `lndo.site` if you use it. Keep DNS-rebinding protection enabled for other zones.
 - From another device, use the LAN `IP:port` from the bind above, or configure that device's hostname resolution to the app host's LAN IP, not loopback.
 

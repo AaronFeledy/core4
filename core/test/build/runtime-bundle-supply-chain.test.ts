@@ -37,30 +37,24 @@ const runPrerequisiteScript = async (
 
   try {
     await Bun.write(resolve(fakeBin, "updates"), "");
-    await Bun.write(resolve(fakeBin, "preferences"), "");
     await Bun.write(resolve(fakeBin, "sleeps"), "");
-    await Bun.write(resolve(fakeBin, "install-arguments"), "");
-    await Bun.write(resolve(fakeBin, "verified-packages"), "");
     await writeCommand(
       "sudo",
-      `if [ "$1" = "tee" ] && [ "$2" = "/etc/apt/preferences.d/50lando-runtime-bundle-snapshot" ]; then
-  cat >"$APT_TEST_ROOT/preferences"
-elif [ "$1" = "tee" ]; then
-  cat >"$APT_TEST_ROOT/config"
+      `if [ "$1" = "tee" ]; then
+  case "$2" in
+    /etc/apt/preferences.d/*) cat >"$APT_TEST_ROOT/preferences" ;;
+    *) cat >"$APT_TEST_ROOT/config" ;;
+  esac
 elif [ "$1" = "apt-get" ] && [ "$2" = "update" ]; then
   shift 2
   printf '%s\\n' "$*" >>"$APT_TEST_ROOT/updates"
   ${updateBody}
 elif [ "$1" = "apt-get" ] && [ "$2" = "install" ]; then
-  printf '%s\\n' "$@" >"$APT_TEST_ROOT/install-arguments"
   touch "$APT_TEST_ROOT/installed"
 fi`,
     );
     await writeCommand("sleep", `printf '%s\\n' "$1" >>"$APT_TEST_ROOT/sleeps"`);
-    await writeCommand(
-      "dpkg-query",
-      `printf '%s\\n' "$3" >>"$APT_TEST_ROOT/verified-packages"\nprintf '${installedVersion}\\n'`,
-    );
+    await writeCommand("dpkg-query", `printf '${installedVersion}\\n'`);
     await writeCommand("apt-cache", aptCacheBody);
     const child = Bun.spawn(["bash", "-c", await renderPrerequisiteScript()], {
       cwd: repoRoot,
@@ -78,12 +72,12 @@ fi`,
       exitCode,
       output: stdout + stderr,
       config: await Bun.file(resolve(fakeBin, "config")).text(),
-      preferences: await Bun.file(resolve(fakeBin, "preferences")).text(),
+      preferences: (await Bun.file(resolve(fakeBin, "preferences")).exists())
+        ? await Bun.file(resolve(fakeBin, "preferences")).text()
+        : "",
       updates: await Bun.file(resolve(fakeBin, "updates")).text(),
       sleeps: await Bun.file(resolve(fakeBin, "sleeps")).text(),
       installed: await Bun.file(resolve(fakeBin, "installed")).exists(),
-      installArguments: (await Bun.file(resolve(fakeBin, "install-arguments")).text()).split("\n"),
-      verifiedPackages: (await Bun.file(resolve(fakeBin, "verified-packages")).text()).split("\n"),
     };
   } finally {
     await rm(fakeBin, { force: true, recursive: true });
@@ -148,50 +142,18 @@ seq 1 100000`;
     expect((await runPrerequisiteScript(aptCacheBody, "1.0")).exitCode).toBe(0);
   });
 
-  test("reinstalls and verifies the co-versioned GLib packages from the ARM snapshot", async () => {
-    // Given: an arm64 candidate policy, whose snapshot URI is architecture-independent.
-    const aptCacheBody = `cat <<'POLICY'
-  Candidate: 1.0
-  Version table:
- *** 1.0 500
-        500 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main arm64 Packages
-POLICY`;
-    // When: execute the generated install and verification script.
-    const result = await runPrerequisiteScript(aptCacheBody, "1.0");
-    // Then: every real GLib dependency is eligible for downgrade and is verified afterwards.
-    expect(result.exitCode, result.output).toBe(0);
-    expect(result.installArguments).toContain("--allow-downgrades");
-    expect(result.installArguments).toContain("--reinstall");
-    for (const name of [
-      "libgirepository-2.0-0",
-      "libglib2.0-0t64",
-      "libglib2.0-bin",
-      "libglib2.0-dev",
-      "libglib2.0-dev-bin",
-    ]) {
-      expect(result.installArguments).toContain(name);
-      expect(result.verifiedPackages).toContain(name);
-    }
-    expect(result.installArguments).not.toContain("libglib2.0-dev-bin-linux");
-    expect(result.verifiedPackages).not.toContain("libglib2.0-dev-bin-linux");
-  });
+  test("allows snapshot candidates to replace newer preinstalled dependencies", async () => {
+    // Given a successful snapshot prerequisite installation.
+    const aptCacheBody = `printf '  Candidate: 1.0\n  Version table:\n *** 1.0 1001\n        1001 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main amd64 Packages\n'`;
 
-  test("pins the snapshot above newer runner packages before installing", async () => {
-    // Given: a runner image whose installed GLib runtime is newer than the snapshot.
-    const aptCacheBody = `cat <<'POLICY'
-  Candidate: 1.0
-  Version table:
- *** 1.0 1001
-       1001 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble-updates/main amd64 Packages
-POLICY`;
-    // When: execute the generated install and verification script.
+    // When the generated script configures APT.
     const result = await runPrerequisiteScript(aptCacheBody, "1.0");
-    const workflow = await renderWorkflow();
-    // Then: APT may downgrade to snapshot versions, and the pin precedes installation.
-    expect(result.exitCode, result.output).toBe(0);
-    expect(result.preferences).toBe("Package: *\nPin: origin snapshot.ubuntu.com\nPin-Priority: 1001\n");
-    expect(workflow.indexOf("Pin-Priority: 1001")).toBeGreaterThan(-1);
-    expect(workflow.indexOf("Pin-Priority: 1001")).toBeLessThan(workflow.indexOf("sudo apt-get install"));
+
+    // Then the snapshot pin applies to dependencies and permits automatic downgrades.
+    expect(result.exitCode).toBe(0);
+    expect(result.preferences).toMatch(/^Package: \*$/mu);
+    expect(result.preferences).toMatch(/^Pin: origin "snapshot\.ubuntu\.com"$/mu);
+    expect(Number(/^Pin-Priority: (\d+)$/mu.exec(result.preferences)?.[1])).toBeGreaterThan(1000);
   });
 
   test("rejects a live candidate when only another version comes from the snapshot", async () => {

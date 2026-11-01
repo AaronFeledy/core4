@@ -15,7 +15,7 @@ export const APACHE_DEFAULT_SITE_BUILD_STEP_ID = "service-lando.php:apache-defau
 
 export const PHP_FPM_PORT = 9000;
 export const PHP_APACHE_PORT = 80;
-export const PHP_CLI_KEEP_ALIVE: ReadonlyArray<string> = ["sh", "-c", "tail -f /dev/null"];
+export const PHP_CLI_KEEP_ALIVE: ReadonlyArray<string> = ["tail", "-f", "/dev/null"];
 
 export const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {

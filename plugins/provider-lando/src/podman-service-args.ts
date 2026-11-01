@@ -41,6 +41,7 @@ export const buildPodmanServiceArgs = (p: {
       CONTAINERS_REGISTRIES_CONF: `${p.configDir}/registries.conf`,
       XDG_CONFIG_HOME: p.configDir,
       DISABLE_HC_SYSTEMD: "true",
+      LANDO_MANAGED_CONFIG_REVISION: "2-native-init",
       ...(pathValue === undefined ? {} : { PATH: pathValue }),
     },
     args: buildManagedRuntimeServiceArgs({

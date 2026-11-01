@@ -477,6 +477,7 @@ test.each(["plain", "lando"])("plugin topic honors active %s renderer on a TTY",
     const script = `import {runCli} from ${JSON.stringify(join(repo, "core/src/cli/index.ts"))};
 Object.defineProperty(process.stdout, "isTTY", { value: true });
 delete process.env.NO_COLOR;
+process.env.TERM = "xterm-256color";
 await runCli({ argv: ["help", "local", "--renderer=${renderer}"], rootUrl: ${JSON.stringify(cli)} });`;
     // When
     const child = Bun.spawn([process.execPath, "--eval", script], {

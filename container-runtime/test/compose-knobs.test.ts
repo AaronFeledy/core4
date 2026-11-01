@@ -46,7 +46,6 @@ const captureInvalid = (compose: Record<string, unknown>): ReadonlyArray<Invalid
 
 const BOOLEAN_KNOBS = [
   ["privileged", "Privileged"],
-  ["init", "Init"],
   ["read_only", "ReadonlyRootfs"],
 ] as const;
 
