@@ -26,7 +26,7 @@ lando app:config:translate --from lando3 --write
 lando app:config:lint
 ```
 
-`--write` commits every layer through one managed-file transaction. Before any byte moves, each file it will replace or remove gets an immutable backup beside it named `<file>.bak.<sha256>`, where the digest is the SHA-256 of the original bytes. The write summary lists `written`, `backups`, and `removed`.
+`--write` commits every layer through one managed-file transaction. Before any byte moves, each file it will replace or remove gets an immutable backup beside it named `<file>.bak.<sha256>`, where the digest is the SHA-256 of the original bytes. The human output ends with a receipt: how many files it wrote, removed, and backed up, where each backup is, how many diagnostics need review, and a reminder to run `lando app:config:lint`.
 
 Three guarantees come with that transaction:
 
@@ -115,13 +115,15 @@ See [Replace or remove a value with `!override` and `!reset`](./your-landofile.m
 | Kind | Meaning | Blocks `--write` |
 | --- | --- | --- |
 | `generated` | Lando 4 produced this from a recipe or a default | No |
-| `rewritten` | Same intent, new spelling (`portforward` became `ports`) | No |
+| `rewritten` | Same behavior, new spelling (`portforward` became `ports`) | No |
 | `dropped` | No Lando 4 equivalent; set it by hand if you still need it | No |
-| `needs-review` | Converted, but look at it before you start the app | No |
+| `needs-review` | Converted, but the behavior differs from Lando 3; read it before you start the app | No |
 | `non-portable` | Previews, but will not write | Yes |
 | `unsupported` | Cannot be expressed; empties the preview | Yes |
 
-Each diagnostic carries `sourceId`, `keyPath`, `message`, and `remediation`. Preview and `--write` emit the same list, so what you reviewed is what lands.
+Each diagnostic carries `sourceId`, `keyPath` (the key or list index in the file that set it), `message`, and `remediation`. Preview and `--write` emit the same list, so what you reviewed is what lands. The human output starts with a count per kind, lists blocking and review items first with their remediation, and folds sibling keys that share one message into a single line; `--format=json` keeps every diagnostic.
+
+Conversion accounts for every setting it reads. A setting it has no rule for is still reported as `dropped` with the message `Conversion has no rule for <path>, so it was left out.` Set that value by hand, and report it so conversion can handle it.
 
 Lando 3 removed tooling tasks whose values weren't mappings. The converter keeps `false` unchanged, without a diagnostic. Every other non-mapping task value, including `disabled`, becomes `false` with a `rewritten` note. That includes a command-looking string: conversion keeps the task disabled rather than turning it into a runnable Lando 4 string task.
 
@@ -133,7 +135,7 @@ A third family covers service homes. Lando 3 kept a home directory for every ser
 
 ## What converts and what doesn't
 
-Review converted startup probes separately from native container monitoring. For API-4 and raw Lando 3 services, every supported top-level `healthcheck` form becomes Lando 4 `readiness`, including strings, argv, objects, and `false`; a probe user remains a container identity. Nested Compose healthchecks stay native `healthcheck`. A catalog-service dialect that ignored healthcheck still ignores it and reports that in conversion diagnostics. After conversion, `healthcheck` and `readiness` have independent overrides and disabling rules; see [Make start wait for your app](../services/wait-for-your-app.mdx).
+Review converted startup probes separately from native container monitoring. For API-4 `type: lando` and raw Lando 3 services, every top-level `healthcheck` form that Lando 3 ran becomes Lando 4 `readiness`, including strings, argv, objects, and `false`; a probe user remains a container identity. `healthcheck: true` has no command, so Lando 3 skipped it and conversion drops it. Lando 3 never ran healthchecks for `type: l337` services, so conversion drops those too. Nested Compose healthchecks stay native `healthcheck`. A catalog-service dialect that ignored healthcheck still ignores it and reports that in conversion diagnostics. After conversion, `healthcheck` and `readiness` have independent overrides and disabling rules; see [Make start wait for your app](../services/wait-for-your-app.mdx).
 
 Nothing falls through silently. When a key has both a supported form and a rejected form, the rejected form blocks `--write`.
 
@@ -141,8 +143,16 @@ Nothing falls through silently. When a key has both a supported form and a rejec
 | --- | --- | --- |
 | A bundled recipe from the table above, with its `config:` | The matching Lando 4 recipe with `options` | No |
 | A service type and version Lando 4 ships (`php:8.3`, `mariadb:11.4`, `redis:7`) | The same service | No |
+| An exact release inside a version line Lando 4 ships (`node:24.7.0`, `php:8.2.10`) | That line (`node:24`, `php:8.2`), with a `needs-review` note | No |
+| A service with no version | Lando 3's default version when Lando 4 ships it; otherwise a `needs-review` note, or `unsupported` for `php`, `go`, `python`, and `ruby`. See [Service versions](#service-versions) | Only for those four |
 | Supported `portforward`, override fields, `build_as_root`, `build`, `run_as_root`, `run`, `proxy` routes, `tooling`, `events`, and text `!load` / `!import` | Native Lando 4 keys, with a `rewritten` or `generated` note | No |
 | `moreHttpPorts`, `plugins`, `pluginDirs`, tooling `level`, `usage`, `examples`, and `interactive` | `dropped`, with where to set it by hand | No |
+| `PGPORT`, `MYSQL_TCP_PORT`, `MSSQL_TCP_PORT`, `RABBITMQ_NODE_PORT`, or `APACHE_PORT` on the service type that owns it | `port:`, with a `needs-review` note. See [Service ports](#service-ports) | No |
+| `ssl: true` on a catalog service | `certs: true`, plus a `needs-review` note when Lando 3 also published the HTTPS port | No |
+| `api: 4` `type: l337` | A Lando 4 `compose` service. See [`l337` services](#l337-services) | No |
+| One of those variables that disagrees with `port:` or isn't a port number | `unsupported` | Yes |
+| `api: 4` app-mount `source`, mount ownership, a camelCase `readOnly`, and `endpoints` | `dropped`. See [Mounts on `api: 4` services](#mounts-on-api-4-services) | No |
+| `api: 4` storage with `scope: global` | `unsupported` | Yes |
 | `keys` | `dropped`. Lando 4 has no key list: the SSH agent sidecar loads your default `~/.ssh` keys, and hardware-backed or 1Password keys use [host agent forwarding](../subsystems/ssh-host-agent.mdx) with `sshAgent: { sidecar: false }` | No |
 | A version Lando 4 doesn't ship (PHP 7.4, Node 18, MariaDB 10.6, Postgres 14, Solr 8) | `unsupported`, naming the versions you can pick | Yes |
 | Compose `tty`, `stdin_open`, `links`, `network_mode`, or `container_name`; image build `ssh`; Varnish with several backends; Elasticsearch or OpenSearch `plugins` | `unsupported` | Yes |
@@ -150,6 +160,66 @@ Nothing falls through silently. When a key has both a supported form and a rejec
 | Hosting-platform recipes, `drupal7` through `drupal9`, and unbundled recipes | Rejected with `ConfigTranslateError` | Yes |
 
 The versions that convert are exactly the ones listed in [Service type versions](../../reference/service-types.mdx). Lando 4 never builds an image for a version it doesn't ship. Bump the version in your Lando 3 file first, check the app still works on Lando 3, then convert.
+
+### Service versions
+
+An exact release such as `node:24.7.0` converts to the version line Lando 4 ships that contains it, here `node:24`, which tracks the newest 24.x release. The `needs-review` note tells you to check the app on that line.
+
+When a Lando 3 service names no version, Lando 3 used its plugin's default, such as `mysql` 5.7, `postgres` 10, or `node` 14. Conversion keeps that version when Lando 4 ships it. When Lando 4 doesn't, the service stays unversioned and a `needs-review` note explains that Lando 4 will choose the version itself (for `node`, from `.nvmrc` or `package.json` `engines.node`). Pin the version that matches your data before you start the app. `php`, `go`, `python`, and `ruby` always need a version in Lando 4, so an unversioned one is `unsupported` until you set it in the Lando 3 file.
+
+## Service ports
+
+Lando 4 database and phpMyAdmin services listen on `port:` and set their server's own port variable from it. A Lando 3 service that set that variable directly converts to `port:`, and `portforward` publishes that same port:
+
+```yaml nolint
+# Lando 3 .lando.yml
+services:
+  database:
+    type: postgres:16
+    portforward: true
+    environment:
+      PGPORT: "5433"
+```
+
+```yaml
+# Converted .lando.yml
+services:
+  database:
+    type: postgres:16
+    port: 5433
+    ports:
+      - "5433"
+```
+
+| Service type | Variable that becomes `port:` |
+| --- | --- |
+| `mysql`, `mariadb` | `MYSQL_TCP_PORT` |
+| `postgres` | `PGPORT` |
+| `mssql` | `MSSQL_TCP_PORT` |
+| `rabbitmq` | `RABBITMQ_NODE_PORT` |
+| `phpmyadmin` | `APACHE_PORT` |
+
+The note is `needs-review` because this changes behavior. Lando 3 never read these variables, so its server kept the default port while clients in that container used the variable. If the variable only pointed those clients at another server, remove `port:` after converting and configure that connection instead. A `portforward` publishes the service's `port:`, as it did in Lando 3.
+
+A variable that disagrees with the service's `port:`, or a value that isn't a port number, is `unsupported`, because Lando 4 refuses to plan either one. That includes a `${...}` reference, which conversion can't resolve. Make the two values agree in the Lando 3 file, or replace the variable with `port:`, then convert again. The same variable on any other service type stays in `environment` unchanged.
+
+## Mounts on `api: 4` services
+
+Conversion reads `app-mount`, `mounts`, and `storage` on `api: 4` services the way Lando 3 did, including the aliases Lando 3 accepted, and reports each setting Lando 4 can't express:
+
+- `appMount`, `appmount`, and `app-mount` all set the app mount. When more than one is present, Lando 3 used the first of those three, and conversion drops the others. `mount` entries follow `mounts`, and `persistent-storage` entries follow `storage`.
+- `src` stands for `source`, and `destination` or `dest` stands for `target`.
+- Lando 3 always mounted the app root as the app mount and ignored its `source`. Conversion keeps the app root at the same target and reports `source` as `dropped`. To serve a different directory at that path, add a `mounts:` entry with the same target after converting. It replaces the app mount and keeps the app path variables.
+- A `:ro` suffix, as in `app-mount: /app:ro` or `./config:/etc/app:ro`, becomes `readOnly: true`, and so does Compose's `read_only: true`. Lando 3 passed a camelCase `readOnly` key to Compose, which doesn't accept it, so conversion drops that key.
+- A `!path` entry in `excludes` reopened that path from the app root. On the app mount it becomes an `includes` entry. On any other mount, conversion adds a separate bind of `./path` at that location, because Lando 3 re-bound it from the app root rather than from the mount's source.
+- `type: copy` becomes a live bind with a `needs-review` note, because the files are no longer copied into the image. Ownership settings (`owner`, `user`, `group`, `permissions`) have no Lando 4 mount equivalent and are dropped; set ownership in an image build step instead.
+- `storage` keeps Lando 3's volume sharing. A service-scoped entry gets its own volume named `<app>-<service>-<target>`, so two services that both store `/data` keep separate data. `scope: app` and `scope: project` share one volume named `<app>-<target>`. An explicit `source` keeps its name. Conversion does not move data out of Lando 3 volumes. `scope: global` is `unsupported`, because Lando 4 doesn't support global data storage yet.
+- `endpoints` on an `api: 4` service did nothing in Lando 3 and is dropped.
+- `ports` entries with `/http` or `/https`, such as `5173:5173/http`, become HTTP endpoints published on the same host port. A host port of `0`, as in `0:80`, becomes a publication on a random host port, which is what Lando 3 asked Docker for.
+
+### `l337` services
+
+An `api: 4` `type: l337` service converts to a Lando 4 `compose` service, which runs the image and Compose settings without the Lando service layer, as `l337` did. Lando 3 mounted the app into an `l337` service only through its `volumes`, so the converted service sets `appMount: false`. When one of its `volumes` binds the app root, that bind becomes the app mount at the same container path instead of a second copy. Settings that only exist on Lando 4 `lando` services get a `needs-review` note.
 
 ## Convert one layer
 
@@ -269,6 +339,26 @@ Every `lando` app command (`info`, `start`, `exec`, `app:config:lint`) fails the
       <Verify file="lando3-old-versions/.lando.yml" expect={{ regex: "type: php:7\\.4" }} />
     </Step>
     <Step name="versions-cleanup">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ports-and-mounts" render>
+    <Step name="preview-ports-and-mounts">
+      <UseFixture name="lando3-ports-mounts" />
+      <Run command="lando app:config:translate --from lando3 --format=json" />
+      <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "port: 5433" } }} />
+      <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { not: { regex: "PGPORT: " } } }} />
+      <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"kind\":\\s*\"needs-review\"[\\s\\S]*Moved PGPORT to port: 5433" } }} />
+      <Verify command="lando app:config:translate --from lando3 --format=json" expect={{ stdout: { regex: "\"kind\":\\s*\"dropped\"[\\s\\S]*Lando 3 always mounted the app root here and ignored source" } }} />
+    </Step>
+    <Step name="write-ports-and-mounts">
+      <Run command="lando app:config:translate --from lando3 --write --format=json" />
+      <Verify file="lando3-ports-mounts/.lando.yml" expect={{ regex: "port: 5433" }} />
+      <Verify file="lando3-ports-mounts/.lando.yml" expect={{ not: { regex: "PGPORT" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+    <Step name="ports-and-mounts-cleanup">
       <Cleanup />
     </Step>
   </Scenario>
