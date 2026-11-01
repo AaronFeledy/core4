@@ -220,7 +220,7 @@ finding: No TCP listener was observed on planned port 8080 at this instant. If t
 The action also names what your application, command, or custom image must
 configure when it owns that listener. `--fix` does not change your server's
 configuration. Without `--app`, doctor does not perform this listener check.
-JSON keeps observations in `provider.checks`, with string context fields
+JSON keeps observations in `result.appListeners.checks`, with string context fields
 `service`, `port`, `listenerState`, `finding`, and `bindings`, plus `solutions`.
 Unavailable observations go in the report's `skipped` array.
 
