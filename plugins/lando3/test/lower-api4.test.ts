@@ -6,6 +6,7 @@ import { lowerApi4Service } from "../src/lower-api4.ts";
 import type { LoweringPatch, ServiceLoweringContext } from "../src/lowering-contract.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: {},
   serviceName: "leet",
   keyPath: ["services", "leet"],
   fallbackSourceId: "source",
@@ -30,6 +31,7 @@ describe("API-4 service lowering", () => {
     const result = lowerApi4Service(service, ctx);
     // Then
     expect(result).toEqual({
+      claims: [["api"], ["image"], ["command", 0], ["command", 1], ["certs"], ["app-mount"]],
       patch: { type: "lando", image: service.image, command: service.command, appMount: false, certs: false },
       diagnostics: [],
     });
@@ -102,7 +104,8 @@ describe("API-4 service lowering", () => {
       ctx,
     );
     expect(result.patch).toEqual({
-      type: "lando",
+      type: "compose",
+      appMount: false,
       build: { context: ".", dockerfile: "Dockerfile.dev", args: { N: "3" } },
     });
     expect(paths(result, "rewritten")).toEqual([path("image", "dockerfile")]);
@@ -122,17 +125,18 @@ describe("API-4 service lowering", () => {
     );
     expect(result.patch.mounts).toEqual([
       { source: "./a", target: "/a", readOnly: true },
-      { source: "./b", target: "/b", readOnly: false, includes: ["keep"] },
+      { source: "./b", target: "/b" },
       { source: "./c", target: "/c" },
       { source: "./d", target: "/d" },
     ]);
     expect(paths(result, "dropped")).toEqual([
+      path("mounts", 1, "readOnly"),
+      path("mounts", 1, "includes"),
       path("mounts", 2, "contents"),
       path("mounts", 2),
-      path("mounts", 3, "type"),
       path("mounts", 4, "group"),
     ]);
-    expect(result.diagnostics).toHaveLength(4);
+    expect(result.diagnostics).toHaveLength(6);
   });
   test("diagnoses ownership and contents beside a kept bind", () => {
     const result = lowerApi4Service(
@@ -171,7 +175,7 @@ describe("API-4 service lowering", () => {
       excludes: ["node_modules"],
       includes: ["node_modules/keep"],
     });
-    expect(paths(result, "dropped")).toEqual([path("app-mount", "type")]);
+    expect(paths(result, "needs-review")).toEqual([path("app-mount"), path("app-mount")]);
   });
   test.each([false, "disabled", "off"])("disables appMount when set to %s", (value) => {
     expect(lowerApi4Service({ appMount: value }, ctx).patch.appMount).toBe(false);
@@ -191,8 +195,8 @@ describe("API-4 service lowering", () => {
       ctx,
     );
     expect(result.patch.storage).toEqual([
-      { store: "var-lib-data", target: "/var/lib/data" },
-      { store: "cache", target: "/cache", scope: "app" },
+      { store: "app-leet-var-lib-data", target: "/var/lib/data" },
+      { store: "app-cache", target: "/cache", scope: "app" },
       { store: "known", target: "/known" },
     ]);
     expect(result.patch.mounts).toEqual([
@@ -205,8 +209,8 @@ describe("API-4 service lowering", () => {
   test("derives endpoints when ports use API-4 shorthand", () => {
     const result = lowerApi4Service({ ports: ["8080/http", "8443/https", "0:80"] }, ctx);
     expect(result.patch.endpoints).toEqual([
-      { _tag: "internal", protocol: "http", port: 8080 },
-      { _tag: "internal", protocol: "https", port: 8443 },
+      { _tag: "published", protocol: "http", port: 8080, publication: {} },
+      { _tag: "published", protocol: "https", port: 8443, publication: {} },
       { _tag: "published", protocol: "tcp", port: 80, publication: {} },
     ]);
     expect(result.patch.ports ?? []).toEqual([]);

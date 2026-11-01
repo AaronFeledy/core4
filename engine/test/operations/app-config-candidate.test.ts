@@ -40,7 +40,7 @@ beforeEach(async () => {
           return { commitSha: "a".repeat(40) };
         },
       },
-      npmRecipeSource: { resolve: unused },
+      npmRecipeSource: { resolve: unused, fetchTarball: unused },
       tarball: { fetch: unused, extract: unused },
       publication: { publish: rename },
     },

@@ -5,6 +5,8 @@
  * beside it (e.g. a portable recipe versus a hosting-platform recipe).
  * allow: SIZE_OK — declarative inventory data, deliberately kept in one fixture.
  */
+import { nestedDispositions } from "./nested-dispositions.ts";
+
 export interface Golden {
   readonly name: string;
   readonly yaml: string;
@@ -100,7 +102,7 @@ export const referenceVariants = [
   "env:wp-config",
 ] as const;
 
-export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
+const baseDispositionInventory: ReadonlyArray<DispositionEntry> = [
   {
     pattern: ["name"],
     disposition: "target",
@@ -352,6 +354,48 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
       golden: [output(service(`type: mysql:8.0, ${key}: ${value}`), ["services", "s", target], expected)],
     }),
   ),
+  ...(
+    [
+      ["PGPORT", "postgres:16", 5433],
+      ["MYSQL_TCP_PORT", "mysql:8.0", 3307],
+      ["MSSQL_TCP_PORT", "mssql:2022", 1435],
+      ["RABBITMQ_NODE_PORT", "rabbitmq:3", 5673],
+      ["APACHE_PORT", "phpmyadmin:5", 8081],
+    ] as const
+  ).map(
+    ([variable, type, port]): DispositionEntry => ({
+      pattern: ["services", "*", "environment", variable],
+      disposition: "target",
+      owner: "lower-listen-port",
+      golden: [
+        output(
+          service(`type: ${type}, environment: {${variable}: '${port}'}`),
+          ["services", "s", "port"],
+          port,
+        ),
+        diagnostic(service(`type: ${type}, environment: {${variable}: '${port}'}`), "needs-review", [
+          "services",
+          "s",
+          "environment",
+          variable,
+        ]),
+      ],
+    }),
+  ),
+  {
+    pattern: ["services", "*", "overrides", "environment", "PGPORT"],
+    disposition: "target",
+    owner: "lower-listen-port",
+    golden: [
+      diagnostic(service("type: postgres:16, overrides: {environment: {PGPORT: '5433'}}"), "needs-review", [
+        "services",
+        "s",
+        "overrides",
+        "environment",
+        "PGPORT",
+      ]),
+    ],
+  },
   {
     pattern: ["services", "*", "creds"],
     disposition: "target",
@@ -371,26 +415,21 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
   },
   {
     pattern: ["services", "*", "sport"],
-    disposition: "target",
-    owner: "lower-catalog-common",
-    golden: [
-      output(
-        service("type: php:8.3, sport: 8443"),
-        ["services", "s", "endpoints"],
-        [{ _tag: "internal", protocol: "https", port: 8443 }],
-      ),
-    ],
+    disposition: "drop",
+    owner: "lower-ssl",
+    golden: [diagnostic(service("type: php:8.3, sport: 8443"), "dropped", ["services", "s", "sport"])],
   },
   {
     pattern: ["services", "*", "sslExpose"],
-    disposition: "target",
-    owner: "lower-catalog-common",
+    disposition: "drop",
+    owner: "lower-ssl",
     golden: [
-      output(
-        service("type: node:22, ssl: 8443, sslExpose: true"),
-        ["services", "s", "endpoints"],
-        [{ _tag: "published", protocol: "https", port: 8443, publication: {} }],
-      ),
+      diagnostic(service("type: node:22, sslExpose: true"), "dropped", ["services", "s", "sslExpose"]),
+      diagnostic(service("type: node:22, ssl: true, sport: 8443, sslExpose: true"), "needs-review", [
+        "services",
+        "s",
+        "ssl",
+      ]),
     ],
   },
   {
@@ -678,7 +717,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
       ["labels", "{team: dev}", "labels", { team: "dev" }],
       ["app-mount", "false", "appMount", false],
       ["mounts", "['./src:/dst']", "mounts", [{ source: "./src", target: "/dst" }]],
-      ["storage", "[/data]", "storage", [{ store: "data", target: "/data" }]],
+      ["storage", "[/data]", "storage", [{ store: "inventory-s-data", target: "/data" }]],
       ["security", "{ca: [ca.crt]}", "security", { ca: ["ca.crt"] }],
       [
         "healthcheck",
@@ -686,7 +725,12 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
         "readiness",
         { command: "echo ok", retries: 10, intervalSeconds: 1 },
       ],
-      ["ports", "[8080/http]", "endpoints", [{ _tag: "internal", protocol: "http", port: 8080 }]],
+      [
+        "ports",
+        "[8080/http]",
+        "endpoints",
+        [{ _tag: "published", protocol: "http", port: 8080, publication: {} }],
+      ],
       ["volumes", "['data:/data']", "volumes", ["data:/data"]],
       ["networks", "{net: null}", "networks", { net: null }],
     ] as const
@@ -694,18 +738,205 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
     ([key, value, target, expected]): DispositionEntry => ({
       pattern: ["services", "*", key],
       disposition: "target",
-      owner: "lower-api4",
+      owner: ["app-mount", "mounts", "storage"].includes(key) ? "lower-api4-mounts" : "lower-api4",
       golden: [output(api4(`${key}: ${value}`), ["services", "s", target], expected)],
     }),
   ),
   {
     pattern: ["services", "*", "persistent-storage"],
     disposition: "target",
-    owner: "lower-api4",
+    owner: "lower-api4-mounts",
     golden: [
       diagnostic(api4("persistent-storage: []"), "rewritten", ["services", "s", "persistent-storage"]),
     ],
   },
+  ...["appMount", "appmount"].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", key],
+      disposition: "target",
+      owner: "lower-api4-mounts",
+      golden: [output(api4(`${key}: /site`), ["services", "s", "appMount"], { target: "/site" })],
+    }),
+  ),
+  {
+    pattern: ["services", "*", "mount"],
+    disposition: "target",
+    owner: "lower-api4-mounts",
+    golden: [
+      output(api4("mount: ['./a:/b']"), ["services", "s", "mounts"], [{ source: "./a", target: "/b" }]),
+    ],
+  },
+  {
+    pattern: ["services", "*", "endpoints"],
+    disposition: "drop",
+    owner: "lower-api4",
+    golden: [diagnostic(api4("endpoints: [8080/http]"), "dropped", ["services", "s", "endpoints"])],
+  },
+  ...[
+    "source",
+    "src",
+    "owner",
+    "permissions",
+    "perms",
+    "user",
+    "group",
+    "scope",
+    "instructions",
+    "readOnly",
+    "include",
+    "includes",
+    "content",
+    "contents",
+  ].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "app-mount", key],
+      disposition: "drop",
+      owner: "lower-api4-mounts",
+      golden: [
+        diagnostic(api4(`app-mount: {target: /site, ${key}: value}`), "dropped", [
+          "services",
+          "s",
+          "app-mount",
+          key,
+        ]),
+      ],
+    }),
+  ),
+  ...["dest", "destination", "target"].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "app-mount", key],
+      disposition: "target",
+      owner: "lower-api4-mounts",
+      golden: [
+        output(api4(`app-mount: {${key}: /site}`), ["services", "s", "appMount"], { target: "/site" }),
+      ],
+    }),
+  ),
+  ...(
+    [
+      ["read_only", "true", { target: "/site", readOnly: true }],
+      ["exclude", "cache", { target: "/site", excludes: ["cache"] }],
+      ["excludes", "cache", { target: "/site", excludes: ["cache"] }],
+    ] as const
+  ).map(
+    ([key, value, expected]): DispositionEntry => ({
+      pattern: ["services", "*", "app-mount", key],
+      disposition: "target",
+      owner: "lower-api4-mounts",
+      golden: [
+        output(api4(`app-mount: {target: /site, ${key}: ${value}}`), ["services", "s", "appMount"], expected),
+      ],
+    }),
+  ),
+  ...[
+    "readOnly",
+    "include",
+    "includes",
+    "perms",
+    "owner",
+    "permissions",
+    "user",
+    "scope",
+    "instructions",
+  ].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "mounts", "*", key],
+      disposition: "drop",
+      owner: "lower-api4-mounts",
+      golden: [
+        diagnostic(api4(`mounts: [{source: ./a, target: /b, ${key}: value}]`), "dropped", [
+          "services",
+          "s",
+          "mounts",
+          0,
+          key,
+        ]),
+      ],
+    }),
+  ),
+  ...["src", "dest", "exclude", "excludes", "read_only"].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "mounts", "*", key],
+      disposition: "target",
+      owner: "lower-api4-mounts",
+      golden: [
+        output(
+          api4("mounts: [{src: ./a, dest: /b, exclude: cache, excludes: '!cache/keep', read_only: false}]"),
+          ["services", "s", "mounts"],
+          [
+            { source: "./a", target: "/b", readOnly: false, excludes: ["cache"] },
+            { source: "./cache/keep", target: "/b/cache/keep" },
+          ],
+        ),
+      ],
+    }),
+  ),
+  {
+    pattern: ["services", "mount-aliases4", "mounts", "*", "type"],
+    disposition: "target",
+    owner: "lower-api4-mounts",
+    golden: [
+      output(
+        api4("mounts: [{type: 'storage:volume', dest: /data}]", "mount-aliases4"),
+        ["services", "mount-aliases4", "storage"],
+        [{ store: "inventory-mount-aliases4-data", target: "/data" }],
+      ),
+    ],
+  },
+  {
+    pattern: ["services", "*", "storage", "*", "dest"],
+    disposition: "target",
+    owner: "lower-api4-mounts",
+    golden: [
+      output(
+        api4("storage: [{dest: /data}]"),
+        ["services", "s", "storage"],
+        [{ store: "inventory-s-data", target: "/data" }],
+      ),
+    ],
+  },
+  {
+    pattern: ["services", "*", "storage", "*", "scope"],
+    disposition: "target",
+    owner: "lower-api4-mounts",
+    golden: [
+      output(
+        api4("storage: [{dest: /data, scope: project}]"),
+        ["services", "s", "storage"],
+        [{ store: "inventory-data", target: "/data", scope: "app" }],
+      ),
+      diagnostic(api4("storage: [{dest: /data, scope: project}]"), "rewritten", [
+        "services",
+        "s",
+        "storage",
+        0,
+        "scope",
+      ]),
+      diagnostic(api4("storage: [{dest: /data, scope: global}]"), "unsupported", [
+        "services",
+        "s",
+        "storage",
+        0,
+        "scope",
+      ]),
+    ],
+  },
+  ...["perms", "user", "group", "instructions", "src", "read_only"].map(
+    (key): DispositionEntry => ({
+      pattern: ["services", "*", "storage", "*", key],
+      disposition: "drop",
+      owner: "lower-api4-mounts",
+      golden: [
+        diagnostic(api4(`storage: [{target: /data, ${key}: value}]`), "dropped", [
+          "services",
+          "s",
+          "storage",
+          0,
+          key,
+        ]),
+      ],
+    }),
+  ),
   {
     pattern: ["services", "*", "entrypoint"],
     disposition: "unsupported",
@@ -764,7 +995,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
     (key): DispositionEntry => ({
       pattern: ["services", "*", "mounts", "*", key],
       disposition: "drop",
-      owner: "lower-api4",
+      owner: "lower-api4-mounts",
       golden: [
         diagnostic(
           api4(
@@ -780,7 +1011,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
     (key): DispositionEntry => ({
       pattern: ["services", "*", "storage", "*", key],
       disposition: "drop",
-      owner: "lower-api4",
+      owner: "lower-api4-mounts",
       golden: [
         diagnostic(api4(`storage: [{type: image, destination: /run, ${key}: mysql}]`), "dropped", [
           "services",
@@ -850,7 +1081,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
     (index): DispositionEntry => ({
       pattern: ["services", "web4", "mounts", index],
       disposition: "drop",
-      owner: "lower-api4",
+      owner: "lower-api4-mounts",
       golden: [
         diagnostic(
           api4(
@@ -867,15 +1098,15 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
     (index): DispositionEntry => ({
       pattern: ["services", "web4", "mounts", index, "type"],
       disposition: "drop",
-      owner: "lower-api4",
+      owner: "lower-api4-mounts",
       golden: [
         diagnostic(
           api4(
             `mounts: [${"'./src:/dst', ".repeat(Number(index))}{source: ./src, target: /dst, type: copy}]`,
             "web4",
           ),
-          "dropped",
-          ["services", "web4", "mounts", Number(index), "type"],
+          "needs-review",
+          ["services", "web4", "mounts", Number(index)],
         ),
       ],
     }),
@@ -883,7 +1114,7 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
   {
     pattern: ["services", "web4", "storage", "6"],
     disposition: "drop",
-    owner: "lower-api4",
+    owner: "lower-api4-mounts",
     golden: [
       diagnostic(
         api4("storage: [/a, /b, /c, /d, /e, /f, {destination: /data, type: image, owner: mysql}]", "web4"),
@@ -1049,4 +1280,11 @@ export const dispositionInventory: ReadonlyArray<DispositionEntry> = [
       ],
     };
   }),
+];
+export const dispositionInventory: readonly DispositionEntry[] = [
+  ...baseDispositionInventory,
+  ...nestedDispositions.filter(
+    ({ pattern }) =>
+      !baseDispositionInventory.some((entry) => JSON.stringify(entry.pattern) === JSON.stringify(pattern)),
+  ),
 ];

@@ -7,6 +7,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
 export const LANDO_FEATURE_PRIORITY = 600;
+export const APP_MOUNT_TARGET = "/app";
 
 const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -49,7 +50,7 @@ export const landoServiceType: ServiceType = {
         { id: LANDO_FEATURE_ID },
         {
           id: "lando.app-mount",
-          config: { target: "/app" },
+          config: { target: APP_MOUNT_TARGET },
         },
       ],
     })),

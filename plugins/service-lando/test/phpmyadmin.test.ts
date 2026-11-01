@@ -17,6 +17,7 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import {
@@ -218,7 +219,8 @@ describe("phpmyadmin ServiceType", () => {
         ]);
         expect(plan.healthcheck).toEqual({
           kind: "command",
-          command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80"],
+          command: tcpProbe(80, 20).command,
+          target: { port: 80, transport: "tcp", names: [], primary: false },
           intervalSeconds: 10,
           timeoutSeconds: 5,
           retries: 5,

@@ -4,12 +4,12 @@ import type { ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import {
   ServiceConfigIssue,
-  commandHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -28,7 +28,8 @@ export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
 export const STATIC_FEATURE_ID = "service-lando.static" as const;
 export const STATIC_FEATURE_PRIORITY = 600;
 
-const DEFAULT_PORT = 80;
+export const DEFAULT_PORT = 80;
+export const APP_MOUNT_TARGET = "/app";
 
 export const nginxRootLiteral = (path: string): string => JSON.stringify(path);
 
@@ -101,7 +102,7 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   }
   ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
   applyAuthoredProcessFields(ctx, ["user"]);
-  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
+  ctx.setHealthcheck(tcpProbe(port, 10));
 
   applyAuthoredProcessFields(ctx, ["entrypoint"]);
 
@@ -163,7 +164,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
               id: "lando.env",
               config: { webroot: docRoot },
             },
-            { id: "lando.app-mount", config: { target: "/app", readOnly: true } },
+            { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, readOnly: true } },
           ],
         };
       }),

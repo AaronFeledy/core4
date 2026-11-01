@@ -7,6 +7,7 @@ import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services"
 import { appFeatures } from "./app-features/index.ts";
 import { SERVICE_FEATURE_IDS, serviceFeatures as bundledServiceFeatures } from "./features/index.ts";
 import mailpitGlobalService from "./global-services/mailpit.ts";
+import { buildServiceTypeFacts } from "./service-type-facts.ts";
 import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
 import { dotnet80ServiceType, dotnet90ServiceType, dotnetServiceType } from "./services/dotnet.ts";
@@ -137,6 +138,8 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
 ]);
 
 export const services = Layer.empty;
+
+export const serviceTypeFacts = () => buildServiceTypeFacts(serviceTypes);
 
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
   ["mailpit", mailpitGlobalService],

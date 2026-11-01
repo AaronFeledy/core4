@@ -12,6 +12,7 @@ import { retainGlobalPlanSiblings } from "@lando/engine/operations/global-retain
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
+  DebuggerHostUnavailableError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
@@ -50,6 +51,7 @@ const now = () => DateTime.nowUnsafe();
 export interface GlobalStartOptions {
   readonly services?: ReadonlyArray<string>;
   readonly signal?: AbortSignal;
+  readonly preparedOverlays?: import("../subsystems/start-overlay-registry.ts").PreparedDebuggerOverlay;
 }
 
 export const GlobalStartResultSchema = Schema.Struct({
@@ -65,6 +67,7 @@ export type GlobalStartError =
   | GlobalAppError
   | LoadGlobalPlanError
   | BuildError
+  | DebuggerHostUnavailableError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
@@ -164,6 +167,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
             provider,
             services,
             beforeApply: verifyAdmission,
+            ...(options.preparedOverlays === undefined ? {} : { preparedOverlays: options.preparedOverlays }),
             ...(retained === undefined
               ? {}
               : { recordedPlan: retained.recordedPlan, recordedDisabledIds: retained.disabledIds }),

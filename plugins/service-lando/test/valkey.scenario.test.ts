@@ -28,6 +28,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
@@ -212,7 +213,7 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
     expect(volumes).toHaveLength(1);
     expect(volumes[0]?.store).toBe("myapp-valkey-data");
     expect(cache.healthcheck?.kind).toBe("command");
-    expect(cache.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6379"]);
+    expect(cache.healthcheck).toEqual(tcpProbe(6379, 30));
     expect(cache.environment.LANDO_SERVICE_TYPE).toBe("valkey");
   });
 

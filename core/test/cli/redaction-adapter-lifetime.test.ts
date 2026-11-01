@@ -13,7 +13,7 @@ test("pure translator and diagnostic adapters use an explicitly injected retaine
   // Given
   const owner = makeRedactionOwner();
   const redactor = await Effect.runPromise(owner.service.forProfile("secrets"));
-  const ports = await loadLando3TranslatorPorts(redactor);
+  const ports = await loadLando3TranslatorPorts(serviceTypeFacts, redactor);
   try {
     // When
     await Effect.runPromise(owner.service.registerValues(["adapter-late-private-canary"]));
@@ -87,3 +87,4 @@ test("remote output adapters use their runtime owner instead of an import-time s
     await rm(root, { recursive: true, force: true });
   }
 });
+import { serviceTypeFacts } from "@lando/service-lando";

@@ -7,7 +7,7 @@ tags: [beta, docs, php, tooling, debugging, xdebug, phpstorm]
 
 # Debug PHP with Xdebug in PhpStorm
 
-Set `xdebug: true` (or a mode string) on the PHP service in `.lando.yml`. Lando installs the extension as a checksum-pinned build step, points `client_host` at `host.lando.internal`, and connects to an IDE listening on port `9003`. Save the configuration and run `lando start` from the app directory to install it before using the toggle commands below:
+Set `xdebug: true` (or a mode string) on the PHP service in `.lando.yml`. Lando installs the extension as a checksum-pinned build step, points `client_host` at `debugger.lando.internal`, and connects to an IDE listening on port `9003`. Save the configuration and run `lando start` from the app directory to install it before using the toggle commands below:
 
 ```yaml
 services:
@@ -35,9 +35,51 @@ A browser extension or `XDEBUG_SESSION=PHPSTORM` cookie/query param triggers the
 
 Add a server in `Settings > PHP > Servers` whose name matches the value your app sends (or use the "absolute path on server" mapping without a name), and map `/app` to your project's local root so breakpoints land on the file you edit. On the first accepted debug connection, PhpStorm offers to auto-create the server entry and path mapping.
 
-Lando maps `host.lando.internal` to the provider's host gateway, including on Linux. You don't need a manual `extra_hosts` entry. Allow connections to port `9003` through your host firewall and listen on an interface reachable from containers, not only loopback. If PhpStorm never receives a connection, confirm `lando xdebug status` shows the extension, then check the listener, port 9003, mode `debug`, and `client_host`. An authored `environment.XDEBUG_CONFIG` overrides the default client host and port. If a breakpoint hits but the wrong file opens, the server's path mapping does not match the container path. Fix it under `Settings > PHP > Servers`.
+Xdebug's default `client_host` is `debugger.lando.internal`. That alias follows global `debugger.host` and defaults to the provider's host gateway, the same target `host.lando.internal` uses for ordinary host reachability. You don't need a manual `extra_hosts` entry. Keep `host.lando.internal` for host HTTP and published ports; do not repoint it for the IDE.
 
+Allow connections to port `9003` through the firewall on the machine where the IDE listens, and listen on an interface reachable from containers, not only loopback. If PhpStorm never receives a connection, run `lando xdebug status` and confirm the extension is loaded and the reported client host is the machine running the IDE. Then check the listener, port 9003, and mode `debug`. An authored `environment.XDEBUG_CONFIG` overrides the managed client host and port for advanced cases; it is not the fix when Lando runs in WSL and the IDE runs on Windows. See [Reach a Windows IDE from WSL](#reach-a-windows-ide-from-wsl). If a breakpoint hits but the wrong file opens, the server's path mapping does not match the container path. Fix it under `Settings > PHP > Servers`.
 
+Explicit `lando xdebug status` also attempts a TCP connection from the PHP service and closes it immediately. The connection timeout is one second; a hostname not found in the service's local hosts file gets at most one second for DNS resolution first. `Listener: TCP listener reachable` means a TCP listener accepted the connection, not that it accepted Xdebug's DBGp protocol or that a breakpoint will work. Trigger a PHP request with a breakpoint to verify the debug session.
+
+`Listener: TCP connection failed (<reason>)` reports a refused connection, timeout, or unresolved host without failing the status command. Check the address, IDE listener, and firewall before trying again. The `on` and `off` commands still print the current mode and client settings, but do not run this connection diagnostic. Neither ordinary PHP execution nor app lifecycle commands run it.
+
+## Reach a Windows IDE from WSL
+
+When Lando runs inside a WSL 2 distro and PhpStorm listens on Windows, the default host gateway is the WSL VM, not Windows. Point the debugger at Windows with the machine-level setting, then start the app so the alias is resolved for this run:
+
+```sh
+lando config set debugger.host windows
+lando doctor
+lando start
+lando xdebug status
+```
+
+Doctor's `debugger-host` check reports the configured host, discovered Windows address, and networking mode, or a discovery reason with remediation. It checks configuration and discovery only, never the IDE listener. With `debugger.host` unset, doctor may observe a Windows address, but the effective debugger destination remains the provider's host gateway. This setup also applies to VS Code's PHP debugger on Windows.
+
+Check the `Client:` line in `lando xdebug status`: it shows the configured client host and port, with a locally resolved address in parentheses when available. Then check the `Listener:` line. If the default alias still points at `host.lando.internal`'s address on a Microsoft kernel, a failed connection gives conditional advice beginning “If your IDE runs on Windows”. The kernel alone does not tell Lando where your IDE runs.
+
+`windows` is valid only on WSL 2 with NAT networking (the WSL default, and the assumed mode when `wslinfo` is missing). Lando resolves the Windows host as the distro's default gateway on every `lando start`, `lando restart`, and `lando rebuild`. It is not stored in the plan cache, so a WSL restart that changes the gateway still works after the next start.
+
+From an elevated PowerShell prompt on Windows, allow inbound TCP 9003 so containers can reach the IDE:
+
+```powershell
+New-NetFirewallRule -DisplayName "Xdebug (Lando)" -Direction Inbound -Protocol TCP -LocalPort 9003 -Action Allow
+```
+
+For a fixed address, set your reachable IDE address explicitly instead of `windows`. Choose the IPv4 or IPv6 form below, replace the example address with your own, and run `lando start` again:
+
+```sh
+lando config set debugger.host 192.0.2.10
+lando config set debugger.host 2001:db8::40
+```
+
+Unsupported WSL networking modes such as mirrored do not get an automatic Windows address. Set an explicit reachable address, or unset the key to use the Lando host again:
+
+```sh
+lando config unset debugger.host
+```
+
+`debugger.lando.internal` follows that setting. `host.lando.internal` stays on the host gateway for cross-engine routes and ordinary host services.
 
 <Guide>
   <Scenario id="xdebug-option-resolves" render>
@@ -61,7 +103,7 @@ Lando maps `host.lando.internal` to the provider's host gateway, including on Li
       <Run command="lando destroy -y" />
     </Step>
   </Scenario>
-  <Scenario id="extension-loads" render={false} reason="The test provider does not compile PECL, so php -m cannot load xdebug.so here; this scenario proves xdebug: true plans, and unit tests lock the php -m status command plus the checksum-pinned install.">
+  <Scenario id="extension-loads" render={false} reason="The test provider does not compile PECL; this scenario proves xdebug: true plans, while shell tests exercise the status diagnostic and unit tests check the checksum-pinned install.">
     <Step name="scaffold">
       <UseFixture name="xdebug-demo" />
     </Step>

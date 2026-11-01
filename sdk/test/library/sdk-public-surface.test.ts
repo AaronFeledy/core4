@@ -6,6 +6,7 @@ import ts from "typescript";
 
 import {
   ConfigError,
+  ConfigTranslateError,
   ManagedFileTransactionError,
   NoProviderInstalledError,
   SshAgentUnavailableError,
@@ -146,6 +147,14 @@ describe("SDK public-surface snapshot", () => {
   });
   test("matches the structured global config error fields", () => {
     expect(Object.keys(ConfigError.fields).sort()).toEqual(publicSurface.configErrorFields);
+  });
+  test("matches the structured translation error fields", () => {
+    // Given
+    const expected = publicSurface.configTranslateErrorFields;
+    // When
+    const fields = Object.keys(ConfigTranslateError.fields).sort();
+    // Then
+    expect(fields).toEqual(expected);
   });
   test("matches managed-file transaction failure reasons", () => {
     // Given / When: the public tagged error schema is the wire contract.

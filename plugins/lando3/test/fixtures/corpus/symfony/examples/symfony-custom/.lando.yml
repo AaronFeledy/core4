@@ -1,0 +1,23 @@
+name: symfony-custom
+proxy:
+  appserver_nginx:
+    - another.symfony-custom.lndo.site
+recipe: symfony
+config:
+  php: '8.3'
+  composer_version: '2.0.7'
+  via: nginx:1.17
+  webroot: bob
+  database: mysql:5.7
+  cache: memcached:1.5.12
+  bee: '1.x-1.x'
+  xdebug: true
+  config:
+    database: config/mysql.cnf
+    php: config/php.ini
+    vhosts: config/default.conf
+
+# do not remove this
+plugins:
+  "@lando/symfony": ../..
+

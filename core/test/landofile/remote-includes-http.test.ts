@@ -73,7 +73,7 @@ const withRepository = async (
           return defaultGitRecipeCloner.clone(input);
         },
       },
-      npmRecipeSource: { resolve: unused },
+      npmRecipeSource: { resolve: unused, fetchTarball: unused },
       tarball: { fetch: unused, extract: unused },
       publication: { publish },
     };

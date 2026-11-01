@@ -53,7 +53,8 @@ const DEFAULT_COMMAND = [
   "-e",
   'process.on("SIGTERM",()=>process.exit(0));process.on("SIGINT",()=>process.exit(0));setInterval(()=>{},2147483647);',
 ] as const;
-const DEFAULT_PORT = 3000;
+export const DEFAULT_PORT = 3000;
+export const APP_MOUNT_TARGET = "/app";
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.String,
@@ -349,7 +350,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceType => ({
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
           {
             id: "lando.app-mount",
-            config: { target: "/app" },
+            config: { target: APP_MOUNT_TARGET },
           },
         ],
       };
@@ -390,7 +391,7 @@ export const nodeServiceType: ServiceType = {
         normalizedConfig: normalizedService(input.service, resolvedVersion),
         features: [
           { id: NODE_FEATURE_ID, config: { version: resolvedVersion } },
-          { id: "lando.app-mount", config: { target: "/app" } },
+          { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
         metadata: {
           node: {

@@ -2,6 +2,7 @@ import { Effect, Option, Schema } from "effect";
 
 import {
   type AppPlacementError,
+  type DebuggerHostUnavailableError,
   type LandofileVersionConstraintError,
   ScratchAppError,
   type ScratchAppNotFoundError,
@@ -74,6 +75,7 @@ export type ScratchRunError =
   | ScratchAppError
   | ScratchAppNotFoundError
   | ScratchRunTargetError
+  | DebuggerHostUnavailableError
   | LandofileVersionConstraintError;
 
 export type ScratchRunServices =

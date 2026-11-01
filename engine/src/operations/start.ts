@@ -18,6 +18,7 @@ import {
   preflightStartAppDrain,
   startAppForTargetUnlocked,
 } from "./start-internal.ts";
+import { type PreparedStartOverlays, prepareStartOverlays } from "./start-overlays.ts";
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export type { CheckResult } from "@lando/sdk/schema";
@@ -33,8 +34,13 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
     readonly beforeStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
+    readonly preparedOverlays?: PreparedStartOverlays;
   } = {},
 ) {
+  const providerRegistry = yield* RuntimeProviderRegistry;
+  const preparedOverlays =
+    execution.preparedOverlays ??
+    (yield* prepareStartOverlays(target, yield* providerRegistry.select(target.plan)));
   yield* validateDesiredFileSyncEngine(target.plan);
   return yield* withHomeTransitionNotices(
     withAppMutationLock(
@@ -66,6 +72,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
                     yield* publishHomeTransitionNotices(placement.plan, plan);
                     return yield* startAppForTargetUnlocked(options, resolvedTarget, managed, {
                       ...execution,
+                      preparedOverlays,
                       ...(preparedTargets === undefined ? {} : { preparedTargets }),
                     });
                   }),
@@ -88,6 +95,7 @@ export const startApp = Effect.fn("AppOperation.start")(function* (
     readonly beforeStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
+    readonly preparedOverlays?: PreparedStartOverlays;
   } = {},
 ) {
   return yield* target === undefined

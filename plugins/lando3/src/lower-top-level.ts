@@ -12,7 +12,12 @@ import {
   lando3SourceLayerOrder,
   lando3TargetLayer,
 } from "./contract.ts";
-import { type V4Wire, asStringArray, hasPlainObjectPrototype } from "./lowering-contract.ts";
+import {
+  type MountFilterLocation,
+  type V4Wire,
+  asStringArray,
+  hasPlainObjectPrototype,
+} from "./lowering-contract.ts";
 import { slugifyAppName } from "./naming.ts";
 
 const nameAssignments = (
@@ -67,6 +72,7 @@ export interface TopLevelResult {
   readonly fragment: V4Wire;
   readonly appMountExcludes: ReadonlyArray<string>;
   readonly appMountIncludes: ReadonlyArray<string>;
+  readonly appMountIncludeLocations?: readonly MountFilterLocation[];
   readonly diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>;
 }
 
@@ -74,6 +80,7 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
   const fragment: Record<string, unknown> = {};
   const appMountExcludes: string[] = [];
   const appMountIncludes: string[] = [];
+  const appMountIncludeLocations: MountFilterLocation[] = [];
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   const report = (
     keyPath: Lando3Path,
@@ -83,7 +90,7 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
     const span = occurrence?.span;
     diagnostics.push({
       ...detail,
-      keyPath,
+      keyPath: occurrence?.keyPath ?? keyPath,
       sourceId: occurrence?.sourceId ?? ConfigTranslateSourceId.make(ctx.fallbackSourceId),
       ...(span === undefined
         ? {}
@@ -141,9 +148,12 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
         break;
       }
       case "excludes":
-        for (const pattern of asStringArray(value) ?? []) {
-          if (pattern.startsWith("!")) appMountIncludes.push(pattern.slice(1));
-          else appMountExcludes.push(pattern);
+        for (const [index, pattern] of (asStringArray(value) ?? []).entries()) {
+          if (pattern.startsWith("!")) {
+            appMountIncludes.push(pattern.slice(1));
+            const keyPath = Array.isArray(value) ? [key, index] : [key];
+            appMountIncludeLocations.push({ keyPath, occurrence: ctx.occurrenceAt(keyPath) });
+          } else appMountExcludes.push(pattern);
         }
         report([key], {
           kind: "rewritten",
@@ -183,5 +193,11 @@ export const lowerTopLevel = (document: Record<string, unknown>, ctx: TopLevelCo
         if (key.startsWith("x-")) fragment[key] = value;
     }
   }
-  return { fragment, appMountExcludes, appMountIncludes, diagnostics };
+  return {
+    fragment,
+    appMountExcludes,
+    appMountIncludes,
+    diagnostics,
+    ...(appMountIncludeLocations.length > 0 ? { appMountIncludeLocations } : {}),
+  };
 };

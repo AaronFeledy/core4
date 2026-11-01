@@ -11,7 +11,9 @@ import {
   AppId,
   type AppPlan,
   AppPlan as AppPlanSchema,
+  DEBUGGER_HOST_ALIAS,
   GlobalConfig,
+  HOST_GATEWAY_TARGET,
   type PluginManifest,
   ProviderId,
   ServiceName,
@@ -72,7 +74,13 @@ const makeFixture = async (directory: string) => {
     "services:\n  app:\n    type: compose\n    image: app:v1\n    dependsOn: [dependency]\n  dependency:\n    type: compose\n    image: dep:v1\n",
   );
   const calls = { generation: 0, planning: 0, build: 0, apply: 0, list: 0, inspect: 0 };
-  const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "lando", proxy: {} });
+  let debuggerHost: string | undefined;
+  const configFor = () =>
+    Schema.decodeUnknownSync(GlobalConfig)({
+      defaultProviderId: "lando",
+      proxy: {},
+      ...(debuggerHost === undefined ? {} : { debugger: { host: debuggerHost } }),
+    });
   const events: LandoEvent[] = [];
   const runtimes = new Map<string, ServiceRuntimeInfo>();
   let onEvent: ((event: LandoEvent) => Effect.Effect<void>) | undefined;
@@ -157,8 +165,8 @@ const makeFixture = async (directory: string) => {
     Layer.succeed(
       ConfigService,
       ConfigService.of({
-        load: Effect.succeed(config),
-        get: (key) => Effect.succeed(config[key]),
+        load: Effect.sync(configFor),
+        get: (key) => Effect.sync(() => configFor()[key]),
       }),
     ),
     Layer.succeed(
@@ -222,7 +230,10 @@ const makeFixture = async (directory: string) => {
                     mounts: [],
                     endpoints: [],
                     routes: [],
-                    hostAliases: [],
+                    hostAliases:
+                      debuggerHost === undefined
+                        ? []
+                        : [{ hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET }],
                     dependsOn: (service.dependsOn ?? []).map((dependency) =>
                       typeof dependency === "string"
                         ? {
@@ -304,6 +315,9 @@ const makeFixture = async (directory: string) => {
     setOmitOwnership: (next: boolean) => {
       omitOwnership = next;
     },
+    setDebuggerHost: (next: string | undefined) => {
+      debuggerHost = next;
+    },
     onApply: (hook: typeof onApply) => {
       onApply = hook;
     },
@@ -338,6 +352,29 @@ test("repeated ensure verifies owned running dependencies and skips generation, 
       true,
       true,
     ]);
+  });
+});
+
+test("a configured debugger address keeps consumers on the cold path and applies it every time", async () => {
+  await withFixture(async (f) => {
+    // Given global services that consume the debugger alias and a configured debugger address.
+    f.setDebuggerHost("192.0.2.40");
+    const addresses: Array<string | undefined> = [];
+    f.onApply((plan) =>
+      Effect.sync(() => {
+        addresses.push(
+          plan.services[ServiceName.make("app")]?.hostAliases.find(
+            (alias) => alias.hostname === DEBUGGER_HOST_ALIAS,
+          )?.ip,
+        );
+      }),
+    );
+    // When ensure runs twice with unchanged inputs.
+    await f.ensure();
+    await f.ensure();
+    // Then warm reuse is skipped and each apply receives the configured address.
+    expect(f.calls).toMatchObject({ generation: 2, planning: 2, build: 2, apply: 2 });
+    expect(addresses).toEqual(["192.0.2.40", "192.0.2.40"]);
   });
 });
 

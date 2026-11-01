@@ -26,7 +26,11 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import type { EnvironmentValueResolutionError, PlanReplanRequiredError } from "@lando/sdk/errors";
+import type {
+  DebuggerHostUnavailableError,
+  EnvironmentValueResolutionError,
+  PlanReplanRequiredError,
+} from "@lando/sdk/errors";
 import type { EnvironmentValueResolver } from "@lando/sdk/services";
 import {
   captureGlobalEnsureInputs,
@@ -43,7 +47,9 @@ import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { debuggerHostConfigured } from "../subsystems/debugger-host.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
+import { prepareDebuggerOverlay, projectDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { canonicalAppRoot } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 
@@ -70,6 +76,7 @@ export interface EnsureGlobalServicesResult {
 }
 
 export type EnsureGlobalServicesError =
+  | DebuggerHostUnavailableError
   | Effect.Error<ReturnType<typeof globalInstall>>
   | Effect.Error<ReturnType<typeof canonicalAppRoot>>
   | Effect.Error<ReturnType<typeof retainGlobalPlanSiblings>>
@@ -160,8 +167,15 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       const services = names
         .filter((service) => selected.has(String(service.name)))
         .map((service) => service.name);
+      // A configured debugger address is resolved per start, so its consumers take the cold path.
+      const debuggerAddressRequired = yield* debuggerHostConfigured({
+        ...cached.plan,
+        services: Object.fromEntries(
+          Object.entries(cached.plan.services).filter(([, service]) => selected.has(String(service.name))),
+        ),
+      });
       const observed =
-        known && inputs?.digest === cached.inputs.digest
+        known && inputs?.digest === cached.inputs.digest && !debuggerAddressRequired
           ? yield* observeWarmGlobalServices(cached, provider, services)
           : undefined;
       if (observed !== undefined) {
@@ -263,7 +277,9 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const builds = yield* BuildOrchestrator;
     // Managed global service configuration is generated locally and has no sync session lifecycle.
     const realizedPlan = withOrdinaryMounts(planToApply);
+    const preparedOverlays = yield* prepareDebuggerOverlay(realizedPlan);
     const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
+    const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
 
     yield* verifyAdmission;
     const finalPlan = yield* advanceGlobalRecordedPlan(
@@ -279,12 +295,12 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
       Effect.scoped(
         applyWithResolvedEnvironment(
           provider,
-          builtPlan,
+          runtimePlan,
           {
             reconcile: false,
             recordedPlan: finalPlan,
             ...(options.signal === undefined ? {} : { signal: options.signal }),
-            onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+            onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
           },
           verifyAdmission,
         ),

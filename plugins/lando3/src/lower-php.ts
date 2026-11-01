@@ -1,4 +1,5 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { serviceCursor } from "./claims.ts";
 import { lowerXdebugObject } from "./lower-xdebug-object.ts";
 import {
   type LoweringPatch,
@@ -17,6 +18,10 @@ export const lowerPhpOptions = (
   service: Record<string, unknown>,
   ctx: ServiceLoweringContext,
 ): LoweringPatch => {
+  const cursor = serviceCursor(service, ctx);
+  for (const key of ["via", "composer_version", "db_client"]) cursor.take([key]);
+  cursor.mapTo(["composer"]);
+  cursor.take(["xdebug"]);
   const patch: Record<string, unknown> = {};
   const diagnostics: ConfigTranslateDiagnostic[] = [
     needsReviewServiceKey({
@@ -36,7 +41,7 @@ export const lowerPhpOptions = (
       patch.via = "apache";
       if (via !== "apache") {
         diagnostics.push(
-          rewrittenServiceKey({
+          needsReviewServiceKey({
             ctx,
             relative: ["via"],
             message: "The Apache version suffix was removed from the PHP serving mode.",
@@ -64,7 +69,7 @@ export const lowerPhpOptions = (
           message: `Generated nginx service ${companionName} with backend ${ctx.serviceName}.`,
           remediation: `Review ${companionName} as the HTTP frontend for ${ctx.serviceName}.`,
         }),
-        rewrittenServiceKey({
+        needsReviewServiceKey({
           ctx,
           relative: ["via"],
           message:
@@ -88,7 +93,7 @@ export const lowerPhpOptions = (
     }
   }
 
-  if (Object.hasOwn(service, "webroot")) patch.webroot = service.webroot;
+  if (Object.hasOwn(service, "webroot")) patch.webroot = cursor.mapTo(["webroot"]);
 
   if (service.composer_version === false) {
     patch.composer = false;
@@ -121,11 +126,11 @@ export const lowerPhpOptions = (
   if (typeof xdebug === "boolean" || typeof xdebug === "string") {
     patch.xdebug = xdebug;
   } else if (hasPlainObjectPrototype(xdebug)) {
-    const lowered = lowerXdebugObject(service, xdebug, ctx);
+    const lowered = lowerXdebugObject(service, xdebug, { ...ctx, cursor });
     Object.assign(patch, lowered.patch);
     diagnostics.push(...lowered.diagnostics);
   }
 
   if (Object.hasOwn(service, "db_client")) patch.db_client = service.db_client;
-  return { patch, ...(companions === undefined ? {} : { companions }), diagnostics };
+  return { patch, claims: cursor.claims, ...(companions === undefined ? {} : { companions }), diagnostics };
 };

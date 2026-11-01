@@ -28,6 +28,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
@@ -217,7 +218,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     ]);
     expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.healthcheck?.kind).toBe("command");
-    expect(web.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(web.healthcheck).toEqual(tcpProbe(80, 10));
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("static:nginx");
     expect(web.environment.LANDO_WEBROOT).toBe("/app");
   });

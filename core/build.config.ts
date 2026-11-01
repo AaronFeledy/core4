@@ -21,7 +21,11 @@ export interface BundledPluginEntry {
     /** Named factory export on the plugin package used instead of its `plugin` export. */
     readonly factoryExport: string;
     /** Module + export supplying the factory's single argument. */
-    readonly ports: { readonly module: string; readonly export: string };
+    readonly ports: {
+      readonly module: string;
+      readonly export: string;
+      readonly arguments?: readonly { readonly module: string; readonly export: string }[];
+    };
   };
   /** Contribution summary embedded in the bundled manifest. */
   readonly contributes?: {
@@ -127,7 +131,11 @@ export const buildConfig: BuildConfig = {
       path: "plugins/lando3",
       compose: {
         factoryExport: "makeLando3Plugin",
-        ports: { module: "../../recipes/lando3-ports.ts", export: "loadLando3TranslatorPorts" },
+        ports: {
+          module: "../../recipes/lando3-ports.ts",
+          export: "loadLando3TranslatorPorts",
+          arguments: [{ module: "@lando/service-lando", export: "serviceTypeFacts" }],
+        },
       },
     },
   ],

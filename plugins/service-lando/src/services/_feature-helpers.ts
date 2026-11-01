@@ -147,9 +147,6 @@ export const commandHealthcheck = (
   startPeriodSeconds,
 });
 
-export const loopbackTcpHealthcheck = (port: number, startPeriodSeconds: number): HealthcheckPlan =>
-  commandHealthcheck(["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`], startPeriodSeconds);
-
 export const rootIdentity = (extraHomes: ServiceImageIdentity["homes"] = {}): ServiceImageIdentity => ({
   defaultUser: "root",
   homes: { root: "/root", ...extraHomes },

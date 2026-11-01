@@ -1,0 +1,3928 @@
+[
+  {
+    "fixture": "acquia/examples/acquia-8.2",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-8.3",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-8.4",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-8.5",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-custom",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-default",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-downstreamer-1",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-downstreamer-2",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-drush-uri",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-mysql84",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "acquia/examples/acquia-xdebug",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "apache/examples/2.4",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "apache/examples/2.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "apache version 2.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "apache/examples/2.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "apache version 2.4.41 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "apache/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "apache/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "apache version 2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "apache/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "override", "type"],
+          "message": "apache version 2.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "apache/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "override", "overrides", "ports", 0, "mode"],
+          "message": "Compose field ports.mode cannot be converted to Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "backdrop/examples/backdrop-custom",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 backdrop recipe option composer. Allowed values: 2, 2.7.7, false."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "backdrop/examples/backdrop-mariadb",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.database is not a supported value for the Lando 4 backdrop recipe option database. Allowed values: mariadb:11.4, mysql:8.0."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "backdrop/examples/backdrop-mysql8",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 backdrop recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "backdrop/examples/backdrop-mysql84",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 backdrop recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "backdrop/examples/backdrop-nginx",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 backdrop recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "core/examples/build",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/build/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "appserver", "build"],
+          "message": "Lando artifact/app hooks cannot share a build block with Compose build intent."
+        },
+        {
+          "sourceId": "core/examples/build/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "appserver", "build", 1],
+          "message": "Build and run hooks must be plain command strings; tagged references are not read."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/cache",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/command",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/command/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "web1", "command"],
+          "message": "Tagged file references cannot be converted here."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/config",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/config/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "web2", "config", "_lando_test_"],
+          "message": "Raw inline file contents have no Lando 4 target."
+        },
+        {
+          "sourceId": "core/examples/config/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "web2", "config", "/tmp/somewhere"],
+          "message": "Raw inline file contents have no Lando 4 target."
+        },
+        {
+          "sourceId": "core/examples/config/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "web2", "config", "/tmp/somewhere-else"],
+          "message": "Raw inline file contents have no Lando 4 target."
+        },
+        {
+          "sourceId": "core/examples/config/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "web2", "config", "/tmp/somewhere-else-else"],
+          "message": "Raw inline file contents have no Lando 4 target."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/debug",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/entrypoint",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/entrypoint/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "web1", "entrypoint"],
+          "message": "Tagged file references cannot be converted here."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/envfile",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/events",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": [],
+          "message": "Landofile load could not read paperback-writer.sh."
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/exec",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/healthcheck",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/healthcheck/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "nginx3", "healthcheck"],
+          "message": "Tagged healthchecks cannot be converted; referenced files are never read during conversion."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "The authored tagged healthcheck cannot be converted without reading a referenced file; the service is blocked rather than emitted with empty readiness."
+  },
+  {
+    "fixture": "core/examples/info",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/l337",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/l337/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "buildx", "image", "ssh"],
+          "message": "The build source cannot be converted safely: Remote contexts and host SSH forwarding are not allowed."
+        },
+        {
+          "sourceId": "core/examples/l337/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "buildkit", "image", "ssh"],
+          "message": "The build source cannot be converted safely: Remote contexts and host SSH forwarding are not allowed."
+        },
+        {
+          "sourceId": "core/examples/l337/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "context-1", "image", "context", 11],
+          "message": "The build source cannot be converted safely: Remote contexts and host SSH forwarding are not allowed."
+        },
+        {
+          "sourceId": "core/examples/l337/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "context-1", "image", "context", 12],
+          "message": "The build source cannot be converted safely: Remote contexts and host SSH forwarding are not allowed."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/lando-v4",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/lando-v4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "web-1", "build"],
+          "message": "Lando artifact/app hooks cannot share a build block with Compose build intent."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/landofile",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/list",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/logs",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/networking",
+    "outcome": {
+      "stage": "lint",
+      "tag": "LandofileNotFoundError",
+      "reason": "No .lando.yml or .lando.ts found. Searched from <app> through /; stopped at the filesystem root."
+    },
+    "category": "unsupported-layer-basename",
+    "reason": "This directory contains only custom .lando.*.yml basenames, which production deliberately ignores; no canonical Landofile is emitted."
+  },
+  {
+    "fixture": "core/examples/plugins",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/proxy",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/rebuild",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/recipes",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe test is not a bundled Lando 4 recipe."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "core/examples/release-channel",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/restart",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/security",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/security/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "web2", "security", "ca", 0],
+          "message": "Tagged file references cannot be converted here."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/sluggy",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe test is not a bundled Lando 4 recipe."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "core/examples/sql-helpers",
+    "outcome": {
+      "stage": "lint",
+      "tag": "LandofileNotFoundError",
+      "reason": "No .lando.yml or .lando.ts found. Searched from <app> through /; stopped at the filesystem root."
+    },
+    "category": "unsupported-layer-basename",
+    "reason": "This directory contains only custom .lando.*.yml basenames, which production deliberately ignores; no canonical Landofile is emitted."
+  },
+  {
+    "fixture": "core/examples/ssh",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/storage",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/storage/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "db", "storage", 3, "scope"],
+          "message": "Lando 4 does not support global data storage yet"
+        },
+        {
+          "sourceId": "core/examples/storage/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "alpine", "persistent-storage", 2, "scope"],
+          "message": "Lando 4 does not support global data storage yet"
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/storage/app2",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/storage/app2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "alpine", "storage", 0, "scope"],
+          "message": "Lando 4 does not support global data storage yet"
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "core/examples/tooling",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": [],
+          "message": "Landofile load could not read word.sh."
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/version",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile references compose.yml or a script that is not part of the Landofile-only corpus. No missing file or include content is fabricated."
+  },
+  {
+    "fixture": "core/examples/yaml",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "core/examples/yaml/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "auto"],
+          "message": "Service must be an explicit mapping to convert."
+        },
+        {
+          "sourceId": "core/examples/yaml/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "manual", "command"],
+          "message": "Tagged file references cannot be converted here."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "drupal/examples/drupal-custom",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 drupal recipe option composer. Allowed values: 2, 2.7.7."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "drupal/examples/drupal-mariadb-mysql",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 drupal recipe option composer. Allowed values: 2, 2.7.7."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "drupal/examples/drupal-mariadb",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 drupal recipe option composer. Allowed values: 2, 2.7.7."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "drupal/examples/drupal-nginx",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 drupal recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "drupal/examples/drupal8",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "drupal/examples/drupal8/.lando.local.yml",
+          "kind": "unsupported",
+          "keyPath": ["config"],
+          "message": "config has no Lando 3 recipe to apply to."
+        },
+        {
+          "sourceId": "drupal/examples/drupal8/.lando.local.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "appserver"],
+          "message": "Service appserver has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "elasticsearch/examples/5.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "elasticsearch/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "elasticsearch version 5 is not available in Lando 4."
+        },
+        {
+          "sourceId": "elasticsearch/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "elasticsearch version 5.6.15 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "elasticsearch/examples/6.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "elasticsearch/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "elasticsearch version 6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "elasticsearch/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "elasticsearch version 6.8.21 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "elasticsearch/examples/7.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "elasticsearch/examples/7.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "elasticsearch version 7 is not available in Lando 4."
+        },
+        {
+          "sourceId": "elasticsearch/examples/7.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "elasticsearch version 7.17.5 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "elasticsearch/examples/9.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "elasticsearch/examples/9.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "elasticsearch version 9 is not available in Lando 4."
+        },
+        {
+          "sourceId": "elasticsearch/examples/9.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "elasticsearch version 9.0.3 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "elasticsearch/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "elasticsearch/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "elasticsearch version 7 is not available in Lando 4."
+        },
+        {
+          "sourceId": "elasticsearch/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "plugins"],
+          "message": "Lando 4 cannot install elasticsearch plugins."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "go/examples/1.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "go/examples/1.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "go version 1.26 is not available in Lando 4."
+        },
+        {
+          "sourceId": "go/examples/1.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "go version 1.26 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "go/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "go/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "No go version was set, so Lando 3 used go 1.26, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "joomla/examples/joomla-custom",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 joomla recipe option composer. Allowed values: 2, 2.7.7, false."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "joomla/examples/joomla-mariadb-mysql",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.database is not a supported value for the Lando 4 joomla recipe option database. Allowed values: mariadb:11.4, mysql:8.0."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "joomla/examples/joomla-mariadb",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.database is not a supported value for the Lando 4 joomla recipe option database. Allowed values: mariadb:11.4, mysql:8.0."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "joomla/examples/joomla-mysql8/symfony-mysql8",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 joomla recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "joomla/examples/joomla-nginx",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 joomla recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "lagoon/examples/all-services",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe lagoon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "lagoon/examples/proxy-tests",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe lagoon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "lamp/examples/lamp-custom",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 lamp recipe option composer. Allowed values: 2, 2.7.7, false."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "lamp/examples/lamp-nginx",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 lamp recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "laravel/examples/laravel-custom",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 laravel recipe option composer. Allowed values: 2, 2.7.7."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "laravel/examples/laravel-nginx",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 laravel recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "lemp/examples/lemp-custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "lemp/examples/lemp-custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "appserver"],
+          "message": "Service appserver has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mailhog/examples/mailhog",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mailhog/examples/mailhog/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "php", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mailpit/examples/advanced",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mailpit/examples/advanced/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "smtpserver", "type"],
+          "message": "mailpit version 1.31 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.1",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.1 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.1.45 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.10",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.10/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.10 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.10/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.10.7 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.11",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.11/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.11 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.11/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.11.7 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.2",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.2.40 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.3",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.3.32 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.4",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.4.22 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.5",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.5/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.5 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.5/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.5.13 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.6",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.6.4 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.7",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.7/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.7 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.7/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.7.8 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.8",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.8/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.8 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.8/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.8.8 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/10.9",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/10.9/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 10.9 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/10.9/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 10.9.8 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/11.0",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/11.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 11.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/11.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 11.0.5 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/11.1",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/11.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 11.1 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/11.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 11.1.4 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/11.2",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/11.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 11.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/11.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 11.2.3 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/11.3",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/11.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mariadb version 11.3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/11.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 11.3.2 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/11.5",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/11.5/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "database", "type"],
+          "message": "mariadb version 11.5 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/11.5/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 11.5.2 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/11.6",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/11.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "database", "type"],
+          "message": "mariadb version 11.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/11.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 11.6.2 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/11.7",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/11.7/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "database", "type"],
+          "message": "mariadb version 11.7 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/11.7/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 11.7.2 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/11.8",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/11.8/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "database", "type"],
+          "message": "mariadb version 11.8 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/11.8/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mariadb version 11.8.3 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "mariadb version 10.3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "customnopwd", "type"],
+          "message": "mariadb version 10.3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mariadb/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "customnopwd", "creds"],
+          "message": "Partial legacy credentials cannot form an independently valid native layer."
+        },
+        {
+          "sourceId": "mariadb/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "customimage", "type"],
+          "message": "mariadb version custom is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mariadb/examples/tooling",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mariadb/examples/tooling/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "database", "type"],
+          "message": "mariadb version 11.3 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mean/examples/mean-custom",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.node is not a supported value for the Lando 4 mean recipe option node. Allowed values: lts, 22."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "memcached/examples/1.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "memcached/examples/1.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "memcached version 1 is not available in Lando 4."
+        },
+        {
+          "sourceId": "memcached/examples/1.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "memcached version 1.5.21 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "memcached/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "memcached/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "memcached version 1.5.22 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mongo/examples/3.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mongo/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mongodb version 3.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mongo/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mongodb version 3.6.21 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mongo/examples/4.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mongo/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mongodb version 4.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mongo/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mongodb version 4.4.11 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mongo/examples/5.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mongo/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mongodb version 5.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mongo/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mongodb version 5.0.5 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mongo/examples/6.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mongo/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mongodb version 6.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mongo/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mongodb version 6.0.5 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mongo/examples/8.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mongo/examples/8.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mongodb version 8.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "mongo/examples/8.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mongodb version 8.0.9 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mongo/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mongo/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "mongodb version 3.6 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mssql/examples/2019",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mssql/examples/2019/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mssql version 2019-latest is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mssql/examples/2022",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mssql/examples/2022/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "mssql version 2022-latest is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mysql/examples/5.7",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mysql/examples/5.7/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "mysql version 5.7.41 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "mysql/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "mysql/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_no_password", "creds"],
+          "message": "Partial legacy credentials cannot form an independently valid native layer."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.16",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.16/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.16 is not available in Lando 4."
+        },
+        {
+          "sourceId": "nginx/examples/1.16/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "nginx version 1.16.1 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.17",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.17/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.17 is not available in Lando 4."
+        },
+        {
+          "sourceId": "nginx/examples/1.17/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "nginx version 1.17.10 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.18",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.18/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.18 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.19",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.19/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.19 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.20",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.20/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.20 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.21",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.21/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.21 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.22",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.22/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.22 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.23",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.23/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.23 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.24",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.24/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.24 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.25",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.25/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.25 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.26",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.26/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.26 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.27",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.27/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.27 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.28",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.28/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.28 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/1.29",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/1.29/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "nginx version 1.29 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "nginx/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "nginx/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "nginx version 1.29 is not available in Lando 4."
+        },
+        {
+          "sourceId": "nginx/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_116", "type"],
+          "message": "nginx version 1.16 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/10",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/10/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 10 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/10/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 11 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/10/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 11 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/10/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "node version 10.19.0 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/12",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/12/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 12 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/12/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "compass", "type"],
+          "message": "node version 14 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/12/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 14 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/12/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 12.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/12/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "node version 12.13.1 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/14",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/14/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 14 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/14/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "compass", "type"],
+          "message": "node version 14 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/14/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 16 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/14/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 14.18 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/14/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "node version 14.18.1 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/16",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/16/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 16 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/16/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "compass", "type"],
+          "message": "node version 16 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/16/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 16.13 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/16/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 16.13.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/16/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "node version 16.13.0 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/18",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/18/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 18 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/18/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "compass", "type"],
+          "message": "node version 18 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/18/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 18.13 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/18/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 18.13.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/18/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "node version 18.12.1 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/20",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/20/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 20 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/20/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "compass", "type"],
+          "message": "node version 20 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/20/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 20 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/20/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 20.9.0 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/21",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/21/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 21 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/21/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "compass", "type"],
+          "message": "node version 21 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/21/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 21 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/21/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 21.5.0 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/22",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.service",
+          "path": ["services", "cli"],
+          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile-only corpus omits .nvmrc and package.json engines.node required to infer the version of the unversioned Node service. No project version metadata is fabricated."
+  },
+  {
+    "fixture": "node/examples/23",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/23/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 23 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/23/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "compass", "type"],
+          "message": "node version 23 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/23/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 23 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/23/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 23.3.0 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/24",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.service",
+          "path": ["services", "cli"],
+          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile-only corpus omits .nvmrc and package.json engines.node required to infer the version of the unversioned Node service. No project version metadata is fabricated."
+  },
+  {
+    "fixture": "node/examples/25",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "node/examples/25/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "node version 25 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/25/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "compass", "type"],
+          "message": "node version 25 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/25/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "node version 25 is not available in Lando 4."
+        },
+        {
+          "sourceId": "node/examples/25/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom2", "type"],
+          "message": "node version 25.9.0 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "node/examples/26",
+    "outcome": {
+      "stage": "lint",
+      "valid": false,
+      "violations": [
+        {
+          "rule": "landofile.service",
+          "path": ["services", "cli"],
+          "message": "Node inference found neither .nvmrc nor package.json. Add .nvmrc or package.json engines.node, then retry."
+        }
+      ]
+    },
+    "category": "missing-external-context",
+    "reason": "The Landofile-only corpus omits .nvmrc and package.json engines.node required to infer the version of the unversioned Node service. No project version metadata is fabricated."
+  },
+  {
+    "fixture": "pantheon/examples/frontend-build",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "pantheon/examples/pantheon-downstreamer-1",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "pantheon/examples/pantheon-downstreamer-2",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "pantheon/examples/pantheon-drush-uri",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "pantheon/examples/pantheon-php-warning",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "php/examples/5.6",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/5.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "php version 5.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/5.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "composer_lts", "type"],
+          "message": "php version 5.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/5.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "php version 5.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/5.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cliworker", "type"],
+          "message": "php version 5.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/5.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "php version 5.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/5.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/7.0",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/7.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "php version 7.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "php version 7.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cliworker", "type"],
+          "message": "php version 7.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "php version 7.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/7.1",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/7.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "php version 7.1 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "php version 7.1 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cliworker", "type"],
+          "message": "php version 7.1 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "php version 7.1 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/7.2",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/7.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "php version 7.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "php version 7.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cliworker", "type"],
+          "message": "php version 7.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "php version 7.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/7.3",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/7.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "php version 7.3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "php version 7.3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cliworker", "type"],
+          "message": "php version 7.3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "php version 7.3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/7.4",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/7.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "php version 7.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "php version 7.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cliworker", "type"],
+          "message": "php version 7.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "php version 7.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/7.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/8.0",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/8.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "php version 8.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/8.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "php version 8.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/8.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cliworker", "type"],
+          "message": "php version 8.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/8.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "php version 8.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/8.0/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/8.1",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/8.1/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/8.2",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/8.2/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/8.3",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/8.3/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/8.4",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/8.4/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/8.5",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/8.5/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom_nginx"],
+          "message": "Service custom_nginx has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/composer",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/composer/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "php72", "type"],
+          "message": "php version 7.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/composer/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "composer1", "type"],
+          "message": "php version 7.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/composer/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "composer22latest", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "withnode", "type"],
+          "message": "php version custom is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom81", "type"],
+          "message": "php version custom is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/db-client-mysql57",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/db-client-mysql57/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "database", "type"],
+          "message": "mysql version 5.7 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/db-client",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/db-client/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "php-old", "type"],
+          "message": "php version 7.4 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/php-extensions",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/php-extensions/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "dockerfile", "type"],
+          "message": "php version custom is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "php/examples/xdebug",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "php/examples/xdebug/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "xdebug2", "type"],
+          "message": "php version 5.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "php/examples/xdebug/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "xdebug3on", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        },
+        {
+          "sourceId": "php/examples/xdebug/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "xdebug3off", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        },
+        {
+          "sourceId": "php/examples/xdebug/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "xdebug3", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        },
+        {
+          "sourceId": "php/examples/xdebug/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "manual", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "phpmyadmin/examples/4.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "phpmyadmin/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "pma", "type"],
+          "message": "phpmyadmin version 4.7 is not available in Lando 4."
+        },
+        {
+          "sourceId": "phpmyadmin/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "database", "type"],
+          "message": "mariadb version 10.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "phpmyadmin/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "database2", "type"],
+          "message": "mariadb version 10.11 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "postgres/examples/10",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "postgres/examples/10/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "postgres version 10 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/10/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cross", "type"],
+          "message": "postgres version 10 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "postgres/examples/11",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "postgres/examples/11/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "postgres version 11 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/11/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cross", "type"],
+          "message": "postgres version 11 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "postgres/examples/12",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "postgres/examples/12/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "postgres version 12 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/12/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cross", "type"],
+          "message": "postgres version 12 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "postgres/examples/13",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "postgres/examples/13/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "postgres version 13 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/13/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cross", "type"],
+          "message": "postgres version 13 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "postgres/examples/14",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "postgres/examples/14/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "postgres version 14 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/14/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cross", "type"],
+          "message": "postgres version 14 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "postgres/examples/9.6",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "postgres/examples/9.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "postgres version 9.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/9.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "postgres version 9.6.14 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/9.6/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cross", "type"],
+          "message": "postgres version 9.6 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "postgres/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "postgres/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "postgres version 11 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "creds"],
+          "message": "Partial legacy credentials cannot form an independently valid native layer."
+        },
+        {
+          "sourceId": "postgres/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "mimicarecipe", "creds"],
+          "message": "Partial legacy credentials cannot form an independently valid native layer."
+        },
+        {
+          "sourceId": "postgres/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cross", "type"],
+          "message": "postgres version 14 is not available in Lando 4."
+        },
+        {
+          "sourceId": "postgres/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "blank_user", "creds"],
+          "message": "Partial legacy credentials cannot form an independently valid native layer."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "python/examples/2.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "python/examples/2.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "python version 2.7 is not available in Lando 4."
+        },
+        {
+          "sourceId": "python/examples/2.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "python version 2.7.14 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "python/examples/3.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "python/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "No python version was set, so Lando 3 used python 3.7, which Lando 4 does not ship."
+        },
+        {
+          "sourceId": "python/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "python version 3.10.1 is not available in Lando 4."
+        },
+        {
+          "sourceId": "python/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "No python version was set, so Lando 3 used python 3.7, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "python/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "python/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "python version 3.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "python/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "customssl", "type"],
+          "message": "No python version was set, so Lando 3 used python 3.7, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "redis/examples/2.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "redis/examples/2.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "redis version 2.8 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/2.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "redis version 2.8.22 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/2.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "password", "type"],
+          "message": "redis version 2.8 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "redis/examples/4.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "redis/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "redis version 4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "redis version 4.0.11 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "password", "type"],
+          "message": "redis version 4 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "redis/examples/5.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "redis/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "redis version 5 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "redis version 5.0.13 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "password", "type"],
+          "message": "redis version 5 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "redis/examples/6.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "redis/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "redis version 6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "redis version 6.0.15 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "password", "type"],
+          "message": "redis version 6 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "redis/examples/8.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "redis/examples/8.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "redis version 8 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/8.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "redis version 8.0.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "redis/examples/8.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "password", "type"],
+          "message": "redis version 8 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "ruby/examples/2.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "ruby/examples/2.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "No ruby version was set, so Lando 3 used ruby 2.7, which Lando 4 does not ship."
+        },
+        {
+          "sourceId": "ruby/examples/2.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "ruby version 2.7.7 is not available in Lando 4."
+        },
+        {
+          "sourceId": "ruby/examples/2.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "No ruby version was set, so Lando 3 used ruby 2.7, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "ruby/examples/3.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "ruby/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "ruby version 3.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "ruby/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "ruby version 3.4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "ruby/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "v3_2", "type"],
+          "message": "ruby version 3.2 is not available in Lando 4."
+        },
+        {
+          "sourceId": "ruby/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "v3_4", "type"],
+          "message": "ruby version 3.4 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "ruby/examples/4.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "ruby/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "ruby version 4.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "ruby/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "ruby version 4.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "ruby/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "cli", "type"],
+          "message": "ruby version 4.0 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "solr/examples/10.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "solr/examples/10.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "solr version 10 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/10.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "solr version 10.0 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/10.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "helper", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "solr/examples/3.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "solr/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "legacy3", "type"],
+          "message": "solr version 3 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/3.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "helper", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "solr/examples/4.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "solr/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "legacy4", "type"],
+          "message": "solr version 4 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "helper", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "solr/examples/5.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "solr/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "solr version 5 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "solr version 5.5.5 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/5.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "helper", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "solr/examples/6.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "solr/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "solr version 6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/6.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "helper", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "solr/examples/7.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "solr/examples/7.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "solr version 7.7 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/7.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "helper", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "solr/examples/8.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "solr/examples/8.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "solr version 8 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/8.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "patch", "type"],
+          "message": "solr version 8.6 is not available in Lando 4."
+        },
+        {
+          "sourceId": "solr/examples/8.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "helper", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "solr/examples/9.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "solr/examples/9.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "helper", "type"],
+          "message": "No php version was set, so Lando 3 used php 7.4, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "symfony/examples/symfony-custom",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 symfony recipe option composer. Allowed values: 2, 2.7.7."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "symfony/examples/symfony-mariadb-mysql",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.database is not a supported value for the Lando 4 symfony recipe option database. Allowed values: postgres:16, mariadb:11.4."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "symfony/examples/symfony-mariadb",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.database is not a supported value for the Lando 4 symfony recipe option database. Allowed values: postgres:16, mariadb:11.4."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "symfony/examples/symfony-mysql8",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 symfony recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "symfony/examples/symfony-mysql84",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 symfony recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "symfony/examples/symfony-nginx",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 symfony recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "tomcat/examples/7.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "tomcat/examples/7.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "custom", "type"],
+          "message": "tomcat version 7 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "upsun/examples/fixed-magento",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "upsun/examples/fixed-php",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "upsun/examples/flex-composable",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "upsun/examples/flex-multiapp",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "upsun/examples/flex-node",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "upsun/examples/flex-php",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "upsun/examples/flex-services",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "upsun/examples/flex-static",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  },
+  {
+    "fixture": "varnish/examples/4.x",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "varnish/examples/4.x/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "defaults", "type"],
+          "message": "varnish version 4 is not available in Lando 4."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "varnish/examples/custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "varnish/examples/custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "backend2", "type"],
+          "message": "No python version was set, so Lando 3 used python 3.7, which Lando 4 does not ship."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "wordpress/examples/wordpress-custom",
+    "outcome": {
+      "stage": "unsupported",
+      "diagnostics": [
+        {
+          "sourceId": "wordpress/examples/wordpress-custom/.lando.yml",
+          "kind": "unsupported",
+          "keyPath": ["services", "appserver"],
+          "message": "Service appserver has no image to convert."
+        }
+      ]
+    },
+    "category": "unsupported-diagnostics",
+    "reason": "Translation emitted the exact blocking diagnostics recorded here; lint is deliberately not attempted. Catalog-version rejections include known hand-copied catalog drift, not just genuine unavailable versions."
+  },
+  {
+    "fixture": "wordpress/examples/wordpress-nginx",
+    "outcome": {
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 wordpress recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    "category": "expected-rejection",
+    "reason": "The authored recipe or recipe-option value is outside the supported conversion policy. This is a tagged refusal, not an unhandled crash."
+  }
+]

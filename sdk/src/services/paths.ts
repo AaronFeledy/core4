@@ -44,7 +44,6 @@ export class PathsService extends Context.Service<
     readonly systemPluginsDir: string;
     readonly pluginStateDir: (pluginId: string) => string;
     readonly appPluginsDir: (appId: string) => string;
-    readonly pluginAuthFile: string;
     readonly binDir: string;
     readonly installRecordFile: string;
     readonly keysDir: string;

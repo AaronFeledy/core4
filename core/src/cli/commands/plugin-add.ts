@@ -17,7 +17,7 @@ import {
 } from "@lando/engine/operations/plugin-install";
 import { retainedRecipeSources } from "../../recipes/runtime-sources";
 import { bunSelfInstall } from "./bun-self-runner";
-import { redactPluginPackageError } from "./plugin-package-error";
+import { failPluginNetworkPolicy, redactPluginPackageError } from "./plugin-package-error";
 import { resolvePluginsRoot } from "./plugin-roots";
 
 import { parseNpmPackageSpec } from "../../recipes/npm-source";
@@ -184,6 +184,13 @@ export const pluginAdd = Effect.fn("PluginAdd.add")(
             if (createdPackageDir !== undefined)
               await rm(createdPackageDir, { recursive: true, force: true });
             if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(trustName);
+          }),
+        ),
+        Effect.catchTag("BunChildNetworkPolicyError", (error) =>
+          failPluginNetworkPolicy(error, {
+            commandId: PLUGIN_ADD_COMMAND_ID,
+            packageSpec: options.spec,
+            cwd: packageDir,
           }),
         ),
       );

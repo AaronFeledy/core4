@@ -7,6 +7,7 @@ import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import type {
+  DebuggerHostUnavailableError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
@@ -34,6 +35,7 @@ import {
   RouterService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { globalAppRef, withGlobalLifecycleEvents } from "./global-common";
 
 import { installAndLoadGlobalPlan } from "@lando/engine/operations/global-install";
@@ -58,6 +60,7 @@ export type GlobalRebuildError =
   | GlobalAppError
   | LoadGlobalPlanError
   | BuildError
+  | DebuggerHostUnavailableError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
@@ -94,6 +97,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
       yield* revalidateAppliedGlobalRouterStartup(loaded.plan);
       return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
     }
+    const preparedOverlays = yield* prepareDebuggerOverlay(loaded.plan);
 
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(loaded.plan.provider);
@@ -136,6 +140,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
             provider,
             services,
             beforeApply: verifyAdmission,
+            preparedOverlays,
             options: {
               reconcile: true,
               ...(options.signal === undefined ? {} : { signal: options.signal }),

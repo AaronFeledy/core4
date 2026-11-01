@@ -17,7 +17,9 @@ export const compileServiceProbe = (
   if (probe.target === undefined) return command;
   if (plan === undefined || service === undefined)
     throw new ContainerPlanError("Targeted probes require their application and service plan.");
-  const target = serviceListenerTarget(plan, service, probe.target);
+  // Targets reaching this compiler were validated at planning; they come from a
+  // contributed probe, so an `endpoints:` override must not hide a live listener.
+  const target = serviceListenerTarget(plan, service, probe.target, { requireDeclared: false });
   if (Result.isFailure(target)) throw new ContainerPlanError(target.failure.message);
   return [
     "env",

@@ -11,6 +11,9 @@ import {
 } from "@lando/engine/global-app/router-admission";
 
 import { globalCreateProviderId } from "@lando/engine/global-app/placement";
+import { hasDebuggerConsumer } from "@lando/engine/subsystems/debugger-host";
+import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
+import { loadGlobalPlan } from "./global-plan";
 
 import {
   type GlobalStartError,
@@ -41,10 +44,19 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(
   ): Effect.fn.Return<GlobalRestartResult, GlobalRestartError, GlobalRestartServices> {
     // A placement mismatch would only surface in the start phase; refuse before stopping the router.
     yield* globalCreateProviderId();
+    // Resolve the debugger address before stopping anything so discovery failures leave services running.
+    const current = yield* loadGlobalPlan();
+    const preparedOverlays =
+      current.materialized && hasDebuggerConsumer(current.plan)
+        ? yield* prepareDebuggerOverlay(current.plan)
+        : undefined;
     yield* globalStop();
     const appliedPlan = yield* Ref.make<GlobalRouterStartupPlan | undefined>(undefined);
     const revalidateRouter = Effect.flatMap(Ref.get(appliedPlan), revalidateAppliedGlobalRouterStartup);
-    const result = yield* globalStart(options.signal === undefined ? {} : { signal: options.signal }).pipe(
+    const result = yield* globalStart({
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(preparedOverlays === undefined ? {} : { preparedOverlays }),
+    }).pipe(
       (effect) => withGlobalRouterStartupPlanObserver(effect, (plan) => Ref.set(appliedPlan, plan)),
       Effect.catchTags({
         GlobalAppError: Effect.fnUntraced(function* (error) {

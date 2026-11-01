@@ -112,7 +112,7 @@ describe("cold-path topic and all help", () => {
     // Then
     expect(help).toContain("config");
     expect(help).not.toMatch(/^\s+start\s/m);
-    expect(help).not.toContain("meta:plugin:login");
+    expect(help).not.toContain("meta:events:follow");
   });
 
   test("renderColdTopicHelp puts authoring plugin commands under AUTHORING and omits deferred login", () => {
@@ -123,7 +123,7 @@ describe("cold-path topic and all help", () => {
     expect(help).toContain("plugin:add");
     expect(help).toContain("AUTHORING");
     expect(help).toContain("plugin:new");
-    expect(help).not.toContain("plugin:login");
+    expect(help).not.toContain("meta:events:follow");
   });
 
   test("renderColdTopicHelp returns empty for an unknown topic", () => {
@@ -139,8 +139,8 @@ describe("cold-path topic and all help", () => {
     const help = renderColdAllHelp({ style: false });
 
     // Then
-    expect(help).toContain("plugin:login");
-    expect(help).toContain("meta:plugin:login");
+    expect(help).toContain("events:follow");
+    expect(help).toContain("meta:events:follow");
     expect(help).not.toContain("TOPICS");
   });
 

@@ -4,10 +4,11 @@ import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { lowerCatalogCommon } from "../src/lower-catalog-common.ts";
 import type { ServiceLoweringContext } from "../src/lowering-contract.ts";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator, testPorts } from "./fixtures/test-ports.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: testPorts().serviceFacts,
   serviceName: "java",
   keyPath: ["services", "java"],
   fallbackSourceId: ".lando.yml",
@@ -25,11 +26,11 @@ const translate = (text: string) =>
 describe("Tomcat legacy webroot lowering", () => {
   test.each([undefined, null, 42])("preserves an authored non-string webroot %j", (webroot) => {
     // Given: an authored value that cannot be joined as a literal path.
-    const service = { type: "tomcat", webroot };
+    const service = { type: "tomcat:10", webroot };
     // When: the service is lowered.
     const result = lowerCatalogCommon(service, ctx);
     // Then: the value survives unchanged with ROOT-directory remediation.
-    expect(result.patch).toEqual({ type: "tomcat", webroot });
+    expect(result.patch).toEqual({ type: "tomcat:10", webroot });
     expect(result.patch).toHaveProperty("webroot");
     expect(result.diagnostics).toEqual([
       expect.objectContaining({
@@ -45,11 +46,11 @@ describe("Tomcat legacy webroot lowering", () => {
       `omits webroot for app_mount ${app_mount} with %j`,
       (definition) => {
         // Given: a legacy Tomcat service without an app-code mount.
-        const service = { type: "tomcat", app_mount, ...definition };
+        const service = { type: "tomcat:10", app_mount, ...definition };
         // When: the service is lowered.
         const result = lowerCatalogCommon(service, ctx);
         // Then: no relative root is invented and image-provided content needs review.
-        expect(result.patch).toEqual({ type: "tomcat", appMount: false });
+        expect(result.patch).toEqual({ type: "tomcat:10", appMount: false });
         expect(result.diagnostics).toEqual([
           expect.objectContaining({
             kind: "needs-review",

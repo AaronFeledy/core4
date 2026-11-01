@@ -44,7 +44,9 @@ Reverb and Horizon don't need a separate `build.artifact` step to install `pcntl
 
 ## Turn on Xdebug
 
-Xdebug is not a `build.artifact` PECL one-off. Set `xdebug: true` (or a mode string) on the PHP service. See the Xdebug in PhpStorm guide. `xdebug: false` is the default and installs nothing. `XDEBUG_MODE` in `environment:` does not add the extension.
+Xdebug is not a `build.artifact` PECL one-off. Set `xdebug: true` (or a mode string) on the PHP service. See [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx). `xdebug: false` is the default and installs nothing. `XDEBUG_MODE` in `environment:` does not add the extension.
+
+Stock services point `client_host` at `debugger.lando.internal`. That alias follows global `debugger.host`. When you own the image, install the extension yourself and set `xdebug.client_host=debugger.lando.internal` in PHP ini. PHP-FPM defaults to `clear_env = yes`, so workers may not see `XDEBUG_CONFIG` from the service environment; the ini value is the reliable path for custom FPM images.
 
 ## Install a database client
 
@@ -288,7 +290,9 @@ Explicit opt-ins still matter:
 - `composer.packages` still adds a global-package install step. Supply a working
   `composer` binary in your image; `composer.version` does not install it there.
 - `xdebug:` still configures Xdebug environment and tooling, but your image must
-  already have the extension installed.
+  already have the extension installed. Set `xdebug.client_host` to
+  `debugger.lando.internal` in your image's PHP ini; FPM's default `clear_env`
+  can drop `XDEBUG_CONFIG` before workers see it.
 - Mailpit's `mailFrom` selection still applies. The replacement Dockerfile
   controls the resulting image, so an image reference cannot prove its Debian
   family. Selecting it fails planning with `MailpitMsmtpBaseFamilyError`.

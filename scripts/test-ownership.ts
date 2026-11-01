@@ -43,6 +43,8 @@ export const NIGHTLY_TIER_TESTS: readonly string[] = [
 export const MANUAL_TESTS: Readonly<Record<string, string>> = {
   "container-runtime/test/ephemeral-data-helpers.integration.test.ts":
     "Requires LANDO_TEST_DOCKER_SOCKET; no current CI invocation selects this file.",
+  "container-runtime/test/listener-observation.integration.test.ts":
+    "Requires a live LANDO_TEST_PODMAN_SOCKET and docker.io/library/redis:7 (pulled if absent); no current CI invocation selects this file.",
   "core/test/cli/shell-tty.integration.test.ts":
     "Requires LANDO_TEST_SHELL_TTY=1 and a real terminal; no current CI invocation selects this file.",
   "core/test/cli/start-readiness.integration.test.ts":

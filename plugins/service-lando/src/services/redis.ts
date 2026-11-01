@@ -16,7 +16,7 @@ const DEFAULT_COMMAND = ["redis-server", "--appendonly", "yes"];
 const EPHEMERAL_COMMAND = ["redis-server", "--appendonly", "no", "--save", ""];
 const AUTH_START =
   'hash=$(printf %s "$REDISCLI_AUTH" | sha256sum); printf "user default on #%s ~* &* +@all\\n" "${hash%% *}" > /tmp/lando-redis.conf; chmod 0444 /tmp/lando-redis.conf; exec docker-entrypoint.sh redis-server /tmp/lando-redis.conf "$@"';
-const DEFAULT_PORT = 6379;
+export const DEFAULT_PORT = 6379;
 const DATA_TARGET = PortablePath.make("/data");
 export const REDIS_FEATURE_ID = "service-lando.redis";
 

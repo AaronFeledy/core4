@@ -37,6 +37,10 @@ describe("npm include recipe-source port", () => {
           resolveUserCacheRoot: () => cacheRoot,
           resolveUserIncludesDir: () => cacheRoot,
           npmRecipeSource: {
+            fetchTarball: async (resolved) => {
+              expect(resolved.packageName).toBe("@acme/fragments");
+              return bytes;
+            },
             resolve: async (packageSpec) => {
               packageSpecs.push(packageSpec);
               return {
@@ -51,7 +55,9 @@ describe("npm include recipe-source port", () => {
           },
           git: { clone: async () => ({ commitSha: "unused" }) },
           tarball: {
-            fetch: async () => bytes,
+            fetch: async () => {
+              throw new Error("npm includes must use the credential-aware npm port");
+            },
             extract: async (_archive, destDir) => {
               const fragmentDir = join(destDir, "package", "fragments");
               await mkdir(fragmentDir, { recursive: true });

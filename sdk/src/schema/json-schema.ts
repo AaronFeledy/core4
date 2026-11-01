@@ -16,6 +16,7 @@ import {
   LandofileSourceValue,
 } from "./landofile-source.ts";
 import { LayerMergeRule } from "./layer-merge.ts";
+import { ListenerObservation } from "./listener-observation.ts";
 import { OwnedResourcesCleanupResult, ResourceOwnership } from "./resource-ownership.ts";
 
 import {
@@ -714,6 +715,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ProxyApplyResult,
   ProxyStatus,
   HealthcheckPlan,
+  ListenerObservation,
   ScannerConfig,
   ScanPlan,
   EndpointScan,

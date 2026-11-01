@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect";
 
-import { AppPlacementError, GlobalAppError } from "@lando/sdk/errors";
+import { AppPlacementError, DebuggerHostUnavailableError, GlobalAppError } from "@lando/sdk/errors";
 import { AppId } from "@lando/sdk/schema";
 import { type ConfigService, GlobalAppService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
@@ -152,7 +152,7 @@ export const layer = Layer.effect(
           Effect.provide(context),
           Effect.map((result) => result.servicesStarted),
           Effect.mapError((cause) =>
-            cause instanceof AppPlacementError
+            cause instanceof AppPlacementError || cause instanceof DebuggerHostUnavailableError
               ? cause
               : new GlobalAppError({
                   message: "Unable to ensure global services are running.",

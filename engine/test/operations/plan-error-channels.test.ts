@@ -10,6 +10,7 @@ import type {
   CapabilityError,
   ConfigExpressionError,
   DataTreeOwnershipCapabilityError,
+  DebuggerHostUnavailableError,
   EventError,
   FileSyncSelectionError,
   GlobalAppError,
@@ -124,6 +125,7 @@ type ExpectedGlobalInstallError =
 
 type ExpectedEnsureGlobalServicesError =
   | AppResolveError
+  | DebuggerHostUnavailableError
   | StateStoreError
   | LandofileWriteValidationError
   | ManagedFileTransactionError
@@ -246,6 +248,7 @@ describe("Engine plan-carrying error channels", () => {
     assertType<
       Equal<
         EnsureGlobalServicesError,
+        | DebuggerHostUnavailableError
         | ServiceNotReadyError
         | LoadGlobalPlanError
         | BuildError

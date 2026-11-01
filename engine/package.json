@@ -213,6 +213,7 @@
     "./services/shell-runner": "./src/services/shell-runner.ts",
     "./services/tooling-engine": "./src/services/tooling-engine.ts",
     "./subsystems/certs/api": "./src/subsystems/certs/api.ts",
+    "./subsystems/debugger-host": "./src/subsystems/debugger-host.ts",
     "./subsystems/detached-worker/process": "./src/subsystems/detached-worker/process.ts",
     "./subsystems/detached-worker/state-file": "./src/subsystems/detached-worker/state-file.ts",
     "./subsystems/gpg-agent/discovery": "./src/subsystems/gpg-agent/discovery.ts",

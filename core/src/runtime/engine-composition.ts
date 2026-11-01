@@ -5,11 +5,8 @@ import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
 import { resolveContainerHelper } from "../container-helper/assets";
 import { defaultGitRecipeCloner, publish } from "../recipes/git-source";
-import {
-  DEFAULT_NPM_REGISTRY_URL,
-  defaultNpmRegistryClient,
-  makeNpmRecipeSourcePort,
-} from "../recipes/npm-source";
+import { npmRegistryConfigSnapshot } from "../recipes/npm-registry-config";
+import { defaultNpmRegistryClient, makeNpmRecipeSourcePort } from "../recipes/npm-source";
 import {
   defaultTarballRecipeExtractor,
   defaultTarballRecipeFetcher,
@@ -19,11 +16,16 @@ import {
 export const baseEngineCompositionInputs: EngineCompositionInputs = {
   bundledPluginModules: [],
   builtInCommandIds: BUILT_IN_COMMAND_IDS,
-  landofileSourcePorts: (client, downloader) => ({
+  landofileSourcePorts: (client, downloader, runtime) => ({
     npmRecipeSource: makeNpmRecipeSourcePort(
-      defaultNpmRegistryClient(DEFAULT_NPM_REGISTRY_URL, (url, options) =>
-        httpJsonFetch(url, options, client),
-      ),
+      () =>
+        defaultNpmRegistryClient(
+          undefined,
+          (url, options) => httpJsonFetch(url, options, client),
+          npmRegistryConfigSnapshot(runtime?.registerSecrets, runtime?.readPolicy),
+        ),
+      undefined,
+      makeTarballRecipeFetcher(downloader),
     ),
     tarball: {
       fetch: makeTarballRecipeFetcher(downloader).fetch,

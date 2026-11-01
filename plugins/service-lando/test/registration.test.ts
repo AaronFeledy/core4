@@ -7,7 +7,9 @@ import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 import { globalServices, services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
+import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
 import { compileTestLandofile } from "./support/compiled-landofile.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
@@ -187,7 +189,8 @@ describe("@lando/service-lando registration", () => {
       target: PortablePath.make("/var/lib/rabbitmq"),
       readOnly: false,
     });
-    expect(queue.healthcheck?.command).toEqual(["rabbitmq-diagnostics", "-q", "ping"]);
+    expect(queue.healthcheck).toEqual(rabbitmqProbes(5672).healthcheck);
+    expect(queue.readiness).toEqual(rabbitmqProbes(5672).readiness);
 
     expect(objectStore.artifact).toEqual({
       kind: "ref",
@@ -496,7 +499,7 @@ describe("@lando/service-lando registration", () => {
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("php:8.2");
     expect(web.environment.LANDO_WEBROOT).toBe("/app/web");
     expect(web.healthcheck?.kind).toBe("command");
-    expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80"]);
+    expect(web.healthcheck).toEqual(tcpProbe(80, 10));
 
     expect(api.type).toBe("php:8.3");
     expect(String(api.workingDirectory)).toBe("/app/public");
@@ -676,7 +679,7 @@ describe("@lando/service-lando registration", () => {
     }
 
     expect(java.artifact).toEqual({ kind: "ref", ref: TOMCAT_CATALOG["11"].image });
-    expect(java.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
+    expect(java.healthcheck).toEqual(tcpProbe(8080, 20));
     expect(cache.artifact).toEqual({ kind: "ref", ref: "varnish:7" });
     expect(cache.healthcheck?.command).toEqual(["varnishadm", "ping"]);
     expect(cache.dependsOn).toEqual([

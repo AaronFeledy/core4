@@ -22,10 +22,14 @@ import {
 import { processRunnerFor } from "../_support/process-runner.ts";
 
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import { createBufferedRendererIO } from "@lando/renderer/io";
 import { pluginAddSpec } from "../../src/cli/command-specs/meta/plugin/add.ts";
 import { type PluginAddOptions, pluginAdd } from "../../src/cli/commands/plugin-add.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary";
 import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
+import { loadNpmRegistryConfig } from "../../src/recipes/npm-registry-config";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
+import { defaultNpmRegistryClient } from "../../src/recipes/npm-source.ts";
 import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
 
 let userDataRoot: string;
@@ -191,6 +195,102 @@ const failureError = (exit: Exit.Exit<unknown, unknown>): unknown => {
 };
 
 describe("meta:plugin:add command", () => {
+  test.each(["transport", "json", "unauthorized"])(
+    "never exposes a literal npmrc token in %s machine output or events",
+    async (failure) => {
+      const token = "literal-machine-output-canary-1489";
+      const config = await loadNpmRegistryConfig({
+        env: {},
+        home: "/user-home",
+        readFile: async () => `//registry.example/:_authToken=${token}`,
+      });
+      const registryClient = defaultNpmRegistryClient(
+        "https://registry.example/",
+        async () => {
+          if (failure === "transport") throw new Error(token);
+          return {
+            status: failure === "unauthorized" ? 401 : 200,
+            bytes: new TextEncoder().encode(`invalid ${token}`),
+          };
+        },
+        async () => config,
+      );
+      const io = createBufferedRendererIO();
+      const events: LandoEvent[] = [];
+      const codes: number[] = [];
+      await runWithRendererHandling(pluginAdd({ spec: "@acme/private", registryClient }), {
+        runtime: Layer.merge(pluginAddLayer(userDataRoot), recordingEventLayer(events)),
+        rendererMode: "plain",
+        resultFormat: "json",
+        command: "meta:plugin:add",
+        resultSchema: pluginAddSpec.resultSchema,
+        io,
+        setExitCode: (code) => {
+          codes.push(code);
+        },
+        formatError: (error) => (error instanceof Error ? error.message : "Plugin installation failed."),
+      });
+      expect(codes).toEqual([1]);
+      expect(JSON.parse(io.stdout())).toMatchObject({
+        ok: false,
+        error: { _tag: "PluginPackageOperationError" },
+      });
+      expect(io.stdout() + io.stderr()).not.toContain(token);
+      expect(JSON.stringify(events)).not.toContain(token);
+      if (failure === "unauthorized") {
+        expect(io.stdout()).toContain("rejected the //registry.example/:_authToken token");
+      }
+    },
+  );
+
+  test("installs a scoped plugin using only the user's npm config for registry and auth", async () => {
+    const token = "literal-private-plugin-token-1489";
+    const name = "@acme/lando-plugin-x";
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson(name, "1.2.3"),
+      "index.js": "export {};\n",
+    });
+    const reads: string[] = [];
+    const config = await loadNpmRegistryConfig({
+      env: {},
+      home: "/user-home",
+      readFile: async (path) => {
+        reads.push(path);
+        return `@acme:registry=https://registry.example/\n//registry.example/:_authToken=${token}`;
+      },
+    });
+    const events: LandoEvent[] = [];
+    const client = defaultNpmRegistryClient(
+      undefined,
+      async (url, options) => {
+        expect(url).toBe("https://registry.example/@acme%2flando-plugin-x");
+        expect(options?.headers).toContainEqual({ name: "authorization", value: `Bearer ${token}` });
+        return { status: 200, bytes: new TextEncoder().encode(JSON.stringify(packumentFor(name, bytes))) };
+      },
+      async () => config,
+    );
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: name,
+        trust: true,
+        registryClient: client,
+        fetcher: {
+          fetch: async (_url, options) => {
+            expect(options?.authorization).toBe(`Bearer ${token}`);
+            expect(options?.redactionTokens).toContain(token);
+            return bytes;
+          },
+        },
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot)), Effect.provide(recordingEventLayer(events))),
+    );
+    expect(reads).toEqual(["/user-home/.npmrc"]);
+    expect(await exists(join(pluginsRoot, name, "1.2.3", "package.json"))).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(token);
+    expect(JSON.stringify(events)).not.toContain(token);
+    expect(await readFile(join(pluginsRoot, "registry.json"), "utf8")).not.toContain(token);
+  });
+
   test.each(["download", "verify", "extract"] as const)(
     "reports an honest %s acquisition failure without child status",
     async (stage) => {
@@ -300,7 +400,7 @@ describe("meta:plugin:add command", () => {
 
   test("trust flag description is phase-neutral current-state wording", () => {
     const flags = JSON.stringify(pluginAddSpec.flags);
-    expect(flags).toContain("not supported");
+    expect(flags).toContain("save that trust by package name");
     expect(flags).not.toMatch(/\bAlpha\b/);
     expect(flags).not.toMatch(/\bBeta\b/);
   });

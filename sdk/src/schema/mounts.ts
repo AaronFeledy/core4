@@ -27,6 +27,10 @@ const originField = Schema.optionalKey(MountOrigin).annotate({
 export const BindMountPlan = Schema.Struct({
   type: Schema.Literal("bind").annotate({ description: "Mount kind." }),
   source: Schema.String.annotate({ description: "Host path." }),
+  sourceIdentity: Schema.optionalKey(Schema.String).annotate({
+    description:
+      "Optional host source identity included in container create fingerprints; replacing the source requires a remount even when its path is unchanged.",
+  }),
   target: PortablePath.annotate({ description: "Mount point inside the container." }),
   readOnly: Schema.Boolean.annotate({ description: "Whether the container sees the mount read-only." }),
   createHostPath: Schema.optionalKey(Schema.Boolean).annotate({

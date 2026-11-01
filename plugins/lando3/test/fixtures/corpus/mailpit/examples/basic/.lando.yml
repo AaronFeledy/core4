@@ -1,0 +1,8 @@
+name: mailpit-basic
+recipe: lamp
+config:
+  php: 8.4
+
+services:
+  smtpserver:
+    type: mailpit

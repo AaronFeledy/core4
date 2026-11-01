@@ -16,6 +16,11 @@ import {
 } from "../operations/global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
+import {
+  type PreparedDebuggerOverlay,
+  prepareDebuggerOverlay,
+  projectDebuggerOverlay,
+} from "../subsystems/start-overlay-registry.ts";
 import type { makeScratchReaper } from "./destroy.ts";
 import type { ScratchRegistry } from "./registry.ts";
 
@@ -24,6 +29,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     readonly id: string;
     readonly plan: AppPlan;
     readonly landofileRouter?: RouterConfig;
+    readonly preparedOverlays?: PreparedDebuggerOverlay;
   },
   services: {
     readonly provider: RuntimeProviderShape;
@@ -33,14 +39,16 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
   },
 ) {
   const { id, plan } = request;
+  const preparedOverlays = request.preparedOverlays ?? (yield* prepareDebuggerOverlay(plan));
+  const runtimePlan = projectDebuggerOverlay(plan, preparedOverlays);
   const activate = Effect.gen(function* () {
     yield* Effect.scoped(
       applyWithResolvedEnvironment(
         services.provider,
-        plan,
+        runtimePlan,
         {
           reconcile: false,
-          onVolumeCreated: yield* volumeCreationRecorder(services.provider, plan),
+          onVolumeCreated: yield* volumeCreationRecorder(services.provider, runtimePlan),
         },
         verifyGlobalConsumerAdmission,
       ).pipe(Effect.provideService(EnvironmentValueResolver, services.environmentResolver)),
@@ -58,8 +66,8 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     yield* completeStartup({
       policy: "scratch",
       provider: services.provider,
-      plan,
-      services: Object.values(plan.services).map((service) => service.name),
+      plan: runtimePlan,
+      services: Object.values(runtimePlan.services).map((service) => service.name),
       ...(services.router === undefined ? {} : { router: services.router }),
       ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
     }).pipe(

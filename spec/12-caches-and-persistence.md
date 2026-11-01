@@ -72,7 +72,7 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userCacheRoot>/scratch/<scratch-id>/root/` | Materialized scratch app root, removed atomically at destroy. |
 | `<userCacheRoot>/scratch/<scratch-id>/lock` | Per-scratch lifecycle lock. |
 | `<userCacheRoot>/scratch/registry.bin`, `registry.lock` | Durable scratch registry and cross-process lock (§21.11). |
-| `<userDataRoot>/plugins/`, `apps/<app-id>/plugins/`, `plugin-auth.json` | User and app plugins plus private-registry auth. |
+| `<userDataRoot>/plugins/`, `apps/<app-id>/plugins/` | User and app plugins. |
 | `<userDataRoot>/global/`, `global/.lando.dist.yml` | Global app root and generated contribution layer (§20.3). |
 | `<userDataRoot>/keys/`, `certs/`, `bin/` | Managed SSH keys (the §10.4 managed identity), certificates, and checksum/version-pinned helper binaries. |
 | `<userDataRoot>/secrets/` | Persistent writable `lando` user-grant store (§9.5.1), including refresh grants: private directory, owner-only files, locked atomic replacement; excluded from managed-file backups, journals, exports, and support bundles. Access tokens/resource credentials remain session-only. |
