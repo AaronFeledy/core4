@@ -149,6 +149,7 @@ Nothing falls through silently. When a key has both a supported form and a rejec
 | `moreHttpPorts`, `plugins`, `pluginDirs`, tooling `level`, `usage`, `examples`, and `interactive` | `dropped`, with where to set it by hand | No |
 | `PGPORT`, `MYSQL_TCP_PORT`, `MSSQL_TCP_PORT`, `RABBITMQ_NODE_PORT`, or `APACHE_PORT` on the service type that owns it | `port:`, with a `needs-review` note. See [Service ports](#service-ports) | No |
 | `ssl: true` on a catalog service | `certs: true`, plus a `needs-review` note when Lando 3 also published the HTTPS port | No |
+| `ssl: <port>` on a `node` service | `certs: true` and an HTTPS endpoint on that port, which the app serves as it did in Lando 3 | No |
 | `api: 4` `type: l337` | A Lando 4 `compose` service. See [`l337` services](#l337-services) | No |
 | One of those variables that disagrees with `port:` or isn't a port number | `unsupported` | Yes |
 | `api: 4` app-mount `source`, mount ownership, a camelCase `readOnly`, and `endpoints` | `dropped`. See [Mounts on `api: 4` services](#mounts-on-api-4-services) | No |
