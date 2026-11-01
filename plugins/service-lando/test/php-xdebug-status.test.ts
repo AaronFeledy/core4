@@ -160,6 +160,27 @@ test("command-looking host and port remain argv data", async () => {
   expect(result.argv?.split("\n").slice(-5)).toEqual(["--", host, "9003", "", ""]);
 });
 
+test("Windows hint follows the probed address when local hosts has multiple addresses", async () => {
+  const result = await runStatus({ address: "172.27.48.1\n2001:db8::40", kernel: "microsoft-standard-WSL2" });
+  expect(result.exit).toBe(0);
+  expect(result.output).toContain("Client: debugger.lando.internal:9003 (172.27.48.1 2001:db8::40)");
+  expect(result.output).toContain("If your IDE runs on Windows");
+  expect(result.argv?.split("\n").slice(-5)).toEqual([
+    "--",
+    "debugger.lando.internal",
+    "9003",
+    "172.27.48.1",
+    "",
+  ]);
+});
+
+test("empty client host uses the generic listening hint", async () => {
+  const result = await runStatus({ host: "" });
+  expect(result.exit).toBe(0);
+  expect(result.output).not.toContain("If this is your IDE address");
+  expect(result.output).toContain("Check that your IDE is listening");
+});
+
 const phpAvailable = Bun.which("php") === "/usr/bin/php";
 for (const host of ["127.0.0.1", "::1", "[::1]"]) {
   test.skipIf(!phpAvailable)(`real PHP connects and closes a TCP listener at ${host}`, async () => {
