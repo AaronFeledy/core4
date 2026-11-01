@@ -1,29 +1,31 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
 import { CATALOG, type CatalogResolution, resolveCatalogType } from "./catalog.ts";
+import { serviceCursor } from "./claims.ts";
 import type { Lando3Path } from "./contract.ts";
+import { lowerAssignments } from "./environment.ts";
 import { withoutHostIpVariable } from "./host-reachability.ts";
+import { lowerCatalogConfig } from "./lower-catalog-config.ts";
+import { catalogVersionDiagnostics } from "./lower-catalog-version.ts";
+import { type ListenPortResolution, resolveListenPort } from "./lower-listen-port.ts";
 import { lowerScannerAndHome } from "./lower-runtime-intent.ts";
 import { lowerServiceMemory } from "./lower-service-memory.ts";
+import { lowerLegacySsl } from "./lower-ssl.ts";
 import { lowerTomcatWebroot } from "./lower-tomcat-webroot.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
-  type V4Wire,
-  asStringArray,
   hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
-import { serviceConfigMount } from "./service-config-mount.ts";
 import {
   droppedMoreHttpPorts,
-  droppedServiceKey,
   rewrittenMeUser,
   rewrittenServiceKey,
   unsupportedServiceKey,
-  unsupportedVersion,
 } from "./service-diagnostics.ts";
 
 export interface CatalogCommonResult extends LoweringPatch {
   readonly resolution: CatalogResolution;
+  readonly listenPort: ListenPortResolution | undefined;
 }
 
 const numericPort = (value: unknown): number | undefined => {
@@ -31,35 +33,26 @@ const numericPort = (value: unknown): number | undefined => {
   return typeof port === "number" && Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined;
 };
 
-const readOnlyBind = (source: string, target: string): V4Wire => ({
-  type: "bind",
-  source,
-  target,
-  readOnly: true,
-});
-
 export const lowerCatalogCommon = (
   service: Record<string, unknown>,
   ctx: ServiceLoweringContext,
 ): CatalogCommonResult => {
-  const resolution = resolveCatalogType(typeof service.type === "string" ? service.type : "");
+  const cursor = serviceCursor(service, ctx);
+  const claimedContext = { ...ctx, cursor };
+  cursor.take(["type"]);
+  const resolution = resolveCatalogType(
+    typeof service.type === "string" ? service.type : "",
+    ctx.serviceFacts,
+  );
   const patch: Record<string, unknown> = {};
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   let blocked = false;
-  let companions: Record<string, V4Wire> | undefined;
   const drop = (
     relative: Lando3Path,
     message: string,
     remediation = "Configure the equivalent behavior by hand in the generated service if needed.",
   ): void => {
-    diagnostics.push(
-      droppedServiceKey({
-        ctx,
-        relative,
-        message,
-        remediation,
-      }),
-    );
+    diagnostics.push(cursor.dropTree(relative, message, remediation));
   };
   const rewrite = (relative: Lando3Path, message: string): void => {
     diagnostics.push(
@@ -72,6 +65,9 @@ export const lowerCatalogCommon = (
     );
   };
 
+  const versions = Object.hasOwn(ctx.serviceFacts, resolution.id)
+    ? (ctx.serviceFacts[resolution.id]?.versions ?? [])
+    : [];
   switch (resolution._tag) {
     case "resolved":
       patch.type = resolution.v4Type;
@@ -81,15 +77,6 @@ export const lowerCatalogCommon = (
       break;
     case "unsupported-version":
       blocked = true;
-      diagnostics.push(
-        unsupportedVersion({
-          ctx,
-          relative: ["type"],
-          type: resolution.id,
-          version: resolution.version,
-          supported: resolution.supported,
-        }),
-      );
       break;
     case "unknown-type":
       blocked = true;
@@ -105,68 +92,44 @@ export const lowerCatalogCommon = (
     default:
       return resolution satisfies never;
   }
+  diagnostics.push(...catalogVersionDiagnostics(resolution, ctx, versions));
 
   const entry = Object.hasOwn(CATALOG, resolution.id) ? CATALOG[resolution.id] : undefined;
+  const facts = ctx.serviceFacts[resolution.id];
+  const listenPort = resolveListenPort(service, facts, ctx);
+  const publishedPort =
+    numericPort(service.port) ??
+    (listenPort?.kind === "literal" ? listenPort.port : undefined) ??
+    facts?.listener?.port;
+  cursor.take(["portforward"]);
   if (service.portforward !== undefined && service.portforward !== false) {
     const hostPort = numericPort(service.portforward);
-    if (entry?.containerPort === undefined) {
+    if (publishedPort === undefined) {
       drop(["portforward"], "Port forwarding has no catalog container port to publish.");
     } else if (service.portforward === true || hostPort !== undefined) {
-      patch.ports = [
-        service.portforward === true ? String(entry.containerPort) : `${hostPort}:${entry.containerPort}`,
-      ];
+      patch.ports = [service.portforward === true ? String(publishedPort) : `${hostPort}:${publishedPort}`];
       rewrite(["portforward"], "Rewrote portforward as a ports publication.");
     } else {
       drop(["portforward"], "Port forwarding requires true or a numeric host port.");
     }
   }
 
-  const sslPort = numericPort(service.sport) ?? numericPort(service.ssl);
-  if (typeof service.ssl === "boolean" || sslPort !== undefined) {
-    patch.certs = sslPort !== undefined || service.ssl === true;
-    if (sslPort !== undefined) {
-      patch.endpoints = [
-        service.sslExpose
-          ? { _tag: "published", protocol: "https", port: sslPort, publication: {} }
-          : { _tag: "internal", protocol: "https", port: sslPort },
-      ];
-    }
-    rewrite(
-      [service.ssl === undefined ? "sport" : "ssl"],
-      "Rewrote SSL settings as certs and explicit HTTPS endpoints where a port was provided.",
-    );
-  }
+  const ssl = lowerLegacySsl(service, claimedContext, resolution.id);
+  Object.assign(patch, ssl.patch);
+  diagnostics.push(...ssl.diagnostics);
 
-  if (hasPlainObjectPrototype(service.environment) || Array.isArray(service.environment)) {
-    const environment = new Map<string, string>();
-    if (hasPlainObjectPrototype(service.environment)) {
-      for (const [key, value] of Object.entries(service.environment)) {
-        if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-          environment.set(key, String(value));
-        } else {
-          drop(["environment", key], "Environment entry has no explicit scalar value.");
-        }
-      }
-    } else {
-      for (const [index, assignment] of (asStringArray(service.environment) ?? []).entries()) {
-        const separator = assignment.indexOf("=");
-        if (separator > 0) {
-          environment.set(assignment.slice(0, separator), assignment.slice(separator + 1));
-        } else {
-          drop(["environment", index], "Environment entry requires an explicit KEY=value assignment.");
-        }
-      }
-    }
-    patch.environment = withoutHostIpVariable(
-      Object.fromEntries(environment),
-      ctx,
-      ["environment"],
-      diagnostics,
+  if (service.environment !== undefined) {
+    const environment = lowerAssignments(
+      service.environment,
+      { ctx: claimedContext, relative: ["environment"] },
+      "environment",
     );
+    diagnostics.push(...environment.diagnostics);
+    patch.environment = withoutHostIpVariable(environment.entries, ctx, diagnostics);
   }
 
   for (const key of ["command", "user"] as const) {
-    if (service[key] !== undefined) patch[key] = service[key];
+    if (service[key] !== undefined) patch[key] = cursor.mapTo([key]);
   }
   if (service.creds !== undefined) {
     const creds = service.creds;
@@ -175,7 +138,9 @@ export const lowerCatalogCommon = (
       ["user", "password", "database"].every((key) => typeof creds[key] === "string")
     ) {
       patch.creds = creds;
+      for (const key of ["user", "password", "database"]) cursor.take(["creds", key]);
     } else {
+      cursor.acceptNoOp(["creds"]);
       diagnostics.push(
         unsupportedServiceKey({
           ctx,
@@ -187,93 +152,56 @@ export const lowerCatalogCommon = (
     }
   }
   if (typeof service.meUser === "string") {
+    cursor.take(["meUser"]);
     patch.user = service.meUser;
     diagnostics.push(rewrittenMeUser({ ctx }));
   }
   const appMountDisabled =
     service.app_mount === false || service.app_mount === "disabled" || service.app_mount === "off";
   if (resolution.id === "tomcat") {
-    const webroot = lowerTomcatWebroot(service, ctx, appMountDisabled);
+    const webroot = lowerTomcatWebroot(service, claimedContext, appMountDisabled);
     Object.assign(patch, webroot.patch);
     diagnostics.push(...webroot.diagnostics);
-  } else if (service.webroot !== undefined) patch.webroot = service.webroot;
+  } else if (service.webroot !== undefined) patch.webroot = cursor.mapTo(["webroot"]);
   const port = numericPort(service.port);
   if (port !== undefined) patch.port = port;
+  else if (Object.hasOwn(service, "port"))
+    drop(["port"], "This value is not a TCP port number; Lando 3 never ran a server there.");
+  cursor.take(["port"]);
 
   if (appMountDisabled) {
+    cursor.take(["app_mount"]);
     patch.appMount = false;
     rewrite(["app_mount"], "Rewrote disabled app_mount as appMount: false.");
   } else if (["cached", "delegated", "consistent"].includes(String(service.app_mount))) {
     drop(["app_mount"], "Mount consistency hints have no Lando 4 appMount setting.");
   }
 
-  if (hasPlainObjectPrototype(service.config)) {
-    const config: { server?: string; dir?: string } = {};
-    const mounts: V4Wire[] = [];
-    const companionMounts: V4Wire[] = [];
-    for (const [key, value] of Object.entries(service.config)) {
-      const mounted = serviceConfigMount({ id: resolution.id, entry }, key, service);
-      if (mounted !== undefined) {
-        if (typeof value !== "string") {
-          drop(["config", key], "Config slot requires a host path string.");
-          continue;
-        }
-        const mount = readOnlyBind(value, mounted.target);
-        if (mounted.companion) companionMounts.push(mount);
-        else mounts.push(mount);
-        rewrite(["config", key], `Mounted ${key} read-only at ${mounted.target}.`);
-        continue;
-      }
-      const slot =
-        entry?.configKeys !== undefined && Object.hasOwn(entry.configKeys, key)
-          ? entry.configKeys[key]
-          : undefined;
-      switch (slot) {
-        case "server":
-        case "dir":
-          if (typeof value === "string") config[slot] = value;
-          else drop(["config", key], "Config slot requires a host path string.");
-          break;
-        case "drop":
-        case undefined:
-          drop(["config", key], `Config slot ${key} has no Lando 4 mapping for ${resolution.id}.`);
-          break;
-        default:
-          slot satisfies never;
-      }
-    }
-    if (mounts.length > 0) patch.mounts = mounts;
-    if (companionMounts.length > 0) {
-      companions = { [`${ctx.serviceName}-nginx`]: { type: "nginx", mounts: companionMounts } };
-    }
-    if (Object.keys(config).length > 0) {
-      patch.config = config;
-      rewrite(
-        ["config"],
-        entry?.configDestination === undefined
-          ? `Rewrote config slots to the ${resolution.id} service's file configuration.`
-          : `Rewrote config slots to file configuration mounted at ${entry.configDestination}.`,
-      );
-    }
-  }
+  const config = lowerCatalogConfig(service, { id: resolution.id, entry }, claimedContext);
+  Object.assign(patch, config.patch);
+  diagnostics.push(...config.diagnostics);
 
   for (const key of ["path", "scriptsDir"] as const) {
     if (Object.hasOwn(service, key)) drop([key], `${key} has no shared Lando 4 service setting.`);
   }
-  if (Object.hasOwn(service, "moreHttpPorts"))
+  if (Object.hasOwn(service, "moreHttpPorts")) {
+    cursor.acceptNoOp(["moreHttpPorts"]);
     diagnostics.push(droppedMoreHttpPorts({ ctx, relative: ["moreHttpPorts"] }));
-  const memory = lowerServiceMemory(service, { id: resolution.id, patch }, ctx);
+  }
+  const memory = lowerServiceMemory(service, { id: resolution.id, patch }, claimedContext);
   Object.assign(patch, memory.patch);
   diagnostics.push(...memory.diagnostics);
   blocked ||= memory.blocked === true;
-  const runtime = lowerScannerAndHome(service, ctx);
+  const runtime = lowerScannerAndHome(service, claimedContext);
   Object.assign(patch, runtime.patch);
   diagnostics.push(...runtime.diagnostics);
   return {
     patch,
+    claims: cursor.claims,
     diagnostics,
     resolution,
-    ...(companions === undefined ? {} : { companions }),
+    listenPort,
+    ...(config.companions === undefined ? {} : { companions: config.companions }),
     ...(blocked ? { blocked: true as const } : {}),
   };
 };

@@ -9,7 +9,7 @@ import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "valkey/valkey:8";
-const DEFAULT_PORT = 6379;
+export const DEFAULT_PORT = 6379;
 const DATA_TARGET = PortablePath.make("/data");
 export const VALKEY_FEATURE_ID = "service-lando.valkey";
 

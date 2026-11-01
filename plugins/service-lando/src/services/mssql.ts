@@ -20,7 +20,7 @@ import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { mssqlHealthcheck, mssqlStartupCommand } from "./mssql-startup.ts";
 
-const MSSQL_LISTENER = {
+export const MSSQL_LISTENER = {
   port: 1433,
   variable: "MSSQL_TCP_PORT",
   daemon: "SQL Server",

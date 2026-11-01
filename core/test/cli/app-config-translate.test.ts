@@ -25,6 +25,7 @@ import {
 import { runConfigTranslatorContractSuite } from "@lando/sdk/test";
 
 import { parseLandofile } from "@lando/landofile/parser";
+import { renderTranslateDiagnostics } from "../../src/cli/commands/app-config-translate-output.ts";
 import {
   type AppConfigTranslateResult,
   AppConfigTranslateResultSchema,
@@ -179,12 +180,13 @@ describe("appConfigTranslate", () => {
             Effect.map((result) => ({
               ...result,
               diagnostics: [
-                {
+                ...["a", "b"].map((leaf) => ({
                   kind,
                   sourceId: ConfigTranslateSourceId.make(".lando.yml"),
-                  keyPath: [],
+                  keyPath: ["services", "web", leaf],
                   message: "token=SECRET123",
-                },
+                  remediation: "Configure the service manually",
+                })),
               ],
             })),
           ),
@@ -201,9 +203,21 @@ describe("appConfigTranslate", () => {
       expect(calls).toBe(kind === "unsupported" ? 0 : 1);
       expect(result.targets.length).toBe(kind === "unsupported" ? 0 : 1);
       expect(result.content).toBe(kind === "unsupported" ? "" : "name: demo\n");
+      let human = "";
       const exit = await runExit(
-        appConfigTranslate({ cwd, write: true, translators: [translator, encoder] }),
+        appConfigTranslate({
+          cwd,
+          write: true,
+          translators: [translator, encoder],
+          onWriteBlocked: (diagnostics) =>
+            Effect.sync(() => {
+              human = renderTranslateDiagnostics(diagnostics);
+            }),
+        }),
       );
+      expect(failureTag(exit)).toBe("ConfigTranslateError");
+      expect(human).toContain(".lando.yml:services.web.{a, b}");
+      expect(human).toContain("#   Next: Configure the service manually");
       expect(failureValue(exit)?.message).toContain(kind);
       expect(failureValue(exit)?.message).not.toContain("SECRET123");
       expect(await Bun.file(join(cwd, ".lando.yml")).text()).toBe("name: demo\n");
@@ -580,7 +594,7 @@ describe("appConfigTranslate", () => {
         expect(Schema.encodeSync(AppConfigTranslateResultSchema)(result).mode).toBe(result.mode);
         if (result.mode === "preview" || result.mode === "write") {
           const text = renderConfigTranslateResult(result);
-          expect(text).toContain(`# ${glyphs[kind]} Changed (compose.yml:services.web.0)`);
+          expect(text).toContain(`# ${glyphs[kind]} [${kind}] Changed (compose.yml:services.web.0)`);
           expect(text).toContain("# deletions: compose.yml");
         }
       }

@@ -28,7 +28,8 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
-const DEFAULT_PORT = 80;
+export const DEFAULT_PORT = 80;
+export const APP_MOUNT_TARGET = "/app";
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -229,7 +230,7 @@ export const apacheServiceType: ServiceType = {
             id: "lando.env",
             config: { webroot },
           },
-          { id: "lando.app-mount", config: { target: "/app" } },
+          { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
       };
     }),

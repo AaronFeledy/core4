@@ -36,9 +36,11 @@ test.each([
       join(root, ".lando.local.yml"),
       `services:\n  database:\n    overrides:\n      image: ${image}\n`,
     );
-    const load = makeConfigTranslators({ decomposers: new Map(), redactor: createRedactor("secrets") }).get(
-      "lando3",
-    );
+    const load = makeConfigTranslators({
+      serviceFacts: serviceTypeFacts(),
+      decomposers: new Map(),
+      redactor: createRedactor("secrets"),
+    }).get("lando3");
     if (load === undefined) throw new Error("Missing lando3 translator");
     const translator = await load();
     const encoderLoader = configTranslators.get("lando4");
@@ -154,3 +156,4 @@ test.each([
     }
   },
 );
+import { serviceTypeFacts } from "@lando/service-lando";

@@ -29,7 +29,11 @@ import { assertListenerConfig, plannedPort, servicePortEndpoints } from "./_port
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
-const PHPMYADMIN_LISTENER = { port: DEFAULT_PORT, variable: "APACHE_PORT", daemon: "phpMyAdmin" } as const;
+export const PHPMYADMIN_LISTENER = {
+  port: DEFAULT_PORT,
+  variable: "APACHE_PORT",
+  daemon: "phpMyAdmin",
+} as const;
 const DB_TYPES = ["mysql", "mysql:8.0", "mysql:8.4", "mysql:9.7", "mariadb"] as const;
 const VERSIONS = ["5", "latest"] as const;
 const ARTIFACTS = {

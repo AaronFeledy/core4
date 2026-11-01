@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ConfigTranslateInput } from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
-import { lando3ConfigTranslator } from "../src/translator.ts";
+import { testTranslator as lando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 const translate = (text: string) =>
   Effect.runPromise(

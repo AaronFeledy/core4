@@ -32,7 +32,8 @@ import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultStaticCommand } from "./static.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
-const DEFAULT_PORT = 80;
+export const DEFAULT_PORT = 80;
+export const APP_MOUNT_TARGET = "/app";
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -210,7 +211,7 @@ export const nginxServiceType: ServiceType = {
           },
           {
             id: "lando.app-mount",
-            config: { target: "/app", workingDirectory: webroot },
+            config: { target: APP_MOUNT_TARGET, workingDirectory: webroot },
           },
         ],
       };

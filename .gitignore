@@ -56,6 +56,8 @@ pnpm-lock.yaml
 .lando.local.yml
 # Guide fixtures ship a local layer on purpose; the scenarios read it from the repo.
 !docs/guides/**/fixtures/**/.lando.local.yml
+# The vendored Lando 3 corpus keeps its upstream local layers byte for byte.
+!plugins/lando3/test/fixtures/corpus/**/.lando.local.yml
 
 # Sisyphus agent workspace (project-local)
 .sisyphus/

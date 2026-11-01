@@ -7,16 +7,20 @@ import type {
   LandofileLayer,
 } from "@lando/sdk/schema";
 import { lowerBuildHooks } from "./build-hooks.ts";
-import { CATALOG, resolveCatalogType } from "./catalog.ts";
+import { ClaimCursor } from "./claims.ts";
 import { lowerComposeFields } from "./compose-fields.ts";
+import type { Lando3TranslatorPorts } from "./contract.ts";
 import { dedupeDiagnostics } from "./diagnostics.ts";
 import type { LegacyPrefixView } from "./effective-views.ts";
 import { mergedToPlain, occurrencesAt } from "./legacy-merge.ts";
 import { lowerApi4Service } from "./lower-api4.ts";
+import { lowerCatalogAppMountMasks } from "./lower-catalog-app-mount-masks.ts";
 import { lowerCatalogCommon } from "./lower-catalog-common.ts";
 import { lowerEvents } from "./lower-events.ts";
+import { lowerListenPort } from "./lower-listen-port.ts";
 import { lowerPhpOptions } from "./lower-php.ts";
 import { declareRouteEndpoints, lowerProxy } from "./lower-proxy.ts";
+import { lowerRawService } from "./lower-raw-service.ts";
 import { withHomeIntent } from "./lower-runtime-intent.ts";
 import { lowerTooling } from "./lower-tooling.ts";
 import { lowerTopLevel } from "./lower-top-level.ts";
@@ -25,17 +29,13 @@ import {
   type LoweringPatch,
   type ServiceLoweringContext,
   type V4Wire,
-  asStringArray,
   hasPlainObjectPrototype,
   mergePatches,
 } from "./lowering-contract.ts";
 import { makeReport } from "./lowering-report.ts";
-import {
-  missingImage,
-  rewrittenMeUser,
-  rewrittenServiceKey,
-  unsupportedServiceKey,
-} from "./service-diagnostics.ts";
+import { decodeLando3Landofile } from "./model.ts";
+import { slugifyAppName } from "./naming.ts";
+import { missingImage, needsReviewServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
 
 export interface LoweredServicePrefix {
   readonly targetLayer: LandofileLayer;
@@ -50,6 +50,7 @@ export interface LoweredServices {
 
 const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringContext): LoweringPatch => {
   const overrides = lowerComposeFields(service.overrides ?? {}, ctx, { basePath: ["overrides"] });
+  ctx.cursor?.take(["api"]);
   const raw = service.api !== 4 && (service.type === "lando" || service.type === "compose");
   const nested = raw
     ? lowerComposeFields(service.services ?? {}, ctx, { basePath: ["services"] })
@@ -62,55 +63,23 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
   });
   if (service.api === 4) return mergePatches(lowerApi4Service(service, ctx), hooks, overrides);
   if (raw) {
-    // Raw config contains literal file contents, not catalog config slots.
-    const { config: _config, meUser: _meUser, ...commonFields } = service;
-    const common = lowerCatalogCommon(commonFields, ctx);
-    const diagnostics: ConfigTranslateDiagnostic[] = [];
-    const patch: Record<string, unknown> = { type: "compose" };
-    // meUser outranks a nested Compose user, so it is applied after them.
-    if (typeof service.meUser === "string") {
-      patch.user = service.meUser;
-      diagnostics.push(rewrittenMeUser({ ctx }));
-    }
-    const health = lowerApi4Service({ healthcheck: service.healthcheck }, ctx);
-    const { type: _type, ...healthPatch } = health.patch;
-    for (const key of Object.keys(hasPlainObjectPrototype(service.config) ? service.config : {})) {
-      diagnostics.push(
-        unsupportedServiceKey({
-          ctx,
-          relative: ["config", key],
-          message: "Raw inline file contents have no Lando 4 target.",
-          remediation:
-            "Create the file yourself and configure an explicit mount; conversion does not read referenced files.",
-        }),
-      );
-    }
-    const topLevel = Object.fromEntries(
-      ["volumes", "networks"].flatMap((key) =>
-        hasPlainObjectPrototype(service[key]) ? [[key, service[key]]] : [],
-      ),
-    );
-    return mergePatches(
-      common,
-      nested,
-      { ...health, patch: healthPatch },
-      { patch, topLevel, diagnostics },
-      overrides,
-      hooks,
-    );
+    return mergePatches(lowerRawService(service, ctx, nested), overrides, hooks);
   }
   const common = lowerCatalogCommon(service, ctx);
   switch (common.resolution._tag) {
     case "resolved":
-      return mergePatches(
-        common,
-        lowerTypeOptions(common.resolution.id, service, ctx),
-        common.resolution.id === "php" ? lowerPhpOptions(service, ctx) : { patch: {}, diagnostics: [] },
-        hooks,
-        overrides,
-      );
     case "unsupported-version":
-      return mergePatches(common, hooks, overrides);
+      return lowerListenPort(
+        mergePatches(
+          common,
+          lowerTypeOptions(common.resolution.id, service, ctx),
+          common.resolution.id === "php" ? lowerPhpOptions(service, ctx) : { patch: {}, diagnostics: [] },
+          hooks,
+          overrides,
+        ),
+        common.listenPort,
+        ctx,
+      );
     case "unknown-type": {
       const diagnostics = common.diagnostics.filter(
         ({ keyPath }) => !(keyPath.length === ctx.keyPath.length + 1 && keyPath.at(-1) === "type"),
@@ -124,7 +93,7 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
         );
       }
       diagnostics.push(
-        rewrittenServiceKey({
+        needsReviewServiceKey({
           ctx,
           relative: ["type"],
           message: `Service type ${common.resolution.id} uses a Compose fallback with its explicit image.`,
@@ -142,19 +111,6 @@ const lowerService = (service: Record<string, unknown>, ctx: ServiceLoweringCont
   }
 };
 
-/**
- * Lando 3's top-level `excludes` only ever reached the app mount, so it applies
- * to the services whose lowered Lando 4 type mounts the app. The target type is
- * what decides that, not the authored one: a raw Compose or unknown-image
- * service lowers to `type: compose`, which mounts the app on its own.
- */
-const mountsAppByDefault = (loweredType: unknown): boolean => {
-  if (typeof loweredType !== "string") return false;
-  const resolution = resolveCatalogType(loweredType);
-  if (resolution._tag === "unknown-type") return false;
-  return CATALOG[resolution.id]?.appMountByDefault === true;
-};
-
 /** What recipe decomposition and already-converted layers contribute to tooling and events. */
 export interface InheritedAuthoring {
   readonly tools: ReadonlySet<string>;
@@ -167,6 +123,7 @@ const NOTHING_INHERITED: InheritedAuthoring = { tools: new Set(), recipeServices
 
 export const lowerServiceViews = (
   folded: ReadonlyArray<LegacyPrefixView>,
+  serviceFacts: Lando3TranslatorPorts["serviceFacts"],
   inherited: InheritedAuthoring = NOTHING_INHERITED,
 ): LoweredServices => {
   const prefixes: LoweredServicePrefix[] = [];
@@ -199,16 +156,26 @@ export const lowerServiceViews = (
       report,
     );
     const authored = hasPlainObjectPrototype(doc.services) ? doc.services : {};
+    const unknownKeys = decodeLando3Landofile(doc).unknownKeys;
+    const appSlug = slugifyAppName(typeof doc.name === "string" ? doc.name : "app");
     const services = new Map<string, V4Wire>();
     for (const [serviceName, service] of Object.entries(authored)) {
       if (service === false || service === null || service === undefined) continue;
-      const ctx: ServiceLoweringContext = {
+      const location: ServiceLoweringContext = {
+        serviceFacts,
         serviceName,
+        appSlug,
         keyPath: ["services", serviceName],
         fallbackSourceId,
         occurrenceAt: (relative) => occurrencesAt(view.merged, ["services", serviceName, ...relative]).at(-1),
-        topLevel: { excludes: top.appMountExcludes, includes: top.appMountIncludes },
+        topLevel: {
+          excludes: top.appMountExcludes,
+          includes: top.appMountIncludes,
+          includeLocations: top.appMountIncludeLocations ?? [],
+        },
       };
+      const cursor = new ClaimCursor(service, location);
+      const ctx: ServiceLoweringContext = { ...location, cursor };
       if (!hasPlainObjectPrototype(service) || isLegacyTagged(service)) {
         diagnostics.push(
           unsupportedServiceKey({
@@ -222,26 +189,15 @@ export const lowerServiceViews = (
       }
       const lowered = withHomeIntent(lowerService(service, ctx), service, ctx);
       diagnostics.push(...lowered.diagnostics);
+      const unknownRoots = unknownKeys.flatMap(([section, name, ...rest]) =>
+        section === "services" && name === serviceName ? [rest] : [],
+      );
+      diagnostics.push(...cursor.residuals(lowered.diagnostics, unknownRoots));
       expectations.delete(serviceName);
       for (const expectation of lowered.expectations ?? []) expectations.set(serviceName, expectation);
       if (lowered.blocked === true) continue;
-      let patch = lowered.patch;
-      if (
-        patch.appMount !== false &&
-        mountsAppByDefault(patch.type) &&
-        (top.appMountExcludes.length > 0 || top.appMountIncludes.length > 0)
-      ) {
-        const app = hasPlainObjectPrototype(patch.appMount) ? patch.appMount : {};
-        patch = {
-          ...patch,
-          appMount: {
-            target: "/app",
-            ...app,
-            excludes: [...new Set([...top.appMountExcludes, ...(asStringArray(app.excludes) ?? [])])],
-            includes: [...new Set([...top.appMountIncludes, ...(asStringArray(app.includes) ?? [])])],
-          },
-        };
-      }
+      const patch =
+        service.api === 4 ? lowered.patch : lowerCatalogAppMountMasks(lowered.patch, top, serviceFacts);
       services.set(serviceName, patch);
       topLevel = mergeLandofiles([topLevel, lowered.topLevel ?? {}]);
       for (const [name, companion] of Object.entries(lowered.companions ?? {})) {
@@ -260,7 +216,10 @@ export const lowerServiceViews = (
         }
       }
     }
-    declareRouteEndpoints(proxy.fragment, services, report, inherited.recipeServiceWires);
+    declareRouteEndpoints(proxy.fragment, services, report, {
+      serviceFacts,
+      external: inherited.recipeServiceWires ?? new Map(),
+    });
     prefixes.push({
       targetLayer: view.targetLayer,
       sourceIds: view.sourceIds,

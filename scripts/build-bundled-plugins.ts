@@ -47,12 +47,21 @@ const renderDescriptorTable = (
       : [
           `import { ${entry.compose.factoryExport} } from "${entry.name}";`,
           `import { ${entry.compose.ports.export} } from "${entry.compose.ports.module}";`,
+          ...(entry.compose.ports.arguments ?? []).map(
+            (argument) => `import { ${argument.export} } from "${argument.module}";`,
+          ),
         ],
   );
   const compositions = entries.flatMap((entry, index) =>
     entry.compose === undefined
       ? []
-      : [`const plugin${index} = ${entry.compose.factoryExport}(${entry.compose.ports.export});`],
+      : [
+          `const plugin${index} = ${entry.compose.factoryExport}(${
+            entry.compose.ports.arguments === undefined
+              ? entry.compose.ports.export
+              : `() => ${entry.compose.ports.export}(${entry.compose.ports.arguments.map((argument) => argument.export).join(", ")})`
+          });`,
+        ],
   );
   const descriptors = entries.map((_entry, index) => `  plugin${index},`);
 

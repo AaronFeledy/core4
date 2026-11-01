@@ -50,6 +50,7 @@ interface LanguageRuntimeSpec<V extends string, F extends string> {
   readonly resolveFallback: (version: V) => string;
 }
 
+export const APP_MOUNT_TARGET = "/app";
 const DEFAULT_KEEP_ALIVE = ["tail", "-f", "/dev/null"] as const;
 
 export const makeLanguageRuntime = <V extends string, F extends string>(spec: LanguageRuntimeSpec<V, F>) => {
@@ -158,7 +159,7 @@ export const makeLanguageRuntime = <V extends string, F extends string>(spec: La
             {
               id: "lando.app-mount",
               config: {
-                target: "/app",
+                target: APP_MOUNT_TARGET,
                 excludes: spec.mountExcludes,
               },
             },

@@ -16,7 +16,7 @@ export type SupportedRubyFramework = (typeof SUPPORTED_RUBY_FRAMEWORKS)[number];
 export const RUBY_FEATURE_ID = "service-lando.ruby" as const;
 export const RUBY_FEATURE_PRIORITY = 600;
 
-const FRAMEWORK_PRESETS: Record<SupportedRubyFramework, LanguageFrameworkPreset> = {
+export const FRAMEWORK_PRESETS: Readonly<Record<SupportedRubyFramework, LanguageFrameworkPreset>> = {
   rails: {
     port: 3000,
     webroot: "public",

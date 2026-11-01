@@ -22,33 +22,27 @@ import {
   isPlainRecord,
   landofileLayerRank,
   mergeLandofiles,
-  parseLegacyLandofile,
 } from "@lando/sdk/landofile";
 import type {
   ConfigTranslateDetectInput,
-  ConfigTranslateDiagnostic,
   ConfigTranslateDocument,
   ConfigTranslateInput,
   ConfigTranslateResult,
-  ConfigTranslateSourceId,
   LandofileLayer,
 } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import type { ConfigTranslatorShape } from "@lando/sdk/services";
 
 import { completeLando3CommitSet } from "./commit-set.ts";
 import {
   LANDO3_TRANSLATOR_ID,
-  type Lando3Source,
   type Lando3TranslatorPorts,
-  type MergedLegacyValue,
   lando3SourceLayerOrder,
   lando3TargetLayer,
 } from "./contract.ts";
 import { detectLando3, isAppRootLando3Layer, sourceLayerForDocument } from "./detect.ts";
 import { dedupeDiagnostics, orderDiagnostics } from "./diagnostics.ts";
 import { foldToTargetLayers, legacyPrefixViews } from "./effective-views.ts";
-import { mergeLegacySources, mergedToPlain, occurrencesAt, toMergedValue } from "./legacy-merge.ts";
+import { mergeLegacySources, mergedToPlain, occurrencesAt } from "./legacy-merge.ts";
 import { legacyReferenceDiagnostics } from "./legacy-references.ts";
 import { lowerAppNames } from "./lower-top-level.ts";
 import type { V4Wire } from "./lowering-contract.ts";
@@ -59,76 +53,13 @@ import {
   lowerRecipeViews,
   recipeLayerOutputs,
 } from "./recipe-lowering.ts";
-import { spanOf } from "./service-diagnostics.ts";
 import { lowerServiceViews } from "./service-lowering.ts";
-import { topLevelDispositions, unknownKeyDiagnostics } from "./top-level-dispositions.ts";
-
-const YAML_MEDIA_TYPES = new Set(["application/yaml", "application/x-yaml", "text/yaml", "text/x-yaml"]);
-
-export const defaultLando3Ports = (): Lando3TranslatorPorts => ({
-  decomposers: new Map(),
-  redactor: createRedactor("secrets"),
-});
-
-const translateError = (message: string, remediation: string): ConfigTranslateError =>
-  new ConfigTranslateError({ message, translator: LANDO3_TRANSLATOR_ID, remediation });
-
-const parseSource =
-  (ports: Lando3TranslatorPorts) =>
-  (document: ConfigTranslateDocument): Effect.Effect<Lando3Source, ConfigTranslateError> =>
-    Effect.gen(function* () {
-      const file = document.path ?? String(document.sourceId);
-      if (!YAML_MEDIA_TYPES.has(document.mediaType)) {
-        return yield* Effect.fail(
-          translateError(
-            `${file} is ${document.mediaType}, which is not a Lando 3 Landofile.`,
-            "Select only YAML Lando 3 layers for conversion.",
-          ),
-        );
-      }
-      const layer = sourceLayerForDocument(document);
-      const parsed = yield* parseLegacyLandofile({
-        mode: "legacy",
-        file,
-        content: new TextDecoder().decode(document.bytes),
-      }).pipe(
-        Effect.mapError((cause) =>
-          translateError(
-            // Parser messages quote the offending source text. The secrets
-            // profile cannot see an arbitrary credential, so the message stays
-            // file and line only.
-            ports.redactor.redactString(
-              `Failed to read the Lando 3 layer ${file}${cause.line === undefined ? "" : ` at line ${cause.line}`}.`,
-            ),
-            `Repair ${file} and run the conversion again.`,
-          ),
-        ),
-      );
-      return {
-        sourceId: document.sourceId,
-        layer,
-        file,
-        value: toMergedValue({ document: parsed, sourceId: document.sourceId, layer }),
-      };
-    });
-
-const orphanConfigDiagnostic = (
-  merged: MergedLegacyValue | undefined,
-  fallback: ConfigTranslateSourceId,
-): ReadonlyArray<ConfigTranslateDiagnostic> => {
-  if (merged?.kind !== "mapping" || !merged.entries.has("config")) return [];
-  const occurrence = occurrencesAt(merged, ["config"]).at(-1);
-  return [
-    {
-      kind: "unsupported",
-      sourceId: occurrence?.sourceId ?? fallback,
-      keyPath: ["config"],
-      ...spanOf(occurrence),
-      message: "config has no Lando 3 recipe to apply to.",
-      remediation: "Add a recipe, or remove config and author the Lando 4 services directly.",
-    },
-  ];
-};
+import {
+  orphanConfigDiagnostic,
+  topLevelDispositions,
+  unknownKeyDiagnostics,
+} from "./top-level-dispositions.ts";
+import { parseSource, translateError } from "./translator-source.ts";
 
 const withoutAppName = (fragment: Readonly<Record<string, unknown>>): Readonly<Record<string, unknown>> => {
   const { name: _name, ...rest } = fragment;
@@ -239,7 +170,8 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
       );
       const sources = yield* Effect.forEach(legacyLayers, parseSource(ports));
       const merged = mergeLegacySources(sources);
-      const folded = foldToTargetLayers(legacyPrefixViews(sources));
+      const prefixes = legacyPrefixViews(sources);
+      const folded = foldToTargetLayers(prefixes);
       const lowered = yield* lowerRecipeViews(ports, folded, establishedRecipe(established));
       const recipeFragments = [
         ...lowered.prefixes.map(({ fragment }) => fragment),
@@ -267,7 +199,7 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           }
         }
       }
-      const authored = lowerServiceViews(folded, {
+      const authored = lowerServiceViews(folded, ports.serviceFacts, {
         tools: new Set(
           recipeFragments.flatMap((fragment) => {
             const tooling = mergeLandofiles([fragment]).tooling;
@@ -311,9 +243,12 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
           ...topLevelDispositions(merged, fallback),
           ...legacyReferenceDiagnostics(merged, fallback),
           ...(recipePresent ? [] : orphanConfigDiagnostic(merged, fallback)),
-          ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
           ...planned.diagnostics,
           ...authored.diagnostics,
+          ...prefixes.flatMap(({ merged }) =>
+            unknownKeyDiagnostics(decodeLando3Landofile(mergedToPlain(merged)).unknownKeys, merged, fallback),
+          ),
+          ...unknownKeyDiagnostics(decoded.unknownKeys, merged, fallback),
         ]),
         (sourceId) => ranks.get(sourceId) ?? 0,
       );
@@ -341,5 +276,3 @@ export const makeLando3ConfigTranslator = (ports: Lando3TranslatorPorts): Config
     }),
   };
 };
-
-export const lando3ConfigTranslator: ConfigTranslatorShape = makeLando3ConfigTranslator(defaultLando3Ports());

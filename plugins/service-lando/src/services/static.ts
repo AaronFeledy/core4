@@ -28,7 +28,8 @@ export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
 export const STATIC_FEATURE_ID = "service-lando.static" as const;
 export const STATIC_FEATURE_PRIORITY = 600;
 
-const DEFAULT_PORT = 80;
+export const DEFAULT_PORT = 80;
+export const APP_MOUNT_TARGET = "/app";
 
 export const nginxRootLiteral = (path: string): string => JSON.stringify(path);
 
@@ -163,7 +164,7 @@ export const makeStaticServiceType = (server: SupportedStaticServer): ServiceTyp
               id: "lando.env",
               config: { webroot: docRoot },
             },
-            { id: "lando.app-mount", config: { target: "/app", readOnly: true } },
+            { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, readOnly: true } },
           ],
         };
       }),

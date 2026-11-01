@@ -1,4 +1,5 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { serviceCursor } from "./claims.ts";
 import { HOST_ALIAS } from "./host-reachability.ts";
 import {
   type LoweringPatch,
@@ -13,6 +14,8 @@ export const lowerXdebugObject = (
   xdebug: Record<string, unknown>,
   ctx: ServiceLoweringContext,
 ): LoweringPatch => {
+  const cursor = serviceCursor(service, ctx);
+  cursor.take(["xdebug", "mode"]);
   const patch: Record<string, unknown> = {
     xdebug: typeof xdebug.mode === "string" && xdebug.mode.trim().length > 0 ? xdebug.mode : true,
   };
@@ -28,6 +31,7 @@ export const lowerXdebugObject = (
   const authored = hasAuthoredEnvironment(service.environment, "XDEBUG_CONFIG");
   for (const [key, value] of Object.entries(xdebug)) {
     if (key === "mode") continue;
+    cursor.mapTo(["xdebug", key]);
     // Xdebug reads client_port from XDEBUG_CONFIG. start_with_request is ini-only.
     if (key === "start_with_request") {
       diagnostics.push(
@@ -98,5 +102,5 @@ export const lowerXdebugObject = (
       XDEBUG_CONFIG: `client_host=${HOST_ALIAS} client_port=${clientPort}`,
     };
   }
-  return { patch, diagnostics };
+  return { patch, claims: cursor.claims, diagnostics };
 };

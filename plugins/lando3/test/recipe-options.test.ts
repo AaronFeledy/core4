@@ -41,7 +41,7 @@ describe("published recipe option tables", () => {
   test("contains exactly the closed catalog, aliases and hosters", () => {
     expect(BUNDLED_RECIPE_OPTION_MAPS.size).toBe(9);
     expect(PHP_VERSIONS).toEqual(["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"]);
-    expect([...HOSTER_RECIPE_IDS]).toEqual(["pantheon", "platformsh", "lagoon", "acquia"]);
+    expect([...HOSTER_RECIPE_IDS]).toEqual(["pantheon", "platformsh", "upsun", "lagoon", "acquia"]);
     expect([...LEGACY_RECIPE_ALIASES]).toEqual([
       ["drupal10", { recipeId: "drupal", pinned: { drupal: "10" } }],
       ["drupal11", { recipeId: "drupal", pinned: { drupal: "11" } }],
@@ -145,7 +145,7 @@ describe("recipe classification", () => {
   test("returns undefined when recipe is absent", () => {
     expect(classifyRecipe(entries("name: app\n").get("recipe"))).toBeUndefined();
   });
-  test.each(["pantheon", "platformsh", "lagoon", "acquia"])("rejects hoster %s", (id) => {
+  test.each(["pantheon", "platformsh", "upsun", "lagoon", "acquia"])("rejects hoster %s", (id) => {
     expect(classifyRecipe(entries(`recipe: ${id}\n`).get("recipe"))).toEqual({
       _tag: "unsupported",
       legacyId: id,

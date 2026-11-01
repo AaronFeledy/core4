@@ -194,6 +194,13 @@
       "digest": "09cb67cb6bd8b615a2c276a7f1b0ea5c5ed6e13fefacc934e206744f0abc4c60"
     },
     {
+      "fixture": "docs/guides/convert-from-lando-3/fixtures/lando3-ports-mounts",
+      "invalid": {
+        "status": "invalid",
+        "tag": "Lando3LandofileDetected"
+      }
+    },
+    {
       "fixture": "docs/guides/convert-from-lando-3/fixtures/pantheon-app",
       "invalid": {
         "status": "invalid",
