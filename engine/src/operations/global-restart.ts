@@ -11,7 +11,8 @@ import {
 } from "@lando/engine/global-app/router-admission";
 
 import { globalCreateProviderId } from "@lando/engine/global-app/placement";
-import { hasDebuggerConsumer, resolveDebuggerHost } from "@lando/engine/subsystems/debugger-host";
+import { hasDebuggerConsumer } from "@lando/engine/subsystems/debugger-host";
+import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { loadGlobalPlan } from "./global-plan";
 
 import {
@@ -45,16 +46,16 @@ export const globalRestart = Effect.fn("GlobalRestart.restart")(
     yield* globalCreateProviderId();
     // Resolve the debugger address before stopping anything so discovery failures leave services running.
     const current = yield* loadGlobalPlan();
-    const resolvedDebuggerHost =
+    const preparedOverlays =
       current.materialized && hasDebuggerConsumer(current.plan)
-        ? { address: yield* resolveDebuggerHost(current.plan) }
+        ? yield* prepareDebuggerOverlay(current.plan)
         : undefined;
     yield* globalStop();
     const appliedPlan = yield* Ref.make<GlobalRouterStartupPlan | undefined>(undefined);
     const revalidateRouter = Effect.flatMap(Ref.get(appliedPlan), revalidateAppliedGlobalRouterStartup);
     const result = yield* globalStart({
       ...(options.signal === undefined ? {} : { signal: options.signal }),
-      ...(resolvedDebuggerHost === undefined ? {} : { resolvedDebuggerHost }),
+      ...(preparedOverlays === undefined ? {} : { preparedOverlays }),
     }).pipe(
       (effect) => withGlobalRouterStartupPlanObserver(effect, (plan) => Ref.set(appliedPlan, plan)),
       Effect.catchTags({

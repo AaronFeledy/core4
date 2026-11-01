@@ -51,8 +51,7 @@ const now = () => DateTime.nowUnsafe();
 export interface GlobalStartOptions {
   readonly services?: ReadonlyArray<string>;
   readonly signal?: AbortSignal;
-  /** A debugger address already resolved by a caller that must not resolve after stopping services. */
-  readonly resolvedDebuggerHost?: { readonly address: string | undefined };
+  readonly preparedOverlays?: import("../subsystems/start-overlay-registry.ts").PreparedDebuggerOverlay;
 }
 
 export const GlobalStartResultSchema = Schema.Struct({
@@ -168,9 +167,7 @@ export const globalStart = Effect.fn("GlobalStart.start")(
             provider,
             services,
             beforeApply: verifyAdmission,
-            ...(options.resolvedDebuggerHost === undefined
-              ? {}
-              : { resolvedDebuggerHost: options.resolvedDebuggerHost }),
+            ...(options.preparedOverlays === undefined ? {} : { preparedOverlays: options.preparedOverlays }),
             ...(retained === undefined
               ? {}
               : { recordedPlan: retained.recordedPlan, recordedDisabledIds: retained.disabledIds }),
