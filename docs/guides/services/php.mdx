@@ -141,7 +141,12 @@ does not establish whether the bind will succeed.
 
 If you set your own `command:` or `entrypoint:`, use a custom `image:`, or
 provide `build.context`, you own the serving and logging configuration instead.
-See [Replace the image](./php-customization.mdx#replace-the-image).
+Lando never appends `Listen`, pool, or other listen flags to an authored
+launcher; match the daemon to `port:` yourself. See
+[Replace the image](./php-customization.mdx#replace-the-image).
+For an authored command, entrypoint, custom image, or replacement build, a startup failure includes a hint naming
+Apache's `Listen <port>` or PHP-FPM's `listen = <port>` with the planned port.
+`via: cli` has no listener and no listener hint.
 
   <Scenario id="stock-nonroot-plan" render>
     <Step name="inspect-nonroot-config">

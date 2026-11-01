@@ -12,7 +12,7 @@ import {
   serviceFeatureDeclareEndpoints,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-import { assertListenerConfig } from "./_port-helpers.ts";
+import { assertListenerConfig, authoredLauncherHint, plannedPort } from "./_port-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
@@ -21,6 +21,13 @@ export const DEFAULT_API_PORT = 9000;
 const DEFAULT_CONSOLE_PORT = 9001;
 const DATA_TARGET = PortablePath.make("/data");
 
+/** Defaults document console 9001; runtime validation still uses the effective consolePort. */
+export const MINIO_LISTENER = {
+  port: DEFAULT_API_PORT,
+  daemon: "MinIO",
+  reserved: [{ port: DEFAULT_CONSOLE_PORT, use: "console listener (consolePort:)" }],
+} as const;
+
 export const MINIO_FEATURE_ID = "service-lando.minio";
 
 const MinioFeatureConfig = Schema.Struct({ consolePort: PortNumber });
@@ -28,11 +35,10 @@ const MinioFeatureConfig = Schema.Struct({ consolePort: PortNumber });
 const minioPorts = (ctx: Pick<ServiceFeatureContext, "config" | "normalizedConfig">) => {
   const { consolePort } = Schema.decodeUnknownSync(MinioFeatureConfig)(ctx.config);
   assertListenerConfig(ctx.normalizedConfig, {
-    port: DEFAULT_API_PORT,
-    daemon: "MinIO",
+    ...MINIO_LISTENER,
     reserved: [{ port: consolePort, use: "console listener (consolePort:)" }],
   });
-  return { apiPort: PortNumber.make(ctx.normalizedConfig.port ?? DEFAULT_API_PORT), consolePort };
+  return { apiPort: plannedPort(ctx.normalizedConfig, MINIO_LISTENER), consolePort };
 };
 
 const bucketNameFor = (value: string): string => {
@@ -79,9 +85,18 @@ const applyMinioFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setEntrypoint(["/bin/sh", "-c"]);
     ctx.setCommand([defaultServerCommand(apiPort, consolePort)]);
   } else {
-    if (service.command !== undefined) ctx.setCommand(service.command);
-    else
+    if (service.command !== undefined) {
+      ctx.setCommand(service.command);
+      ctx.setStartupFailureHint(
+        authoredLauncherHint(
+          MINIO_LISTENER.daemon,
+          `--address :${apiPort} --console-address :${consolePort}`,
+        ),
+      );
+    } else {
+      // Entrypoint-only: Lando still owns the argv that configures both listeners.
       ctx.setCommand(["server", "/data", "--address", `:${apiPort}`, "--console-address", `:${consolePort}`]);
+    }
     applyAuthoredProcessFields(ctx, ["entrypoint"]);
   }
   applyAuthoredProcessFields(ctx, ["workingDirectory", "user"]);

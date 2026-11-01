@@ -21,7 +21,7 @@ const DEFAULT_AMQP_PORT = Schema.decodeUnknownSync(PortNumber)(5672);
 export const MANAGEMENT_PORT = Schema.decodeUnknownSync(PortNumber)(15672);
 export const RABBITMQ_LISTENER = {
   port: DEFAULT_AMQP_PORT,
-  variable: "RABBITMQ_NODE_PORT",
+  variables: ["RABBITMQ_NODE_PORT"],
   daemon: "RabbitMQ",
   reserved: [
     { port: 4369, use: "EPMD" },

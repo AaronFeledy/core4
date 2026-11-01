@@ -53,7 +53,7 @@ lando npm install
 lando next dev
 ```
 
-Next listens on all interfaces by default, and the recipe sets `PORT=3000`. No hostname or port flags are needed for the stock recipe. The command stays in the foreground; `lando start` brings up the services but doesn't launch Next.
+Next listens on all interfaces by default and reads `PORT`, which Lando derives from `port:` (default `3000`). No hostname or port flags are needed for the stock recipe. Change `port:` to move both the endpoint and listener; an unequal or malformed authored `environment.PORT` fails planning. The command stays in the foreground; `lando start` brings up the services but doesn't launch Next.
 
 `lando info` prints the app URL at `https://<app-name>.lndo.site`. Open it while the development server is running.
 

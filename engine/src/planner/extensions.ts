@@ -167,6 +167,9 @@ export const toAppFeatureDraft = (
     ...(servicePlan.healthcheck === undefined ? {} : { healthcheck: servicePlan.healthcheck }),
     ...(servicePlan.readiness === undefined ? {} : { readiness: servicePlan.readiness }),
     ...(servicePlan.readinessSource === undefined ? {} : { readinessSource: servicePlan.readinessSource }),
+    ...(servicePlan.startupFailureHint === undefined
+      ? {}
+      : { startupFailureHint: servicePlan.startupFailureHint }),
     ...(servicePlan.certs === undefined ? {} : { certs: servicePlan.certs }),
     hostAliases: servicePlan.hostAliases.map((alias) => ({ ...alias })),
     ...(serviceResolution.metadata === undefined ? {} : { provenance: serviceResolution.metadata }),
@@ -222,6 +225,7 @@ export const servicePlanFromDraft = (
   ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
   ...(draft.readiness === undefined ? {} : { readiness: draft.readiness }),
   ...(draft.readinessSource === undefined ? {} : { readinessSource: draft.readinessSource }),
+  ...(draft.startupFailureHint === undefined ? {} : { startupFailureHint: draft.startupFailureHint }),
   ...(draft.certs === undefined ? {} : { certs: draft.certs }),
   hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
   metadata,

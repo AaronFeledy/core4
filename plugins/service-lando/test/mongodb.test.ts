@@ -72,6 +72,39 @@ describe("mongodb ServiceType", () => {
     expect(plan.entrypoint).toEqual(["custom-start"]);
     expect(plan.command).toBeUndefined();
   });
+
+  test("sets a startup failure hint when an authored command replaces the Lando port launcher", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      port: 47017,
+      command: ["mongod", "--auth"],
+    });
+    expect(plan.startupFailureHint).toContain("--port 47017");
+    expect(plan.startupFailureHint).toContain("MongoDB");
+  });
+
+  test("sets a startup failure hint when an authored entrypoint replaces the Lando port launcher", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      port: 47017,
+      entrypoint: ["custom-start"],
+    });
+    expect(plan.startupFailureHint).toContain("--port 47017");
+  });
+
+  test("omits the startup failure hint when Lando owns the mongod launcher", async () => {
+    const plan = await planMongodb({ type: "mongodb", port: 47017 });
+    expect(plan.startupFailureHint).toBeUndefined();
+  });
+
+  test("omits the startup failure hint when neither port nor config needs a Lando launcher", async () => {
+    const plan = await planMongodb({
+      type: "mongodb",
+      command: ["mongod", "--auth"],
+    });
+    expect(plan.startupFailureHint).toBeUndefined();
+  });
+
   test("plans a default MongoDB service with persistent data volume and credentials", async () => {
     const plan = await planMongodb({ type: "mongodb" });
 

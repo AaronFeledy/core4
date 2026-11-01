@@ -6,7 +6,7 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { commandHealthcheck, rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "redis:7";
@@ -16,14 +16,15 @@ const DEFAULT_COMMAND = ["redis-server", "--appendonly", "yes"];
 const EPHEMERAL_COMMAND = ["redis-server", "--appendonly", "no", "--save", ""];
 const AUTH_START =
   'hash=$(printf %s "$REDISCLI_AUTH" | sha256sum); printf "user default on #%s ~* &* +@all\\n" "${hash%% *}" > /tmp/lando-redis.conf; chmod 0444 /tmp/lando-redis.conf; exec docker-entrypoint.sh redis-server /tmp/lando-redis.conf "$@"';
-export const DEFAULT_PORT = 6379;
+export const REDIS_LISTENER = { port: 6379, daemon: "Redis" } as const;
+export const DEFAULT_PORT = REDIS_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/data");
 export const REDIS_FEATURE_ID = "service-lando.redis";
 
 const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, REDIS_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   if (service.password !== undefined) ctx.addEnv("REDISCLI_AUTH", service.password);
@@ -31,12 +32,14 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
     ...(service.persist === false ? EPHEMERAL_COMMAND : DEFAULT_COMMAND),
     ...(service.port === undefined ? [] : ["--port", String(port)]),
   ];
-  ctx.setCommand(
-    service.command ??
-      (service.password === undefined
-        ? command
-        : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)]),
-  );
+  if (service.command !== undefined) {
+    ctx.setCommand(service.command);
+    ctx.setStartupFailureHint(authoredLauncherHint(REDIS_LISTENER.daemon, `--port ${port}`));
+  } else {
+    ctx.setCommand(
+      service.password === undefined ? command : ["sh", "-ec", AUTH_START, "redis-auth", ...command.slice(1)],
+    );
+  }
   if (service.persist !== false)
     ctx.addStorage({
       store: `${appName}-redis-data`,
@@ -54,7 +57,10 @@ export const redisServiceFeature: ServiceFeatureDefinition = {
   priority: 600,
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "tcp" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, REDIS_LISTENER),
+        protocol: "tcp",
+      }),
     ),
   apply: (ctx) => {
     const startupOverride =
@@ -111,7 +117,12 @@ export const redisServiceType: ServiceType = {
       tooling: {
         "redis-cli": {
           service: input.name,
-          cmd: ["redis-cli", ...(input.service.port === undefined ? [] : ["-p", String(input.service.port)])],
+          cmd: [
+            "redis-cli",
+            ...(input.service.port === undefined
+              ? []
+              : ["-p", String(plannedPort(input.service, REDIS_LISTENER))]),
+          ],
           ...(password === undefined ? {} : { env: auth }),
         },
       },

@@ -138,7 +138,9 @@ This allows other services to connect over the app network, and it is what the d
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
 
-If you also set `command:` or `entrypoint:` on the service, yours wins. Lando won't append `--config` to a command you wrote yourself, so pass it in your own command if you still want the file loaded.
+If you also set `command:` or `entrypoint:` on the service, yours wins. Lando
+never appends `--config` to a command you wrote yourself, so pass it in your
+own command if you still want the file loaded.
 
 ### Loopback-only or TLS-only servers
 
@@ -187,7 +189,10 @@ Lando starts `mongod` with `--port 27018`, including when `config.server` is mou
 
 With `config.server` and no `port:`, Lando pins the default `27017` on its command line. With neither, Lando leaves the image's default command alone.
 
-If you author `command:` or `entrypoint:`, you own the daemon's flags. Include `--port 27018` in your own launcher; Lando won't append it for you.
+If you author `command:` or `entrypoint:`, you own the daemon's flags. Include
+`--port 27018` in your own launcher; Lando never appends it for you. When
+startup fails with this override, Lando includes a hint naming `--port 27018`.
+Check that your process binds the planned port.
 
 Apply the change with `lando rebuild` on an existing app, or `lando start` on a fresh one. Then ask the server which port it parsed from its command line:
 

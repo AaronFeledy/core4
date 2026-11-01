@@ -109,6 +109,10 @@ const ServicePlanFields = {
     description:
       "Origin of explicit lifecycle readiness; absent for historical plans with unknown provenance.",
   }),
+  startupFailureHint: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))).annotate({
+    description:
+      "Service-type advice appended to startup and readiness failures, such as the listener flag an authored launcher must pass.",
+  }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",
   }),

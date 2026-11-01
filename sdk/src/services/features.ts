@@ -167,6 +167,12 @@ export interface ServiceFeatureContext {
   setHealthcheck(healthcheck: HealthcheckPlan): void;
   /** Set startup readiness independently from ongoing health. */
   setReadiness(readiness: HealthcheckPlan): void;
+  /**
+   * Set advice appended when this service fails to start or become ready. Use
+   * it for causes only the service type knows, such as the listener flag an
+   * authored command must pass; the hint never claims to be the cause.
+   */
+  setStartupFailureHint(hint: string): void;
   /** Set the service certificate plan. */
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */

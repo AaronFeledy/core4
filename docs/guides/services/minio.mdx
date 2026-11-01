@@ -197,9 +197,15 @@ Applications in another service talk to `http://object-store:9000` by default,
 or `http://object-store:9001` with the custom ports above. The console URL is for
 browser access, not an S3 client endpoint.
 
-If you supply your own `command:` or `entrypoint:`, Lando preserves it. Your
-launcher must bind the API and console to the ports you declared; changing
-`port:` or `consolePort:` does not rewrite an authored launcher.
+If you supply your own `command:`, Lando preserves it and never appends
+`--address` or `--console-address`. Your command must bind the API and console
+to the ports you declared. If you set only `entrypoint:` and leave `command:`
+unset, Lando still supplies its server arguments for the planned API and
+console ports after your entrypoint. Changing `port:` or `consolePort:` does
+not rewrite an authored `command:`.
+If startup fails with an authored command, Lando includes a hint naming
+`--address :<api-port> --console-address :<console-port>` with your effective
+port numbers.
 
 The service also adds `mc` tooling, so you can run the MinIO client in the
 object-store service:

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ServiceConfig } from "@lando/sdk/schema";
 import { Schema } from "effect";
 import { serviceTypes } from "../src/index.ts";
+import { listenerContracts } from "../src/service-type-facts.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const PORT = 43210;
@@ -20,6 +21,10 @@ const mechanisms: Readonly<
   elasticsearch: { env: "http.port" },
   opensearch: { env: "http.port" },
   node: { env: "PORT" },
+  python: { env: "PORT" },
+  ruby: { env: "PORT" },
+  go: { env: "PORT" },
+  dotnet: { env: "ASPNETCORE_HTTP_PORTS" },
   meilisearch: { env: "MEILI_HTTP_ADDR", value: `0.0.0.0:${PORT}` },
   localstack: { env: "GATEWAY_LISTEN", value: `0.0.0.0:${PORT}` },
   mailhog: { env: "MH_SMTP_BIND_ADDR", value: `0.0.0.0:${PORT}` },
@@ -40,10 +45,6 @@ const mechanisms: Readonly<
 const exemptions: Readonly<Record<string, string>> = {
   compose: "Raw Compose has no bundled launcher.",
   lando: "The base service has no bundled daemon.",
-  python: "The default command is a keep-alive, not a server.",
-  ruby: "The default command is a keep-alive, not a server.",
-  go: "The default command is a keep-alive, not a server.",
-  dotnet: "The default command is a keep-alive, not a server.",
 };
 const commandText = (command: string | readonly string[] | undefined): string =>
   typeof command === "string" ? command : (command ?? []).join(" ");
@@ -82,7 +83,7 @@ describe("bundled catalog listen-port conformance", () => {
         appRoot: "/srv/apps/port-test",
         metadata: { resolvedAt: "2026-10-19T00:00:00Z", source: "listen-port-conformance", runtime: 4 },
       });
-      expect(plan.endpoints).toContainEqual(expect.objectContaining({ port: PORT }));
+      expect(plan.endpoints).toContainEqual(expect.objectContaining({ port: PORT, primary: true }));
       if (mechanism.env !== undefined)
         expect(plan.environment[mechanism.env]).toBe(mechanism.value ?? String(PORT));
       if (mechanism.command !== undefined) expect(commandText(plan.command)).toContain(mechanism.command);
@@ -98,5 +99,39 @@ describe("bundled catalog listen-port conformance", () => {
         );
       }
     });
+  }
+
+  const contracts = listenerContracts();
+  for (const family of new Set([...serviceTypes.keys()].map((id) => id.split(":")[0] ?? id))) {
+    test(`${family} declares its listener contract or an explicit exemption`, () => {
+      expect(contracts[family] ?? exemptions[family]).toBeDefined();
+    });
+  }
+  for (const [family, contract] of Object.entries(contracts)) {
+    for (const reserved of contract.reserved ?? []) {
+      test(`${family} rejects its default ${reserved.use} port as primary`, async () => {
+        const serviceType = serviceTypes.get(family);
+        if (serviceType === undefined) throw new Error(`Missing service type ${family}`);
+        await expect(
+          composeServicePlan({
+            serviceType,
+            service: Schema.decodeUnknownSync(ServiceConfig)({
+              type: family,
+              port: reserved.port,
+              ...(family === "minio" ? { image: "example.test/minio:fixture" } : {}),
+              ...(family === "varnish" ? { backend: "web" } : {}),
+            }),
+            appRoot: "/srv/apps/port-test",
+            appName: "port-test",
+            serviceName: "server",
+            metadata: { resolvedAt: "2026-10-19T00:00:00Z", source: "listen-port-conformance", runtime: 4 },
+          }),
+        ).rejects.toMatchObject({
+          issues: [
+            expect.objectContaining({ path: ["port"], message: expect.stringContaining(reserved.use) }),
+          ],
+        });
+      });
+    }
   }
 });

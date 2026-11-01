@@ -3,19 +3,25 @@ import { Effect, Schema } from "effect";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import { loopbackTcpHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "memcached:1.6";
-export const DEFAULT_PORT = 11211;
+export const MEMCACHED_LISTENER = { port: 11211, daemon: "Memcached" } as const;
+export const DEFAULT_PORT = MEMCACHED_LISTENER.port;
 export const MEMCACHED_FEATURE_ID = "service-lando.memcached";
 
 const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, MEMCACHED_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.setCommand(service.command ?? ["memcached", "-p", String(port)]);
+  if (service.command !== undefined) {
+    ctx.setCommand(service.command);
+    ctx.setStartupFailureHint(authoredLauncherHint(MEMCACHED_LISTENER.daemon, `-p ${port}`));
+  } else {
+    ctx.setCommand(["memcached", "-p", String(port)]);
+  }
   ctx.setHealthcheck(loopbackTcpHealthcheck(port, 30));
 
   applyAuthoredProcessFields(ctx, ["entrypoint", "workingDirectory", "user"]);
@@ -27,7 +33,10 @@ export const memcachedServiceFeature: ServiceFeatureDefinition = {
   priority: 600,
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "tcp" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, MEMCACHED_LISTENER),
+        protocol: "tcp",
+      }),
     ),
   apply: serviceFeatureApply(
     MEMCACHED_FEATURE_ID,

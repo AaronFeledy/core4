@@ -27,7 +27,7 @@ lando init --recipe mean --name=my-mean-app --yes \
   --answer=redis=true
 ```
 
-`lando start` installs the Express dependencies in `api` before serving the scaffold on port `3000`. Open the URL `lando info` prints. `GET /` answers `Hello from Lando`.
+`lando start` installs the Express dependencies in `api` before serving the scaffold on port `3000`. The scaffold reads `PORT`, which Lando derives from `port:` (default `3000`). An unequal or malformed authored `environment.PORT` fails planning; change `port:` instead. This recipe supplies a server command; the Node preset alone stays idle. Open the URL `lando info` prints. `GET /` answers `Hello from Lando`.
 
 Use `lando npm` and `lando node` to run tooling inside `api`:
 

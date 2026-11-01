@@ -5,10 +5,36 @@ import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.t
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { APPLY_REMEDIATION, bringUp } from "../src/podman/bring-up.ts";
 import { field, networkApi, networkPlan } from "./authored-network-fixture.ts";
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
+test("omits listener advice on network-connect failure", async () => {
+  // Given
+  const fake = networkApi({ connectStatus: 500 });
+  const plan = {
+    ...networkPlan,
+    services: Object.fromEntries(
+      Object.entries(networkPlan.services).map(([name, service]) => [
+        name,
+        { ...service, startupFailureHint: "Listener advice must not appear." },
+      ]),
+    ),
+  };
+  // When
+  const result = await Effect.runPromise(
+    bringUp(plan, { api: fake.api, ctx, dialect: dockerLifecycleDialect }).pipe(Effect.result),
+  );
+  // Then
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ServiceStartError",
+      operation: "bringUp.network.connect",
+      remediation: APPLY_REMEDIATION,
+    },
+  });
+});
 const endpoints = {
   "lando-networks": { Aliases: ["web", "frontend"] },
   lando_bridge_network: { Aliases: ["web.networks.internal"] },

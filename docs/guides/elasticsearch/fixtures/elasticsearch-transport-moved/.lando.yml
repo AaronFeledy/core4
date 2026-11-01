@@ -1,0 +1,7 @@
+name: elasticsearch-transport-moved
+services:
+  search:
+    type: elasticsearch
+    port: 9300
+    environment:
+      transport.port: "9301"

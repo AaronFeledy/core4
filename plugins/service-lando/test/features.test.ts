@@ -25,7 +25,7 @@ const EXPECTED_CATALOG_FEATURE_PRIORITIES: Readonly<Record<string, number>> = {
   "service-lando.elasticsearch": 600,
   "service-lando.go": 600,
   "service-lando.lando": 600,
-  "service-lando.localstack": 750,
+  "service-lando.localstack": 600,
   "service-lando.mailhog": 600,
   "service-lando.mailpit": 600,
   "service-lando.mariadb": 600,

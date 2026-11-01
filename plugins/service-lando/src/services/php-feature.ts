@@ -6,7 +6,12 @@ import {
   serviceFeatureApply,
   serviceFeatureValidateEffective,
 } from "./_feature-helpers.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  assertListenerConfig,
+  authoredImageHint,
+  authoredLauncherHint,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
@@ -16,6 +21,8 @@ import { PHP_COMPOSER_STEP_ID, phpPrerequisiteBuildSteps, resolvePhpComposer } f
 import { PhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
+  PHP_FPM_PORT,
+  PHP_LISTENER,
   SUPPORTED_PHP_VERSIONS,
   apacheDefaultSiteRemovalBuildStep,
   apacheStartCommand,
@@ -41,6 +48,12 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     ctx.config,
   );
   const mode = phpServingMode(via, authoredListenPort(service.port));
+  if (mode.listener !== undefined) {
+    assertListenerConfig(
+      service,
+      mode.via === "fpm" ? { ...PHP_LISTENER, port: PHP_FPM_PORT, daemon: "php-fpm" } : PHP_LISTENER,
+    );
+  }
   if (policy.reference !== undefined) ctx.setArtifact({ kind: "ref", ref: policy.reference });
   const stock = policy.artifactSource === "stock";
   const xdebug = resolvePhpXdebug(service.xdebug);
@@ -88,6 +101,22 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
       absurd(mode);
   }
   if (mode.listener !== undefined) ctx.setHealthcheck(loopbackTcpHealthcheck(mode.listener.port, 10));
+  if (mode.listener !== undefined) {
+    const daemon = mode.via === "fpm" ? "php-fpm" : "Apache";
+    const setting = mode.via === "fpm" ? `listen = ${mode.listener.port}` : `Listen ${mode.listener.port}`;
+    switch (policy.processAuthority) {
+      case "authored":
+        ctx.setStartupFailureHint(authoredLauncherHint(daemon, setting));
+        break;
+      case "image-default":
+        ctx.setStartupFailureHint(authoredImageHint(daemon, `\`${setting}\``));
+        break;
+      case "lando":
+        break;
+      default:
+        absurd(policy.processAuthority);
+    }
+  }
   applyAuthoredProcessFields(ctx, ["user", "command", "entrypoint"]);
   ctx.addExtension("lando-service-php", { allowOverride, webroot, version, via });
 };

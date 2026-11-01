@@ -81,7 +81,7 @@ test("keeps uv installation root-only while preserving authored process and buil
   const steps = buildStepsFor(service);
   expect(steps.find((step) => step.id === "service-lando.python:uv")?.user).toBe("root");
   expect(steps).toContainEqual(
-    expect.objectContaining({ command: ["sh", "-lc", authoredStep], user: "1000:1000" }),
+    expect.objectContaining({ command: ["sh", "-c", authoredStep], user: "1000:1000" }),
   );
 });
 

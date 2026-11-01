@@ -1,0 +1,6 @@
+name: localstack-gateway-reject-duplicate
+services:
+  aws:
+    type: localstack
+    environment:
+      GATEWAY_LISTEN: ":4566,:4566"

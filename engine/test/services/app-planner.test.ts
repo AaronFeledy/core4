@@ -959,7 +959,7 @@ describe("AppPlannerLayer.layer", () => {
           {
             id: "authored-artifact:1",
             phase: "build",
-            command: ["sh", "-lc", "install-dependencies"],
+            command: ["sh", "-c", "install-dependencies"],
           },
         ],
       });
@@ -1024,8 +1024,7 @@ describe("AppPlannerLayer.layer", () => {
             scenario.entries.map((entry, index) => ({
               id: `authored-${phase}:${index + 1}`,
               phase: phase === "artifact" ? "build" : "app",
-              command:
-                phase === "artifact" ? ["sh", "-lc", entry.run] : { command: ["sh", "-lc", entry.run] },
+              command: phase === "artifact" ? ["sh", "-c", entry.run] : { command: ["sh", "-c", entry.run] },
               ...("user" in entry ? { user: entry.user } : {}),
             })),
           );
@@ -1041,7 +1040,7 @@ describe("AppPlannerLayer.layer", () => {
         ...socketOnlyServiceType.testFeature,
         apply: Effect.fnUntraced(function* (ctx) {
           yield* socketOnlyServiceType.testFeature.apply(ctx);
-          ctx.addBuildStep({ id: "feature-build", phase: "build", command: ["sh", "-lc", "a"] });
+          ctx.addBuildStep({ id: "feature-build", phase: "build", command: ["sh", "-c", "a"] });
           ctx.setUser("node");
         }),
       };
@@ -1072,8 +1071,8 @@ describe("AppPlannerLayer.layer", () => {
         appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"],
       ).toMatchObject({
         buildSteps: [
-          { id: "feature-build", phase: "build", command: ["sh", "-lc", "a"], user: "node" },
-          { id: "authored-artifact:1", phase: "build", command: ["sh", "-lc", "authored"], user: "node" },
+          { id: "feature-build", phase: "build", command: ["sh", "-c", "a"], user: "node" },
+          { id: "authored-artifact:1", phase: "build", command: ["sh", "-c", "authored"], user: "node" },
         ],
       });
     });
@@ -1099,8 +1098,8 @@ describe("AppPlannerLayer.layer", () => {
       expect(extension).toMatchObject({
         buildSteps: [
           { id: "lando.boot:scaffold", phase: "build" },
-          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "npm ci"] } },
-          { id: "authored-app:2", phase: "app", command: { command: ["sh", "-lc", "npm run build"] } },
+          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-c", "npm ci"] } },
+          { id: "authored-app:2", phase: "app", command: { command: ["sh", "-c", "npm run build"] } },
         ],
       });
     });
@@ -1146,14 +1145,14 @@ describe("AppPlannerLayer.layer", () => {
         {
           id: "authored-artifact:1",
           phase: "build",
-          command: ["sh", "-lc", "artifact-one"],
+          command: ["sh", "-c", "artifact-one"],
         },
         {
           id: "authored-artifact:2",
           phase: "build",
-          command: ["sh", "-lc", "artifact-two"],
+          command: ["sh", "-c", "artifact-two"],
         },
-        { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "app-one"] } },
+        { id: "authored-app:1", phase: "app", command: { command: ["sh", "-c", "app-one"] } },
       ]);
     });
   });
@@ -1273,7 +1272,7 @@ describe("AppPlannerLayer.layer", () => {
       ).toMatchObject({
         buildSteps: [
           { id: "lando.boot:scaffold", phase: "build" },
-          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "echo ready"] } },
+          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-c", "echo ready"] } },
         ],
       });
     });

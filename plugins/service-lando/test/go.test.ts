@@ -130,6 +130,7 @@ describe("go:1.22 ServiceType", () => {
       featureOverrides,
     });
 
+    expect(plan.environment.PORT).toBe("8080");
     expect(plan.environment.LANDO_APP_NAME).toBe("anotherapp");
     expect(plan.environment.LANDO_PROJECT).toBe("anotherapp");
   });

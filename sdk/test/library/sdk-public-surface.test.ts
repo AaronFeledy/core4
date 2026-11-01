@@ -101,6 +101,12 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
 
 // Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
 describe("SDK public-surface snapshot", () => {
+  test("matches every ServiceFeatureContext member signature", () => {
+    const members = interfaces.get("ServiceFeatureContext")?.members;
+    expect(members?.map((member) => normalizeSignature(member.getText())).sort()).toEqual(
+      publicSurface.serviceFeatureContextMembers.map(normalizeSignature).sort(),
+    );
+  });
   test("matches endpoint declaration signatures and excludes apply-time endpoint mutation", () => {
     for (const [name, signature] of Object.entries(publicSurface.featureEndpointDeclarations)) {
       const member = interfaces

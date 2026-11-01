@@ -1,24 +1,36 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceTypeError } from "@lando/sdk/errors";
-import { PortablePath } from "@lando/sdk/schema";
+import { PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type {
   ServiceFeatureContext,
   ServiceFeatureDefinition,
   ServiceImageIdentity,
   ServiceType,
 } from "@lando/sdk/services";
-import { ServiceConfigIssue, commandHealthcheck, serviceFeatureApply } from "./_feature-helpers.ts";
+import {
+  ServiceConfigIssue,
+  commandHealthcheck,
+  serviceFeatureApply,
+  serviceFeatureValidateEffective,
+} from "./_feature-helpers.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  assertListenerConfig,
+  authoredLauncherHint,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { isAppRelativeSource, resolveBindSource } from "./_volume-helpers.ts";
 
 const DEFAULT_IMAGE = "solr:9";
 const VERSIONS = ["9"] as const;
 const ARTIFACTS = { "9": DEFAULT_IMAGE } as const;
-export const DEFAULT_PORT = 8983;
+export const SOLR_LISTENER = { port: 8983, daemon: "Solr" } as const;
+export const DEFAULT_PORT = SOLR_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/var/solr");
 const CORE_NAME = /^[A-Za-z0-9._-]+$/u;
 const RESERVED_CORE_NAMES = new Set([".", ".."]);
@@ -86,16 +98,46 @@ const defaultCommand = (port: number, cores: readonly string[], hasConfigDir: bo
   ];
 };
 
+const solrListener = (service: ServiceConfig): ListenerContract => {
+  if (service.command !== undefined) return SOLR_LISTENER;
+  const port = plannedPort(service, SOLR_LISTENER);
+  const authored = service.environment?.STOP_PORT;
+  const stopPort =
+    authored === undefined
+      ? port - 1000
+      : typeof authored === "string" && /^[0-9]+$/.test(authored)
+        ? Number(authored)
+        : Number.NaN;
+  if (!Number.isInteger(stopPort) || stopPort < 1 || stopPort > 65535) {
+    throw new ServiceConfigIssue(
+      authored === undefined ? ["port"] : ["environment", "STOP_PORT"],
+      authored === undefined
+        ? `Solr port ${port} derives STOP_PORT ${stopPort}, which is not valid for graceful shutdown.`
+        : "STOP_PORT requires a literal TCP port number from 1 to 65535.",
+      authored === undefined
+        ? "Set port: above 1000, or set STOP_PORT to a distinct TCP port number from 1 to 65535."
+        : "Set STOP_PORT to a distinct TCP port number from 1 to 65535, or remove it and set port: above 1000.",
+    );
+  }
+  return { ...SOLR_LISTENER, reserved: [{ port: stopPort, use: "loopback stop listener (STOP_PORT)" }] };
+};
+
 const applySolrFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const port = service.port ?? DEFAULT_PORT;
+  assertListenerConfig(service, solrListener(service));
+  const port = plannedPort(service, SOLR_LISTENER);
   const cores = service.cores ?? [];
   const configDir = service.config?.dir;
   const hasConfigDir = typeof configDir === "string" && configDir.length > 0;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.setCommand(service.command ?? defaultCommand(port, cores, hasConfigDir));
+  if (service.command !== undefined) {
+    ctx.setCommand(service.command);
+    ctx.setStartupFailureHint(authoredLauncherHint(SOLR_LISTENER.daemon, `-p ${port}`));
+  } else {
+    ctx.setCommand(defaultCommand(port, cores, hasConfigDir));
+  }
   ctx.addStorage(
     {
       store: `${appName}-solr-data`,
@@ -130,9 +172,16 @@ export const solrServiceFeature: ServiceFeatureDefinition = {
   id: SOLR_FEATURE_ID,
   schema: Schema.Unknown,
   priority: 600,
+  validateEffective: serviceFeatureValidateEffective(SOLR_FEATURE_ID, (ctx) => {
+    assertListenerConfig(ctx.normalizedConfig, solrListener(ctx.normalizedConfig));
+    return { handledServiceFields: [] };
+  }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, SOLR_LISTENER),
+        protocol: "http",
+      }),
     ),
   apply: serviceFeatureApply(SOLR_FEATURE_ID, "solr service feature failed to apply", applySolrFeature),
 };

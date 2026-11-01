@@ -1,0 +1,5 @@
+name: opensearch-http-transport-collision
+services:
+  search:
+    type: opensearch
+    port: 9300

@@ -115,6 +115,27 @@ describe("AppRef", () => {
 });
 
 describe("ServicePlan", () => {
+  test("preserves startup failure advice through service and executable app plan codecs", () => {
+    // Given service-type advice in a current executable plan.
+    const startupFailureHint = "An authored mongod launcher must pass --port 27018.";
+    const service = Schema.decodeUnknownSync(ServicePlan)({ ...servicePlanFixture, startupFailureHint });
+    const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+      ...appPlanFixture,
+      valueModel: 1,
+      services: { web: Schema.encodeSync(ServicePlan)(service) },
+    });
+
+    // When both schemas encode and decode their wire representation.
+    const serviceRoundTrip = Schema.decodeUnknownSync(ServicePlan)(Schema.encodeSync(ServicePlan)(service));
+    const planRoundTrip = Schema.decodeUnknownSync(CurrentExecutableAppPlan)(
+      Schema.encodeSync(AppPlan)(plan),
+    );
+
+    // Then the exact advice survives both boundaries.
+    expect(serviceRoundTrip.startupFailureHint).toBe(startupFailureHint);
+    expect(planRoundTrip.services[ServiceName.make("web")]?.startupFailureHint).toBe(startupFailureHint);
+  });
+
   test.each(["redis-password", { _tag: "SecretRef", reference: "REDIS_PASSWORD" }])(
     "rejects coexisting SQL connection and non-SQL credentials with password %j",
     (password) => {

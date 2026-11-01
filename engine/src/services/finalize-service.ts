@@ -85,6 +85,7 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
     ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
     ...(draft.readiness === undefined ? {} : { readiness: draft.readiness }),
     ...(draft.readinessSource === undefined ? {} : { readinessSource: draft.readinessSource }),
+    ...(draft.startupFailureHint === undefined ? {} : { startupFailureHint: draft.startupFailureHint }),
     ...(draft.certs === undefined ? {} : { certs: draft.certs }),
     hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
     metadata: deterministicMetadata,

@@ -3,6 +3,7 @@ import { LogSourceId } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
+import type { ListenerContract } from "./_port-helpers.ts";
 import { apacheDirectivePath } from "./apache.ts";
 import { apacheErrorPageDirectives } from "./http-errors.ts";
 
@@ -15,6 +16,7 @@ export const APACHE_DEFAULT_SITE_BUILD_STEP_ID = "service-lando.php:apache-defau
 
 export const PHP_FPM_PORT = 9000;
 export const PHP_APACHE_PORT = 80;
+export const PHP_LISTENER = { port: PHP_APACHE_PORT, daemon: "Apache" } as const satisfies ListenerContract;
 export const PHP_CLI_KEEP_ALIVE: ReadonlyArray<string> = ["tail", "-f", "/dev/null"];
 
 export const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [

@@ -86,6 +86,9 @@ const makeContext = (
     draft.readiness = { ...readiness };
     draft.readinessSource = "contributed";
   },
+  setStartupFailureHint: (hint) => {
+    draft.startupFailureHint = hint;
+  },
   setCerts: (certs) => {
     draft.certs = { ...certs };
   },

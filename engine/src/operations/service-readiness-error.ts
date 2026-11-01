@@ -68,6 +68,9 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   );
   const name = String(target.service);
   const commands = readinessCommands(target);
+  const startupFailureHint = target.plan.services[target.service]?.startupFailureHint;
+  const startupRemediation =
+    startupFailureHint === undefined ? "" : ` ${redactor.redactString(startupFailureHint)}`;
   const healthcheckRemediation =
     evidence.reason === "not-running" || evidence.reason === "inspect-failed"
       ? ""
@@ -82,7 +85,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
       remediation:
         evidence.reason === "inspect-failed"
           ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-          : `Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
+          : `Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}${startupRemediation}`,
       ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
       ...(evidence.runtime === undefined
         ? {}

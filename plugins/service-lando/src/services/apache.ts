@@ -23,12 +23,13 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
-export const DEFAULT_PORT = 80;
+export const APACHE_LISTENER = { port: 80, daemon: "Apache" } as const;
+export const DEFAULT_PORT = APACHE_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
@@ -163,7 +164,7 @@ const apacheStartCommand = (
 const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const listenPort = authoredListenPort(service.port);
-  const port = listenPort ?? DEFAULT_PORT;
+  const port = plannedPort(service, APACHE_LISTENER);
   const webroot = resolveWebroot("Apache", service.webroot, service.appMount);
   const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
 
@@ -185,6 +186,8 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
       ),
     );
     if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
+  } else {
+    ctx.setStartupFailureHint(authoredLauncherHint(APACHE_LISTENER.daemon, `Listen ${port}`));
   }
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
 };
@@ -200,7 +203,7 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: authoredListenPort(ctx.normalizedConfig.port) ?? DEFAULT_PORT,
+        port: plannedPort(ctx.normalizedConfig, APACHE_LISTENER),
         protocol: "http",
       }),
     ),

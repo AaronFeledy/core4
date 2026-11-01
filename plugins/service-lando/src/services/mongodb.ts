@@ -3,7 +3,6 @@ import { Effect, Schema } from "effect";
 
 import {
   type EnvironmentValue,
-  PortNumber,
   PortablePath,
   type ServiceConfig,
   type ServiceCreds,
@@ -16,7 +15,12 @@ import { addEnvRecord, rootIdentity, serviceFeatureApply, serviceTypeResolve } f
 import { appNameFor } from "../app-name.ts";
 import { connectionFor } from "./_connection-helpers.ts";
 import { familyEnvFor, landoDbEnvFor, resolveServiceCreds } from "./_creds-helpers.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  assertListenerConfig,
+  authoredLauncherHint,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { addServerConfigMount } from "./_volume-helpers.ts";
 import { mongodbProbes } from "./mongodb-probes.ts";
@@ -24,7 +28,8 @@ import { mongodbProbes } from "./mongodb-probes.ts";
 const DEFAULT_IMAGE = "mongo:7";
 const VERSIONS = ["7"] as const;
 const ARTIFACTS = { "7": DEFAULT_IMAGE } as const;
-export const DEFAULT_PORT = 27017;
+export const MONGODB_LISTENER = { port: 27017, daemon: "MongoDB" } as const;
+export const DEFAULT_PORT = MONGODB_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
@@ -84,17 +89,22 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   });
 
   const serverConfig = addServerConfigMount(ctx, MONGODB_CONFIG_TARGET);
-  if (
+  const ownsLauncher =
     (serverConfig || service.port !== undefined) &&
     service.command === undefined &&
-    service.entrypoint === undefined
-  ) {
+    service.entrypoint === undefined;
+  if (ownsLauncher) {
     ctx.setCommand([
       "mongod",
       ...(serverConfig ? ["--config", MONGODB_CONFIG_TARGET] : []),
       "--port",
       String(port),
     ]);
+  } else if (
+    (serverConfig || service.port !== undefined) &&
+    (service.command !== undefined || service.entrypoint !== undefined)
+  ) {
+    ctx.setStartupFailureHint(authoredLauncherHint(MONGODB_LISTENER.daemon, `--port ${port}`));
   }
 
   applyAuthoredProcessFields(ctx);
@@ -145,7 +155,8 @@ export const mongodbServiceType: ServiceType = {
   resolve: (input) => {
     return serviceTypeResolve("mongodb", "mongodb service type failed to resolve", () => {
       const creds = credsFor(input, input.service);
-      const port = PortNumber.make(input.service.port ?? DEFAULT_PORT);
+      assertListenerConfig(input.service, MONGODB_LISTENER);
+      const port = plannedPort(input.service, MONGODB_LISTENER);
       return {
         base: "lando",
         connection: { family: "mongodb", creds, port },

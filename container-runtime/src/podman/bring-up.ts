@@ -28,7 +28,7 @@ import type { ApplyOptions, ApplyResult, EventService, ProviderError } from "@la
 
 import type { VolumeCreationFact } from "@lando/sdk/schema";
 import { removeRuntimeContainer } from "../container-removal.ts";
-import { completionIntentServices } from "../dependency-gates.ts";
+import { completionIntentServices, parseGateId } from "../dependency-gates.ts";
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
 import type {
   EngineHttpApi,
@@ -197,6 +197,7 @@ const prepareCreationEnvironment = Effect.fnUntraced(function* (
 
 interface StartFailureInput {
   readonly service: ServicePlan;
+  readonly startupFailureHint?: string | undefined;
   readonly operation: string;
   readonly message: string;
   readonly details?: unknown;
@@ -228,12 +229,21 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
       message,
       ...(input.details === undefined ? {} : { details: input.details }),
     }) ?? deps.remediation;
+  const startupFailureHint =
+    "startupFailureHint" in input
+      ? input.startupFailureHint
+      : ["bringUp.create", "bringUp.start", "bringUp.knobs", "bringUp.artifact"].includes(input.operation)
+        ? input.service.startupFailureHint
+        : undefined;
   return new ServiceStartError({
     providerId: input.service.provider,
     operation: input.operation,
     service: input.service.name,
     message,
-    remediation,
+    remediation:
+      startupFailureHint === undefined
+        ? remediation
+        : `${remediation} ${redactor.redactString(startupFailureHint)}`,
     ...(input.details === undefined ? {} : { details: redactDetails(input.details, redactor) }),
     ...(input.cause === undefined ? {} : { cause: input.cause }),
     ...(input.logTail === undefined ? {} : { logTail: input.logTail }),
@@ -1172,6 +1182,10 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
         return Effect.fail(
           podmanFailure(deps, {
             service,
+            startupFailureHint:
+              parseGateId(blocked.unmetGate)?.condition === "service_healthy"
+                ? dependency?.startupFailureHint
+                : undefined,
             operation: "bringUp.schedule",
             message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
             ...(blocked.lastError === undefined ? {} : { details: { readinessFailure: blocked.lastError } }),

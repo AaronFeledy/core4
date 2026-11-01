@@ -51,7 +51,7 @@ services:
       - http://localhost:3000/
 ```
 
-Write the service `command:` as a list too, `[node, server.mjs]`. The service runs under Lando's init process, which forwards SIGTERM to the process it started; a string command puts `sh -lc` in that position, and the shell does not pass the signal on to your server. Handle SIGTERM in the app so it finishes in-flight work before it exits. See [Stop cleanly](./node.mdx#stop-cleanly) for the `init` option.
+Write the service `command:` as a list too, `[node, server.mjs]`. The service runs under Lando's init process, which forwards SIGTERM to the process it started; a string command puts `sh -c` in that position, and the shell does not pass the signal on to your server. Handle SIGTERM in the app so it finishes in-flight work before it exits. See [Stop cleanly](./node.mdx#stop-cleanly) for the `init` option.
 
 ## Set timing on an object
 

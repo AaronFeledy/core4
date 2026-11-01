@@ -23,7 +23,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import { authoredLauncherHint, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
@@ -32,7 +32,8 @@ import { PHP_FPM_PORT, phpListenPort } from "./php-via.ts";
 import { defaultStaticCommand } from "./static.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
-export const DEFAULT_PORT = 80;
+export const NGINX_LISTENER = { port: 80, daemon: "nginx" } as const;
+export const DEFAULT_PORT = NGINX_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
 
 const NGINX_LOG_SOURCES: ReadonlyArray<LogSource> = [
@@ -100,7 +101,7 @@ const phpFastcgiCommand = (
 
 const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, NGINX_LISTENER);
   const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
   const backend = service.backend?.trim() ?? "";
 
@@ -123,6 +124,8 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
         ? phpFastcgiCommand(backend, webroot, { listen: port, fpm: PHP_FPM_PORT }, service.user)
         : defaultStaticCommand("nginx", webroot, port, service.user),
     );
+  } else {
+    ctx.setStartupFailureHint(authoredLauncherHint(NGINX_LISTENER.daemon, `listen ${port};`));
   }
 
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
@@ -141,7 +144,10 @@ export const nginxServiceFeature: ServiceFeatureDefinition = {
   }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, NGINX_LISTENER),
+        protocol: "http",
+      }),
     ),
   apply: serviceFeatureApply(NGINX_FEATURE_ID, "service-lando.nginx failed to apply", applyNginxFeature),
 };
@@ -164,7 +170,7 @@ const applyNginxPhpFpmWire = (ctx: AppFeatureContext): void => {
     if (backend.length === 0) return;
     const fpm = fpmPortByService.get(backend);
     if (fpm === undefined) return;
-    const listen = service.port ?? DEFAULT_PORT;
+    const listen = plannedPort(service, NGINX_LISTENER);
     const webroot = resolveWebroot("nginx", service.webroot, service.appMount);
     mutator.addBuildStep(landoErrorPagesBuildStep());
     mutator.addBuildStep(nginxDefaultSiteRemovalBuildStep());

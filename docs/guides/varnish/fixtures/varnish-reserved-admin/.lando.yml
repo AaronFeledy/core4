@@ -1,0 +1,8 @@
+name: varnish-reserved-admin
+services:
+  appserver:
+    type: nginx
+  cache:
+    type: varnish
+    backend: appserver
+    port: 6082

@@ -1,0 +1,5 @@
+name: elasticsearch-http-transport-collision
+services:
+  search:
+    type: elasticsearch
+    port: 9300

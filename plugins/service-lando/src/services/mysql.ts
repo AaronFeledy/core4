@@ -39,7 +39,7 @@ export const MYSQL_ARTIFACTS = {
 const DEFAULT_IMAGE = MYSQL_ARTIFACTS["8.0"];
 export const MYSQL_LISTENER = {
   port: 3306,
-  variable: "MYSQL_TCP_PORT",
+  variables: ["MYSQL_TCP_PORT"],
   daemon: "MySQL",
   reserved: [{ port: 33060, use: "X Protocol listener" }],
 } as const;

@@ -4,6 +4,7 @@ import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services"
 
 import { serviceFeatureApply } from "./_feature-helpers.ts";
 import { type LanguageFrameworkPreset, makeLanguageRuntime } from "./_language-runtime.ts";
+import type { ListenerContract } from "./_port-helpers.ts";
 
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
 export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
@@ -17,21 +18,31 @@ export type SupportedPythonFramework = (typeof SUPPORTED_PYTHON_FRAMEWORKS)[numb
 export const PYTHON_FEATURE_ID = "service-lando.python" as const;
 export const PYTHON_FEATURE_PRIORITY = 600;
 
+export const PYTHON_LISTENERS = {
+  django: { port: 8000, daemon: "Django", variables: ["PORT"] },
+  fastapi: { port: 8000, daemon: "FastAPI", variables: ["PORT", "UVICORN_PORT"] },
+  flask: { port: 5000, daemon: "Flask", variables: ["PORT", "FLASK_RUN_PORT"] },
+  none: { port: 8000, daemon: "Python", variables: ["PORT"] },
+} as const satisfies Readonly<Record<SupportedPythonFramework, ListenerContract>>;
+
 export const FRAMEWORK_PRESETS: Readonly<Record<SupportedPythonFramework, LanguageFrameworkPreset>> = {
   django: {
-    port: 8000,
+    ...PYTHON_LISTENERS.django,
     env: new Map([["DJANGO_SETTINGS_MODULE", "config.settings"]]),
   },
   fastapi: {
-    port: 8000,
-    env: new Map(),
+    ...PYTHON_LISTENERS.fastapi,
+    env: new Map([["UVICORN_HOST", "0.0.0.0"]]),
   },
   flask: {
-    port: 5000,
-    env: new Map([["FLASK_APP", "app"]]),
+    ...PYTHON_LISTENERS.flask,
+    env: new Map([
+      ["FLASK_APP", "app"],
+      ["FLASK_RUN_HOST", "0.0.0.0"],
+    ]),
   },
   none: {
-    port: 8000,
+    ...PYTHON_LISTENERS.none,
     env: new Map(),
   },
 };
