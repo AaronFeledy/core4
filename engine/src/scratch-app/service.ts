@@ -63,7 +63,7 @@ import {
 import { captureGlobalConsumerAdmission } from "../operations/global-consumer-admission.ts";
 import { ensureAppPlacement } from "../providers/app-placement.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { resolveDebuggerHost } from "../subsystems/debugger-host.ts";
+import { prepareDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { makeScratchReaper } from "./destroy.ts";
 import { ownerPidIsDead, scratchGcCandidates } from "./gc-candidates.ts";
 import { SCRATCH_EXTENSION_KEY } from "./identity.ts";
@@ -693,7 +693,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
   }) {
     const { id: scratchId, plan, planCache, landofileRouter } = request;
     const markedPlan = markScratchPlan(plan, scratchId);
-    const debuggerHost = yield* resolveDebuggerHost(markedPlan);
+    const preparedOverlays = yield* prepareDebuggerOverlay(markedPlan);
     yield* ensureAppPlacement(
       { kind: "scratch", id: scratchId, root: markedPlan.root },
       markedPlan.provider,
@@ -731,7 +731,7 @@ const makeScratchAppService = Effect.fnUntraced(function* (
       {
         id: scratchId,
         plan: builtPlan,
-        resolvedDebuggerHost: { address: debuggerHost },
+        preparedOverlays,
         ...(landofileRouter === undefined ? {} : { landofileRouter }),
       },
       {

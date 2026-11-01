@@ -16,7 +16,11 @@ import {
 } from "../operations/global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
-import { applyDebuggerHost, resolveDebuggerHost } from "../subsystems/debugger-host.ts";
+import {
+  type PreparedDebuggerOverlay,
+  prepareDebuggerOverlay,
+  projectDebuggerOverlay,
+} from "../subsystems/start-overlay-registry.ts";
 import type { makeScratchReaper } from "./destroy.ts";
 import type { ScratchRegistry } from "./registry.ts";
 
@@ -25,7 +29,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     readonly id: string;
     readonly plan: AppPlan;
     readonly landofileRouter?: RouterConfig;
-    readonly resolvedDebuggerHost?: { readonly address: string | undefined };
+    readonly preparedOverlays?: PreparedDebuggerOverlay;
   },
   services: {
     readonly provider: RuntimeProviderShape;
@@ -35,11 +39,8 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
   },
 ) {
   const { id, plan } = request;
-  const debuggerHost =
-    request.resolvedDebuggerHost === undefined
-      ? yield* resolveDebuggerHost(plan)
-      : request.resolvedDebuggerHost.address;
-  const runtimePlan = applyDebuggerHost(plan, debuggerHost);
+  const preparedOverlays = request.preparedOverlays ?? (yield* prepareDebuggerOverlay(plan));
+  const runtimePlan = projectDebuggerOverlay(plan, preparedOverlays);
   const activate = Effect.gen(function* () {
     yield* Effect.scoped(
       applyWithResolvedEnvironment(
