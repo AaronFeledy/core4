@@ -307,29 +307,36 @@ describe("ci workflow", () => {
     expect(workflow).toContain("name: nightly");
     expect(providerLandoE2e).toContain("    runs-on: ubuntu-26.04");
     expect(providerLandoE2e).toContain("    timeout-minutes: 60");
-    expect(providerLandoE2e).toContain("      - name: Install Podman 6 toolchain");
-    expect(providerLandoE2e).toContain("      - name: Assert Podman 6 host contract");
-    expect(providerLandoE2e).toContain("        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
-    expect(providerLandoE2e).toContain("      - name: Start Podman socket");
+    expect(providerLandoE2e).toContain("needs: [container-helper, runtime-bundle-linux-x64]");
+    expect(providerLandoE2e).not.toContain("brew install podman");
+    expect(providerLandoE2e).not.toContain("podman system service");
+    expect(providerLandoE2e).toContain("      - name: Provision rootless runtime prerequisites");
+    expect(providerLandoE2e).toContain("sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0");
+    expect(providerLandoE2e.indexOf("Provision rootless runtime prerequisites")).toBeLessThan(
+      providerLandoE2e.indexOf("dist/lando setup --yes --provider=lando"),
+    );
+    expect(providerLandoE2e).toContain("      - name: Verify managed runtime socket");
     expect(providerLandoE2e).toContain("      - name: Regenerate derived sources");
     expect(providerLandoE2e).toContain("        run: bun run codegen");
     expect(providerLandoE2e).toContain("      - name: Build Linux x64 binary");
     expect(providerLandoE2e).toContain("      - name: Run e2e guide scenarios");
     expect(providerLandoE2e).toContain(
-      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\\[e2e\\]"',
+      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\\[e2e\\]"',
     );
     expect(providerLandoE2e).toContain('          LANDO_GUIDE_E2E: "1"');
     expect(providerLandoE2e).toContain('          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"');
-    expect(providerLandoE2e).toContain('echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"');
+    expect(providerLandoE2e).toContain(
+      'echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"',
+    );
     expect(providerLandoE2e).toContain("          LANDO_CONFIG__default_provider_id: lando");
     expect(providerLandoE2e).toContain("      - name: Run live integration suites");
     expect(providerLandoE2e).toContain(
-      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts',
+      '          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts',
     );
     expect(providerLandoE2e).not.toContain("LANDO_MVP_BINARY_PATH");
     expect(providerLandoE2e).not.toContain("core/test/scenario");
-    expect(providerLandoE2e).toContain("      - name: Teardown Podman");
-    expect(providerLandoE2e).toContain("          rm -f /tmp/podman.sock /tmp/podman-service.pid");
+    expect(providerLandoE2e).toContain("      - name: Teardown Lando runtime");
+    expect(providerLandoE2e).toContain("          dist/lando poweroff || true");
     expect(providerLandoE2e).toContain("      - name: Collect provider-lando e2e diagnostics");
     expect(providerLandoE2e).toContain("      - name: Upload provider-lando e2e diagnostics");
     expect(providerLandoE2e).toContain("          name: provider-lando-e2e-diagnostics-linux-x64");
@@ -433,8 +440,11 @@ describe("ci workflow", () => {
       refresh.indexOf("Refresh unit-test timings"),
     );
     expect(refresh).toContain("      - name: Upload refreshed timings");
+    expect(refresh).toContain("        if: success()");
+    expect(refresh).not.toContain("        if: always()");
     expect(refresh).toContain("          name: bun-test-timings");
     expect(refresh).toContain("          path: .bun-test-timings.json");
+    expect(refresh).toContain("          include-hidden-files: true");
   });
 
   test("rehearses the distribution flow on Linux x64 without publishing", async () => {

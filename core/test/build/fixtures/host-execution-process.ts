@@ -1,4 +1,64 @@
 import { expect } from "bun:test";
+import { realpath, stat } from "node:fs/promises";
+import { isAbsolute, parse } from "node:path";
+import * as Schema from "effect/Schema";
+
+const directorySchema = Schema.Struct({ cwd: Schema.String, marker: Schema.String });
+const normalize = (path: string): string =>
+  process.platform === "win32" ? path.replaceAll("\\", "/").toLowerCase() : path;
+
+export const expectHostDirectory = async (
+  output: string,
+  expected: typeof directorySchema.Type,
+  pwd?: string,
+) => {
+  // Anchored output lines cannot be satisfied by PTY-echoed command input.
+  const lines = output.replaceAll("\r", "").split("\n");
+  const actualLines = lines.filter((line) => line.startsWith("ACTUAL="));
+  expect(actualLines).toHaveLength(1);
+  const actual = actualLines[0]?.slice("ACTUAL=".length) ?? "";
+  expect(isAbsolute(actual)).toBe(true);
+  // Windows also treats a current-drive-rooted path as absolute, but pwd must
+  // report a fully qualified drive or UNC path, independent of the caller's cwd.
+  if (process.platform === "win32") expect(parse(actual).root.length).toBeGreaterThan(1);
+  const [actualPath, expectedPath, actualStat, expectedStat] = await Promise.all([
+    realpath(actual),
+    realpath(expected.cwd),
+    stat(actual, { bigint: true }),
+    stat(expected.cwd, { bigint: true }),
+  ]);
+  // A native child may preserve Windows 8.3 spelling while Lando uses realpath.
+  // Both canonical names AND filesystem identity must agree; marker text alone
+  // cannot distinguish a different directory containing a copied marker.
+  expect(normalize(actualPath)).toBe(normalize(expectedPath));
+  expect(actualStat.isDirectory()).toBe(true);
+  expect(expectedStat.isDirectory()).toBe(true);
+  expect([actualStat.dev, actualStat.ino]).toEqual([expectedStat.dev, expectedStat.ino]);
+  // Synthesized PWD must use ACTUAL's path spelling, retaining the original
+  // Windows slash/case tolerance. Authored PWD is a literal value instead.
+  const pwdLines = lines.filter((line) => line.startsWith("ENV=<"));
+  if (pwd === undefined) expect(pwdLines.map(normalize)).toEqual([normalize(`ENV=<${actual}>`)]);
+  else expect(pwdLines).toEqual([`ENV=<${pwd}>`]);
+  expect(lines.filter((line) => line.startsWith("IDENTITY="))).toEqual([`IDENTITY=${expected.marker}`]);
+};
+
+export const nativeHostDirectory = async (rawCwd: string, launch: string, env: NodeJS.ProcessEnv) => {
+  // Let the OS interpret the raw cwd from the same launch directory as Lando.
+  // Bun realpath(rawCwd) is NOT an oracle for symlink/.. traversal.
+  const inspect =
+    'console.log(JSON.stringify({cwd:process.cwd(),marker:require("node:fs").readFileSync(".host-marker","utf8")}))';
+  const reference = await runCaptured(
+    [
+      process.execPath,
+      "-e",
+      `const p=Bun.spawnSync([process.execPath,"-e",${JSON.stringify(inspect)}],{cwd:${JSON.stringify(rawCwd)},env:{...process.env,BUN_BE_BUN:"1"}}); process.stdout.write(p.stdout); process.stderr.write(p.stderr); process.exit(p.exitCode);`,
+    ],
+    launch,
+    { ...env, BUN_BE_BUN: "1" },
+  );
+  expect(reference.exitCode, reference.stderr).toBe(0);
+  return Schema.decodeUnknownSync(directorySchema)(JSON.parse(reference.stdout));
+};
 
 const OUTPUT_LIMIT = 128 * 1024;
 export const hostDirectoryProbe =

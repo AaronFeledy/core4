@@ -76,7 +76,7 @@ export const NIGHTLY_TIER_TESTS: ReadonlyArray<string> = [
  * (2828 pass / 0 fail).
  */
 // CI matrix runners can spend more than Bun's default 5s in a subprocess-based test.
-const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
+export const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
 
 export const isShardedUnitTest = (path: string): boolean =>
   (!path.endsWith(INTEGRATION_SUFFIX) || FAKE_CLIENT_PROVIDER_TESTS.includes(path)) &&

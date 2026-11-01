@@ -52,7 +52,7 @@ const pathError = (operation: string, path: string, cause?: unknown): StateStore
  * Applying the same rule to the root and target avoids false containment
  * failures when either path has not been created yet.
  */
-const realpathOrDeepestExisting = async (path: string): Promise<string> => {
+export const realpathOrDeepestExisting = async (path: string): Promise<string> => {
   const found = await findRealpathAncestor(path, (candidate) =>
     realpath(candidate).catch((cause: unknown) => {
       if (isErrnoCode(cause, "ENOENT")) return null;
