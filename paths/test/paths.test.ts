@@ -7,6 +7,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   type RootOverrides,
   makeLandoPaths,
+  networkTrustCaBundlePath,
+  networkTrustCaBundlesDir,
   normalizeHostPlatform,
   resolveLandoRoots,
 } from "../src/paths.ts";
@@ -518,6 +520,21 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.fileSyncSessionsDir).toBe(join(cache, "file-sync", "sessions"));
   });
 
+  test("network-trust CA bundle paths sit under userCacheRoot", () => {
+    const cache = "/home/tester/.cache/lando";
+    const digest = "abc123def456";
+    expect(networkTrustCaBundlesDir(cache, "linux")).toBe(join(cache, "network-trust", "ca-bundles"));
+    expect(networkTrustCaBundlePath(cache, digest, "linux")).toBe(
+      join(cache, "network-trust", "ca-bundles", `${digest}.pem`),
+    );
+    expect(networkTrustCaBundlesDir("C:\\Users\\t\\Cache", "win32")).toBe(
+      "C:\\Users\\t\\Cache\\network-trust\\ca-bundles",
+    );
+    expect(networkTrustCaBundlePath("C:\\Users\\t\\Cache", digest, "win32")).toBe(
+      `C:\\Users\\t\\Cache\\network-trust\\ca-bundles\\${digest}.pem`,
+    );
+  });
+
   test("userConf-scoped builders", () => {
     const paths = makeLandoPaths(linux());
     const conf = "/home/tester/.config/lando";
@@ -562,6 +579,9 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.managedFileLedger("app-one")).toBe("/iso/data/managed-files/app-one/ledger.json");
     expect(paths.toolDownloadsDir("mutagen")).toBe("/iso/cache/tool-downloads/mutagen");
     expect(paths.scratchDir).toBe("/iso/cache/scratch");
+    expect(networkTrustCaBundlePath("/iso/cache", "deadbeef", "linux")).toBe(
+      "/iso/cache/network-trust/ca-bundles/deadbeef.pem",
+    );
     expect(paths.runtimeBinDir).toBe("/iso/data/runtime/bin");
     expect(paths.runtimeRunDir).toBe("/iso/data/runtime/run");
     expect(paths.runtimeStorageDir).toBe("/iso/data/runtime/storage");

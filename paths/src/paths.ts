@@ -110,6 +110,21 @@ export const globalAppRootPath = (userDataRoot: string, platform = normalizeHost
   joinFor(platform)(userDataRoot, "global");
 
 /**
+ * Cache directory for immutable digest-named network-trust CA bundles used by
+ * embedded Bun children (NODE_EXTRA_CA_CERTS / --cafile). Under userCacheRoot so
+ * bundles are disposable and never carry credentials.
+ */
+export const networkTrustCaBundlesDir = (userCacheRoot: string, platform = normalizeHostPlatform()): string =>
+  joinFor(platform)(userCacheRoot, "network-trust", "ca-bundles");
+
+/** Absolute path for one digest-named PEM bundle under {@link networkTrustCaBundlesDir}. */
+export const networkTrustCaBundlePath = (
+  userCacheRoot: string,
+  digest: string,
+  platform = normalizeHostPlatform(),
+): string => joinFor(platform)(networkTrustCaBundlesDir(userCacheRoot, platform), `${digest}.pem`);
+
+/**
  * Resolve every root and return builders for every derived path in the catalog.
  * App-scoped builders sanitize app names and fingerprint the app root so two
  * apps sharing a `name:` never collide.
