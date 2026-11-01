@@ -1,3 +1,4 @@
+import { DEBUGGER_HOST_ALIAS, HOST_GATEWAY_TARGET } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
 import {
@@ -60,7 +61,10 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     composerStepId: PHP_COMPOSER_STEP_ID,
   });
   if (packages !== undefined) ctx.addBuildStep(packages);
-  if (xdebug !== false) addEnvRecord(ctx, phpXdebugConfigEnv());
+  if (xdebug !== false) {
+    addEnvRecord(ctx, phpXdebugConfigEnv());
+    ctx.addHostAlias({ hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET });
+  }
   switch (mode.via) {
     case "apache":
       ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);

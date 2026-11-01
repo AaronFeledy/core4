@@ -61,7 +61,7 @@ services: { authored: { type: "compose", image: "authored:" + (++evaluations) } 
           return { commitSha: revision };
         },
       },
-      npmRecipeSource: { resolve: unused },
+      npmRecipeSource: { resolve: unused, fetchTarball: unused },
       tarball: { fetch: unused, extract: unused },
       publication: { publish: rename },
     },

@@ -55,7 +55,6 @@ const paths = PathsService.of({
   systemPluginsDir: "",
   pluginStateDir: () => "",
   appPluginsDir: () => "",
-  pluginAuthFile: "",
   binDir: "",
   installRecordFile: "",
   keysDir: "",

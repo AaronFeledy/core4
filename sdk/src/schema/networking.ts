@@ -163,6 +163,19 @@ export const CertificatePlan = Schema.Struct({
 export type CertificatePlan = typeof CertificatePlan.Type;
 
 /**
+ * Dedicated hostname containers use to reach a debugger/IDE on the host.
+ * Distinct from `host.lando.internal`, which stays on the host gateway for
+ * cross-engine proxy routes and general host reachability.
+ */
+export const DEBUGGER_HOST_ALIAS = "debugger.lando.internal" as const;
+
+/**
+ * Compose/runtime sentinel the provider rewrites to the host gateway address
+ * when creating the container. Keeps plans from guessing a numeric address.
+ */
+export const HOST_GATEWAY_TARGET = "host-gateway" as const;
+
+/**
  * Host alias — extra `/etc/hosts` entry inside the service container.
  */
 export const HostAliasPlan = Schema.Struct({

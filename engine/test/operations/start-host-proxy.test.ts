@@ -40,7 +40,7 @@ const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => "/tmp/lando-start-host-proxy-cache",
     resolveUserIncludesDir: () => "/tmp/lando-start-host-proxy-includes",
-    npmRecipeSource: { resolve: unusedPort },
+    npmRecipeSource: { resolve: unusedPort, fetchTarball: unusedPort },
     git: { clone: unusedPort },
     tarball: { fetch: unusedPort, extract: unusedPort },
     publication: { publish: unusedPort },

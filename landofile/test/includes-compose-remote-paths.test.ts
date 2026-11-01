@@ -42,6 +42,7 @@ test.each(["git", "npm"] as const)(
           }
         : {
             npmRecipeSource: {
+              fetchTarball: async () => bytes,
               resolve: async () => ({
                 packageName: "@acme/shared",
                 version: "1.2.3",

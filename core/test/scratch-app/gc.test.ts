@@ -48,6 +48,9 @@ const landofileRuntimeInputs = {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
+      fetchTarball: async () => {
+        throw new Error("Unexpected npm download");
+      },
       resolve: (packageSpec) =>
         Promise.resolve({
           packageName: packageSpec,

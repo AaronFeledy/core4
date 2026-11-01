@@ -11,6 +11,7 @@ import { validationIssue } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { BUNDLED_RECIPES } from "../bundled";
 import type { GitRecipeCloner } from "../git-source";
+import { type NpmRegistryClient, defaultNpmRegistryClient } from "../npm-source";
 import type {
   RecipeTransportEvidence,
   ResolvedAuthoredSource,
@@ -19,6 +20,7 @@ import type {
 import { localParentPath, parentNotFound, readLocalParent } from "../source-parent-local";
 import { validateRecipeSourceObject } from "../source-parse";
 import { recipePathEscapes } from "../source-support";
+import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../tarball-source";
 import { composeRecipeSources } from "./merge";
 import type { RecipeDeclarationOrigin } from "./origins";
 import { readRemoteParent } from "./parent-source";
@@ -31,6 +33,10 @@ export interface FlattenRecipeContext {
   readonly chain: readonly string[];
   readonly userDataRoot?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
+  readonly npmRegistryClient?: NpmRegistryClient;
+  readonly registryUrl?: string;
+  readonly tarballRecipeFetcher?: TarballRecipeFetcher;
+  readonly tarballRecipeExtractor?: TarballRecipeExtractor;
   readonly allowRecipeTs?: boolean;
   readonly jailRoot?: string;
   readonly evaluation?: "declarative" | "typescript";
@@ -148,6 +154,7 @@ const flattenRaw = Effect.fnUntraced(function* (
 export const flattenRecipe = (source: string, parsed: unknown, ctx: Partial<FlattenRecipeContext> = {}) =>
   flattenRaw(source, parsed, {
     ...ctx,
+    npmRegistryClient: ctx.npmRegistryClient ?? defaultNpmRegistryClient(ctx.registryUrl),
     hops: ctx.hops ?? 0,
     chain: ctx.chain ?? [isAbsolute(source) ? dirname(source) : source],
   });

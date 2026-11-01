@@ -33,8 +33,10 @@ import {
   buildTemplateEngineRegistry,
   renderLandofileTemplate as renderLandofileTemplatePackage,
 } from "@lando/landofile/template-render";
+import { RedactionService } from "@lando/redaction/service";
 import * as HttpClient from "effect/http/HttpClient";
 import { landofileRuntimeInputs, landofileSourcePorts } from "../composition.ts";
+import { hostConfigReadPolicy } from "./config.ts";
 
 const ReadOnlyLandofile = Context.Reference<boolean>("@lando/engine/ReadOnlyLandofile", {
   defaultValue: () => false,
@@ -49,6 +51,17 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
   const stateStore = yield* Effect.serviceOption(StateStore);
   const client = yield* Effect.serviceOption(HttpClient.HttpClient);
   const downloader = yield* Effect.serviceOption(Downloader);
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  const readPolicy = yield* hostConfigReadPolicy;
+  const runtime = {
+    ...(Option.isSome(redaction)
+      ? {
+          registerSecrets: (values: ReadonlyArray<string>) =>
+            Effect.runPromise(redaction.value.registerValues(values)),
+        }
+      : {}),
+    ...(readPolicy === undefined ? {} : { readPolicy }),
+  };
   return {
     ...inputs,
     readOnly: yield* ReadOnlyLandofile,
@@ -56,7 +69,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
     ports: {
       ...inputs.ports,
       ...(Option.isSome(client) && Option.isSome(downloader)
-        ? landofileSourcePorts(client.value, downloader.value)
+        ? landofileSourcePorts(client.value, downloader.value, runtime)
         : {}),
       ...(Option.isNone(paths)
         ? {}

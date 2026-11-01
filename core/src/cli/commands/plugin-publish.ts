@@ -2,27 +2,19 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema } from "effect";
 
-import { PluginManifestError } from "@lando/sdk/errors";
+import { RedactionService } from "@lando/redaction/service";
+import { PluginManifestError, RecipeSourceError } from "@lando/sdk/errors";
 
-import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
-import { makeLandoPaths } from "@lando/paths";
-import { bunSelfRun } from "./bun-self-runner";
+import { hostConfigReadPolicy } from "@lando/engine/services/config";
+import { type NpmRegistryConfig, loadNpmRegistryConfig } from "../../recipes/npm-registry-config";
+import { publishWithCredential } from "./npm-publish-runner";
 import { publishOptionalEvent } from "./optional-event-publish";
 import { pluginBuild } from "./plugin-build";
 import { isArtifactStale, listOutputs, outputDirectoryExists } from "./plugin-build-files";
 import { entriesFromExports, readPackageJson } from "./plugin-build-package";
-import {
-  type PluginAuthReader,
-  defaultAuthReader,
-  publishConfigRegistry,
-  registryToken,
-} from "./plugin-publish-auth";
-export type { PluginAuthReader, PluginRegistryAuth } from "./plugin-publish-auth";
 import { resolvePluginPackageRoot } from "./plugin-package-root";
 import { pluginTest } from "./plugin-test";
-
-const DEFAULT_PLUGIN_REGISTRY = "https://registry.npmjs.org/";
 
 /** A publish artifact failed manifest, registry, or tag validation. */
 export class PluginPublishValidationError extends Schema.TaggedError<PluginPublishValidationError>()(
@@ -51,8 +43,7 @@ export interface PluginPublishOptions {
   readonly noTest?: boolean;
   readonly nonInteractive?: boolean;
   readonly execPath?: string;
-  readonly userDataRoot?: string;
-  readonly authReader?: PluginAuthReader;
+  readonly npmConfig?: () => Promise<NpmRegistryConfig>;
 }
 
 export type PluginPublishResult = typeof PluginPublishResultSchema.Type;
@@ -69,15 +60,6 @@ export const PluginPublishResultSchema = Schema.Struct({
   published: Schema.Boolean,
   exitCode: Schema.Number,
 });
-
-const isHttpUrl = (value: string): boolean => {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-};
 
 export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
   options: PluginPublishOptions = {},
@@ -123,7 +105,41 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
     ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
   };
 
-  const registry = options.registry ?? publishConfigRegistry(pkg) ?? DEFAULT_PLUGIN_REGISTRY;
+  const readPolicy = yield* hostConfigReadPolicy;
+  const npmConfig = yield* Effect.tryPromise({
+    try: () => (options.npmConfig ?? (() => loadNpmRegistryConfig(readPolicy)))(),
+    catch: (cause) =>
+      cause instanceof RecipeSourceError
+        ? cause
+        : new PluginPublishValidationError({
+            message: "Could not read npm user configuration.",
+            remediation: "Check your npm user config file permissions and retry.",
+          }),
+  });
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (redaction._tag === "Some") yield* redaction.value.registerValues(npmConfig.redactionTokens);
+  const publishConfig = pkg.publishConfig;
+  const packageRegistry =
+    typeof publishConfig === "object" &&
+    publishConfig !== null &&
+    "registry" in publishConfig &&
+    typeof publishConfig.registry === "string"
+      ? publishConfig.registry
+      : undefined;
+  const registry =
+    options.registry ??
+    packageRegistry ??
+    npmConfig.registryFor(typeof pkg.name === "string" ? pkg.name : manifest.name);
+  const registryUrl = URL.parse(registry);
+  if (registryUrl !== null && (registryUrl.username !== "" || registryUrl.password !== "")) {
+    return yield* Effect.fail(
+      new PluginPublishValidationError({
+        message: "Publish registry URLs must not contain credentials.",
+        remediation:
+          "Remove URL userinfo and move credentials to the registry's nerf-key _authToken, _auth, or username plus _password fields in npm user configuration.",
+      }),
+    );
+  }
   yield* publishOptionalEvent({
     _tag: "cli-meta:plugin:publish-start",
     pluginName: manifest.name,
@@ -157,7 +173,7 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
         }),
       );
     }
-    if (!isHttpUrl(registry)) {
+    if (registryUrl?.protocol !== "http:" && registryUrl?.protocol !== "https:") {
       return yield* Effect.fail(
         new PluginPublishValidationError({
           message: `Invalid publish registry ${JSON.stringify(registry)} for ${manifest.name}.`,
@@ -209,27 +225,26 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
     let published = false;
     let exitCode = 0;
     if (!dryRun) {
-      const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
-      const authPath = makeLandoPaths({ userDataRoot }).pluginAuthFile;
-      const auth = yield* Effect.promise(() => (options.authReader ?? defaultAuthReader)(authPath));
-      const token = registryToken(auth, registry);
-      if (token === undefined) {
+      const credential = npmConfig.credentialFor(registry, registry);
+      if (credential === undefined) {
         return yield* Effect.fail(
           new PluginPublishAuthError({
-            message: `No registry auth for ${registry} in ${authPath}.`,
-            remediation: `Run \`lando plugin:login --registry ${registry}\` to store a publish token, then retry.`,
+            message: `No registry auth for ${registry} in ${npmConfig.path}.`,
+            remediation: npmConfig.authRemediation(registry),
             registry,
           }),
         );
       }
-      const publish = yield* bunSelfRun({
-        argv: ["publish", "--tag", tag, "--registry", registry],
-        cwd: join(pluginRoot, "dist"),
-        env: { BUN_AUTH_TOKEN: token },
-        verb: "publish",
-        callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
-        ...bunOptions,
-      });
+      const publish = yield* publishWithCredential(
+        credential,
+        { registry, packageName: typeof pkg.name === "string" ? pkg.name : manifest.name, tag },
+        {
+          cwd: join(pluginRoot, "dist"),
+          verb: "publish",
+          callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
+          ...bunOptions,
+        },
+      );
       exitCode = publish.exitCode;
       published = exitCode === 0;
     }
@@ -252,18 +267,4 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
   }).pipe(Effect.tapError(() => publishCompleteEvent(false, 1)));
 });
 
-export const renderPluginPublishResult = (result: PluginPublishResult): string => {
-  const outcome = result.dryRun
-    ? "dry-run (no publish)"
-    : result.published
-      ? "published"
-      : `failed (exit ${result.exitCode})`;
-  return [
-    `plugin-publish: ${result.pluginName}`,
-    `registry: ${result.registry}`,
-    `tag: ${result.tag}`,
-    `contents: ${result.packageContents.join(", ")}`,
-    "validation: ok",
-    `result: ${outcome}`,
-  ].join("\n");
-};
+export { renderPluginPublishResult } from "./plugin-publish-render";

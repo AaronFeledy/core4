@@ -7,7 +7,7 @@ import { parseInitSourceFlags } from "../cli/commands/init-source";
 import type { InteractionPrompter } from "../interaction/prompter";
 import { resolveGitRecipeSource } from "./git-source";
 import type { FlattenRecipeContext } from "./manifest/flatten";
-import { resolveNpmRecipeSource } from "./npm-source";
+import { defaultNpmRegistryClient, resolveNpmRecipeSource } from "./npm-source";
 import { resolveRegistryRecipeSource } from "./registry-source";
 import { resolveRecipeSource } from "./resolved-source";
 import { type ResolvedRecipe, resolveRecipeRef } from "./source";
@@ -60,11 +60,20 @@ export const acquireInitRecipe = async (
   interaction: InteractionPrompter | undefined,
 ) => {
   const flags = parseInitSourceFlags(options);
+  const npmRegistryClient = options.npmRegistryClient ?? defaultNpmRegistryClient(options.registryUrl);
   const onWarn = options.onWarn ?? options.postInitIO?.err;
   const common = { ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }) };
   const parse = (resolved: ResolvedRecipe) =>
     parseResolvedRecipe(resolved, {
       ...common,
+      npmRegistryClient,
+      ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
+      ...(options.tarballRecipeFetcher === undefined
+        ? {}
+        : { tarballRecipeFetcher: options.tarballRecipeFetcher }),
+      ...(options.tarballRecipeExtractor === undefined
+        ? {}
+        : { tarballRecipeExtractor: options.tarballRecipeExtractor }),
       ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
       ...(onWarn === undefined ? {} : { onWarn }),
     });
@@ -121,7 +130,7 @@ export const acquireInitRecipe = async (
           ...archive,
           ...path,
           ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
-          ...(options.npmRegistryClient === undefined ? {} : { registryClient: options.npmRegistryClient }),
+          registryClient: npmRegistryClient,
         }),
       );
     case "registry":

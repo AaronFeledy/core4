@@ -134,6 +134,7 @@ export const createConfigFingerprint = (
                   ? acceleratedMountVolume(plan, service, mount)
                   : (fileIdentity?.source ?? mount.source),
               fileMode: mount.fileMode,
+              ...(mount.sourceIdentity === undefined ? {} : { sourceIdentity: mount.sourceIdentity }),
               contentDigest: fileIdentity?.digest,
               realization: mount.realization,
               createHostPath:

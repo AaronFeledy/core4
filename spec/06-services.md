@@ -479,7 +479,8 @@ A non-SQL type may publish `nonSqlCreds: ServiceCreds` instead of `connection`. 
 
 `composer` accepts a version, `false`, or `{ version, packages }`; all forms remain supported. Versions and packages are validated, checksum-pinned, deterministically ordered, and included in `buildKey`.
 
-`xdebug` accepts `false`, `true`, or modes. Enabled Xdebug configures host-gateway debugging and contributes `lando xdebug on|off|status`; environment variables alone MUST NOT be documented as enabling it.
+`xdebug` accepts `false`, `true`, or modes. Enabled Xdebug contributes `lando xdebug on|off|status`, sets the managed client host to `debugger.lando.internal` (not `host.lando.internal`), and relies on global `debugger.host` (§7.5, §10.1) for the alias target; environment variables alone MUST NOT be documented as enabling it, and `environment.XDEBUG_CONFIG` MUST NOT be documented as the WSL-to-Windows fix.
+Explicit `lando xdebug status` MUST attempt a one-second PHP TCP connection and close immediately, reporting TCP reachability or the failure reason without claiming DBGp acceptance or changing exit status on connection failure; hostname resolution MUST be bounded, and `on`, `off`, ordinary execution, and lifecycle operations MUST NOT run this diagnostic.
 
 `db_client` accepts `auto`, `false`, or an explicit family/version. Auto detection uses resolved database services without provider probing and participates in `buildKey`.
 

@@ -88,6 +88,10 @@ A Landofile that sets `sshAgent.sidecar: true` explicitly wins over the global o
 
 Every `type: lando` service gets `SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock`, in both modes. There is no per-service opt-in and no per-service `sshAgent` key.
 
+When the agent overlay applies and your host `~/.ssh/known_hosts` is a regular file, services trust its hosts through a read-only bind at `/etc/ssh/ssh_known_hosts`. This works in both modes and with `home: false`, without changing the service home. OpenSSH checks this system file alongside your service user's own known hosts, where you can still add hosts. Lando never copies or rewrites the host file.
+
+If you create or replace the file after the app started, run `lando start` from the app directory to remount it. Lando recreates the affected service when the file is atomically replaced, for example by `ssh-keygen -R`, or when its symlink points to a different file. Appending entries keeps the existing bind without a restart. A missing or inaccessible file is omitted at the next start. Your service user must be able to read the file; OpenSSH creates it with mode `0644`. If your service mounts its own `/etc/ssh/ssh_known_hosts` or an ancestor directory such as `/etc/ssh`, `/etc`, or `/`, that mount takes precedence.
+
 The socket is not your host socket. A per-app relay owns an app-scoped directory that the provider makes visible to the service, and the relay streams raw agent bytes to the agent you picked. How the directory reaches the container depends on where the containers run:
 
 | Host and provider | Delivery |

@@ -1,6 +1,7 @@
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { PluginPackageOperationError } from "@lando/sdk/errors";
 import { Effect } from "effect";
+import type { BunChildNetworkPolicyError } from "./bun-child-network-policy";
 
 export const redactPluginPackageError = Effect.fnUntraced(function* (
   error: PluginPackageOperationError,
@@ -50,4 +51,21 @@ export const redactPluginPackageError = Effect.fnUntraced(function* (
     ...(error.exitCode === undefined ? {} : { exitCode: error.exitCode }),
     ...(detail === undefined ? {} : { detail }),
   });
+});
+
+export const failPluginNetworkPolicy = Effect.fnUntraced(function* (
+  error: BunChildNetworkPolicyError,
+  context: Pick<PluginPackageOperationError, "commandId" | "packageSpec" | "cwd">,
+) {
+  return yield* Effect.fail(
+    yield* redactPluginPackageError(
+      new PluginPackageOperationError({
+        ...context,
+        message: error.message,
+        remediation: error.remediation,
+        operation: "postinstall",
+        detail: `${error._tag}: ${error.kind}`,
+      }),
+    ),
+  );
 });

@@ -20,6 +20,7 @@ import type {
   BunShellScriptFrontMatterError,
   CacheError,
   CommandAliasConflictError,
+  DebuggerHostUnavailableError,
   EventError,
   FileSyncDriftError,
   FileSyncStartError,
@@ -254,6 +255,7 @@ export type StartAppError =
   | SshAgentTransportError
   | GpgAgentUnavailableError
   | GpgAgentTransportError
+  | DebuggerHostUnavailableError
   | HostProxySocketStaleError
   | HostProxyTransportUnavailableError
   | LandoCommandError
@@ -592,6 +594,7 @@ export interface App {
 
 /** Resolution union for `runtime.scratch`. */
 export type ScratchAcquireError =
+  | DebuggerHostUnavailableError
   | ScratchAppError
   | AppPlacementError
   | ScratchSourceUnresolvedError

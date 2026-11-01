@@ -1,7 +1,7 @@
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { HttpTrustError } from "@lando/sdk/errors";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
-import { REDACTED, createRedactor } from "@lando/sdk/secrets";
+import { REDACTED } from "@lando/sdk/secrets";
 import { ConfigService, EventService } from "@lando/sdk/services";
 import { Clock, Context, DateTime, Effect, Exit, Layer, Option, Scope } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
@@ -39,7 +39,9 @@ const redactedUrl = (url: URL, policy: RequestPolicyShape): string => {
   safe.password = "";
   for (const key of new Set(safe.searchParams.keys())) safe.searchParams.set(key, REDACTED);
   safe.hash = "";
-  return createRedactor("secrets", { values: policy.redactionTokens ?? [] }).redactString(safe.href);
+  return createStandaloneRedactor("secrets", { authoritativeTokens: policy.redactionTokens }).redactString(
+    safe.href,
+  );
 };
 
 const transportError = (request: HttpClientRequest.HttpClientRequest, cause: unknown) =>
@@ -136,7 +138,9 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
         const policy = fiber.getRef(RequestPolicy);
         const safeUrl = redactedUrl(url, policy);
         const safeRequest = HttpClientRequest.setUrlParams(HttpClientRequest.setUrl(request, safeUrl), []);
-        const redact = createRedactor("secrets", { values: policy.redactionTokens ?? [] }).redactString;
+        const redact = createStandaloneRedactor("secrets", {
+          authoritativeTokens: policy.redactionTokens,
+        }).redactString;
         const eventService = Option.orElse(Context.getOption(fiber.context, EventService), () => layerEvents);
         const publish = (event: Parameters<EventService["Service"]["publish"]>[0]) =>
           Option.isSome(eventService)
@@ -148,7 +152,7 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
             ? safeUrl
             : (yield* canonical.value.forProfile("secrets", {
                 sourceEnv: env,
-                redactionTokens: policy.redactionTokens,
+                authoritativeTokens: policy.redactionTokens,
               })).redactString(safeUrl);
           yield* Effect.annotateCurrentSpan({ "http.request.method": request.method, "url.full": spanUrl });
           const startedAt = yield* Clock.currentTimeMillis;

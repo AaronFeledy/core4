@@ -29,6 +29,7 @@ import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
+import { debuggerHostDoctor } from "./doctor-debugger";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
 import { HostDnsResolver } from "./doctor-host-dns";
@@ -365,6 +366,15 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     redact,
   });
   if (filesystemWatch.self !== undefined) selfChecks.push(filesystemWatch.self);
+  const debuggerHost = yield* isolateDoctorSection({
+    section: "debugger-host",
+    effect: debuggerHostDoctor(redact, budgetMs, options.platform),
+    fallback: { checks: [] },
+    budgetMs,
+    redact,
+  });
+  if (debuggerHost.self !== undefined) selfChecks.push(debuggerHost.self);
+  skipped.push(...(debuggerHost.value.skipped ?? []));
   const report: DoctorReport = {
     version: CORE_VERSION,
     ...(skipped.length === 0 ? {} : { skipped }),
@@ -378,6 +388,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
         ...orphanedSnapshots.value,
         ...legacyCatalogs.value,
         ...filesystemWatch.value,
+        ...debuggerHost.value.checks,
       ],
     },
     globalApp,

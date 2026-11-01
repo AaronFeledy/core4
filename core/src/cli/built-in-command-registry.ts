@@ -78,8 +78,6 @@ import { metaMcpSpec } from "./command-specs/meta/mcp";
 import { pluginAddSpec } from "./command-specs/meta/plugin/add";
 import { pluginBuildSpec } from "./command-specs/meta/plugin/build";
 import { pluginLinkSpec } from "./command-specs/meta/plugin/link";
-import { pluginLoginSpec } from "./command-specs/meta/plugin/login";
-import { pluginLogoutSpec } from "./command-specs/meta/plugin/logout";
 import { pluginNewSpec } from "./command-specs/meta/plugin/new";
 import { pluginPublishSpec } from "./command-specs/meta/plugin/publish";
 import { pluginRemoveSpec } from "./command-specs/meta/plugin/remove";
@@ -225,8 +223,6 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       pluginAddSpec,
       pluginBuildSpec,
       pluginLinkSpec,
-      pluginLoginSpec,
-      pluginLogoutSpec,
       pluginNewSpec,
       pluginPublishSpec,
       pluginRemoveSpec,

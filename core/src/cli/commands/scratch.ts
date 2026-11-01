@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
 import type {
   AppPlacementError,
+  DebuggerHostUnavailableError,
   LandofileVersionConstraintError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -158,6 +159,7 @@ type ScratchStartError =
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError
+  | DebuggerHostUnavailableError
   | LandofileVersionConstraintError;
 type ScratchIdCommandError = ScratchAppIdInvalidError | ScratchAppNotFoundError | ScratchAppError;
 

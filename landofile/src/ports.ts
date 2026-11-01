@@ -26,6 +26,7 @@ export interface ResolvedNpmRecipePackage {
 
 export interface NpmRecipeSourcePort {
   readonly resolve: (packageSpec: string) => Promise<ResolvedNpmRecipePackage>;
+  readonly fetchTarball: (resolved: ResolvedNpmRecipePackage) => Promise<Uint8Array>;
 }
 
 export interface TarballAcquisitionPort {

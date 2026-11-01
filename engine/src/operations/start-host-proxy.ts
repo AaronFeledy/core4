@@ -17,6 +17,10 @@ import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { resolveContainerHelper } from "../composition.ts";
+import {
+  HOST_PROXY_CONTAINER_SOCKET,
+  HOST_PROXY_MOUNT_TARGETS,
+} from "../subsystems/host-proxy/transport-feature.ts";
 import type { HostProxyShimTarget } from "../subsystems/host-proxy/transport-shim.ts";
 import {
   type HostProxyRunLandoSession,
@@ -129,6 +133,40 @@ const validateHostProxyTransportCapability = (
     }),
   );
 };
+
+export const validateHostProxyOverlay = Effect.fnUntraced(function* (
+  plan: AppPlan,
+  capabilities: ProviderCapabilities,
+  platform: HostPlatform,
+) {
+  if (
+    capabilities.hostReachability === "none" ||
+    hostProxyEligibleServices(plan).length === 0 ||
+    (capabilities.hostProxy?.containerTargets.length ?? 0) === 0
+  )
+    return;
+  yield* hostProxyShimTargetFor(capabilities);
+  yield* validateHostProxyTransportCapability(platform, capabilities);
+  for (const service of Object.values(plan.services)) {
+    const duplicate =
+      duplicateMountTarget(orderMounts(service.mounts)) ??
+      (serviceHasHostProxyFeature(service)
+        ? service.mounts.find(
+            (mount) =>
+              HOST_PROXY_MOUNT_TARGETS.has(mount.target) &&
+              (platform !== "win32" || mount.target !== HOST_PROXY_CONTAINER_SOCKET),
+          )?.target
+        : undefined);
+    if (duplicate !== undefined)
+      return yield* Effect.fail(
+        new HostProxyTransportUnavailableError({
+          message: `Host-proxy mount target ${duplicate} collides with a planned mount on ${service.name}.`,
+          socketPath: duplicate,
+          remediation: "Remove the conflicting mount or disable the host-proxy feature for this service.",
+        }),
+      );
+  }
+});
 
 export const startHostProxyRunLandoSession = Effect.fnUntraced(function* (
   plan: AppPlan,
