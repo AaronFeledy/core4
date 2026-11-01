@@ -37,6 +37,7 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { applyDebuggerHost, resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
@@ -84,7 +85,10 @@ type RebuildAppServices =
 const rebuildSelectedServices = Effect.fnUntraced(function* (
   plan: AppPlan,
   target: ResolvedAppTarget,
-  options: Pick<RebuildAppOptions, "signal"> & { readonly managed?: StartManagedScope },
+  options: Pick<RebuildAppOptions, "signal"> & {
+    readonly managed?: StartManagedScope;
+    readonly debuggerHost: string | undefined;
+  },
 ): Effect.fn.Return<
   RebuildAppResult["servicesStarted"],
   RebuildAppError,
@@ -99,7 +103,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   | RedactionService
   | GlobalConsumerAdmissionServices
 > {
-  const { signal, managed } = options;
+  const { signal, managed, debuggerHost } = options;
   const registry = yield* RuntimeProviderRegistry;
   const builds = yield* BuildOrchestrator;
   const provider = yield* registry.select(plan);
@@ -141,10 +145,11 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
                 reusePolicy: "adopt",
                 ...(managed === undefined ? {} : { managed }),
                 use: Effect.fnUntraced(function* (applyPlan) {
+                  const runtimePlan = applyDebuggerHost(applyPlan, debuggerHost);
                   yield* Effect.scoped(
                     applyWithResolvedEnvironment(
                       provider,
-                      applyPlan,
+                      runtimePlan,
                       {
                         reconcile: true,
                         completionPlan: readinessPlan,
@@ -153,7 +158,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
                           services: { ...target.plan.services, ...builtPlan.services },
                         },
                         ...(signal === undefined ? {} : { signal }),
-                        onVolumeCreated: yield* volumeCreationRecorder(provider, applyPlan),
+                        onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
                       },
                       verifyGlobalConsumerAdmission,
                     ),
@@ -195,6 +200,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
     const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
     const plan = resolvedTarget.plan;
     const selectedPlan = yield* selectRebuildPlan(plan, options.services);
+    const debuggerHost = yield* resolveDebuggerHost(selectedPlan);
     const scoped = options.services !== undefined && options.services.length > 0;
     const context = yield* Effect.context<RebuildAppServices>();
     const stateStore = yield* StateStore;
@@ -232,6 +238,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                 app: plan.name,
                 servicesStarted: yield* rebuildSelectedServices(selectedPlan, resolvedTarget, {
                   ...options,
+                  debuggerHost,
                   ...(managed === undefined ? {} : { managed }),
                 }),
               }
@@ -251,6 +258,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                     forceAppBuild: true,
                     skipInitEvents: true,
                     transactionPreflightDone: true,
+                    resolvedDebuggerHost: { address: debuggerHost },
                   },
                 );
               });

@@ -8,12 +8,16 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  DEBUGGER_HOST_ALIAS,
+  GlobalConfig,
+  HOST_GATEWAY_TARGET,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
 import {
   type ApplyOptions,
+  ConfigService,
   EnvironmentValueResolver,
   GlobalAppService,
   PathsService,
@@ -21,7 +25,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Cause, DateTime, Effect, Exit, Layer } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Schema } from "effect";
 import { withGlobalMutation } from "../../src/global-app/mutation.ts";
 import { readGlobalConsumerReservations } from "../../src/operations/global-consumer-lease.ts";
 import {
@@ -423,6 +427,49 @@ describe("global service groups", () => {
     );
     expect(error?.remediation).toBe("Repair the bind source.");
     expect(error?.cause).toBe(cause);
+  });
+
+  test("applies the resolved debugger address while building and recording neutral plans", async () => {
+    // Given a service that requests the debugger alias and a configured debugger host.
+    const plan = planWith([
+      { ...service("debuggable"), hostAliases: [{ hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET }] },
+    ]);
+    const built: AppPlan[] = [];
+    const applied: AppPlan[] = [];
+    const recorded: AppPlan[] = [];
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      apply: (group, options) =>
+        Effect.sync(() => {
+          applied.push(group);
+          if (options?.recordedPlan !== undefined) recorded.push(options.recordedPlan);
+          return { changed: true };
+        }),
+    };
+    const config = Schema.decodeUnknownSync(GlobalConfig)({ debugger: { host: "192.0.2.40" } });
+    // When the groups are built and applied.
+    const outcome = await Effect.runPromise(
+      applyGlobalServiceGroups(
+        plan,
+        { provider, services: Object.values(plan.services), options: { reconcile: true } },
+        (value) => {
+          built.push(value);
+          return build(value);
+        },
+      ).pipe(
+        Effect.provideService(
+          ConfigService,
+          ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+        ),
+      ),
+    );
+    // Then only the provider receives the resolved address.
+    const alias = (value: AppPlan) => value.services[ServiceName.make("debuggable")]?.hostAliases[0]?.ip;
+    expect(outcome.failures).toEqual([]);
+    expect(applied.map(alias)).toEqual(["192.0.2.40"]);
+    expect(built.map(alias)).toEqual([HOST_GATEWAY_TARGET]);
+    expect(recorded.map(alias)).toEqual([HOST_GATEWAY_TARGET]);
+    expect(alias(outcome.builtPlan)).toBe(HOST_GATEWAY_TARGET);
   });
 
   test("no failures produce no aggregate error", () => {

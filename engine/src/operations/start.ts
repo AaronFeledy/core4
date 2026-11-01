@@ -7,6 +7,7 @@ import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/ap
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
+import { resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
@@ -33,8 +34,12 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
     readonly beforeStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
+    readonly resolvedDebuggerHost?: { readonly address: string | undefined };
   } = {},
 ) {
+  const resolvedDebuggerHost = execution.resolvedDebuggerHost ?? {
+    address: yield* resolveDebuggerHost(target.plan),
+  };
   yield* validateDesiredFileSyncEngine(target.plan);
   return yield* withHomeTransitionNotices(
     withAppMutationLock(
@@ -66,6 +71,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
                     yield* publishHomeTransitionNotices(placement.plan, plan);
                     return yield* startAppForTargetUnlocked(options, resolvedTarget, managed, {
                       ...execution,
+                      resolvedDebuggerHost,
                       ...(preparedTargets === undefined ? {} : { preparedTargets }),
                     });
                   }),
@@ -88,6 +94,7 @@ export const startApp = Effect.fn("AppOperation.start")(function* (
     readonly beforeStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
+    readonly resolvedDebuggerHost?: { readonly address: string | undefined };
   } = {},
 ) {
   return yield* target === undefined

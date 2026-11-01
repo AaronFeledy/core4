@@ -43,6 +43,7 @@ import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { applyDebuggerHost, resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { verifyPendingStartResume } from "./accelerated-start-resume.ts";
 import { collectPlanConnections, observeService, startedServices } from "./connection-collector.ts";
@@ -178,8 +179,9 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
     readonly buildOptions?: BuildOptions;
     readonly forceAppBuild?: boolean;
     readonly preparedTargets?: readonly PreparedFileSyncTarget[];
+    readonly resolvedDebuggerHost?: { readonly address: string | undefined };
   } = {},
-): Effect.fn.Return<StartAppResult, SdkStartAppError, BoundStartAppServices> {
+): Effect.fn.Return<StartAppResult, StartAppError, BoundStartAppServices> {
   const bundle = yield* fileSyncBundle(target.plan);
   const resolvedOptions = options ?? {};
   const registry = yield* RuntimeProviderRegistry;
@@ -223,6 +225,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
       }),
     );
   const plan = resolvedPlan;
+  const debuggerHost =
+    execution.resolvedDebuggerHost === undefined
+      ? yield* resolveDebuggerHost(plan)
+      : execution.resolvedDebuggerHost.address;
   const engineId = bundle.kind === "accelerated" ? bundle.id : "unknown";
   const provider = selectedProvider;
   if (bundle.kind === "accelerated" && inspectPrior !== undefined) {
@@ -307,7 +313,8 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 builds.build(applyPlan, execution.buildOptions),
                 provider,
               );
-              const serviceList = Object.values(builtPlan.services);
+              const runtimePlan = applyDebuggerHost(builtPlan, debuggerHost);
+              const serviceList = Object.values(runtimePlan.services);
               const readyServices = yield* withGlobalConsumerAdmission(
                 {
                   plan: builtPlan,
@@ -334,10 +341,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                     yield* Effect.scoped(
                       applyWithResolvedEnvironment(
                         provider,
-                        builtPlan,
+                        runtimePlan,
                         {
                           reconcile: resolvedOptions.reconcile ?? false,
-                          onVolumeCreated: yield* volumeCreationRecorder(provider, builtPlan),
+                          onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
                           ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
                         },
                         verifyGlobalConsumerAdmission,
@@ -346,10 +353,10 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                     if (pendingStart !== undefined) yield* pendingStart.complete;
                     yield* prepareGpgHome;
                     return yield* Effect.forEach(serviceList, (service) =>
-                      inspectAppliedService({ provider, plan: builtPlan, service: service.name }).pipe(
+                      inspectAppliedService({ provider, plan: runtimePlan, service: service.name }).pipe(
                         Effect.map((runtime) => {
                           initialRuntime.set(String(service.name), runtime);
-                          return observeService(builtPlan, runtime);
+                          return observeService(runtimePlan, runtime);
                         }),
                       ),
                     );
@@ -373,7 +380,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                       ? {}
                       : { forceAppBuild: execution.forceAppBuild }),
                     provider,
-                    plan: builtPlan,
+                    plan: runtimePlan,
                     services: serviceList.map((service) => service.name),
                     initial: initialRuntime,
                     ...(resolvedOptions.signal === undefined ? {} : { signal: resolvedOptions.signal }),
@@ -381,7 +388,7 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
                 }),
               );
               const servicesStarted = startedServices(
-                yield* collectPlanConnections(builtPlan, readyServices),
+                yield* collectPlanConnections(runtimePlan, readyServices),
               );
 
               yield* events.publish(
@@ -404,9 +411,9 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
               const checks = Option.isSome(scanner)
                 ? yield* runPostStartScan({
                     scanner: scanner.value,
-                    plan: builtPlan,
+                    plan: runtimePlan,
                     events,
-                    urls: startupScanUrls(builtPlan, servicesStarted),
+                    urls: startupScanUrls(runtimePlan, servicesStarted),
                   })
                 : undefined;
 

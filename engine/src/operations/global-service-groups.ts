@@ -4,6 +4,7 @@ import { type ApplyOptions, EnvironmentValueResolver, type RuntimeProviderShape 
 import { Effect, Result } from "effect";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { taggedErrorRemediation } from "../providers/managed.ts";
+import { applyDebuggerHost, resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import { withGlobalConsumerReservation } from "./global-consumer-lease.ts";
 import { advanceGlobalRecordedPlan } from "./global-retained-plan.ts";
 
@@ -48,10 +49,18 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
     readonly recordedPlan?: AppPlan;
     readonly recordedDisabledIds?: ReadonlyArray<string>;
     readonly beforeApply?: Effect.Effect<void, AdmissionE, AdmissionR>;
+    readonly resolvedDebuggerHost?: { readonly address: string | undefined };
   },
   build: (plan: AppPlan) => Effect.Effect<AppPlan, E, R>,
 ) {
   const session = yield* (yield* EnvironmentValueResolver).openSession();
+  const debuggerHost =
+    apply.resolvedDebuggerHost === undefined
+      ? yield* resolveDebuggerHost({
+          ...plan,
+          services: Object.fromEntries(apply.services.map((service) => [service.name, service])),
+        })
+      : apply.resolvedDebuggerHost.address;
   let recordedPlan = apply.recordedPlan ?? plan;
   const outcomes = yield* Effect.forEach(
     serviceGroups(apply.services),
@@ -71,16 +80,17 @@ export const applyGlobalServiceGroups = Effect.fn("GlobalServices.applyGroups")(
               apply.recordedPlan === undefined
                 ? { ...recordedPlan, services: { ...recordedPlan.services, ...builtPlan.services } }
                 : yield* advanceGlobalRecordedPlan(recordedPlan, builtPlan, apply.recordedDisabledIds ?? []);
+            const runtimePlan = applyDebuggerHost(builtPlan, debuggerHost);
             yield* withGlobalConsumerReservation(
               builtPlan,
               [...names],
               Effect.gen(function* () {
                 if (apply.beforeApply !== undefined) yield* apply.beforeApply;
                 return yield* Effect.scoped(
-                  apply.provider.apply(builtPlan, {
+                  apply.provider.apply(runtimePlan, {
                     ...apply.options,
                     resolveServiceEnvironment: (service) => session.resolveEnvironment(service.environment),
-                    onVolumeCreated: yield* volumeCreationRecorder(apply.provider, builtPlan),
+                    onVolumeCreated: yield* volumeCreationRecorder(apply.provider, runtimePlan),
                     ...(apply.options.reconcile === true || apply.recordedPlan !== undefined
                       ? { recordedPlan: candidateRecordedPlan }
                       : {}),

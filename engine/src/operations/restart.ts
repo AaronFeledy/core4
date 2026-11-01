@@ -47,6 +47,7 @@ import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
+import { applyDebuggerHost, resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
@@ -87,9 +88,9 @@ type RestartAppServices =
 const restartSelectedServices = Effect.fnUntraced(function* (
   selectedPlan: AppPlan,
   target: ResolvedAppTarget,
-  options: Pick<RestartAppOptions, "signal">,
+  options: Pick<RestartAppOptions, "signal"> & { readonly debuggerHost: string | undefined },
 ): Effect.fn.Return<RestartAppResult["servicesStarted"], RestartAppError, RestartAppServices> {
-  const { signal } = options;
+  const { signal, debuggerHost } = options;
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(target.plan);
@@ -128,9 +129,12 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       ] as const;
     }),
   );
-  const runtimePlan = yield* withRetainedAgentOverlays(
-    { ...selectedPlan, services: Object.fromEntries(projectedServices) },
-    target.app,
+  const runtimePlan = applyDebuggerHost(
+    yield* withRetainedAgentOverlays(
+      { ...selectedPlan, services: Object.fromEntries(projectedServices) },
+      target.app,
+    ),
+    debuggerHost,
   );
   const inspectionPlan: AppPlan = {
     ...target.plan,
@@ -275,6 +279,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     const plan = mysqlResolvedTarget.plan;
     const scoped = options.services !== undefined && options.services.length > 0;
     const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
+    const debuggerHost = yield* resolveDebuggerHost(selectedPlan);
     const context = yield* Effect.context<RestartAppServices>();
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
@@ -300,7 +305,10 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           if (scoped) {
             return {
               app: plan.name,
-              servicesStarted: yield* restartSelectedServices(selectedPlan, mysqlResolvedTarget, options),
+              servicesStarted: yield* restartSelectedServices(selectedPlan, mysqlResolvedTarget, {
+                ...options,
+                debuggerHost,
+              }),
             };
           }
           const preRestart = PreRestartEvent.make({
@@ -323,7 +331,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             },
             mysqlResolvedTarget,
             managed,
-            { skipInitEvents: true, transactionPreflightDone: true },
+            {
+              skipInitEvents: true,
+              transactionPreflightDone: true,
+              resolvedDebuggerHost: { address: debuggerHost },
+            },
           );
           const postRestart = PostRestartEvent.make({
             _tag: "post-restart",

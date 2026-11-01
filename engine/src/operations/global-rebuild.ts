@@ -6,7 +6,9 @@ import { DateTime, Effect, Schema } from "effect";
 import { completeStartup } from "@lando/engine/lifecycle/startup-completion";
 import { collectObservedConnections, startedServices } from "@lando/engine/operations/connection-collector";
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
+import { resolveDebuggerHost } from "@lando/engine/subsystems/debugger-host";
 import type {
+  DebuggerHostUnavailableError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
@@ -58,6 +60,7 @@ export type GlobalRebuildError =
   | GlobalAppError
   | LoadGlobalPlanError
   | BuildError
+  | DebuggerHostUnavailableError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
@@ -94,6 +97,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
       yield* revalidateAppliedGlobalRouterStartup(loaded.plan);
       return { app: loaded.plan.name, materialized: true, servicesRebuilt: [] };
     }
+    const debuggerHost = yield* resolveDebuggerHost(loaded.plan);
 
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(loaded.plan.provider);
@@ -136,6 +140,7 @@ export const globalRebuild = Effect.fn("GlobalRebuild.rebuild")(
             provider,
             services,
             beforeApply: verifyAdmission,
+            resolvedDebuggerHost: { address: debuggerHost },
             options: {
               reconcile: true,
               ...(options.signal === undefined ? {} : { signal: options.signal }),

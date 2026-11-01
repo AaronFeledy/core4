@@ -12,6 +12,7 @@ import { retainGlobalPlanSiblings } from "@lando/engine/operations/global-retain
 import { applyGlobalServiceGroups } from "@lando/engine/operations/global-service-groups";
 import { withBuildProvider } from "@lando/engine/services/build-orchestrator";
 import type {
+  DebuggerHostUnavailableError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
@@ -50,6 +51,8 @@ const now = () => DateTime.nowUnsafe();
 export interface GlobalStartOptions {
   readonly services?: ReadonlyArray<string>;
   readonly signal?: AbortSignal;
+  /** A debugger address already resolved by a caller that must not resolve after stopping services. */
+  readonly resolvedDebuggerHost?: { readonly address: string | undefined };
 }
 
 export const GlobalStartResultSchema = Schema.Struct({
@@ -65,6 +68,7 @@ export type GlobalStartError =
   | GlobalAppError
   | LoadGlobalPlanError
   | BuildError
+  | DebuggerHostUnavailableError
   | GlobalDistConflictError
   | GlobalLandofilePathConflictError
   | GlobalServiceCollisionError
@@ -164,6 +168,9 @@ export const globalStart = Effect.fn("GlobalStart.start")(
             provider,
             services,
             beforeApply: verifyAdmission,
+            ...(options.resolvedDebuggerHost === undefined
+              ? {}
+              : { resolvedDebuggerHost: options.resolvedDebuggerHost }),
             ...(retained === undefined
               ? {}
               : { recordedPlan: retained.recordedPlan, recordedDisabledIds: retained.disabledIds }),

@@ -16,6 +16,7 @@ import {
 } from "../operations/global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "../operations/global-consumer-lease.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
+import { applyDebuggerHost, resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import type { makeScratchReaper } from "./destroy.ts";
 import type { ScratchRegistry } from "./registry.ts";
 
@@ -24,6 +25,7 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     readonly id: string;
     readonly plan: AppPlan;
     readonly landofileRouter?: RouterConfig;
+    readonly resolvedDebuggerHost?: { readonly address: string | undefined };
   },
   services: {
     readonly provider: RuntimeProviderShape;
@@ -33,14 +35,19 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
   },
 ) {
   const { id, plan } = request;
+  const debuggerHost =
+    request.resolvedDebuggerHost === undefined
+      ? yield* resolveDebuggerHost(plan)
+      : request.resolvedDebuggerHost.address;
+  const runtimePlan = applyDebuggerHost(plan, debuggerHost);
   const activate = Effect.gen(function* () {
     yield* Effect.scoped(
       applyWithResolvedEnvironment(
         services.provider,
-        plan,
+        runtimePlan,
         {
           reconcile: false,
-          onVolumeCreated: yield* volumeCreationRecorder(services.provider, plan),
+          onVolumeCreated: yield* volumeCreationRecorder(services.provider, runtimePlan),
         },
         verifyGlobalConsumerAdmission,
       ).pipe(Effect.provideService(EnvironmentValueResolver, services.environmentResolver)),
@@ -58,8 +65,8 @@ export const applyScratchStartup = Effect.fn("ScratchApp.applyStartup")(function
     yield* completeStartup({
       policy: "scratch",
       provider: services.provider,
-      plan,
-      services: Object.values(plan.services).map((service) => service.name),
+      plan: runtimePlan,
+      services: Object.values(runtimePlan.services).map((service) => service.name),
       ...(services.router === undefined ? {} : { router: services.router }),
       ...(request.landofileRouter === undefined ? {} : { landofileRouter: request.landofileRouter }),
     }).pipe(

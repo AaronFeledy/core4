@@ -1,4 +1,5 @@
 import type { ToolingTaskShape } from "@lando/sdk/schema";
+import { DEBUGGER_HOST_ALIAS } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
 import { ServiceConfigIssue } from "./_feature-helpers.ts";
@@ -11,7 +12,7 @@ export const PHP_XDEBUG_RELEASE = {
 } as const;
 
 export const PHP_XDEBUG_PORT = 9003;
-export const PHP_XDEBUG_CLIENT_HOST = "host.lando.internal";
+export const PHP_XDEBUG_CLIENT_HOST = DEBUGGER_HOST_ALIAS;
 export const PHP_XDEBUG_INI = "/usr/local/etc/php/conf.d/zz-lando-xdebug.ini";
 export const PHP_XDEBUG_SOURCE_DIR = `xdebug-${PHP_XDEBUG_RELEASE.version}`;
 
@@ -149,6 +150,10 @@ export const phpXdebugTooling = (
     `reload() { ${reload}; }`,
     "status() {",
     `  php -r '$m = function_exists("xdebug_info") ? xdebug_info("mode") : []; if (!is_array($m) || count($m) === 0) { echo "Xdebug disabled\\n"; } else { echo "Xdebug enabled (" . implode(",", $m) . ")\\n"; }'`,
+    `  host=$(php -r 'echo ini_get("xdebug.client_host");')`,
+    `  port=$(php -r 'echo ini_get("xdebug.client_port");')`,
+    '  resolved=$(getent hosts "$host" 2>/dev/null | awk \'!seen[$1]++ { print $1 }\' | paste -sd" " - || true)',
+    '  printf "Client: %s:%s%s\\n" "$host" "$port" "${resolved:+ ($resolved)}"',
     "}",
     'case "$cmd" in',
     '  on) write_ini "$mode"; reload; status ;;',
