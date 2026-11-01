@@ -9,7 +9,7 @@ tags: [beta, docs, recipes, laravel, php, node, vite, hmr]
 
 `lando npm run dev` starts Vite inside the recipe's `node` service, but the browser can't reach it there. Give `node` a proxy route, point Laravel's Vite plugin at that hostname, and Blade edits reload the page.
 
-Prerequisite: a running Laravel app from [Run the Laravel recipe](./laravel-workflow.mdx), with `lando npm install` done. The examples use app name `vite-demo`, the default `lndo.site` domain, and the stock Laravel skeleton, which ships `laravel-vite-plugin`.
+Prerequisite: a running Laravel app from [Run the Laravel recipe](./laravel-workflow.mdx), with `lando npm install` done. Run the commands from the app directory on your host. The examples use app name `vite-demo`, the default `lndo.site` domain, and the stock Laravel 12 skeleton, which ships `laravel-vite-plugin` 2.x and Vite 7. Keep your installed plugin and Vite on compatible majors; current Laravel 13 uses plugin 3.x and Vite 8.
 
 ## Route the node service
 
@@ -38,17 +38,11 @@ lando info
 
 `lando info` lists `https://vite.vite-demo.lndo.site` for `node`. Nothing answers there until Vite runs. `port: 5173` is the port inside the container, not a host port.
 
-The examples assume HTTPS on 443. If `lando info` shows `:8443`, add it to both URLs below and set `hmr.clientPort` to `8443`. Keep `server.port` at `5173`.
+The examples assume HTTPS on 443. If `lando info` shows a different HTTPS port, such as `:8443`, use that port in `APP_URL` and every app or Vite HTTPS URL below, and set `hmr.clientPort` to that port. Keep `server.port` at `5173` and leave hostnames in `allowedHosts` and `hmr.host` port-free.
 
 ## Point Laravel at MariaDB and the proxy
 
-Apache runs as `www-data` and needs to write Laravel's cache and logs. This `chmod` is for local development only; don't use it as a production permissions policy:
-
-```sh
-lando exec appserver -- chmod -R a+rwX storage bootstrap/cache
-```
-
-Set these in `.env`:
+Set these in `.env`. The recipe creates the database named after the app, with user and password `lando`, but does not inject Laravel's `DB_*` settings into `appserver`:
 
 ```dotenv
 APP_URL=https://vite-demo.lndo.site
@@ -60,13 +54,14 @@ DB_USERNAME=lando
 DB_PASSWORD=lando
 ```
 
-Then create the session and cache tables the skeleton expects:
+Clear any cached Laravel configuration, then create the session and cache tables the skeleton expects:
 
 ```sh
+lando artisan config:clear
 lando artisan migrate --no-interaction
 ```
 
-`laravel-vite-plugin` allows cross-origin requests from `APP_URL`, so the page on `vite-demo.lndo.site` can load modules from the Vite hostname.
+By default, `laravel-vite-plugin` allows cross-origin requests from `APP_URL`, loopback origins, and `*.test`. Setting `APP_URL` to the page's exact origin lets it load modules from the Vite hostname. An explicit `server.cors` setting replaces those plugin defaults.
 
 ## Point Vite at the proxy
 
@@ -94,7 +89,9 @@ export default defineConfig({
 
 Swap `vite-demo` for your app name. Lando's proxy terminates HTTPS and forwards HTTP and WebSocket traffic to Node on `5173`, so Vite listens on `0.0.0.0` without `server.https`. `allowedHosts` lets Vite answer the proxy hostname, and `strictPort` stops Vite from drifting off the declared endpoint.
 
-Leave `server.origin` unset. The plugin builds the URL it writes to `public/hot` from the `hmr` settings, and `server.origin` would also replace the `APP_URL` CORS rule.
+Leave `server.origin` unset. The plugin builds the URL it writes to `public/hot` from the `hmr` settings. Setting `server.origin` overrides that URL and, unless you also configure `server.cors`, replaces the entire default CORS origin list with that one origin.
+
+Keep these settings under `hmr` for Laravel's plugin, which reads `hmr.host`, `hmr.protocol`, and `hmr.clientPort`. Vite 8 deprecates these WebSocket options in favor of `server.ws`, but still synchronizes them for compatibility.
 
 ## Run the dev server
 
@@ -108,22 +105,32 @@ Leave that running and wait for Vite's `ready` line and the `APP_URL` line from 
 cat public/hot
 ```
 
-Check that `public/hot` contains `https://vite.vite-demo.lndo.site`. Laravel's `@vite` directive reads that file over the shared `/app` mount, which proves the plugin wrote the proxy origin, not that the browser can reach it.
+With `clientPort: 443`, `public/hot` contains `https://vite.vite-demo.lndo.site:443`, including the explicit port. Laravel's `@vite` directive reads that file over the shared `/app` mount. Reading it on the host checks the advertised URL, not whether the browser can reach Vite.
 
 ```sh
-curl -fsS https://vite-demo.lndo.site/ | grep -o 'https://vite.vite-demo.lndo.site/[^"]*'
+curl -fsS https://vite-demo.lndo.site/ | grep -o 'https://vite\.vite-demo\.lndo\.site:[0-9][0-9]*/[^"]*'
 curl -fsS -o /dev/null https://vite.vite-demo.lndo.site/@vite/client
 ```
 
-Check that the first command lists `@vite/client`, `resources/css/app.css`, and `resources/js/app.js` on the Vite hostname. That proves the page asks Vite for its assets. The second command exits 0 when the proxy reaches the running Vite server.
+Check that the first command lists URLs ending in `/@vite/client`, `/resources/css/app.css`, and `/resources/js/app.js`, each with `:443` or your configured HTTPS port. That proves Laravel read `public/hot` and the page asks Vite for its assets. The second command exits 0 when the proxy reaches the running Vite server.
+
+These host requests need both hostnames to resolve locally and your curl installation to trust Lando's CA. For DNS failures, see [Resolve lndo.site on this machine](../subsystems/host-dns.mdx). For certificate failures, see [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx); curl may use a different CA bundle from your browser. Don't disable certificate verification to hide a trust failure.
+
+If Laravel reports permission denied for `storage` or `bootstrap/cache`, Apache's `www-data` worker needs write access. Lando remaps that worker to the project mount owner on Windows, but not on Linux or macOS. Only if permissions block your local app, run:
+
+```sh
+lando exec appserver -- chmod -R a+rwX storage bootstrap/cache
+```
+
+That grants write access to all users for these directories. Use it only for local development, not as a production permissions policy, then retry the page request.
 
 Open `https://vite-demo.lndo.site` in a browser. In developer tools, check for a WebSocket to `wss://vite.vite-demo.lndo.site` with status `101`. Then edit `resources/views/welcome.blade.php` and save; `refresh: true` reloads the page. If saves don't trigger a reload on your filesystem, add `usePolling: true` under `server.watch`; polling costs CPU.
 
-Stop Vite with Ctrl+C in its terminal. The plugin deletes `public/hot` on exit, and Laravel goes back to built assets. If you killed Vite some other way and `public/hot` is still there, delete it.
+Stop Vite with Ctrl+C in its terminal. The plugin deletes `public/hot` on a normal exit, including handled termination signals. Laravel then uses `public/build/manifest.json` if a build exists; otherwise, build the assets below. If an unhandled termination leaves `public/hot` behind, delete that stale file.
 
-## Build for production
+## Build and verify assets
 
-Lando's proxy talks to Apache over HTTP, so Laravel builds `http://` asset URLs on an HTTPS page and the browser blocks them as mixed content. Tell Laravel to trust the proxy's forwarded headers. In `bootstrap/app.php`, inside `withMiddleware`:
+Lando's proxy talks to Apache over HTTP. Without trusted forwarded headers, Laravel can generate `http://` asset URLs even when the browser requested HTTPS, causing mixed-content errors. Tell Laravel to trust the proxy's forwarded headers. In `bootstrap/app.php`, inside `withMiddleware`:
 
 ```php
 ->withMiddleware(function (Middleware $middleware): void {
@@ -137,7 +144,7 @@ With Vite stopped:
 
 ```sh
 lando npm run build
-curl -fsS https://vite-demo.lndo.site/ | grep -o 'https://vite-demo.lndo.site/build/assets/[^"]*'
+curl -fsS https://vite-demo.lndo.site/ | grep -o 'https://vite-demo\.lndo\.site\(:[0-9][0-9]*\)\{0,1\}/build/assets/[^"]*'
 ```
 
 Check that the page now loads hashed files from `/build/assets/` over `https`. The build writes `public/build/manifest.json` into the shared `/app`, so Apache serves it without a restart.
