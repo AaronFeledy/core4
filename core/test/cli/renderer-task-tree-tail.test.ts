@@ -128,7 +128,7 @@ describe("TaskDetailRing", () => {
 
 describe("TaskTreeViewModel — tail panel", () => {
   test("surfaces the most recent 4 detail lines as an indented panel", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     painter.apply(taskStart("a", "step a", "build"));
     for (const line of ["l1", "l2", "l3", "l4", "l5", "l6"]) {
@@ -146,7 +146,7 @@ describe("TaskTreeViewModel — tail panel", () => {
   });
 
   test("collapses the panel on task.complete leaving only a summary line", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     painter.apply(taskStart("a", "step a", "build"));
     painter.apply(detail("a", "compiling..."));
@@ -164,7 +164,7 @@ describe("TaskTreeViewModel — tail panel", () => {
   });
 
   test("collapses the panel on task.fail and marks the task failed", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     painter.apply(taskStart("a", "npm ci", "build"));
     painter.apply(detail("a", "downloading..."));
@@ -178,7 +178,7 @@ describe("TaskTreeViewModel — tail panel", () => {
 
 describe("TaskTreeViewModel — tree start metadata", () => {
   test("uses declared tree children as the running denominator before all siblings start", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a", "b", "c", "d"]));
     expect(painter.snapshot().frameLines.at(-1)).toContain("0/4 running");
 
@@ -189,14 +189,14 @@ describe("TaskTreeViewModel — tree start metadata", () => {
 
 describe("TaskTreeViewModel — frame content", () => {
   test("first paint exposes styled and logical lines for the same frame", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     expect(painter.frameLines().map(stripCsi)).toEqual([...painter.snapshot().frameLines]);
     expect(painter.snapshot().frameLines.join("\n")).toContain("◌ a");
   });
 
   test("a subsequent event replaces the pending row with running task content", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     expect(painter.snapshot().frameLines.join("\n")).toContain("◌ a");
     painter.apply(taskStart("a", "step a", "build"));
@@ -206,7 +206,7 @@ describe("TaskTreeViewModel — frame content", () => {
   });
 
   test("wraps long detail rows to the configured physical width", () => {
-    const painter = new TaskTreeViewModel({ terminalColumns: 60 });
+    const painter = new TaskTreeViewModel({ color: true, terminalColumns: 60 });
     painter.apply(treeStart("build", "Run", ["a"]));
     painter.apply(taskStart("a", "a", "build"));
     painter.apply(detail("a", "abcdefghij ".repeat(12).trim()));
@@ -215,7 +215,7 @@ describe("TaskTreeViewModel — frame content", () => {
 
   test("wraps using the current terminal width read live on each render", () => {
     let columns = 120;
-    const painter = new TaskTreeViewModel({ getTerminalColumns: () => columns });
+    const painter = new TaskTreeViewModel({ color: true, getTerminalColumns: () => columns });
     painter.apply(treeStart("build", "Run", ["a"]));
     painter.apply(taskStart("a", "a", "build"));
     painter.apply(detail("a", "abcdefghij ".repeat(12).trim()));
@@ -224,7 +224,7 @@ describe("TaskTreeViewModel — frame content", () => {
   });
 
   test("a collapsing frame leaves no stale panel content", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     painter.apply(taskStart("a", "step a", "build"));
     painter.apply(detail("a", "l1"));
@@ -238,7 +238,7 @@ describe("TaskTreeViewModel — frame content", () => {
   });
 
   test("detail panel lines are dimmed", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     painter.apply(taskStart("a", "step a", "build"));
     painter.apply(detail("a", "hello"));
@@ -250,7 +250,7 @@ describe("TaskTreeViewModel — frame content", () => {
 
 describe("TaskTreeViewModel — concurrent sibling panels", () => {
   test("keeps a tail panel for each running sibling in the current frame", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a", "b"]));
     painter.apply(taskStart("a", "step a", "build"));
     painter.apply(taskStart("b", "step b", "build"));
@@ -264,7 +264,7 @@ describe("TaskTreeViewModel — concurrent sibling panels", () => {
   });
 
   test("tree.complete collapses to a passive summary line", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a", "b"]));
     painter.apply(taskStart("a", "step a", "build"));
     painter.apply(taskStart("b", "step b", "build"));
@@ -281,7 +281,7 @@ describe("TaskTreeViewModel — concurrent sibling panels", () => {
   });
 
   test("tree.complete hides pending placeholders for children that never started", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a", "b"]));
     painter.apply(taskStart("a", "step a", "build"));
     painter.apply(taskFail("a", "step a failed", 1));
@@ -296,7 +296,7 @@ describe("TaskTreeViewModel — concurrent sibling panels", () => {
 
 describe("TaskTreeViewModel — cached/skipped badges", () => {
   const completeWith = (summary: string, durationMs = 12400): string => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     painter.apply(taskStart("a", "step a", "build"));
     painter.apply(taskComplete("a", summary, durationMs));
@@ -341,7 +341,7 @@ describe("TaskTreeViewModel — cached/skipped badges", () => {
   });
 
   test("a child whose label is literally 'cache' stays ONLINE without a marker", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["cache"]));
     painter.apply(taskStart("cache", "cache", "build"));
     painter.apply(taskComplete("cache", "cache", 500));
@@ -351,7 +351,7 @@ describe("TaskTreeViewModel — cached/skipped badges", () => {
   });
 
   test("falls back to the task label when stripping the marker empties the summary", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a"]));
     painter.apply(taskStart("a", "warm step", "build"));
     painter.apply(taskComplete("a", "(cached)", 100));
@@ -360,7 +360,7 @@ describe("TaskTreeViewModel — cached/skipped badges", () => {
   });
 
   test("cached and skipped rows are color-accented in TTY but never status-by-color-only", () => {
-    const painter = new TaskTreeViewModel();
+    const painter = new TaskTreeViewModel({ color: true });
     painter.apply(treeStart("build", "Building", ["a", "b"]));
     painter.apply(taskStart("a", "a", "build"));
     painter.apply(taskStart("b", "b", "build"));

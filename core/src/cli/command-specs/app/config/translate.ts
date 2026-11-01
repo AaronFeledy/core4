@@ -77,5 +77,5 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       return flags.list !== true && flags.detect !== true && flags.write !== true;
     },
   },
-  render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, "yaml"),
+  render: (result) => renderConfigTranslateResult(result, "yaml"),
 };

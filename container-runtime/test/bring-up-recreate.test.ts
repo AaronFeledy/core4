@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Schema } from "effect";
 
+import { sha256Hex } from "@lando/sdk/digest";
 import {
   AbsolutePath,
   AppId,
@@ -12,6 +13,7 @@ import {
 } from "@lando/sdk/schema";
 import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
+import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
 import { commonContainerLabels } from "../src/plan.ts";
 import { bringUp } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
@@ -26,6 +28,46 @@ const metadata = {
   runtime: 4 as const,
 };
 const containerName = "lando-recreate-ports-web";
+
+const hostProxySessionDigestOf = (session: string): string => sha256Hex(session).slice(0, 16);
+const trustedHostProxyExtension = (session: string): ServicePlan["extensions"] => ({
+  [HOST_PROXY_TRANSPORT_EXTENSION_KEY]: { sessionDigest: hostProxySessionDigestOf(session) },
+});
+const hostProxyOverlayMounts = (sources: {
+  readonly socket: string;
+  readonly credentials: string;
+  readonly shim?: string;
+}): ServicePlan["mounts"] => {
+  const shim = sources.shim ?? "/home/user/session/lando-shim";
+  return [
+    {
+      type: "bind" as const,
+      source: sources.socket,
+      target: PortablePath.make("/run/lando/host-proxy.sock"),
+      readOnly: true,
+      realization: "passthrough" as const,
+    },
+    {
+      type: "bind" as const,
+      source: sources.credentials,
+      target: PortablePath.make("/run/lando/host-proxy/credentials"),
+      readOnly: true,
+      realization: "passthrough" as const,
+    },
+    ...["/usr/local/bin/lando", "/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
+      type: "bind" as const,
+      source: shim,
+      target: PortablePath.make(target),
+      readOnly: true,
+      realization: "passthrough" as const,
+    })),
+  ];
+};
+const hostProxyRuntimeEnv = {
+  LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+  LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
+  LANDO_HOST_PROXY_DEPTH: "0",
+} as const;
 
 const planWithHostPort = (hostPort: number): AppPlan => {
   const service: ServicePlan = {
@@ -73,20 +115,28 @@ const inspectBody = (
   running: boolean,
   bindSource?: string,
   networks?: ReadonlyArray<string>,
+  existingMounts?: ReadonlyArray<{
+    readonly Type: string;
+    readonly Source: string;
+    readonly Destination: string;
+    readonly Name?: string;
+  }>,
 ): string =>
   JSON.stringify({
     State: { Running: running },
     ...(networks === undefined
       ? {}
       : { NetworkSettings: { Networks: Object.fromEntries(networks.map((name) => [name, {}])) } }),
-    ...(bindSource === undefined
-      ? {}
-      : {
-          Mounts:
-            bindSource === ""
-              ? []
-              : [{ Type: "bind", Source: bindSource, Destination: "/run/lando/host-proxy.sock" }],
-        }),
+    ...(existingMounts !== undefined
+      ? { Mounts: existingMounts }
+      : bindSource === undefined
+        ? {}
+        : {
+            Mounts:
+              bindSource === ""
+                ? []
+                : [{ Type: "bind", Source: bindSource, Destination: "/run/lando/host-proxy.sock" }],
+          }),
     HostConfig: {
       PortBindings: {
         "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: hostPort }],
@@ -126,6 +176,12 @@ const makeFakeApi = (input: {
     readonly Name?: string;
     readonly Destination: string;
   };
+  readonly existingMounts?: ReadonlyArray<{
+    readonly Type: string;
+    readonly Source: string;
+    readonly Destination: string;
+    readonly Name?: string;
+  }>;
 }) => {
   const calls: EngineHttpRequest[] = [];
   let exists = input.containerExists ?? true;
@@ -168,7 +224,7 @@ const makeFakeApi = (input: {
           const body =
             input.omitPortBindings === true
               ? inspectWithoutPortBindings(running)
-              : inspectBody(hostPort, running, bindSource, input.existingNetworks);
+              : inspectBody(hostPort, running, bindSource, input.existingNetworks, input.existingMounts);
           const inspected: unknown = JSON.parse(body);
           if (typeof inspected !== "object" || inspected === null) {
             throw new TypeError("Fake container inspect must be an object.");
@@ -229,12 +285,14 @@ test.each([false, true])(
     const base = planWithHostPort(18080);
     const original = base.services[serviceName];
     if (original === undefined) throw new Error("Missing service");
-    const previous = {
+    const sessionSources = {
+      socket: "/home/user/session/host-proxy.sock",
+      credentials: "/home/user/session/credentials",
+      shim: "/home/user/session/lando-shim",
+    } as const;
+    const previous: ServicePlan = {
       ...original,
-      environment: {
-        LANDO_HOST_PROXY_SESSION: "previous-session",
-        LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
-      },
+      environment: { ...hostProxyRuntimeEnv },
       mounts: [
         {
           type: "volume" as const,
@@ -242,27 +300,26 @@ test.each([false, true])(
           target: PortablePath.make("/data"),
           readOnly: false,
         },
-        {
-          type: "bind" as const,
-          source: "/home/user/session/host-proxy.sock",
-          target: PortablePath.make("/run/lando/host-proxy.sock"),
-          readOnly: true,
-          realization: "passthrough" as const,
-        },
+        ...hostProxyOverlayMounts(sessionSources),
       ],
+      extensions: trustedHostProxyExtension("previous-session"),
     };
-    const desired = {
+    const desired: ServicePlan = {
       ...previous,
-      environment: {
-        ...previous.environment,
-        LANDO_HOST_PROXY_SESSION: changed ? "next-session" : "previous-session",
-      },
+      extensions: trustedHostProxyExtension(changed ? "next-session" : "previous-session"),
     };
     const planned = { ...base, services: { [serviceName]: desired } };
     const fake = makeFakeApi({
       deleteStatus: 204,
       existingPlan: { ...base, services: { [serviceName]: previous } },
-      existingBindSource: "/home/user/session/host-proxy.sock",
+      existingMounts: [
+        { Type: "bind", Source: sessionSources.socket, Destination: "/run/lando/host-proxy.sock" },
+        {
+          Type: "bind",
+          Source: sessionSources.credentials,
+          Destination: "/run/lando/host-proxy/credentials",
+        },
+      ],
       existingNetworks: ["recreate-ports-network"],
       networkExists: true,
     });
@@ -285,6 +342,72 @@ test.each([false, true])(
     }
   },
 );
+
+test("upgrades a legacy env-only host-proxy container by recreating it under the credentials-file overlay", async () => {
+  // Given a running container planned under the old SESSION/TOKEN env overlay (socket only, no credentials).
+  const base = planWithHostPort(18080);
+  const original = base.services[serviceName];
+  if (original === undefined) throw new Error("Missing service");
+  const legacy: ServicePlan = {
+    ...original,
+    environment: {
+      LANDO_HOST_PROXY_SESSION: "legacy-session",
+      LANDO_HOST_PROXY_TOKEN: "legacy-token",
+      LANDO_HOST_PROXY_APP: "legacy-app",
+      LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+    },
+    mounts: [
+      {
+        type: "bind",
+        source: "/home/user/session/host-proxy.sock",
+        target: PortablePath.make("/run/lando/host-proxy.sock"),
+        readOnly: true,
+        realization: "passthrough",
+      },
+    ],
+  };
+  const upgraded: ServicePlan = {
+    ...original,
+    environment: { ...hostProxyRuntimeEnv },
+    mounts: hostProxyOverlayMounts({
+      socket: "/home/user/session/host-proxy.sock",
+      credentials: "/home/user/session/credentials",
+    }),
+    extensions: trustedHostProxyExtension("legacy-session"),
+  };
+  const planned = { ...base, services: { [serviceName]: upgraded } };
+  const fake = makeFakeApi({
+    deleteStatus: 204,
+    existingPlan: { ...base, services: { [serviceName]: legacy } },
+    // Old builds may still show an env-derived session label on the running container.
+    existingLabels: {
+      ...commonContainerLabels(base, legacy),
+      "dev.lando.host-proxy-session": hostProxySessionDigestOf("legacy-session"),
+    },
+    existingMounts: [
+      {
+        Type: "bind",
+        Source: "/home/user/session/host-proxy.sock",
+        Destination: "/run/lando/host-proxy.sock",
+      },
+    ],
+    existingNetworks: ["recreate-ports-network"],
+    networkExists: true,
+  });
+  // When bring-up applies the credentials-file overlay shared by podman and docker providers.
+  const result = await Effect.runPromise(bringUp(planned, { api: fake.api, ctx, reconcile: false }));
+  // Then the stale env-only container is replaced once (missing credentials bind / config drift).
+  expect(result.changed).toBe(true);
+  expect(createCalls(fake.calls)).toHaveLength(1);
+  expect(createCalls(fake.calls)[0]?.body).toMatchObject({
+    HostConfig: {
+      Binds: expect.arrayContaining([
+        "/home/user/session/host-proxy.sock:/run/lando/host-proxy.sock:ro",
+        "/home/user/session/credentials:/run/lando/host-proxy/credentials:ro",
+      ]),
+    },
+  });
+});
 
 describe("Podman publish-port recreate", () => {
   test("recreate stops and deletes the observed owned native ID", async () => {
@@ -676,32 +799,34 @@ describe("Podman publish-port recreate", () => {
     expect(createCalls(fake.calls)).toHaveLength(1);
   });
 
-  test("recreates an existing stopped container when a bind source changes", async () => {
-    const fake = makeFakeApi({
-      deleteStatus: 204,
-      existingBindSource: "/home/user/old/host-proxy.sock",
-    });
+  test("recreates an existing stopped container when a host-proxy bind source changes", async () => {
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
-    const plan: AppPlan = {
-      ...base,
-      services: {
-        [serviceName]: {
-          ...service,
-          environment: { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
-          mounts: [
-            {
-              type: "bind",
-              source: "/home/user/new/host-proxy.sock",
-              target: PortablePath.make("/run/lando/host-proxy.sock"),
-              readOnly: true,
-              realization: "passthrough",
-            },
-          ],
-        },
-      },
+    const desired: ServicePlan = {
+      ...service,
+      environment: { ...hostProxyRuntimeEnv },
+      mounts: hostProxyOverlayMounts({
+        socket: "/home/user/new/host-proxy.sock",
+        credentials: "/home/user/session/credentials",
+      }),
+      extensions: trustedHostProxyExtension("bind-session"),
     };
+    const plan: AppPlan = { ...base, services: { [serviceName]: desired } };
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingPlan: plan,
+      existingMounts: [
+        { Type: "bind", Source: "/home/user/old/host-proxy.sock", Destination: "/run/lando/host-proxy.sock" },
+        {
+          Type: "bind",
+          Source: "/home/user/session/credentials",
+          Destination: "/run/lando/host-proxy/credentials",
+        },
+      ],
+      existingNetworks: ["recreate-ports-network"],
+      networkExists: true,
+    });
 
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
@@ -713,40 +838,40 @@ describe("Podman publish-port recreate", () => {
     expect(
       fake.calls.find((call) => call.method === "POST" && call.path.startsWith("/containers/create"))?.body,
     ).toMatchObject({
-      HostConfig: { Binds: ["/home/user/new/host-proxy.sock:/run/lando/host-proxy.sock:ro"] },
+      HostConfig: {
+        Binds: expect.arrayContaining([
+          "/home/user/new/host-proxy.sock:/run/lando/host-proxy.sock:ro",
+          "/home/user/session/credentials:/run/lando/host-proxy/credentials:ro",
+        ]),
+      },
     });
   });
 
-  for (const [label, existingBindSource] of [
+  for (const [label, existingMounts] of [
     ["missing metadata", undefined],
-    ["empty mount list", ""],
+    ["empty mount list", []],
   ] as const) {
-    test(`recreates a container when its socket mount has ${label}`, async () => {
-      const fake = makeFakeApi({
-        deleteStatus: 204,
-        ...(existingBindSource === undefined ? {} : { existingBindSource }),
-      });
+    test(`recreates a container when its host-proxy socket mount has ${label}`, async () => {
       const base = planWithHostPort(18080);
       const service = base.services[serviceName];
       if (service === undefined) throw new Error("Test service is missing.");
-      const plan: AppPlan = {
-        ...base,
-        services: {
-          [serviceName]: {
-            ...service,
-            environment: { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
-            mounts: [
-              {
-                type: "bind",
-                source: "/home/user/new/host-proxy.sock",
-                target: PortablePath.make("/run/lando/host-proxy.sock"),
-                readOnly: true,
-                realization: "passthrough",
-              },
-            ],
-          },
-        },
+      const desired: ServicePlan = {
+        ...service,
+        environment: { ...hostProxyRuntimeEnv },
+        mounts: hostProxyOverlayMounts({
+          socket: "/home/user/new/host-proxy.sock",
+          credentials: "/home/user/session/credentials",
+        }),
+        extensions: trustedHostProxyExtension("missing-mount-session"),
       };
+      const plan: AppPlan = { ...base, services: { [serviceName]: desired } };
+      const fake = makeFakeApi({
+        deleteStatus: 204,
+        existingPlan: plan,
+        ...(existingMounts === undefined ? {} : { existingMounts: [...existingMounts] }),
+        existingNetworks: ["recreate-ports-network"],
+        networkExists: true,
+      });
       const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
       expect(result.changed).toBe(true);
       expect(createCalls(fake.calls)).toHaveLength(1);
@@ -816,33 +941,34 @@ describe("Podman publish-port recreate", () => {
     expect(result.changed).toBe(false);
     expect(createCalls(fake.calls)).toHaveLength(0);
   });
-  test("reuses an existing container when its bind source is unchanged", async () => {
+  test("reuses an existing container when its host-proxy bind sources are unchanged", async () => {
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
-    const plan: AppPlan = {
-      ...base,
-      services: {
-        [serviceName]: {
-          ...service,
-          environment: { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
-          mounts: [
-            {
-              type: "bind",
-              source: "/home/user/new/host-proxy.sock",
-              target: PortablePath.make("/run/lando/host-proxy.sock"),
-              readOnly: true,
-              realization: "passthrough",
-            },
-          ],
-        },
-      },
+    const desired: ServicePlan = {
+      ...service,
+      environment: { ...hostProxyRuntimeEnv },
+      mounts: hostProxyOverlayMounts({
+        socket: "/home/user/new/host-proxy.sock",
+        credentials: "/home/user/session/credentials",
+      }),
+      extensions: trustedHostProxyExtension("stable-session"),
     };
+    const plan: AppPlan = { ...base, services: { [serviceName]: desired } };
 
     const fake = makeFakeApi({
       deleteStatus: 204,
-      existingBindSource: "/home/user/new/host-proxy.sock",
       existingPlan: plan,
+      existingMounts: [
+        { Type: "bind", Source: "/home/user/new/host-proxy.sock", Destination: "/run/lando/host-proxy.sock" },
+        {
+          Type: "bind",
+          Source: "/home/user/session/credentials",
+          Destination: "/run/lando/host-proxy/credentials",
+        },
+      ],
+      existingNetworks: ["recreate-ports-network"],
+      networkExists: true,
     });
     const result = await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }));
 
@@ -924,32 +1050,34 @@ describe("Podman publish-port recreate", () => {
     );
   });
 
-  test("forbidRecreate refuses a bind-source change instead of recreating", async () => {
-    const fake = makeFakeApi({
-      deleteStatus: 204,
-      existingBindSource: "/home/user/old/host-proxy.sock",
-    });
+  test("forbidRecreate refuses a host-proxy bind-source change instead of recreating", async () => {
     const base = planWithHostPort(18080);
     const service = base.services[serviceName];
     if (service === undefined) throw new Error("Test service is missing.");
-    const plan: AppPlan = {
-      ...base,
-      services: {
-        [serviceName]: {
-          ...service,
-          environment: { LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock" },
-          mounts: [
-            {
-              type: "bind",
-              source: "/home/user/new/host-proxy.sock",
-              target: PortablePath.make("/run/lando/host-proxy.sock"),
-              readOnly: true,
-              realization: "passthrough",
-            },
-          ],
-        },
-      },
+    const desired: ServicePlan = {
+      ...service,
+      environment: { ...hostProxyRuntimeEnv },
+      mounts: hostProxyOverlayMounts({
+        socket: "/home/user/new/host-proxy.sock",
+        credentials: "/home/user/session/credentials",
+      }),
+      extensions: trustedHostProxyExtension("forbid-session"),
     };
+    const plan: AppPlan = { ...base, services: { [serviceName]: desired } };
+    const fake = makeFakeApi({
+      deleteStatus: 204,
+      existingPlan: plan,
+      existingMounts: [
+        { Type: "bind", Source: "/home/user/old/host-proxy.sock", Destination: "/run/lando/host-proxy.sock" },
+        {
+          Type: "bind",
+          Source: "/home/user/session/credentials",
+          Destination: "/run/lando/host-proxy/credentials",
+        },
+      ],
+      existingNetworks: ["recreate-ports-network"],
+      networkExists: true,
+    });
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx, forbidRecreate: true }));
     const failures = Exit.isFailure(exit)
       ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))

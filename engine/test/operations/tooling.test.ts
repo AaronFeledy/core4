@@ -27,6 +27,7 @@ import { PrivateFileAccessService } from "@lando/state-store/private-file-access
 import { DateTime, Effect, Layer, Result, Schema, Stream } from "effect";
 import { type RunToolingOptions, runTooling } from "../../src/operations/tooling.ts";
 import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import * as ProviderExecToolingEngine from "../../src/services/tooling-engine.ts";
 
 const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseConnection) => {
@@ -99,6 +100,7 @@ const fixture = (task: ToolingTaskShape, failureCode = 0, database?: DatabaseCon
   };
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     testEnvironmentResolverLayer,
     PrivateFileAccessService.layer,
     ProviderExecToolingEngine.layer.pipe(Layer.provide(testEnvironmentResolverLayer)),

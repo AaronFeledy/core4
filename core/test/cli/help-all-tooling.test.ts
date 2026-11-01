@@ -96,7 +96,7 @@ test.each([...policies])(
       expect(flagHelp).toBe(all);
       const catalog = decodeCatalog(JSON.parse(json)).result;
       const tooling = catalog.all.filter((row) => row.source === "tooling");
-      expect(tooling).toEqual([...catalog.sections.thisApp]);
+      expect([...catalog.sections.thisApp]).toEqual(tooling);
       expect(tooling.map((row) => row.canonicalId).sort()).toEqual(["app:known", "app:other"]);
       expect(tooling.find((row) => row.canonicalId === "app:known")).toMatchObject({
         typeable: primary,

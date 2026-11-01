@@ -10,6 +10,7 @@ import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { RouteHostname, RoutePathPrefix } from "./hostname.ts";
 import { AbsolutePath, PortNumber, ServiceName } from "./primitives.ts";
 import { RouteFilter } from "./route-filter.ts";
+import { scanFields } from "./scan-fields.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 
 export { HealthcheckPlan } from "./healthcheck-plan.ts";
@@ -93,14 +94,7 @@ export type RoutePlan = typeof RoutePlan.Type;
 export const ScannerConfig = Schema.Union([
   Schema.Literal(false),
   Schema.Struct({
-    path: Schema.optionalKey(Schema.String.pipe(Schema.check(Schema.isStartingWith("/")))).annotate({
-      description: "URL path to probe, starting with a slash.",
-    }),
-    okCodes: Schema.optionalKey(
-      Schema.Array(Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 100, maximum: 599 })))),
-    ).annotate({
-      description: "HTTP response status codes accepted as reachable.",
-    }),
+    ...scanFields,
     retries: Schema.optionalKey(
       Schema.Int.pipe(Schema.check(Schema.isBetween({ minimum: 0, maximum: 20 }))),
     ).annotate({
@@ -347,6 +341,9 @@ export const ProviderCapabilities = Schema.Struct({
   buildSsh: Schema.Boolean,
   multiServiceApply: Schema.Boolean,
   serviceExec: Schema.Boolean,
+  serviceInit: Schema.optionalKey(Schema.Boolean).annotate({
+    description: "Whether native service init is supported; omission means unsupported.",
+  }),
   serviceLogs: Schema.Boolean,
   serviceLogSources: Schema.Boolean,
   serviceHealth: Schema.Literals(["native", "lando", "none"]),

@@ -26,6 +26,7 @@ test("bundled Traefik satisfies the RouterService contract suite", async () => {
     "/lando/global/proxy-traefik/dynamic",
   );
   const service = makeTraefikRouterService({
+    readTraefikState: () => Effect.succeed("running"),
     httpClient: runtime.httpClient,
     probeBind: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
@@ -96,6 +97,7 @@ test("real filesystem status sees configured routing and stop removes route and 
     };
     const runtime = makeTraefikApiFixture(proxyFileSystem, join(root, "proxy-traefik", "dynamic"));
     const service = makeTraefikRouterService({
+      readTraefikState: () => Effect.succeed("running"),
       httpClient: runtime.httpClient,
       probeBind: () => Effect.succeed({ kind: "success" }),
       certificateAuthority,
@@ -133,6 +135,7 @@ test("real filesystem status sees configured routing and stop removes route and 
 
     // When
     const fresh = makeTraefikRouterService({
+      readTraefikState: () => Effect.succeed("running"),
       certificateAuthority,
       fileSystem: proxyFileSystem,
       paths: { platform: "linux", globalAppRoot: root },

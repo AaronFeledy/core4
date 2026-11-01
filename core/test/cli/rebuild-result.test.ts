@@ -25,7 +25,7 @@ const result: RebuildAppResult = {
   ],
 };
 
-const decorated: RenderContext = { mode: "lando", format: "text", columns: 80, isTTY: true };
+const decorated: RenderContext = { mode: "lando", format: "text", columns: 80, isTTY: true, noColor: false };
 
 describe("rebuild result rendering", () => {
   test("uses the start-style quiet summary with a Rebuilt heading in a narrow terminal", () => {

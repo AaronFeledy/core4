@@ -7,12 +7,14 @@ import { deflateRawSync, gzipSync } from "node:zlib";
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
+import { CATATONIT_MANIFEST, LEGACY_NATIVE_INIT_BRIDGE_VERSION } from "../src/catatonit-provision.ts";
 import {
   type ExtractEntries,
   ProviderRuntimeExtractError,
   extractRuntimeArchiveEntries,
   installRuntimeBundle,
 } from "../src/runtime-extract.ts";
+import { catatonitFixture } from "./fixtures/catatonit.ts";
 
 const encoder = new TextEncoder();
 
@@ -649,6 +651,334 @@ describe("installRuntimeBundle", () => {
       }
     },
   );
+
+  test("helper-bearing recipe payload verifies catatonit and license notices before publish", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const fixture = catatonitFixture();
+      const archiveBytes = buildTarGz([
+        { path: "podman", bytes: encoder.encode("podman"), mode: 0o755 },
+        { path: "catatonit", bytes: fixture.elf, mode: 0o755 },
+        { path: "licenses/catatonit/COPYING", bytes: fixture.licenseBytes, mode: 0o644 },
+      ]);
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes,
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+        }),
+      );
+      expect(result.installed).toBe(true);
+      expect(new Uint8Array(await readFile(join(runtimeBinDir, "catatonit")))).toEqual(
+        new Uint8Array(fixture.elf),
+      );
+      expect(await readFile(join(runtimeBinDir, "licenses/catatonit/COPYING"), "utf8")).toBe(
+        new TextDecoder().decode(fixture.licenseBytes),
+      );
+      if (process.platform !== "win32") {
+        expect(statSync(join(runtimeBinDir, "licenses/catatonit/COPYING")).mode & 0o777).toBe(0o644);
+        expect(statSync(join(runtimeBinDir, "catatonit")).mode & 0o777).toBe(0o755);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("helper-bearing recipe rejects a corrupt bundled helper without install", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const fixture = catatonitFixture();
+      const archiveBytes = buildTarGz([
+        { path: "podman", bytes: encoder.encode("podman") },
+        { path: "catatonit", bytes: encoder.encode("not-elf"), mode: 0o755 },
+      ]);
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({
+          archiveBytes,
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+        }),
+      );
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(existsSync(runtimeBinDir)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("helper-bearing recipe rejects a missing bundled helper", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const fixture = catatonitFixture();
+      const archiveBytes = buildTarGz([{ path: "podman", bytes: encoder.encode("podman") }]);
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({
+          archiveBytes,
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+        }),
+      );
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(existsSync(runtimeBinDir)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("helper-bearing install rejects a host architecture without a pinned helper", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({
+          archiveBytes: buildTarGz([{ path: "podman", bytes: encoder.encode("podman") }]),
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "riscv64",
+        }),
+      );
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(existsSync(runtimeBinDir)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("same-version helper-bearing install re-extracts when on-disk helper is damaged", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const fixture = catatonitFixture();
+      const archiveBytes = buildTarGz([
+        { path: "podman", bytes: encoder.encode("podman"), mode: 0o755 },
+        { path: "catatonit", bytes: fixture.elf, mode: 0o755 },
+        { path: "licenses/catatonit/COPYING", bytes: fixture.licenseBytes, mode: 0o644 },
+      ]);
+      await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes,
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+        }),
+      );
+      await writeFile(join(runtimeBinDir, "catatonit"), "damaged");
+      let calls = 0;
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+          extractImpl: () => {
+            calls += 1;
+            return [
+              { path: "podman", bytes: encoder.encode("podman"), mode: 0o755 },
+              { path: "catatonit", bytes: fixture.elf, mode: 0o755 },
+              { path: "licenses/catatonit/COPYING", bytes: fixture.licenseBytes, mode: 0o644 },
+            ];
+          },
+        }),
+      );
+      expect(result.installed).toBe(true);
+      expect(calls).toBe(1);
+      expect(new Uint8Array(await readFile(join(runtimeBinDir, "catatonit")))).toEqual(
+        new Uint8Array(fixture.elf),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("helper-bearing recipe rejects nested basename helper lookalikes", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const fixture = catatonitFixture();
+      const archiveBytes = buildTarGz([
+        { path: "podman", bytes: encoder.encode("podman"), mode: 0o755 },
+        { path: "nested/catatonit", bytes: fixture.elf, mode: 0o755 },
+        { path: "licenses/catatonit/COPYING", bytes: fixture.licenseBytes, mode: 0o644 },
+      ]);
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({
+          archiveBytes,
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+        }),
+      );
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(existsSync(runtimeBinDir)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("helper-bearing recipe rejects missing packaged license notices", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const fixture = catatonitFixture();
+      const archiveBytes = buildTarGz([
+        { path: "podman", bytes: encoder.encode("podman"), mode: 0o755 },
+        { path: "catatonit", bytes: fixture.elf, mode: 0o755 },
+      ]);
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({
+          archiveBytes,
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+        }),
+      );
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(existsSync(runtimeBinDir)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("helper-bearing same-version reuses offline when helper and notices remain valid", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const fixture = catatonitFixture();
+      const archiveBytes = buildTarGz([
+        { path: "podman", bytes: encoder.encode("podman"), mode: 0o755 },
+        { path: "catatonit", bytes: fixture.elf, mode: 0o755 },
+        { path: "licenses/catatonit/COPYING", bytes: fixture.licenseBytes, mode: 0o644 },
+      ]);
+      await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes,
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+        }),
+      );
+      let calls = 0;
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+          extractImpl: () => {
+            calls += 1;
+            return [{ path: "podman", bytes: encoder.encode("x"), mode: 0o755 }];
+          },
+        }),
+      );
+      expect(result).toEqual({
+        installed: false,
+        runtimeBinDir,
+        version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+      });
+      expect(calls).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("helper-bearing same-version re-extracts when notices are missing", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const fixture = catatonitFixture();
+      const archiveBytes = buildTarGz([
+        { path: "podman", bytes: encoder.encode("podman"), mode: 0o755 },
+        { path: "catatonit", bytes: fixture.elf, mode: 0o755 },
+        { path: "licenses/catatonit/COPYING", bytes: fixture.licenseBytes, mode: 0o644 },
+      ]);
+      await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes,
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+        }),
+      );
+      await rm(join(runtimeBinDir, "licenses"), { recursive: true, force: true });
+      let calls = 0;
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: CATATONIT_MANIFEST.recipeRuntimeVersion,
+          runtimeBinDir,
+          platform: "linux",
+          arch: "x64",
+          nativeInitHelper: fixture.pkg,
+          extractImpl: () => {
+            calls += 1;
+            return [
+              { path: "podman", bytes: encoder.encode("podman"), mode: 0o755 },
+              { path: "catatonit", bytes: fixture.elf, mode: 0o755 },
+              { path: "licenses/catatonit/COPYING", bytes: fixture.licenseBytes, mode: 0o644 },
+            ];
+          },
+        }),
+      );
+      expect(result.installed).toBe(true);
+      expect(calls).toBe(1);
+      expect(await readFile(join(runtimeBinDir, "licenses/catatonit/COPYING"), "utf8")).toBe(
+        new TextDecoder().decode(fixture.licenseBytes),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("legacy 0.1.7 same-version install does not require a bundled helper", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      await mkdir(runtimeBinDir, { recursive: true });
+      await writeFile(
+        join(runtimeBinDir, ".runtime-installed-version"),
+        `${LEGACY_NATIVE_INIT_BRIDGE_VERSION}\n`,
+      );
+      await writeFile(join(runtimeBinDir, "podman"), "podman");
+      let calls = 0;
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: LEGACY_NATIVE_INIT_BRIDGE_VERSION,
+          runtimeBinDir,
+          platform: "linux",
+          extractImpl: () => {
+            calls += 1;
+            return [{ path: "podman", bytes: encoder.encode("new"), mode: 0o755 }];
+          },
+        }),
+      );
+      expect(result).toEqual({
+        installed: false,
+        runtimeBinDir,
+        version: LEGACY_NATIVE_INIT_BRIDGE_VERSION,
+      });
+      expect(calls).toBe(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 
   test("atomically replaces stale files on version change", async () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();

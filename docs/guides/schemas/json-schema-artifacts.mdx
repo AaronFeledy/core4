@@ -27,6 +27,9 @@ draft 2020-12 schema (`https://json-schema.org/draft/2020-12/schema`) with
 shared definitions under `$defs`. The indexes (`dist/schemas/index.json` and
 `dist/command-schemas/index.json`) cover every public SDK registry entry and
 every exact canonical command id, while each schema file remains standalone.
+The command index also carries `cli:help` (`dist/command-schemas/cli-help.json`),
+the result of `lando help --format=json`, so a client can validate the help
+catalog and its plugin rows the same way it validates any command result.
 
 Reach for these when you generate types, build a validator, or diff the
 contract between releases.

@@ -176,7 +176,7 @@ describe("meta:doctor combined report", () => {
     );
     for (const columns of [40, 120]) {
       const text = stripAnsi(
-        renderDoctorReport(report, { mode: "lando", format: "text", isTTY: true, columns }),
+        renderDoctorReport(report, { mode: "lando", format: "text", isTTY: true, columns, noColor: false }),
       );
       expect(text).toContain("fix: Rewrite:");
       expect(text).toContain("| x-demo:");
@@ -222,6 +222,7 @@ describe("meta:doctor combined report", () => {
     expect(text).toContain(`app-config-lint: ${withError ? "fail" : "warn"}`);
     expect(text).toContain("Literal env warning");
     const decorated = renderDoctorReport(report, {
+      noColor: false,
       mode: "lando",
       format: "text",
       isTTY: true,
@@ -328,7 +329,7 @@ describe("meta:doctor combined report", () => {
     }
     expect(text).toContain("global-app:");
     expect(text).toContain("solution[manual]:");
-    expect(text).toContain("lando global:install");
+    expect(text).toContain("lando global:reconcile");
     expect(text).not.toContain("[object Object]");
   });
 
@@ -346,7 +347,7 @@ describe("meta:doctor combined report", () => {
     expect(check?.name).toBe("global-app");
     expect(check?.status).toBe("warn");
     expect(check?.context.installed).toBe("false");
-    expect(check?.solutions[0]?.command).toBe("lando global:install");
+    expect(check?.solutions[0]?.command).toBe("lando global:reconcile");
   });
 
   test("combined ndjson renderer emits provider, subsystem, and global-app checks in one stream", async () => {
@@ -381,6 +382,7 @@ describe("meta:doctor combined report", () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
     const ndjson = renderCompiledDoctorReport(report, {
+      noColor: false,
       mode: "lando",
       format: "ndjson",
       columns: 80,
@@ -1058,7 +1060,7 @@ describe("meta:doctor combined report", () => {
         checks: [{ context, solutions }],
       },
     });
-    const ctx = { mode: "plain", format: "yaml", columns: undefined, isTTY: false } as const;
+    const ctx = { mode: "plain", format: "yaml", columns: undefined, isTTY: false, noColor: false } as const;
     expect(metaDoctorSpec.render?.(report, { flags: { format: "yaml" } }, ctx)).toBe(
       renderDoctorReport(report, ctx),
     );

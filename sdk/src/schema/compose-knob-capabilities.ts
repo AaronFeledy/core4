@@ -17,7 +17,6 @@ export const ComposeServiceKnobKey = Schema.Literals([
   "dns_search",
   "dns_opt",
   "extra_hosts",
-  "init",
   "stop_signal",
   "stop_grace_period",
   "security_opt",

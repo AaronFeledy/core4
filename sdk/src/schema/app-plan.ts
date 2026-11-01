@@ -83,6 +83,10 @@ const ServicePlanFields = {
   artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
+  init: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Native container init for direct-child signal forwarding and orphan reaping; absence retains provider defaults.",
+  }),
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
   home: Schema.optionalKey(ServiceHomePlan).annotate({
@@ -100,6 +104,10 @@ const ServicePlanFields = {
   readiness: Schema.optionalKey(HealthcheckPlan).annotate({
     description:
       "Startup probe; defaults to healthcheck when absent. Ongoing native health uses healthcheck only.",
+  }),
+  readinessSource: Schema.optionalKey(Schema.Literals(["authored", "contributed"])).annotate({
+    description:
+      "Origin of explicit lifecycle readiness; absent for historical plans with unknown provenance.",
   }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",

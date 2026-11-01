@@ -1,5 +1,6 @@
 export * from "./app.ts";
 export * from "./build.ts";
+export * from "./bun-self.ts";
 export * from "./cause-message.ts";
 export * from "./command.ts";
 export * from "./config.ts";

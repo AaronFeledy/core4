@@ -138,7 +138,7 @@ curl -sS https://blog.wp-network.lndo.site/ | grep -o '<title>[^<]*'
 curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' https://nope.wp-network.lndo.site/
 ```
 
-If curl reports a certificate error, follow [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx). If it cannot resolve the hostname, see [Resolve lndo.site on this machine](../subsystems/host-proxy.mdx).
+If curl reports a certificate error, follow [Trust local HTTPS certificates](../subsystems/certificates-mkcert.mdx). If it cannot resolve the hostname, see [Resolve lndo.site on this machine](../subsystems/host-dns.mdx).
 
 The first prints `<title>Team Blog`, which proves the wildcard route, the certificate, and WordPress's host lookup all line up. The second returns `302` to `wp-signup.php` on the main site: an unknown subdomain still reached WordPress, which then decided it does not exist. Open `https://wp-network.lndo.site/wp-admin/network/` to manage the network in a browser.
 

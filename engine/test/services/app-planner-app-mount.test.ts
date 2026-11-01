@@ -127,6 +127,17 @@ test.each([
     ...("image" in fixture ? { image: fixture.image } : {}),
     healthcheck: authoredHealthcheck,
   });
+  if (fixture.expectedCommand === undefined) {
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("Expected commandless probe validation failure");
+    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
+    expect(error).toBeInstanceOf(LandofileValidationError);
+    if (!(error instanceof LandofileValidationError)) throw new Error("Expected landofile validation error");
+    expect(error.issues.map((issue) => formatValidationIssuePath(issue.path))).toEqual([
+      "services.web.healthcheck.command",
+    ]);
+    return;
+  }
   if (!Exit.isSuccess(exit)) throw new Error(Cause.pretty(exit.cause));
   const healthcheck = exit.value.services[ServiceName.make("web")]?.healthcheck;
   expect(healthcheck?.command).toEqual(fixture.expectedCommand);

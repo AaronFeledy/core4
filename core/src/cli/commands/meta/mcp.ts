@@ -19,7 +19,6 @@ import type { McpToolInputError, McpTransportError } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
 import { CommandRegistry, ConfigService } from "@lando/sdk/services";
 
-import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import { McpRuntimeConfig, type McpRuntimeConfigShape, McpService } from "@lando/mcp/service";
 import { mcpServeStartupError } from "@lando/mcp/stdio-limits";
 import type { RedactionService } from "@lando/redaction/service";
@@ -32,9 +31,11 @@ import type { CliInvocationSnapshot } from "../../command-lifecycle";
 import type { ResultFormat } from "../../format-flags";
 import { runWithRendererHandling } from "../../renderer-boundary";
 import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
+import { mcpRegistryWithPlugins } from "./mcp-plugins";
 import {
   type McpCommandRegistry,
   type ResolvedMcpOptions,
+  defaultIdsOf,
   knownIdsOf,
   mcpRegistryFromBuiltIns,
   mcpRegistryWithToolingEntries,
@@ -95,7 +96,15 @@ const resolveRegistryForEffectiveOptions = (
   options: ResolvedMcpOptions,
   runtimeLayer: Layer.Layer<unknown>,
 ): Effect.Effect<McpCommandRegistry, never, never> =>
-  options.tooling === true ? resolveToolingRegistry(registry, runtimeLayer) : Effect.succeed(registry);
+  Effect.scoped(
+    Layer.build(runtimeLayer).pipe(
+      Effect.orDie,
+      Effect.flatMap((context) => mcpRegistryWithPlugins(registry).pipe(Effect.provide(context))),
+      Effect.flatMap((resolved) =>
+        options.tooling === true ? resolveToolingRegistry(resolved, runtimeLayer) : Effect.succeed(resolved),
+      ),
+    ),
+  );
 
 const resolveRegistryForCommand = Effect.fnUntraced(function* (
   registry: McpCommandRegistry,
@@ -138,7 +147,7 @@ export const buildMcpRuntimeConfig = (
 ): McpRuntimeConfigShape => ({
   commandEntries: registry.commandEntries,
   ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
-  defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
+  defaultAllowlist: defaultIdsOf(registry),
   runtimeLayer,
   resources,
 });
@@ -149,12 +158,13 @@ export const mcpListResult = Effect.fn("Mcp.list")(function* (
 ): Effect.fn.Return<McpListResult, McpToolInputError, ConfigService> {
   const options = yield* resolveOptions(registry, flags);
   return buildMcpListResult({
-    defaultAllowlist: MCP_DEFAULT_ALLOWLIST,
+    defaultAllowlist: defaultIdsOf(registry),
     commandEntries: registry.commandEntries,
     ...(registry.toolingEntries === undefined ? {} : { toolingEntries: registry.toolingEntries }),
     allow: options.allow,
     deny: options.deny,
     tooling: options.tooling,
+    diagnostics: registry.diagnostics ?? [],
   });
 });
 

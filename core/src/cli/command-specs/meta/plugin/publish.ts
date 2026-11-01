@@ -47,5 +47,5 @@ export const pluginPublishSpec: LandoCommandSpec<PluginPublishResult> = {
   },
   run: (input) => pluginPublish(extractInput(input)),
   completion: (result) => commandCompletionFromExitCode(result.exitCode),
-  render: (result) => renderPluginPublishResult(result as PluginPublishResult),
+  render: (result) => renderPluginPublishResult(result),
 };

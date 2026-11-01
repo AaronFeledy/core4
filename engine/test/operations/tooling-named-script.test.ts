@@ -4,11 +4,10 @@ import { join } from "node:path";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { ToolingInputRevision, type ToolingInvocationInput } from "@lando/sdk/schema";
 import { EnvironmentValueResolver, EventService, type LandoEvent } from "@lando/sdk/services";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Result } from "effect";
 import { runBunShellTooling } from "../../src/operations/tooling-bun-script.ts";
 import { testEnvironmentResolverLayer } from "../environment-values.ts";
-import { recordingScriptEvents, withBunScript } from "./tooling-bun-script-support.ts";
+import { recordingScriptEvents, scriptHostLayer, withBunScript } from "./tooling-bun-script-support.ts";
 
 const declaration =
   "# ---\n# flags:\n#   loud:\n#     boolean: true\n#     default: true\n#   empty:\n# args:\n#   first:\n#   second:\n# ---\n";
@@ -26,10 +25,10 @@ test("sparse named scripts preserve false, empty and omission without synthesize
             input: { _tag: "NamedMaps", flags: { loud: false, empty: "" }, args: { second: "later" } },
           },
           root,
-        ).pipe(Effect.provide(Layer.merge(PrivateFileAccessService.layer, testEnvironmentResolverLayer))),
+        ).pipe(Effect.provide(Layer.merge(scriptHostLayer, testEnvironmentResolverLayer))),
       );
       // Then
-      const [values, env] = result?.stdout.trimEnd().split("\n") ?? [];
+      const [values, env] = result?.stdout?.trimEnd().split("\n") ?? [];
       expect(JSON.parse(values ?? "")).toEqual({
         flags: { loud: false, empty: "" },
         args: { second: "later" },
@@ -105,7 +104,7 @@ test.each(failures)(
               root,
             ),
           ).pipe(
-            Effect.provide(PrivateFileAccessService.layer),
+            Effect.provide(scriptHostLayer),
             Effect.provideService(RedactionService, redaction),
             Effect.provideService(EventService, recordingScriptEvents(events)),
             Effect.provideService(

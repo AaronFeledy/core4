@@ -29,5 +29,5 @@ export const pluginLinkSpec: LandoCommandSpec<PluginLinkResult> = {
     }),
   },
   run: (input) => pluginLink(extractInput(input)),
-  render: (result) => renderPluginLinkResult(result as PluginLinkResult),
+  render: (result) => renderPluginLinkResult(result),
 };

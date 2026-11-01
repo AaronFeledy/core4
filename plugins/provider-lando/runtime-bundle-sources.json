@@ -1,7 +1,7 @@
 {
-  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable. nft is provisioned into the runtime bin from pinned Debian packages (nft-versions.json) so netavark can find it without a host nftables install and without setting the invalid pasta network_backend.",
+  "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable. nft is provisioned into the runtime bin from pinned Debian packages (nft-versions.json) so netavark can find it without a host nftables install and without setting the invalid pasta network_backend. Linux catatonit is a typed Debian package component (archive: deb) extracted to bin/catatonit with static-ELF verification during assembly; each deb pin carries an exact source archive pin (url/sha256/sizeBytes) and license.source points at that source (not the binary .deb), with upstream COPYING, the Debian package copyright text, and the static-link glibc notices required by Built-Using glibc (= 2.41-12+deb13u4): upstream COPYING.LIB (glibc-2.41) plus the Debian glibc 2.41-12+deb13u4 copyright (source provenance https://sourceware.org/git/glibc.git and https://deb.debian.org/debian/pool/main/g/glibc/). Debian copyright alone is not treated as a complete substitute for the LGPL license text. Published runtime-bundle-versions.json stays on the last released payload until a helper-bearing release is published.",
   "schemaVersion": 1,
-  "runtimeVersion": "0.1.7",
+  "runtimeVersion": "0.1.8",
   "hostProvidedHelpers": ["newuidmap", "newgidmap"],
   "bundles": {
     "linux-x64": {
@@ -101,7 +101,13 @@
               "archive": "tar.gz"
             }
           ],
-          "outputs": [{ "source": "target/release/netavark", "installName": "bin/netavark", "mode": 493 }]
+          "outputs": [
+            {
+              "source": "target/release/netavark",
+              "installName": "bin/netavark",
+              "mode": 493
+            }
+          ]
         },
         {
           "name": "aardvark-dns",
@@ -133,7 +139,11 @@
             }
           ],
           "outputs": [
-            { "source": "target/release/aardvark-dns", "installName": "bin/aardvark-dns", "mode": 493 }
+            {
+              "source": "target/release/aardvark-dns",
+              "installName": "bin/aardvark-dns",
+              "mode": 493
+            }
           ]
         },
         {
@@ -165,8 +175,16 @@
             }
           ],
           "outputs": [
-            { "source": "passt", "installName": "bin/passt", "mode": 493 },
-            { "source": "pasta", "installName": "bin/pasta", "mode": 493 }
+            {
+              "source": "passt",
+              "installName": "bin/passt",
+              "mode": 493
+            },
+            {
+              "source": "pasta",
+              "installName": "bin/pasta",
+              "mode": 493
+            }
           ]
         },
         {
@@ -208,6 +226,51 @@
           "archive": "none",
           "installName": "bin/fuse-overlayfs",
           "mode": 493
+        },
+        {
+          "name": "catatonit",
+          "license": {
+            "spdx": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+            "source": "https://github.com/openSUSE/catatonit/archive/refs/tags/v0.2.1.tar.gz",
+            "texts": [
+              {
+                "file": "COPYING",
+                "url": "https://raw.githubusercontent.com/openSUSE/catatonit/v0.2.1/COPYING",
+                "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+              },
+              {
+                "file": "copyright",
+                "url": "https://metadata.ftp-master.debian.org/changelogs/main/c/catatonit/catatonit_0.2.1-2_copyright",
+                "sha256": "91b658413f8fa63a40060bb18aac958d407d454c0827c6fe78c003ea10d2018b"
+              },
+              {
+                "file": "COPYING.LIB",
+                "url": "https://raw.githubusercontent.com/bminor/glibc/glibc-2.41/COPYING.LIB",
+                "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+              },
+              {
+                "file": "glibc-copyright",
+                "url": "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u4_copyright",
+                "sha256": "f5788886720a2605a946e81d571e6c8162b09f58d2e2ceb8d36e5768fccd850d"
+              }
+            ]
+          },
+          "version": "0.2.1-2+b14",
+          "archive": "deb",
+          "url": "https://deb.debian.org/debian/pool/main/c/catatonit/catatonit_0.2.1-2+b14_amd64.deb",
+          "sha256": "e467c0b5fb1d46befc6b7edc4025abad8ade9e335ef1b2ced89fda862439a776",
+          "sizeBytes": 275200,
+          "member": "usr/bin/catatonit",
+          "binarySha256": "32ab6262b8735f567bfc42515218905e40dc8306aa2d763ffbffeb3956a20a96",
+          "binarySizeBytes": 733720,
+          "elfMachine": 62,
+          "installName": "bin/catatonit",
+          "mode": 493,
+          "source": {
+            "url": "https://github.com/openSUSE/catatonit/archive/refs/tags/v0.2.1.tar.gz",
+            "sha256": "771385049516fdd561fbb9164eddf376075c4c7de3900a8b18654660172748f1",
+            "sizeBytes": 18479
+          }
         }
       ]
     },
@@ -308,7 +371,13 @@
               "archive": "tar.gz"
             }
           ],
-          "outputs": [{ "source": "target/release/netavark", "installName": "bin/netavark", "mode": 493 }]
+          "outputs": [
+            {
+              "source": "target/release/netavark",
+              "installName": "bin/netavark",
+              "mode": 493
+            }
+          ]
         },
         {
           "name": "aardvark-dns",
@@ -340,7 +409,11 @@
             }
           ],
           "outputs": [
-            { "source": "target/release/aardvark-dns", "installName": "bin/aardvark-dns", "mode": 493 }
+            {
+              "source": "target/release/aardvark-dns",
+              "installName": "bin/aardvark-dns",
+              "mode": 493
+            }
           ]
         },
         {
@@ -372,8 +445,16 @@
             }
           ],
           "outputs": [
-            { "source": "passt", "installName": "bin/passt", "mode": 493 },
-            { "source": "pasta", "installName": "bin/pasta", "mode": 493 }
+            {
+              "source": "passt",
+              "installName": "bin/passt",
+              "mode": 493
+            },
+            {
+              "source": "pasta",
+              "installName": "bin/pasta",
+              "mode": 493
+            }
           ]
         },
         {
@@ -415,6 +496,51 @@
           "archive": "none",
           "installName": "bin/fuse-overlayfs",
           "mode": 493
+        },
+        {
+          "name": "catatonit",
+          "license": {
+            "spdx": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+            "source": "https://github.com/openSUSE/catatonit/archive/refs/tags/v0.2.1.tar.gz",
+            "texts": [
+              {
+                "file": "COPYING",
+                "url": "https://raw.githubusercontent.com/openSUSE/catatonit/v0.2.1/COPYING",
+                "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+              },
+              {
+                "file": "copyright",
+                "url": "https://metadata.ftp-master.debian.org/changelogs/main/c/catatonit/catatonit_0.2.1-2_copyright",
+                "sha256": "91b658413f8fa63a40060bb18aac958d407d454c0827c6fe78c003ea10d2018b"
+              },
+              {
+                "file": "COPYING.LIB",
+                "url": "https://raw.githubusercontent.com/bminor/glibc/glibc-2.41/COPYING.LIB",
+                "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+              },
+              {
+                "file": "glibc-copyright",
+                "url": "https://metadata.ftp-master.debian.org/changelogs/main/g/glibc/glibc_2.41-12+deb13u4_copyright",
+                "sha256": "f5788886720a2605a946e81d571e6c8162b09f58d2e2ceb8d36e5768fccd850d"
+              }
+            ]
+          },
+          "version": "0.2.1-2+b14",
+          "archive": "deb",
+          "url": "https://deb.debian.org/debian/pool/main/c/catatonit/catatonit_0.2.1-2+b14_arm64.deb",
+          "sha256": "7316a6a6ae16f0bc1ffd25c38edfda7bdf049f99d234b365efccd6c052b8cb5f",
+          "sizeBytes": 229808,
+          "member": "usr/bin/catatonit",
+          "binarySha256": "2b4dd247dd50b6dedba7666d920d28b6806b7dfdc9ffe551e0fcfd0a22e543c2",
+          "binarySizeBytes": 663640,
+          "elfMachine": 183,
+          "installName": "bin/catatonit",
+          "mode": 493,
+          "source": {
+            "url": "https://github.com/openSUSE/catatonit/archive/refs/tags/v0.2.1.tar.gz",
+            "sha256": "771385049516fdd561fbb9164eddf376075c4c7de3900a8b18654660172748f1",
+            "sizeBytes": 18479
+          }
         }
       ]
     },

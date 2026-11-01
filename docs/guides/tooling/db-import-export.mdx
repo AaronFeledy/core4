@@ -9,7 +9,7 @@ tags: [beta, docs, tooling, database]
 
 Use `lando db:import` and `lando db:export` for dump files. Use `lando db:snapshot` and `lando db:restore` for volume snapshots. Use `lando db:reset` when you want an empty database. Use `lando db:seed` to fill a database Lando freshly created from a dump, a snapshot, or another running app.
 
-Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag; with two or more, pass `--service <name>` to select the target.
+`lando help db` lists every database command with a one-line summary, and `lando db:export --help` shows one command's flags. Run dump commands from your app directory with the database service running. A single database service needs no `--service` flag; with two or more, pass `--service <name>` to select the target. Over [MCP](../../agent-native/mcp/), agents can list snapshots with `db:snapshots` by default and need an explicit `--allow` for every other `db:*` command.
 
 Export a backup before importing into a database that contains data. Import can change or delete existing data, and `--yes` skips confirmation. The examples show gzip and zstd alternatives; choose one rather than importing the same dump twice.
 
@@ -152,6 +152,10 @@ lando db:reset --yes
     </Step>
   </Scenario>
   <Scenario id="export-help" render>
+    <Step name="topic">
+      <Run command="lando help db --format=json" />
+      <Verify command="lando help db --format=json" expect={{ stdout: { regex: "\"canonicalId\":\"db:export\",[^}]*\"source\":\"plugin\",\"plugin\":\"@lando/sql\"" } }} />
+    </Step>
     <Step name="help">
       <Run command="lando db:export --help" />
       <Verify command="lando db:export --help" expect={{ stdout: { regex: "--service" } }} />

@@ -52,6 +52,7 @@ export const makeHarness = (issueFailure?: CaError) => {
   };
   const runtime = makeApplyRuntime(files);
   const dependencies: TraefikProxyDependencies = {
+    readTraefikState: () => Effect.succeed("running"),
     httpClient: runtime.httpClient,
     certificateAuthority,
     probeBind: () => Effect.succeed({ kind: "success" }),

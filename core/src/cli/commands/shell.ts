@@ -7,7 +7,7 @@ import { createPayloadRedactor } from "@lando/sdk/secrets";
  * (bash when present, otherwise sh). Host mode uses `ShellRunner` for an
  * interactive Bun Shell line REPL.
  */
-import { DateTime, Effect, Option, Queue, Stream } from "effect";
+import { DateTime, Effect, Option, Queue, Schema, Stream } from "effect";
 
 import type { AppPlanResolutionError } from "@lando/sdk/app";
 import {
@@ -98,14 +98,15 @@ const processShellIO: ShellIO = {
   },
 };
 
-export interface ShellAppResult {
-  readonly mode: "host" | "service";
-  readonly app: string;
-  readonly shell: string;
-  readonly cwd: string;
-  readonly service?: string;
-  readonly exitCode: number;
-}
+export const ShellAppResult = Schema.Struct({
+  mode: Schema.Literals(["host", "service"]).annotate({ description: "Shell execution location." }),
+  app: Schema.String.annotate({ description: "Application name." }),
+  shell: Schema.String.annotate({ description: "Shell used for the session." }),
+  cwd: Schema.String.annotate({ description: "Working directory of the shell." }),
+  service: Schema.optionalKey(Schema.String).annotate({ description: "Service name in service mode." }),
+  exitCode: Schema.Number.annotate({ description: "Shell process exit code." }),
+});
+export type ShellAppResult = typeof ShellAppResult.Type;
 
 export type ShellAppError =
   | AppPlanResolutionError
@@ -150,14 +151,6 @@ const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, Deprec
       );
     }),
   );
-};
-
-const filterStringEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (typeof value === "string") out[key] = value;
-  }
-  return out;
 };
 
 const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError => {
@@ -338,7 +331,6 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
   const hostUser = process.env.USER ?? process.env.USERNAME;
   const hostHome = process.env.HOME ?? process.env.USERPROFILE;
   const env: Record<string, string> = {
-    ...filterStringEnv(process.env),
     ...(options.env ?? {}),
     LANDO: "ON",
     LANDO_DEBUG: process.env.LANDO_DEBUG === "1" ? "1" : "",

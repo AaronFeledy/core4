@@ -7,7 +7,7 @@ tags: [beta, docs, services, healthcheck]
 
 # Make start wait for your app
 
-Add `healthcheck:` so `lando start` waits until the app answers, not only until the process is running.
+Add `readiness:` so `lando start` waits until the app answers, not only until the process is running. Keep `healthcheck:` for the container runtime's ongoing health monitoring; the two settings are independent.
 
 ```yaml
 name: myapp
@@ -17,25 +17,26 @@ services:
     command:
       - node
       - server.mjs
-    healthcheck: curl -fsS http://localhost:3000/
+    healthcheck: curl -fsS http://localhost:3000/health
+    readiness: curl -fsS http://localhost:3000/ready
 ```
 
-This edits an app that already serves HTTP on port 3000. `server.mjs` has to listen there and exit on SIGTERM. `type: "node:22"` is the Node 22 image, which includes `curl`, and Lando sets `PORT=3000`. Point the probe at that port.
+This edits an app that already serves HTTP on port 3000 with `/health` and `/ready` endpoints. Use paths your app actually implements. `server.mjs` has to listen there and exit on SIGTERM. `type: "node:22"` is the Node 22 image, which includes `curl`, and Lando sets `PORT=3000`. Point the probes at that port.
 
 ```sh
 lando start
 lando app:config --format=json
 ```
 
-Start waits for the probe to exit successfully. If its attempts run out, start reports a readiness failure. `app:config --format=json` shows the effective healthcheck configuration.
+Start waits for the readiness command to exit successfully. If its attempts run out, start reports a readiness failure. `app:config --format=json` shows both normalized authored policies; `lando info --format=json` inspects runtime state without running either probe.
 
-Writing `healthcheck:` on a typed service replaces that type's default probe. When the type runs a stronger startup check than its ongoing healthcheck, yours replaces both: start waits for your command, and nothing stronger runs underneath it.
+Writing `healthcheck:` replaces only native health. Writing `readiness:` replaces only lifecycle readiness. If you omit readiness, Lando keeps a service type's contributed readiness, such as MongoDB's stronger protocol check. When there is no contributed readiness, Lando falls back to the effective native healthcheck. Node has neither default, so author a readiness command for an application-level gate.
 
 ## Write the probe as a string or a list
 
-A string runs through `sh -c`. The shell splits `curl -fsS http://localhost:3000/`.
+A string runs through `sh -c` inside the service by default. The shell splits `curl -fsS http://localhost:3000/`. Host probes use Bun Shell instead, as described below.
 
-A list is literal argv. Lando runs those strings as the program and its arguments, with no shell. Compose markers such as `CMD`, `CMD-SHELL`, and `NONE` belong in an object's `test` list, not in bare argv. A bare list that starts with one stays literal, so the probe tries to run a program called `CMD-SHELL`. `lando app:config:lint` flags that as the warning `healthcheck.bare-compose-marker` and the Landofile stays valid. See [Lint a Landofile](../landofile/config-lint.mdx#fix-healthcheck-warnings).
+A list is literal argv. Lando runs those strings as the program and its arguments, with no shell. Compose markers such as `CMD`, `CMD-SHELL`, and `NONE` belong in an object's `test` list, not in bare argv. A bare list that starts with one stays literal, so the probe tries to run a program called `CMD-SHELL`. `lando app:config:lint` flags that as `readiness.bare-compose-marker` (or `healthcheck.bare-compose-marker` under native health) and the Landofile stays valid. See [Lint a Landofile](../landofile/config-lint.mdx#fix-healthcheck-warnings).
 
 ```yaml
 services:
@@ -44,13 +45,13 @@ services:
     command:
       - node
       - server.mjs
-    healthcheck:
+    readiness:
       - curl
       - -fsS
       - http://localhost:3000/
 ```
 
-Write the service `command:` as a list too, `[node, server.mjs]`, so the server receives SIGTERM directly rather than through `sh -lc`. Handle SIGTERM in the app so it stops before the runtime's timeout.
+Write the service `command:` as a list too, `[node, server.mjs]`. The service runs under Lando's init process, which forwards SIGTERM to the process it started; a string command puts `sh -lc` in that position, and the shell does not pass the signal on to your server. Handle SIGTERM in the app so it finishes in-flight work before it exits. See [Stop cleanly](./node.mdx#stop-cleanly) for the `init` option.
 
 ## Set timing on an object
 
@@ -63,7 +64,7 @@ services:
     command:
       - node
       - server.mjs
-    healthcheck:
+    readiness:
       kind: command
       command:
         - curl
@@ -83,7 +84,7 @@ Compose spellings work on the same object. Markers belong in `test`, not in a ba
 services:
   app:
     type: "node:22"
-    healthcheck:
+    readiness:
       test:
         - CMD
         - curl
@@ -97,15 +98,84 @@ services:
 
 `CMD` becomes an argv command. `CMD-SHELL` takes one shell string. `NONE` shows up as `false`. A duration such as `5s` becomes seconds. `lando app:config --format=json` prints that stored object, not the spelling you typed.
 
-Pick one dialect and keep it across layers. When the merged object holds a Lando field such as `command` or `intervalSeconds`, Lando reads only the Lando fields and ignores `test`, `interval`, `timeout`, and `start_period`. If one layer wrote the Lando side and another wrote the Compose side, `lando app:config:lint` warns with `healthcheck.mixed-dialects` so you can see which timing survived.
+Pick one dialect and keep it across layers. When the merged object holds a Lando field such as `command` or `intervalSeconds`, Lando reads only the Lando command/timing fields and ignores `test`, `interval`, `timeout`, and `start_period`. If one layer wrote the Lando side and another wrote the Compose side, `lando app:config:lint` warns with `readiness.mixed-dialects` (or `healthcheck.mixed-dialects` under native health) so you can see which timing survived. The shared `target` and `user` fields work with either dialect; neither makes an otherwise Compose object mixed-dialect.
 
-Probe HTTP through a command such as `curl`. The bundled runner executes commands inside the service; it does not execute `kind: http` or `kind: tcp` checks. Authoring either kind fails planning with `LandofileValidationError` at `services.<name>.healthcheck.kind`, before Lando touches a container, with every offending service listed in one error. `lando app:config:lint` reports the same finding as a `landofile.healthcheck` violation, and `lando app:cache:refresh` runs the planning step on its own; `lando start` fails at the same point.
+Both keys accept `false`, a command string, argv, or a command/timing object. Probe HTTP through a command such as `curl`; the bundled runner does not execute `kind: http` or `kind: tcp`. Unsupported kinds fail planning with `LandofileValidationError` before Lando touches a container. Use `lando app:cache:refresh --format=json` to validate the plan without starting services.
+
+## Run the probe as a container user
+
+Set `readiness.user` when the startup command must run as a particular container identity. In your existing Node app's `.lando.yml`, run its readiness request as UID and GID 1000:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    command: [node, server.mjs]
+    readiness:
+      target: service
+      user: "1000:1000"
+      command: [curl, -fsS, http://localhost:3000/ready]
+```
+
+Run these commands from the app directory on your host:
+
+```sh
+lando app:config --format=json
+lando start
+```
+
+The config should retain `target: service` and `user: "1000:1000"`. A successful readiness check means the HTTP request succeeded under that identity, not merely that an identity comparison passed. The user must be valid for the image: accepted forms are a username, numeric UID, or either followed by `:group` or `:GID`. This selects the probe's identity, not the main service process's user. Omitting `target` also means `service`.
+
+Lando waits for readiness during start, restart, rebuild, `service_healthy` dependency gates, and app-build gates. Selecting a probe user does not enable or disable native health monitoring. Any explicit `user` under `healthcheck`, even the service's usual user, fails before action with `HealthcheckTargetUnsupportedError`. Move that probe to `readiness`; keep a separate native healthcheck if you want periodic monitoring.
+
+## Wait for a file on the host
+
+Use `target: host` when a prerequisite is available on the machine running the CLI, rather than inside the container. Create an empty `.ready` file beside `.lando.yml` before starting, then use this configuration in your existing app:
+
+```yaml
+services:
+  app:
+    type: "node:22"
+    command: [node, server.mjs]
+    readiness:
+      target: host
+      command: test -f .ready
+      intervalSeconds: 1
+      retries: 10
+```
+
+From that app directory, validate the plan and start the app:
+
+```sh
+lando app:cache:refresh --format=json
+lando start
+```
+
+Plan refresh validates the configuration without starting services. Start then waits until `.ready` exists. A missing file exhausts the configured attempts; create it and retry start. If another host process creates the file, launch that process before start and ensure it can finish without waiting for this app's routes or dependent services. Those may not exist until after the readiness gate, so probing an app URL here can make startup wait on itself.
+
+For that host example, the normalized `readiness` configuration value is below. This is a configuration fragment, not runtime health or a captured info result; omitted timing fields receive defaults during planning.
+
+```json
+{
+  "target": "host",
+  "kind": "command",
+  "command": "test -f .ready",
+  "intervalSeconds": 1,
+  "retries": 10
+}
+```
+
+Host probes run with the CLI process's current identity and the app root as their working directory, not in a provider VM or a sandbox. Only use commands you trust. The string above uses Bun Shell's file test, not your interactive login shell. A list passes the program and arguments exactly without shell expansion. For example, `command: [test, -f, .ready]` needs a `test` executable on the CLI machine instead of a shell builtin.
+
+Host readiness runs at the same lifecycle gates, never as permanent host monitoring. Supply its own command through `command` or Compose `test`; it cannot borrow a type's default command, container user, or listener. Do not set `user` on it. Invalid host readiness fails planning with `HealthcheckTargetUnsupportedError` before changing containers. `target: host` under native `healthcheck` also fails with remediation to move the probe to `readiness`; `target: service` is accepted there as a no-op. Neither execution target changes native monitoring policy.
+
+Private capture prevents live streaming and process/shell execution events; it does not make the configured command confidential. Redacted lifecycle plan metadata can include the command, and failures can include bounded, redacted stderr or command context. Keep secrets in supported secret references rather than literal command text. `lando info` omits raw commands entirely.
 
 ## Turn the probe off
 
-`healthcheck: false` drops the probe. That includes one you wrote and a service type's default, such as MySQL's `mysqladmin ping`. A type that runs a stronger check at startup than it does afterwards, such as [MongoDB](./mongodb.mdx#what-ready-checks-and-what-it-doesnt), loses both. Running-state checks remain in place; start no longer waits for an application probe.
+Choose which policy to disable. `healthcheck: false` turns off native monitoring, including an inherited image healthcheck, but keeps explicit or contributed readiness. `readiness: false` disables the lifecycle command gate and prevents fallback to native health; it does not disable native monitoring. Process-running and job-completion supervision continue. A `service_healthy` dependency still requires enabled command readiness; disabling it does not relax the dependency gate and the plan is rejected.
 
-Put the override in `.lando.local.yml` when only this machine should skip the probe. `false` replaces the base value. It doesn't merge with it. A later layer that sets an object doesn't bring the old probe back. It starts from the service type's default, or from nothing when the type has none.
+Put the override in `.lando.local.yml` when only this machine should skip that policy. Literal `false` replaces its base value instead of merging with it. Disable both keys only if you intend to keep process supervision without either command policy. For [MongoDB](./mongodb.mdx#what-ready-checks-and-what-it-doesnt), native health off alone still preserves the stronger startup check.
 
 Object spellings such as `disable: true`, `test: [NONE]`, or `kind: none` are not that barrier. They merge into an inherited object like any other mapping, and Lando still validates every sibling you wrote next to them: a bad `interval` or an empty `command` fails even though the probe is off. If the merged object keeps a Lando field such as `command`, `disable: true` loses to it and the probe stays on. Reach for literal `false` when you mean off.
 
@@ -113,11 +183,12 @@ Object spellings such as `disable: true`, `test: [NONE]`, or `kind: none` are no
 services:
   app:
     healthcheck: false
+    readiness: false
 ```
 
 ## Inspect a failed start
 
-Start, restart, and rebuild normally wait for enabled probes. If a healthcheck exhausts its attempts, the command fails with `ServiceNotReadyError` and retains the applied app, routes, and volumes. When a restart policy allows recovery, an exit or observed restart can instead produce a warning and a `restarting` result before the probe passes.
+Start, restart, and rebuild normally wait for effective readiness. If it exhausts its attempts, the command fails with `ServiceNotReadyError` and retains the applied app, routes, and volumes. When a restart policy allows recovery, an exit or observed restart can instead produce a warning and a `restarting` result before the probe passes.
 
 ```sh
 lando app:config --format=json
@@ -130,15 +201,66 @@ lando logs -s app
 lando start
 ```
 
-An exhausted healthcheck stays fatal even if the service has a restart policy. To skip the probe and keep only the process-running check, set `healthcheck: false`.
+An exhausted readiness probe stays fatal even if the service has a restart policy. To skip that command gate and keep process supervision, set `readiness: false`.
+
+## Inspect configuration without claiming readiness
+
+Run `lando info --format=json` for a running app. Each service entry in the result separates `health` from `readiness`. Native `health` reports provider-observed `healthy`, `starting`, or `unhealthy`; explicitly disabled native health is `not-monitored`, and missing evidence is `unknown`, not a failure.
+
+The readiness `state` is `disabled`, `not-configured`, or `not-observed`. Its `source` is `authored`, `contributed`, `healthcheck` (fallback), `unknown` (historical provenance unavailable), or `none`. The metadata includes execution `target`, `userSource`, `listener`, timings, command presence, and a configuration pointer, not the raw command. A listener identifies the container endpoint a type-owned probe checks; it is not the host/service execution target.
+
+Info never executes probes or reports a durable last-readiness proof. `not-observed` means configured but not proved by this inspection, even after a successful start. The `ready` result returned by start is the observed gate success for that invocation; a running container or healthy native check is not a substitute.
 
 <Guide>
+  <Scenario id="execution-metadata" render={false} reason="Check canonical execution metadata and real planning without starting containers">
+    <Step name="inspect-user-and-host">
+      <UseFixture name="execution-metadata" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"readiness\":\\s*\\{[^}]*\"kind\":\\s*\"command\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"service\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"user\":\\s*\"1000:1000\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"target\":\\s*\"host\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\\[\\s*\"test\",\\s*\"-f\",\\s*\".ready\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"intervalSeconds\":\\s*2" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-host-user" render={false} reason="Reject host impersonation through the real planner before provider mutation">
+    <Step name="reject-host-user-plan">
+      <UseFixture name="host-user-invalid" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="HealthcheckTargetUnsupportedError" />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-native-host" render={false} reason="Native health cannot run on the CLI host">
+    <Step name="reject-native-host-plan">
+      <UseFixture name="native-host-invalid" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="HealthcheckTargetUnsupportedError" />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-native-user" render={false} reason="A native healthcheck cannot select a probe identity">
+    <Step name="reject-native-user-plan">
+      <UseFixture name="native-user-invalid" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="HealthcheckTargetUnsupportedError" />
+    </Step>
+  </Scenario>
+  <Scenario id="reject-missing-host-command" render={false} reason="Host readiness cannot inherit the database type command">
+    <Step name="reject-missing-host-command-plan">
+      <UseFixture name="host-command-missing" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="HealthcheckTargetUnsupportedError" />
+    </Step>
+  </Scenario>
   <Scenario id="command-form" render>
     <Step name="inspect-command-forms">
       <UseFixture name="command-form" />
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"shell\":\\s*\\{[\\s\\S]*?\"healthcheck\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\"curl -fsS http://localhost:3000/\"" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"argv\":\\s*\\{[\\s\\S]*?\"healthcheck\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\\[\\s*\"curl\",\\s*\"-fsS\",\\s*\"http://localhost:3001/\"\\s*\\]" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"shell\":\\s*\\{[\\s\\S]*?\"readiness\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\"curl -fsS http://localhost:3000/\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"argv\":\\s*\\{[\\s\\S]*?\"readiness\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\\[\\s*\"curl\",\\s*\"-fsS\",\\s*\"http://localhost:3001/\"\\s*\\]" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
     </Step>
     <Step name="cleanup-command-forms">
       <Cleanup />
@@ -149,14 +271,14 @@ An exhausted healthcheck stays fatal even if the service has a restart policy. T
     <Step name="inspect-timing">
       <UseFixture name="object-form" />
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timed\":\\s*\\{(?:(?!\"compose\":)[\\s\\S])*?\"healthcheck\":\\s*\\{[^}]*\"intervalSeconds\":\\s*7" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timed\":\\s*\\{(?:(?!\"compose\":)[\\s\\S])*?\"healthcheck\":\\s*\\{[^}]*\"timeoutSeconds\":\\s*4" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timed\":\\s*\\{(?:(?!\"compose\":)[\\s\\S])*?\"healthcheck\":\\s*\\{[^}]*\"retries\":\\s*9" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timed\":\\s*\\{(?:(?!\"compose\":)[\\s\\S])*?\"healthcheck\":\\s*\\{[^}]*\"startPeriodSeconds\":\\s*15" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"compose\":\\s*\\{(?:(?!\"timed\":)[\\s\\S])*?\"healthcheck\":\\s*\\{[^}]*\"intervalSeconds\":\\s*5" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"compose\":\\s*\\{(?:(?!\"timed\":)[\\s\\S])*?\"healthcheck\":\\s*\\{[^}]*\"timeoutSeconds\":\\s*3" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"compose\":\\s*\\{(?:(?!\"timed\":)[\\s\\S])*?\"healthcheck\":\\s*\\{[^}]*\"retries\":\\s*6" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"compose\":\\s*\\{(?:(?!\"timed\":)[\\s\\S])*?\"healthcheck\":\\s*\\{[^}]*\"startPeriodSeconds\":\\s*20" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timed\":\\s*\\{(?:(?!\"compose\":)[\\s\\S])*?\"readiness\":\\s*\\{[^}]*\"intervalSeconds\":\\s*7" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timed\":\\s*\\{(?:(?!\"compose\":)[\\s\\S])*?\"readiness\":\\s*\\{[^}]*\"timeoutSeconds\":\\s*4" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timed\":\\s*\\{(?:(?!\"compose\":)[\\s\\S])*?\"readiness\":\\s*\\{[^}]*\"retries\":\\s*9" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"timed\":\\s*\\{(?:(?!\"compose\":)[\\s\\S])*?\"readiness\":\\s*\\{[^}]*\"startPeriodSeconds\":\\s*15" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"compose\":\\s*\\{(?:(?!\"timed\":)[\\s\\S])*?\"readiness\":\\s*\\{[^}]*\"intervalSeconds\":\\s*5" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"compose\":\\s*\\{(?:(?!\"timed\":)[\\s\\S])*?\"readiness\":\\s*\\{[^}]*\"timeoutSeconds\":\\s*3" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"compose\":\\s*\\{(?:(?!\"timed\":)[\\s\\S])*?\"readiness\":\\s*\\{[^}]*\"retries\":\\s*6" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"compose\":\\s*\\{(?:(?!\"timed\":)[\\s\\S])*?\"readiness\":\\s*\\{[^}]*\"startPeriodSeconds\":\\s*20" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\\[\\s*\"curl\",\\s*\"-fsS\",\\s*\"http://localhost:3001/\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "CMD" } } }} />
     </Step>
@@ -176,7 +298,10 @@ An exhausted healthcheck stays fatal even if the service has a restart policy. T
       <UseFixture name="disabled" />
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"healthcheck\":\\s*false" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { not: { regex: "curl -fsS" } } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"readiness\":\\s*\\{\\s*\"kind\":\\s*\"command\",\\s*\"command\":\\s*\"curl -fsS http://localhost:3000/ready\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"native-only\":\\s*\\{[\\s\\S]*?\"healthcheck\":\\s*\\{[\\s\\S]*?\"command\":\\s*\"curl -fsS http://localhost:3000/health\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"native-only\":\\s*\\{[\\s\\S]*?\"readiness\":\\s*false" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
     </Step>
     <Step name="cleanup-disabled">
       <Cleanup />

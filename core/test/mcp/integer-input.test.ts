@@ -4,7 +4,7 @@ import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
 import { Effect, Layer, Result, Schema } from "effect";
-import { logsSpec } from "../../src/cli/command-specs/app/logs";
+import { logsSpec as typedLogsSpec } from "../../src/cli/command-specs/app/logs";
 import { parseFlagValue } from "../../src/cli/compiled-argv";
 import { validateEventCommandInput } from "../../src/cli/event-command-input";
 import { validateCliFlagValues } from "../../src/cli/flag-value-validation";
@@ -12,8 +12,11 @@ import {
   pluginOwnedCliFlagError,
   pluginOwnedCommandInputFromArgv,
 } from "../../src/cli/run-plugin-owned-command";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec";
 import { Flags } from "../../src/cli/spec/metadata";
 import { serviceLayer } from "../../src/mcp-command-executor";
+
+const logsSpec: LandoCommandSpec = typedLogsSpec;
 
 test("projects logs tail as an integer", () => {
   expect(deriveToolInputSchema(logsSpec)).toMatchObject({
@@ -72,7 +75,7 @@ test.each([7, 1.5, "7"])("validates real logsSpec tail %s through JSON-RPC trans
     run: (input: { readonly flags: Record<string, unknown> }) =>
       Effect.sync(() => {
         executed.push(input.flags.tail);
-        return { lines: [] };
+        return { app: "demo", lines: [] };
       }),
   };
   const layer = serviceLayer.pipe(

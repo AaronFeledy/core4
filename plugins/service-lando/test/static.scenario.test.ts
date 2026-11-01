@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
-import { compileTestLandofile, toolingValueResolverLayer } from "./support/compiled-landofile.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -22,7 +26,6 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
@@ -37,6 +40,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -178,8 +182,7 @@ const makeToolingLayer = (options: {
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
-    toolingValueResolverLayer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
@@ -203,7 +206,14 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(web.type).toBe("static:nginx");
     expect(web.artifact).toEqual({ kind: "ref", ref: "nginx:1.26-alpine" });
     expect(web.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "internal",
+        port: 80,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
     expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.healthcheck?.kind).toBe("command");
@@ -226,7 +236,14 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(web.environment.LANDO_WEBROOT).toBe("/app/dist");
     expect(serviceAppMount(web)?.readOnly).toBe(true);
     expect(web.endpoints).toEqual([
-      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+      {
+        _tag: "internal",
+        port: 80,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
     ]);
   });
 

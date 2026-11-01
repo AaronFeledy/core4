@@ -71,7 +71,7 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   redactionTokens: appConfigRedactionTokens,
   render: (result, input) => {
     const format = appConfigOptionsFromInput(input).format ?? "table";
-    return renderAppConfigResult(result as AppConfigResult, format);
+    return renderAppConfigResult(result, format);
   },
 };
 
@@ -97,7 +97,7 @@ export const appConfigMcpSpecs: ReadonlyArray<
     redactionTokens: appConfigRedactionTokens,
     render: (result, input) => {
       const format = appConfigOptionsFromInput(input).format ?? "table";
-      return renderAppConfigResult(result as AppConfigResult, format);
+      return renderAppConfigResult(result, format);
     },
   },
   {
@@ -112,7 +112,7 @@ export const appConfigMcpSpecs: ReadonlyArray<
     redactionTokens: appConfigRedactionTokens,
     render: (result, input) => {
       const format = appConfigOptionsFromInput(input).format ?? "table";
-      return renderAppConfigResult(result as AppConfigResult, format);
+      return renderAppConfigResult(result, format);
     },
   },
 ];

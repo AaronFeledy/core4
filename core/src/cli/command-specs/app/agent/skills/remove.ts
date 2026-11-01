@@ -16,5 +16,5 @@ export const appAgentSkillsRemoveSpec: LandoCommandSpec<AgentSkillsResult, Agent
   bootstrap: "minimal",
   flags: { yes: nonPromptingYesFlag },
   run: () => removeAgentSkills(),
-  render: (result) => renderAgentSkillsResult(result as AgentSkillsResult),
+  render: (result) => renderAgentSkillsResult(result),
 };

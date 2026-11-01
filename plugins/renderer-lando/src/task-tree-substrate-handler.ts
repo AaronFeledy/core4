@@ -17,7 +17,11 @@ export interface LiveRegionHandle {
   dispose(): Promise<void>;
 }
 
-export const makeTaskTreeSubstrateHandler = (io: RendererNarrationIO, controller: LiveRegionHandle) => {
+export const makeTaskTreeSubstrateHandler = (
+  io: RendererNarrationIO,
+  controller: LiveRegionHandle,
+  color: boolean,
+) => {
   let terminalColumns = io.terminalColumns;
   let terminalRows = io.terminalRows;
   const output = {
@@ -27,6 +31,7 @@ export const makeTaskTreeSubstrateHandler = (io: RendererNarrationIO, controller
   };
   const viewModel = new TaskTreeCollection(
     {
+      color,
       getTerminalColumns: () => terminalColumns,
       getTerminalRows: () => terminalRows,
     },
@@ -52,7 +57,7 @@ export const makeTaskTreeSubstrateHandler = (io: RendererNarrationIO, controller
       renderFooter();
       return;
     }
-    const line = renderLandoLine(event, true, terminalColumns);
+    const line = renderLandoLine(event, true, terminalColumns, color);
     if (line !== null) controller.commitScrollback(line.endsWith("\n") ? line : `${line}\n`);
   };
   const resize = (width: number, height: number): void => {

@@ -85,7 +85,7 @@ describe("combined doctor certificate and network-trust wiring", () => {
     expect(report.subsystems.checks.map((check) => check.name)).toEqual([
       "router",
       "ssh",
-      "host-proxy",
+      "host-dns",
       "network-trust",
       "legacy-snapshot-catalogs",
       "filesystem-watch",

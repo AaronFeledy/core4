@@ -5,8 +5,8 @@ import {
   type GlobalStartResult,
   GlobalStartResultSchema,
   globalStart,
-  renderGlobalStartResult,
-} from "../../../commands/meta/global-start";
+} from "@lando/engine/operations/global-start";
+import { renderGlobalStartResult } from "../../../commands/meta/global-start";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../../spec/command-base";
 import { serviceNamesFlag, specFlagsOf } from "../../../spec/input-coercion";
 
@@ -37,5 +37,5 @@ export const metaGlobalStartSpec: LandoCommandSpec<GlobalStartResult> = {
     }),
   },
   run: (input) => globalStart(globalStartOptionsFromInput(input)),
-  render: (result) => renderGlobalStartResult(result as GlobalStartResult),
+  render: (result) => renderGlobalStartResult(result),
 };

@@ -142,7 +142,7 @@ If you also set `command:` or `entrypoint:` on the service, yours wins. Lando wo
 
 ### Loopback-only or TLS-only servers
 
-The default checks use a plain, credential-free, non-TLS connection to the service's app-network address. They do not change your server's binding or TLS settings. If your config requires loopback-only clients or TLS, write a `healthcheck:` that matches the server you configured. An authored `healthcheck:` replaces both of Lando's checks, startup and ongoing, so make it one your server can pass:
+The default checks use a plain, credential-free, non-TLS connection to the service's app-network address. They do not change your server's binding or TLS settings. If your config requires loopback-only clients or TLS, write `readiness:` for the startup protocol check and choose native `healthcheck:` separately. Changing native health alone preserves MongoDB's stronger contributed readiness. This example replaces readiness and disables native monitoring, so it does not run an incompatible default TCP check:
 
 ```yaml
 services:
@@ -155,7 +155,8 @@ services:
         source: ./config/ca.pem
         target: /etc/lando/ca.pem
         readOnly: true
-    healthcheck:
+    healthcheck: false
+    readiness:
       - mongosh
       - --quiet
       - --norc
@@ -169,7 +170,7 @@ services:
 
 The service name `db` resolves inside its own container on the app network; use yours. The CA has to be the one your `mongod.conf` serves, and its certificate has to name the host the probe dials. For a loopback-only server, dial `127.0.0.1` instead of the service name and drop the TLS flags. A loopback probe can be answered by the image's first-boot initialization server a few seconds before the final server is up; that is the trade-off of binding loopback only.
 
-`healthcheck: false` turns off both checks. Start then waits only for the container to be running, and the first client call after start may race first-boot initialization on a fresh volume.
+`healthcheck: false` turns off native monitoring only; MongoDB's contributed readiness still runs unless you author `readiness:`. `readiness: false` turns off the startup command gate and blocks fallback without changing native health. With readiness disabled, process supervision continues, but the first client call may race fresh-volume initialization. A `service_healthy` dependency cannot use disabled readiness. Validate changes with `lando app:cache:refresh --format=json`, then use `lando start` and the authenticated ping above to verify the server and your credentials separately.
 
 ## Change the port
 

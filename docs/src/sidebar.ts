@@ -137,7 +137,7 @@ export const sidebar = [
           { label: "Run lando doctor", slug: "guides/subsystems/doctor-walkthrough" },
           { label: "Reach an app from another device", slug: "guides/subsystems/external-access" },
           { label: "Trust local HTTPS certificates", slug: "guides/subsystems/certificates-mkcert" },
-          { label: "Resolve lndo.site on this machine", slug: "guides/subsystems/host-proxy" },
+          { label: "Resolve lndo.site on this machine", slug: "guides/subsystems/host-dns" },
         ],
       },
       {

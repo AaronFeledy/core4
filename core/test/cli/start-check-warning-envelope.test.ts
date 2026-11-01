@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { DateTime, Effect, Schema } from "effect";
 
 import { runPostStartScan } from "@lando/engine/operations/post-start-scan";
-import { StartAppResultSchema } from "@lando/engine/operations/start";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
+import { StartAppResult } from "@lando/sdk/schema";
 import {
   AbsolutePath,
   AppId,
@@ -64,7 +64,7 @@ test.each(["app-error", "service-error", "lando-error"] as const)(
       rendererMode: "json",
       resultFormat: "json",
       command: "app:start",
-      resultSchema: StartAppResultSchema,
+      resultSchema: StartAppResult,
       io,
       formatError: ({ error }) => String(error),
       setExitCode: () => undefined,
@@ -81,7 +81,7 @@ test.each(["app-error", "service-error", "lando-error"] as const)(
           ]
         : [],
     );
-    const result = Schema.decodeUnknownSync(StartAppResultSchema)(envelope.result);
+    const result = Schema.decodeUnknownSync(StartAppResult)(envelope.result);
     expect(result.checks?.[0]?.verdict).toBe(verdict);
   },
 );

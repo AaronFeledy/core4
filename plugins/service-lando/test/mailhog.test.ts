@@ -76,7 +76,7 @@ describe("mailhog ServiceType", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: MAILHOG_IMAGE });
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 1025, protocol: "tcp", name: "smtp", primary: true },
-      { _tag: "internal", port: 8025, protocol: "http", name: "ui" },
+      { _tag: "internal", port: 8025, protocol: "http", name: "ui", scan: { path: "/" } },
     ]);
     expect(plan.environment).toMatchObject({ MH_SMTP_BIND_ADDR: "0.0.0.0:1025" });
   });
@@ -86,7 +86,7 @@ describe("mailhog ServiceType", () => {
 
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 2525, protocol: "tcp", name: "smtp", primary: true },
-      { _tag: "internal", port: 8025, protocol: "http", name: "ui" },
+      { _tag: "internal", port: 8025, protocol: "http", name: "ui", scan: { path: "/" } },
     ]);
     expect(plan.environment).toMatchObject({ MH_SMTP_BIND_ADDR: "0.0.0.0:2525" });
   });

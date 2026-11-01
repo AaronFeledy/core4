@@ -1,4 +1,5 @@
 import type { McpTransportError } from "@lando/sdk/errors";
+import { DateTime } from "effect";
 import { isRuntimeProxy } from "./runtime-proxy";
 import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";
 
@@ -149,6 +150,11 @@ export class BoundedDataInspector {
     }
     if (typeof value !== "object") throw inspectionFailure(this.#context);
     if (isRuntimeProxy(value)) throw inspectionFailure(this.#context);
+    // Result schemas commonly carry DateTime; keep the instance for schema encoding and charge its ISO text.
+    if (DateTime.isDateTime(value)) {
+      this.#inspectString(DateTime.formatIso(DateTime.toUtc(value)));
+      return value;
+    }
     if (Array.isArray(value)) {
       return this.#inspectArray(value);
     }

@@ -52,6 +52,8 @@ export interface TemplateEngineInputs {
 }
 
 export interface LandofileRuntimeInputs {
+  /** Read cached include snapshots without acquiring or publishing new sources or lock pins. */
+  readonly readOnly?: boolean;
   readonly transactionGuard?: Context.Service.Shape<typeof ManagedFileTransactionGuard>;
   readonly stateStore?: StateStoreShape;
   readonly ports: LandofileRuntimePorts;

@@ -1,10 +1,6 @@
 import type { NormalizedToolingArg, NormalizedToolingFlag, ToolingInputDeclaration } from "@lando/sdk/schema";
 import * as Predicate from "effect/Predicate";
-import type {
-  AppCommandIndexPayload,
-  CommandIndexEntry,
-  PluginCommandIndexPayload,
-} from "./command-index.ts";
+import type { AppCommandIndexPayload, CommandIndexEntry } from "./command-index.ts";
 
 // v8 preserves sparse arrays and non-record objects; neither is canonical cache metadata.
 const isCacheMapping = (value: unknown): value is Readonly<Record<string, unknown>> =>
@@ -154,12 +150,3 @@ export const isAppCommandIndexPayload = (value: unknown): value is AppCommandInd
   (!Object.hasOwn(value, "versionConstraints") ||
     (isDenseArray(value.versionConstraints) && value.versionConstraints.every(isVersionConstraint))) &&
   (!Object.hasOwn(value, "aliasPolicy") || isAliasPolicy(value.aliasPolicy));
-
-export const isPluginCommandIndexPayload = (value: unknown): value is PluginCommandIndexPayload =>
-  isCacheMapping(value) &&
-  hasCommonFields(value) &&
-  isStrings(own(value, "pluginNames")) &&
-  (!Object.hasOwn(value, "pluginListSha") || isString(value.pluginListSha)) &&
-  (!Object.hasOwn(value, "manifestFingerprint") || isString(value.manifestFingerprint)) &&
-  (!Object.hasOwn(value, "commandsByPlugin") ||
-    (isCacheMapping(value.commandsByPlugin) && Object.values(value.commandsByPlugin).every(isStrings)));

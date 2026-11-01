@@ -17,10 +17,13 @@ import type {
   GlobalLandofilePathConflictError,
   GlobalServiceCollisionError,
   GlobalServiceMissingError,
+  HealthcheckTargetUnsupportedError,
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileParseError,
   LandofileValidationError,
+  LandofileWriteValidationError,
+  ManagedFileTransactionError,
   NoProviderInstalledError,
   NotImplementedError,
   PluginManifestError,
@@ -63,6 +66,9 @@ type LandofileRootLoadError = Effect.Error<ReturnType<typeof loadLandofileLayers
 
 // Given: independent member lists for the intended operation contracts.
 type ExpectedLoadGlobalPlanError =
+  | GlobalServiceCollisionError
+  | PluginManifestError
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | AppPlacementError
@@ -82,6 +88,7 @@ type ExpectedLoadGlobalPlanError =
   | ProviderUnavailableError;
 
 type LegacyPlanAppChannel =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | LandofileValidationError
@@ -101,7 +108,10 @@ type LegacyOrphanTeardownError =
   | AppLockTimeoutError
   | StateStoreError;
 
-type LegacyGlobalInstallChannel =
+type ExpectedGlobalInstallError =
+  | Exclude<LandofileRootLoadError, LandofileValidationError>
+  | LandofileWriteValidationError
+  | ManagedFileTransactionError
   | AppPlacementError
   | GlobalAppError
   | GlobalDistConflictError
@@ -113,6 +123,10 @@ type LegacyGlobalInstallChannel =
   | ProviderUnavailableError;
 
 type ExpectedEnsureGlobalServicesError =
+  | AppResolveError
+  | StateStoreError
+  | LandofileWriteValidationError
+  | ManagedFileTransactionError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | AppPlacementError
@@ -144,6 +158,7 @@ type ExpectedEnsureGlobalServicesError =
   | ToolingExecError;
 
 type LegacyRemoteSyncCommandError =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | RemoteSyncError
@@ -157,6 +172,7 @@ type LegacyRemoteSyncCommandError =
   | PublicationUnsupportedError;
 
 type LegacyShareListCommandError =
+  | HealthcheckTargetUnsupportedError
   | FileSyncSelectionError
   | RouteProviderMismatchError
   | UserLandofileError
@@ -196,6 +212,8 @@ describe("Engine plan-carrying error channels", () => {
         | GlobalAppError
         | AppPlacementError
         | LandofileParseError
+        | GlobalServiceCollisionError
+        | PluginManifestError
       >
     >(true);
     expect(true).toBe(true);
@@ -218,8 +236,8 @@ describe("Engine plan-carrying error channels", () => {
     expect(true).toBe(true);
   });
 
-  test("globalInstall retains its pre-refactor error members", () => {
-    assertType<Equal<ErrOf<ReturnType<typeof globalInstall>>, LegacyGlobalInstallChannel>>(true);
+  test("globalInstall carries prepared compilation and publication failures", () => {
+    assertType<Equal<ErrOf<ReturnType<typeof globalInstall>>, ExpectedGlobalInstallError>>(true);
     expect(true).toBe(true);
   });
 
@@ -240,6 +258,9 @@ describe("Engine plan-carrying error channels", () => {
         | SecretStoreUnavailableError
         | SecretReferenceInvalidError
         | ToolingExecError
+        | Effect.Error<ReturnType<typeof globalInstall>>
+        | AppResolveError
+        | StateStoreError
       >
     >(true);
     expect(true).toBe(true);

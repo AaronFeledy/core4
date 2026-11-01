@@ -6,6 +6,7 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import * as ScratchResourceScannerLayer from "@lando/engine/scratch-app/scanner";
 import * as LandoConfigService from "@lando/engine/services/config";
+import { globalTeardownHarness } from "@lando/engine/testing/global-teardown";
 import { ProviderUnavailableError, ScratchAppError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -18,6 +19,7 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
   async (mode) => {
     // Given: a labeled scratch container and independently controlled registry state.
     const root = await mkdtemp(join(tmpdir(), "poweroff-orphan-"));
+    const teardown = await globalTeardownHarness(root);
     const id = AppId.make("scratch-orphan-abc123");
     const calls: string[] = [];
     const providerFailure = new ProviderUnavailableError({
@@ -107,6 +109,7 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
         subscribe: () => Stream.empty,
         subscribeQueue: Queue.unbounded<LandoEvent>(),
         waitFor: () => Effect.never,
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.never,
         query: () => Effect.succeed([]),
       }),
@@ -127,7 +130,14 @@ test.each(["orphan", "prune-failure", "registered", "destroy-failure"] as const)
         }).pipe(
           Effect.result,
           Effect.provide(
-            Layer.mergeAll(LandoConfigService.layer, providerLayer, scratchLayer, events, scannerLayer),
+            Layer.mergeAll(
+              teardown.layer,
+              LandoConfigService.layer,
+              providerLayer,
+              scratchLayer,
+              events,
+              scannerLayer,
+            ),
           ),
         ),
       );

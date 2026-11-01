@@ -1,4 +1,5 @@
-import { EnvironmentValueResolver } from "@lando/sdk/services";
+// allow: SIZE_OK - leaf adapters share one private request-scoped redaction, output-tail, and failure context.
+import { EnvironmentValueResolver, ProcessRunner } from "@lando/sdk/services";
 
 import { requiresProvider } from "@lando/landofile/tooling-normalize";
 import { RedactionService, createPayloadValues } from "@lando/redaction/service";
@@ -69,6 +70,7 @@ interface EventRuntimeOptions {
   readonly privateFileAccess: PrivateFileAccess;
   readonly environmentResolver: Option.Option<Context.Service.Shape<typeof EnvironmentValueResolver>>;
   readonly hostRunner?: Context.Service.Shape<typeof ShellRunner>;
+  readonly processRunner?: ProcessRunner["Service"];
   readonly redactor: Redactor;
   /** `env` maps hold env-style names; `input` holds command flags and args, named like config fields. */
   readonly redactorFor: (sources: EventRedactionSources) => Effect.Effect<EventRedactionScope>;
@@ -258,7 +260,12 @@ const runTask = Effect.fnUntraced(function* (
       String(options.plan.root),
     ).pipe(Effect.provideService(PrivateFileAccessService, options.privateFileAccess));
     if (script !== undefined) {
-      return { leaf, result: script, startedAt, redactor: variableRedaction.redactor };
+      return {
+        leaf,
+        result: { ...script, stdout: script.stdout ?? "", stderr: script.stderr ?? "" },
+        startedAt,
+        redactor: variableRedaction.redactor,
+      };
     }
     return yield* Effect.fail(
       stepFailure(
@@ -373,7 +380,18 @@ export const makeEventStepRunners = (
     );
   return {
     runCmd: (leaf) => checked(leaf, runCmd(options, leaf)),
-    runTask: (leaf, context) => checked(leaf, runTask(options, leaf, context)),
+    runTask: (leaf, context) =>
+      checked(
+        leaf,
+        options.processRunner === undefined
+          ? Effect.fail(
+              new ToolingCompileError({
+                message: "Process runner is unavailable for event task execution.",
+                tool: options.event,
+              }),
+            )
+          : runTask(options, leaf, context).pipe(Effect.provideService(ProcessRunner, options.processRunner)),
+      ),
     runCommand: (leaf) =>
       checked(
         leaf,

@@ -227,8 +227,8 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         command: options.command,
         exitCode: result.exitCode,
         kept: options.keep,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
         redactionTokens: redactionTokensFromEnv(env),
       } satisfies ScratchRunResult;
     }),

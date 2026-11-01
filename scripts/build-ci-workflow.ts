@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { applyCiSelection, ciResultSteps } from "./_ci-selection-workflow.ts";
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 import {
   CONTAINER_HELPER_ARM64_JOB_ID,
@@ -266,6 +267,16 @@ ${renderSmokeCommands(platform)}
           LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${platform.binaryName}
         run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
+      - name: Verify compiled host execution
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/host-execution-compiled.test.ts
+
+      - name: Verify compiled renderer output
+        env:
+          LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
+        run: bun test core/test/build/renderer-output-compiled.test.ts
+
       - name: Upload ${platform.id} binary
         if: always()
         uses: actions/upload-artifact@v6
@@ -500,6 +511,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         env:
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
+          LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
+          LANDO_NATIVE_INIT_E2E: "1"
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -1044,6 +1057,8 @@ const main = async (): Promise<void> => {
   const workflow = renderCiWorkflow();
 
   await Bun.write(OUTPUT, workflow);
+  // Biome 1 cannot check YAML; include the generator so this remains a real check.
+  await formatGeneratedPaths([OUTPUT, import.meta.path]);
   console.log(`[build-ci-workflow] wrote ${OUTPUT}`);
 };
 

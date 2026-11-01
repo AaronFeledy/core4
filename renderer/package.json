@@ -24,6 +24,7 @@
     "./native-stdio": "./src/native-stdio.ts",
     "./output": "./src/output.ts",
     "./output-drain": "./src/output-drain.ts",
+    "./palette": "./src/palette.ts",
     "./runtime": "./src/runtime.ts",
     "./stdio": "./src/stdio.ts",
     "./summary": "./src/summary.ts",

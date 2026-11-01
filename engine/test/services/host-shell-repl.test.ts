@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Deferred, Effect, Fiber, Layer, Queue, Stream } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
 
 import { SecretNotFoundError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -40,6 +40,7 @@ const eventLayer = (events: LandoEvent[]) =>
       subscribe: () => Stream.empty,
       subscribeQueue: Queue.unbounded<never>(),
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     }),
@@ -382,7 +383,7 @@ test("history read failure closes terminal IO exactly once", async () => {
   expect(closes).toHaveLength(1);
 });
 
-test("launch failure emits a redacted post event with non-zero status", async () => {
+test("directory preparation failure is redacted without a child status or history entry", async () => {
   // Given
   const root = await mkdtemp(join(tmpdir(), "lando-host-repl-launch-history-"));
   const historyFile = join(root, "history");
@@ -405,14 +406,21 @@ test("launch failure emits a redacted post event with non-zero status", async ()
     // Then
     const history = await readFile(historyFile, "utf8");
     const retained = `${JSON.stringify({ events, exit })}\n${history}`;
-    expect(events.map((event) => event._tag)).toEqual(["pre-shell-exec", "post-shell-exec"]);
-    const post = events.find((event) => event._tag === "post-shell-exec");
-    expect(post?._tag === "post-shell-exec" ? post.exitCode : 0).not.toBe(0);
-    expect(history.trim()).toBe("printf '[redacted]'");
+    expect(events.map((event) => event._tag)).toEqual(["pre-shell-exec"]);
+    expect(exit._tag).toBe("Failure");
+    if (Exit.isFailure(exit)) {
+      const error = Cause.findErrorOption(exit.cause);
+      expect(error._tag).toBe("Some");
+      if (error._tag === "Some") {
+        expect(error.value).toMatchObject({ _tag: "ShellExecError", cwd: "cwd\0invalid" });
+        expect(error.value.exitCode).toBeUndefined();
+        expect(error.value.remediation).toMatch(/directory/i);
+      }
+    }
+    expect(history.trim()).toBe("discarded-history");
     expect(retained).toContain("[redacted]");
     expect(retained).not.toContain(secret);
     expect(retained).not.toContain("${secret:TOKEN}");
-    expect(retained).not.toContain("discarded-history");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

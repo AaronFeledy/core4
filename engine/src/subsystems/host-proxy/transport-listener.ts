@@ -1,6 +1,7 @@
-import { chmod, lstat } from "node:fs/promises";
+import { chmod, lstat, mkdir } from "node:fs/promises";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { dirname } from "node:path";
 import { setImmediate as waitImmediate } from "node:timers/promises";
 
 import { Effect } from "effect";
@@ -11,6 +12,7 @@ import {
   causeMessage,
 } from "@lando/sdk/errors";
 
+import { verifyHostProxyRunDirectory } from "./run-directory.ts";
 import type { HostProxyRunLandoSessionOptions, HostProxySessionPaths } from "./transport-session.ts";
 
 export interface HostProxyListenResult {
@@ -67,7 +69,7 @@ const unixSocketUnavailable = (socketPath: string, cause: unknown): HostProxyTra
   new HostProxyTransportUnavailableError({
     message: causeMessage(cause),
     socketPath,
-    remediation: "Ensure the app run directory is writable.",
+    remediation: "Ensure the app run directory is owned by you, is not a symlink, and has mode 0700.",
   });
 
 export const closeListeningServer = (server: Server): Promise<void> =>
@@ -88,12 +90,13 @@ export const closeListeningServer = (server: Server): Promise<void> =>
   });
 
 const lockDownUnixSocket = async (socketPath: string, chmodSocket: typeof chmod = chmod): Promise<void> => {
-  await chmodSocket(socketPath, 0o600);
+  await chmodSocket(socketPath, 0o666);
   // Yield so a concurrent unlink/replace is visible before we publish the session.
   await waitImmediate();
   const info = await lstat(socketPath);
-  if (!info.isSocket() || (info.mode & 0o777) !== 0o600) {
-    throw new Error(`Host-proxy socket at ${socketPath} is not a mode-0600 unix socket.`);
+  await verifyHostProxyRunDirectory(dirname(socketPath));
+  if (!info.isSocket() || (info.mode & 0o777) !== 0o666 || info.uid !== process.getuid?.()) {
+    throw new Error(`Host-proxy socket at ${socketPath} is not an owned mode-0666 unix socket.`);
   }
 };
 
@@ -110,42 +113,54 @@ const secureSocket = (
   }).pipe(Effect.tapError(() => Effect.promise(() => closeListeningServer(server))));
 };
 
-export const listenHostProxyServer = (
+export const listenHostProxyServer = Effect.fnUntraced(function* (
   server: Server,
   paths: HostProxySessionPaths,
   options: Pick<HostProxyRunLandoSessionOptions, "hostGatewayName">,
   chmodSocket: typeof chmod = chmod,
-): Effect.Effect<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError> =>
-  Effect.callback<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError>(
-    (resume) => {
-      let settled = false;
-      const previousUmask = process.umask(0o177);
-      const restoreUmask = (): void => {
-        process.umask(previousUmask);
-      };
-      const fail = (failure: HostProxySocketStaleError | HostProxyTransportUnavailableError): void => {
-        if (settled) return;
-        settled = true;
-        restoreUmask();
-        resume(Effect.fail(failure));
-      };
-      server.once("error", (cause) => {
-        fail(listenFailure(cause, paths.socketPath ?? paths.stateDir));
-      });
-      const completeListen = (): void => {
-        if (settled) return;
-        settled = true;
-        restoreUmask();
-        const listenResult =
-          paths.transport === "tcp-host-gateway"
-            ? tcpListenResult(server, paths, options)
-            : Effect.succeed({ socketOwned: true });
-        resume(listenResult.pipe(Effect.tap(secureSocket(server, paths, chmodSocket))));
-      };
-      if (paths.transport === "tcp-host-gateway") {
-        server.listen(0, "127.0.0.1", completeListen);
-      } else if (paths.socketPath !== undefined) {
-        server.listen(paths.socketPath, completeListen);
-      }
-    },
-  );
+): Effect.fn.Return<HostProxyListenResult, HostProxySocketStaleError | HostProxyTransportUnavailableError> {
+  if (paths.transport === "unix-socket" && paths.socketPath !== undefined) {
+    const directory = dirname(paths.socketPath);
+    yield* Effect.tryPromise({
+      try: async () => {
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        await verifyHostProxyRunDirectory(directory);
+      },
+      catch: (cause) => unixSocketUnavailable(paths.socketPath ?? directory, cause),
+    });
+  }
+  return yield* Effect.callback<
+    HostProxyListenResult,
+    HostProxySocketStaleError | HostProxyTransportUnavailableError
+  >((resume) => {
+    let settled = false;
+    const previousUmask = process.umask(0o177);
+    const restoreUmask = (): void => {
+      process.umask(previousUmask);
+    };
+    const fail = (failure: HostProxySocketStaleError | HostProxyTransportUnavailableError): void => {
+      if (settled) return;
+      settled = true;
+      restoreUmask();
+      resume(Effect.fail(failure));
+    };
+    server.once("error", (cause) => {
+      fail(listenFailure(cause, paths.socketPath ?? paths.stateDir));
+    });
+    const completeListen = (): void => {
+      if (settled) return;
+      settled = true;
+      restoreUmask();
+      const listenResult =
+        paths.transport === "tcp-host-gateway"
+          ? tcpListenResult(server, paths, options)
+          : Effect.succeed({ socketOwned: true });
+      resume(listenResult.pipe(Effect.tap(secureSocket(server, paths, chmodSocket))));
+    };
+    if (paths.transport === "tcp-host-gateway") {
+      server.listen(0, "127.0.0.1", completeListen);
+    } else if (paths.socketPath !== undefined) {
+      server.listen(paths.socketPath, completeListen);
+    }
+  });
+});

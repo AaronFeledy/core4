@@ -2,7 +2,14 @@ import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { ProviderUnavailableError, ScannerError } from "@lando/sdk/errors";
-import { type AppId, type AppPlan, type ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  type AppId,
+  type AppPlan,
+  type EndpointRef,
+  type ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   type PortCollision,
@@ -15,6 +22,7 @@ import {
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { collectObservedConnections, observeService } from "../../operations/connection-collector.ts";
 import { observedPublicationConnection, serviceState } from "../../operations/service-connections.ts";
+import { endpointScanPolicy } from "../../services/endpoint-scan.ts";
 import {
   SCANNER_ID,
   type ScanSourceEndpoint,
@@ -47,6 +55,14 @@ export const makeUrlScanner = (
   overrides: Partial<UrlScanConfig> = {},
 ): UrlScannerShape => {
   const config: UrlScanConfig = { ...defaultUrlScanConfig, ...overrides };
+  const resolveConfig = (
+    service: ServicePlan | undefined,
+    endpoint: EndpointRef | undefined,
+  ): UrlScanConfig => {
+    const resolved = service?.scanner === undefined ? config : scanConfigFromPlan(service.scanner, config);
+    const policy = endpointScanPolicy(service, endpoint);
+    return { ...resolved, path: policy?.path ?? resolved.path, okCodes: policy?.okCodes ?? resolved.okCodes };
+  };
   return UrlScanner.of({
     id: SCANNER_ID,
     scan: Effect.fn("UrlScanner.scan")(function* (appId, options) {
@@ -57,8 +73,10 @@ export const makeUrlScanner = (
       const candidates =
         options?.urls === undefined
           ? (yield* deps.listEndpoints(appId, options?.plan)).flatMap((endpoint) => {
-              const scan = options?.plan?.services[endpoint.service]?.scanner;
-              const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
+              const resolved = resolveConfig(
+                options?.plan?.services[endpoint.service] ?? endpoint.servicePlan,
+                endpoint.endpoint,
+              );
               return resolved.enabled
                 ? scanTargets([endpoint], resolved.path).map((target) => ({ target, config: resolved }))
                 : [];
@@ -71,8 +89,7 @@ export const makeUrlScanner = (
                 host?.includes("*")
               )
                 return [];
-              const scan = options.plan?.services[supplied.service]?.scanner;
-              const resolved = scan === undefined ? config : scanConfigFromPlan(scan, config);
+              const resolved = resolveConfig(options.plan?.services[supplied.service], supplied.endpoint);
               return resolved.enabled ? [{ target: supplied, config: resolved }] : [];
             });
       const targets = [
@@ -87,7 +104,7 @@ export const makeUrlScanner = (
             { ...deps, ...(options?.onAttempt === undefined ? {} : { onAttempt: options.onAttempt }) },
             config,
             redactor,
-            target,
+            { service: target.service, url: target.url },
           ),
         { concurrency: 4 },
       );
@@ -153,7 +170,11 @@ const listEndpointsFromProvider = (provider: RuntimeProviderShape) =>
         infos.map((runtime) => observeService(plan, runtime)),
       );
       return rows.flatMap((row) =>
-        row.connections.map((connection) => ({ ...connection, service: ServiceName.make(row.name) })),
+        row.connections.map((connection) => ({
+          ...connection,
+          service: ServiceName.make(row.name),
+          servicePlan: plan.services[ServiceName.make(row.name)],
+        })),
       );
     }
     return infos.flatMap((runtime) =>

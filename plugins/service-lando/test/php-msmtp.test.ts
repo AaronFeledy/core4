@@ -10,8 +10,9 @@ import {
   msmtpBuildKeyInput,
   msmtpBuildStepCommand,
   msmtpPinFor,
-  resolveMsmtpBaseFamily,
 } from "../src/services/php-msmtp.ts";
+import { resolvePhpRuntimePolicy } from "../src/services/php-runtime-policy.ts";
+import { resolvePhpVia } from "../src/services/php-via.ts";
 
 const config = (input: Record<string, unknown>) => Schema.decodeUnknownSync(ServiceConfig)(input);
 
@@ -23,9 +24,10 @@ describe("msmtp base family resolution", () => {
     [{ type: "php:8.3", image: "php:8.3-apache-bookworm" }],
   ])("stock PHP services resolve to the bookworm family: %j", (input) => {
     // Given / When
-    const family = resolveMsmtpBaseFamily(config(input));
+    const service = config(input);
+    const family = resolvePhpRuntimePolicy(service, "8.3", resolvePhpVia(service.via)).baseFamily;
     // Then
-    expect(family).toBe("debian-bookworm");
+    expect(family).toMatchObject({ kind: "known", family: "debian-bookworm" });
   });
 
   test.each([
@@ -36,9 +38,9 @@ describe("msmtp base family resolution", () => {
     ["docker.io/library/php:8.3-fpm-bookworm", "debian-bookworm"],
   ] as const)("canonical php tags resolve by their explicit suite suffix: %s", (image, expected) => {
     // Given / When
-    const family = resolveMsmtpBaseFamily(config({ type: "php:8.3", image }));
+    const family = resolvePhpRuntimePolicy(config({ type: "php:8.3", image }), "8.3", "apache").baseFamily;
     // Then
-    expect(family).toBe(expected);
+    expect(family).toMatchObject({ kind: "known", family: expected });
   });
 
   test.each([
@@ -51,9 +53,9 @@ describe("msmtp base family resolution", () => {
     ["ubuntu:24.04"],
   ])("images without a provable family resolve to undefined: %s", (image) => {
     // Given / When
-    const family = resolveMsmtpBaseFamily(config({ type: "php:8.3", image }));
+    const family = resolvePhpRuntimePolicy(config({ type: "php:8.3", image }), "8.3", "apache").baseFamily;
     // Then
-    expect(family).toBeUndefined();
+    expect(family).toEqual({ kind: "unknown", reason: "unproven-image-family" });
   });
 });
 

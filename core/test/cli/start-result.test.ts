@@ -26,6 +26,7 @@ const expectQuiet = (text: string, width: number): void => {
 const visible = (text: string): string => stripAnsi(text);
 
 const decorated = (columns = 80): RenderContext => ({
+  noColor: false,
   mode: "lando",
   format: "text",
   columns,
@@ -325,6 +326,7 @@ describe("renderStartAppResult non-decorated compatibility", () => {
 
   test("stays a plain line in non-TTY lando mode", () => {
     const out = renderStartAppResult(readyResult, {
+      noColor: false,
       mode: "lando",
       format: "text",
       columns: 80,
@@ -338,6 +340,7 @@ describe("renderStartAppResult non-decorated compatibility", () => {
 
   test("stays a plain line in plain TTY mode", () => {
     const out = renderStartAppResult(readyResult, {
+      noColor: false,
       mode: "plain",
       format: "text",
       columns: 80,
