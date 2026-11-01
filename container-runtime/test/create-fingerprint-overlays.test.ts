@@ -112,3 +112,24 @@ test("preserves literal v3 create identities captured before overlay refactoring
     knownHosts: "v3:9e9b6b9f855df341f570cd09a8817283d6ffbf0116f0b3bfac06602b7ff28cbb",
   });
 });
+
+test("fingerprints source identity only when a bind defines it", () => {
+  // Given an ordinary known_hosts bind, not an excluded session mount.
+  const mount = {
+    ...bind("/etc/ssh/ssh_known_hosts"),
+    source: "/home/user/.ssh/known_hosts",
+    createHostPath: false,
+  };
+  const fingerprint = (sourceIdentity?: string) =>
+    commonContainerLabels(plan, {
+      ...service,
+      mounts: [{ ...mount, ...(sourceIdentity === undefined ? {} : { sourceIdentity }) }],
+    })[CREATE_CONFIG_LABEL];
+  // When inode identity is introduced or replaced.
+  const absent = fingerprint();
+  const original = fingerprint("2049:9007199254740993");
+  const replaced = fingerprint("2049:9007199254740994");
+  // Then old plans keep their exact bytes while a new inode requires reconciliation.
+  expect(absent).toBe("v3:9e9b6b9f855df341f570cd09a8817283d6ffbf0116f0b3bfac06602b7ff28cbb");
+  expect(new Set([absent, original, replaced]).size).toBe(3);
+});
