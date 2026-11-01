@@ -18,8 +18,8 @@ import { assertListenerConfig, plannedPort } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_AMQP_PORT = Schema.decodeUnknownSync(PortNumber)(5672);
-const MANAGEMENT_PORT = Schema.decodeUnknownSync(PortNumber)(15672);
-const RABBITMQ_LISTENER = {
+export const MANAGEMENT_PORT = Schema.decodeUnknownSync(PortNumber)(15672);
+export const RABBITMQ_LISTENER = {
   port: DEFAULT_AMQP_PORT,
   variable: "RABBITMQ_NODE_PORT",
   daemon: "RabbitMQ",

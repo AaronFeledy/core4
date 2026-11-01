@@ -16,7 +16,8 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { TOMCAT_CATALOG } from "./generated/tomcat-catalog.ts";
 
-const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
+export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(8080);
+export const APP_MOUNT_TARGET = "/app";
 const TomcatFeatureConfig = Schema.Struct({
   webroot: Schema.String,
   ownsImageConfig: Schema.Boolean,
@@ -115,7 +116,7 @@ const makeTomcatServiceType = (id: string, major: (typeof VERSIONS)[number]): Se
             },
           },
           { id: "lando.env", config: { webroot } },
-          { id: "lando.app-mount", config: { target: "/app" } },
+          { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
       };
     });

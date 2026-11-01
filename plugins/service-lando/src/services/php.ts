@@ -39,6 +39,7 @@ export {
   renderPhpBaselineIni,
 } from "./php-baseline.ts";
 export { PHP_FPM_LOG_SOURCES, SUPPORTED_PHP_VERSIONS, type SupportedPhpVersion } from "./php-via.ts";
+export const APP_MOUNT_TARGET = "/app";
 const PhpVersion = Schema.Literals(SUPPORTED_PHP_VERSIONS);
 const PHP_ARTIFACTS = Object.fromEntries(
   SUPPORTED_PHP_VERSIONS.map((version) => [version, phpImageFor(version, "apache")]),
@@ -93,7 +94,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
         features: [
           { id: PHP_FEATURE_ID, config: { allowOverride, version: resolvedVersion, via, webroot, policy } },
           { id: "lando.env", config: { webroot } },
-          { id: "lando.app-mount", config: { target: "/app", workingDirectory: webroot } },
+          { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET, workingDirectory: webroot } },
         ],
         ...(xdebug === false ? {} : { tooling: phpXdebugTooling(input.name, via, xdebug.mode) }),
       };

@@ -7,7 +7,7 @@ import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "memcached:1.6";
-const DEFAULT_PORT = 11211;
+export const DEFAULT_PORT = 11211;
 export const MEMCACHED_FEATURE_ID = "service-lando.memcached";
 
 const applyMemcachedFeature = (ctx: ServiceFeatureContext): void => {

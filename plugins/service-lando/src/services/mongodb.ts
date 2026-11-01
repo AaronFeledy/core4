@@ -24,7 +24,7 @@ import { mongodbProbes } from "./mongodb-probes.ts";
 const DEFAULT_IMAGE = "mongo:7";
 const VERSIONS = ["7"] as const;
 const ARTIFACTS = { "7": DEFAULT_IMAGE } as const;
-const DEFAULT_PORT = 27017;
+export const DEFAULT_PORT = 27017;
 const DATA_TARGET = PortablePath.make("/data/db");
 const FAMILY = "mongodb" as const;
 export const MONGODB_FEATURE_ID = "service-lando.mongodb";
