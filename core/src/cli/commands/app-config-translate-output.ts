@@ -74,8 +74,68 @@ const DIAGNOSTIC_GLYPH = {
   "needs-review": "?",
 } as const;
 
-const diagnosticComment = (diagnostic: ConfigTranslateDiagnostic): string =>
-  `# ${DIAGNOSTIC_GLYPH[diagnostic.kind]} ${diagnostic.message} (${diagnostic.sourceId}:${diagnostic.keyPath.join(".")})`;
+const DIAGNOSTIC_ORDER = [
+  "unsupported",
+  "non-portable",
+  "needs-review",
+  "dropped",
+  "rewritten",
+  "generated",
+] as const;
+
+// Comment every physical line, including multiline plugin messages and paths.
+const comment = (text: string): string =>
+  text
+    .split(/\r\n|[\n\r\u2028\u2029]/u)
+    .map((line) => `# ${line}`)
+    .join("\n");
+
+export const renderTranslateDiagnostics = (diagnostics: ReadonlyArray<ConfigTranslateDiagnostic>): string => {
+  if (diagnostics.length === 0) return "";
+  const groups = new Map<
+    string,
+    { readonly diagnostic: ConfigTranslateDiagnostic; readonly leaves: Array<string | number> }
+  >();
+  for (const diagnostic of diagnostics) {
+    const parent = diagnostic.keyPath.length === 0 ? null : diagnostic.keyPath.slice(0, -1);
+    const key = JSON.stringify([
+      diagnostic.kind,
+      diagnostic.sourceId,
+      parent,
+      diagnostic.message,
+      diagnostic.remediation,
+    ]);
+    const leaf = diagnostic.keyPath.at(-1);
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, { diagnostic, leaves: leaf === undefined ? [] : [leaf] });
+    else if (leaf !== undefined) group.leaves.push(leaf);
+  }
+  const summary = DIAGNOSTIC_ORDER.flatMap((kind) => {
+    const count = diagnostics.filter((diagnostic) => diagnostic.kind === kind).length;
+    if (count === 0) return [];
+    const blocking = kind === "unsupported" || kind === "non-portable";
+    return [`${count} ${kind}${blocking ? " (blocks --write)" : ""}`];
+  }).join(", ");
+  const grouped = [...groups.values()];
+  return [
+    comment(summary),
+    ...DIAGNOSTIC_ORDER.flatMap((kind) =>
+      grouped
+        .filter(({ diagnostic }) => diagnostic.kind === kind)
+        .map(({ diagnostic, leaves }) => {
+          const path =
+            leaves.length > 1
+              ? [...diagnostic.keyPath.slice(0, -1), `{${leaves.join(", ")}}`].join(".")
+              : diagnostic.keyPath.join(".");
+          const remediation =
+            kind === "generated" || kind === "rewritten" ? undefined : diagnostic.remediation;
+          return comment(
+            `${DIAGNOSTIC_GLYPH[kind]} [${kind}] ${diagnostic.message} (${diagnostic.sourceId}:${path})${remediation === undefined ? "" : `\n  Next: ${remediation}`}`,
+          );
+        }),
+    ),
+  ].join("\n");
+};
 
 const renderAnnotated = (
   header: string,
@@ -84,9 +144,13 @@ const renderAnnotated = (
 ): string =>
   [
     header,
-    ...diagnostics.map(diagnosticComment),
-    ...(deletions.length > 0 ? [`# deletions: ${deletions.map((item) => item.sourceId).join(", ")}`] : []),
-  ].join("\n");
+    renderTranslateDiagnostics(diagnostics),
+    ...(deletions.length > 0
+      ? [comment(`deletions: ${deletions.map((item) => item.sourceId).join(", ")}`)]
+      : []),
+  ]
+    .filter(Boolean)
+    .join("\n");
 
 /**
  * A single target reads as the bare Landofile; several targets are labeled with
@@ -125,11 +189,22 @@ export const renderConfigTranslateResult = (
         : renderAnnotated(result.content.replace(/\n$/u, ""), result.diagnostics, result.deletions);
     case "write": {
       const header = [
-        ...result.written.map((path) => `${path}: wrote ${result.target} Landofile layer.`),
-        ...result.removed.map((path) => `${path}: removed translated source.`),
-        ...result.backups.map((path) => `# backup: ${path}`),
+        ...result.written.map((path) => comment(`${path}: wrote ${result.target} Landofile layer.`)),
+        ...result.removed.map((path) => comment(`${path}: removed translated source.`)),
       ].join("\n");
-      return renderAnnotated(header, result.diagnostics, result.deletions);
+      return [
+        renderAnnotated(header, result.diagnostics, result.deletions),
+        comment(
+          `Receipt: ${result.written.length} written, ${result.removed.length} removed, ${result.backups.length} backup${result.backups.length === 1 ? "" : "s"}`,
+        ),
+        ...result.backups.map((path) => comment(`backup: ${path}`)),
+        comment(
+          `Review: ${result.diagnostics.filter((item) => item.kind === "needs-review").length} needs-review, ${result.diagnostics.filter((item) => item.kind === "dropped").length} dropped`,
+        ),
+        comment("Next: lando app:config:lint"),
+      ]
+        .filter(Boolean)
+        .join("\n");
     }
     default: {
       const exhaustive: never = result;
