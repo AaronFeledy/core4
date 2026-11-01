@@ -4,7 +4,7 @@ Describe the problem and resulting behavior.
 
 ## PR evidence
 
-Complete [Record PR evidence](../docs/contributing/ci.md#record-pr-evidence) here or link a report containing its revision fields, per-command/platform rows, and mandatory and conditional checklists.
+Complete [Record PR evidence](https://aaronfeledy.github.io/core4/contributing/ci/#record-pr-evidence) here or link a report containing its revision fields, per-command/platform rows, and mandatory and conditional checklists. The [runbook source](https://github.com/AaronFeledy/core4/blob/main/docs/contributing/ci.md#record-pr-evidence) is also available on GitHub.
 
 - Evidence report:
 - Selected CI outcome (`pass` / `fail` / `not run` / `blocked`), profile, and run:
