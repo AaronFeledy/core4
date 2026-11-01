@@ -90,13 +90,14 @@ describe.serial("bundled service listener matrix", () => {
                 subject: {
                   appMount: false,
                   home: false,
+                  certs: false,
                   ...item.fixture.service,
                   ...(item.moved ? { port } : {}),
                   ...(family === "minio" && minioImage ? { image: minioImage } : {}),
                 },
                 // Approved sole two-service exception: the bundled Varnish launcher requires a backend.
                 ...(family === "varnish"
-                  ? { backend: { type: "nginx", appMount: "/app", home: false } }
+                  ? { backend: { type: "nginx", appMount: "/app", home: false, certs: false } }
                   : {}),
               } satisfies NonNullable<typeof LandofileShape.Encoded.services>;
               // When: the compiled CLI plans and starts the service on its default or moved port.
