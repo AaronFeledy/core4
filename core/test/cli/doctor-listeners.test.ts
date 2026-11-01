@@ -1,16 +1,21 @@
 import { expect, test } from "bun:test";
-import { makeLandoPaths } from "@lando/paths";
-import { GlobalConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import { ConfigService, PathsService } from "@lando/sdk/services";
-import { Deferred, Effect, Fiber, Layer, Schema, Stream } from "effect";
+import { ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { Deferred, Effect, Fiber, Schema, Stream } from "effect";
 import { TestClock } from "effect/testing";
 import { listenerDoctorChecks } from "../../src/cli/commands/doctor-listeners.ts";
 import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report-render.ts";
-import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import {
+  DoctorReportSchema,
+  doctorReport,
+  renderDoctorReport,
+  renderDoctorReportAsNdjson,
+} from "../../src/cli/commands/doctor-report.ts";
+import { renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import {
   listenerOutput,
   listenerProvider,
   listenerRegistry,
+  listenerReportLayers,
   tcpTable,
   withListenerApp,
 } from "./doctor-listeners-fixture.ts";
@@ -34,7 +39,8 @@ test.each([
     const text = renderDoctorResult(result);
     expect(text).toContain(`listenerState: ${listenerState}`);
     if (status === "warn") {
-      expect(result.checks[0]?.solutions[0]?.description).toContain("Your application owns this listener.");
+      expect(result.checks[0]?.solutions[0]?.description).toContain("0.0.0.0:8080");
+      expect(result.checks[0]?.solutions[0]?.description).toContain("`PORT` and `FLASK_RUN_PORT`");
       expect(text).toContain("solution[manual]:");
     } else {
       expect(result.checks[0]?.solutions).toEqual([]);
@@ -48,7 +54,8 @@ test.each([
     const summary = buildDoctorReportSummary(
       {
         version: "test",
-        provider: result,
+        provider: { checks: [] },
+        appListeners: result,
         subsystems: { checks: [] },
         globalApp: { checks: [] },
         mcp: { checks: [] },
@@ -132,30 +139,23 @@ test("selects the applied provider and runs only under --app", async () => {
         return listenerOutput(tcpTable("00000000"));
       },
     });
-    const config = Schema.decodeSync(GlobalConfig)({
-      defaultProviderId: plan.provider,
-      telemetry: { enabled: false },
-    });
-    const layers = Layer.mergeAll(
-      listenerRegistry(plan, provider),
-      Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
-      Layer.succeed(
-        ConfigService,
-        ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-      ),
-    );
+    const layers = listenerReportLayers(plan, provider);
     const withoutApp = await Effect.runPromise(
-      doctor({ env: {}, flagProviderId: "lando" }, []).pipe(Effect.provide(layers)),
+      doctorReport({ env: {}, flagProviderId: "lando" }).pipe(Effect.provide(layers)),
     );
-    expect(withoutApp.checks.filter((check) => check.name === "app-listener")).toEqual([]);
+    expect(withoutApp.appListeners).toBeUndefined();
     expect(executions).toBe(0);
     const withApp = await Effect.runPromise(
-      doctor({ env: {}, app: true, flagProviderId: "lando" }, []).pipe(Effect.provide(layers)),
+      doctorReport({ env: {}, app: true, flagProviderId: "lando" }).pipe(Effect.provide(layers)),
     );
-    expect(withApp.checks.find((check) => check.name === "app-listener")).toMatchObject({
+    expect(withApp.appListeners?.checks.find((check) => check.name === "app-listener")).toMatchObject({
       status: "pass",
       providerId: "docker",
     });
+    expect(withApp.provider.checks.some((check) => check.name === "app-listener")).toBe(false);
+    expect(Schema.encodeSync(DoctorReportSchema)(withApp).appListeners?.checks).toHaveLength(1);
+    expect(renderDoctorReport(withApp)).toContain("app-listeners:\napp-listener: pass");
+    expect(renderDoctorReportAsNdjson(withApp)).toContain('"listenerState":"listening"');
     expect(executions).toBe(1);
   });
 });
@@ -228,7 +228,6 @@ test("keeps multiple waves of bounded reads within the production section budget
       }),
     );
     const plan = { ...original, services };
-    const config = Schema.decodeSync(GlobalConfig)({ telemetry: { enabled: false } });
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const started = yield* Deferred.make<void>();
@@ -242,23 +241,16 @@ test("keeps multiple waves of bounded reads within the production section budget
               }),
             ),
         });
-        const layers = Layer.mergeAll(
-          listenerRegistry(plan, provider),
-          Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
-          Layer.succeed(
-            ConfigService,
-            ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
-          ),
-        );
+        const layers = listenerReportLayers(plan, provider);
         const fiber = yield* Effect.forkChild(
-          doctor({ app: true, env: {}, flagProviderId: "lando" }, []).pipe(Effect.provide(layers)),
+          doctorReport({ app: true, env: {}, flagProviderId: "lando" }).pipe(Effect.provide(layers)),
         );
         yield* Deferred.await(started);
         yield* TestClock.adjust("5400 millis");
         return yield* Fiber.join(fiber);
       }).pipe(Effect.provide(TestClock.layer())),
     );
-    expect(result.checks.filter((check) => check.name === "app-listener")).toHaveLength(9);
+    expect(result.appListeners?.checks.filter((check) => check.name === "app-listener")).toHaveLength(9);
     expect(result.skipped?.filter((entry) => entry.section.startsWith("app-listener")) ?? []).toEqual([]);
   });
 });

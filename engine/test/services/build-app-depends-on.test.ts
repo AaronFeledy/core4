@@ -49,7 +49,11 @@ test("projects a failed healthy gate listener onto the app build failure", async
     const plan = planWith(
       { db: [], web: [install()] },
       {
-        db: { healthcheck, endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }] },
+        db: {
+          healthcheck,
+          endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+          listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
+        },
         web: dependsOn(dependency("db", "service_healthy")),
       },
     );
@@ -72,6 +76,9 @@ test("projects a failed healthy gate listener onto the app build failure", async
       "web:app:install blocked by db:healthy: no TCP listener observed on 6380; observed ports: 6379",
     );
     expect(error.remediation.split("\n")[0]).toStartWith("Make db listen on 6380");
+    expect(error.remediation.split("\n")[1]).toBe(
+      "Pass `--port 6380` to Redis in your command or entrypoint; Lando sets the listener from port: only in its own launcher.",
+    );
     expect(error.remediation).toContain("lando logs -s db");
     expect(error.remediation).not.toContain("observed ports");
   });

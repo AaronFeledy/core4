@@ -311,7 +311,7 @@ describe("bringUp start-failure log tail", () => {
       expect(error.service).toBe("web");
       expect(error.listener).toBeUndefined();
       expect(error.remediation).toBe(
-        `Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for postgres, pass \`--token [redacted]\`.\n${dependencyRemediation}`,
+        `Pass \`--token [redacted]\` to postgres in your command or entrypoint; Lando sets the listener from port: only in its own launcher.\n${dependencyRemediation}`,
       );
       expect(JSON.stringify(error)).not.toContain("dependency-secret");
       expect(requests.some((request) => request.endsWith(`${serviceContainerName(plan, "web")}/start`))).toBe(

@@ -34,6 +34,9 @@ export const SOLR_LISTENER = {
   daemon: "Solr",
   when: "All Solr services; stop-port reservation follows the effective launcher",
   launcher: { setting: (port: number) => `-p ${port}` },
+  derived: [
+    { use: "loopback stop listener (STOP_PORT)", offset: -1000, variable: "STOP_PORT", loopback: true },
+  ],
 } as const;
 export const DEFAULT_PORT = SOLR_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/var/solr");
@@ -106,25 +109,26 @@ const defaultCommand = (port: number, cores: readonly string[], hasConfigDir: bo
 const solrListener = (service: ServiceConfig): ListenerContract => {
   if (service.command !== undefined) return SOLR_LISTENER;
   const port = plannedPort(service, SOLR_LISTENER);
-  const authored = service.environment?.STOP_PORT;
+  const secondary = SOLR_LISTENER.derived[0];
+  const authored = service.environment?.[secondary.variable];
   const stopPort =
     authored === undefined
-      ? port - 1000
+      ? port + secondary.offset
       : typeof authored === "string" && /^[0-9]+$/.test(authored)
         ? Number(authored)
         : Number.NaN;
   if (!Number.isInteger(stopPort) || stopPort < 1 || stopPort > 65535) {
     throw new ServiceConfigIssue(
-      authored === undefined ? ["port"] : ["environment", "STOP_PORT"],
+      authored === undefined ? ["port"] : ["environment", secondary.variable],
       authored === undefined
-        ? `Solr port ${port} derives STOP_PORT ${stopPort}, which is not valid for graceful shutdown.`
-        : "STOP_PORT requires a literal TCP port number from 1 to 65535.",
+        ? `Solr port ${port} derives ${secondary.variable} ${stopPort}, which is not valid for graceful shutdown.`
+        : `${secondary.variable} requires a literal TCP port number from 1 to 65535.`,
       authored === undefined
-        ? "Set port: above 1000, or set STOP_PORT to a distinct TCP port number from 1 to 65535."
-        : "Set STOP_PORT to a distinct TCP port number from 1 to 65535, or remove it and set port: above 1000.",
+        ? `Set port: above ${-secondary.offset}, or set ${secondary.variable} to a distinct TCP port number from 1 to 65535.`
+        : `Set ${secondary.variable} to a distinct TCP port number from 1 to 65535, or remove it and set port: above ${-secondary.offset}.`,
     );
   }
-  return { ...SOLR_LISTENER, reserved: [{ port: stopPort, use: "loopback stop listener (STOP_PORT)" }] };
+  return { ...SOLR_LISTENER, reserved: [{ port: stopPort, use: secondary.use }] };
 };
 
 const applySolrFeature = (ctx: ServiceFeatureContext): void => {

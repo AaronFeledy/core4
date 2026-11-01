@@ -9,15 +9,16 @@ import {
 export const listenerAuthorityAction = (service: ServicePlan | undefined): string | undefined =>
   service?.listenerAuthority === undefined ? undefined : formatListenerAuthority(service.listenerAuthority);
 
-const withAuthority = (action: string, service: ServicePlan, port: number): string => {
-  const authority = service.listenerAuthority;
-  return authority === undefined || authority.port !== port
-    ? action
-    : `${action} ${formatListenerAuthority(authority)}`;
-};
-
-export const listenerDiagnostic = (listener: ListenerObservation, service: ServicePlan) => {
+export const listenerDiagnostic = (
+  listener: ListenerObservation,
+  service: ServicePlan,
+  context: "readiness" | "scan" = "readiness",
+): { finding: string; action: string; authority?: string } => {
   const ports = [...new Set(listener.listening.map((binding) => binding.port))];
+  const authority =
+    service.listenerAuthority?.port === listener.port
+      ? { authority: formatListenerAuthority(service.listenerAuthority) }
+      : {};
   switch (listener.state) {
     case "not-listening": {
       const [other] = ports;
@@ -29,23 +30,22 @@ export const listenerDiagnostic = (listener: ListenerObservation, service: Servi
         primary[0]?.port === listener.port;
       return {
         finding: `no TCP listener observed on ${listener.port}; observed ports: ${ports.length === 0 ? "none" : ports.join(", ")}`,
-        action: withAuthority(
-          `Make ${listener.service} listen on ${listener.port}${ports.length === 1 && portOption ? `, or set \`port: ${other}\` if that is the port it uses` : ""}.`,
-          service,
-          listener.port,
-        ),
+        action: `Make ${listener.service} listen on ${listener.port}${ports.length === 1 && portOption ? `, or set \`port: ${other}\` if that is the port it uses` : ""}.`,
+        ...authority,
       };
     }
     case "loopback-only":
       return {
         finding: `only loopback TCP bindings observed on ${listener.port}, so other services can't reach it`,
-        action: withAuthority(
-          "Bind it to all interfaces (0.0.0.0) instead of loopback.",
-          service,
-          listener.port,
-        ),
+        action: "Bind it to all interfaces (0.0.0.0) instead of loopback.",
+        ...authority,
       };
     case "listening":
+      if (context === "scan")
+        return {
+          finding: `TCP ${listener.port} has a non-loopback binding, but this endpoint remains unreachable`,
+          action: "Check the network path and HTTP/TLS configuration for this endpoint.",
+        };
       return {
         finding: `TCP ${listener.port} is bound, but readiness still failed`,
         action: "Check the readiness command; its last output is under lastStatus.",

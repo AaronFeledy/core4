@@ -28,17 +28,17 @@ const authorities: ReadonlyArray<{ readonly authority: ListenerAuthority; readon
   {
     authority: { owner: "application", daemon: "node", port: 3000, variables: ["PORT", "NODE_PORT"] },
     sentence:
-      "Your application owns this listener. Lando sets `PORT` and `NODE_PORT` to 3000; make its server listen on 0.0.0.0:3000.",
+      "Make your server listen on 0.0.0.0:3000; your application owns this listener and Lando sets `PORT` and `NODE_PORT` to 3000.",
   },
   {
     authority: { owner: "launcher", daemon: "node", port: 3000, setting: "--port 3000" },
     sentence:
-      "Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for node, pass `--port 3000`.",
+      "Pass `--port 3000` to node in your command or entrypoint; Lando sets the listener from port: only in its own launcher.",
   },
   {
     authority: { owner: "image", daemon: "nginx", port: 3000, setting: "listen 3000", file: "nginx.conf" },
     sentence:
-      "Lando configures the listener from port: only in configuration it owns. Your image or build must configure it: for nginx, set `listen 3000` in nginx.conf.",
+      "Set `listen 3000` in nginx.conf for nginx in your image or build; Lando sets the listener from port: only in configuration it owns.",
   },
 ];
 const observation = (state: ListenerObservation["state"]): ListenerObservation => ({
@@ -70,13 +70,12 @@ test.each([undefined, service])("omits standalone advice when authority is absen
 
 for (const { authority, sentence } of authorities) {
   test.each(["not-listening", "loopback-only", "listening"] as const)(
-    `${authority.owner} authority is appended only to an unbound or loopback action: %s`,
+    `${authority.owner} authority is separate from an unbound or loopback action: %s`,
     (state) => {
       const advised = { ...service, listenerAuthority: authority };
       const diagnostic = listenerDiagnostic(observation(state), advised);
-      expect(diagnostic.action).toBe(
-        state === "listening" ? actions[state] : `${actions[state]} ${sentence}`,
-      );
+      expect(diagnostic.action).toBe(actions[state]);
+      expect(diagnostic.authority).toBe(state === "listening" ? undefined : sentence);
     },
   );
 }
@@ -90,5 +89,21 @@ test.each(["not-listening", "loopback-only", "listening"] as const)(
     };
     const diagnostic = listenerDiagnostic(observation(state), advised);
     expect(diagnostic.action).toBe(actions[state]);
+    expect(diagnostic.authority).toBeUndefined();
   },
 );
+
+test("a bound scan endpoint gets network advice without readiness or authority advice", () => {
+  const diagnostic = listenerDiagnostic(
+    observation("listening"),
+    {
+      ...service,
+      listenerAuthority: { owner: "application", daemon: "node", port: 3000, variables: ["PORT"] },
+    },
+    "scan",
+  );
+  expect(diagnostic).toEqual({
+    finding: "TCP 3000 has a non-loopback binding, but this endpoint remains unreachable",
+    action: "Check the network path and HTTP/TLS configuration for this endpoint.",
+  });
+});

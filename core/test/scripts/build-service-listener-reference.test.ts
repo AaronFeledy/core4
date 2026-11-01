@@ -20,6 +20,24 @@ test.each([
   expect(section).toContain(`| ${field} | \u0060 ${value} \u0060 |`);
 });
 
+test.each([
+  ["localstack", "List bind variable", "` GATEWAY_LISTEN ` (comma-separated wildcard binds)"],
+  [
+    "solr",
+    "Derived secondary listeners",
+    "loopback stop listener (STOP&#95;PORT): ` port - 1000 ` unless ` STOP_PORT ` is authored (loopback only)",
+  ],
+  [
+    "rabbitmq",
+    "Derived secondary listeners",
+    "distribution listener: ` port + 20000 ` unless ` RABBITMQ_DIST_PORT ` is authored",
+  ],
+])("renders %s %s mechanisms", (key, field, value) => {
+  const page = renderServiceListenerReference();
+  const section = page.split(new RegExp(`#{2,3} \u0060 ${key} \u0060\n`))[1]?.split(/\n#{2,3} /)[0];
+  expect(section).toContain(`| ${field} | ${value} |`);
+});
+
 test("emits compilable MDX without interpreting contract values as JSX or expressions", async () => {
   // Given: real contracts plus values containing MDX and table syntax.
   const hostile = "<broken {value} | `tick` & [link] *text*";
@@ -31,6 +49,8 @@ test("emits compilable MDX without interpreting contract values as JSX or expres
         port: 1234,
         variables: [hostile],
         bindVariables: [hostile],
+        listVariable: hostile,
+        derived: [{ use: hostile, offset: -1000, variable: hostile, loopback: true }],
         hostDefaults: { [hostile]: hostile },
         reserved: [{ port: 1235, use: hostile }],
         when: hostile,

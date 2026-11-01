@@ -37,7 +37,7 @@ test.each(["healthcheck-failed", "healthcheck-timeout"] as const)(
 
     // Then existing remediation survives and authority advice is a separate, redacted sentence.
     expect(error.remediation).toBe(
-      `Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for web, pass \`--token ${REDACTED}\`.\n${baseline.remediation}`,
+      `Pass \`--token ${REDACTED}\` to web in your command or entrypoint; Lando sets the listener from port: only in its own launcher.\n${baseline.remediation}`,
     );
     expect(JSON.stringify(error)).not.toContain(secret);
   },

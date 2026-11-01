@@ -30,6 +30,15 @@ export interface ListenerContract {
   readonly daemon: string;
   readonly variables?: readonly [string, ...string[]];
   readonly bindVariables?: readonly string[];
+  /** Comma-separated wildcard binds, including the planned primary port. */
+  readonly listVariable?: string;
+  /** Secondary ports follow the primary plus offset unless their variable is authored. */
+  readonly derived?: readonly {
+    readonly use: string;
+    readonly offset: number;
+    readonly variable?: string;
+    readonly loopback?: boolean;
+  }[];
   readonly reserved?: readonly ReservedListener[];
   readonly launcher?: { readonly setting: (port: number) => string };
   readonly image?: { readonly setting: (port: number) => string; readonly file?: string };

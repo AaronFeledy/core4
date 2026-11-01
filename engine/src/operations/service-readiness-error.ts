@@ -102,7 +102,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
       remediation:
         evidence.reason === "inspect-failed"
           ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-          : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
+          : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
       ...(listener === undefined ? {} : { listener }),
       ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
       ...(evidence.runtime === undefined

@@ -1224,7 +1224,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             service,
             operation: "bringUp.schedule",
             message: `${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
-            remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
+            remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
             ...(listener === undefined ? {} : { listener }),
             ...(blocked.lastError === undefined ? {} : { details: { readinessFailure: blocked.lastError } }),
             ...(logTail === undefined ? {} : { logTail }),

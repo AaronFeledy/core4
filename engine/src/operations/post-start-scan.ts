@@ -153,7 +153,7 @@ export const runPostStartScan = Effect.fnUntraced(function* (
           const diagnostic =
             listener === undefined || service === undefined
               ? undefined
-              : listenerDiagnostic(listener, service);
+              : listenerDiagnostic(listener, service, "scan");
           let message: string;
           switch (endpoint.verdict) {
             case "ready":
@@ -174,7 +174,7 @@ export const runPostStartScan = Effect.fnUntraced(function* (
               yield* events.publish(
                 MessageWarnEvent.make({
                   body: redact(
-                    `Lando could not reach ${target.url}: ${detail}${diagnostic === undefined ? "" : `. ${diagnostic.finding.charAt(0).toUpperCase()}${diagnostic.finding.slice(1)}. ${diagnostic.action}`}`,
+                    `Lando could not reach ${target.url}: ${detail}${diagnostic === undefined ? "" : `. ${diagnostic.finding.charAt(0).toUpperCase()}${diagnostic.finding.slice(1)}. ${diagnostic.action}${diagnostic.authority === undefined ? "" : ` ${diagnostic.authority}`}`}`,
                   ),
                   timestamp: yield* DateTime.now,
                 }),

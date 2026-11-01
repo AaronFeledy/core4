@@ -23,6 +23,7 @@ import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-statu
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { HostDnsResolver } from "./doctor-host-dns";
 import { buildHostDnsCheck } from "./doctor-host-dns-check";
+import { listenerDoctorChecks } from "./doctor-listeners";
 import { appConfigForReport, collectDoctorReport, doctorDeprecations } from "./doctor-report";
 import type { DoctorReport } from "./doctor-report-contract";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
@@ -91,7 +92,7 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
         "certificate-authority",
         "global-app",
         "mcp",
-        ...(options.app ? ["app-config", "app-version-constraints"] : []),
+        ...(options.app ? ["app-config", "app-version-constraints", "app-listeners"] : []),
         ...(options.deprecations ? ["deprecations"] : []),
       ].map((section) => ({
         section,
@@ -146,7 +147,7 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
           "certificate-authority",
           "missing-app-roots",
           "orphaned-volume-snapshots",
-          ...(options.app ? ["app-config"] : []),
+          ...(options.app ? ["app-config", "app-listeners"] : []),
           ...(options.deprecations ? ["deprecations"] : []),
         ].map((section) => ({
           section,
@@ -164,6 +165,12 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
         : certsDoctorStatus(redactor.redactString).pipe(Effect.provide(context)),
     provider:
       context === undefined ? Effect.succeed({ checks: [] }) : doctor(options).pipe(Effect.provide(context)),
+    ...(context === undefined
+      ? {}
+      : {
+          listeners: (input: Parameters<typeof listenerDoctorChecks>[0]) =>
+            listenerDoctorChecks(input).pipe(Effect.provide(context)),
+        }),
     deprecations:
       context === undefined
         ? Effect.succeed({ entries: [] })

@@ -78,6 +78,9 @@ export const renderDoctorReportAsNdjson = (
     lines.push(doctorCheckFrameLine({ name: skipped.section, ...skipped }));
   lines.push(
     ...checkLinesFromNdjson(renderDoctorResultAsNdjson(report.provider, { now })),
+    ...(report.appListeners === undefined
+      ? []
+      : checkLinesFromNdjson(renderDoctorResultAsNdjson(report.appListeners, { now }))),
     ...checkLinesFromNdjson(renderSubsystemDoctorResultAsNdjson(report.subsystems, { now })),
     ...checkLinesFromNdjson(renderGlobalAppDoctorResultAsNdjson(report.globalApp, { now })),
     ...checkLinesFromNdjson(renderMcpDoctorResultAsNdjson(report.mcp, { now })),
@@ -94,6 +97,7 @@ export const renderDoctorReportAsNdjson = (
   lines.push(...selfChecks.map(selfCheckLine));
   const checks = [
     ...report.provider.checks,
+    ...(report.appListeners?.checks ?? []),
     ...report.subsystems.checks,
     ...report.globalApp.checks,
     ...report.mcp.checks,

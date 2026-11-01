@@ -5,6 +5,10 @@ import type { LandofileShape } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { listenerContracts } from "../src/service-type-facts.ts";
 import { acquireListenerApp } from "./support/listener-cli.ts";
+import {
+  listenerDiagnosticJourneys,
+  runListenerDiagnosticJourney,
+} from "./support/listener-diagnostic-journeys.ts";
 import { matrixFixtures } from "./support/listener-matrix-fixtures.ts";
 import { observeMatrixListener } from "./support/listener-matrix-observation.ts";
 
@@ -29,6 +33,10 @@ const cases = selected.flatMap((fixture) =>
     id: `${fixture.contract}-${moved ? "moved" : "default"}`,
   })),
 );
+const diagnostics = listenerDiagnosticJourneys.filter(
+  (item) => filter === undefined || filter.includes(item.family),
+);
+const expectedIds = [...cases.map((item) => item.id), ...diagnostics.map((item) => item.id)];
 const missing = [
   ...(socket === undefined ? ["LANDO_TEST_PODMAN_SOCKET must name an answering explicit socket"] : []),
   ...(!process.env.LANDO_SCENARIO_E2E_BINARY?.trim()
@@ -54,10 +62,13 @@ describe.serial("bundled service listener matrix", () => {
   });
   afterAll(() => {
     console.log(
-      `SERVICE_LISTENER_MATRIX completed=${completed.length}/${cases.length} cases=${completed.join(",")}`,
+      `SERVICE_LISTENER_MATRIX completed=${completed.length}/${expectedIds.length} cases=${completed.join(",")}`,
     );
-    if (strict && (completed.length !== cases.length || cases.some((item) => !completed.includes(item.id))))
-      throw new Error(`Listener matrix incomplete: completed=${completed.length}/${cases.length}`);
+    if (
+      strict &&
+      (completed.length !== expectedIds.length || expectedIds.some((id) => !completed.includes(id)))
+    )
+      throw new Error(`Listener matrix incomplete: completed=${completed.length}/${expectedIds.length}`);
   });
   for (const item of cases) {
     test.skipIf(!strict && missing.length > 0)(
@@ -84,7 +95,9 @@ describe.serial("bundled service listener matrix", () => {
                   ...(family === "minio" && minioImage ? { image: minioImage } : {}),
                 },
                 // Approved sole two-service exception: the bundled Varnish launcher requires a backend.
-                ...(family === "varnish" ? { backend: { type: "nginx", appMount: false, home: false } } : {}),
+                ...(family === "varnish"
+                  ? { backend: { type: "nginx", appMount: "/app", home: false } }
+                  : {}),
               } satisfies NonNullable<typeof LandofileShape.Encoded.services>;
               // When: the compiled CLI plans and starts the service on its default or moved port.
               const started = yield* app.start({ services });
@@ -100,6 +113,21 @@ describe.serial("bundled service listener matrix", () => {
           ),
         );
         completed.push(item.id);
+      },
+      720_000,
+    );
+  }
+  for (const journey of diagnostics) {
+    test.skipIf(!strict && missing.length > 0)(
+      journey.id,
+      async () => {
+        if (socket === undefined) throw new Error(missing.join("\n"));
+        await Effect.runPromise(
+          Effect.scoped(
+            runListenerDiagnosticJourney(socket.socketPath, journey).pipe(Effect.timeout("10 minutes")),
+          ),
+        );
+        completed.push(journey.id);
       },
       720_000,
     );

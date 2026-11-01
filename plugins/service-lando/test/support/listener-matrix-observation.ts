@@ -11,10 +11,11 @@ export const observeMatrixListener = Effect.fnUntraced(function* (
   target: { readonly contract: ListenerContract; readonly family: string; readonly port: number },
 ) {
   const { contract, family, port } = target;
-  const allowed = new Set([port, ...(contract.reserved ?? []).map((entry) => entry.port)]);
-  // These type-documented secondaries move with the primary rather than reserving a fixed port.
-  if (family === "solr") allowed.add(port - 1000);
-  if (family === "rabbitmq") allowed.add(port + 20000);
+  const allowed = new Set([
+    port,
+    ...(contract.reserved ?? []).map((entry) => entry.port),
+    ...(contract.derived ?? []).map((entry) => port + entry.offset),
+  ]);
   // The reviewed OpenSearch image includes its performance-analyzer infrastructure agent.
   // This is not the application endpoint or the transport listener (9300 is contract-reserved).
   if (family === "opensearch") allowed.add(9600);

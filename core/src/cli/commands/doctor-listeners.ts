@@ -46,7 +46,11 @@ const collectListeners = Effect.fnUntraced(function* (): Effect.fn.Return<
               section,
               "TCP listener observation is unavailable; this is not evidence of an absent listener.",
             );
-          const diagnostic = listenerDiagnostic(listener, service);
+          const diagnostic: {
+            readonly finding: string;
+            readonly action: string;
+            readonly authority?: string;
+          } = listenerDiagnostic(listener, service);
           const status = listener.state === "listening" ? "pass" : "warn";
           let finding: string;
           switch (listener.state) {
@@ -83,7 +87,16 @@ const collectListeners = Effect.fnUntraced(function* (): Effect.fn.Return<
               finding,
               bindings: listener.listening.map((binding) => `${binding.address}:${binding.port}`).join(", "),
             },
-            solutions: status === "pass" ? [] : [{ kind: "manual", description: diagnostic.action }],
+            solutions:
+              status === "pass"
+                ? []
+                : [
+                    {
+                      kind: "manual",
+                      description:
+                        diagnostic.action + (diagnostic.authority ? ` ${diagnostic.authority}` : ""),
+                    },
+                  ],
           };
           return { checks: [check] };
         }),
@@ -111,5 +124,7 @@ export const listenerDoctorChecks = Effect.fnUntraced(function* (input: {
     budgetMs: input.budgetMs,
     redact: input.redact,
   });
-  return outcome.value;
+  return outcome.self === undefined
+    ? outcome.value
+    : skipped("app-listeners", `${outcome.self.reason}: ${outcome.self.context.message}`);
 });

@@ -28,6 +28,7 @@ const DEFAULT_DNS_PORT = 53;
 export const LOCALSTACK_LISTENER = {
   port: DEFAULT_PORT,
   daemon: "LocalStack",
+  listVariable: "GATEWAY_LISTEN",
   when: "All LocalStack services; gateway lists and DNS reservations follow effective configuration",
   reserved: [{ port: DEFAULT_DNS_PORT, use: "DNS server" }],
 } as const satisfies ListenerContract;
@@ -53,30 +54,31 @@ const localstackListener = (service: ServiceConfig) => {
   }
   const reserved = service.environment?.DNS_ADDRESS === "0" ? [] : [{ port: dnsPort, use: "DNS server" }];
   assertListenerConfig(service, { ...LOCALSTACK_LISTENER, reserved });
-  const gatewayListen = service.environment?.GATEWAY_LISTEN ?? `0.0.0.0:${port}`;
+  const variable = LOCALSTACK_LISTENER.listVariable;
+  const gatewayListen = service.environment?.[variable] ?? `0.0.0.0:${port}`;
   const binds =
     typeof gatewayListen === "string"
-      ? gatewayListen.split(",").map((entry) => parseWildcardBind(entry.trim(), "GATEWAY_LISTEN"))
-      : [parseWildcardBind(gatewayListen, "GATEWAY_LISTEN")];
+      ? gatewayListen.split(",").map((entry) => parseWildcardBind(entry.trim(), variable))
+      : [parseWildcardBind(gatewayListen, variable)];
   if (new Set(binds.map((bind) => bind.port)).size !== binds.length) {
     throw new ServiceConfigIssue(
-      ["environment", "GATEWAY_LISTEN"],
-      "GATEWAY_LISTEN contains duplicate or conflicting listener ports.",
-      "Use one wildcard bind per TCP port in GATEWAY_LISTEN.",
+      ["environment", variable],
+      `${variable} contains duplicate or conflicting listener ports.`,
+      `Use one wildcard bind per TCP port in ${variable}.`,
     );
   }
   if (binds.filter((bind) => bind.port === port).length !== 1) {
     throw new ServiceConfigIssue(
-      ["environment", "GATEWAY_LISTEN"],
-      `GATEWAY_LISTEN must contain exactly one listener on the planned port ${port}.`,
-      `Add 0.0.0.0:${port} to GATEWAY_LISTEN or set port: to one of its listener ports.`,
+      ["environment", variable],
+      `${variable} must contain exactly one listener on the planned port ${port}.`,
+      `Add 0.0.0.0:${port} to ${variable} or set port: to one of its listener ports.`,
     );
   }
   for (const bind of binds) {
     const collision = reserved.find((entry) => entry.port === bind.port);
     if (collision !== undefined) {
       throw new ServiceConfigIssue(
-        ["environment", "GATEWAY_LISTEN"],
+        ["environment", variable],
         `LocalStack listens on port ${bind.port}, which LocalStack reserves for its ${collision.use}.`,
         "Choose another gateway port, move DNS_PORT, or set DNS_ADDRESS to 0 to disable the DNS server.",
       );
@@ -90,7 +92,7 @@ const applyLocalStackFeature = (ctx: ServiceFeatureContext): void => {
   const { port, gatewayListen } = localstackListener(service);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.addEnv("GATEWAY_LISTEN", gatewayListen);
+  ctx.addEnv(LOCALSTACK_LISTENER.listVariable, gatewayListen);
   ctx.addEnv("PERSISTENCE", service.environment?.PERSISTENCE ?? "1");
   ctx.addStorage({
     store: `${appNameFor(ctx)}-localstack-data`,

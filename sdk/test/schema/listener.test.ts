@@ -37,14 +37,14 @@ describe("formatListenerAuthority", () => {
         decode({ owner: "application", daemon: "Flask", port: 5000, variables: ["PORT", "FLASK_RUN_PORT"] }),
       ),
     ).toBe(
-      "Your application owns this listener. Lando sets `PORT` and `FLASK_RUN_PORT` to 5000; make its server listen on 0.0.0.0:5000.",
+      "Make your server listen on 0.0.0.0:5000; your application owns this listener and Lando sets `PORT` and `FLASK_RUN_PORT` to 5000.",
     );
     expect(
       formatListenerAuthority(
         decode({ owner: "application", daemon: "Go", port: 8080, variables: ["PORT"] }),
       ),
     ).toBe(
-      "Your application owns this listener. Lando sets `PORT` to 8080; make its server listen on 0.0.0.0:8080.",
+      "Make your server listen on 0.0.0.0:8080; your application owns this listener and Lando sets `PORT` to 8080.",
     );
   });
 
@@ -54,7 +54,7 @@ describe("formatListenerAuthority", () => {
         decode({ owner: "launcher", daemon: "MongoDB", port: 27018, setting: "--port 27018" }),
       ),
     ).toBe(
-      "Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for MongoDB, pass `--port 27018`.",
+      "Pass `--port 27018` to MongoDB in your command or entrypoint; Lando sets the listener from port: only in its own launcher.",
     );
   });
 
@@ -70,14 +70,14 @@ describe("formatListenerAuthority", () => {
         }),
       ),
     ).toBe(
-      'Lando configures the listener from port: only in configuration it owns. Your image or build must configure it: for Tomcat, set `<Connector port="8081">` in server.xml.',
+      'Set `<Connector port="8081">` in server.xml for Tomcat in your image or build; Lando sets the listener from port: only in configuration it owns.',
     );
     expect(
       formatListenerAuthority(
         decode({ owner: "image", daemon: "Apache", port: 8080, setting: "Listen 8080" }),
       ),
     ).toBe(
-      "Lando configures the listener from port: only in configuration it owns. Your image or build must configure it: for Apache, set `Listen 8080`.",
+      "Set `Listen 8080` for Apache in your image or build; Lando sets the listener from port: only in configuration it owns.",
     );
   });
 });

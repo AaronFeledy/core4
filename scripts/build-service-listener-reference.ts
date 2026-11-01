@@ -44,6 +44,12 @@ export const renderServiceListenerReference = (contracts: Contracts = listenerCo
           ["Port variables", contract.variables?.map(code).join(", ") || "None"],
           ["Bind variables", contract.bindVariables?.map(code).join(", ") || "None"],
           [
+            "List bind variable",
+            contract.listVariable
+              ? `${code(contract.listVariable)} (comma-separated wildcard binds)`
+              : "None",
+          ],
+          [
             "Host defaults",
             Object.entries(contract.hostDefaults ?? {})
               .map(([name, value]) => code(`${name}=${value}`))
@@ -52,6 +58,15 @@ export const renderServiceListenerReference = (contracts: Contracts = listenerCo
           [
             "Secondary listeners (collision-reserved)",
             contract.reserved?.map(({ port, use }) => `${code(port)}: ${text(use)}`).join("; ") || "None",
+          ],
+          [
+            "Derived secondary listeners",
+            contract.derived
+              ?.map(
+                ({ use, offset, variable, loopback }) =>
+                  `${text(use)}: ${code(`port ${offset < 0 ? "-" : "+"} ${Math.abs(offset)}`)}${variable ? ` unless ${code(variable)} is authored` : ""}${loopback ? " (loopback only)" : ""}`,
+              )
+              .join("; ") || "None",
           ],
           [
             "Authored launcher argument",

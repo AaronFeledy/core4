@@ -198,10 +198,11 @@ When the failing check targets a TCP port, Lando looks at the ports the service 
 
 The same report appears when a `service_healthy` dependency or an app-build step waits on a service that never becomes healthy. With `--format=json`, it's on `error.listener` (`port`, `state`, and the observed `listening` addresses). The observation covers the container's network namespace, which pod siblings can share, so it shows which ports are bound, not which process bound them. If Lando can't read the container's socket table, the error leaves the report out rather than guess.
 
-For a missing or loopback-only listener, the action also explains who must configure that port when the service type records that advice. Your application may need to use Lando's port variables, an authored command or entrypoint may need a launcher argument, or your custom image may need a daemon setting. For an application-owned Node listener on port 3000 with no observed listeners, the action reads:
+For a missing or loopback-only listener, the first remediation line gives one diagnostic action. When the service type records who must configure that port, a second line gives that owner's configuration advice. Your application may need to use Lando's port variables, an authored command or entrypoint may need a launcher argument, or your custom image may need a daemon setting. For an application-owned Node listener on port 3000 with no observed listeners, those lines read:
 
 ```text
-Make app listen on 3000. Your application owns this listener. Lando sets `PORT` to 3000; make its server listen on 0.0.0.0:3000.
+Make app listen on 3000.
+Make your server listen on 0.0.0.0:3000; your application owns this listener and Lando sets `PORT` to 3000.
 ```
 
 This configuration advice is separate from socket evidence. It appears only for the matching port, not when that port is already bound. If socket evidence is unavailable after a readiness probe fails or times out, the ownership advice can still supply the action. A failed `service_healthy` gate uses the dependency's advice, never the service waiting on it. Create and container-start failures don't append listener advice.

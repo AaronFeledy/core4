@@ -63,6 +63,7 @@ describe("doctor progress outcomes", () => {
     ]);
     expect(doctorSections({ app: true, deprecations: true }).map((section) => section.id)).toEqual([
       "provider",
+      "app-listeners",
       "certificate-authority",
       "network-trust",
       "subsystems",

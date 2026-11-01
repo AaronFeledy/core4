@@ -1,19 +1,28 @@
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
+import * as PluginRegistry from "@lando/engine/plugins/registry";
+import { makeLandoPaths } from "@lando/paths";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  GlobalConfig,
   PortNumber,
   ProviderId,
   ServiceName,
   type ServicePlan,
   appIdentityKey,
 } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  ConfigService,
+  PathsService,
+  RuntimeProviderRegistry,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { Context, DateTime, Effect, Layer, Schema, Stream } from "effect";
 import { withCwd } from "../_support/temp-cwd.ts";
 
 export const tableHeader =
@@ -117,3 +126,23 @@ export const listenerRegistry = (plan: AppPlan | undefined, provider: RuntimePro
         ),
     }),
   );
+
+export const listenerReportLayers = (plan: AppPlan, provider: RuntimeProviderShape) => {
+  const config = Schema.decodeSync(GlobalConfig)({ telemetry: { enabled: false } });
+  return Layer.mergeAll(
+    listenerRegistry(plan, provider),
+    PluginRegistry.layer,
+    Layer.succeed(PluginContributionGraph, {
+      plugins: [],
+      globalPlugins: [],
+      certificateAuthorities: [],
+      commands: [],
+      hostContext: Context.empty(),
+    }),
+    Layer.succeed(PathsService, makeLandoPaths({ platform: "linux", env: {} })),
+    Layer.succeed(
+      ConfigService,
+      ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+    ),
+  );
+};

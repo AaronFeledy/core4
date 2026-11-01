@@ -57,19 +57,26 @@ const scannerReturning = (row: ScanRow = {}): UrlScannerShape => ({
   detectCollisions: () => Effect.succeed([]),
 });
 
-test.each([
-  { routerMarker: "upstream-unreachable", reachable: true },
-  { routerMarker: undefined, reachable: false, statusCode: undefined, detail: "connection refused" },
-])("adds listener evidence and a warning action for %j", async (row) => {
+test.each(
+  [
+    { routerMarker: "upstream-unreachable", reachable: true },
+    { routerMarker: undefined, reachable: false, statusCode: undefined, detail: "connection refused" },
+  ].flatMap((row) => ["not-listening", "listening"].map((state) => ({ ...row, state }))),
+)("adds listener evidence and a warning action for %j", async ({ state, ...row }) => {
   // Given an unreachable expected listener and available socket evidence.
   const warnings: string[] = [];
+  const observed: ListenerObservation = {
+    ...listener,
+    state: state === "listening" ? "listening" : "not-listening",
+    listening: state === "listening" ? [{ port: 3000, address: "0.0.0.0" }] : [],
+  };
   // When the scan finishes.
   const checks = await Effect.runPromise(
     runPostStartScan({
       plan: plannedApp,
       urls: [target],
       scanner: scannerReturning(row),
-      observeListener: () => Effect.succeed(listener),
+      observeListener: () => Effect.succeed(observed),
       events: {
         publish: (event) =>
           Effect.sync(() => {
@@ -79,10 +86,10 @@ test.each([
     }),
   );
   // Then failure remains a warning, with evidence and authority advice.
-  expect(checks[0]).toMatchObject({ verdict: "lando-error", listener });
+  expect(checks[0]).toMatchObject({ verdict: "lando-error", listener: observed });
   const detail = row.routerMarker === undefined ? "connection refused" : "the router could not reach web";
   expect(warnings).toEqual([
-    `Lando could not reach ${target.url}: ${detail}. No TCP listener observed on 3000; observed ports: none. Make web listen on 3000. Your application owns this listener. Lando sets \`PORT\` to 3000; make its server listen on 0.0.0.0:3000.`,
+    `Lando could not reach ${target.url}: ${detail}. ${state === "listening" ? "TCP 3000 has a non-loopback binding, but this endpoint remains unreachable. Check the network path and HTTP/TLS configuration for this endpoint." : "No TCP listener observed on 3000; observed ports: none. Make web listen on 3000. Make your server listen on 0.0.0.0:3000; your application owns this listener and Lando sets `PORT` to 3000."}`,
   ]);
 });
 

@@ -24,6 +24,7 @@ export const RABBITMQ_LISTENER = {
   variables: ["RABBITMQ_NODE_PORT"],
   daemon: "RabbitMQ",
   when: "All RabbitMQ services",
+  derived: [{ use: "distribution listener", offset: 20000, variable: "RABBITMQ_DIST_PORT" }],
   reserved: [
     { port: 4369, use: "EPMD" },
     { port: MANAGEMENT_PORT, use: "management UI" },
@@ -33,33 +34,34 @@ export const RABBITMQ_LISTENER = {
 
 const assertDistributionPort = (service: ServiceConfig): void => {
   const port = plannedPort(service, RABBITMQ_LISTENER);
-  const authored = service.environment?.RABBITMQ_DIST_PORT;
+  const secondary = RABBITMQ_LISTENER.derived[0];
+  const authored = service.environment?.[secondary.variable];
   const distribution =
     authored === undefined
-      ? port + 20000
+      ? port + secondary.offset
       : typeof authored === "string" && /^[0-9]+$/.test(authored)
         ? Number(authored)
         : Number.NaN;
   if (authored === undefined && distribution > 65535) {
     throw new ServiceConfigIssue(
       ["port"],
-      `Port ${port} makes RabbitMQ's distribution port (port + 20000 = ${distribution}) exceed 65535.`,
-      "Set port: to at most 45535, or set RABBITMQ_DIST_PORT to a TCP port number.",
+      `Port ${port} makes RabbitMQ's distribution port (port + ${secondary.offset} = ${distribution}) exceed 65535.`,
+      `Set port: to at most ${65535 - secondary.offset}, or set ${secondary.variable} to a TCP port number.`,
     );
   }
   if (!Number.isInteger(distribution) || distribution < 1 || distribution > 65535) {
     throw new ServiceConfigIssue(
-      ["environment", "RABBITMQ_DIST_PORT"],
-      `RABBITMQ_DIST_PORT is ${JSON.stringify(authored)}, which is not a TCP port number (1-65535).`,
-      "Set RABBITMQ_DIST_PORT to a TCP port number (1-65535).",
+      ["environment", secondary.variable],
+      `${secondary.variable} is ${JSON.stringify(authored)}, which is not a TCP port number (1-65535).`,
+      `Set ${secondary.variable} to a TCP port number (1-65535).`,
     );
   }
   const collision = RABBITMQ_LISTENER.reserved.find((entry) => entry.port === distribution);
   if (distribution === port || collision !== undefined) {
     throw new ServiceConfigIssue(
-      authored === undefined ? ["port"] : ["environment", "RABBITMQ_DIST_PORT"],
+      authored === undefined ? ["port"] : ["environment", secondary.variable],
       `RabbitMQ's distribution port is ${distribution}, which conflicts with the ${collision?.use ?? "AMQP listener"} port.`,
-      "Set RABBITMQ_DIST_PORT to a different TCP port number.",
+      `Set ${secondary.variable} to a different TCP port number.`,
     );
   }
 };

@@ -23,7 +23,7 @@ const ruby = [
 // Versioned types select their reviewed catalog artifacts, not custom-image startup paths.
 // Keep one image per family even when exercising multiple listener-contract variants.
 export const matrixFixtures: readonly MatrixFixture[] = [
-  { contract: "apache", service: { type: "apache" } }, // httpd:2.4-alpine
+  { contract: "apache", service: { type: "apache", appMount: "/app" } }, // httpd:2.4-alpine; webroot needs the app mount.
   {
     contract: "dotnet",
     service: {
@@ -65,7 +65,7 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
   { contract: "mongodb", service: { type: "mongodb:7" } },
   { contract: "mssql", service: { type: "mssql:2022" } },
   { contract: "mysql", service: { type: "mysql:8.0" } },
-  { contract: "nginx", service: { type: "nginx" } }, // nginx:1.26-alpine
+  { contract: "nginx", service: { type: "nginx", appMount: "/app" } }, // nginx:1.26-alpine
   {
     contract: "node",
     service: {
@@ -78,8 +78,8 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
     },
   },
   { contract: "opensearch", service: { type: "opensearch:2" } },
-  { contract: "php", service: { type: "php:8.4" } }, // php:8.4-apache-bookworm
-  { contract: "php/fpm", service: { type: "php:8.4", via: "fpm" } },
+  { contract: "php", service: { type: "php:8.4", appMount: "/app" } }, // php:8.4-apache-bookworm
+  { contract: "php/fpm", service: { type: "php:8.4", via: "fpm", appMount: "/app" } },
   { contract: "phpmyadmin", service: { type: "phpmyadmin:5" } },
   { contract: "postgres", service: { type: "postgres:16" } },
   { contract: "python", service: { type: "python:3.12", command: python("PORT") } },
@@ -100,9 +100,9 @@ func main() { log.Fatal(http.ListenAndServe("0.0.0.0:" + os.Getenv("PORT"), http
   { contract: "ruby", service: { type: "ruby:3.3", command: ruby } },
   { contract: "ruby/rails", service: { type: "ruby:3.3", framework: "rails", command: ruby } },
   { contract: "solr", service: { type: "solr:9" } },
-  { contract: "static", service: { type: "static" } }, // nginx:1.26-alpine
-  { contract: "static/caddy", service: { type: "static:caddy" } },
-  { contract: "tomcat", service: { type: "tomcat:11" } }, // Catalog's digest-pinned jre21 artifact.
+  { contract: "static", service: { type: "static", appMount: "/app" } }, // nginx:1.26-alpine
+  { contract: "static/caddy", service: { type: "static:caddy", appMount: "/app" } },
+  { contract: "tomcat", service: { type: "tomcat:11", appMount: "/app" } }, // Catalog's digest-pinned jre21 artifact.
   { contract: "valkey", service: { type: "valkey" } }, // valkey/valkey:8
   { contract: "varnish", service: { type: "varnish:7", backend: "backend" } },
 ];

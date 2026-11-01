@@ -55,11 +55,11 @@ export const formatListenerAuthority = (authority: ListenerAuthority): string =>
         variables.length < 2
           ? variables.join("")
           : `${variables.slice(0, -1).join(", ")} and ${variables.at(-1)}`;
-      return `Your application owns this listener. Lando sets ${list} to ${authority.port}; make its server listen on 0.0.0.0:${authority.port}.`;
+      return `Make your server listen on 0.0.0.0:${authority.port}; your application owns this listener and Lando sets ${list} to ${authority.port}.`;
     }
     case "launcher":
-      return `Lando configures the listener from port: only in its own launcher. Your command or entrypoint must configure it: for ${authority.daemon}, pass \`${authority.setting}\`.`;
+      return `Pass \`${authority.setting}\` to ${authority.daemon} in your command or entrypoint; Lando sets the listener from port: only in its own launcher.`;
     case "image":
-      return `Lando configures the listener from port: only in configuration it owns. Your image or build must configure it: for ${authority.daemon}, set \`${authority.setting}\`${authority.file === undefined ? "" : ` in ${authority.file}`}.`;
+      return `Set \`${authority.setting}\`${authority.file === undefined ? "" : ` in ${authority.file}`} for ${authority.daemon} in your image or build; Lando sets the listener from port: only in configuration it owns.`;
   }
 };
