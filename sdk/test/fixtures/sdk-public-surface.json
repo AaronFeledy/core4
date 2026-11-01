@@ -1456,6 +1456,7 @@
       "LandofileSourceValue",
       "LayerMergeRule",
       "LifecycleCommandId",
+      "ListenerObservation",
       "LoadScopedLandofile",
       "LocalStackServiceConfig",
       "LogSource",

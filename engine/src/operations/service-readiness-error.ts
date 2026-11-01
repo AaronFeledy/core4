@@ -1,4 +1,6 @@
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
+import { listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
+import { observeTcpListener } from "@lando/container-runtime/listener-observation";
 import { capRedactedLogLines } from "@lando/container-runtime/podman/bring-up";
 import { isSupervisedService } from "@lando/container-runtime/supervision";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
@@ -47,34 +49,51 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   },
 ) {
   const redactor = yield* redactorForReadiness;
-  const logTail = yield* Stream.runCollect(
-    target.provider.logs({ app: target.plan.id, service: target.service }, { follow: false, tail: 50 }),
-  ).pipe(
-    Effect.map((chunks) => {
-      if (chunks.length === 0) return undefined;
-      return {
-        service: String(target.service),
-        ...capRedactedLogLines(
-          redactor.redactString(chunks.map((chunk) => chunk.line).join("\n")).split("\n"),
+  const service = target.plan.services[target.service];
+  const diagnose = evidence.reason === "healthcheck-failed" || evidence.reason === "healthcheck-timeout";
+  const [listener, logTail] = yield* Effect.all(
+    [
+      diagnose && service !== undefined
+        ? observeTcpListener(service, (command) =>
+            target.provider.execStream(
+              { app: target.plan.id, service: target.service, plan: target.plan },
+              command,
+            ),
+          )
+        : Effect.succeed(undefined),
+      Stream.runCollect(
+        target.provider.logs({ app: target.plan.id, service: target.service }, { follow: false, tail: 50 }),
+      ).pipe(
+        Effect.map((chunks) => {
+          if (chunks.length === 0) return undefined;
+          return {
+            service: String(target.service),
+            ...capRedactedLogLines(
+              redactor.redactString(chunks.map((chunk) => chunk.line).join("\n")).split("\n"),
+            ),
+            ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
+            ...(evidence.reason === "healthcheck-timeout" ? { timedOut: true } : {}),
+          };
+        }),
+        Effect.timeout(Duration.seconds(4)),
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(undefined),
         ),
-        ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
-        ...(evidence.reason === "healthcheck-timeout" ? { timedOut: true } : {}),
-      };
-    }),
-    Effect.timeout(Duration.seconds(4)),
-    Effect.catchCause((cause) =>
-      Cause.hasInterruptsOnly(cause) ? Effect.interrupt : Effect.succeed(undefined),
-    ),
+      ),
+    ],
+    { concurrency: "unbounded" },
   );
   const name = String(target.service);
   const commands = readinessCommands(target);
+  const diagnostic =
+    listener !== undefined && service !== undefined ? listenerDiagnostic(listener, service) : undefined;
   const healthcheckRemediation =
-    evidence.reason === "not-running" || evidence.reason === "inspect-failed"
-      ? ""
-      : " Check the readiness executable, declared listener, binding and TLS configuration. Configure readiness for lifecycle checks and healthcheck for ongoing native health. Disable them independently with readiness: false or healthcheck: false.";
+    diagnose && diagnostic === undefined
+      ? " Check the readiness command; readiness: false disables startup readiness."
+      : "";
   return yield* Effect.fail(
     new ServiceNotReadyError({
-      message: `Service ${name} is not ready (${evidence.reason}).${target.plan.extensions["@lando/core/scratch"] === undefined ? " The applied app has been retained." : ""}`,
+      message: `Service ${name} is not ready (${evidence.reason})${diagnostic === undefined ? "" : `: ${diagnostic.finding}`}.${target.plan.extensions["@lando/core/scratch"] === undefined ? " The applied app has been retained." : ""}`,
       app: String(target.plan.name),
       service: name,
       providerId: String(target.provider.id),
@@ -82,7 +101,8 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
       remediation:
         evidence.reason === "inspect-failed"
           ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-          : `Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
+          : `${diagnostic === undefined ? "" : `${diagnostic.action}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
+      ...(listener === undefined ? {} : { listener }),
       ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
       ...(evidence.runtime === undefined
         ? {}

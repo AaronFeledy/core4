@@ -64,6 +64,10 @@ lando valkey-cli set hello world
 lando valkey-cli get hello
 ```
 
+## Configure the listener
+
+Set `port:` to change Valkey's listener and healthcheck together. An authored `command:` owns the listener configuration; pass the planned port with `--port` or configure it in Valkey's config file. An authored `entrypoint:` still receives Lando's command with `--port` and must execute the supplied command and arguments. If Valkey never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+
 ## Pin a version
 
 Set `image:` when the default image isn't the version you want:

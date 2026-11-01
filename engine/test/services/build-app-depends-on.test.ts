@@ -31,6 +31,90 @@ const dependsOn = (...dependencies: ReadonlyArray<DependencyPlan>): Partial<Serv
 
 const install = (id = "install") => ({ id, phase: "app", command: { command: [id] } });
 
+test("projects a failed healthy gate listener onto the app build failure", async () => {
+  await withTempRoots(async () => {
+    const { provider } = recordingProvider({
+      exec: () => Effect.succeed({ exitCode: 1, stderr: "missing probe tool", stdout: "" }),
+      execStream: () =>
+        Stream.make(
+          {
+            kind: "stdout",
+            chunk: new TextEncoder().encode(
+              "sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n0: 00000000:18EB 00000000:0000 0A 0:0 0:0 0 0 0 1\n",
+            ),
+          },
+          { exitCode: 1 },
+        ),
+    });
+    const plan = planWith(
+      { db: [], web: [install()] },
+      {
+        db: { healthcheck, endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }] },
+        web: dependsOn(dependency("db", "service_healthy")),
+      },
+    );
+    const error = await Effect.runPromise(
+      Effect.flip(Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.buildApp(plan))).pipe(
+        Effect.provide(makeLayer(provider)),
+      ),
+    );
+    expect(error).toMatchObject({
+      _tag: "BuildPhaseFailedError",
+      listener: {
+        service: "db",
+        port: 6380,
+        state: "not-listening",
+        listening: [{ address: "0.0.0.0", port: 6379 }],
+      },
+    });
+    if (error._tag !== "BuildPhaseFailedError") throw error;
+    expect(error.failures[0]?.summary).toBe(
+      "web:app:install blocked by db:healthy: no TCP listener observed on 6380; observed ports: 6379",
+    );
+    expect(error.remediation.split("\n")[0]).toStartWith("Make db listen on 6380");
+    expect(error.remediation).toContain("lando logs -s db");
+    expect(error.remediation).not.toContain("observed ports");
+  });
+});
+
+test("retains the primary required gate observation when an earlier independent build step also fails", async () => {
+  await withTempRoots(async () => {
+    const { provider } = recordingProvider({
+      exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "probe failed" }),
+      execStream: (_target, command) =>
+        command.command[0] === "cat"
+          ? Stream.make(
+              {
+                kind: "stdout",
+                chunk: new TextEncoder().encode(
+                  "sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n0: 00000000:18EB 00000000:0000 0A 0:0 0:0 0 0 0 1\n",
+                ),
+              },
+              { exitCode: 1 },
+            )
+          : Stream.make({ exitCode: 1 }),
+    });
+    const plan = planWith(
+      { assets: [install()], db: [], web: [install()] },
+      {
+        db: { healthcheck, endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }] },
+        web: dependsOn(dependency("db", "service_healthy")),
+      },
+    );
+    const error = await Effect.runPromise(
+      Effect.flip(Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.buildApp(plan))).pipe(
+        Effect.provide(makeLayer(provider)),
+      ),
+    );
+    expect(error).toMatchObject({
+      _tag: "BuildPhaseFailedError",
+      listener: { service: "db", state: "not-listening" },
+    });
+    if (error._tag !== "BuildPhaseFailedError") throw error;
+    expect(error.failures[0]?.step.service).toBe(ServiceName.make("assets"));
+  });
+});
+
 interface Recorder {
   readonly calls: Array<string>;
   readonly provider: RuntimeProviderShape;

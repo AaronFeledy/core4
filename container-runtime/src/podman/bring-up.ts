@@ -1,5 +1,8 @@
+import type { ListenerObservation } from "@lando/sdk/schema";
 import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { PROVIDER_LABEL } from "../labels.ts";
+import { listenerDiagnostic } from "../listener-diagnostic.ts";
+import { observeTcpListener } from "../listener-observation.ts";
 
 import {
   EnvironmentValueResolutionError,
@@ -86,7 +89,7 @@ import {
   makeServiceRestartWouldRecreateError,
 } from "./bring-up-recreate.ts";
 import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
-import { exec } from "./exec.ts";
+import { exec, execStream } from "./exec.ts";
 import { logs } from "./logs.ts";
 
 export { scratchLabelsForPlan } from "../labels.ts";
@@ -104,6 +107,26 @@ export const APPLY_REMEDIATION =
 
 export const GLOBAL_APPLY_REMEDIATION =
   "Fix the error above, then run `lando global:start` to retry the global services. Run `lando doctor` if the failure persists.";
+
+export const SCRATCH_APPLY_REMEDIATION =
+  "Fix the reported error, then retry the scratch command. Run `lando doctor` if the failure persists.";
+
+const isScratchPlan = (plan: AppPlan): boolean => plan.extensions["@lando/core/scratch"] !== undefined;
+
+const applyRemediationFor = (plan: AppPlan): string =>
+  plan.id === "global"
+    ? GLOBAL_APPLY_REMEDIATION
+    : isScratchPlan(plan)
+      ? SCRATCH_APPLY_REMEDIATION
+      : APPLY_REMEDIATION;
+
+export const dependencyGateRemediation = (plan: AppPlan, dependency: string): string => {
+  if (plan.id === "global")
+    return `Run \`lando global:logs -s ${dependency}\` to diagnose dependency ${dependency}, fix it, then run \`lando global:start\`.`;
+  if (isScratchPlan(plan))
+    return `Run \`lando scratch logs ${plan.id}\` to diagnose dependency ${dependency}, fix it, then retry the scratch command.`;
+  return `Run \`lando logs -s ${dependency}\` to diagnose dependency ${dependency}, fix it, then run \`lando start\`; it reuses what this attempt created.`;
+};
 
 interface InspectResult {
   readonly exists: boolean;
@@ -202,6 +225,8 @@ interface StartFailureInput {
   readonly details?: unknown;
   readonly cause?: unknown;
   readonly logTail?: ServiceStartLogTail;
+  readonly listener?: ListenerObservation;
+  readonly remediation?: string;
 }
 
 const appRef = (plan: AppPlan): AppRef => ({
@@ -227,7 +252,9 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
       operation: input.operation,
       message,
       ...(input.details === undefined ? {} : { details: input.details }),
-    }) ?? deps.remediation;
+    }) ??
+    input.remediation ??
+    deps.remediation;
   return new ServiceStartError({
     providerId: input.service.provider,
     operation: input.operation,
@@ -237,6 +264,7 @@ const podmanFailure = (deps: BringUpDeps, input: StartFailureInput) => {
     ...(input.details === undefined ? {} : { details: redactDetails(input.details, redactor) }),
     ...(input.cause === undefined ? {} : { cause: input.cause }),
     ...(input.logTail === undefined ? {} : { logTail: input.logTail }),
+    ...(input.listener === undefined ? {} : { listener: input.listener }),
   });
 };
 
@@ -964,7 +992,7 @@ const captureServiceLogTail = Effect.fnUntraced(
   ),
 );
 
-const withServiceStartLogTail = (
+export const withServiceStartLogTail = (
   error: ServiceStartError,
   logTail: ServiceStartLogTail | undefined,
 ): ServiceStartError =>
@@ -979,6 +1007,7 @@ const withServiceStartLogTail = (
         remediation: error.remediation,
         ...(error.cause === undefined ? {} : { cause: error.cause }),
         logTail,
+        ...(error.listener === undefined ? {} : { listener: error.listener }),
       });
 
 const captureStartFailure = (
@@ -1024,7 +1053,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   const deps: BringUpDeps = {
     api,
     options,
-    remediation: plan.id === "global" ? GLOBAL_APPLY_REMEDIATION : APPLY_REMEDIATION,
+    remediation: applyRemediationFor(plan),
     creationEnvironments: new Map(),
     redactor: redactorFor(options.ctx),
   };
@@ -1070,9 +1099,14 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   const result = yield* runServiceStartSchedule(plan, {
     redactProbeError: (error) =>
       deps.redactor.redactString(
-        typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
-          ? error.message
-          : "Readiness attempt infrastructure failure.",
+        typeof error === "string"
+          ? error
+          : typeof error === "object" &&
+              error !== null &&
+              "message" in error &&
+              typeof error.message === "string"
+            ? error.message
+            : "Readiness attempt infrastructure failure.",
       ),
     startService: Effect.fnUntraced(function* (service) {
       if (options.signal?.aborted === true) {
@@ -1155,8 +1189,17 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             ...(blocked.lastExitCode === undefined ? {} : { exitCode: blocked.lastExitCode }),
             ...(blocked.timedOut === true ? { timedOut: true } : {}),
           });
-    return yield* capture.pipe(
-      Effect.flatMap((logTail): Effect.Effect<never, BringUpError> => {
+    const observation =
+      aborted || dependency === undefined || !blocked.unmetGate.endsWith(":healthy")
+        ? Effect.succeed(undefined)
+        : observeTcpListener(dependency, (command) =>
+            execStream(plan, { app: plan.id, service: dependency.name, plan }, command, {
+              api,
+              ctx: options.ctx,
+            }),
+          );
+    return yield* Effect.all([capture, observation], { concurrency: "unbounded" }).pipe(
+      Effect.flatMap(([logTail, listener]): Effect.Effect<never, BringUpError> => {
         if (options.signal?.aborted === true) return Effect.interrupt;
         if (service === undefined) {
           return Effect.fail(
@@ -1169,11 +1212,17 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
             }),
           );
         }
+        const diagnostic =
+          listener !== undefined && dependency !== undefined
+            ? listenerDiagnostic(listener, dependency)
+            : undefined;
         return Effect.fail(
           podmanFailure(deps, {
             service,
             operation: "bringUp.schedule",
-            message: `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+            message: `${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+            remediation: `${diagnostic === undefined ? "" : `${diagnostic.action}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
+            ...(listener === undefined ? {} : { listener }),
             ...(blocked.lastError === undefined ? {} : { details: { readinessFailure: blocked.lastError } }),
             ...(logTail === undefined ? {} : { logTail }),
           }),
