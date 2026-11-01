@@ -3,6 +3,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type MountPlan,
   PortablePath,
   ProviderId,
   ServiceName,
@@ -145,4 +146,93 @@ test("rejects when the overlay target collides with a planned mount", async () =
   );
   expect(result._tag).toBe("Failure");
   if (result._tag === "Failure") expect(result.failure).toBeInstanceOf(SshAgentTransportError);
+});
+
+for (const mount of [
+  { _tag: "bind-directory", directory: AbsolutePath.make("/relay/socket") },
+  { _tag: "volume", volume: "agent-volume" },
+] as const) {
+  test(`shares known hosts with eligible services using ${mount._tag} delivery`, async () => {
+    const { withSshAgentOverlay, stripSshAgentOverlay } = await import(
+      "../../../src/subsystems/ssh-agent/overlay.ts"
+    );
+    const plan = overlayFixture();
+    const session = { kind: "ssh" as const, socketName: "agent.sock", mount };
+    const result = Effect.runSync(
+      withSshAgentOverlay(plan, session, { knownHostsFile: "/home/user/.ssh/known_hosts" }),
+    );
+    expect(result.services[ServiceName.make("web")]?.mounts).toContainEqual({
+      type: "bind",
+      origin: "integration",
+      source: "/home/user/.ssh/known_hosts",
+      target: PortablePath.make("/etc/ssh/ssh_known_hosts"),
+      readOnly: true,
+      createHostPath: false,
+      realization: "passthrough",
+    });
+    expect(result.services[ServiceName.make("db")]).toBe(plan.services[ServiceName.make("db")]);
+    expect(stripSshAgentOverlay(result)).toEqual(plan);
+    const duplicate = Effect.runSync(
+      withSshAgentOverlay(result, session, { knownHostsFile: "/home/user/.ssh/known_hosts" }).pipe(
+        Effect.result,
+      ),
+    );
+    expect(duplicate._tag).toBe("Failure");
+    if (duplicate._tag === "Failure") expect(duplicate.failure.message).toContain("/run/lando/ssh-agent");
+  });
+}
+
+for (const target of [
+  "/etc/ssh/ssh_known_hosts",
+  "/etc/ssh/ssh_known_hosts/",
+  "/etc/ssh",
+  "/etc/ssh/",
+  "/etc",
+  "/",
+]) {
+  test(`keeps authored ownership at ${target} instead of binding known hosts`, async () => {
+    const { withSshAgentOverlay, stripSshAgentOverlay } = await import(
+      "../../../src/subsystems/ssh-agent/overlay.ts"
+    );
+    const plan = overlayFixture();
+    const web = plan.services[ServiceName.make("web")];
+    if (web === undefined) throw new Error("missing web");
+    const authored: MountPlan = {
+      type: "bind",
+      origin: "authored",
+      source: "/custom",
+      target: PortablePath.make(target),
+      readOnly: true,
+      createHostPath: false,
+      realization: "passthrough",
+    };
+    const input = { ...plan, services: { ...plan.services, [web.name]: { ...web, mounts: [authored] } } };
+    const result = Effect.runSync(
+      withSshAgentOverlay(
+        input,
+        { kind: "ssh", socketName: "agent.sock", mount: { _tag: "volume", volume: "agent-volume" } },
+        { knownHostsFile: "/home/user/.ssh/known_hosts" },
+      ),
+    );
+    expect(result.services[web.name]?.mounts).toHaveLength(2);
+    expect(result.services[web.name]?.mounts).toContainEqual(authored);
+    expect(stripSshAgentOverlay(result)).toEqual(input);
+  });
+}
+
+test("strips unmarked known-hosts overlays", async () => {
+  const { stripSshAgentOverlay } = await import("../../../src/subsystems/ssh-agent/overlay.ts");
+  const plan = overlayFixture();
+  const web = plan.services[ServiceName.make("web")];
+  if (web === undefined) throw new Error("missing web");
+  const mount: MountPlan = {
+    type: "bind",
+    source: "/host/known_hosts",
+    target: PortablePath.make("/etc/ssh/ssh_known_hosts"),
+    readOnly: true,
+    createHostPath: false,
+    realization: "passthrough",
+  };
+  const input = { ...plan, services: { ...plan.services, [web.name]: { ...web, mounts: [mount] } } };
+  expect(stripSshAgentOverlay(input)).toEqual(plan);
 });

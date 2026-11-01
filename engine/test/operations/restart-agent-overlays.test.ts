@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { commonContainerLabels } from "@lando/container-runtime/plan";
 import {
@@ -11,14 +12,16 @@ import {
   type AppPlan,
   GPG_AGENT_SOCKET_NAME,
   PortNumber,
+  ProviderId,
   SSH_AGENT_SOCKET_NAME,
 } from "@lando/sdk/schema";
-import { PathsService, SshService } from "@lando/sdk/services";
+import { GlobalAppService, PathsService, SshService } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Result } from "effect";
 import { restartApp } from "../../src/operations/restart.ts";
 import { withGpgAgentOverlay } from "../../src/subsystems/gpg-agent/overlay.ts";
 import { stripGpgAgentOverlay } from "../../src/subsystems/gpg-agent/overlay.ts";
+import { hostKnownHostsFile } from "../../src/subsystems/ssh-agent/host-known-hosts.ts";
 import { stripSshAgentOverlay, withSshAgentOverlay } from "../../src/subsystems/ssh-agent/overlay.ts";
 import {
   readAgentRelayWorkerRecord,
@@ -117,7 +120,16 @@ for (const kind of ["ssh", "gpg"] as const) {
       };
       applied =
         kind === "ssh"
-          ? Effect.runSync(withSshAgentOverlay(eligible, runtimeSession))
+          ? await Effect.runPromise(
+              Effect.gen(function* () {
+                const knownHostsFile = yield* hostKnownHostsFile(homedir());
+                return yield* withSshAgentOverlay(
+                  eligible,
+                  runtimeSession,
+                  knownHostsFile === undefined ? {} : { knownHostsFile },
+                );
+              }),
+            )
           : Effect.runSync(
               withGpgAgentOverlay(
                 eligible,
@@ -163,65 +175,79 @@ for (const kind of ["ssh", "gpg"] as const) {
   }
 }
 
-test("retains the managed SSH sidecar volume without restarting its session", async () => {
-  const desired: AppPlan = {
-    ...plan,
-    extensions: { "@lando/core/ssh-agent": { mode: "sidecar" } },
-    services: { [web.name]: { ...web, extensions: { "@lando/core/ssh-agent": { mode: "sidecar" } } } },
-  };
-  const runtimePlan = Effect.runSync(
-    withSshAgentOverlay(desired, {
-      kind: "ssh",
-      socketName: SSH_AGENT_SOCKET_NAME,
-      mount: { _tag: "volume", volume: "retained-agent" },
-    }),
-  );
-  const bindSources = runtimeBindSources(runtimePlan);
-  const originalService = runtimePlan.services[web.name];
-  if (originalService === undefined) throw new TypeError("Expected original sidecar service");
-  const labels = commonContainerLabels(runtimePlan, originalService);
-  let setupCalls = 0;
-  let applyCalls = 0;
-  const harness = makeHarness({
-    plannedApp: desired,
-    inspect: (target) =>
-      Effect.succeed({
-        app: plan.id,
-        service: target.service,
-        providerId: plan.provider,
-        status: "running",
-        publications: { status: "unknown" },
-        bindSources,
-        labels,
-      }),
-    onApply: (selected) => {
-      applyCalls += 1;
-      for (const service of Object.values(selected.services)) {
-        expect(bringUpRecreateReasons(selected, service, { bindSources, labels })).toEqual([]);
-      }
-    },
-  });
-  await Effect.runPromise(
-    restartApp(
-      { services: [web.name] },
-      {
-        plan: desired,
-        root: desired.root,
-        app: { kind: "user", id: plan.id, root: plan.root },
+test.each(["lando", "docker", "podman"])(
+  "retains the same-provider %s SSH sidecar volume without restarting its session",
+  async (provider) => {
+    const desired: AppPlan = {
+      ...plan,
+      provider: ProviderId.make(provider),
+      extensions: { "@lando/core/ssh-agent": { mode: "sidecar" } },
+      services: { [web.name]: { ...web, extensions: { "@lando/core/ssh-agent": { mode: "sidecar" } } } },
+    };
+    const knownHostsFile = await Effect.runPromise(hostKnownHostsFile(homedir()));
+    const runtimePlan = Effect.runSync(
+      withSshAgentOverlay(
+        desired,
+        {
+          kind: "ssh",
+          socketName: SSH_AGENT_SOCKET_NAME,
+          mount: { _tag: "volume", volume: "retained-agent" },
+        },
+        knownHostsFile === undefined ? {} : { knownHostsFile },
+      ),
+    );
+    const bindSources = runtimeBindSources(runtimePlan);
+    const originalService = runtimePlan.services[web.name];
+    if (originalService === undefined) throw new TypeError("Expected original sidecar service");
+    const labels = commonContainerLabels(runtimePlan, originalService);
+    let setupCalls = 0;
+    let applyCalls = 0;
+    const harness = makeHarness({
+      plannedApp: desired,
+      inspect: (target) =>
+        Effect.succeed({
+          app: plan.id,
+          service: target.service,
+          providerId: plan.provider,
+          status: "running",
+          publications: { status: "unknown" },
+          bindSources,
+          labels,
+        }),
+      onApply: (selected) => {
+        applyCalls += 1;
+        for (const service of Object.values(selected.services)) {
+          expect(bringUpRecreateReasons(selected, service, { bindSources, labels })).toEqual([]);
+        }
       },
-    ).pipe(
-      Effect.provideService(SshService, {
-        id: "retained",
-        setup: () =>
-          Effect.sync(() => {
-            setupCalls += 1;
-          }),
-        getAgentSocket: (appId) =>
-          Effect.succeed({ appId, socketPath: "/unused", runtimeVolume: "retained-agent" }),
-      }),
-      Effect.provide(harness.layer),
-    ),
-  );
-  expect(applyCalls).toBe(1);
-  expect(setupCalls).toBe(0);
-});
+    });
+    const globalApp = await Effect.runPromise(GlobalAppService.pipe(Effect.provide(harness.layer)));
+    await Effect.runPromise(
+      restartApp(
+        { services: [web.name] },
+        {
+          plan: desired,
+          root: desired.root,
+          app: { kind: "user", id: plan.id, root: plan.root },
+        },
+      ).pipe(
+        Effect.provideService(GlobalAppService, {
+          ...globalApp,
+          providerId: Effect.succeed(desired.provider),
+        }),
+        Effect.provideService(SshService, {
+          id: "retained",
+          setup: () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+          getAgentSocket: (appId) =>
+            Effect.succeed({ appId, socketPath: "/unused", runtimeVolume: "retained-agent" }),
+        }),
+        Effect.provide(harness.layer),
+      ),
+    );
+    expect(applyCalls).toBe(1);
+    expect(setupCalls).toBe(0);
+  },
+);

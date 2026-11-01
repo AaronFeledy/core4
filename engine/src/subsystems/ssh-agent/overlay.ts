@@ -16,6 +16,8 @@ import { type AgentRelaySession, agentSocketMountPlan } from "./session.ts";
 const Intent = Schema.Struct({ mode: Schema.Literals(["host", "sidecar"]) });
 const Features = Schema.Struct({ featureIds: Schema.Array(Schema.String) });
 const target = PortablePath.make(AGENT_SOCKET_CONTAINER_DIR.ssh);
+const knownHostsTarget = PortablePath.make("/etc/ssh/ssh_known_hosts");
+const ownedTargets: readonly string[] = [target, knownHostsTarget];
 type OverlaySession = Pick<AgentRelaySession, "mount" | "kind" | "socketName">;
 
 export const serviceHasSshAgentFeature = (service: ServicePlan): boolean => {
@@ -44,7 +46,8 @@ const stripService = (service: ServicePlan): ServicePlan => ({
     ),
   ),
   mounts: service.mounts.filter(
-    (mount) => mount.target !== target || (mount.origin !== undefined && mount.origin !== "integration"),
+    (mount) =>
+      !ownedTargets.includes(mount.target) || (mount.origin !== undefined && mount.origin !== "integration"),
   ),
 });
 
@@ -58,6 +61,7 @@ export const stripSshAgentOverlay = (plan: AppPlan): AppPlan => ({
 export const withSshAgentOverlay = Effect.fnUntraced(function* (
   plan: AppPlan,
   session: OverlaySession,
+  options?: { readonly knownHostsFile?: string },
 ): Effect.fn.Return<AppPlan, SshAgentTransportError> {
   const services = { ...plan.services };
   for (const service of Object.values(plan.services)) {
@@ -72,6 +76,22 @@ export const withSshAgentOverlay = Effect.fnUntraced(function* (
         mounts.push(mount);
       },
     });
+    // Existing ownership wins, including directories where a nested bind could create a host file.
+    const knownHostsOwned = service.mounts.some((mount) => {
+      const mountTarget = mount.target.replace(/\/+$/, "");
+      return knownHostsTarget === mountTarget || knownHostsTarget.startsWith(`${mountTarget}/`);
+    });
+    if (options?.knownHostsFile !== undefined && !knownHostsOwned) {
+      mounts.push({
+        type: "bind",
+        origin: "integration",
+        source: options.knownHostsFile,
+        target: knownHostsTarget,
+        readOnly: true,
+        createHostPath: false,
+        realization: "passthrough",
+      });
+    }
     const ordered = orderMounts(mounts);
     const duplicate = duplicateMountTarget(ordered);
     if (duplicate !== undefined) {

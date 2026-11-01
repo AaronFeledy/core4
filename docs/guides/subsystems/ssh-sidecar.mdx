@@ -34,13 +34,17 @@ Every `type: lando` service gets the `lando.ssh-agent` feature (priority 1200) i
 SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock
 ```
 
+When the agent overlay applies and your host `~/.ssh/known_hosts` is a regular file, services also trust its hosts through a read-only bind at `/etc/ssh/ssh_known_hosts`. This works in sidecar and host-agent modes, including services with `home: false`. OpenSSH checks this system file alongside the service user's own known hosts, so you can still add hosts inside the service. Lando never copies or rewrites your host file.
+
+If you create the host file after the app started, your next `lando start` recreates the service with the bind. If a tool replaces the file, for example `ssh-keygen -R`, the service keeps the old copy until you recreate it with `lando rebuild`. The file must be readable by the service user; OpenSSH creates it with mode `0644`. A service that mounts its own `/etc/ssh/ssh_known_hosts` or an ancestor directory such as `/etc/ssh`, `/etc`, or `/` keeps that mount instead.
+
 When the app runs on the same provider as the global app, the plugin publishes `runtimeVolume: "lando-ssh-agent"` through `SshService.getAgentSocket`. The global service declares `storage: [{ store: "lando-ssh-agent", target: "/run/lando/ssh-agent", scope: "app" }]`. The planner preserves that native name and puts the store on the global plan, never on consuming app plans. Apps mount the volume directly: no host socket probe, detached relay worker, or VM bridge. Readiness checks the global service on its own provider and runs `ssh-add -l` inside it; an empty but reachable agent is ready.
 
 The sidecar publishes `agent.sock` at the volume root with mode `0666` and a traversable directory. A socat listener connects to the private agent socket as the agent's owner, allowing non-root service users through OpenSSH's peer-UID check. This local forwarding stays inside the runtime on Linux, macOS, and Windows.
 
 Apps pinned to a different provider than the global app keep the host-relay path. A second sidecar listener preserves `<userDataRoot>/ssh/ssh-agent.sock`; the per-app worker probes and relays it through the selected provider's existing delivery mechanism. A plugin without `runtimeVolume` also uses that path. Cross-provider delivery still depends on the host being able to connect to the sidecar's host-facing socket.
 
-The planner records only the eligible services and the selected mode under the plan extension `@lando/core/ssh-agent` (`{ mode: "sidecar" | "host" }`). The mount and `SSH_AUTH_SOCK` are a start-time overlay applied by start, restart, and rebuild; they never enter the plan cache. Runtime-volume sessions need no per-app cleanup. App stop, destroy, and volume pruning leave the globally owned store alone. Global destroy or uninstall may remove it. Host-relay sessions retain their existing cleanup on stop or destroy.
+The planner records only the eligible services and the selected mode under the plan extension `@lando/core/ssh-agent` (`{ mode: "sidecar" | "host" }`). The socket and known-hosts mounts and `SSH_AUTH_SOCK` are a start-time overlay applied by start, restart, and rebuild; they never enter the plan cache or the recorded applied plan. Runtime-volume sessions need no per-app cleanup. App stop, destroy, and volume pruning leave the globally owned store alone. Global destroy or uninstall may remove it. Host-relay sessions retain their existing cleanup on stop or destroy.
 
 ## When the sidecar is missing
 

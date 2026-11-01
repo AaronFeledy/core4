@@ -142,11 +142,15 @@ test("sanitizer strips ssh-agent overlay", async () => {
     extensions: {},
   };
   const overlaid = Effect.runSync(
-    withSshAgentOverlay(plan, {
-      kind: "ssh",
-      socketName: "agent.sock",
-      mount: { _tag: "volume", volume: "agent" },
-    }),
+    withSshAgentOverlay(
+      plan,
+      {
+        kind: "ssh",
+        socketName: "agent.sock",
+        mount: { _tag: "volume", volume: "agent" },
+      },
+      { knownHostsFile: "/home/user/.ssh/known_hosts" },
+    ),
   );
   // When
   const result = await Effect.runPromise(
