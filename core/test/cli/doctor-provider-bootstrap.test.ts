@@ -110,10 +110,13 @@ describe("doctor provider-bootstrap failure", () => {
         "orphaned-volume-snapshots",
         "app-config",
         "deprecations",
+        "debugger-host",
       ]);
       expect(
         report.skipped?.every(
-          (entry) => entry.status === "skipped" && entry.reason.includes("provider-bootstrap"),
+          (entry) =>
+            entry.status === "skipped" &&
+            (entry.section === "debugger-host" || entry.reason.includes("provider-bootstrap")),
         ),
       ).toBe(true);
       expect(report.provider.checks).toEqual([]);
