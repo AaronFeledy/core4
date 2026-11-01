@@ -23,7 +23,7 @@ import {
 } from "./_feature-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
-import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
+import { imageAuthority, launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
@@ -33,6 +33,7 @@ export const APACHE_LISTENER = {
   daemon: "Apache",
   when: "All Apache services",
   launcher: { setting: (port: number) => `Listen ${port}` },
+  image: { setting: (port: number) => `Listen ${port}` },
 } as const;
 export const DEFAULT_PORT = APACHE_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
@@ -191,6 +192,8 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
       ),
     );
     if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
+    if (service.image !== undefined && service.image !== DEFAULT_IMAGE)
+      ctx.setListenerAuthority(imageAuthority(APACHE_LISTENER, port));
   } else {
     ctx.setListenerAuthority(launcherAuthority(APACHE_LISTENER, port));
   }
