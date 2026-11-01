@@ -9,7 +9,7 @@ tags: [beta, docs, recipes, symfony, php, postgres, messenger, queues]
 
 Run `messenger:consume` in its own `worker` service next to the Symfony recipe's `appserver`, with Postgres as the queue. A container restart policy brings the consumer back after `messenger:stop-workers` or a crash.
 
-This builds on [Run the Symfony recipe](../symfony-workflow/). The app name below is `symfony-messenger`.
+This builds on [Run the Symfony recipe](./symfony-workflow.mdx). Run the commands from your host terminal. The app name below is `symfony-messenger`.
 
 ## Add a worker to the Symfony recipe
 
@@ -17,6 +17,8 @@ This builds on [Run the Symfony recipe](../symfony-workflow/). The app name belo
 lando init --recipe symfony --name=symfony-messenger --yes
 cd symfony-messenger
 ```
+
+Init writes the service and tooling definitions, plus a `recipe:` block recording the selected options. Keep that block: `{{ recipe.php }}` reads its PHP option, which defaults to `8.4`.
 
 Before the first start, merge these changes into `.lando.yml`. Add the `appMount` block to the existing `appserver` service and add the new `worker` service:
 
@@ -44,7 +46,7 @@ services:
         condition: service_healthy
 ```
 
-Each service keeps its own `vendor` directory unless you include it, so both services include it to share the one Composer installs on your host. The worker gets the same `DATABASE_URL` the recipe gives `appserver`, built from the database's real credentials. `--time-limit=3600` makes the consumer exit after an hour, and `unless-stopped` starts a fresh one.
+Each service keeps its own `vendor` directory unless you include it. These `includes` entries cancel that default exclusion, so both services use the project directory's `vendor`. `lando composer` runs inside `appserver`, not on your host; its files are visible to both services through the shared app mount. The worker gets the same `DATABASE_URL` the recipe gives `appserver`, built from the database's resolved credentials. `--time-limit=3600` asks the consumer to exit after an hour, once its current work finishes, and `unless-stopped` starts a fresh one.
 
 Check the config and start the app:
 
@@ -53,11 +55,13 @@ lando app:config:lint
 lando start
 ```
 
-There's no `bin/console` yet, so the worker exits. Start finishes with a warning and a `restarting` worker row. The restart policy keeps retrying and the consumer starts on its own once the app is installed. Check `lando logs -s worker` while it retries.
+There's no `bin/console` yet, so the worker exits. Lando reports this supervised exit as a warning and a `restarting` worker row rather than failing start. An exhausted healthcheck still fails start regardless of restart policy. The restart policy keeps retrying; the consumer can run once Symfony, its dependencies, and the transport configuration are installed. Check `lando logs -s worker` while it retries.
 
 ## Install Symfony and Messenger
 
-Install the skeleton as [Run the Symfony recipe](../symfony-workflow/) shows, then add Messenger with its Doctrine transport:
+Install the skeleton as [Run the Symfony recipe](./symfony-workflow.mdx) shows, including moving `tmp-app` into the app root while keeping `.lando.yml`. The current stable skeleton selects Symfony 8.1 and requires PHP 8.4 or newer, matching this recipe's default. The command class below uses invokable commands and `#[Argument]`, available since Symfony 7.3.
+
+From the app root, add Messenger with its Doctrine transport. The ORM pack supplies DoctrineBundle and the default database connection that the minimal skeleton lacks:
 
 ```sh
 lando composer require symfony/messenger symfony/doctrine-messenger symfony/orm-pack --no-interaction
@@ -89,9 +93,15 @@ Create the queue tables:
 lando console messenger:setup-transports
 ```
 
-Check that it reports both `async` and `failed` as set up. Until this runs, the worker log shows `relation "messenger_messages" does not exist` and the worker restarts; after it runs, check that `lando logs -s worker` shows `Consuming messages from transport "async"`.
+Check that it reports both `async` and `failed` as set up. They use different queues in the same `messenger_messages` table. With `auto_setup=0`, a worker polling before setup can report `relation "messenger_messages" does not exist` and restart. After setup, check the latest `lando logs -s worker` entries for `Consuming messages from transport "async"` without recurring database errors; an older banner alone doesn't prove the worker is healthy.
 
 ## Dispatch a message and watch it run
+
+Create the source directories from the app root, then save the files below:
+
+```sh
+mkdir -p src/Message src/MessageHandler src/Command
+```
 
 Save this as `src/Message/SendPing.php`:
 
@@ -160,7 +170,9 @@ final class PingCommand
 }
 ```
 
-The worker loaded the old code when it started. Tell it to stop, then wait for the restart:
+The minimal skeleton's logger writes to stderr without requiring Monolog. The worker's `-vv` sets Console's `SHELL_VERBOSITY` to `2`, enabling the warning from this handler and Messenger's info-level success message.
+
+The worker loaded the old code when it started. Tell it to stop, then wait for the restart. `messenger:stop-workers` signals through Symfony's app cache. Both services mount the same project at `/app`, including `var/`, which Lando doesn't exclude by default, so they share the default filesystem cache:
 
 ```sh
 lando console messenger:stop-workers
@@ -174,7 +186,7 @@ lando console app:ping 'hello from console'
 lando logs -s worker --follow
 ```
 
-Wait for `ping handled: hello from console` and `handled successfully`, then press Ctrl-C. The command returns as soon as the message is queued, before the worker handles it.
+Wait for `ping handled: hello from console` and `handled successfully`, then press Ctrl-C. Dispatch queues the message without waiting for the worker to handle it.
 
 ## Read and clear failed messages
 
@@ -189,7 +201,9 @@ Wait for `Removing from transport after 1 retries`, then press Ctrl-C and list t
 lando console messenger:failed:show
 ```
 
-Check that the table lists `App\Message\SendPing` with `ping exploded` and an `Id`. To retry it after a fix, run `lando console messenger:failed:retry`. To delete it, replace `MESSAGE_ID` below with that id. This deletes the stored message:
+Check that the table lists `App\Message\SendPing` with `ping exploded` and an `Id`. To retry it after fixing the handler and restarting the worker, use `lando console messenger:failed:retry MESSAGE_ID --force`, replacing `MESSAGE_ID` with that id. The bare retry command prompts interactively; specifying the id and `--force` also works without an interactive terminal.
+
+Alternatively, delete this deliberately failing message. Replace `MESSAGE_ID` below with its id. This deletes the stored message:
 
 ```sh
 lando console messenger:failed:remove MESSAGE_ID --force
@@ -210,7 +224,7 @@ Check that both `async` and `failed` show a count of `0`.
 
 ## Tear down
 
-This removes containers and networks. Volumes, including the queue tables, stay unless you pass `--volumes` or `--purge`; those flags delete data.
+This removes containers and networks. Volumes, including the queue tables, stay unless you pass `--volumes` or `--purge`; those flags delete data. `--purge` also deletes the app's database snapshots. The shared project files remain on your host.
 
 ```sh
 lando destroy -y
@@ -224,6 +238,7 @@ lando destroy -y
     <Step name="check-config">
       <Run command="lando app:config:lint" />
       <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[^}]*\"type\":\\s*\"php:8\\.4\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"command\":\\s*\"php bin/console messenger:consume async --time-limit=3600 -vv\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"restart\":\\s*\"unless-stopped\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"console\":\\s*\\{[^}]*\"service\":\\s*\"appserver\"" } }} />
@@ -244,6 +259,6 @@ lando destroy -y
 
 ## Next
 
-- [Run the Symfony recipe](../symfony-workflow/)
-- [Add PostgreSQL](../../services/postgres/)
-- [Customize PHP](../../services/php-customization/)
+- [Run the Symfony recipe](./symfony-workflow.mdx)
+- [Add PostgreSQL](../services/postgres.mdx)
+- [Customize PHP](../services/php-customization.mdx)
