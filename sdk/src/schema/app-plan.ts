@@ -83,6 +83,10 @@ const ServicePlanFields = {
   artifact: Schema.optionalKey(Schema.Union([ArtifactRef, ArtifactBuildSpec])),
   command: Schema.optionalKey(CommandSpec),
   entrypoint: Schema.optionalKey(CommandSpec),
+  init: Schema.optionalKey(Schema.Boolean).annotate({
+    description:
+      "Native container init for direct-child signal forwarding and orphan reaping; absence retains provider defaults.",
+  }),
   environment: Environment,
   user: Schema.optionalKey(Schema.String),
   home: Schema.optionalKey(ServiceHomePlan).annotate({

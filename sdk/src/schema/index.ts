@@ -152,6 +152,7 @@ export { RecipeSourceCompileError } from "./recipe-source-error.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";
 export * from "./app-results.ts";
+export * from "./service-shutdown.ts";
 export * from "./renderer-capabilities.ts";
 export * from "./renderer-panel.ts";
 export * from "./keymap.ts";

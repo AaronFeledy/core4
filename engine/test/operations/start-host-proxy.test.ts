@@ -3,20 +3,21 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeLandoPaths } from "@lando/paths";
-import { Cause, DateTime, Effect, Exit, Layer, Option, Scope } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Option, Schema, Scope } from "effect";
 
 import { ContainerHelperUnavailableError, HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  GlobalConfig,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
-import { PathsService, ShellRunner } from "@lando/sdk/services";
+import { ConfigService, PathsService, ShellRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
@@ -112,7 +113,15 @@ const capabilitiesFor = (
   hostProxy: { containerTargets: [target] },
 });
 
+const config = Schema.decodeUnknownSync(GlobalConfig)({});
 const runtimeLayer = Layer.mergeAll(
+  Layer.succeed(
+    ConfigService,
+    ConfigService.of({
+      load: Effect.succeed(config),
+      get: (key) => Effect.succeed(config[key]),
+    }),
+  ),
   PrivateFileAccessService.layer,
   LandoEventService.layer,
   Layer.succeed(
@@ -194,6 +203,43 @@ const expectPrepareSpy = (exit: Exit.Exit<unknown, unknown>, target: HostProxySh
 };
 
 describe("startHostProxyRunLandoSession prepare port", () => {
+  test("Windows transport validation preserves host filesystem paths", async () => {
+    const roots = await isolatedRoots();
+    const plan = planFor(true);
+    const capabilities = {
+      ...capabilitiesFor(X64_TARGET, "emulated"),
+      hostProxy: {
+        containerTargets: [X64_TARGET],
+        tcpHostGateway: "host.containers.internal",
+      },
+    };
+    const exit = await Effect.runPromiseExit(
+      withStartedHostProxy(plan, app, capabilities, {
+        platform: "win32",
+        use: Effect.succeed,
+      }).pipe(Effect.provide(runtimeLayer), Effect.provideService(PathsService, makeLandoPaths(roots))),
+    );
+    expectPrepareSpy(exit, X64_TARGET);
+    expect(prepareCacheRoots).toEqual([join(roots.userCacheRoot, "tool-downloads", "container-helper")]);
+  });
+
+  test("Windows transport without a gateway fails before helper preparation", async () => {
+    const roots = await isolatedRoots();
+    const result = await Effect.runPromise(
+      startHostProxyRunLandoSession(planFor(true), app, capabilitiesFor(X64_TARGET, "emulated"), {
+        ...roots,
+        transportPlatform: "win32",
+      }).pipe(Effect.provide(runtimeLayer), Effect.result),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "HostProxyTransportUnavailableError",
+        socketPath: "ProviderCapabilities.hostProxy.tcpHostGateway",
+      },
+    });
+    expect(prepareCalls).toEqual([]);
+  });
   test("nested SSH session survives host-proxy use and closes with the managed scope", async () => {
     // Given
     const base = planFor(false);

@@ -168,7 +168,14 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-command-registry-manifest.ts",
     workspace: "core",
-    dependsOn: ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations", "bundled-command-descriptors"],
+    // Imports the command graph, including doctor's host-proxy allowlist check, which reads the generated allowlist.
+    dependsOn: [
+      "setup-plugin-flags",
+      "mcp-allowlist",
+      "schema-deprecations",
+      "bundled-command-descriptors",
+      "host-proxy-allowlist",
+    ],
   },
   {
     // Imports `@lando/sdk/schema`; see `bootstrap-layers`.

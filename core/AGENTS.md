@@ -125,6 +125,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Register n
 
 ## Host-proxy workers
 
+- Calls run in fresh `__internal:host-proxy-call` children; keep the worker runtime-free except for the Windows provider bridge. Child admission in `core/src/cli/run.ts` must precede tooling routing and accept only allowlisted canonical built-ins.
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Write each bounded chunk once, await `write`/`flush`, and await `end`; retrying from the returned value duplicates bytes.
 
 ## Machine-output gate
@@ -147,7 +148,7 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Register n
 
 ## Doctor subsystems
 
-- `subsystemDoctor` inspects provided runtime services; missing services become report-level `skipped` entries. Host DNS is independent: `host-proxy` runs with `HostDnsResolver` even without `HostProxyService`, using the canonical host-proxy loopback default and reporting DNS observations only. Healthcheck/scanner are skipped because doctor executes neither service probes nor endpoint scans; runner ids are not evidence of readiness. `doctorReport()` skips the subsystem section only when neither runtime services nor a DNS resolver are supplied. `resilientDoctorReport` supplies host DNS even after provider-bootstrap failure (but not invalid global config), never a fabricated default subsystem graph. Proxy readiness includes `status().state === "running"`; a selected-but-stopped proxy is recoverable via `--fix`. Readiness/build gates construct healthcheck runners from the selected provider directly.
-- Traefik doctor display name is `router` (`PROXY_SPEC.name`). Setup step id stays `proxy` and the flag stays `--skip-proxy`. Do not rename `HostProxyService` / `--host-proxy` with the ingress tag.
+- `subsystemDoctor` inspects provided runtime services; missing services become report-level `skipped` entries. Host DNS is independent: `host-dns` runs with `HostDnsResolver`, uses `HOST_DNS_LOOPBACK` from the DNS check, and reports DNS observations only. Healthcheck/scanner are skipped because doctor executes neither service probes nor endpoint scans; runner ids are not evidence of readiness. `doctorReport()` skips the subsystem section only when neither runtime services nor a DNS resolver are supplied. `resilientDoctorReport` supplies host DNS even after provider-bootstrap failure (but not invalid global config), never a fabricated default subsystem graph. Proxy readiness includes `status().state === "running"`; a selected-but-stopped proxy is recoverable via `--fix`. Readiness/build gates construct healthcheck runners from the selected provider directly.
+- Traefik doctor display name is `router` (`PROXY_SPEC.name`). Setup step id stays `proxy` and the flag stays `--skip-proxy`. `host-proxy` names container-to-host RPC; `host-dns` names resolver diagnostics. Lando has no host-DNS writer service or setup flag.
 - A guide id is global: fixtures resolve from `docs/guides/<id>/fixtures` for every guide with that id, and generated scenarios land in `test/scenarios/generated/guides/<id>/`. A new `recipes/<id>/README.mdx` collides with any same-id `docs/guides/<id>.mdx`; the recipe README keeps the id because `build-recipe-readmes.ts` derives its `.scaffold/` output from frontmatter, so re-id the docs-only guide.
 - The restricted `parseRecipeYaml` reads a bare `config:` key as `{}`; `Bun.YAML.parse` reads it as `null`, so parse recipe fixtures through `parseRecipeYaml` in tests.

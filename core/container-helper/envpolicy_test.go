@@ -12,9 +12,9 @@ func TestEnvPolicy(t *testing.T) {
 		want   map[string]string
 	}{
 		{"empty", envPolicy{}, map[string]string{}},
-		{"prefix", envPolicy{prefixes: []string{"LANDO_", "LC_"}}, map[string]string{"LANDO_FOO": "", "LC_ALL": "C", "LANDO_TOKEN": "secret"}},
+		{"prefix", envPolicy{prefixes: []string{"LANDO_", "LC_"}}, map[string]string{"LC_ALL": "C"}},
 		{"names", envPolicy{names: parseNames("LANG,TERM,,GROK_AGENT")}, map[string]string{"LANG": "en", "TERM": "xterm", "GROK_AGENT": "true"}},
-		{"blocked wins", envPolicy{prefixes: []string{"LANDO_"}, names: parseNames("LANDO_TOKEN"), blocked: parseNames("LANDO_TOKEN")}, map[string]string{"LANDO_FOO": ""}},
+		{"blocked wins", envPolicy{prefixes: []string{"LANDO_"}, names: parseNames("LANDO_TOKEN"), blocked: parseNames("LANDO_TOKEN")}, map[string]string{}},
 		{"one only", envPolicy{names: parseNames("GROK_AGENT,ONE,ZERO"), oneOnly: parseNames("GROK_AGENT,ONE,ZERO")}, map[string]string{"ONE": "1"}},
 		{"one only does not allow", envPolicy{oneOnly: parseNames("ONE")}, map[string]string{}},
 	} {
@@ -33,7 +33,7 @@ func TestLinkedPolicyParsing(t *testing.T) {
 	t.Cleanup(func() { forwardPrefixes, forwardNames, blockedNames, mustBeOneNames = old[0], old[1], old[2], old[3] })
 	forwardPrefixes, forwardNames, blockedNames, mustBeOneNames = ",LANDO_,,LC_,", "LANG,GROK_AGENT", "LANDO_HOST_PROXY_TOKEN", "GROK_AGENT"
 	got := parsePolicy().filter(map[string]string{"LANDO_X": "x", "LC_ALL": "C", "LANG": "en", "GROK_AGENT": "1", "LANDO_HOST_PROXY_TOKEN": "secret", "OTHER": "no"})
-	want := map[string]string{"LANDO_X": "x", "LC_ALL": "C", "LANG": "en", "GROK_AGENT": "1"}
+	want := map[string]string{"LC_ALL": "C", "LANG": "en", "GROK_AGENT": "1"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("filter = %#v, want %#v", got, want)
 	}

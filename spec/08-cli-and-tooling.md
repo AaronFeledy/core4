@@ -362,7 +362,7 @@ Metadata MUST normalize once after layers/includes and drive CLI, help, machine 
 `ToolingTask` includes:
 
 - Command graph: `cmd`, ordered `cmds`, `deps`, `aliases`, `namespace`, `topLevelAlias`, `internal`, `disabled`.
-- Execution: `service`, `engine`, `bootstrap`, `user`, `dir`, `appMount`, `stdio`, `interactive`, `passThrough`, `hostProxyAllowed`.
+- Execution: `service`, `engine`, `bootstrap`, `user`, `dir`, `appMount`, `stdio`, `interactive`, `passThrough`.
 - Data: `vars`, `env`, `dotenv`, `flags: FlagSpec`, `args: ArgSpec`.
 - Freshness and policy: `sources`, `generates`, `method`, `status`, `preconditions`, `if`, `run`, `platforms`, `output`, `failFast`, `silent`.
 - Documentation and evolution: `desc`, `summary`, `description`, `usage`, `examples`, `deprecated: DeprecationNotice`.
@@ -386,7 +386,7 @@ MCP tooling call events MUST NOT project request-derived `appRef` before authori
 
 MCP tooling input schemas MUST project the canonical declaration into real `enum`, typed `default`, boolean type (including false), member `required` plus required parent groups, and `additionalProperties: false`. Sensitive members use `writeOnly: true`; `x-lando-input-revision` and `x-lando-accepts-arguments` expose the revision and raw policy. Defaults MUST NOT exist only in descriptions. Generic MCP/event admission MUST NOT bind against retained metadata; authoritative execution remains the single binder.
 
-`ToolingTaskInput` accepts a `ToolingTaskShape` object, literal `false`, or a non-empty string other than the exact string `disabled`. Literal `false` decodes to `{ disabled: true }`; a command string decodes to `{ cmd: <string> }`. The bare string `disabled` is rejected with remediation to use `false`; object-form `cmd: disabled` remains valid. Shorthands are interpreted after layer composition and replace an inherited task of the same name wholesale. An empty shorthand string is invalid; an object may still contain `cmd: ""`. `cmd` normalizes to one ordered `cmds` step. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
+`ToolingTaskInput` accepts a `ToolingTaskShape` object, literal `false`, or a non-empty string other than the exact string `disabled`. Literal `false` decodes to `{ disabled: true }`; a command string decodes to `{ cmd: <string> }`. The bare string `disabled` is rejected with remediation to use `false`; object-form `cmd: disabled` remains valid. Shorthands are interpreted after layer composition and replace an inherited task of the same name wholesale. An empty shorthand string is invalid; an object may still contain `cmd: ""`. `cmd` normalizes to one ordered `cmds` step. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. Tooling tasks are never host-proxy eligible (§10.10, §12.1).
 
 #### 8.5.2 Commands and dependencies
 
@@ -501,7 +501,7 @@ Tooling caches and paths are persisted contracts:
 |---|---|
 | `app-command` / app command index | Routing metadata at `<userCacheRoot>/apps/<app-id>/commands.bin` |
 | app-plan cache | Compiled `ToolingProgram` and app plan (§12.1) |
-| `host-proxy-allowlist` | Canonical host-proxy command/task ids |
+| `host-proxy-allowlist` | Canonical built-in command ids permitted through host-proxy |
 | `.lando/scripts/**/*.bun.sh` | Auto-discovered CLI task source |
 | `LANDO_INPUT` | Data-only `ToolingInputValues` JSON: exactly `{ flags, args }` for script tasks (§8.5.9) |
 

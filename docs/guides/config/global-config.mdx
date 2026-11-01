@@ -89,6 +89,26 @@ Double-quoted YAML treats `\t` and `\n` as escapes, so `"C:\temp\new"` becomes a
 
 `defaultProviderId` is the provider `lando setup` persisted. `LANDO_PROVIDER` overrides it per command and never writes it. See [What persists](../setup/provider-selection.mdx#what-persists).
 
+## Allow additional host URL schemes
+
+Use `hostProxy.allowedSchemes` to allow URL schemes beyond the host proxy's built-in list. From your host terminal, set the full list of additional schemes and check the effective value:
+
+```sh
+lando config set hostProxy.allowedSchemes '["figma","slack"]' --type=json
+lando config get hostProxy.allowedSchemes --format=json
+```
+
+The equivalent `config.yml` entry is:
+
+```yaml
+hostProxy:
+  allowedSchemes:
+    - figma
+    - slack
+```
+
+The lookup should contain `figma` and `slack` unless a higher-precedence layer replaces the array. Arrays replace across layers; include every additional scheme you want to keep. Use scheme names without a trailing colon. Scheme comparisons ignore case. `file` is always rejected, regardless of case; reveal files by path instead. Each host-proxy call reads current disk config in a fresh Lando process, so changes take effect on the next call without restarting the app. The worker's host environment remains the one captured when it started.
+
 ## Choose a host-wide file-sync policy
 
 `defaultFileSyncEngine` controls acceleration on providers with slow bind mounts. Leave it unset for automatic selection. Lando considers only engines that support your platform, the provider's sync-target capabilities, exclusion patterns, and `two-way-safe` synchronization. It chooses a unique matching default, then a sole eligible engine. With no eligible engine, apps use ordinary binds with reason `no-compatible-engine`; macOS and Docker Desktop do not need an opt-out workaround. Ambiguous choices fail with remediation rather than depending on plugin load order.
@@ -290,7 +310,7 @@ An invalid `renderer` or `logLevel` in `config.yml`, a drop-in, or `LANDO_CONFIG
 
 `lando doctor` still runs with a broken config and exits `1`. Its first section, `global-config`, reports the `ConfigError` and its fix. Sections that need the config (`provider`, `subsystems`, `network-trust`, `certificate-authority`, `global-app`, `mcp`, plus `app-config`, `app-version-constraints`, and `deprecations` when you pass `--app` or `--deprecations`) show as `SKIPPED` instead of failing one by one. Checks that don't depend on config, such as `filesystem-watch`, still run. `lando uninstall` and `lando version` also run without a valid config.
 
-If config passes but the provider runtime cannot load, doctor reports a `provider-bootstrap` self check and exits `1`. Only runtime-dependent sections show as `SKIPPED`, with reasons pointing to that failure; doctor does not suggest `--fix` for subsystems it could not inspect. Host-only checks still run, including host DNS (`host-proxy`), network trust, and requested app version constraints. The DNS probe uses the configured `proxy.defaultDomain` without requiring a host-proxy service. It still needs valid global config. See [Read the report](../subsystems/doctor-walkthrough.mdx#read-the-report) for the section list.
+If config passes but the provider runtime cannot load, doctor reports a `provider-bootstrap` self check and exits `1`. Only runtime-dependent sections show as `SKIPPED`, with reasons pointing to that failure; doctor does not suggest `--fix` for subsystems it could not inspect. Host-only checks still run, including host DNS (`host-dns`), network trust, and requested app version constraints. The DNS probe uses the configured `proxy.defaultDomain` independently of the host-proxy worker. It still needs valid global config. See [Read the report](../subsystems/doctor-walkthrough.mdx#read-the-report) for the section list.
 
   <Scenario id="env-override-config-error" render={false} reason="Regression for ConfigError with env provenance from an invalid env override">
     <Step name="build-with-bad-override">

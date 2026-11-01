@@ -15,6 +15,7 @@ import {
 import { TeardownProvider } from "@lando/engine/providers/app-placement";
 import { DestroyAppOutcome, DestroyAppResult, type ProviderId } from "@lando/sdk/schema";
 import { RouterService } from "@lando/sdk/services";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 
 export interface GlobalDestroyOptions {
   readonly providerId?: ProviderId;
@@ -30,6 +31,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
   }),
   servicesDestroyed: DestroyAppResult.fields.servicesDestroyed,
   volumesRemoved: DestroyAppResult.fields.volumesRemoved,
+  shutdownObservations: DestroyAppResult.fields.shutdownObservations,
 });
 
 export type GlobalDestroyResult = typeof GlobalDestroyResultSchema.Type;
@@ -82,13 +84,16 @@ export const globalDestroy = Effect.fn("GlobalDestroy.destroy")(function* (
       const receipt = yield* executeGlobalTeardown(loaded, { intent: "destroy", volumes, removeState: true });
       if (options.providerId === undefined) yield* recordGlobalResourceCleanup();
 
-      return {
-        app: "global",
-        outcome: receipt.changed ? ("destroyed" as const) : ("unchanged" as const),
-        materialized: loaded.materialized,
-        servicesDestroyed: receipt.services,
-        volumesRemoved: receipt.volumesRemoved,
-      };
+      return withShutdownObservations(
+        {
+          app: "global",
+          outcome: receipt.changed ? ("destroyed" as const) : ("unchanged" as const),
+          materialized: loaded.materialized,
+          servicesDestroyed: receipt.services,
+          volumesRemoved: receipt.volumesRemoved,
+        },
+        receipt.shutdownObservations,
+      );
     }),
   );
 });

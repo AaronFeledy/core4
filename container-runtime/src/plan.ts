@@ -61,14 +61,18 @@ export const commonContainerLabels = (
           Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
         )
       : {};
-  const baseLabels = containerIntegrationLabels(service.environment, {
-    ...userLabels,
-    [APP_LABEL]: plan.id,
-    [APP_ROOT_LABEL]: plan.root,
-    [SERVICE_LABEL]: service.name,
-    ...scratchLabelsForPlan(plan),
-    ...extra,
-  });
+  const baseLabels = containerIntegrationLabels(
+    service.environment,
+    {
+      ...userLabels,
+      [APP_LABEL]: plan.id,
+      [APP_ROOT_LABEL]: plan.root,
+      [SERVICE_LABEL]: service.name,
+      ...scratchLabelsForPlan(plan),
+      ...extra,
+    },
+    service.extensions,
+  );
   return { ...baseLabels, [CREATE_CONFIG_LABEL]: createConfigFingerprint(plan, service, baseLabels) };
 };
 
@@ -150,6 +154,7 @@ export const containerHostConfigFragment = (
   const extraHosts = service.hostAliases.map(({ hostname, ip }) => `${hostname}:${ip}`);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
+    ...(service.init === undefined ? {} : { Init: service.init }),
     ...(binds.length > 0 ? { Binds: binds } : {}),
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
     ...(Object.keys(tmpfs).length > 0 ? { Tmpfs: tmpfs } : {}),

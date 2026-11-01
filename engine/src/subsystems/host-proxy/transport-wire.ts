@@ -8,7 +8,7 @@ import {
   type HostProxySocketStaleError,
   type HostProxyTransportUnavailableError,
 } from "@lando/sdk/errors";
-import { CommandResultEnvelope, HostProxyRequest } from "@lando/sdk/schema";
+import { HostProxyRequest } from "@lando/sdk/schema";
 import type { HostProxyOpenError } from "./open-target.ts";
 
 export const HOST_PROXY_MAX_FRAME_BYTES = 1024 * 1024;
@@ -24,7 +24,8 @@ export const WireRequest = Schema.Struct({
 export type WireRequest = typeof WireRequest.Type;
 
 const WireOk = Schema.TaggedStruct("ok", {
-  envelope: CommandResultEnvelope,
+  stdout: Schema.String,
+  stderr: Schema.String,
   exitCode: Schema.Number,
 });
 export type WireOk = typeof WireOk.Type;
@@ -97,7 +98,7 @@ export const validateWireRequest = (
   if (message.appId !== session.appId) return Effect.fail(authError("cross-app"));
   if (message.sessionId !== session.sessionId || message.token !== session.token)
     return Effect.fail(authError("stale"));
-  if (message.depth >= maxDepth) {
+  if (!Number.isSafeInteger(message.depth) || message.depth < 0 || message.depth >= maxDepth) {
     return Effect.fail(
       new HostProxyRecursionError({
         message: "Nested host-proxy runLando calls are not allowed.",

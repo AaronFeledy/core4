@@ -38,6 +38,7 @@ import { evolveHistoricalContainerUser } from "./x-extension-container-user-proo
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
@@ -71,7 +72,9 @@ const expectedLandofile = (): JsonSchema =>
                 evolveHistoricalTimestamps(
                   evolveHistoricalContainerUser(
                     evolveHistoricalReadiness(
-                      evolveHistoricalShorthand(evolveHistoricalNetworks(repairedLandofile(), "bare")),
+                      evolveHistoricalShorthand(
+                        evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+                      ),
                     ),
                   ),
                   "bare",

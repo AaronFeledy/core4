@@ -41,7 +41,10 @@ const runPrerequisiteScript = async (
     await writeCommand(
       "sudo",
       `if [ "$1" = "tee" ]; then
-  cat >"$APT_TEST_ROOT/config"
+  case "$2" in
+    /etc/apt/preferences.d/*) cat >"$APT_TEST_ROOT/preferences" ;;
+    *) cat >"$APT_TEST_ROOT/config" ;;
+  esac
 elif [ "$1" = "apt-get" ] && [ "$2" = "update" ]; then
   shift 2
   printf '%s\\n' "$*" >>"$APT_TEST_ROOT/updates"
@@ -69,6 +72,9 @@ fi`,
       exitCode,
       output: stdout + stderr,
       config: await Bun.file(resolve(fakeBin, "config")).text(),
+      preferences: (await Bun.file(resolve(fakeBin, "preferences")).exists())
+        ? await Bun.file(resolve(fakeBin, "preferences")).text()
+        : "",
       updates: await Bun.file(resolve(fakeBin, "updates")).text(),
       sleeps: await Bun.file(resolve(fakeBin, "sleeps")).text(),
       installed: await Bun.file(resolve(fakeBin, "installed")).exists(),
@@ -134,6 +140,20 @@ POLICY
 seq 1 100000`;
 
     expect((await runPrerequisiteScript(aptCacheBody, "1.0")).exitCode).toBe(0);
+  });
+
+  test("allows snapshot candidates to replace newer preinstalled dependencies", async () => {
+    // Given a successful snapshot prerequisite installation.
+    const aptCacheBody = `printf '  Candidate: 1.0\n  Version table:\n *** 1.0 1001\n        1001 https://snapshot.ubuntu.com/ubuntu/20261019T000000Z noble/main amd64 Packages\n'`;
+
+    // When the generated script configures APT.
+    const result = await runPrerequisiteScript(aptCacheBody, "1.0");
+
+    // Then the snapshot pin applies to dependencies and permits automatic downgrades.
+    expect(result.exitCode).toBe(0);
+    expect(result.preferences).toMatch(/^Package: \*$/mu);
+    expect(result.preferences).toMatch(/^Pin: origin "snapshot\.ubuntu\.com"$/mu);
+    expect(Number(/^Pin-Priority: (\d+)$/mu.exec(result.preferences)?.[1])).toBeGreaterThan(1000);
   });
 
   test("rejects a live candidate when only another version comes from the snapshot", async () => {

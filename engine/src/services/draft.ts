@@ -47,6 +47,7 @@ export interface DraftServicePlan {
   artifact?: ServicePlan["artifact"];
   command?: ServicePlan["command"];
   entrypoint?: ServicePlan["entrypoint"];
+  init?: boolean;
   environment: Record<string, EnvironmentValue>;
   readonly connection?: DatabaseConnection;
   readonly nonSqlCreds?: ServiceCreds;

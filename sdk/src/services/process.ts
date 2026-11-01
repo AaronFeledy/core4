@@ -55,6 +55,8 @@ export interface ProcessSpawnOptions {
   /** Overrides one inherited snapshot; explicit PWD (including empty) wins over the effective directory. */
   readonly env?: Readonly<Record<string, string>>;
   readonly stdin?: string | Uint8Array;
+  /** Replace, rather than extend, the inherited host environment. */
+  readonly replaceEnv?: boolean;
   readonly stdinStream?: AsyncIterable<Uint8Array>;
   /**
    * Give the child this process's own stdin descriptor (terminal, pipe or file)

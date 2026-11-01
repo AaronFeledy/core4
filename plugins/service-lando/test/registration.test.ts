@@ -19,6 +19,7 @@ const providerCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -345,7 +346,7 @@ describe("@lando/service-lando registration", () => {
       kind: "cache",
       key: "nuget",
     });
-    expect(api.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(api.command).toEqual(["tail", "-f", "/dev/null"]);
   });
 
   test("AppPlanner composes mssql environment, storage, and healthcheck through PluginRegistry", async () => {

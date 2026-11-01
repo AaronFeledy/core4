@@ -300,7 +300,6 @@ export const startAppForTargetUnlocked = Effect.fnUntraced(function* (
     ...(managed === undefined ? {} : { managed }),
     use: (gpgPlan, prepareGpgHome) =>
       withStartedSshAgent(gpgPlan, ref, provider.capabilities, sshAgentIntent, {
-        platform: provider.platform,
         ...(managed === undefined ? {} : { managed }),
         use: (agentPlan) =>
           withStartedHostProxy(agentPlan, ref, provider.capabilities, {

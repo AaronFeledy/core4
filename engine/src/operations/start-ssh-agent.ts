@@ -176,7 +176,7 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
     appName: plan.name,
     provider: plan.provider,
     intent,
-    platform: options.platform ?? paths.platform,
+    platform: paths.platform,
   });
   if (upstream._tag === "volume") {
     return {
@@ -211,7 +211,7 @@ export const startSshAgentSession = Effect.fnUntraced(function* (
               delivery,
               kind: "ssh",
               socketName: SSH_AGENT_SOCKET_NAME,
-              paths: { ...paths.roots, platform: options.platform ?? paths.platform },
+              paths: { ...paths.roots, platform: paths.platform },
               privateFileAccess,
             }),
           (session) => tree.completeTask("session").pipe(Effect.as(session)),

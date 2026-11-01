@@ -156,6 +156,32 @@ export const McpConfig = Schema.Struct({
 });
 export type McpConfig = typeof McpConfig.Type;
 
+// ============================================================================
+// Host-proxy URL scheme policy
+// ============================================================================
+
+const HostProxyScheme = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(/^[A-Za-z][A-Za-z0-9+.-]*$/u, {
+      message: "Expected an RFC 3986 scheme token without a trailing colon",
+    }),
+  ),
+  Schema.check(
+    Schema.makeFilter((value) => value.toLowerCase() !== "file", {
+      message: "file: is always forbidden; reveal files by path instead",
+      toJsonSchema: () => [{ not: { pattern: "^[Ff][Ii][Ll][Ee]$" } }, true],
+    }),
+  ),
+);
+
+export const HostProxyConfig = Schema.Struct({
+  allowedSchemes: Schema.optionalKey(Schema.Array(HostProxyScheme)).annotate({
+    description:
+      "Additional URL schemes allowed beyond host-proxy defaults, without trailing colons; file is always forbidden (global hostProxy.allowedSchemes).",
+  }),
+});
+export type HostProxyConfig = typeof HostProxyConfig.Type;
+
 export const AgentEnvConfig = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean).annotate({
     default: true,
@@ -323,6 +349,9 @@ export const GlobalConfig = Schema.Struct({
   }),
   mcp: Schema.optionalKey(McpConfig).annotate({
     description: "Global MCP command exposure policy (global mcp).",
+  }),
+  hostProxy: Schema.optionalKey(HostProxyConfig).annotate({
+    description: "Global container-to-host URL opening policy (global hostProxy).",
   }),
   agentEnv: Schema.optionalKey(AgentEnvConfig).annotate({
     description: "Global host agent-context env forwarding policy (global agentEnv).",

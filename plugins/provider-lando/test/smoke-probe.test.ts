@@ -94,6 +94,7 @@ describe("runSmokeReadinessProbe", () => {
     );
     expect(creates).toHaveLength(2);
     expect(creates[0]?.body).toEqual({
+      HostConfig: { Init: true },
       Image: "docker.io/library/alpine:3.20.3",
       Cmd: ["sh", "-c", "exit 0"],
     });
