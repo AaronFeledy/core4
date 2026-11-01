@@ -357,6 +357,7 @@ describe("meta:doctor combined report", () => {
     const checks = eventPayloads(ndjson);
     expect(checks.map((line) => line.name)).toEqual([
       "subsystems",
+      "debugger-host",
       "selected-provider",
       "runtime-service",
       "exec-umask",
