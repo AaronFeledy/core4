@@ -8,10 +8,21 @@ import { Effect, Layer, Queue, Stream } from "effect";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { withProcess } from "../_support/process-runner.ts";
 
-import { pluginPublish, renderPluginPublishResult } from "../../src/cli/commands/plugin-publish.ts";
+import {
+  type PluginPublishOptions,
+  pluginPublish as publish,
+  renderPluginPublishResult,
+} from "../../src/cli/commands/plugin-publish.ts";
+import { parseNpmRegistryConfig } from "../../src/recipes/npm-registry-config";
+import { withEnvVar } from "../_support/temp-cwd";
 import { listTree } from "./_util/fs-tree.ts";
 
 let root: string;
+const pluginPublish = (options: PluginPublishOptions = {}) =>
+  publish({
+    npmConfig: async () => parseNpmRegistryConfig(""),
+    ...options,
+  });
 
 const recordingEventLayer = (events: LandoEvent[]) =>
   Layer.succeed(
@@ -95,34 +106,80 @@ afterEach(async () => {
 });
 
 describe("meta:plugin:publish command", () => {
+  test("loads the npm user config when no config loader is injected", async () => {
+    // Given
+    await writePlugin(root);
+    await writeFreshDist(root);
+    const configPath = join(root, ".npmrc");
+    await writeFile(configPath, "@acme:registry=https://user-config.test/\n");
+
+    // When
+    const result = await withEnvVar("NPM_CONFIG_USERCONFIG", configPath, () =>
+      Effect.runPromise(publish({ cwd: root, dryRun: true, noTest: true }).pipe(buildingProcess([]))),
+    );
+
+    // Then
+    expect(result.registry).toBe("https://user-config.test/");
+    expect(result.published).toBe(false);
+  });
+
+  test.each([undefined, "https://override.test/"])(
+    "resolves npm scope registry and token with caller override %s",
+    async (override) => {
+      await writePlugin(root);
+      await writeFreshDist(root);
+      const spawns: Spawn[] = [];
+      const events: LandoEvent[] = [];
+      const token = "literal-publish-token-not-in-env-1489";
+      const result = await Effect.runPromise(
+        pluginPublish({
+          cwd: root,
+          noTest: true,
+          ...(override === undefined ? {} : { registry: override }),
+          npmConfig: async () =>
+            parseNpmRegistryConfig(
+              `@acme:registry=https://scope.test/path/\nregistry=https://fallback.test/\n//scope.test/path/:_authToken=${token}\n//override.test/:_authToken=${token}`,
+            ),
+        }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
+      );
+      expect(result.registry).toBe(override ?? "https://scope.test/path/");
+      expect(spawns[0]?.env.BUN_AUTH_TOKEN).toBe(token);
+      expect(JSON.stringify(spawns[0]?.cmd)).not.toContain(token);
+      expect(JSON.stringify(result)).not.toContain(token);
+      expect(JSON.stringify(events)).not.toContain(token);
+    },
+  );
+
   test("dry-run never writes under userDataRoot (writes only the authoring dist tree)", async () => {
     await writePlugin(root);
     await writeFreshDist(root);
     const dataRoot = join(root, "isolated-data");
 
-    await Effect.runPromise(
-      pluginPublish({
-        cwd: root,
-        dryRun: true,
-        noTest: true,
-        userDataRoot: dataRoot,
-      }).pipe(buildingProcess([])),
+    await withEnvVar("LANDO_USER_DATA_ROOT", dataRoot, () =>
+      Effect.runPromise(
+        pluginPublish({
+          cwd: root,
+          dryRun: true,
+          noTest: true,
+        }).pipe(buildingProcess([])),
+      ),
     );
 
     expect(listTree(dataRoot)).toEqual([]);
   });
 
-  test("missing auth reads plugin-auth.json but writes nothing under userDataRoot", async () => {
+  test("missing npm auth writes nothing under userDataRoot", async () => {
     await writePlugin(root);
     await writeFreshDist(root);
     const dataRoot = join(root, "isolated-data");
 
-    const exit = await Effect.runPromiseExit(
-      pluginPublish({
-        cwd: root,
-        noTest: true,
-        userDataRoot: dataRoot,
-      }).pipe(buildingProcess([])),
+    const exit = await withEnvVar("LANDO_USER_DATA_ROOT", dataRoot, () =>
+      Effect.runPromiseExit(
+        pluginPublish({
+          cwd: root,
+          noTest: true,
+        }).pipe(buildingProcess([])),
+      ),
     );
 
     expect(exit._tag).toBe("Failure");
@@ -176,7 +233,6 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         dryRun: true,
         noTest: true,
-        userDataRoot: join(root, "no-auth-here"),
       }).pipe(buildingProcess([])),
     );
 
@@ -196,9 +252,7 @@ describe("meta:plugin:publish command", () => {
       pluginPublish({
         cwd: root,
         execPath: "/opt/bun",
-        authReader: async () => ({
-          registries: { "https://registry.npmjs.org/": { token: "secret-token" } },
-        }),
+        npmConfig: async () => parseNpmRegistryConfig("//registry.npmjs.org/:_authToken=secret-token"),
       }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
     );
 
@@ -237,9 +291,7 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         execPath: "/opt/bun",
         noTest: true,
-        authReader: async () => ({
-          registries: { "https://registry.npmjs.org/": { token: "secret-token" } },
-        }),
+        npmConfig: async () => parseNpmRegistryConfig("//registry.npmjs.org/:_authToken=secret-token"),
       }).pipe(buildingProcess(spawns)),
     );
 
@@ -258,7 +310,7 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         execPath: "/opt/bun",
         noTest: true,
-        authReader: async () => ({ registries: { "https://registry.npmjs.org/": { token: "t" } } }),
+        npmConfig: async () => parseNpmRegistryConfig("//registry.npmjs.org/:_authToken=t"),
       }).pipe(buildingProcess(spawns)),
     );
 
@@ -298,7 +350,10 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         execPath: "/opt/bun",
         noTest: true,
-        authReader: async () => ({ registries: { "https://npm.acme.test": { token: "acme-token" } } }),
+        npmConfig: async () =>
+          parseNpmRegistryConfig(
+            "@acme:registry=https://fallback.test/\n//npm.acme.test/:_authToken=acme-token",
+          ),
       }).pipe(buildingProcess(spawns)),
     );
 
@@ -325,14 +380,13 @@ describe("meta:plugin:publish command", () => {
       pluginPublish({
         cwd: root,
         noTest: true,
-        userDataRoot: join(root, "empty-data-root"),
       }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
     );
 
     expect(exit._tag).toBe("Failure");
     if (exit._tag === "Success") throw new Error("Expected pluginPublish to fail without auth");
     expect(JSON.stringify(exit.cause)).toContain("PluginPublishAuthError");
-    expect(JSON.stringify(exit.cause)).toContain("plugin:login");
+    expect(JSON.stringify(exit.cause)).toContain(":_authToken to ${NPM_TOKEN}");
     expect(spawns.map((spawn) => spawn.cmd[1])).not.toContain("publish");
     expect(events.map((event) => event._tag)).toEqual([
       "cli-meta:plugin:publish-start",
@@ -352,7 +406,7 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         noTest: true,
         registry: "not-a-url",
-        authReader: async () => ({ registries: { "not-a-url": { token: "t" } } }),
+        npmConfig: async () => parseNpmRegistryConfig(""),
       }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
     );
 
@@ -377,7 +431,7 @@ describe("meta:plugin:publish command", () => {
         cwd: root,
         noTest: true,
         tag: "  ",
-        authReader: async () => ({ registries: { "https://registry.npmjs.org/": { token: "t" } } }),
+        npmConfig: async () => parseNpmRegistryConfig("//registry.npmjs.org/:_authToken=t"),
       }).pipe(buildingProcess(spawns)),
     );
 

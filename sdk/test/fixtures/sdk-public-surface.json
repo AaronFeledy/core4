@@ -263,7 +263,6 @@
       "logsDir:string",
       "managedFileLedger:(appId:string) => string",
       "platform:HostPlatform",
-      "pluginAuthFile:string",
       "pluginStateDir:(pluginId:string) => string",
       "pluginTrustFile:string",
       "pluginsDir:string",

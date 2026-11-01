@@ -53,6 +53,47 @@ are in [Script Lando with JSON](../scripting-with-json.mdx#capture-bun-backed-co
 
 `lando plugin:add` is the top-level alias of `meta:plugin:add`.
 
+## Install from a private registry
+
+Add your team's scope and registry token reference to your npm user config,
+`~/.npmrc`. If you set `NPM_CONFIG_USERCONFIG`, edit that file instead:
+
+```ini
+@acme:registry=https://npm.example.com/
+//npm.example.com/:_authToken=${NPM_TOKEN}
+```
+
+Replace the example scope and host with your team's values. In your host shell,
+export the token supplied by your registry, then install the plugin:
+
+```sh
+export NPM_TOKEN='<your-registry-token>'
+lando plugin:add @acme/lando-plugin-x
+```
+
+When the install succeeds, the command reports the plugin name and version, and
+the package lands at `<userDataRoot>/plugins/@acme/lando-plugin-x/<version>/`.
+Trust prompts and postinstall rules are the same as for public packages.
+
+Lando reads the scope's registry first, then `registry`, then the public npm
+registry. `NPM_CONFIG_REGISTRY` overrides the file's default registry; a scoped
+registry still takes precedence. Plugin updates and npm recipe sources use the
+same configuration. Lando doesn't store registry credentials or read a project's
+`.npmrc`. Only path-matched `_authToken` bearer tokens are supported, not npm
+basic authentication or npm certificate settings.
+
+If installation reports HTTP 401 or 403, read the error's remediation. It names
+your npm user config and the `//host/path/:_authToken` key Lando matched:
+
+- If it says a variable such as `NPM_TOKEN` is not set, export that variable in
+  the shell that runs Lando and retry.
+- If it says the registry rejected the token, replace it with a token that can
+  read the package.
+- If no token matched, add the line it shows for your registry.
+
+A private registry can also answer 404 for an unauthenticated request; the
+remediation then shows the token line to add.
+
 ## Trust the name
 
 Trust applies to an exact package name, not an organization wildcard.

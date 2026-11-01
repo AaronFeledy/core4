@@ -40,6 +40,24 @@ lando meta:plugin:publish --dry-run --no-test
 
 `--no-test` skips the retest. A stale `dist/package.json` still triggers `meta:plugin:build`.
 
+## Where publish credentials come from
+
+A publish without `--dry-run` reads its registry token from your npm user config
+(`~/.npmrc`, or the file named by `NPM_CONFIG_USERCONFIG`), the same file
+[private plugin installs](./install-from-npm.mdx#install-from-a-private-registry)
+use. Lando has no separate login command and stores no credentials.
+
+```ini
+@acme:registry=https://npm.example.com/
+//npm.example.com/:_authToken=${NPM_TOKEN}
+```
+
+The registry is `--registry`, then `package.json`'s `publishConfig.registry`,
+then the scope's registry or default registry from your npm configuration, then
+the public npm registry. Lando passes the matching token to Bun through
+`BUN_AUTH_TOKEN`, never as a command argument. When no token matches,
+`PluginPublishAuthError` names the npm config file and the token key to add.
+
 ## Verify
 
 ```sh

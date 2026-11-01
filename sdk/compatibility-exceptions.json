@@ -18,6 +18,18 @@
     "justification": "Pre-release #1257 separates durable global:enable intent from global:reconcile configuration repair and global:start runtime changes. The previous install command mixed those meanings; the new commands expose policy impact previews and preserve explicit choices during repair."
   },
   {
+    "surface": "command:meta:plugin:login",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Remove the unshipped deferred login command when adopting the user's npm registry configuration. Lando no longer owns a second registry credential store; installation and publication use npm user config tokens. No alias or compatibility stub remains."
+  },
+  {
+    "surface": "command:meta:plugin:logout",
+    "changeKind": "surface-removed",
+    "path": "$",
+    "justification": "Remove the unshipped deferred logout command together with login and the plugin-auth.json path. Registry credentials remain owned by the user's npm tooling, so Lando must not offer a second credential-management path."
+  },
+  {
     "surface": "schema:LogSourceStrategy",
     "changeKind": "enum-widened",
     "path": "$",

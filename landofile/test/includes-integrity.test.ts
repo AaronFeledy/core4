@@ -121,6 +121,7 @@ const npmDeps = (specs: string[], version = "1.2.3") => {
   const bytes = new Uint8Array([1]);
   return {
     npmRecipeSource: {
+      fetchTarball: async () => bytes,
       resolve: async (spec: string) => {
         specs.push(spec);
         return {

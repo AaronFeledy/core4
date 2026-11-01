@@ -59,11 +59,7 @@ describe("built-in command registry contract", () => {
       }
     }
 
-    expect(registry.deferredBuiltInCommandIds).toEqual([
-      "meta:events:follow",
-      "meta:plugin:login",
-      "meta:plugin:logout",
-    ]);
+    expect(registry.deferredBuiltInCommandIds).toEqual(["meta:events:follow"]);
     expect(entries.filter((entry) => entry.status.kind === "deferred").map((entry) => entry.spec.id)).toEqual(
       [...registry.deferredBuiltInCommandIds],
     );

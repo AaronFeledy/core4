@@ -125,10 +125,8 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install plugin |
 | `meta:plugin:build` | none | `minimal` | Build (including declarations) through the private Bun self-execution wrapper |
 | `meta:plugin:link` | none | `plugins` | Link current plugin |
-| `meta:plugin:login` | `plugin:login` | `minimal` | Authenticate plugin source |
-| `meta:plugin:logout` | `plugin:logout` | `minimal` | Forget authentication |
 | `meta:plugin:new` | none | `minimal` | Scaffold a plugin from a built-in template |
-| `meta:plugin:publish` | none | `minimal` | Publish; reads `<userDataRoot>/plugin-auth.json` |
+| `meta:plugin:publish` | none | `minimal` | Publish; reads registry credentials from the user's npm config |
 | `meta:plugin:remove` | `plugin:remove` | `plugins` | Remove plugin |
 | `meta:plugin:test` | none | `minimal` | Run plugin tests |
 | `meta:plugin:unlink` | none | `plugins` | Remove link and optionally restore registry copy |

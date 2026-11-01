@@ -488,7 +488,6 @@ describe("makeLandoPaths derived builders", () => {
     const data = "/home/tester/.local/share/lando";
     expect(paths.pluginsDir).toBe(join(data, "plugins"));
     expect(paths.appPluginsDir("acme")).toBe(join(data, "apps", "acme", "plugins"));
-    expect(paths.pluginAuthFile).toBe(join(data, "plugin-auth.json"));
     expect(paths.binDir).toBe(join(data, "bin"));
     expect(paths.installRecordFile).toBe(join(data, "install", "record.json"));
     expect(paths.keysDir).toBe(join(data, "keys"));

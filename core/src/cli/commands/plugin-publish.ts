@@ -2,27 +2,19 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Schema } from "effect";
 
-import { PluginManifestError } from "@lando/sdk/errors";
+import { RedactionService } from "@lando/redaction/service";
+import { PluginManifestError, RecipeSourceError } from "@lando/sdk/errors";
 
-import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
-import { makeLandoPaths } from "@lando/paths";
+import { hostConfigReadPolicy } from "@lando/engine/services/config";
+import { type NpmRegistryConfig, loadNpmRegistryConfig } from "../../recipes/npm-registry-config";
 import { bunSelfRun } from "./bun-self-runner";
 import { publishOptionalEvent } from "./optional-event-publish";
 import { pluginBuild } from "./plugin-build";
 import { isArtifactStale, listOutputs, outputDirectoryExists } from "./plugin-build-files";
 import { entriesFromExports, readPackageJson } from "./plugin-build-package";
-import {
-  type PluginAuthReader,
-  defaultAuthReader,
-  publishConfigRegistry,
-  registryToken,
-} from "./plugin-publish-auth";
-export type { PluginAuthReader, PluginRegistryAuth } from "./plugin-publish-auth";
 import { resolvePluginPackageRoot } from "./plugin-package-root";
 import { pluginTest } from "./plugin-test";
-
-const DEFAULT_PLUGIN_REGISTRY = "https://registry.npmjs.org/";
 
 /** A publish artifact failed manifest, registry, or tag validation. */
 export class PluginPublishValidationError extends Schema.TaggedError<PluginPublishValidationError>()(
@@ -51,8 +43,7 @@ export interface PluginPublishOptions {
   readonly noTest?: boolean;
   readonly nonInteractive?: boolean;
   readonly execPath?: string;
-  readonly userDataRoot?: string;
-  readonly authReader?: PluginAuthReader;
+  readonly npmConfig?: () => Promise<NpmRegistryConfig>;
 }
 
 export type PluginPublishResult = typeof PluginPublishResultSchema.Type;
@@ -123,7 +114,31 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
     ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
   };
 
-  const registry = options.registry ?? publishConfigRegistry(pkg) ?? DEFAULT_PLUGIN_REGISTRY;
+  const readPolicy = yield* hostConfigReadPolicy;
+  const npmConfig = yield* Effect.tryPromise({
+    try: () => (options.npmConfig ?? (() => loadNpmRegistryConfig(readPolicy)))(),
+    catch: (cause) =>
+      cause instanceof RecipeSourceError
+        ? cause
+        : new PluginPublishValidationError({
+            message: "Could not read npm user configuration.",
+            remediation: "Check your npm user config file permissions and retry.",
+          }),
+  });
+  const redaction = yield* Effect.serviceOption(RedactionService);
+  if (redaction._tag === "Some") yield* redaction.value.registerValues(npmConfig.redactionTokens);
+  const publishConfig = pkg.publishConfig;
+  const packageRegistry =
+    typeof publishConfig === "object" &&
+    publishConfig !== null &&
+    "registry" in publishConfig &&
+    typeof publishConfig.registry === "string"
+      ? publishConfig.registry
+      : undefined;
+  const registry =
+    options.registry ??
+    packageRegistry ??
+    npmConfig.registryFor(typeof pkg.name === "string" ? pkg.name : manifest.name);
   yield* publishOptionalEvent({
     _tag: "cli-meta:plugin:publish-start",
     pluginName: manifest.name,
@@ -209,15 +224,13 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
     let published = false;
     let exitCode = 0;
     if (!dryRun) {
-      const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
-      const authPath = makeLandoPaths({ userDataRoot }).pluginAuthFile;
-      const auth = yield* Effect.promise(() => (options.authReader ?? defaultAuthReader)(authPath));
-      const token = registryToken(auth, registry);
+      const authorization = npmConfig.authorizationFor(registry, registry);
+      const token = authorization?.slice("Bearer ".length);
       if (token === undefined) {
         return yield* Effect.fail(
           new PluginPublishAuthError({
-            message: `No registry auth for ${registry} in ${authPath}.`,
-            remediation: `Run \`lando plugin:login --registry ${registry}\` to store a publish token, then retry.`,
+            message: `No registry auth for ${registry} in ${npmConfig.path}.`,
+            remediation: npmConfig.authRemediation(registry),
             registry,
           }),
         );

@@ -102,7 +102,7 @@ describe("COMMON help rows", () => {
     // Then
     expect(rows.map(primaryOf)).toEqual([...EXPECTED_COMMON_PRIMARIES]);
     expect(rows[0]).toContain("Start the current Lando app.");
-    expect(rows.some((row) => row.includes("meta:plugin:login"))).toBe(false);
+    expect(rows.some((row) => row.includes("meta:events:follow"))).toBe(false);
   });
 
   test("Given the CLI, when --help is requested, then COMMON lists the everyday commands", async () => {

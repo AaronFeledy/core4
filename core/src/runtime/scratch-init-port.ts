@@ -11,16 +11,18 @@ export const layer = Layer.effect(
   ScratchInitAppPort,
   Effect.gen(function* () {
     const privateFileAccess = yield* PrivateFileAccessService;
-    const sources = yield* retainedRecipeSources();
     const context = yield* Effect.context<ProcessRunner>();
     const run = Effect.runPromiseWith(context);
     return ScratchInitAppPort.of({
       initApp: (options) =>
         run(
-          initApp({
-            ...sources,
-            ...options,
-            privateFileAccess,
+          Effect.gen(function* () {
+            const sources = yield* retainedRecipeSources();
+            return yield* initApp({
+              ...sources,
+              ...options,
+              privateFileAccess,
+            });
           }),
         ),
     });

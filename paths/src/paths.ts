@@ -137,7 +137,6 @@ export const makeLandoPathsFromRoots = (roots: LandoRoots, platform: HostPlatfor
     pluginsDir: j(userDataRoot, "plugins"),
     pluginStateDir: (pluginId: string) => j(userDataRoot, "plugins", pluginId),
     appPluginsDir: (appId: string) => j(userDataRoot, "apps", appId, "plugins"),
-    pluginAuthFile: j(userDataRoot, "plugin-auth.json"),
     binDir: j(userDataRoot, "bin"),
     installRecordFile: j(userDataRoot, "install", "record.json"),
     keysDir: j(userDataRoot, "keys"),
