@@ -69,7 +69,10 @@ test("OOM diagnostics mask registered correlation values", async () => {
 test("bundled Lando 3 translator ports observe later secret registration", async () => {
   // Given
   const service = makeRedactionService();
-  const ports = await loadLando3TranslatorPorts(await Effect.runPromise(service.forProfile("secrets")));
+  const ports = await loadLando3TranslatorPorts(
+    serviceTypeFacts,
+    await Effect.runPromise(service.forProfile("secrets")),
+  );
   const secret = "lando3-registered-canary";
   await Effect.runPromise(service.registerValues([secret]));
   // When
@@ -77,3 +80,4 @@ test("bundled Lando 3 translator ports observe later secret registration", async
   // Then
   expect(output).toBe("translation failed with [redacted]");
 });
+import { serviceTypeFacts } from "@lando/service-lando";

@@ -32,6 +32,7 @@ const occurrence: LegacyOccurrence = {
   },
 };
 const context = (located: LegacyOccurrence | undefined): ServiceLoweringContext => ({
+  serviceFacts: {},
   serviceName: "web",
   keyPath: ["services", "web"],
   fallbackSourceId: ".lando.yml",
@@ -64,6 +65,7 @@ describe("lowering patches", () => {
     });
     // Then
     expect(result).toEqual({
+      claims: [],
       patch: { environment: { A: "new", B: "kept" }, ports: [443], value: false },
       companions: { nginx: { environment: { A: "old", B: "new" }, ports: [443] } },
       topLevel: { tooling: { run: { service: "web", cmd: ["new"] } } },
@@ -101,14 +103,14 @@ describe("lowering patches", () => {
     // When
     const result = mergePatches(blockedPatch([diagnostic]), { patch: {}, diagnostics: [later] });
     // Then
-    expect(result).toEqual({ patch: {}, diagnostics: [diagnostic, later], blocked: true });
+    expect(result).toEqual({ patch: {}, claims: [], diagnostics: [diagnostic, later], blocked: true });
   });
 
   test("retains a later block when earlier patches are empty", () => {
     // Given / When
     const result = mergePatches(emptyPatch, blockedPatch([diagnostic]));
     // Then
-    expect(result).toEqual({ patch: {}, diagnostics: [diagnostic], blocked: true });
+    expect(result).toEqual({ patch: {}, claims: [], diagnostics: [diagnostic], blocked: true });
   });
 
   test("returns the empty patch when no contributions exist", () => {
@@ -225,7 +227,9 @@ describe("service diagnostics", () => {
           ...context(located),
           occurrenceAt: (relative: readonly (string | number)[]) => {
             paths.push(relative);
-            return located;
+            return located === undefined
+              ? undefined
+              : { ...located, keyPath: ["services", "web", ...relative] };
           },
         };
         // When

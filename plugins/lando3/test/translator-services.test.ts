@@ -3,8 +3,8 @@ import { isPlainRecord, mergeLandofiles, reset } from "@lando/sdk/landofile";
 import { LandofileAuthoringFragment } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 const translate = (text: string) => {
   const fake = fakeDecomposers();
@@ -186,7 +186,7 @@ test("flattens a raw service when nested Compose fields are authored", async () 
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "rewritten", keyPath: ["services", "web", "services", "command"] },
     { kind: "rewritten", keyPath: ["services", "web", "meUser"] },
-    { kind: "rewritten", keyPath: ["services", "web", "ssl"] },
+    { kind: "needs-review", keyPath: ["services", "web", "ssl"] },
   ]);
 });
 
@@ -198,7 +198,7 @@ test("uses Compose fallback when an unknown type has an image", async () => {
     { services: { custom: { type: "compose", image: "custom:1" } } },
   ]);
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
-    { kind: "rewritten", keyPath: ["services", "custom", "type"] },
+    { kind: "needs-review", keyPath: ["services", "custom", "type"] },
   ]);
 });
 
@@ -347,7 +347,7 @@ test("keeps authored services when a generated PHP companion collides", async ()
     { kind: "unsupported", keyPath: ["services", "app"] },
     { kind: "needs-review", keyPath: ["services", "app", "type"] },
     { kind: "generated", keyPath: ["services", "app", "via"] },
-    { kind: "rewritten", keyPath: ["services", "app", "via"] },
+    { kind: "needs-review", keyPath: ["services", "app", "via"] },
   ]);
 });
 
@@ -411,12 +411,12 @@ test("keeps top-level excludes on API-4 default and string app mounts", async ()
         leet: {
           type: "lando",
           image: "custom:1",
-          appMount: { target: "/app", excludes: ["vendor"], includes: [] },
+          appMount: { target: "/app", excludes: ["vendor"] },
         },
         rooted: {
           type: "lando",
           image: "custom:1",
-          appMount: { target: "/srv/app", excludes: ["vendor"], includes: [] },
+          appMount: { target: "/srv/app", excludes: ["vendor"] },
         },
         quiet: { type: "lando", image: "custom:1", appMount: false },
       },
@@ -472,7 +472,7 @@ test("preserves app-relative webroots across a service and its companion", async
   expect(result.diagnostics.map(({ kind, keyPath }) => ({ kind, keyPath }))).toEqual([
     { kind: "needs-review", keyPath: ["services", "appserver", "type"] },
     { kind: "generated", keyPath: ["services", "appserver", "via"] },
-    { kind: "rewritten", keyPath: ["services", "appserver", "via"] },
+    { kind: "needs-review", keyPath: ["services", "appserver", "via"] },
   ]);
 });
 
@@ -500,4 +500,34 @@ test("keeps the preview when a catalog service authors scanner, home, and meUser
       service: "appserver",
     },
   ]);
+});
+
+test("narrows an exact Lando 3 release to the shipped release line and asks for review", async () => {
+  // Given
+  const text = 'services: {appserver: {type: "php:8.2.10"}}';
+  // When
+  const result = await translate(text);
+  // Then
+  expect(result.outputs[0]?.fragment).toMatchObject({ services: { appserver: { type: "php:8.2" } } });
+  expect(result.diagnostics).toContainEqual(
+    expect.objectContaining({
+      kind: "needs-review",
+      keyPath: ["services", "appserver", "type"],
+      message: expect.stringContaining("php:8.2.10 became php:8.2"),
+    }),
+  );
+});
+
+test("gives raw Compose named volumes and networks without settings their default settings", async () => {
+  // Given
+  const text =
+    "services: {data: {type: compose, services: {image: 'minio/minio'}, volumes: {data_minio: null}, networks: {backend: null}}}";
+  // When
+  const result = await translate(text);
+  // Then
+  const fragment = result.outputs[0]?.fragment;
+  expect(fragment).toMatchObject({ volumes: { data_minio: {} }, networks: { backend: {} } });
+  expect(() =>
+    Schema.decodeUnknownSync(LandofileAuthoringFragment, { onExcessProperty: "error" })(fragment),
+  ).not.toThrow();
 });

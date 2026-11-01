@@ -1,9 +1,9 @@
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { serviceCursor } from "./claims.ts";
 import {
   type LoweringPatch,
   type ServiceLoweringContext,
   asStringArray,
-  emptyPatch,
   hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import { droppedServiceKey, rewrittenServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
@@ -11,9 +11,15 @@ import { droppedServiceKey, rewrittenServiceKey, unsupportedServiceKey } from ".
 /** Lower only catalog-specific options; shared service fields belong to other lowerers. */
 export const lowerTypeOptions = (
   catalogId: string,
-  service: Record<string, unknown>,
+  authored: Record<string, unknown>,
   ctx: ServiceLoweringContext,
 ): LoweringPatch => {
+  const cursor = serviceCursor(authored, ctx);
+  const service = Object.fromEntries(
+    Object.entries(authored).filter(
+      ([key]) => !Object.hasOwn(TYPE_OPTION_OWNERS, key) || TYPE_OPTION_OWNERS[key]?.includes(catalogId),
+    ),
+  );
   // Local accumulators keep field precedence and diagnostic order explicit.
   const patch: Record<string, unknown> = {};
   const diagnostics: ConfigTranslateDiagnostic[] = [];
@@ -22,6 +28,7 @@ export const lowerTypeOptions = (
   switch (catalogId) {
     case "mysql":
     case "mariadb": {
+      cursor.take(["authentication"]);
       if (typeof service.authentication === "string") {
         if (!/^[A-Za-z0-9_]+$/u.test(service.authentication)) {
           diagnostics.push(
@@ -49,6 +56,8 @@ export const lowerTypeOptions = (
       break;
     }
     case "solr": {
+      cursor.take(["core"]);
+      cursor.mapTo(["cores"]);
       if (typeof service.core === "string") {
         patch.cores = [service.core];
         diagnostics.push(
@@ -68,6 +77,7 @@ export const lowerTypeOptions = (
     case "mailhog": {
       // Canonical mailFrom wins over sendFrom, which wins over hogfrom.
       for (const key of ["hogfrom", "sendFrom", "mailFrom"]) {
+        cursor.mapTo([key]);
         const value = service[key];
         const mailFrom = value === false ? false : asStringArray(value);
         if (mailFrom === undefined) continue;
@@ -84,6 +94,7 @@ export const lowerTypeOptions = (
         }
       }
       if (typeof service.maxMessages === "number") {
+        cursor.take(["maxMessages"]);
         patch.environment = { MP_MAX_MESSAGES: String(service.maxMessages) };
         diagnostics.push(
           rewrittenServiceKey({
@@ -97,11 +108,14 @@ export const lowerTypeOptions = (
       break;
     }
     case "redis":
+      cursor.take(["password"]);
+      cursor.take(["persist"]);
       if (typeof service.password === "string") patch.password = service.password;
       if (typeof service.persist === "boolean") patch.persist = service.persist;
       break;
     case "node":
       if (hasPlainObjectPrototype(service.globals)) {
+        cursor.mapTo(["globals"]);
         patch.globals = Object.fromEntries(
           Object.entries(service.globals).map(([name, version]) => [name, String(version)]),
         );
@@ -116,11 +130,14 @@ export const lowerTypeOptions = (
       }
       break;
     case "phpmyadmin": {
+      cursor.mapTo(["hosts"]);
       const hosts = asStringArray(service.hosts);
       if (hosts !== undefined) patch.hosts = hosts;
       break;
     }
     case "varnish": {
+      cursor.mapTo(["backends"]);
+      cursor.take(["backend"]);
       const backends = asStringArray(service.backends);
       if (backends !== undefined && backends.length > 1) {
         blocked = true;
@@ -145,6 +162,17 @@ export const lowerTypeOptions = (
         );
       }
       if (typeof service.backend === "string") patch.backend = service.backend;
+      if (service.backend === undefined && service.backends === undefined) {
+        patch.backend = "appserver";
+        diagnostics.push(
+          rewrittenServiceKey({
+            ctx,
+            relative: ["type"],
+            message: "Made Lando 3's implicit Varnish backend appserver explicit.",
+            remediation: "Keep backend: appserver to preserve the default backend on port 80.",
+          }),
+        );
+      }
       if (Object.hasOwn(service, "backend_port")) {
         diagnostics.push(
           droppedServiceKey({
@@ -161,10 +189,42 @@ export const lowerTypeOptions = (
     case "apache":
       if (typeof service.webroot === "string") patch.webroot = service.webroot;
       if (typeof service.allowOverride === "boolean") patch.allowOverride = service.allowOverride;
+      cursor.take(["webroot"]);
+      cursor.take(["allowOverride"]);
       break;
     default:
-      return emptyPatch;
+      break;
   }
 
-  return { patch, diagnostics, ...(blocked ? { blocked: true as const } : {}) };
+  for (const [key, owners] of Object.entries(TYPE_OPTION_OWNERS)) {
+    if (Object.hasOwn(authored, key) && !owners.includes(catalogId))
+      diagnostics.push(
+        cursor.dropTree(
+          [key],
+          `Lando 3 ignored this option on ${catalogId}; it belongs to ${owners.join(", ")}.`,
+          "Configure the intended behavior by hand on an appropriate Lando 4 service.",
+        ),
+      );
+  }
+  return { patch, claims: cursor.claims, diagnostics, ...(blocked ? { blocked: true as const } : {}) };
+};
+
+const TYPE_OPTION_OWNERS: Readonly<Record<string, readonly string[]>> = {
+  via: ["php"],
+  xdebug: ["php"],
+  composer_version: ["php"],
+  composer: ["php"],
+  db_client: ["php"],
+  authentication: ["mysql"],
+  globals: ["node"],
+  password: ["redis"],
+  persist: ["redis"],
+  core: ["solr"],
+  mailFrom: ["mailpit"],
+  hogfrom: ["mailhog"],
+  maxMessages: ["mailpit"],
+  hosts: ["phpmyadmin"],
+  backends: ["varnish"],
+  backend: ["varnish"],
+  backend_port: ["varnish"],
 };
