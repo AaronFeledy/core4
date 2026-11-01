@@ -323,3 +323,149 @@ test("captured Bun retains bounded stdout, stderr, and a nonzero status", async 
   if (result.mode !== "collected") throw new TypeError("Expected collection");
   expect(result.stdout.length).toBe(1048576);
 });
+
+test("null proxy plan clears upper/lower/ALL_PROXY on the child env", async () => {
+  let request: ProcessSpawnOptions | undefined;
+  await Effect.runPromise(
+    bunSelfRun({
+      argv: ["--version"],
+      env: {
+        HTTP_PROXY: "http://ambient:1",
+        http_proxy: "http://lower:1",
+        HTTPS_PROXY: "http://ambient:2",
+        ALL_PROXY: "http://all:7",
+        all_proxy: "http://all-lower:8",
+        NO_PROXY: "*",
+      },
+      networkPlan: { proxy: { noProxy: [] }, caCertPaths: [], trustHost: true },
+    }).pipe(
+      Effect.provideService(
+        ProcessRunner,
+        processRunnerFor((input) =>
+          Effect.sync(() => {
+            request = input;
+            return { exitCode: 0 };
+          }),
+        ),
+      ),
+    ),
+  );
+  expect(request?.env?.HTTP_PROXY).toBeUndefined();
+  expect(request?.env?.http_proxy).toBeUndefined();
+  expect(request?.env?.HTTPS_PROXY).toBeUndefined();
+  expect(request?.env?.ALL_PROXY).toBeUndefined();
+  expect(request?.env?.all_proxy).toBeUndefined();
+  expect(request?.env?.NO_PROXY).toBeUndefined();
+  expect(request?.env).toMatchObject({ BUN_BE_BUN: "1" });
+});
+
+test("explicit proxy plan beats ambient variants including ALL_PROXY", async () => {
+  let request: ProcessSpawnOptions | undefined;
+  await Effect.runPromise(
+    bunSelfRun({
+      argv: ["--version"],
+      env: {
+        HTTP_PROXY: "http://ambient:1",
+        ALL_PROXY: "http://all:7",
+        NO_PROXY: "ambient",
+      },
+      networkPlan: {
+        proxy: { http: "http://plan:80", https: "http://plan:443", noProxy: ["localhost"] },
+        caCertPaths: [],
+        trustHost: true,
+      },
+    }).pipe(
+      Effect.provideService(
+        ProcessRunner,
+        processRunnerFor((input) =>
+          Effect.sync(() => {
+            request = input;
+            return { exitCode: 0 };
+          }),
+        ),
+      ),
+    ),
+  );
+  expect(request?.env).toMatchObject({
+    HTTP_PROXY: "http://plan:80",
+    HTTPS_PROXY: "http://plan:443",
+    NO_PROXY: "localhost",
+  });
+  expect(request?.env?.ALL_PROXY).toBeUndefined();
+});
+
+test("removeEnv strips conflicting inherited tokens while keeping explicit secrets", async () => {
+  let request: ProcessSpawnOptions | undefined;
+  await Effect.runPromise(
+    bunSelfRun({
+      argv: ["publish"],
+      env: {
+        BUN_CONFIG_TOKEN: "publish-token",
+        BUN_AUTH_TOKEN: "legacy-auth",
+        NPM_CONFIG_TOKEN: "npm-token",
+        npm_config_token: "npm-lower",
+      },
+      removeEnv: ["BUN_AUTH_TOKEN", "NPM_CONFIG_TOKEN"],
+      networkPlan: { proxy: { noProxy: [] }, caCertPaths: [], trustHost: true },
+    }).pipe(
+      Effect.provideService(
+        ProcessRunner,
+        processRunnerFor((input) =>
+          Effect.sync(() => {
+            request = input;
+            return { exitCode: 0 };
+          }),
+        ),
+      ),
+    ),
+  );
+  expect(request?.env?.BUN_CONFIG_TOKEN).toBe("publish-token");
+  expect(request?.env?.BUN_AUTH_TOKEN).toBeUndefined();
+  expect(request?.env?.NPM_CONFIG_TOKEN).toBeUndefined();
+  expect(request?.env?.npm_config_token).toBeUndefined();
+});
+
+test("strict package verb receives --cafile and not NODE_EXTRA_CA_CERTS", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-runner-ca-"));
+  try {
+    const ca = join(root, "ca.pem");
+    const { rootCertificates } = await import("node:tls");
+    const pem = rootCertificates[0];
+    if (pem === undefined) throw new Error("Missing runtime root certificates");
+    await writeFile(ca, pem);
+    let request: ProcessSpawnOptions | undefined;
+    await Effect.runPromise(
+      bunSelfRun({
+        argv: ["install"],
+        env: {
+          LANDO_USER_CACHE_ROOT: join(root, "cache"),
+          LANDO_USER_DATA_ROOT: join(root, "data"),
+          LANDO_USER_CONF_ROOT: join(root, "conf"),
+          LANDO_SYSTEM_PLUGIN_ROOT: join(root, "system"),
+          NODE_EXTRA_CA_CERTS: join(root, "should-not-leak.pem"),
+        },
+        networkPlan: {
+          proxy: { noProxy: [] },
+          caCertPaths: [ca],
+          trustHost: false,
+        },
+      }).pipe(
+        Effect.provideService(
+          ProcessRunner,
+          processRunnerFor((input) =>
+            Effect.sync(() => {
+              request = input;
+              return { exitCode: 0 };
+            }),
+          ),
+        ),
+      ),
+    );
+    expect(request?.args?.[0]).toBe("install");
+    expect(request?.args?.[1]).toBe("--cafile");
+    expect(typeof request?.args?.[2]).toBe("string");
+    expect(request?.env?.NODE_EXTRA_CA_CERTS).toBeUndefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

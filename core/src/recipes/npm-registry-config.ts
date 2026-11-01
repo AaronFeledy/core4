@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { resolveHostHome } from "@lando/paths";
 import { RecipeSourceError } from "@lando/sdk/errors";
+import { type NpmCredential, credentialAt, credentialSecrets } from "./npm-credentials";
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -8,6 +9,7 @@ export interface NpmRegistryConfig {
   readonly path: string;
   readonly registryFor: (packageName: string, override?: string) => string;
   readonly authorizationFor: (requestUrl: string, registry: string) => string | undefined;
+  readonly credentialFor: (requestUrl: string, registry: string) => NpmCredential | undefined;
   readonly redactionTokens: ReadonlyArray<string>;
   readonly authRemediation: (registry: string) => string;
 }
@@ -73,25 +75,41 @@ export const parseNpmRegistryConfig = (
     const key = rawKey.startsWith("//") ? rawKey : rawKey.replace(/(?!^)_/gu, "-").toLowerCase();
     config.set(expandNpmEnvironment(key, env), expandNpmEnvironment(value, env));
   }
-  const walk = (url: URL): string | undefined => {
+  const walk = (url: URL): NpmCredential | undefined => {
     let key = `//${url.host}${url.pathname}`;
     while (key.length > 2) {
-      const token = config.get(`${key}:_authToken`);
-      if (token) return token;
+      const credential = credentialAt(config, key);
+      if (credential !== undefined) return credential;
       key = key.replace(/([^/]+|\/)$/u, "");
     }
     return undefined;
   };
-  const tokenFor = (requestUrl: string, registry: string): string | undefined => {
+  const credentialFor = (requestUrl: string, registry: string): NpmCredential | undefined => {
     const request = new URL(requestUrl);
     const base = new URL(registry);
     if (request.host !== base.host) return undefined;
     return walk(request) ?? (request.href !== base.href ? walk(base) : undefined);
   };
-  const tokens = [...config]
-    .filter(([key]) => key.startsWith("//") && key.endsWith(":_authToken"))
-    .map(([, value]) => value)
-    .filter((value) => value !== "" && !/\$\{[^}]+\}/u.test(value));
+  const tokens = [...config].flatMap(([key, value]) => {
+    if (
+      !key.startsWith("//") ||
+      !["_authToken", "_auth", "username", "_password"].some((name) => key.endsWith(`:${name}`))
+    )
+      return [];
+    const scope = key.slice(0, key.lastIndexOf(":"));
+    const fields = new Map([[key, value]]);
+    if (key.endsWith(":username") || key.endsWith(":_password")) {
+      for (const name of ["username", "_password"]) {
+        const partner = config.get(`${scope}:${name}`);
+        if (partner !== undefined) fields.set(`${scope}:${name}`, partner);
+      }
+    }
+    const credential = credentialAt(fields, scope);
+    return [
+      ...(!key.endsWith(":username") && value !== "" && !/\$\{/u.test(value) ? [value] : []),
+      ...(credential === undefined ? [] : credentialSecrets(credential)),
+    ];
+  });
   return {
     path,
     registryFor: (name, override) =>
@@ -99,21 +117,22 @@ export const parseNpmRegistryConfig = (
       (name.startsWith("@") ? config.get(`${name.split("/")[0]}:registry`) : undefined) ??
       config.get("registry") ??
       "https://registry.npmjs.org/",
-    authorizationFor: (url, registry) => {
-      const token = tokenFor(url, registry);
-      return token && !/\$\{[^}]+\}/u.test(token) ? `Bearer ${token}` : undefined;
-    },
+    credentialFor,
+    authorizationFor: (url, registry) => credentialFor(url, registry)?.authorization,
     redactionTokens: tokens,
     authRemediation: (registry) => {
       const url = new URL(registry);
       const key = `//${url.host}${url.pathname.replace(/\/*$/u, "/")}:_authToken`;
-      const configured = tokenFor(registry, registry);
+      const configured = [...config].find(([name]) => name === key)?.[1];
+      const credential = credentialFor(registry, registry);
       const missing = [...(configured ?? "").matchAll(/\$\{([^}?]+)\??\}/gu)].map((match) => match[1]);
       if (missing.length > 0)
         return `Your npm user config (${path}) reads the ${key} token from ${missing.join(", ")}, which is not set. Export it in the shell that runs Lando, then retry.`;
-      if (configured !== undefined)
+      if (credential?.kind === "basic")
+        return `The registry rejected Basic credentials from your npm configuration (${path} or npm_config_* environment variables). Check the matching _auth or same-path username and base64 _password entries, then retry.`;
+      if (configured !== undefined || credential !== undefined)
         return `The registry rejected the ${key} token from your npm configuration (${path} or npm_config_* environment variables). Replace it with a token that can access this package, then retry.`;
-      return `Add a line to your npm user config (${path}) that sets ${key} to \${NPM_TOKEN}, then export NPM_TOKEN with your registry token and retry.`;
+      return `Add a line to your npm user config (${path}) that sets ${key} to \${NPM_TOKEN}:\n${key}=\${NPM_TOKEN}\nThen export NPM_TOKEN with your registry token and retry.`;
     },
   };
 };

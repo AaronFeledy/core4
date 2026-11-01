@@ -1,18 +1,33 @@
 import { captureHostExecutionContext } from "@lando/engine/services/host-execution-context";
 import { withPreparedProcess } from "@lando/engine/services/process-runner";
-import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import {
+  RedactionService,
+  collectUrlCredentialValues,
+  createStandaloneRedactor,
+} from "@lando/redaction/service";
 import { BunSelfReentryError, FileIoError, ProcessExecError, ProcessTimeoutError } from "@lando/sdk/errors";
+import type { NetworkTrustPlan } from "@lando/sdk/network-trust";
 import { isSecretEnvName } from "@lando/sdk/secrets";
 import { type ProcessSpawnOptions, Renderer } from "@lando/sdk/services";
 import { DateTime, Effect, Stream } from "effect";
 import { ChildOutput } from "../child-output.ts";
 import { finishCommandProgress } from "../command-progress.ts";
+import { applyRemoveEnv } from "./bun-child-network-policy.ts";
+import { projectBunChildNetwork } from "./bun-child-network.ts";
 import { publishOptionalEvent } from "./optional-event-publish.ts";
 
 export interface BunSelfRunOptions {
   readonly argv: readonly string[];
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  /**
+   * Env keys removed after merge (conflicting inherited token spellings for
+   * publish, etc.). Deletion is case-insensitive. Desired secrets must be set
+   * via `env` under names not listed here.
+   */
+  readonly removeEnv?: readonly string[];
+  /** Optional pre-resolved network trust plan (tests / callers). */
+  readonly networkPlan?: NetworkTrustPlan;
   readonly execPath?: string;
   readonly callerSubsystem?: string;
   readonly verb?: string;
@@ -59,7 +74,7 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (inputOptions
         .filter(([key]) => isSecretEnvName(key))
         .map(([, value]) => value),
     );
-  const redactor =
+  let redactor =
     service._tag === "None"
       ? createStandaloneRedactor("secrets", { sourceEnv: captured.env })
       : yield* service.value.forProfile("secrets", { sourceEnv: captured.env });
@@ -78,10 +93,26 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (inputOptions
   const renderer = yield* Effect.serviceOption(Renderer);
   const native = options.output === "native" && policy?.native === true;
   const streaming = !native && options.output !== "quiet" && policy?.stream !== undefined;
+  const projectedEnv = childEnv(captured.env);
+  applyRemoveEnv(projectedEnv, options.removeEnv);
+  const projected = yield* projectBunChildNetwork({
+    env: projectedEnv,
+    argv,
+    verb,
+    parentEnv: captured.env,
+    ...(options.networkPlan === undefined ? {} : { plan: options.networkPlan }),
+  });
+  const proxyValues = collectUrlCredentialValues([projected.plan.proxy.http, projected.plan.proxy.https]);
+  if (service._tag === "Some") yield* service.value.registerValues(proxyValues);
+  redactor =
+    service._tag === "None"
+      ? createStandaloneRedactor("secrets", { sourceEnv: projected.env, authoritativeTokens: proxyValues })
+      : yield* service.value.forProfile("secrets", { sourceEnv: projected.env });
+  const childArgv = [...projected.argv];
   const input: ProcessSpawnOptions = {
     cmd: execPath,
-    args: argv,
-    env: childEnv(captured.env),
+    args: childArgv,
+    env: projected.env,
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
@@ -95,7 +126,7 @@ export const bunSelfRun = Effect.fn("BunSelfRunner.run")(function* (inputOptions
         const event = {
           verb: redactor.redactString(verb),
           callerSubsystem: redactor.redactString(callerSubsystem),
-          argv: argv.map(redactor.redactString),
+          argv: childArgv.map(redactor.redactString),
           cwd: redactor.redactString(request.cwd ?? captured.requestedCwd),
           mode: "embedded" as const,
         };
