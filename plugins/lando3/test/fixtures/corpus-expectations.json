@@ -1,0 +1,516 @@
+{
+  "policy": "Exact translation rejections. The package fake ports intentionally supply only wordpress, drupal and lamp; unavailable fake decomposers are not production defects. Core independently covers all real bundled decomposers. Unsupported recipe/version values are intentional policy rejections.",
+  "rejections": [
+    {
+      "fixture": "acquia/examples/acquia-8.2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-8.3",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-8.4",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-8.5",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-default",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-downstreamer-1",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-downstreamer-2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-drush-uri",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-mysql84",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "acquia/examples/acquia-xdebug",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe acquia is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-defaults",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-downstreamer-1",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-downstreamer-2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-export",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-import",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-mariadb",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-mysql-client",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-mysql8",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-mysql84",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "backdrop/examples/backdrop-nginx",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled backdrop decomposer is unavailable."
+    },
+    {
+      "fixture": "core/examples/recipes",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe test is not a bundled Lando 4 recipe."
+    },
+    {
+      "fixture": "core/examples/sluggy",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe test is not a bundled Lando 4 recipe."
+    },
+    {
+      "fixture": "drupal/examples/drupal-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 drupal recipe option composer. Allowed values: 2, 2.7.7."
+    },
+    {
+      "fixture": "drupal/examples/drupal-mariadb-mysql",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 drupal recipe option composer. Allowed values: 2, 2.7.7."
+    },
+    {
+      "fixture": "drupal/examples/drupal-mariadb",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 drupal recipe option composer. Allowed values: 2, 2.7.7."
+    },
+    {
+      "fixture": "drupal/examples/drupal-nginx",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 drupal recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    {
+      "fixture": "joomla/examples/joomla-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-defaults",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-downstreamer-1",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-downstreamer-2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-export",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-import",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-mariadb-mysql",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-mariadb",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-mysql8/symfony-mysql8",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "joomla/examples/joomla-nginx",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled joomla decomposer is unavailable."
+    },
+    {
+      "fixture": "lagoon/examples/all-services",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe lagoon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "lagoon/examples/proxy-tests",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe lagoon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "lamp/examples/lamp-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.composer_version is not a supported value for the Lando 4 lamp recipe option composer. Allowed values: 2, 2.7.7, false."
+    },
+    {
+      "fixture": "lamp/examples/lamp-nginx",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 lamp recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    },
+    {
+      "fixture": "laravel/examples/laravel-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled laravel decomposer is unavailable."
+    },
+    {
+      "fixture": "laravel/examples/laravel-defaults",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled laravel decomposer is unavailable."
+    },
+    {
+      "fixture": "laravel/examples/laravel-downstreamer-1",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled laravel decomposer is unavailable."
+    },
+    {
+      "fixture": "laravel/examples/laravel-downstreamer-2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled laravel decomposer is unavailable."
+    },
+    {
+      "fixture": "laravel/examples/laravel-export",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled laravel decomposer is unavailable."
+    },
+    {
+      "fixture": "laravel/examples/laravel-import",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled laravel decomposer is unavailable."
+    },
+    {
+      "fixture": "laravel/examples/laravel-nginx",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled laravel decomposer is unavailable."
+    },
+    {
+      "fixture": "lemp/examples/lemp-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled lemp decomposer is unavailable."
+    },
+    {
+      "fixture": "lemp/examples/lemp-defaults",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled lemp decomposer is unavailable."
+    },
+    {
+      "fixture": "lemp/examples/lemp-downstreamer-1",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled lemp decomposer is unavailable."
+    },
+    {
+      "fixture": "lemp/examples/lemp-downstreamer-2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled lemp decomposer is unavailable."
+    },
+    {
+      "fixture": "lemp/examples/lemp-export",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled lemp decomposer is unavailable."
+    },
+    {
+      "fixture": "lemp/examples/lemp-import",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled lemp decomposer is unavailable."
+    },
+    {
+      "fixture": "lemp/examples/lemp-nginx",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled lemp decomposer is unavailable."
+    },
+    {
+      "fixture": "mean/examples/mean-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled mean decomposer is unavailable."
+    },
+    {
+      "fixture": "mean/examples/mean-downstreamer-1",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled mean decomposer is unavailable."
+    },
+    {
+      "fixture": "mean/examples/mean-downstreamer-2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled mean decomposer is unavailable."
+    },
+    {
+      "fixture": "mean/examples/mean-mysql84",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled mean decomposer is unavailable."
+    },
+    {
+      "fixture": "pantheon/examples/frontend-build",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "pantheon/examples/pantheon-downstreamer-1",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "pantheon/examples/pantheon-downstreamer-2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "pantheon/examples/pantheon-drush-uri",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "pantheon/examples/pantheon-php-warning",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe pantheon is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "symfony/examples/symfony-custom",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-defaults",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-downstreamer-1",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-downstreamer-2",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-export",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-import",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-mariadb-mysql",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-mariadb",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-mysql8",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-mysql84",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "symfony/examples/symfony-nginx",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "The bundled symfony decomposer is unavailable."
+    },
+    {
+      "fixture": "upsun/examples/fixed-magento",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "upsun/examples/fixed-php",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "upsun/examples/flex-composable",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "upsun/examples/flex-multiapp",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "upsun/examples/flex-node",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "upsun/examples/flex-php",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "upsun/examples/flex-services",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "upsun/examples/flex-static",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "recipe upsun is a hosting-platform recipe with no Lando 4 counterpart."
+    },
+    {
+      "fixture": "wordpress/examples/wordpress-nginx",
+      "stage": "translate",
+      "tag": "ConfigTranslateError",
+      "reason": "config.php is not a supported value for the Lando 4 wordpress recipe option php. Allowed values: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6."
+    }
+  ],
+  "locationDefects": []
+}
