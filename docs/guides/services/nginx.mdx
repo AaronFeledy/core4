@@ -91,7 +91,12 @@ services:
 
 Lando plans no home store for the `nginx` account, whose home on this image is its cache directory; set `home.path:` when you want a directory to survive a rebuild. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
 
-If you set your own `command:` or `entrypoint:`, your startup owns nginx's configuration. Lando does not generate a launcher or remove the image's default site.
+If you set your own `command:` or `entrypoint:`, your startup owns nginx's
+configuration. Lando never appends listen directives or flags to an authored
+launcher, and it does not generate a config or remove the image's default site.
+Match the daemon to `port:` yourself.
+If startup fails with this override, Lando includes a hint naming the required
+`listen <port>;` directive with your planned port number.
 
 ## Pin a version
 

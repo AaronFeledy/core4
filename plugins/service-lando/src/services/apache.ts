@@ -6,6 +6,7 @@ import {
   LogSourceId,
   PortNumber,
   type ValidationIssuePath,
+  sameImageReference,
 } from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
@@ -23,12 +24,19 @@ import {
 } from "./_feature-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import { imageAuthority, launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
-export const DEFAULT_PORT = 80;
+export const APACHE_LISTENER = {
+  port: 80,
+  daemon: "Apache",
+  when: "All Apache services",
+  launcher: { setting: (port: number) => `Listen ${port}` },
+  image: { setting: (port: number) => `Listen ${port}` },
+} as const;
+export const DEFAULT_PORT = APACHE_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
@@ -163,7 +171,7 @@ const apacheStartCommand = (
 const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const listenPort = authoredListenPort(service.port);
-  const port = listenPort ?? DEFAULT_PORT;
+  const port = plannedPort(service, APACHE_LISTENER);
   const webroot = resolveWebroot("Apache", service.webroot, service.appMount);
   const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
 
@@ -173,8 +181,8 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setHealthcheck(tcpProbe(port, 10));
 
   if (service.command === undefined && service.entrypoint === undefined) {
-    const ownedListen =
-      service.image === undefined || service.image === DEFAULT_IMAGE ? listenPort : undefined;
+    const ownsImage = service.image === undefined || sameImageReference(service.image, DEFAULT_IMAGE);
+    const ownedListen = ownsImage ? listenPort : undefined;
     ctx.setCommand(
       apacheStartCommand(
         literalEnvironmentValue(documentRoot, ["environment", "APACHE_DOCUMENT_ROOT"]),
@@ -185,6 +193,9 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
       ),
     );
     if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
+    if (!ownsImage) ctx.setListenerAuthority(imageAuthority(APACHE_LISTENER, port));
+  } else {
+    ctx.setListenerAuthority(launcherAuthority(APACHE_LISTENER, port));
   }
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
 };
@@ -200,7 +211,7 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
       servicePortEndpoints(ctx, {
-        port: authoredListenPort(ctx.normalizedConfig.port) ?? DEFAULT_PORT,
+        port: plannedPort(ctx.normalizedConfig, APACHE_LISTENER),
         protocol: "http",
       }),
     ),

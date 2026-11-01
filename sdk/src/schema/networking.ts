@@ -8,6 +8,7 @@ import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabil
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { RouteHostname, RoutePathPrefix } from "./hostname.ts";
+import { ListenerObservation } from "./listener-observation.ts";
 import { AbsolutePath, PortNumber, ServiceName } from "./primitives.ts";
 import { RouteFilter } from "./route-filter.ts";
 import { scanFields } from "./scan-fields.ts";
@@ -146,6 +147,10 @@ export const CheckResult = Schema.Struct({
   statusCode: Schema.optionalKey(Schema.Int).annotate({ description: "Observed HTTP response status." }),
   message: Schema.optionalKey(Schema.String).annotate({ description: "Redacted result summary." }),
   detail: Schema.optionalKey(Schema.String).annotate({ description: "Redacted diagnostic detail." }),
+  listener: Schema.optionalKey(ListenerObservation).annotate({
+    description:
+      "TCP bindings observed in the service when an unreachable check targets its expected listener.",
+  }),
 }).annotate({ identifier: "CheckResult", description: "An owner-classified post-start HTTP check." });
 export type CheckResult = typeof CheckResult.Type;
 

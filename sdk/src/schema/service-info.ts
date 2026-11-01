@@ -5,6 +5,7 @@ import { PortablePath } from "./primitives.ts";
 import { ServiceCredsDisplay } from "./database-connection.ts";
 import { EndpointRef } from "./endpoint.ts";
 import { HealthcheckPlan } from "./healthcheck-plan.ts";
+import { ListenerAuthority } from "./listener.ts";
 import { LogSourceStream } from "./log-source.ts";
 import { BindMountPlan } from "./mounts.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
@@ -104,6 +105,9 @@ const ServiceInfoReadiness = Schema.Struct({
 });
 
 export const ServiceInfo = Schema.Struct({
+  listenerAuthority: Schema.optionalKey(ListenerAuthority).annotate({
+    description: "Planned listener ownership and configuration advice, without claiming an observation.",
+  }),
   app: Schema.String,
   service: Schema.String,
   api: Schema.Literal(4),

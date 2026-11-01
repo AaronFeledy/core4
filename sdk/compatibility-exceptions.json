@@ -531,13 +531,13 @@
     "surface": "schema:ServicePlan",
     "changeKind": "unsupported-construct",
     "path": "$.anyOf",
-    "justification": "Reviewed pre-release credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization."
+    "justification": "Reviewed pre-release credential publication: ServicePlan becomes a strict union of the existing connection-or-no-credentials shape and nonSqlCreds for Redis. Generated fragments preserve all 25 original properties and required fields in the first arm, and all 24 non-connection properties in the second; ServiceCreds is unchanged. Both arms additionally accept optional nonempty serviceTypeId, retaining declaration identity separately from normalized type. Optional Never anti-fields forbid competing credential sources. Historical records remain readable; generated clients refuse missing applied declaration identity instead of guessing. Typed environment/connection evolution is intentional; observation never resolves descriptors. Both arms now also add optional startup readiness alongside ongoing health, and command probes accept an optional declared listener target; these additions preserve previously accepted records without weakening credential exclusivity. Tests cover coexistence rejection, Redis planning, strict serialization, exact child-factory lookup, historical refusal, persistence, readiness selection, and target realization. Both arms accept optional structured listenerAuthority configuration advice; readiness and startup errors accept optional listener diagnosis evidence. These fields are outside create identity; historical records remain readable for observation and teardown."
   },
   {
     "surface": "schema:CurrentExecutableAppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "Reviewed additive startup-probe contract: both ServicePlan union arms accept optional readiness, and HealthcheckPlan accepts an optional logical listener target. Existing required fields, credential exclusivity, value-model eligibility, and declaration identity remain unchanged. Untargeted probes and services without a separate readiness probe retain their accepted wire shapes; targeted defaults are validated before provider mutation. Focused tests cover strict serialization, both probe surfaces, declared topology, and authored overrides."
+    "justification": "Reviewed additive startup-probe contract: both ServicePlan union arms accept optional readiness, and HealthcheckPlan accepts an optional logical listener target. Existing required fields, credential exclusivity, value-model eligibility, and declaration identity remain unchanged. Untargeted probes and services without a separate readiness probe retain their accepted wire shapes; targeted defaults are validated before provider mutation. Focused tests cover strict serialization, both probe surfaces, declared topology, and authored overrides. ServicePlan values gain optional structured listenerAuthority; optional listener diagnosis evidence is available on failures without changing previously required fields."
   },
   {
     "surface": "schema:ServiceConfig",
@@ -2817,7 +2817,7 @@
     "surface": "schema:AppPlan",
     "changeKind": "unsupported-keyword",
     "path": "$.services.additionalProperties",
-    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block; every previously accepted service remains valid."
+    "justification": "ServicePlan additively gains optional service-type provenance and an optional resolved post-start scan block. Optional structured listenerAuthority records configuration ownership; optional listener diagnosis records socket evidence separately. Historical plans remain readable for observation and teardown."
   },
   {
     "surface": "schema:ConfigTranslateEncodeInput",

@@ -7,6 +7,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type ListenerAuthority,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -15,7 +16,7 @@ import { createRedactor } from "@lando/sdk/secrets";
 
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
 import { serviceContainerName } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { APPLY_REMEDIATION, bringUp } from "../src/podman/bring-up.ts";
 import { StartFailureLogRedactor } from "../src/redact.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
@@ -25,6 +26,14 @@ const appId = AppId.make("bring-up-log-tail-app");
 const slug = "bring-up-log-tail-app";
 const webName = ServiceName.make("web");
 const dbName = ServiceName.make("db");
+const dependencyRemediation =
+  "Run `lando logs -s db` to diagnose dependency db, fix it, then run `lando start`; it reuses what this attempt created.";
+const authority = (setting: string): ListenerAuthority => ({
+  owner: "launcher",
+  daemon: "postgres",
+  port: 5432,
+  setting,
+});
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-10-10T00:00:00Z"),
   source: "container-runtime/bring-up-log-tail.test.ts",
@@ -113,6 +122,8 @@ const logsQuery = (path: string): URLSearchParams => new URLSearchParams(path.sp
 const makeApi = (options: {
   readonly failedStarts?: ReadonlyArray<string>;
   readonly healthExitCode?: number;
+  readonly completionExitCode?: number;
+  readonly createStatus?: number;
   readonly logsFor?: Readonly<Record<string, ReadonlyArray<Uint8Array>>>;
   readonly hangLogsUnlessFollowFalse?: boolean;
   readonly hangLogs?: boolean;
@@ -124,6 +135,7 @@ const makeApi = (options: {
   const requests: string[] = [];
   const containers = new Set<string>();
   const running = new Set<string>();
+  const observedRunning = new Set<string>();
   const failedStartNames = new Set(options.failedStarts ?? []);
   const record = (request: EngineHttpRequest) => requests.push(`${request.method} ${request.path}`);
   const api: PodmanApiClient = {
@@ -139,6 +151,22 @@ const makeApi = (options: {
           return { status: 200, body: JSON.stringify(ownedNetworkInspection(standalonePlan(), name)) };
         }
         if (request.method === "GET" && request.path.endsWith("/json") && name !== undefined) {
+          if (name.endsWith("-db") && running.has(name) && options.completionExitCode !== undefined) {
+            if (observedRunning.has(name)) {
+              return {
+                status: 200,
+                body: JSON.stringify({
+                  Id: `id-${name}`,
+                  State: {
+                    Running: false,
+                    Status: "exited",
+                    ExitCode: options.completionExitCode,
+                  },
+                }),
+              };
+            }
+            observedRunning.add(name);
+          }
           return containers.has(name)
             ? {
                 status: 200,
@@ -147,6 +175,7 @@ const makeApi = (options: {
             : { status: 404, body: "{}" };
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create?name=")) {
+          if (options.createStatus !== undefined) return { status: options.createStatus, body: "{}" };
           const created = request.path.slice("/containers/create?name=".length);
           containers.add(created);
           return { status: 201, body: "{}" };
@@ -213,6 +242,130 @@ const expectServiceStartError = (error: unknown): ServiceStartError => {
 };
 
 describe("bringUp start-failure log tail", () => {
+  test("omits listener authority when a completed-successfully dependency gate fails", async () => {
+    // Given
+    const original = dependentPlan();
+    const plan = {
+      ...original,
+      services: {
+        db: servicePlan(dbName, false, { listenerAuthority: authority("dependency advice") }),
+        web: servicePlan(webName, true, {
+          listenerAuthority: authority("consumer advice"),
+          dependsOn: [{ service: dbName, condition: "service_completed_successfully", required: true }],
+        }),
+      },
+    };
+    const { api } = makeApi({ completionExitCode: 3 });
+    // When
+    const error = expectServiceStartError(await flipBringUp(plan, api));
+    // Then
+    expect(error.service).toBe("web");
+    expect(error.message).toContain("db:completed");
+    expect(error.remediation).toBe(dependencyRemediation);
+  });
+
+  test("omits service listener authority on its own create failure", async () => {
+    // Given
+    const original = standalonePlan();
+    const plan = {
+      ...original,
+      services: {
+        web: servicePlan(webName, true, { listenerAuthority: authority("--port 5432") }),
+      },
+    };
+    const { api } = makeApi({ createStatus: 500 });
+    // When
+    const error = expectServiceStartError(await flipBringUp(plan, api));
+    // Then
+    expect(error.operation).toBe("bringUp.create");
+    expect(error.remediation).toBe(APPLY_REMEDIATION);
+  });
+  test.each(["podman", "docker", "lando"])(
+    "%s healthy gate without observation uses only the dependency's redacted authority",
+    async (providerId) => {
+      // Given distinct dependency and consumer authorities, with a secret in the dependency's setting.
+      const original = dependentPlan();
+      const plan = {
+        ...original,
+        services: Object.fromEntries(
+          Object.entries(original.services).map(([name, service]) => [
+            name,
+            {
+              ...service,
+              listenerAuthority: authority(name === "db" ? "--token dependency-secret" : "consumer-only"),
+            },
+          ]),
+        ),
+      };
+      const redactor = createRedactor("secrets", { values: ["dependency-secret"] });
+      const { api, requests } = makeApi({ healthExitCode: 1 });
+
+      // When the shared provider bring-up cannot satisfy db:healthy.
+      const error = expectServiceStartError(
+        await Effect.runPromise(
+          bringUp(plan, { api, ctx: { ...ctx, providerId, redactor } }).pipe(Effect.flip),
+        ),
+      );
+
+      // Then the blocked consumer is identified but only the dependency's advice is appended.
+      expect(error.service).toBe("web");
+      expect(error.listener).toBeUndefined();
+      expect(error.remediation).toBe(
+        `Pass \`--token [redacted]\` to postgres in your command or entrypoint; Lando sets the listener from port: only in its own launcher.\n${dependencyRemediation}`,
+      );
+      expect(JSON.stringify(error)).not.toContain("dependency-secret");
+      expect(requests.some((request) => request.endsWith(`${serviceContainerName(plan, "web")}/start`))).toBe(
+        false,
+      );
+    },
+  );
+
+  test("does not substitute consumer authority when a blocked dependency has none", async () => {
+    // Given a healthy-gated consumer with advice and a dependency without advice.
+    const original = dependentPlan();
+    const plan = {
+      ...original,
+      services: Object.fromEntries(
+        Object.entries(original.services).map(([name, service]) => [
+          name,
+          name === "web" ? { ...service, listenerAuthority: authority("consumer-only") } : service,
+        ]),
+      ),
+    };
+    const { api } = makeApi({ healthExitCode: 1 });
+
+    // When the dependency fails health.
+    const error = expectServiceStartError(await flipBringUp(plan, api));
+
+    // Then the original remediation is unchanged.
+    expect(error.remediation).toBe(dependencyRemediation);
+  });
+
+  test("preserves provider-specific remediation without authority on direct start failure", async () => {
+    // Given an authored launcher and a provider-specific diagnostic.
+    const original = standalonePlan();
+    const plan = {
+      ...original,
+      services: Object.fromEntries(
+        Object.entries(original.services).map(([name, service]) => [
+          name,
+          { ...service, listenerAuthority: authority("--port 5432") },
+        ]),
+      ),
+    };
+    const { api } = makeApi({ failedStarts: [serviceContainerName(plan, "web")] });
+
+    // When the runtime rejects start.
+    const error = expectServiceStartError(
+      await Effect.runPromise(
+        bringUp(plan, { api, ctx, startFailureRemediation: () => "Repair the provider." }).pipe(Effect.flip),
+      ),
+    );
+
+    // Then provider advice is preserved without unrelated listener advice.
+    expect(error.remediation).toBe("Repair the provider.");
+  });
+
   test("captures whole lines from split multiplexed writes on a failed service", async () => {
     const plan = standalonePlan();
     const web = serviceContainerName(plan, "web");

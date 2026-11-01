@@ -274,6 +274,14 @@
       }
     },
     {
+      "fixture": "docs/guides/elasticsearch/fixtures/elasticsearch-http-transport-collision",
+      "digest": "12407a82425ff865e9cc0568585d02f782f6787a70237d2c955dc4c677172cc6"
+    },
+    {
+      "fixture": "docs/guides/elasticsearch/fixtures/elasticsearch-transport-moved",
+      "digest": "fa1601fbe266cfe54d4ab40fbe1103d0e7bf8242f1d307362cf4383dbfdd90cd"
+    },
+    {
       "fixture": "docs/guides/env-overrides/fixtures/top-level-env-file",
       "digest": "5f9d3b1b360c8bf4aac495c2e0a3bffb8ca64d11cf51b0a7882b993a92716238"
     },
@@ -479,6 +487,38 @@
       "digest": "0259f2d81b5170c7da88d33f880c1ce1280f79531320126f20daa2360d2394a3"
     },
     {
+      "fixture": "docs/guides/localstack/fixtures/localstack-dns-collision",
+      "digest": "8082bf3b00c3be0917230cf9fb005844d34cfd123b6fadc42eaef8b844e1fe0d"
+    },
+    {
+      "fixture": "docs/guides/localstack/fixtures/localstack-dns-disabled",
+      "digest": "b9167efb85b120450d358d564bdc6c1533dbfe974922aa21316ef2ded4bca52e"
+    },
+    {
+      "fixture": "docs/guides/localstack/fixtures/localstack-dns-extra-collision",
+      "digest": "f231c0e187c0bec3baf1f55c9c5a26734324a9f0d95edeeb20444fd8a2cdeede"
+    },
+    {
+      "fixture": "docs/guides/localstack/fixtures/localstack-dns-moved",
+      "digest": "c93f5510e7f186390bad5a115da8f3b9ee65af5af06a279607446f2df359bdca"
+    },
+    {
+      "fixture": "docs/guides/localstack/fixtures/localstack-gateway-extra",
+      "digest": "c14780f15b0a3e6944f9dd8797711abe3da1bcfb3e7f902f98c6d79094e0495d"
+    },
+    {
+      "fixture": "docs/guides/localstack/fixtures/localstack-gateway-reject-duplicate",
+      "digest": "7eab95d3a244c4b0684c383f5947a2d4822a056e9b2d32c2a062972c9a38ce51"
+    },
+    {
+      "fixture": "docs/guides/localstack/fixtures/localstack-gateway-reject-loopback",
+      "digest": "1a891bb17413a54b44ae1ebc1e19778473f39b2eb40cd25ba666171b1c64ce37"
+    },
+    {
+      "fixture": "docs/guides/localstack/fixtures/localstack-gateway-reject-missing-planned",
+      "digest": "1fcd111eb1cde3fa458895ce856461f2d2567bc78321f0db52ce90ed8a81d456"
+    },
+    {
       "fixture": "docs/guides/magento/fixtures/mageos",
       "digest": "60703b62deb60584757dd423b60c7ca8d39da5f0350e6a3fc1621c1ae19f0705"
     },
@@ -537,6 +577,10 @@
     {
       "fixture": "docs/guides/memcached/fixtures/memcached-demo",
       "digest": "8da476be455b53ca3518fc6d259ebf22b2618cd634904ec7556bd51fbf178be9"
+    },
+    {
+      "fixture": "docs/guides/memcached/fixtures/memcached-port",
+      "digest": "4f3cbf8669c5a6bcb5638abaf9a858f2525d75215d3d1c772542fd8fb9fce074"
     },
     {
       "fixture": "docs/guides/migrating-recipes/fixtures/bare-recipe",
@@ -709,6 +753,14 @@
     {
       "fixture": "docs/guides/opensearch/fixtures/opensearch-demo",
       "digest": "d3c56e3f0c881c2f6f158d600bad70287b305c66739cac7753024ea1d03892b3"
+    },
+    {
+      "fixture": "docs/guides/opensearch/fixtures/opensearch-http-transport-collision",
+      "digest": "5d07446b5a00af36e381b93b403320248f0a4964ae0d02b75b3fd51e70ae790a"
+    },
+    {
+      "fixture": "docs/guides/opensearch/fixtures/opensearch-transport-moved",
+      "digest": "86e8a28c564aebc02945e3db079160eff275384774a07ef5b2b23d0a17c6a81a"
     },
     {
       "fixture": "docs/guides/output-streaming/fixtures/clean-output",
@@ -989,6 +1041,18 @@
       "digest": "b497a6982802f343b171edb3f361316a92ec40aad19655045bd15aeaae315e46"
     },
     {
+      "fixture": "docs/guides/solr/fixtures/solr-explicit-stop",
+      "digest": "4d02064f105a2d1f2de53ec8a9734f1b828d1306a510bb5e8f5f5f224f78a1d9"
+    },
+    {
+      "fixture": "docs/guides/solr/fixtures/solr-invalid-stop",
+      "digest": "cf0e2868a6e4db04fb55b198d0c4fa0a6b00fa821e8530cd2e92591697e8d1b2"
+    },
+    {
+      "fixture": "docs/guides/solr/fixtures/solr-port",
+      "digest": "b9b3e0ba4eec40e52518c7cacb341a2e9b5cf1caf74f01c0b340be51c50ca003"
+    },
+    {
       "fixture": "docs/guides/solr10/fixtures/solr10-demo",
       "digest": "af52f8b657a1349fc157b50d79d9629754cc761c1263b32016d8eb5a9b03109f"
     },
@@ -1059,6 +1123,10 @@
       "digest": "9184002b1c60b15ac72996847e4e7ebed7e55dd3822808acea9be6351eeccb94"
     },
     {
+      "fixture": "docs/guides/tomcat/fixtures/tomcat-reserved-shutdown",
+      "digest": "1d9954a345589e60735eff166c162f71118b3be5d47469b98484b650a8530ff1"
+    },
+    {
       "fixture": "docs/guides/tooling-includes/fixtures/tooling-includes-demo",
       "digest": "240168b11409f3c43c0474745f4a7814ef92c3171cb404fb88d16800bdb1f347"
     },
@@ -1071,8 +1139,16 @@
       "digest": "a8d914d0169c21885170d31067f200410b9dec6fb3c973badd5246df77ca8a95"
     },
     {
+      "fixture": "docs/guides/valkey/fixtures/valkey-port",
+      "digest": "9e826c16a9ae1b2c53e96cc9293c4a01888c2821a84465be31f01d35bf0f2cff"
+    },
+    {
       "fixture": "docs/guides/varnish/fixtures/varnish-demo",
       "digest": "181e8c161a40440594fe0ad139df66c856ae6f8b0bd86a7d4487e9e0a07c1f38"
+    },
+    {
+      "fixture": "docs/guides/varnish/fixtures/varnish-reserved-admin",
+      "digest": "a6e4055b40dfb488f389222855701e5da3118fbd343547040c17518269a7d23a"
     },
     {
       "fixture": "docs/guides/varnish/fixtures/varnish-unknown-backend",

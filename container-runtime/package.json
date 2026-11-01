@@ -48,6 +48,7 @@
     "./healthcheck-attempt": "./src/healthcheck-attempt.ts",
     "./service-probe": "./src/service-probe.ts",
     "./listener-observation": "./src/listener-observation.ts",
+    "./listener-parser": "./src/listener-parser.ts",
     "./listener-diagnostic": "./src/listener-diagnostic.ts",
     "./supervision": "./src/supervision.ts",
     "./engine-api": "./src/engine-api.ts",

@@ -1,0 +1,7 @@
+name: localstack-gateway-reject-missing-planned
+services:
+  aws:
+    type: localstack
+    port: 14566
+    environment:
+      GATEWAY_LISTEN: ":4566"

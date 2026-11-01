@@ -53,17 +53,22 @@ tooling:
     cmd: python
 ```
 
-| Framework | Default port | Useful bits |
-| --- | --- | --- |
-| `fastapi` | `8000` | Port default only; author the Uvicorn command below |
-| `django` | `8000` | Sets `DJANGO_SETTINGS_MODULE=config.settings` |
-| `flask` | `5000` | Sets `FLASK_APP=app` |
-| `none` (default) | `8000` | Plain Python service |
+The `django` preset sets `DJANGO_SETTINGS_MODULE=config.settings`, and `flask` sets `FLASK_APP=app`. Without a framework, the service stays plain Python.
+
+## Pass `port:` to your Python server
+
+Lando derives the port variables from the internal HTTP endpoint, and an explicit `port:` replaces the framework default. See the [Python listener reference](../../reference/service-listeners.mdx#python) for each framework's variables, default port, and host defaults.
+
+Gunicorn reads `PORT` and binds `0.0.0.0`; Uvicorn CLI reads `UVICORN_*`, and `flask run` reads `FLASK_RUN_*`.
+
+Port variables are not independent overrides. If an authored value is malformed or differs from the planned port, planning fails at `services.app.environment.<VAR>`. This includes inherited `appEnv` and env-file values. Set `port:` instead. Host variables are ordinary defaults: your authored host value wins, but a loopback address makes the server unreachable through the proxy.
+
+FastAPI CLI does not read `UVICORN_*`. `fastapi run main.py` binds all interfaces and reads `PORT`; `fastapi dev main.py --host 0.0.0.0` still needs its host argument. Django needs `runserver 0.0.0.0:8000` (or your chosen port) because it reads neither port nor host from these variables. Python's built-in `http.server` also needs its port argument.
 
 Python does not interpret `webroot:`. An explicit root fails planning unless
 a composed plugin feature declares and handles it. Set `workingDirectory:`
 to move the process, and configure static-file paths in your application or a
-separate webserver. `framework:` does not start Django, Uvicorn, or Gunicorn.
+separate webserver.
 
 Start it:
 
@@ -99,6 +104,8 @@ If host ports 80 or 443 are taken, `lando info` shows fallback ports such as `:8
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8000" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"pip\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uv\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -142,7 +149,7 @@ lando exec app -- uv pip install --system -r requirements.txt
 The idle container lets you install dependencies before starting the server. The following commands assume your `requirements.txt` includes FastAPI and Uvicorn and your app root contains `main.py` with an ASGI object named `app`. Run Uvicorn once in the foreground:
 
 ```sh
-lando exec app -- /app/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+lando exec app -- /app/.venv/bin/uvicorn main:app
 ```
 
 Or set it as the service command and restart so Lando starts Uvicorn with the service:
@@ -157,10 +164,6 @@ services:
     command:
       - /app/.venv/bin/uvicorn
       - main:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8000"
 ```
 
 ```sh
@@ -192,7 +195,7 @@ services:
 
 ```sh
 lando exec app -- /app/.venv/bin/python manage.py runserver 0.0.0.0:8000
-lando exec app -- /app/.venv/bin/gunicorn --bind 0.0.0.0:5000 app:app
+lando exec app -- /app/.venv/bin/gunicorn app:app
 ```
 
 ## Pin an image

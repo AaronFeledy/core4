@@ -73,14 +73,18 @@ export interface ScanTarget {
 const isAccepted = (status: number, okCodes: ReadonlyArray<number>): boolean =>
   (status >= 200 && status < 300) || okCodes.includes(status);
 
-const transportMessage = (error: HttpClientError.HttpClientError): string => {
+/** Bun appends a developer hint to fetch transport errors; it means nothing to a Lando user. */
+const BUN_FETCH_HINT =
+  /\s*For more information, pass `verbose: true` in the second argument to fetch\(\)\.?$/u;
+
+export const transportMessage = (error: HttpClientError.HttpClientError): string => {
   const reason = error.reason;
   if (reason._tag === "TransportError") {
     const cause = reason.cause;
-    if (cause instanceof Error) return cause.message;
-    if (typeof cause === "string") return cause;
+    if (cause instanceof Error) return cause.message.replace(BUN_FETCH_HINT, "");
+    if (typeof cause === "string") return cause.replace(BUN_FETCH_HINT, "");
   }
-  return error.message;
+  return error.message.replace(BUN_FETCH_HINT, "");
 };
 
 const makeAttempt = Effect.fnUntraced(function* (

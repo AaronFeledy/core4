@@ -1,5 +1,5 @@
 import { completionIntentServices } from "@lando/container-runtime/dependency-gates";
-import { listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
+import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
 import { observeTcpListener } from "@lando/container-runtime/listener-observation";
 import { capRedactedLogLines } from "@lando/container-runtime/podman/bring-up";
 import { isSupervisedService } from "@lando/container-runtime/supervision";
@@ -87,6 +87,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
   const commands = readinessCommands(target);
   const diagnostic =
     listener !== undefined && service !== undefined ? listenerDiagnostic(listener, service) : undefined;
+  const action = diagnostic?.action ?? (diagnose ? listenerAuthorityAction(service) : undefined);
   const healthcheckRemediation =
     diagnose && diagnostic === undefined
       ? " Check the readiness command; readiness: false disables startup readiness."
@@ -101,7 +102,7 @@ export const failReadiness = Effect.fn("ServiceReadiness.fail")(function* (
       remediation:
         evidence.reason === "inspect-failed"
           ? "Run `lando doctor` to diagnose and restore the provider, then retry start."
-          : `${diagnostic === undefined ? "" : `${diagnostic.action}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
+          : `${action === undefined ? "" : `${redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${redactor.redactString(diagnostic.authority)}\n`}Run \`${commands.logs}\` to diagnose the service and fix it.${commands.retry === undefined ? "" : ` Then retry \`${commands.retry}\`.`}${healthcheckRemediation}`,
       ...(listener === undefined ? {} : { listener }),
       ...(evidence.runtime?.exitCode === undefined ? {} : { exitCode: evidence.runtime.exitCode }),
       ...(evidence.runtime === undefined

@@ -191,4 +191,71 @@ describe("elasticsearch ServiceType", () => {
       LANDO_SERVICE_TYPE: "elasticsearch",
     });
   });
+  test("pins transport.port to 9300 by default and rejects primary collision", async () => {
+    const plan = await planElasticsearchService(elasticsearchServiceType, { type: "elasticsearch" });
+    expect(plan.environment["transport.port"]).toBe("9300");
+    await expect(
+      planElasticsearchService(elasticsearchServiceType, { type: "elasticsearch", port: 9300 }),
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["port"],
+          message: expect.stringContaining("transport listener"),
+          suggestion: "Set port: to another TCP port number.",
+        },
+      ],
+    });
+  });
+
+  test("releases 9300 when transport.port moves and accepts a valid scalar", async () => {
+    const plan = await planElasticsearchService(elasticsearchServiceType, {
+      type: "elasticsearch",
+      port: 9300,
+      environment: { "transport.port": "19300" },
+    });
+    expect(plan.environment["http.port"]).toBe("9300");
+    expect(plan.environment["transport.port"]).toBe("19300");
+    expect(firstEndpointPort(plan)).toBe(9300);
+  });
+
+  test.each(["9300-9400", "1.5", "0", "65536", "abc", ""])(
+    "rejects malformed transport.port %j",
+    async (value) => {
+      await expect(
+        planElasticsearchService(elasticsearchServiceType, {
+          type: "elasticsearch",
+          environment: { "transport.port": value },
+        }),
+      ).rejects.toMatchObject({
+        issues: [
+          {
+            path: ["environment", "transport.port"],
+            message: expect.stringMatching(/not a TCP port number|requires a literal/),
+            suggestion: expect.stringContaining("1 to 65535"),
+          },
+        ],
+      });
+    },
+  );
+
+  test("does not reserve 9600 for the primary listener", async () => {
+    const plan = await planElasticsearchService(elasticsearchServiceType, {
+      type: "elasticsearch",
+      port: 9600,
+    });
+    expect(firstEndpointPort(plan)).toBe(9600);
+    expect(plan.environment["http.port"]).toBe("9600");
+    expect(plan.environment["transport.port"]).toBe("9300");
+  });
+
+  test("rejects conflicting http.port native variable", async () => {
+    await expect(
+      planElasticsearchService(elasticsearchServiceType, {
+        type: "elasticsearch",
+        environment: { "http.port": "19200" },
+      }),
+    ).rejects.toMatchObject({
+      issues: [{ path: ["environment", "http.port"], suggestion: expect.stringContaining("port:") }],
+    });
+  });
 });

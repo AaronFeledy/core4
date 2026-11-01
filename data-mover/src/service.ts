@@ -367,7 +367,7 @@ const providerCommandSpec = (
   command: string | ReadonlyArray<string>,
   env: Readonly<Record<string, string>> | undefined,
 ): { readonly command: ReadonlyArray<string>; readonly env?: Readonly<Record<string, string>> } => ({
-  command: typeof command === "string" ? ["sh", "-lc", command] : command,
+  command: typeof command === "string" ? ["sh", "-c", command] : command,
   ...(env === undefined ? {} : { env }),
 });
 

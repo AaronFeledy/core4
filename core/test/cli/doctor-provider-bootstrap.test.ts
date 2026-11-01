@@ -109,6 +109,7 @@ describe("doctor provider-bootstrap failure", () => {
         "missing-app-roots",
         "orphaned-volume-snapshots",
         "app-config",
+        "app-listeners",
         "deprecations",
         "debugger-host",
       ]);

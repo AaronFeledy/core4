@@ -45,6 +45,16 @@ services:
       <Cleanup />
     </Step>
   </Scenario>
+  <Scenario id="reject-management-port" render={false} reason="Lando-owned Varnish launcher reserves 6082 for the management interface">
+    <Step name="reject-6082">
+      <UseFixture name="varnish-reserved-admin" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "management interface" } }} />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"cache\",\\s*\"port\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
 </Guide>
 
 ## Pick a version
@@ -76,6 +86,22 @@ services:
       - source: ./default.vcl
         target: /etc/varnish/default.vcl
 ```
+
+## Change the port
+
+Set `port:` to move the HTTP listener, endpoint, and healthcheck together:
+
+```yaml
+services:
+  cache:
+    type: varnish
+    backend: appserver
+    port: 8080
+```
+
+Lando's launcher starts `varnishd` with `-a :8080` and keeps the management interface on `localhost:6082`. Port `6082` fails during planning while Lando owns the launcher, because that interface already binds it. An authored `command:` or `entrypoint:` drops the reservation: you own the flags, and Lando never appends `-a` for you. When startup fails with an authored launcher, remediation names the setting to pass, such as `-a :8080`.
+
+Apply the change with `lando rebuild`, then open the Varnish URL from `lando info`.
 
 ## Point browsers at Varnish
 

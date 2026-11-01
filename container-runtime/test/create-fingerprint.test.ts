@@ -59,6 +59,24 @@ const plan: AppPlan = {
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
 
+test("excludes listenerAuthority from the v3 container create identity", () => {
+  // Given two plans differing only in listenerAuthority.
+  const advised: ServicePlan = {
+    ...service,
+    listenerAuthority: { owner: "launcher", daemon: "mongod", port: 27018, setting: "--port 27018" },
+  };
+  const advisedPlan = { ...plan, services: { [service.name]: advised } };
+
+  // When each plan's create identity is calculated.
+  const original = fingerprint(service, plan);
+  const changedAdvice = fingerprint(advised, advisedPlan);
+
+  // Then listener ownership advice cannot force container recreation, unlike launcher changes.
+  expect(original).toStartWith("v3:");
+  expect(changedAdvice).toBe(original);
+  expect(fingerprint({ ...advised, command: ["mongod", "--port", "27018"] }, advisedPlan)).not.toBe(original);
+});
+
 test("fingerprints probe identity, execution locus, argv/shell semantics and host cwd", () => {
   // Given
   const readiness = {
@@ -243,12 +261,12 @@ describe("desired immutable create config", () => {
   test("normalizes command and entrypoint representations without sorting argv", () => {
     // Given equivalent shell-command and entrypoint representations.
     const authored = { ...service, command: "sleep 60", entrypoint: "/bin/tool" };
-    const normalized = { ...service, command: ["sh", "-lc", "sleep 60"], entrypoint: ["/bin/tool"] };
+    const normalized = { ...service, command: ["sh", "-c", "sleep 60"], entrypoint: ["/bin/tool"] };
     // When fingerprints are emitted.
     const actual = fingerprint(authored);
     // Then equivalent create arguments match and reordered arguments do not.
     expect(actual).toBe(fingerprint(normalized));
-    expect(actual).not.toBe(fingerprint({ ...normalized, command: ["sleep 60", "-lc", "sh"] }));
+    expect(actual).not.toBe(fingerprint({ ...normalized, command: ["sleep 60", "-c", "sh"] }));
   });
 
   test("ignores bind sync metadata but fingerprints its physical volume identity", () => {

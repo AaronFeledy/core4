@@ -140,6 +140,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
 export const services = Layer.empty;
 
 export const serviceTypeFacts = () => buildServiceTypeFacts(serviceTypes);
+export { listenerContracts } from "./service-type-facts.ts";
 
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
   ["mailpit", mailpitGlobalService],

@@ -3,6 +3,7 @@ import { Schema } from "effect";
 import type { ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { makeLanguageRuntime } from "./_language-runtime.ts";
+import type { ListenerContract } from "./_port-helpers.ts";
 
 export const SUPPORTED_GO_VERSIONS = ["1.22", "1.23"] as const;
 export type SupportedGoVersion = (typeof SUPPORTED_GO_VERSIONS)[number];
@@ -16,6 +17,12 @@ export type SupportedGoFramework = (typeof SUPPORTED_GO_FRAMEWORKS)[number];
 export const GO_FEATURE_ID = "service-lando.go" as const;
 export const GO_FEATURE_PRIORITY = 600;
 export const DEFAULT_PORT = 8080;
+export const GO_LISTENER = {
+  port: DEFAULT_PORT,
+  daemon: "Go",
+  when: "All Go services; framework omitted or none",
+  variables: ["PORT"],
+} as const satisfies ListenerContract;
 
 const GoFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_GO_FRAMEWORKS]),
@@ -33,7 +40,7 @@ const runtime = makeLanguageRuntime({
   artifacts: GO_ARTIFACTS,
   artifactFor: (version) => `golang:${version}`,
   frameworks: SUPPORTED_GO_FRAMEWORKS,
-  presets: { none: { port: DEFAULT_PORT } },
+  presets: { none: GO_LISTENER },
   baseEnv: { GOPATH: "/go", GOCACHE: "/root/.cache/go-build", CGO_ENABLED: "0" },
   mountExcludes: [],
   includeWebrootInFeatureConfig: false,

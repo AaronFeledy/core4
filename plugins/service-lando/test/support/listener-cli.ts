@@ -22,6 +22,7 @@ export const listenerCli = (args: {
   readonly root: string;
   readonly env: NodeJS.ProcessEnv;
   readonly argv: readonly string[];
+  readonly expectedExit?: number;
 }) =>
   Effect.tryPromise({
     try: async (signal) => {
@@ -42,7 +43,7 @@ export const listenerCli = (args: {
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
       ]);
-      expect(code, `${args.argv.join(" ")}\n${stdout}\n${stderr}`).toBe(0);
+      expect(code, `${args.argv.join(" ")}\n${stdout}\n${stderr}`).toBe(args.expectedExit ?? 0);
       return stdout;
     },
     catch: (cause) => cause,
@@ -68,29 +69,33 @@ export const acquireListenerApp = Effect.fnUntraced(function* (socketPath: strin
     LANDO_TELEMETRY_ENABLED: "false",
     LANDO_CONFIG__default_provider_id: "podman",
   };
-  const cli = (argv: readonly string[]) => listenerCli({ root, env, argv });
+  const cli = (argv: readonly string[], expectedExit = 0) => listenerCli({ root, env, argv, expectedExit });
+  const prepare = Effect.fnUntraced(function* (config: Pick<typeof LandofileShape.Encoded, "services">) {
+    yield* Effect.promise(() =>
+      Bun.write(
+        join(root, ".lando.yml"),
+        emitLandofileYaml({
+          name,
+          runtime: 4,
+          provider: "podman",
+          router: { enabled: false },
+          ...config,
+        }),
+      ),
+    );
+    yield* cli(["app:cache:refresh"]);
+    // Register before starting: a partially failed apply also owns resources.
+    yield* Effect.addFinalizer(() =>
+      cli(["destroy", "--volumes", "--yes"]).pipe(Effect.timeout("90 seconds"), Effect.orDie),
+    );
+  });
   return {
     root,
     name,
     cli,
+    prepare,
     start: Effect.fnUntraced(function* (config: Pick<typeof LandofileShape.Encoded, "services">) {
-      yield* Effect.promise(() =>
-        Bun.write(
-          join(root, ".lando.yml"),
-          emitLandofileYaml({
-            name,
-            runtime: 4,
-            provider: "podman",
-            router: { enabled: false },
-            ...config,
-          }),
-        ),
-      );
-      yield* cli(["app:cache:refresh"]);
-      // Register before starting: a partially failed apply also owns resources.
-      yield* Effect.addFinalizer(() =>
-        cli(["destroy", "--volumes", "--yes"]).pipe(Effect.timeout("90 seconds"), Effect.orDie),
-      );
+      yield* prepare(config);
       const output = yield* cli(["start"]);
       const json: unknown = JSON.parse(output.trim().split("\n").at(-1) ?? "");
       const frame = Schema.decodeUnknownOption(startFrame)(json);

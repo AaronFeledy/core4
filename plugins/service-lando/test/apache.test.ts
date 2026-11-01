@@ -197,6 +197,7 @@ describe("apache ServiceType", () => {
 
     // Then: Lando neither emits a directive nor edits the image.
     expect(plan.command).toEqual(["httpd-foreground"]);
+    expect(plan.listenerAuthority?.owner).toBe("launcher");
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
@@ -206,6 +207,7 @@ describe("apache ServiceType", () => {
 
     // Then: Lando neither emits a directive nor edits the image.
     expect(plan.entrypoint).toEqual(["/custom-start"]);
+    expect(plan.listenerAuthority?.owner).toBe("launcher");
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
@@ -220,8 +222,23 @@ describe("apache ServiceType", () => {
     // Then: Lando still generates the start command, but neither emits Listen
     // nor edits a config path that image may not have.
     expect(apacheDirectives(plan.command).some((directive) => directive.startsWith("Listen "))).toBe(false);
+    expect(plan.listenerAuthority).toEqual({
+      owner: "image",
+      daemon: "Apache",
+      port: 8080,
+      setting: "Listen 8080",
+    });
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
+
+  test.each(["httpd:2.4-alpine", "library/httpd:2.4-alpine", "docker.io/library/httpd:2.4-alpine"])(
+    "catalog image %s retains listener ownership",
+    async (image) => {
+      const plan = await composeApachePlan({ type: "apache", image, port: 8080 });
+      expect(plan.listenerAuthority).toBeUndefined();
+      expect(apacheDirectives(plan.command)).toContain("Listen 8080");
+    },
+  );
 
   test("serves an authored webroot through Apache config and LANDO env", async () => {
     // Given / When

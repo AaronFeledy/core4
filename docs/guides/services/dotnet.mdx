@@ -16,10 +16,8 @@ services:
     type: dotnet
     command:
       - dotnet
-      - watch
       - run
-      - --urls
-      - http://0.0.0.0:5000
+      - --no-launch-profile
 ```
 
 <Guide>
@@ -50,12 +48,24 @@ services:
 
 ## Run the app
 
-Set `command:` to your project's development-server command. The example uses `dotnet watch run` and binds it to `0.0.0.0:5000` so the default route can reach it.
+Set `command:` to your project's development-server command. The example uses `dotnet run --no-launch-profile`, which lets ASP.NET Core use the port Lando supplies. Run `lando start` after saving the Landofile, then `lando info --format=json` to find the app route.
+
+## Pass `port:` to ASP.NET Core
+
+ASP.NET Core 8+ reads `ASPNETCORE_HTTP_PORTS` and binds HTTP on all interfaces at that port. See the [.NET listener reference](../../reference/service-listeners.mdx#dotnet) for the default port and projected variable.
+
+Lando uses the same port for this variable and the internal HTTP endpoint, replacing the official SDK image's `8080` environment default. To move the listener, set `port:` on `appserver`; you do not need `--urls` for the normal case.
+
+An authored `environment.ASPNETCORE_HTTP_PORTS` must be one literal integer equal to the planned port. Malformed values, port lists, and unequal values fail planning at `services.appserver.environment.ASPNETCORE_HTTP_PORTS`, including inherited `appEnv` and env-file values. Set `port:` instead.
+
+Use `--no-launch-profile`: `launchSettings.json` can set `applicationUrl`, which becomes `ASPNETCORE_URLS` and overrides `ASPNETCORE_HTTP_PORTS`. An authored `ASPNETCORE_URLS`, a `--urls` argument, or application code configuring Kestrel also takes precedence. Those settings remain yours to align with `port:`; Lando does not validate their URLs or rewrite them.
+
+Projecting a port does not infer a healthcheck.
 
 ## Cache and the default route
 
 NuGet packages land in a shared cache at `/root/.nuget/packages`. The
-service listens on `5000`, gets a default hostname route, and turns on
+service declares an HTTP endpoint at `5000`, gets a default hostname route, and turns on
 `lando.certs`. Set `certs: false` if you do not want a leaf certificate.
 
 ```sh

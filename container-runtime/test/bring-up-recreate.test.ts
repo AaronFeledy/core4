@@ -15,7 +15,7 @@ import { CREATE_CONFIG_LABEL } from "../src/create-fingerprint.ts";
 import type { EngineHttpRequest, EngineHttpResponse, PodmanApiClient } from "../src/engine-api.ts";
 import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "../src/labels.ts";
 import { commonContainerLabels } from "../src/plan.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { APPLY_REMEDIATION, bringUp } from "../src/podman/bring-up.ts";
 import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
 const providerId = ProviderId.make("lando");
@@ -771,7 +771,24 @@ describe("Podman publish-port recreate", () => {
   test("Given a fingerprint mismatch and a failed remove, When bringing up, Then start fails instead of keeping old PortBindings", async () => {
     // Given: existing container still publishes 18080; planned host port is 38080; DELETE is rejected.
     const fake = makeFakeApi({ deleteStatus: 409 });
-    const plan = planWithHostPort(38080);
+    const original = planWithHostPort(38080);
+    const plan = {
+      ...original,
+      services: Object.fromEntries(
+        Object.entries(original.services).map(([name, service]) => [
+          name,
+          {
+            ...service,
+            listenerAuthority: {
+              owner: "launcher" as const,
+              daemon: "node",
+              port: 3000,
+              setting: "--port 3000",
+            },
+          },
+        ]),
+      ),
+    };
 
     // When
     const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx }));
@@ -781,7 +798,12 @@ describe("Podman publish-port recreate", () => {
       ? Array.from(exit.cause.reasons.filter(Cause.isFailReason).map((reason) => reason.error))
       : [];
     expect(failures).toContainEqual(
-      expect.objectContaining({ _tag: "ServiceStartError", operation: "bringUp.remove", service: "web" }),
+      expect.objectContaining({
+        _tag: "ServiceStartError",
+        operation: "bringUp.remove",
+        service: "web",
+        remediation: APPLY_REMEDIATION,
+      }),
     );
     expect(createCalls(fake.calls)).toEqual([]);
   });

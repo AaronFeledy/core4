@@ -57,7 +57,9 @@ describe("localstack ServiceType", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure).toMatchObject({ _tag: "ServiceFeatureError", feature: LOCALSTACK_FEATURE_ID });
-      expect(result.failure.message).toContain("services.web.environment.GATEWAY_LISTEN");
+      expect(result.failure.issues).toContainEqual(
+        expect.objectContaining({ path: ["environment", "GATEWAY_LISTEN"] }),
+      );
     }
   });
 
@@ -108,41 +110,81 @@ describe("localstack ServiceType", () => {
     });
   });
 
-  test("aligns GATEWAY_LISTEN with port when both are authored", async () => {
+  test("preserves a matching authored gateway and advertises additional listeners", async () => {
     const plan = await planLocalStackService({
       type: "localstack",
       port: 14566,
-      environment: { GATEWAY_LISTEN: "127.0.0.1:4566" },
+      environment: { GATEWAY_LISTEN: " [::]:14566, :4566 " },
     });
 
-    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: "127.0.0.1:14566" });
+    expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: " [::]:14566, :4566 " });
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 14566, protocol: "http", name: "cloud", primary: true },
+      { _tag: "internal", port: 4566, protocol: "http", name: "gateway-4566" },
     ]);
     expect(plan.healthcheck).toMatchObject({
       command: ["sh", "-c", "curl -sf http://localhost:14566/_localstack/health"],
     });
   });
 
-  test.each(["0.0.0.0:24666", "127.0.0.1:24666", "24666"])(
-    "derives the listener from GATEWAY_LISTEN %s when port is omitted",
+  test.each([":4566", "0.0.0.0:4566", "[::]:4566"])(
+    "preserves a wildcard GATEWAY_LISTEN %s when port is omitted",
     async (gateway) => {
-      // Given / When: the environment alone selects a nondefault listener.
       const plan = await planLocalStackService({
         type: "localstack",
         environment: { GATEWAY_LISTEN: gateway },
       });
 
-      // Then: declaration, actual bind, and healthcheck agree.
       expect(plan.environment).toMatchObject({ GATEWAY_LISTEN: gateway });
       expect(plan.endpoints).toEqual([
-        { _tag: "internal", port: 24666, protocol: "http", name: "cloud", primary: true },
+        { _tag: "internal", port: 4566, protocol: "http", name: "cloud", primary: true },
       ]);
       expect(plan.healthcheck).toMatchObject({
-        command: ["sh", "-c", "curl -sf http://localhost:24666/_localstack/health"],
+        command: ["sh", "-c", "curl -sf http://localhost:4566/_localstack/health"],
       });
     },
   );
+
+  test.each([
+    "0.0.0.0:24666",
+    "127.0.0.1:4566",
+    "localhost:4566",
+    "[::1]:4566",
+    "4566",
+    ":0",
+    ":65536",
+    ":1.5",
+    ":4566/path",
+    "",
+    ":4566,",
+    ":4566,:4566",
+    ":4566,0.0.0.0:4566",
+    ":4566,[::]:4566",
+    "${GATEWAY}",
+    { _tag: "SecretRef", reference: "GATEWAY" },
+  ])("rejects unreachable, malformed, duplicate, or unmatched gateway %j", async (gateway) => {
+    await expect(
+      planLocalStackService({ type: "localstack", environment: { GATEWAY_LISTEN: gateway } }),
+    ).rejects.toMatchObject({
+      _tag: "ServiceFeatureError",
+      issues: [
+        expect.objectContaining({ path: ["environment", "GATEWAY_LISTEN"], suggestion: expect.any(String) }),
+      ],
+    });
+  });
+
+  test("rejects an authored gateway that lacks the explicit planned port", async () => {
+    await expect(
+      planLocalStackService({ type: "localstack", port: 14566, environment: { GATEWAY_LISTEN: ":4566" } }),
+    ).rejects.toMatchObject({
+      issues: [
+        expect.objectContaining({
+          path: ["environment", "GATEWAY_LISTEN"],
+          message: expect.stringContaining("14566"),
+        }),
+      ],
+    });
+  });
 
   test("preserves authored environment and process fields", async () => {
     const plan = await planLocalStackService({

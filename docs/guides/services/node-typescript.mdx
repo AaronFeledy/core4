@@ -141,7 +141,7 @@ lando npx tsx -e 'import { greet } from "./src/greet.ts"; console.log(greet("tsx
 
 ## Serve TypeScript without a build step
 
-After installing dependencies, replace the `app` service block with this one. Load `tsx` directly in Node so the server runs without an npm wrapper or a `sh -lc` shell:
+After installing dependencies, replace the `app` service block with this one. Load `tsx` directly in Node so the server runs without an npm wrapper or a `sh -c` shell:
 
 ```yaml
 services:
@@ -165,7 +165,15 @@ lando start
 lando info
 ```
 
-Open the `app` URL from `lando info`. The sample server answers `hello lando` with HTTP 200. Lando sets `PORT` from `port:` (default `3000`); an explicit `environment.PORT` overrides that environment value but doesn't change the endpoint. Keep the listener and `port:` aligned. You don't need `ports:` or `proxy:` for the generated URL: the Node service contributes an internal HTTP endpoint and Lando routes it automatically.
+Open the `app` URL from `lando info`. The sample server answers `hello lando` with HTTP 200. You don't need `ports:` or `proxy:` for the generated URL: the Node service contributes an internal HTTP endpoint and Lando routes it automatically.
+
+## Pass `port:` to your TypeScript server
+
+Lando derives `PORT` from `port:`; see the [service listener reference](../../reference/service-listeners.mdx#node) for defaults and variables. Next.js, Nuxt, and Remix read it, as does the sample's `process.env.PORT`.
+
+The sample reads `PORT` and binds `0.0.0.0`, so changing `port:` changes both its listener and Lando's endpoint. An authored `environment.PORT` must be a literal integer equal to that port; otherwise planning fails at `services.app.environment.PORT`. This also applies to inherited `appEnv` and env-file values. Change `port:` rather than overriding `PORT`.
+
+Vite ignores `PORT`: pass `--host 0.0.0.0 --port 3000` to Vite for this Landofile, or configure its host and port explicitly.
 
 For watch mode during edits, keep the original idle service block and run `lando npm run dev` in a second terminal. `tsx watch` reruns the server when imported files change. Stop that foreground process before starting the service-managed server, or both will try to bind port `3000`.
 
@@ -206,6 +214,8 @@ For `lando pnpm`, add a tooling entry with `service: app`, `dir: /app`, and `cmd
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"npx\":\\s*\\{[^}]*\"service\":\\s*\"app\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"cmd\":\\s*\\[\\s*\"npm\"\\s*\\]" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"dir\":\\s*\"/app\"" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
   </Scenario>
 

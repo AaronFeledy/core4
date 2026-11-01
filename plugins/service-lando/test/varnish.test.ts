@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 import { ServiceTypeError } from "@lando/sdk/errors";
 import { LandofileShape, ServiceName, VarnishServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 
 import {
   VARNISH_FEATURE_ID,
@@ -81,14 +82,7 @@ describe("varnish ServiceType", () => {
           VARNISH_BACKEND_PORT: "80",
           VARNISH_VCL_FILE: "/tmp/lando-backend.vcl",
         });
-        expect(plan.healthcheck).toEqual({
-          kind: "command",
-          command: ["varnishadm", "ping"],
-          intervalSeconds: 10,
-          timeoutSeconds: 5,
-          retries: 5,
-          startPeriodSeconds: 5,
-        });
+        expect(plan.healthcheck).toEqual(tcpProbe(80, 5));
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(plan.command?.[0]).toContain("lando-backend.vcl");
         expect(plan.command?.[0]).toContain("varnishd -F");
@@ -200,5 +194,69 @@ describe("varnish ServiceType", () => {
       "6": "varnish:6",
       "7": "varnish:7",
     });
+  });
+  test("rejects primary port colliding with the management interface under the Lando launcher", async () => {
+    await expect(
+      planVarnishService(varnishServiceType, { type: "varnish", backend: "appserver", port: 6082 }),
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["port"],
+          message: expect.stringContaining("management interface"),
+          suggestion: "Set port: to another TCP port number.",
+        },
+      ],
+    });
+  });
+
+  test("allows reclaiming 6082 when an authored launcher owns the process", async () => {
+    const plan = await planVarnishService(varnishServiceType, {
+      type: "varnish",
+      backend: "appserver",
+      port: 6082,
+      command: ["varnishd", "-F", "-a", ":6082"],
+    });
+    expect(plan.endpoints).toContainEqual({
+      _tag: "internal",
+      port: 6082,
+      protocol: "http",
+      name: "cache",
+      primary: true,
+    });
+    expect(plan.command).toEqual(["varnishd", "-F", "-a", ":6082"]);
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "launcher",
+      daemon: "Varnish",
+      setting: "-a :6082",
+      port: 6082,
+    });
+    expect(plan.healthcheck).toEqual(tcpProbe(6082, 5));
+  });
+
+  test("records launcher authority for authored entrypoints", async () => {
+    const plan = await planVarnishService(varnishServiceType, {
+      type: "varnish",
+      backend: "appserver",
+      port: 8080,
+      entrypoint: ["/custom-entrypoint"],
+    });
+    expect(plan.entrypoint).toEqual(["/custom-entrypoint"]);
+    expect(plan.listenerAuthority).toMatchObject({
+      owner: "launcher",
+      daemon: "Varnish",
+      setting: "-a :8080",
+      port: 8080,
+    });
+  });
+
+  test("moves the Lando launcher HTTP listener with port:", async () => {
+    const plan = await planVarnishService(varnishServiceType, {
+      type: "varnish",
+      backend: "appserver",
+      port: 8080,
+    });
+    expect(plan.command?.[0]).toContain("-a :8080");
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 5));
+    expect(plan.endpoints).toContainEqual(expect.objectContaining({ port: 8080, primary: true }));
   });
 });

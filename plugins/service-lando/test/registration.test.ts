@@ -189,8 +189,9 @@ describe("@lando/service-lando registration", () => {
       target: PortablePath.make("/var/lib/rabbitmq"),
       readOnly: false,
     });
-    expect(queue.healthcheck).toEqual(rabbitmqProbes(5672).healthcheck);
-    expect(queue.readiness).toEqual(rabbitmqProbes(5672).readiness);
+    const queueProbes = rabbitmqProbes(5672);
+    expect(queue.healthcheck).toEqual(queueProbes.healthcheck);
+    expect(queue.readiness).toEqual(queueProbes.readiness);
 
     expect(objectStore.artifact).toEqual({
       kind: "ref",
@@ -681,7 +682,7 @@ describe("@lando/service-lando registration", () => {
     expect(java.artifact).toEqual({ kind: "ref", ref: TOMCAT_CATALOG["11"].image });
     expect(java.healthcheck).toEqual(tcpProbe(8080, 20));
     expect(cache.artifact).toEqual({ kind: "ref", ref: "varnish:7" });
-    expect(cache.healthcheck?.command).toEqual(["varnishadm", "ping"]);
+    expect(cache.healthcheck).toEqual(tcpProbe(80, 5));
     expect(cache.dependsOn).toEqual([
       { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
     ]);

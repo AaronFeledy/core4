@@ -1,0 +1,5 @@
+name: solr-invalid-stop
+services:
+  search:
+    type: solr
+    port: 1000

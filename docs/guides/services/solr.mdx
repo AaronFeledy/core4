@@ -112,9 +112,95 @@ Lando identifies that directory by its contents, not by where it sits. Move the 
 
 The copy runs as the planned `user:`, so the same ownership rule as [precreating cores](#run-solr-as-another-user) applies: your user has to own `/var/solr`, and Lando arranges that for a numeric uid on a fresh volume. The overlay side has its own requirement. The host directory is bind-mounted read-only, and a non-root user still has to be able to read it. A `0700` directory on the host is not readable by uid `10001` inside the container, and the copy fails. `0755` works.
 
-If you also set `command:` on the service, yours wins. Your command owns core creation, config copying, and Solr's startup mode.
+If you also set `command:` on the service, yours wins. Your command owns core
+creation, config copying, Solr's listen port, and startup mode. Lando never
+appends `-p` or other flags to a command you wrote. An authored `entrypoint:`
+still receives Lando's Solr command, port included.
 
-Your command also owns the listener configuration: pass the planned `port:` with `-p`. An authored `entrypoint:` without an authored command still receives Lando's launcher and must execute the supplied command and arguments. If Solr never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+## Change the port
+
+Set `port:` to move the HTTP listener, healthcheck, and endpoint together:
+
+```yaml
+services:
+  search:
+    type: solr
+    port: 8984
+```
+
+Lando starts Solr with `-p 8984`, including when it precreates cores. Other
+services connect to `search:8984`. If you author `command:`, pass `-p 8984`
+yourself.
+If startup fails with an authored command, Lando includes a hint naming
+`-p 8984`.
+
+Apply the change with `lando rebuild`, then check the admin API on the planned
+port:
+
+```sh
+lando exec search -- curl -sf http://localhost:8984/solr/admin/info/system
+```
+
+  <Scenario id="custom-port" render={false} reason="Plan a non-default Solr listen port">
+    <Step name="plan-port">
+      <UseFixture name="solr-port" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8984" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+## Keep the stop listener valid
+
+Solr also opens a loopback-only Jetty stop listener. Its default port is
+`7983`, derived from the HTTP port minus `1000`. Moving `port:` also moves
+that listener, so `7983` is not a fixed reservation for HTTP.
+
+With Lando's launcher, `port:` must be above `1000` unless you set a valid
+`STOP_PORT`. A primary port below `1000` disables Jetty's stop monitor; at
+exactly `1000`, Jetty chooses an ephemeral stop port. HTTP can still start in
+both cases, but Solr's stop client rejects the nonpositive configured port,
+so graceful shutdown is unreliable. Lando rejects this configuration during
+planning at `services.<name>.port` rather than selecting a stop port for you.
+
+If you need a low HTTP port, set `STOP_PORT` to a distinct integer from `1`
+to `65535`:
+
+```yaml
+services:
+  search:
+    type: solr
+    port: 1000
+    environment:
+      STOP_PORT: "18000"
+```
+
+This fixes the stop-port derivation; it does not grant permission to bind a
+privileged HTTP port. The stop listener cannot share the HTTP port. An authored
+`command:` owns its own stop-listener configuration, so these launcher checks
+do not apply to it.
+
+Validate with `lando app:cache:refresh --format=json` before start.
+
+  <Scenario id="reject-invalid-derived-stop" render={false} reason="Reject a nonpositive derived Solr stop port">
+    <Step name="reject-stop">
+      <UseFixture name="solr-invalid-stop" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "STOP_PORT" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="explicit-stop-port" render={false} reason="Allow a low HTTP port with an explicit valid stop listener">
+    <Step name="plan-stop">
+      <UseFixture name="solr-explicit-stop" />
+      <Run command="lando app:cache:refresh --format=json" />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start) for observed ports and listener troubleshooting.
 
 ## Pin a version
 

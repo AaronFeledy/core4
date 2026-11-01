@@ -14,6 +14,7 @@ import type {
   DatabaseConnection,
   Environment,
   EnvironmentValue,
+  ListenerAuthority,
   ServiceCreds,
   ServicePlan,
   VolumeMountPlan,
@@ -36,6 +37,73 @@ export interface BaseSeed {
   readonly nonSqlCreds?: ServiceCreds;
   readonly defaultFeatures: ReadonlyArray<ServiceFeatureDefinition>;
 }
+
+/**
+ * Optional ServicePlan keys the draft path copies without transformation when
+ * present. Keys that need mounts/credentials/extensions handling stay outside.
+ */
+export const DRAFT_OPTIONAL_PASS_THROUGH_KEYS = [
+  "serviceTypeId",
+  "artifact",
+  "command",
+  "entrypoint",
+  "init",
+  "user",
+  "workingDirectory",
+  "healthcheck",
+  "readiness",
+  "readinessSource",
+  "listenerAuthority",
+  "certs",
+  "provenance",
+] as const satisfies ReadonlyArray<keyof ServicePlan>;
+
+export type DraftOptionalPassThroughKey = (typeof DRAFT_OPTIONAL_PASS_THROUGH_KEYS)[number];
+
+/**
+ * Optional ServicePlan keys owned outside the shared draft pass-through:
+ * planner-only fields and mutual-exclusion credentials.
+ */
+type DraftExternalOptionalServicePlanKey = "home" | "scanner" | "logSources" | "connection" | "nonSqlCreds";
+
+type OptionalServicePlanKey = {
+  [K in keyof ServicePlan]-?: undefined extends ServicePlan[K] ? K : never;
+}[keyof ServicePlan];
+
+type MissingOptionalServicePlanKey = Exclude<
+  OptionalServicePlanKey,
+  DraftOptionalPassThroughKey | DraftExternalOptionalServicePlanKey
+>;
+type ExtraPassThroughKey = Exclude<DraftOptionalPassThroughKey, OptionalServicePlanKey>;
+
+// Compile-time: every optional ServicePlan key is either pass-through or external.
+const _optionalServicePlanCoverage: [MissingOptionalServicePlanKey] extends [never]
+  ? [ExtraPassThroughKey] extends [never]
+    ? true
+    : never
+  : never = true;
+void _optionalServicePlanCoverage;
+
+/**
+ * Source shape for draft optional pass-through. Explicit `| undefined` is
+ * required under exactOptionalPropertyTypes so draft fields and plan optionals
+ * both assign.
+ */
+export type DraftOptionalPassThroughSource = {
+  readonly [K in DraftOptionalPassThroughKey]?: ServicePlan[K] | undefined;
+};
+
+/** Copy defined optional ServicePlan pass-through fields from a draft or plan. */
+export const pickDraftOptionalServicePlanFields = (
+  source: DraftOptionalPassThroughSource,
+): Partial<Pick<ServicePlan, DraftOptionalPassThroughKey>> => {
+  const picked: Partial<Pick<ServicePlan, DraftOptionalPassThroughKey>> = {};
+  for (const key of DRAFT_OPTIONAL_PASS_THROUGH_KEYS) {
+    const value = source[key];
+    if (value !== undefined) Object.assign(picked, { [key]: value });
+  }
+  return picked;
+};
 
 /** The mutable plan draft a feature mutates before finalization. */
 export interface DraftServicePlan {
@@ -66,6 +134,7 @@ export interface DraftServicePlan {
   healthcheck?: ServicePlan["healthcheck"];
   readiness?: ServicePlan["readiness"];
   readinessSource?: ServicePlan["readinessSource"];
+  listenerAuthority?: ListenerAuthority;
   certs?: ServicePlan["certs"];
   hostAliases: Array<ServicePlan["hostAliases"][number]>;
   provenance?: ServicePlan["provenance"];

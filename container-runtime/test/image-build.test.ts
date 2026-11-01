@@ -251,7 +251,7 @@ test("buildContainerArtifact renders an authored build step over a referenced ar
           {
             id: "authored-artifact:1",
             phase: "build",
-            command: ["sh", "-lc", "install-dependencies"],
+            command: ["sh", "-c", "install-dependencies"],
             user: "1000:1000",
           },
         ],
@@ -268,7 +268,7 @@ test("buildContainerArtifact renders an authored build step over a referenced ar
   );
 
   // Then
-  expect(bodies[1]).toContain('USER 1000:1000\nRUN ["sh","-lc","install-dependencies"]\nUSER app:staff\n');
+  expect(bodies[1]).toContain('USER 1000:1000\nRUN ["sh","-c","install-dependencies"]\nUSER app:staff\n');
 });
 
 test("buildContainerArtifact pins a resolved base digest in derived Dockerfiles", async () => {

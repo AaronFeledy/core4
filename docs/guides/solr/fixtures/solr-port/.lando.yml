@@ -1,0 +1,5 @@
+name: solr-port
+services:
+  search:
+    type: solr
+    port: 8984

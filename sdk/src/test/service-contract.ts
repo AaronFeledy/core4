@@ -362,6 +362,9 @@ const makeRecordingServiceFeatureContext = (input: ServiceFeatureContractHarness
     setReadiness(readiness) {
       recorded.settings.readiness = readiness;
     },
+    setListenerAuthority(authority) {
+      recorded.settings.listenerAuthority = authority;
+    },
     setCerts(certs) {
       recorded.settings.certs = certs;
     },

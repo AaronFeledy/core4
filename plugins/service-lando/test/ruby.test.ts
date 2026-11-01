@@ -144,6 +144,7 @@ describe("ruby:3.3 ServiceType", () => {
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.environment.RAILS_ENV).toBe("development");
     expect(plan.environment.RAILS_LOG_TO_STDOUT).toBe("true");
+    expect(plan.environment.BINDING).toBe("0.0.0.0");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app/public");
     expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
 
@@ -218,10 +219,11 @@ describe("ruby:3.3 ServiceType", () => {
       framework: "rails",
       webroot: "frontend/public",
       workingDirectory: "/work",
-      environment: { RAILS_ENV: "production", FOO: "bar" },
+      environment: { RAILS_ENV: "production", FOO: "bar", BINDING: "127.0.0.2" },
     });
 
     expect(plan.environment.RAILS_ENV).toBe("production");
+    expect(plan.environment.BINDING).toBe("127.0.0.2");
     expect(plan.environment.FOO).toBe("bar");
     expect(plan.environment.LANDO_PROJECT).toBe("myapp");
     expect(String(plan.workingDirectory)).toBe("/work");
