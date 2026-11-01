@@ -11,7 +11,9 @@ const skipped = (section: string, reason: string): DoctorResult => ({
   skipped: [{ section, status: "skipped", reason }],
 });
 
-const collectListeners = Effect.fnUntraced(function* (): Effect.fn.Return<
+const collectListeners = Effect.fnUntraced(function* (
+  redact: (value: string) => string,
+): Effect.fn.Return<
   DoctorResult,
   Effect.Error<typeof resolveAppliedStateTarget>,
   RuntimeProviderRegistry | Effect.Services<typeof resolveAppliedStateTarget>
@@ -84,7 +86,7 @@ const collectListeners = Effect.fnUntraced(function* (): Effect.fn.Return<
               service: String(service.name),
               port: String(listener.port),
               listenerState: listener.state,
-              finding,
+              finding: redact(finding),
               bindings: listener.listening.map((binding) => `${binding.address}:${binding.port}`).join(", "),
             },
             solutions:
@@ -93,8 +95,9 @@ const collectListeners = Effect.fnUntraced(function* (): Effect.fn.Return<
                 : [
                     {
                       kind: "manual",
-                      description:
+                      description: redact(
                         diagnostic.action + (diagnostic.authority ? ` ${diagnostic.authority}` : ""),
+                      ),
                     },
                   ],
           };
@@ -116,7 +119,7 @@ export const listenerDoctorChecks = Effect.fnUntraced(function* (input: {
 }) {
   const outcome = yield* isolateDoctorSection({
     section: "app-listeners",
-    effect: collectListeners(),
+    effect: collectListeners(input.redact),
     fallback: skipped(
       "app-listeners",
       "Applied listener inspection could not complete within its budget or was unavailable; no listener verdict was made.",

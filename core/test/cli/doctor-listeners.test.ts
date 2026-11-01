@@ -22,6 +22,37 @@ import {
 
 const collect = () => listenerDoctorChecks({ budgetMs: 5000, redact: (value) => value });
 
+test("redacts authority advice before returning the structured doctor result", async () => {
+  await withListenerApp(async (original) => {
+    const web = original.services[ServiceName.make("web")];
+    if (web === undefined) throw new Error("fixture requires web");
+    const plan = {
+      ...original,
+      services: {
+        ...original.services,
+        web: {
+          ...web,
+          listenerAuthority: {
+            owner: "launcher" as const,
+            daemon: "canary-private-value",
+            port: 8080,
+            setting: "--port 8080",
+          },
+        },
+      },
+    };
+    const provider = listenerProvider(plan, { execStream: () => listenerOutput(tcpTable()) });
+    const result = await Effect.runPromise(
+      listenerDoctorChecks({
+        budgetMs: 5000,
+        redact: (value) => value.replaceAll("canary-private-value", "[redacted]"),
+      }).pipe(Effect.provide(listenerRegistry(plan, provider))),
+    );
+    expect(JSON.stringify(result)).not.toContain("canary-private-value");
+    expect(result.checks[0]?.solutions[0]?.description).toContain("[redacted]");
+  });
+});
+
 test.each([
   ["00000000", "pass", "listening"],
   ["0100007F", "warn", "loopback-only"],
