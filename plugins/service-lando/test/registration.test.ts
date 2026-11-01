@@ -189,8 +189,9 @@ describe("@lando/service-lando registration", () => {
       target: PortablePath.make("/var/lib/rabbitmq"),
       readOnly: false,
     });
-    expect(queue.healthcheck).toEqual(rabbitmqProbes(5672).healthcheck);
-    expect(queue.readiness).toEqual(rabbitmqProbes(5672).readiness);
+    const queueProbes = rabbitmqProbes(5672);
+    expect(queue.healthcheck).toEqual(queueProbes.healthcheck);
+    expect(queue.readiness).toEqual(queueProbes.readiness);
 
     expect(objectStore.artifact).toEqual({
       kind: "ref",

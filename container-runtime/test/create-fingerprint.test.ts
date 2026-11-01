@@ -59,8 +59,8 @@ const plan: AppPlan = {
 const fingerprint = (value: ServicePlan, app: AppPlan = plan) =>
   commonContainerLabels(app, value)[CREATE_CONFIG_LABEL];
 
-test("excludes startup failure advice from the v3 container create identity", () => {
-  // Given two plans differing only in service-type advice.
+test("excludes listenerAuthority from the v3 container create identity", () => {
+  // Given two plans differing only in listenerAuthority.
   const advised: ServicePlan = {
     ...service,
     listenerAuthority: { owner: "launcher", daemon: "mongod", port: 27018, setting: "--port 27018" },
@@ -71,7 +71,7 @@ test("excludes startup failure advice from the v3 container create identity", ()
   const original = fingerprint(service, plan);
   const changedAdvice = fingerprint(advised, advisedPlan);
 
-  // Then diagnostic text cannot force container recreation, unlike launcher changes.
+  // Then listener ownership advice cannot force container recreation, unlike launcher changes.
   expect(original).toStartWith("v3:");
   expect(changedAdvice).toBe(original);
   expect(fingerprint({ ...advised, command: ["mongod", "--port", "27018"] }, advisedPlan)).not.toBe(original);

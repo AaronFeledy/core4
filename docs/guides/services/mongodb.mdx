@@ -194,7 +194,7 @@ If you author `command:` or `entrypoint:`, you own the daemon's flags. Include
 startup fails with this override, Lando includes a hint naming `--port 27018`.
 Check that your process binds the planned port.
 
-If MongoDB never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start) for observed ports and listener troubleshooting.
 
 Apply the change with `lando rebuild` on an existing app, or `lando start` on a fresh one. Then ask the server which port it parsed from its command line:
 

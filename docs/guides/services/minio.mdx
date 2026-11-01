@@ -207,7 +207,7 @@ If startup fails with an authored command, Lando includes a hint naming
 `--address :<api-port> --console-address :<console-port>` with your effective
 port numbers.
 
-An entrypoint without an authored command receives Lando's server arguments, including both ports, and must execute them. If MinIO never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores the API `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start) for observed ports and listener troubleshooting.
 
 The service also adds `mc` tooling, so you can run the MinIO client in the
 object-store service:

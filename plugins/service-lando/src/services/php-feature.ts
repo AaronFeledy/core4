@@ -18,7 +18,6 @@ import { PHP_COMPOSER_STEP_ID, phpPrerequisiteBuildSteps, resolvePhpComposer } f
 import { PhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
-  PHP_FPM_PORT,
   PHP_LISTENERS,
   SUPPORTED_PHP_VERSIONS,
   apacheDefaultSiteRemovalBuildStep,
@@ -46,10 +45,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   );
   const mode = phpServingMode(via, authoredListenPort(service.port));
   if (mode.listener !== undefined) {
-    assertListenerConfig(
-      service,
-      mode.via === "fpm" ? { ...PHP_LISTENERS.fpm, port: PHP_FPM_PORT } : PHP_LISTENERS.apache,
-    );
+    assertListenerConfig(service, mode.via === "fpm" ? PHP_LISTENERS.fpm : PHP_LISTENERS.apache);
   }
   if (policy.reference !== undefined) ctx.setArtifact({ kind: "ref", ref: policy.reference });
   const stock = policy.artifactSource === "stock";
@@ -100,8 +96,8 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     default:
       absurd(mode);
   }
-  if (mode.listener !== undefined) ctx.setHealthcheck(tcpProbe(mode.listener.port, 10));
   if (mode.listener !== undefined) {
+    ctx.setHealthcheck(tcpProbe(mode.listener.port, 10));
     const contract = mode.via === "fpm" ? PHP_LISTENERS.fpm : PHP_LISTENERS.apache;
     switch (policy.processAuthority) {
       case "authored":

@@ -64,9 +64,7 @@ Update any tooling that hardcodes `11211` when you move the port.
 
 An authored `command:` owns the listener configuration: pass the planned port
 with `-p 11212`. An authored `entrypoint:` still receives Lando's command
-with `-p` and must execute the supplied command and arguments. If Memcached
-never becomes ready, `lando start` reports the ports it actually observed and
-names the `-p` setting your command must pass. See
+with `-p` and must execute the supplied command and arguments. See
 [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
 
 Apply the change with `lando rebuild`.

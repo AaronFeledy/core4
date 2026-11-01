@@ -6,6 +6,11 @@ import { listenerContracts } from "../src/service-type-facts.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const PORT = 43210;
+const metadata = {
+  resolvedAt: "2026-10-19T00:00:00Z",
+  source: "listen-port-conformance",
+  runtime: 4,
+} as const;
 const mechanisms: Readonly<
   Record<
     string,
@@ -85,7 +90,7 @@ describe("bundled catalog listen-port conformance", () => {
         serviceName: "server",
         appName: "port-test",
         appRoot: "/srv/apps/port-test",
-        metadata: { resolvedAt: "2026-10-19T00:00:00Z", source: "listen-port-conformance", runtime: 4 },
+        metadata,
       });
       expect(plan.endpoints).toContainEqual(expect.objectContaining({ port: PORT, primary: true }));
       if (mechanism.env !== undefined)
@@ -131,7 +136,7 @@ describe("bundled catalog listen-port conformance", () => {
             serviceName: "server",
             appName: "port-test",
             appRoot: "/srv/apps/port-test",
-            metadata: { resolvedAt: "2026-10-19T00:00:00Z", source: "listen-port-conformance", runtime: 4 },
+            metadata,
           }),
         ).rejects.toMatchObject({
           issues: [expect.objectContaining({ path: ["environment", variable] })],
@@ -166,7 +171,7 @@ describe("bundled catalog listen-port conformance", () => {
             appRoot: "/srv/apps/port-test",
             appName: "port-test",
             serviceName: "server",
-            metadata: { resolvedAt: "2026-10-19T00:00:00Z", source: "listen-port-conformance", runtime: 4 },
+            metadata,
           }),
         ).rejects.toMatchObject({
           issues: [

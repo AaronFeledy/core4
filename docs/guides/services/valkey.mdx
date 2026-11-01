@@ -81,9 +81,7 @@ Lando starts `valkey-server` with `--port 6380`. Other services connect to
 An authored `command:` owns the listener configuration: pass the planned port
 with `--port 6380` or set it in Valkey's config file. An authored
 `entrypoint:` still receives Lando's command with `--port` and must execute
-the supplied command and arguments. If Valkey never becomes ready,
-`lando start` reports the ports it actually observed and names the `--port`
-setting your command must pass. See
+the supplied command and arguments. See
 [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
 
 Apply the change with `lando rebuild`, then probe the planned port:
