@@ -155,6 +155,9 @@ test("route failure preserves the exact discovery reason", async () => {
 
 test("default discovery failure does not imply Windows is configured", async () => {
   const result = await run(undefined, discovery("mirrored"));
+  expect(result.checks[0]?.status).toBe("pass");
+  expect(result.checks[0]?.solutions).toEqual([]);
+  expect(result.checks[0]?.context.note).toContain("no configuration change is required");
   expect(result.checks[0]?.context).toMatchObject({
     configuredHost: "unset",
     effectiveHost: "host-gateway",

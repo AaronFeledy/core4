@@ -114,22 +114,33 @@ export const debuggerHostDoctor = Effect.fn("Doctor.debuggerHost")(function* (
   const remediation =
     typed?.remediation ??
     "Windows debugger discovery exceeded its diagnostic budget. Rerun lando doctor, set debugger.host to an explicit IDE address, or unset debugger.host to use the host gateway.";
+  const failureContext = context({
+    source: configured === "windows" ? "windows-discovery" : "default",
+    failure: typed?._tag ?? (error instanceof ProbeTimeoutError ? error._tag : "ProbeError"),
+    reason: typed?.reason ?? "timeout",
+    networkingMode: typed?.networkingMode ?? "unobserved",
+    message: typed?.message ?? "Windows debugger discovery did not complete within its diagnostic budget.",
+    remediation,
+    ...(configured === undefined
+      ? {
+          note: "The host gateway remains selected. Windows discovery is an optional observation while debugger.host is unset; no configuration change is required.",
+        }
+      : {}),
+  });
   return {
     checks: [
-      warnCheck({
-        name: "debugger-host",
-        recovery: "manual",
-        context: context({
-          source: configured === "windows" ? "windows-discovery" : "default",
-          failure: typed?._tag ?? (error instanceof ProbeTimeoutError ? error._tag : "ProbeError"),
-          reason: typed?.reason ?? "timeout",
-          networkingMode: typed?.networkingMode ?? "unobserved",
-          message:
-            typed?.message ?? "Windows debugger discovery did not complete within its diagnostic budget.",
-          remediation,
-        }),
-        solutions: [{ kind: "manual", description: redact(remediation) }],
-      }),
+      configured === undefined
+        ? passCheckNamed({
+            name: "debugger-host",
+            recovery: "manual",
+            context: failureContext,
+          })
+        : warnCheck({
+            name: "debugger-host",
+            recovery: "manual",
+            context: failureContext,
+            solutions: [{ kind: "manual", description: redact(remediation) }],
+          }),
     ],
   } satisfies SubsystemDoctorResult;
 });
