@@ -47,7 +47,6 @@ import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
-import { applyDebuggerHost, resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
@@ -55,11 +54,16 @@ import { publishAndRunAppEvent, runAppInitEvents } from "./events.ts";
 import { withGlobalConsumerAdmission } from "./global-consumer-admission.ts";
 import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
-import { withRetainedAgentOverlays } from "./restart-agent-overlays.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectInfoPlan } from "./service-selection.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
+import {
+  type PreparedDebuggerOverlay,
+  prepareDebuggerOverlay,
+  prepareStartOverlays,
+  retainStartOverlays,
+} from "./start-overlays.ts";
 import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
@@ -88,9 +92,9 @@ type RestartAppServices =
 const restartSelectedServices = Effect.fnUntraced(function* (
   selectedPlan: AppPlan,
   target: ResolvedAppTarget,
-  options: Pick<RestartAppOptions, "signal"> & { readonly debuggerHost: string | undefined },
+  options: Pick<RestartAppOptions, "signal"> & { readonly preparedOverlays: PreparedDebuggerOverlay },
 ): Effect.fn.Return<RestartAppResult["servicesStarted"], RestartAppError, RestartAppServices> {
-  const { signal, debuggerHost } = options;
+  const { signal, preparedOverlays } = options;
   const events = yield* EventService;
   const registry = yield* RuntimeProviderRegistry;
   const provider = yield* registry.select(target.plan);
@@ -129,12 +133,12 @@ const restartSelectedServices = Effect.fnUntraced(function* (
       ] as const;
     }),
   );
-  const runtimePlan = applyDebuggerHost(
-    yield* withRetainedAgentOverlays(
-      { ...selectedPlan, services: Object.fromEntries(projectedServices) },
-      target.app,
-    ),
-    debuggerHost,
+  const runtimePlan = yield* retainStartOverlays(
+    {
+      plan: { ...selectedPlan, services: Object.fromEntries(projectedServices) },
+      app: target.app,
+    },
+    preparedOverlays,
   );
   const inspectionPlan: AppPlan = {
     ...target.plan,
@@ -279,10 +283,11 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     const plan = mysqlResolvedTarget.plan;
     const scoped = options.services !== undefined && options.services.length > 0;
     const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
-    const debuggerHost = yield* resolveDebuggerHost(selectedPlan);
     const context = yield* Effect.context<RestartAppServices>();
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
+    const acquiredOverlays = scoped ? undefined : yield* prepareStartOverlays(mysqlResolvedTarget, provider);
+    const preparedOverlays = acquiredOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
     return yield* withAppMutationLock(
       appLockTarget(plan),
       withPlanVolumeCoordination({
@@ -307,7 +312,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
               app: plan.name,
               servicesStarted: yield* restartSelectedServices(selectedPlan, mysqlResolvedTarget, {
                 ...options,
-                debuggerHost,
+                preparedOverlays,
               }),
             };
           }
@@ -334,7 +339,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
             {
               skipInitEvents: true,
               transactionPreflightDone: true,
-              resolvedDebuggerHost: { address: debuggerHost },
+              ...(acquiredOverlays === undefined ? {} : { preparedOverlays: acquiredOverlays }),
             },
           );
           const postRestart = PostRestartEvent.make({

@@ -7,7 +7,6 @@ import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/ap
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
-import { resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
 import { validateDesiredFileSyncEngine } from "./file-sync-acquire.ts";
@@ -19,6 +18,7 @@ import {
   preflightStartAppDrain,
   startAppForTargetUnlocked,
 } from "./start-internal.ts";
+import { type PreparedStartOverlays, prepareStartOverlays } from "./start-overlays.ts";
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "./start-internal.ts";
 export type { CheckResult } from "@lando/sdk/schema";
@@ -34,12 +34,13 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
     readonly beforeStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
-    readonly resolvedDebuggerHost?: { readonly address: string | undefined };
+    readonly preparedOverlays?: PreparedStartOverlays;
   } = {},
 ) {
-  const resolvedDebuggerHost = execution.resolvedDebuggerHost ?? {
-    address: yield* resolveDebuggerHost(target.plan),
-  };
+  const providerRegistry = yield* RuntimeProviderRegistry;
+  const preparedOverlays =
+    execution.preparedOverlays ??
+    (yield* prepareStartOverlays(target, yield* providerRegistry.select(target.plan)));
   yield* validateDesiredFileSyncEngine(target.plan);
   return yield* withHomeTransitionNotices(
     withAppMutationLock(
@@ -71,7 +72,7 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
                     yield* publishHomeTransitionNotices(placement.plan, plan);
                     return yield* startAppForTargetUnlocked(options, resolvedTarget, managed, {
                       ...execution,
-                      resolvedDebuggerHost,
+                      preparedOverlays,
                       ...(preparedTargets === undefined ? {} : { preparedTargets }),
                     });
                   }),
@@ -94,7 +95,7 @@ export const startApp = Effect.fn("AppOperation.start")(function* (
     readonly beforeStart?: Effect.Effect<void>;
     readonly skipInitEvents?: boolean;
     readonly transactionPreflightDone?: boolean;
-    readonly resolvedDebuggerHost?: { readonly address: string | undefined };
+    readonly preparedOverlays?: PreparedStartOverlays;
   } = {},
 ) {
   return yield* target === undefined

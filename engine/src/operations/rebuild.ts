@@ -37,7 +37,6 @@ import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import { applyDebuggerHost, resolveDebuggerHost } from "../subsystems/debugger-host.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
@@ -50,13 +49,14 @@ import { verifyGlobalConsumerAdmission } from "./global-consumer-lease.ts";
 import { publishHomeTransitionNotices, withHomeTransitionNotices } from "./home-transition-notice.ts";
 import { inspectAppliedService } from "./service-readiness.ts";
 import { selectRebuildPlan } from "./service-selection.ts";
-import { resolveStartGpgAgentIntent } from "./start-gpg-agent-intent.ts";
-import { withStartedGpgAgent } from "./start-gpg-agent.ts";
-import { withStartedHostProxy } from "./start-host-proxy.ts";
 import { markStartMutation } from "./start-incomplete-notice.ts";
 import { ensureStartTransactionConsistent, preflightStartAppDrain } from "./start-internal.ts";
-import { resolveStartSshAgentIntent } from "./start-ssh-agent-intent.ts";
-import { withStartedSshAgent } from "./start-ssh-agent.ts";
+import {
+  type PreparedStartOverlays,
+  prepareStartOverlays,
+  projectDebuggerOverlay,
+  withAcquiredStartOverlays,
+} from "./start-overlays.ts";
 import { type StartManagedScope, startApp } from "./start.ts";
 import { preflightStopApp } from "./stop-internal.ts";
 import { stopAppWithPlan } from "./stop.ts";
@@ -87,7 +87,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
   options: Pick<RebuildAppOptions, "signal"> & {
     readonly managed?: StartManagedScope;
-    readonly debuggerHost: string | undefined;
+    readonly preparedOverlays: PreparedStartOverlays;
   },
 ): Effect.fn.Return<
   RebuildAppResult["servicesStarted"],
@@ -103,7 +103,7 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   | RedactionService
   | GlobalConsumerAdmissionServices
 > {
-  const { signal, managed, debuggerHost } = options;
+  const { signal, managed, preparedOverlays } = options;
   const registry = yield* RuntimeProviderRegistry;
   const builds = yield* BuildOrchestrator;
   const provider = yield* registry.select(plan);
@@ -119,8 +119,6 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
   const builtPlan = yield* withBuildProvider(builds.build(plan, { refresh: true }), provider);
   const readinessPlan = { ...target.plan, services: { ...target.plan.services, ...builtPlan.services } };
   const initial = new Map<string, import("@lando/sdk/services").ServiceRuntimeInfo>();
-  const gpgIntent = yield* resolveStartGpgAgentIntent({ ...target, plan: builtPlan });
-  const intent = yield* resolveStartSshAgentIntent({ ...target, plan: builtPlan });
   return yield* withGlobalConsumerAdmission(
     {
       plan: readinessPlan,
@@ -131,46 +129,37 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
         : { landofileRouter: target.landofile.document.router }),
     },
     Effect.gen(function* () {
-      yield* withStartedGpgAgent(builtPlan, target.app, provider.capabilities, gpgIntent, {
-        exec: provider.exec,
+      yield* withAcquiredStartOverlays({ ...target, plan: builtPlan }, preparedOverlays, {
+        provider,
+        workerPlan: target.plan,
+        reusePolicy: "adopt",
         ...(managed === undefined ? {} : { managed }),
-        use: (gpgPlan, prepareGpgHome) =>
-          withStartedSshAgent(gpgPlan, target.app, provider.capabilities, intent, {
-            ...(managed === undefined ? {} : { managed }),
-            use: (agentPlan) =>
-              withStartedHostProxy(agentPlan, target.app, provider.capabilities, {
-                platform: provider.platform,
-                workerPlan: target.plan,
-                reusePolicy: "adopt",
-                ...(managed === undefined ? {} : { managed }),
-                use: Effect.fnUntraced(function* (applyPlan) {
-                  const runtimePlan = applyDebuggerHost(applyPlan, debuggerHost);
-                  yield* Effect.scoped(
-                    applyWithResolvedEnvironment(
-                      provider,
-                      runtimePlan,
-                      {
-                        reconcile: true,
-                        completionPlan: readinessPlan,
-                        recordedPlan: {
-                          ...target.plan,
-                          services: { ...target.plan.services, ...builtPlan.services },
-                        },
-                        ...(signal === undefined ? {} : { signal }),
-                        onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
-                      },
-                      verifyGlobalConsumerAdmission,
-                    ),
-                  );
-                  yield* prepareGpgHome;
-                  yield* Effect.forEach(services, (service) =>
-                    inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
-                      Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
-                    ),
-                  );
-                }),
-              }),
-          }),
+        use: Effect.fnUntraced(function* (applyPlan, prepareGpgHome) {
+          const runtimePlan = projectDebuggerOverlay(applyPlan, preparedOverlays);
+          yield* Effect.scoped(
+            applyWithResolvedEnvironment(
+              provider,
+              runtimePlan,
+              {
+                reconcile: true,
+                completionPlan: readinessPlan,
+                recordedPlan: {
+                  ...target.plan,
+                  services: { ...target.plan.services, ...builtPlan.services },
+                },
+                ...(signal === undefined ? {} : { signal }),
+                onVolumeCreated: yield* volumeCreationRecorder(provider, runtimePlan),
+              },
+              verifyGlobalConsumerAdmission,
+            ),
+          );
+          yield* prepareGpgHome;
+          yield* Effect.forEach(services, (service) =>
+            inspectAppliedService({ provider, plan: readinessPlan, service: service.name }).pipe(
+              Effect.tap((runtime) => Effect.sync(() => initial.set(String(service.name), runtime))),
+            ),
+          );
+        }),
       });
       const ready = yield* completeStartup({
         policy: "selected-rebuild",
@@ -199,11 +188,11 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
     const resolvedTarget = yield* resolveMysqlVolumeTarget(plannedTarget, registry);
     const plan = resolvedTarget.plan;
     const selectedPlan = yield* selectRebuildPlan(plan, options.services);
-    const debuggerHost = yield* resolveDebuggerHost(selectedPlan);
     const scoped = options.services !== undefined && options.services.length > 0;
     const context = yield* Effect.context<RebuildAppServices>();
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
+    const preparedOverlays = yield* prepareStartOverlays({ ...resolvedTarget, plan: selectedPlan }, provider);
     return yield* withAppMutationLock(
       appLockTarget(plan),
       withPlanVolumeCoordination({
@@ -237,7 +226,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                 app: plan.name,
                 servicesStarted: yield* rebuildSelectedServices(selectedPlan, resolvedTarget, {
                   ...options,
-                  debuggerHost,
+                  preparedOverlays,
                   ...(managed === undefined ? {} : { managed }),
                 }),
               }
@@ -257,7 +246,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
                     forceAppBuild: true,
                     skipInitEvents: true,
                     transactionPreflightDone: true,
-                    resolvedDebuggerHost: { address: debuggerHost },
+                    preparedOverlays,
                   },
                 );
               });
