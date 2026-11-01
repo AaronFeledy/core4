@@ -13,6 +13,8 @@ import { matrixFixtures } from "./support/listener-matrix-fixtures.ts";
 import { observeMatrixListener } from "./support/listener-matrix-observation.ts";
 
 const strict = process.env.LANDO_TEST_LISTENER_MATRIX_STRICT === "1";
+// Dozens of serial live boots outlast the PR services job; only the nightly (strict) or an explicit opt-in runs them.
+const enabled = strict || process.env.LANDO_TEST_LISTENER_MATRIX === "1";
 const socket = resolveLiveProviderSocket();
 const contracts = listenerContracts();
 const filter = process.env.LANDO_TEST_LISTENER_MATRIX_FAMILIES?.split(",").map((item) => item.trim());
@@ -54,13 +56,14 @@ describe.serial("bundled service listener matrix", () => {
       (key) => !matrixFixtures.some((item) => item.contract === key),
     );
     expect(uncovered, "Every bundled listener contract needs a reviewed fixture").toEqual([]);
-    if (missing.length > 0) {
+    if (enabled && missing.length > 0) {
       const message = `Listener matrix prerequisites:\n${missing.join("\n")}`;
       if (strict) throw new Error(message);
       console.warn(message);
     }
   });
   afterAll(() => {
+    if (!enabled) return;
     console.log(
       `SERVICE_LISTENER_MATRIX completed=${completed.length}/${expectedIds.length} cases=${completed.join(",")}`,
     );
@@ -71,7 +74,7 @@ describe.serial("bundled service listener matrix", () => {
       throw new Error(`Listener matrix incomplete: completed=${completed.length}/${expectedIds.length}`);
   });
   for (const item of cases) {
-    test.skipIf(!strict && missing.length > 0)(
+    test.skipIf(!enabled || (!strict && missing.length > 0))(
       item.id,
       async () => {
         if (socket === undefined) throw new Error(missing.join("\n"));
@@ -119,7 +122,7 @@ describe.serial("bundled service listener matrix", () => {
     );
   }
   for (const journey of diagnostics) {
-    test.skipIf(!strict && missing.length > 0)(
+    test.skipIf(!enabled || (!strict && missing.length > 0))(
       journey.id,
       async () => {
         if (socket === undefined) throw new Error(missing.join("\n"));
