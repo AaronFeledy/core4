@@ -2,8 +2,9 @@ import { serviceCursor } from "./claims.ts";
 import type { LoweringPatch, ServiceLoweringContext, V4Wire } from "./lowering-contract.ts";
 
 /**
- * Lando 3's node plugin reads a numeric `ssl` as the port the app itself serves
- * HTTPS on; every other catalog type only tests `ssl` for truthiness and uses `sport`.
+ * Lando 3's node plugin reads an integer `ssl` as the port the app itself serves
+ * HTTPS on (a quoted port fails its `isInteger` check and falls back to 443);
+ * every other catalog type only tests `ssl` for truthiness and uses `sport`.
  */
 const nodeHttpsPort = (id: string, ssl: unknown): number | undefined =>
   id === "node" && Number.isInteger(ssl) && Number(ssl) > 0 && Number(ssl) <= 65535 ? Number(ssl) : undefined;

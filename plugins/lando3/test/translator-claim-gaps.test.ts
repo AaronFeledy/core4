@@ -160,3 +160,22 @@ test.each([
   );
   expect(result.diagnostics.filter(isResidualDiagnostic)).toEqual([]);
 });
+
+test("keeps Lando 3's 443 fallback for a quoted node ssl port", async () => {
+  // Given: Lando 3's node plugin only accepted an integer ssl as the HTTPS port
+  const text = 'services: {web: {type: "node:22", ssl: "4444"}}';
+  // When
+  const result = await translate(text);
+  // Then
+  expect(result.outputs[0]?.fragment).toMatchObject({ services: { web: { certs: true } } });
+  expect(result.outputs[0]?.fragment).not.toMatchObject({
+    services: { web: { endpoints: expect.anything() } },
+  });
+  expect(result.diagnostics).toContainEqual(
+    expect.objectContaining({
+      kind: "needs-review",
+      keyPath: ["services", "web", "ssl"],
+      message: expect.stringContaining("container port 443"),
+    }),
+  );
+});
