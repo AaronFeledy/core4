@@ -47,12 +47,9 @@ import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
 import { applyWithResolvedEnvironment } from "../services/apply-environment.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
-import {
-  applyDebuggerHost,
-  debuggerHostConfigured,
-  resolveDebuggerHost,
-} from "../subsystems/debugger-host.ts";
+import { debuggerHostConfigured } from "../subsystems/debugger-host.ts";
 import { interruptOnAbort } from "../subsystems/healthcheck/attempt.ts";
+import { prepareDebuggerOverlay, projectDebuggerOverlay } from "../subsystems/start-overlay-registry.ts";
 import { canonicalAppRoot } from "./app-mutation-lock.ts";
 import { collectPlanConnections, startedServices } from "./connection-collector.ts";
 
@@ -280,9 +277,9 @@ export const ensureGlobalServicesRunning = Effect.fnUntraced(
     const builds = yield* BuildOrchestrator;
     // Managed global service configuration is generated locally and has no sync session lifecycle.
     const realizedPlan = withOrdinaryMounts(planToApply);
-    const debuggerHost = yield* resolveDebuggerHost(realizedPlan);
+    const preparedOverlays = yield* prepareDebuggerOverlay(realizedPlan);
     const builtPlan = yield* withBuildProvider(builds.build(realizedPlan), provider);
-    const runtimePlan = applyDebuggerHost(builtPlan, debuggerHost);
+    const runtimePlan = projectDebuggerOverlay(builtPlan, preparedOverlays);
 
     yield* verifyAdmission;
     const finalPlan = yield* advanceGlobalRecordedPlan(
