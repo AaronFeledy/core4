@@ -1,12 +1,11 @@
 import { CONTAINER_HELPER_JOB_ID, containerHelperDownloadStep } from "./_container-helper-workflow.ts";
 import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
-import { landoRootlessPrereqSteps } from "./build-ci-workflow.ts";
+import { landoManagedPodmanTeardownCommands, linuxGuideE2eProviderSetupSteps } from "./build-ci-workflow.ts";
 import { LINUX_X64_TEST_RUNNER } from "./ci-platforms.ts";
-import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 
 export const serviceListenerNightlyJob = `
   service-listeners-linux-x64:
-    needs: [${CONTAINER_HELPER_JOB_ID}]
+    needs: [${CONTAINER_HELPER_JOB_ID}, runtime-bundle-linux-x64]
     runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     env:
@@ -31,32 +30,20 @@ ${containerHelperDownloadStep}
       - name: Regenerate derived sources
         run: bun run codegen
 
-${renderInstallPodman6Step()}
-
-${renderAssertPodman6Step()}
-
-${landoRootlessPrereqSteps}
-
-      - name: Start explicit listener test socket
+      - name: Compile current listener CLI
         run: |
-          socket="$RUNNER_TEMP/listener-podman.sock"
-          podman system service --time=0 "unix://$socket" > "$RUNNER_TEMP/listener-podman.log" 2>&1 &
-          echo "$!" > "$RUNNER_TEMP/listener-podman.pid"
-          for i in {1..30}; do test -S "$socket" && break; sleep 1; done
-          curl --fail --max-time 5 --unix-socket "$socket" http://localhost/_ping
-          echo "LANDO_TEST_PODMAN_SOCKET=$socket" >> "$GITHUB_ENV"
+          mkdir -p dist
+          bun run --filter='@lando/core' build:manifest
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          ./dist/lando --version
+          echo "LANDO_SCENARIO_E2E_BINARY=$GITHUB_WORKSPACE/dist/lando" >> "$GITHUB_ENV"
+
+${linuxGuideE2eProviderSetupSteps}
 
       - name: Build test-only pinned MinIO BYO image
         run: bun scripts/build-service-listener-qa-image.ts "$LANDO_TEST_MINIO_IMAGE"
-
-      - name: Compile current listener CLI
-        run: |
-          bun run --filter='@lando/core' build:manifest
-          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
-          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./core/dist/lando --version "$VERSION" --minify --sourcemap=external
-          bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
-          ./core/dist/lando --version
-          echo "LANDO_SCENARIO_E2E_BINARY=$GITHUB_WORKSPACE/core/dist/lando" >> "$GITHUB_ENV"
 
       - name: Require all four serial real-service journeys
         shell: bash
@@ -65,10 +52,20 @@ ${landoRootlessPrereqSteps}
           bun test plugins/service-lando/test/service-listener-journeys.integration.test.ts --max-concurrency=1 2>&1 | tee "$RUNNER_TEMP/listener-acceptance.log"
           grep -E '^SERVICE_LISTENER_ACCEPTANCE completed=4/4 cases=' "$RUNNER_TEMP/listener-acceptance.log"
 
-      - name: Stop listener test socket
+      - name: Teardown Lando runtime
         if: always()
         run: |
-          if test -f "$RUNNER_TEMP/listener-podman.pid"; then kill "$(cat "$RUNNER_TEMP/listener-podman.pid")"; fi
+          dist/lando poweroff || true
+${landoManagedPodmanTeardownCommands}
+
+      - name: Collect listener diagnostics
+        if: always()
+        run: |
+          mkdir -p service-listener-diagnostics
+          dist/lando doctor --format json > service-listener-diagnostics/doctor.json 2>&1 || true
+          cp "$LANDO_USER_DATA_ROOT/runtime/run/service.log" service-listener-diagnostics/podman-service.log || true
+          cp -r "$LANDO_USER_CACHE_ROOT/logs" service-listener-diagnostics/lando-logs || true
+          journalctl --no-pager --since "-30 minutes" > service-listener-diagnostics/journalctl.log 2>&1 || true
 
       - name: Upload listener diagnostics
         if: always()
@@ -77,6 +74,7 @@ ${landoRootlessPrereqSteps}
           name: service-listener-acceptance-linux-x64
           path: |
             \${{ runner.temp }}/listener-acceptance.log
-            \${{ runner.temp }}/listener-podman.log
+            service-listener-diagnostics
+            provider-diagnostics
           if-no-files-found: warn
           retention-days: 7`;

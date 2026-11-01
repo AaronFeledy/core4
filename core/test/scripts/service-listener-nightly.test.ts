@@ -31,6 +31,7 @@ test("supplies strict explicit inputs and bounded container-only image preparati
   expect(job.env.LANDO_TEST_MAILPIT_IMAGE).toBeTruthy();
   expect(job.env.LANDO_TEST_LISTENER_CLIENT_IMAGE).toBeTruthy();
   expect(job.needs).toContain("container-helper");
+  expect(job.needs).toContain("runtime-bundle-linux-x64");
   expect(job["timeout-minutes"]).toBe(60);
   expect(job.steps.some((step) => step.run?.includes("build-service-listener-qa-image.ts"))).toBe(true);
   // The compiled-binary stamper refuses placeholder 0.0.0 versions.
@@ -56,16 +57,27 @@ test("requires successful tests plus four-case evidence instead of accepting an 
   );
 });
 
-test("provisions rootless user namespaces before starting the explicit socket", () => {
+test("provisions rootless user namespaces before managed setup and image preparation", () => {
   // Given / When: decode the job's executable steps.
   const { steps } = Schema.decodeUnknownSync(jobSchema)(Bun.YAML.parse(`jobs:\n${serviceListenerNightlyJob}`))
     .jobs["service-listeners-linux-x64"];
   const prereqs = steps.findIndex((step) =>
     step.run?.includes("kernel.apparmor_restrict_unprivileged_userns=0"),
   );
-  const socket = steps.findIndex((step) => step.run?.includes("podman system service"));
+  const setup = steps.findIndex((step) => step.run?.includes("dist/lando setup --yes --provider=lando"));
+  const image = steps.findIndex((step) => step.run?.includes("build-service-listener-qa-image.ts"));
+  const journeys = steps.findIndex((step) =>
+    step.run?.includes("service-listener-journeys.integration.test.ts"),
+  );
   // Then: user namespace permissions are ready before Podman's reexec.
   expect(prereqs).toBeGreaterThanOrEqual(0);
-  expect(socket).toBeGreaterThan(prereqs);
+  expect(setup).toBeGreaterThan(prereqs);
+  expect(image).toBeGreaterThan(setup);
+  expect(journeys).toBeGreaterThan(image);
   expect(steps[prereqs]?.run).toContain("apt-get install -y uidmap fuse-overlayfs");
+  const commands = steps.map((step) => step.run).join("\n");
+  expect(commands).not.toContain("brew install podman");
+  expect(commands).not.toContain("podman system service");
+  expect(commands).toContain("LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock");
+  expect(commands).toContain("LANDO_CONFIG__default_provider_id=lando");
 });

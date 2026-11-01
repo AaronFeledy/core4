@@ -48,7 +48,11 @@ test("nightly jobs regenerate derived sources after frozen install and before th
   for (const source of [rendered, committed]) {
     const { jobs } = Bun.YAML.parse(source) as Workflow;
     expect(Object.keys(jobs).sort()).toEqual(
-      [...Object.keys(firstDerivedConsumer), "runtime-bundle-manifest-live"].sort(),
+      [
+        ...Object.keys(firstDerivedConsumer),
+        "runtime-bundle-manifest-live",
+        "runtime-bundle-linux-x64",
+      ].sort(),
     );
 
     for (const [id, [consumerName, consumerCommand]] of Object.entries(firstDerivedConsumer)) {
@@ -92,30 +96,40 @@ test("nightly workflow regression stays in PR unit-test shards", () => {
   expect(isShardedUnitTest("core/test/build/nightly-workflow.test.ts")).toBe(true);
 });
 
-test("nightly socket jobs provision rootless prerequisites before starting Podman", () => {
-  // Given / When: inspect every rendered job that starts a host Podman socket.
+test("nightly managed-runtime jobs provision the binary under test before running suites", () => {
+  // Given / When: inspect every rendered job that downloads the managed runtime.
   const { jobs } = Bun.YAML.parse(renderNightlyWorkflow()) as Workflow;
   const socketJobs = Object.entries(jobs).filter(([, job]) =>
-    job.steps.some((step) => typeof step.run === "string" && step.run.includes("podman system service")),
+    job.steps.some((step) => step.name === "Download current-commit Linux x64 runtime bundle"),
   );
-  // Then: installation and the host contract precede prerequisites, which precede service startup.
+  // Then: the compiled binary and rootless prerequisites precede setup, socket verification, and tests.
   expect(socketJobs.map(([id]) => id).sort()).toEqual([
     "provider-lando-e2e-linux-x64",
     "service-listeners-linux-x64",
   ]);
-  for (const [, { steps }] of socketJobs) {
-    const install = steps.findIndex(
-      (step) => typeof step.name === "string" && step.name.startsWith("Install Podman 6 toolchain"),
+  for (const [, { steps, needs }] of socketJobs) {
+    expect(needs).toContain("runtime-bundle-linux-x64");
+    const compile = steps.findIndex(
+      (step) => typeof step.run === "string" && step.run.includes("--outfile ./dist/lando"),
     );
-    const contract = steps.findIndex((step) => step.name === "Assert Podman 6 host contract");
     const prereqs = steps.findIndex((step) => step.name === "Provision rootless runtime prerequisites");
-    const socket = steps.findIndex(
-      (step) => typeof step.run === "string" && step.run.includes("podman system service"),
+    const setup = steps.findIndex(
+      (step) => typeof step.run === "string" && step.run.includes("dist/lando setup --yes --provider=lando"),
     );
-    expect(install).toBeGreaterThanOrEqual(0);
-    expect(contract).toBeGreaterThan(install);
-    expect(prereqs).toBeGreaterThan(contract);
-    expect(socket).toBeGreaterThan(prereqs);
+    const socket = steps.findIndex((step) => step.name === "Verify managed runtime socket");
+    const tests = steps.findIndex(
+      (step) => typeof step.run === "string" && /bun test |run-guide-scenarios/.test(step.run),
+    );
+    expect(compile).toBeGreaterThanOrEqual(0);
+    expect(prereqs).toBeGreaterThan(compile);
+    expect(setup).toBeGreaterThan(prereqs);
+    expect(socket).toBeGreaterThan(setup);
+    expect(tests).toBeGreaterThan(socket);
+    const commands = steps.map((step) => step.run).join("\n");
+    expect(commands).toMatch(/LANDO_SCENARIO_E2E_BINARY="?\$GITHUB_WORKSPACE\/dist\/lando"/);
+    expect(commands).not.toContain("core/dist/lando");
+    expect(commands).not.toContain("brew install podman");
+    expect(commands).not.toContain("podman system service");
     expect(steps[prereqs]?.run).toContain("apt-get install -y uidmap fuse-overlayfs");
     expect(steps[prereqs]?.run).toContain("/etc/subuid");
     expect(steps[prereqs]?.run).toContain("/etc/subgid");
