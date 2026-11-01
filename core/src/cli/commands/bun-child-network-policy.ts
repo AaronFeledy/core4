@@ -67,6 +67,16 @@ type CaMode =
     }
   | { readonly mode: "extra" | "cafile"; readonly bundlePath: string };
 
+const hasBunxInstallOverride = (argv: readonly string[]): boolean => {
+  for (let index = 1; index < argv.length; index++) {
+    const arg = argv[index];
+    if (arg === undefined || arg === "--" || !arg.startsWith("-")) return false;
+    if (arg === "--install" || arg.startsWith("--install=")) return true;
+    if (arg === "-p" || arg === "--package") index++;
+  }
+  return false;
+};
+
 export const resolveBunChildCaMode = (input: {
   readonly trustHost: boolean;
   readonly hasCustomCa: boolean;
@@ -81,9 +91,7 @@ export const resolveBunChildCaMode = (input: {
       : { mode: "extra", bundlePath: input.bundlePath };
   if (!input.hasCustomCa || input.bundlePath === undefined) return { mode: "fail-empty-strict" };
   if (verb === "x") {
-    return input.argv.some((arg) => arg === "--install" || arg.startsWith("--install="))
-      ? { mode: "fail-strict-bunx" }
-      : { mode: "bunx-no-install" };
+    return hasBunxInstallOverride(input.argv) ? { mode: "fail-strict-bunx" } : { mode: "bunx-no-install" };
   }
   if (BUN_PACKAGE_CAFILE_VERBS.has(verb)) return { mode: "cafile", bundlePath: input.bundlePath };
   return ["run", "build", "test", "repl", "--help", "--version", "-h", "-v"].includes(verb) ||
@@ -120,10 +128,9 @@ export const applyBunCaMode = Effect.fnUntraced(function* (
       return { env, argv: [cleaned[0] ?? "install", "--cafile", mode.bundlePath, ...cleaned.slice(1)] };
     }
     case "bunx-no-install": {
-      const cleaned = stripCaFlags(argv);
       return {
         env,
-        argv: ["x", "--no-install", ...cleaned.slice(1).filter((arg) => arg !== "--no-install")],
+        argv: ["x", "--no-install", ...argv.slice(1)],
       };
     }
     case "fail-empty-strict":
