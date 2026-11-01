@@ -9,7 +9,7 @@ tags: [beta, docs, recipes, laravel, php, node, vite, hmr]
 
 `lando npm run dev` starts Vite inside the recipe's `node` service, but the browser can't reach it there. Give `node` a proxy route, point Laravel's Vite plugin at that hostname, and Blade edits reload the page.
 
-Prerequisite: a running Laravel app from [Run the Laravel recipe](./laravel-workflow.mdx), with `lando npm install` done. Run the commands from the app directory on your host. The examples use app name `vite-demo`, the default `lndo.site` domain, and the stock Laravel 12 skeleton, which ships `laravel-vite-plugin` 2.x and Vite 7. Keep your installed plugin and Vite on compatible majors; current Laravel 13 uses plugin 3.x and Vite 8.
+Prerequisite: a running Laravel app from [Run the Laravel recipe](./laravel-workflow.mdx), with `lando npm install` done. Run the commands from the app directory on your host. The examples use app name `vite-demo`, the default `lndo.site` domain, and the stock skeleton that `composer create-project laravel/laravel` installs. Laravel 13 ships `laravel-vite-plugin` 3.x with Vite 8, and Laravel 12 ships plugin 2.x with Vite 7; the steps below work with either pair. Keep your installed plugin and Vite on compatible majors.
 
 ## Route the node service
 
