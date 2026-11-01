@@ -6,28 +6,101 @@ timeout: 60000
 tags: [beta, docs, global, setup]
 ---
 
-# Install the global app
+# Configure shared global services
 
 The global app provides shared services such as Traefik, Mailpit, and the SSH
 agent sidecar. Lando provisions it when an app needs those services; use
-`lando global:install` if you want to create its configuration ahead of time.
+`lando global:reconcile` if you want to create its configuration ahead of time.
 
 It lives under `<userDataRoot>/global`, not in your current directory. Manage it
 with `lando global:*` (aliases of `lando meta:global:*`). The name `global` is
 reserved: a project Landofile with `name: global` fails with `AppIdReservedError`
 before Lando builds a plan.
 
-## Materialize the stack
+## Reconcile the global configuration
 
-Starting an app that needs Traefik, Mailpit, or the SSH sidecar provisions the global app. To materialize it now:
+Starting an app that needs Traefik, Mailpit, or the SSH sidecar provisions the global app. To create its configuration ahead of time:
 
 ```sh
-lando global:install
+lando global:reconcile
+lando global:list --format=json
 ```
 
-`--yes` is accepted for consistency with `lando setup --yes`. Global install does not prompt.
+Reconcile generates configuration from your saved choices and retries pending cleanup. It doesn't start containers or enable a service you disabled. Neither reconcile nor the enable and disable commands prompt.
 
-Bundled plugins contribute `traefik`, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts Traefik and the SSH agent sidecar when an app start needs them, including after `lando poweroff` or a reboot. You do not start them by hand. An app with no routes never starts the router, so a database-only or worker app comes up on a host where the router cannot.
+Bundled plugins contribute `traefik`, its `traefik-diagnostics` service, `mailpit`, and `ssh-agent` through `globalServices:`. Lando starts the shared services an app needs, including after `lando poweroff` or a reboot. An app with no routes or feature requiring the router doesn't need to start it, so a database-only or worker app can run on a host where the router cannot.
+
+## Enable a shared service
+
+Use a contribution id from the list to enable one service:
+
+```sh
+lando global:enable mailpit
+lando global:list --format=json
+```
+
+Check the `mailpit` entry's `enabled` choice and its eligibility `state`. `enabled: true` with `state: enabled` means the contribution is eligible; `blocked` or `unverified` needs the diagnosis described below. Enable saves your choice and regenerates eligible configuration without starting containers. You can select several contributions in one command by separating their ids with spaces. Unknown or ambiguous names fail before policy changes.
+
+Add `--dry-run --format=json` to enable, disable, or reconcile to inspect the
+proposed policy, dependency blockers, routes, and uncertainties before changing
+anything. Preview reports `policySaved: false`; read `impact.validationErrors` and
+`impact.uncertainties` even when the preview command succeeds. See
+[Disable a shared service](./uninstall-and-purge.mdx#disable-a-shared-service) for
+the preview fields and the difference between a saved choice and completed cleanup.
+
+To enable all current and future contributions from a plugin, use its package name. For example, `lando global:enable @lando/proxy-traefik` enables the router and its diagnostics service. A package choice also clears individual choices you previously set for that package. To enable every known plugin's contributions, including those added by later updates to those plugins, run `lando global:enable --all`. This deliberately resets their individual choices; use reconcile when you want to preserve them.
+
+Lando saves policy by plugin owner in `<userConfRoot>/global.config.yml`. It uses an individual contribution choice first, then a package choice, then the first recorded default. Plugin updates preserve recorded defaults and explicit choices. A disabled package stays disabled when an update adds another contribution. Policies for removed plugins remain available in `result.retainedPolicies` from `global:list`, but don't suppress an unrelated service that later uses the same id.
+
+Each retained policy names its plugin and lists contributions with `id`,
+`defaultEnabled`, and any individual `enabled` override. This lets you inspect a
+removed plugin's preferences without loading that plugin again.
+
+Re-enabling cancels unfinished disable cleanup attributable to the selected contributions, including pending route withdrawal. Package and contribution selections also apply to retained policy after a plugin disappears, even when runtime ownership records are unavailable. They do not recreate removed containers or republish routes. If an id has policies under several owners and cleanup cannot be attributed, Lando preserves that work and reports the owners in the preview's `impact.uncertainties`. Select a package when the id itself is ambiguous. The saved enable choice does not clear another owner's cleanup.
+
+Pending cleanup for other contributions remains visible in `global:status`; enable can still report incomplete reconciliation for that work. If configuration generation fails after the choice is saved, the contribution stays enabled with generation pending.
+
+Re-enabling an eligible service restores its generated configuration and any overrides you kept in the global Landofile layers. An app that needs it can start it automatically, or you can run:
+
+```sh
+lando global:start --service mailpit
+lando global:status --service mailpit --format=json
+```
+
+Check that the service reports `running` in `result.services[].status` before using it. Use [Disable a shared service](./uninstall-and-purge.mdx#disable-a-shared-service) to turn it off persistently.
+
+## Read contribution eligibility
+
+`lando global:list --format=json` reports the saved policy and whether each contribution can be included in the global app. It reads plugin capability declarations without starting or connecting to a provider runtime. An entry's `enabled` value is your policy choice; its `state` describes eligibility:
+
+| State | Meaning |
+| --- | --- |
+| `enabled` | Eligible for configuration; this is not proof that a container is running. |
+| `disabled` | Excluded by saved policy. |
+| `blocked` | A capability, conflict, module, or required dependency prevents inclusion. Read `reasons`. |
+| `unverified` | Required provider capabilities are unknown, so eligibility has not been established. |
+
+`source` identifies an individual contribution choice, a plugin choice, or a recorded default. `capabilitySource` distinguishes plugin declarations from capabilities acquired by an active runtime, or unavailable evidence. Startup uses the same eligibility rules with the provider's actual capabilities. Missing evidence doesn't mean the provider is known to lack a capability.
+
+When global configuration exists and validates, the list includes the dependencies
+from your effective authored layers. If those layers cannot be validated, the list
+stays readable and its `diagnostics` explains that rows fall back to plugin
+defaults and saved policy. That fallback doesn't establish that the current
+authored configuration can start.
+
+`lando global:status --format=json` reports policy, observed runtime state, and pending reconciliation work. Use it when a service is enabled but unavailable, or after a policy command fails. Fix the reported cause, then run `lando global:reconcile`; it preserves your choices and starts no containers.
+
+Read a status row's `desired` separately from its `status`. For example, `desired: disabled` with `status: running` means the off choice is saved but its container still needs cleanup. Its `pending` entries explain what remains. A contribution's `policy` includes the same eligibility details as the list. An owned runtime service with no current contribution is `unmanaged`; this doesn't grant permission to remove it as part of another contribution's disablement.
+
+Top-level `policyState` and `runtimeState` report whether each side could be read. `unavailable` and a service's `status: unknown` are missing evidence, not proof that services stopped. `diagnostics` explains those gaps. Status reads observed resources without requiring your desired Landofile to validate.
+
+Repeated required-service checks in the same retained runtime can reuse a verified
+configuration, plan, and completed build. Lando still reads the provider to confirm
+the services' identity and readiness. Reuse skips generation, planning, building,
+and apply only while its inputs are unchanged and that fresh check passes. A
+changed policy or configuration takes the normal reconciliation path; this reuse
+doesn't require a background daemon. A new CLI process doesn't inherit this
+retained state; it must establish that state again.
 
 ## Where the global app runs
 
@@ -35,7 +108,7 @@ Traefik, Mailpit, and the ssh-agent sidecar run on the host provider that `lando
 
 ## Override a bundled service
 
-After running `lando global:install`, use `lando global:config set` to change a
+After running `lando global:reconcile`, use `lando global:config set` to change a
 bundled service. Plugin defaults are in the generated
 `<userDataRoot>/global/.lando.dist.yml`; your overrides go in
 `<userDataRoot>/global/.lando.yml` and take precedence. For example:
@@ -46,9 +119,9 @@ lando global:config --format=json
 lando global:start
 ```
 
-`lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before install it reports `materialized: false` with an empty Landofile. Check your new value there before you run `lando global:start` to apply it. Don't edit `.lando.dist.yml`, because Lando regenerates it. The global root takes the same layers an app root does, in YAML or TypeScript form, with `includes:` resolved per layer; a canonical `.lando.ts` is read by `global:config` but not written by `set`, `unset`, or `edit`. See [Read and write global config](../config/global-config.mdx#read-the-effective-global-config) for the full layer order.
+`lando global:config --format=json` prints the effective merged Landofile under `result.landofile`; before configuration has been generated it reports `materialized: false` with an empty Landofile. Check your new value there before you run `lando global:start` to apply it. Disabled, blocked, or unverified contributions are excluded even if an authored layer overrides their ids. Don't edit `.lando.dist.yml`, because Lando regenerates it. The global root takes the same layers an app root does, in YAML or TypeScript form, with `includes:` resolved per layer; a canonical `.lando.ts` is read by `global:config` but not written by `set`, `unset`, or `edit`. See [Read and write global config](../config/global-config.mdx#read-the-effective-global-config) for the full layer order.
 
-## When one global service fails
+## Recover a failed global service
 
 `lando global:start`, `lando global:restart`, and `lando global:rebuild` start global services that do not depend on each other separately, then wait for each group's readiness. If one fails its healthcheck or exits without an applicable restart policy, the others still start. The command exits non-zero, naming failed and running services.
 
@@ -59,7 +132,8 @@ succeeds for every selected group publishes the current routes. A failed user-ap
 start never undoes shared global services.
 
 Exhausted readiness checks fail even supervised services. Restart and rebuild
-still revalidate the router after a readiness failure. Diagnose with `lando global:logs -s <service>`, or `lando doctor` for an `inspect-failed` provider observation. Fix the cause, then start that service to converge on its retained resources:
+revalidate the router after a readiness failure only when that operation actually
+applied it. A disabled router isn't probed or reported ready. Diagnose with `lando global:logs -s <service>`, or `lando doctor` for an `inspect-failed` provider observation. Fix the cause, then start that service to converge on its retained resources:
 
 ```sh
 lando global:start --service ssh-agent
@@ -79,6 +153,20 @@ lando doctor
     <Step name="check-start-flags">
       <Run command="lando global:start --help" />
       <Verify command="lando global:start --help" expect={{ stdout: { regex: "--service" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="global-contribution-catalog" tags={["scenario"]} render={false} reason="Verify contribution discovery without changing or starting shared services">
+    <Step name="list-contributions">
+      <Run command="lando global:list --format=json" />
+      <Verify command="lando global:list --format=json" expect={{ stdout: { regex: "\"services\":\\s*\\[" } }} />
+      <Verify command="lando global:list --format=json" expect={{ stdout: { regex: "\"id\":\\s*\"mailpit\"[\\s\\S]*\"enabled\":\\s*(true|false)" } }} />
+    </Step>
+  </Scenario>
+  <Scenario id="global-policy-command-discovery" tags={["scenario"]} render={false} reason="Verify policy command discovery without changing shared services">
+    <Step name="inspect-commands">
+      <Run command="lando help global:enable --format=json" />
+      <Verify command="lando help global:enable --format=json" expect={{ stdout: { regex: "\"canonicalId\":\\s*\"meta:global:enable\"" } }} />
+      <Verify command="lando help global:reconcile --format=json" expect={{ stdout: { regex: "\"canonicalId\":\\s*\"meta:global:reconcile\"" } }} />
     </Step>
   </Scenario>
 </Guide>

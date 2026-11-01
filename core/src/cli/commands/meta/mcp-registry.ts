@@ -1,15 +1,23 @@
-import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "@lando/mcp/allowlist";
+import {
+  assertMcpAllowlistSafe,
+  filterMcpDefaultAllowlist,
+  isAppConfigMcpUnsafeId,
+  isMcpNeverAllowed,
+} from "@lando/mcp/allowlist";
+import { MCP_DEFAULT_ALLOWLIST } from "@lando/mcp/generated-allowlist";
 import type { McpCommandEntry, McpCommandSpec } from "@lando/mcp/registry";
 import { McpToolInputError } from "@lando/sdk/errors";
 import type { RegisteredCommand } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { appConfigMcpSpecs } from "../../command-specs/app/config";
+import type { PluginCommandDiagnostic } from "../../plugin-command-catalog";
 import type { LandoCommandSpec } from "../../spec/command-spec";
 import { toolingSpecFromRegistered } from "./mcp-tooling";
 
 export interface McpCommandRegistry {
   readonly commandEntries: ReadonlyArray<McpCommandEntry>;
   readonly toolingEntries?: ReadonlyArray<McpCommandEntry> | undefined;
+  readonly diagnostics?: readonly PluginCommandDiagnostic[];
 }
 
 export interface ResolvedMcpOptions {
@@ -23,6 +31,7 @@ export const mcpRegistryFromBuiltIns = (
   entries: ReadonlyArray<{ readonly spec: McpCommandSpec }>,
 ): McpCommandRegistry => ({
   commandEntries: entries.flatMap<{ readonly spec: McpCommandSpec }>(({ spec }) => {
+    if (isMcpNeverAllowed(spec.id)) return [];
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
     if (spec.id === "app:config") return appConfigMcpSpecs.map((spec: LandoCommandSpec) => ({ spec }));
@@ -34,7 +43,7 @@ export const mcpRegistryWithToolingEntries = (
   registry: McpCommandRegistry,
   commands: ReadonlyArray<RegisteredCommand>,
 ): McpCommandRegistry => ({
-  commandEntries: registry.commandEntries,
+  ...registry,
   toolingEntries: commands
     .filter((command) => !command.hidden)
     .map((command) => ({ spec: toolingSpecFromRegistered(command), tooling: true })),
@@ -46,11 +55,23 @@ export const knownIdsOf = (registry: McpCommandRegistry): ReadonlySet<string> =>
     ...(registry.toolingEntries ?? []).map((entry) => entry.spec.id),
   ]);
 
+export const defaultIdsOf = (registry: McpCommandRegistry): readonly string[] =>
+  filterMcpDefaultAllowlist(MCP_DEFAULT_ALLOWLIST, registry.commandEntries);
+
 export const validateMcpAllowlistIds = (
   options: ResolvedMcpOptions,
   knownIds: ReadonlySet<string>,
 ): Effect.Effect<void, McpToolInputError> => {
   for (const id of options.allow) {
+    if (isMcpNeverAllowed(id))
+      return Effect.fail(
+        new McpToolInputError({
+          message: `Command id "${id}" in mcp.allow can never be exposed through MCP.`,
+          toolId: id,
+          path: "flags.allow",
+          remediation: `Remove ${id} from mcp.allow/--allow and run \`lando ${id}\` interactively from a terminal.`,
+        }),
+      );
     if (!knownIds.has(id))
       return Effect.fail(
         new McpToolInputError({

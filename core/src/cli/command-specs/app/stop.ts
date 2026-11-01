@@ -1,5 +1,7 @@
 import { stopApp } from "@lando/engine/operations/stop";
 import { StopAppResult } from "@lando/sdk/schema";
+import { Effect } from "effect";
+import { publishShutdownWarnings } from "../../commands/shutdown-summary";
 import { renderStopAppResult } from "../../commands/stop";
 import type { LandoCommandSpec } from "../../spec/command-base";
 
@@ -16,6 +18,6 @@ export const stopSpec: LandoCommandSpec<StopAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: () => stopApp(),
+  run: () => stopApp().pipe(Effect.tap(publishShutdownWarnings)),
   render: (result) => renderStopAppResult(result),
 };

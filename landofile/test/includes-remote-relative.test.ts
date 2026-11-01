@@ -104,6 +104,7 @@ for (const kind of ["git", "npm"] as const) {
           }
         : {
             npmRecipeSource: {
+              fetchTarball: async () => bytes,
               resolve: async (spec) => {
                 calls.push(spec);
                 return {

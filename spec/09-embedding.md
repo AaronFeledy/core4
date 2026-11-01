@@ -33,7 +33,7 @@ The public API is Effect-native only. There is no Promise facade, synchronous wr
 | Entry point | Stable surface |
 |---|---|
 | `@lando/core` | `makeLandoRuntime`, `openLandoRuntime`, `resolveApp`, `LandoRuntimeOptions`, `LandoRuntimeServices`, `LandoRuntime`, `BootstrapLevel`, `App`, `AppSelector`, `AppResolveError`. |
-| `@lando/core/services` | Public service tags from §3.4, including registries, planning, lifecycle, IO, rendering, interaction, redaction, telemetry, diagnostics, host-proxy, tunnel, and MCP services plus §4.2 pluggable tags. |
+| `@lando/core/services` | Public service tags from §3.4, including registries, planning, lifecycle, IO, rendering, interaction, redaction, telemetry, diagnostics, tunnel, and MCP services plus §4.2 pluggable tags. |
 | `@lando/core/paths` | `resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`, `LandoRoots`, `LandoPaths`, and `RootOverrides` (§7.5.1). |
 | `@lando/core/schema` | Published schemas from §7.8. |
 | `@lando/core/landofile` | `emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, and `LandofileEmitError` (§7.8.1). |

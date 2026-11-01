@@ -17,7 +17,7 @@ export type SupportedPythonFramework = (typeof SUPPORTED_PYTHON_FRAMEWORKS)[numb
 export const PYTHON_FEATURE_ID = "service-lando.python" as const;
 export const PYTHON_FEATURE_PRIORITY = 600;
 
-const FRAMEWORK_PRESETS: Record<SupportedPythonFramework, LanguageFrameworkPreset> = {
+export const FRAMEWORK_PRESETS: Readonly<Record<SupportedPythonFramework, LanguageFrameworkPreset>> = {
   django: {
     port: 8000,
     env: new Map([["DJANGO_SETTINGS_MODULE", "config.settings"]]),

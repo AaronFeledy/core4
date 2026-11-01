@@ -64,6 +64,7 @@ test("a layered recipe removal emits native tags without relocation diagnostics"
     await Bun.write(join(root, ".lando.local.yml"), "config: {redis: false}\n");
     await Bun.write(join(root, ".lando.recipe.yml"), "services: {}\n");
     const load = makeConfigTranslators({
+      serviceFacts: serviceTypeFacts(),
       decomposers: new Map([["wordpress", wordpressDecomposer]]),
       redactor: createRedactor("secrets"),
     }).get("lando3");
@@ -162,3 +163,4 @@ test.each([
     );
   }),
 );
+import { serviceTypeFacts } from "@lando/service-lando";

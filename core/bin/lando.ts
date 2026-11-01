@@ -48,6 +48,12 @@ const isCompiledEntry = Bun.isStandaloneExecutable;
 const main = async (): Promise<void> => {
   const { installBrokenPipeExitPolicy } = await import("@lando/renderer/native-stdio");
   installBrokenPipeExitPolicy();
+  if (argv[0] === "__internal:host-proxy-worker") {
+    await import("../src/runtime/engine-composition");
+    const { runHostProxyWorkerProcess } = await import("../src/cli/host-proxy/worker-runtime");
+    await runHostProxyWorkerProcess();
+    return;
+  }
   if (
     argv[0] === "--lando-update-replacement" &&
     argv.length === 3 &&

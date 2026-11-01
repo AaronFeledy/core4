@@ -15,6 +15,7 @@ export type SupportedGoFramework = (typeof SUPPORTED_GO_FRAMEWORKS)[number];
 
 export const GO_FEATURE_ID = "service-lando.go" as const;
 export const GO_FEATURE_PRIORITY = 600;
+export const DEFAULT_PORT = 8080;
 
 const GoFeatureConfigSchema = Schema.Struct({
   framework: Schema.Literals([...SUPPORTED_GO_FRAMEWORKS]),
@@ -32,7 +33,7 @@ const runtime = makeLanguageRuntime({
   artifacts: GO_ARTIFACTS,
   artifactFor: (version) => `golang:${version}`,
   frameworks: SUPPORTED_GO_FRAMEWORKS,
-  presets: { none: { port: 8080 } },
+  presets: { none: { port: DEFAULT_PORT } },
   baseEnv: { GOPATH: "/go", GOCACHE: "/root/.cache/go-build", CGO_ENABLED: "0" },
   mountExcludes: [],
   includeWebrootInFeatureConfig: false,

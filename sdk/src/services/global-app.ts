@@ -2,6 +2,7 @@ import { Context, type Effect, type Scope } from "effect";
 
 import type {
   AppPlacementError,
+  DebuggerHostUnavailableError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
@@ -49,7 +50,10 @@ export class GlobalAppService extends Context.Service<
     readonly restartRunningService?: (service: ServiceName) => Effect.Effect<boolean, GlobalAppError>;
     readonly ensureRunning: (
       services: ReadonlyArray<string>,
-    ) => Effect.Effect<ReadonlyArray<StartedService>, GlobalAppError | AppPlacementError>;
+    ) => Effect.Effect<
+      ReadonlyArray<StartedService>,
+      GlobalAppError | AppPlacementError | DebuggerHostUnavailableError
+    >;
     /** Read-only provider-host TCP occupancy for published port candidates. */
     readonly occupiedPublishPorts?: (
       ports: ReadonlyArray<PortNumber>,
@@ -59,9 +63,9 @@ export class GlobalAppService extends Context.Service<
       service: ServiceName,
       ports: ReadonlyArray<PortNumber>,
     ) => Effect.Effect<ReadonlyArray<PortNumber>, GlobalAppError>;
-    readonly regenerateDist: (input?: { readonly services?: Record<string, ServiceConfig> }) => Effect.Effect<
-      GlobalDistResult,
-      GlobalAppError | GlobalDistConflictError
-    >;
+    readonly regenerateDist: (input?: {
+      readonly services?: Record<string, ServiceConfig>;
+      readonly content?: string;
+    }) => Effect.Effect<GlobalDistResult, GlobalAppError | GlobalDistConflictError>;
   }
 >()("@lando/core/GlobalAppService") {}

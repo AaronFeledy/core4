@@ -8,7 +8,7 @@ import { PluginDescriptorMismatchError, ToolingCommandLookupError } from "@lando
 import type { ExecutableCommandLoader, ExecutableCommandSpec } from "@lando/sdk/plugins";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ToolingTaskShape } from "@lando/sdk/schema";
 import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
-import { resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
+import { loadPluginSpec, resolveEventCommandTarget } from "../../src/cli/event-command-target.ts";
 
 const builtInEntry = builtInCommandEntries.find((entry) => entry.spec.id === "app:start");
 if (builtInEntry === undefined) throw new Error("Missing built-in app:start command entry.");
@@ -52,11 +52,61 @@ const makeRuntimeContext = (id: string, load: ExecutableCommandLoader): Context.
     plugins: [],
     globalPlugins: [],
     certificateAuthorities: [],
-    commands: [{ id, pluginName: "example-plugin", source: "system", load }],
+    commands: [
+      {
+        id,
+        descriptor: { id, summary: "Import a database dump." },
+        pluginName: "example-plugin",
+        source: "system",
+        load,
+      },
+    ],
     hostContext: Context.empty(),
   });
 
 describe("resolveEventCommandTarget", () => {
+  test.each(["destroy", "remove", "uninstall", "prune", "gc", "reset", "restore", "rebuild", "poweroff"])(
+    "rejects destructive plugin %s without confirmation",
+    async (verb) => {
+      // Given
+      const spec = makePluginSpec(`db:${verb}`);
+      // When
+      const result = await Effect.runPromise(
+        Effect.result(loadPluginSpec(spec.id, "fixture", async () => spec)),
+      );
+      // Then
+      expect(Result.isFailure(result) ? result.failure : undefined).toBeInstanceOf(
+        PluginDescriptorMismatchError,
+      );
+    },
+  );
+
+  test("rejects a matching but noncanonical id at load time", async () => {
+    // Given
+    const spec = makePluginSpec("DB:inspect", "DB");
+    // When
+    const result = await Effect.runPromise(
+      Effect.result(loadPluginSpec(spec.id, "fixture", async () => spec)),
+    );
+    // Then
+    expect(Result.isFailure(result) ? result.failure : undefined).toBeInstanceOf(
+      PluginDescriptorMismatchError,
+    );
+  });
+
+  test.each([null, "parser", false, undefined])("rejects nonfunction flag parse %j", async (parse) => {
+    // Given
+    const spec = Object.assign(makePluginSpec(), { flags: { value: { type: "string", parse } } });
+    // When
+    const result = await Effect.runPromise(
+      Effect.result(loadPluginSpec(spec.id, "fixture", async () => spec)),
+    );
+    // Then
+    expect(Result.isFailure(result) ? result.failure : undefined).toBeInstanceOf(
+      PluginDescriptorMismatchError,
+    );
+  });
+
   for (const [name, yes] of [
     ["string type", { type: "string" }],
     ["automatic confirmation", { type: "boolean", default: true }],

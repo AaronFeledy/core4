@@ -1,12 +1,18 @@
 import { readAppCommandCacheForCwdDetailed } from "@lando/engine/cache/command-index-writer";
 import { ToolingDisabledError } from "@lando/sdk/errors";
 import { Effect, Exit, Layer } from "effect";
-import { resolveBuiltInCommand, suggestBuiltInCommandForSuffix } from "./built-in-command-registry";
-import { type HelpTopic, isHelpTopic, renderColdAllHelp, renderColdTopicHelp } from "./cold-path-output";
+import { resolveBuiltInCommand } from "./built-in-command-registry";
 import {
+  type HelpTopic,
+  isHelpTopic,
+  renderColdAllHelp,
+  renderColdRootHelp,
+  renderColdTopicHelp,
+} from "./cold-path-output";
+import {
+  pluginRowsForCache,
   printCommandHelp,
   printHelpCatalogJson,
-  printRootHelp,
   printToolingHelp,
   thisAppHelpRowsFromCache,
 } from "./compiled-help";
@@ -20,7 +26,10 @@ import { escapeDiagnosticText } from "./diagnostic-text";
 import { renderAliasResolutionFailure } from "./dynamic-tooling";
 import { validateCommandCliFlags } from "./flag-value-validation";
 import { isEnvelopeResultFormat } from "./format-flags";
-import { tryPluginOwnedCommand } from "./run-plugin-owned-command";
+import { redactHelpText } from "./help-redaction";
+import { interruptOnAbort } from "./interrupt-on-abort";
+import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
+import { pluginHelpRows, printPluginTopicHelp, tryPluginCommandHelp } from "./plugin-command-help";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { toolingMetadataStatus } from "./tooling-cache-status";
 import { resolveToolingRoute, toolingRouteError } from "./tooling-router";
@@ -46,22 +55,45 @@ const readHelpCache = async () => {
   }
 };
 
-export const printAllHelp = async (): Promise<void> => {
-  if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage();
+const pluginConflictNotice = (diagnostics: readonly { readonly message: string }[]): string => {
+  const shown = diagnostics.slice(0, 3).map((diagnostic) => `  ${diagnostic.message}`);
+  const more = diagnostics.length - shown.length;
+  return [
+    "Plugin command conflicts:",
+    ...shown,
+    ...(more > 0 ? [`  ...and ${more} more. Run \`lando help --format=json\` for details.`] : []),
+  ].join("\n");
+};
+
+export const printAllHelp = async (
+  catalog: PluginCommandCatalog = createPluginCommandCatalog(),
+): Promise<void> => {
+  if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
   const result = await readHelpCache();
   if (result === undefined) return;
   const { cache, toolingMetadata } = result;
+  const plugins = await catalog.list();
   await emitResultLine(
-    renderColdAllHelp({
-      thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
-      toolingMetadata,
-      ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
-    }),
+    await redactHelpText(
+      renderColdAllHelp({
+        thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
+        toolingMetadata,
+        pluginRows: pluginHelpRows(pluginRowsForCache(plugins.rows, cache)),
+        ...(plugins.metadata.status === "unavailable"
+          ? {
+              pluginNotice: `Plugin commands unavailable: ${plugins.metadata.message} ${plugins.metadata.remediation ?? ""}`,
+            }
+          : (plugins.metadata.diagnostics?.length ?? 0) > 0
+            ? { pluginNotice: pluginConflictNotice(plugins.metadata.diagnostics ?? []) }
+            : {}),
+        ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+      }),
+    ),
   );
 };
 
-const printTopicHelp = async (topic: HelpTopic): Promise<void> => {
-  if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage();
+const printTopicHelp = async (topic: HelpTopic, catalog: PluginCommandCatalog): Promise<void> => {
+  if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
   const result = await readHelpCache();
   if (result === undefined) return;
   const { cache } = result;
@@ -85,27 +117,52 @@ export const rejectUnknownHelpFlags = async (argv: ReadonlyArray<string>): Promi
   return true;
 };
 
-export const printRootHelpPage = async (): Promise<void> => {
-  if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage();
+export const printRootHelpPage = async (
+  catalog: PluginCommandCatalog = createPluginCommandCatalog(),
+): Promise<void> => {
+  if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
   const result = await readHelpCache();
-  if (result !== undefined) await printRootHelp(undefined, result.cache, result.toolingMetadata);
+  if (result === undefined) return;
+  const { cache, toolingMetadata } = result;
+  const plugins = await catalog.list();
+  await emitResultLine(
+    await redactHelpText(
+      renderColdRootHelp(undefined, {
+        thisAppRows: cache === null ? [] : thisAppHelpRowsFromCache(cache),
+        toolingMetadata,
+        ...(plugins.topics === undefined ? {} : { pluginTopics: plugins.topics }),
+        ...(cache?.aliasPolicy === undefined ? {} : { aliasPolicy: cache.aliasPolicy }),
+      }),
+    ),
+  );
 };
 
-export const printHelpCatalogPage = async (): Promise<void> => {
+export const printHelpCatalogPage = async (
+  catalog: PluginCommandCatalog = createPluginCommandCatalog(),
+): Promise<void> => {
   const result = await readHelpCache();
   if (result === undefined) return;
   await printHelpCatalogJson(
     result.cache,
     isEnvelopeResultFormat(activeResultFormat) ? activeResultFormat : "json",
     result.toolingMetadata,
+    await catalog.list(),
   );
 };
 
-export const dispatchHelpTarget = async (token: string): Promise<void> => {
-  if (isHelpTopic(token)) return printTopicHelp(token);
+export const dispatchHelpTarget = async (
+  token: string,
+  catalog: PluginCommandCatalog = createPluginCommandCatalog(),
+  signal?: AbortSignal,
+): Promise<void> => {
+  if (isHelpTopic(token)) return printTopicHelp(token, catalog);
   const helpCommand = resolveBuiltInCommand(token);
   if (helpCommand?.spec.id === token) return printCommandHelp(helpCommand);
-  const resolution = await Effect.runPromise(Effect.result(resolveToolingRoute(token)));
+  const resolutionExit = await Effect.runPromiseExit(
+    interruptOnAbort(Effect.result(resolveToolingRoute(token, { catalog })), signal),
+  );
+  if (Exit.isFailure(resolutionExit)) throw resolutionExit.cause;
+  const resolution = resolutionExit.value;
   switch (resolution._tag) {
     case "Failure":
       return renderAliasResolutionFailure(resolution.failure);
@@ -128,8 +185,19 @@ export const dispatchHelpTarget = async (token: string): Promise<void> => {
           });
         case "built-in":
           return printCommandHelp(route.entry);
+        case "plugin":
+          await tryPluginCommandHelp(route.token, catalog);
+          return;
         case "cache-miss":
         case "unknown-tooling":
+          if (route._tag === "unknown-tooling" || !token.startsWith("app:")) {
+            if (await tryPluginCommandHelp(token, catalog)) return;
+            if (await catalog.topic(token)) {
+              if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
+              await printPluginTopicHelp(token, catalog);
+              return;
+            }
+          }
           return renderPreCommandFailure({
             commandId: route.commandId,
             error: toolingRouteError(route),
@@ -154,10 +222,15 @@ export const dispatchHelpTarget = async (token: string): Promise<void> => {
     default:
       resolution satisfies never;
   }
-  if (await tryPluginOwnedCommand(token, ["--help"])) return;
+  if (await tryPluginCommandHelp(token, catalog)) return;
+  if (await catalog.topic(token)) {
+    if (isEnvelopeResultFormat(activeResultFormat)) return printHelpCatalogPage(catalog);
+    await printPluginTopicHelp(token, catalog);
+    return;
+  }
   await renderPreCommandFailure({
     commandId: "cli:unknown-command",
-    error: unknownCommandError(token, suggestBuiltInCommandForSuffix(token)),
+    error: unknownCommandError(token, await catalog.unknownCommandRemediation(token)),
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
   });

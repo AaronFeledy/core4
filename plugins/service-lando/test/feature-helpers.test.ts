@@ -7,11 +7,11 @@ import {
   ServiceConfigIssue,
   addEnvRecord,
   commandHealthcheck,
-  loopbackTcpHealthcheck,
   rootIdentity,
   serviceFeatureApply,
   serviceTypeResolve,
 } from "../src/services/_feature-helpers.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { recordFeatureContext } from "./support/record-feature-context.ts";
 
 test.each([undefined, "Set port: 5433 instead."])(
@@ -180,22 +180,22 @@ test("resolve preserves the returned object", () => {
 });
 
 test.each([10, 20, 30])(
-  "TCP healthcheck preserves the literal and key order at %i seconds",
+  "TCP healthcheck preserves the target and timing at %i seconds",
   (startPeriodSeconds) => {
     // Given
     const expected = {
       kind: "command" as const,
-      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"],
+      command: ["sh", "-c", expect.any(String), "lando-probe"],
+      target: { port: 8080, transport: "tcp" as const, names: [], primary: false },
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
       startPeriodSeconds,
     };
     // When
-    const result = loopbackTcpHealthcheck(8080, startPeriodSeconds);
+    const result = tcpProbe(8080, startPeriodSeconds);
     // Then
     expect(result).toEqual(expected);
-    expect(JSON.stringify(result)).toBe(JSON.stringify(expected));
   },
 );
 

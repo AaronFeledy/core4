@@ -1,0 +1,15 @@
+# lando-lint: expect-invalid lando3 ports and mounts translation input
+name: ports-demo
+services:
+  database:
+    type: postgres:16
+    portforward: true
+    environment:
+      PGPORT: "5433"
+  web:
+    api: 4
+    type: lando
+    image: nginx:1.27
+    app-mount:
+      source: ./public
+      target: /usr/share/nginx/html

@@ -60,6 +60,8 @@ If you are looking for a public surface or policy:
 | Product non-goals | 01 | §14.1 |
 | Open and deferred decisions | 01 | §14.2 |
 | Bun policies and performance budgets | 02 | §2.1 |
+| Private Bun self-execution over `ProcessRunner`, recursion guard, child completion, single machine envelope, output caps, and stdin policy | 02 + 03 + 08 | §2.1 + §3.4 + §8.2.4 |
+| `PluginPackageOperationError` operations and the failed-operation mutation boundary | 08 + 10 | §8.2.4 + §9.6 |
 | TypeScript policy | 02 | §2.2 |
 | Native command dispatcher choice | 02 | §2.3 |
 | Effect runtime, schema validation, compiled decoders, logging, and docs rules | 02 | §2.4 + §2.5 |
@@ -84,12 +86,14 @@ If you are looking for a public surface or policy:
 | Early volume creation receipts and seed eligibility after failed apply | 05 + 11 | §5.3 + §10.7 |
 | Observed-state teardown, invalid configuration, and orphan cleanup | 05 | §5.3.1 |
 | Container create-config identity and ordinary apply recreate | 05 | §5.3.2 |
+| Shutdown observations: `ServiceShutdownObservation`, `FileSyncQuiesceResult`, optional `shutdownObservations` on teardown receipts, no graceful/forced verdict | 05 | §5.3.3 |
 | Durable ownership manifest and verified teardown cleanup | 05 + 12 | §5.3.1 + §12.4.2 |
 | `AppPlan` and `ServicePlan` schema families | 05 | §5.5 |
 | Environment values and executable-plan eligibility | 05 + 07 | §5.5.2 + §7.3.1 |
 | Provider extensions and error family | 05 | §5.6 + §5.7 |
-| Bundled providers and multi-provider non-goal | 05 | §5.8 + §5.9 |
+| Bundled providers (managed init helper ownership, `0.1.7` bridge, existing-runtime rescue) and multi-provider non-goal | 05 | §5.8 + §5.9 |
 | Service bases and common service schema | 06 | §6.1 + §6.2 |
+| Native container init: one authored `init` key, canonical `ServicePlan.init`, base default, opt-out, `serviceInit` capability, and signal guarantees | 06 | §6.2.1 |
 | Artifact build contract | 06 | §6.3 |
 | App mounts and mount realization | 06 | §6.4 |
 | File-sync eligibility, shared policy, and provider prepared-volume support | 04 + 05 | §4.3 + §4.4 + §5.4 |
@@ -97,7 +101,7 @@ If you are looking for a public surface or policy:
 | Planned/applied project-file policy in info | 06 | §6.10 |
 | Storage scopes, ownership proof and selection, labels, and cache volumes | 06 | §6.5 |
 | Logical endpoint identity, mandatory endpoint normalization, hostnames, routes, filters, and cross-app priority | 06 | §6.6 |
-| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, and start-failure retention | 06 | §6.7 |
+| Independent native healthcheck and lifecycle readiness authoring, defaults, disabling, observed listener diagnosis, and start-failure retention | 06 | §6.7 |
 | Engine readiness-attempt delegation, provider start-graph ownership, and private bounded capture | 05 + 11 | §5.3 + §10.5.1 |
 | Native-health observations and readiness configuration metadata, without last-proof inference | 06 | §6.10 |
 | Certificates and trust injection | 06 | §6.8 |
@@ -149,6 +153,7 @@ If you are looking for a public surface or policy:
 | Shared CLI cancellation tag, signal status, and cleanup failure preservation | 08 | §8.4.1 |
 | `ToolingEngine` and compilation pipeline | 08 | §8.6 + §8.7 |
 | Recipe manifests, prompts, actions, catalog, and errors | 08 | §8.8 |
+| Bounded recipe post-init, prepared-script integrity, and public failure context | 08 | §8.8.8 |
 | Single preparation, immutable pre-publication review, and unattended init paths | 08 | §8.8.7 + §8.8.9 |
 | Init sources, source auth, and hoster init | 08 | §8.8.13 |
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
@@ -254,6 +259,7 @@ Public surfaces MUST have one canonical registry. Narrative sections may explain
 Canonical owners:
 
 - Built-in commands, aliases, flags, args, bootstrap levels, completion policies, recipe post-init eligibility, and command docs metadata: the `LandoCommandSpec` registry (§8.2, §8.3).
+- Plugin command identity, aliases, listing metadata, and MCP eligibility: manifest command descriptors (§9.4); plugin command inputs and execution: the command module's `ExecutableCommandSpec` (§8.3, §9.7).
 - Public schemas, event payload schemas, tagged errors, and plugin-facing contract metadata: the `@lando/sdk` schema, error, and event registries (§7.8, §13.2).
 - Core service tags and public service exports: §3.4 plus `@lando/core/services` (§16.2).
 - Secret and PII redaction: `@lando/sdk/secrets` owns the value layer, pattern-class catalog, `secrets`/`telemetry`/`transcript` profiles, and `[redacted]` sentinel, surfaced through `RedactionService` (§3.7, §3.4). This invariant is non-replaceable, has no `redactors:` plugin surface (§4.2), composes into every sensitive emitter, and is protected by the §13.4 boundary gate.

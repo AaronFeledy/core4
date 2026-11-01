@@ -66,6 +66,7 @@ const providerLandoCapabilities: ProviderCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -5391,7 +5392,7 @@ const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
 const allKnobServiceConfig = allKnobLandofile.services?.[ServiceName.make("web")] as Record<string, unknown>;
 
 const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter(
-  (key) => key !== "image" && key !== "tmpfs",
+  (key) => key !== "image" && key !== "tmpfs" && key !== "init",
 );
 
 const allKnobCapabilities: ProviderCapabilities = {
@@ -5410,7 +5411,6 @@ const allKnobCapabilities: ProviderCapabilities = {
       "dns_search",
       "dns_opt",
       "extra_hosts",
-      "init",
       "stop_signal",
       "stop_grace_period",
       "security_opt",
@@ -5457,6 +5457,7 @@ describe("Compose runtime knobs", () => {
 
       // Then
       expect(Object.keys(compose ?? {}).sort()).toEqual([...allKnobExtensionKeys].sort());
+      expect(first.services[ServiceName.make("web")]?.init).toBe(true);
       for (const key of allKnobExtensionKeys) {
         expect(JSON.stringify(compose?.[key])).toBe(JSON.stringify(allKnobServiceConfig[key]));
       }
@@ -5544,12 +5545,12 @@ describe("Compose runtime knobs", () => {
     });
   });
 
-  const initInjectingServiceType = makeLegacyServiceTypeFake({
-    id: "init-injecting",
+  const knobInjectingServiceType = makeLegacyServiceTypeFake({
+    id: "knob-injecting",
     toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
       Schema.decodeUnknownSync(ServicePlan)({
         name: ServiceName.make(name),
-        type: "init-injecting",
+        type: "knob-injecting",
         provider,
         primary,
         environment: {},
@@ -5559,21 +5560,21 @@ describe("Compose runtime knobs", () => {
         dependsOn: [],
         hostAliases: [],
         metadata,
-        extensions: { compose: { init: true } },
+        extensions: { compose: { read_only: true } },
       }),
   });
 
   const injectedLandofile: LandofileShape = {
     name: "injected-knobs",
     runtime: 4,
-    services: { [ServiceName.make("web")]: { type: "init-injecting", home: false } },
+    services: { [ServiceName.make("web")]: { type: "knob-injecting", home: false } },
   };
 
-  const initInjectingRegistry = {
-    ...registryWithServiceType(initInjectingServiceType),
+  const knobInjectingRegistry = {
+    ...registryWithServiceType(knobInjectingServiceType),
     loadServiceFeature: (id: string) =>
-      id === initInjectingServiceType.testFeature.id
-        ? Effect.succeed(initInjectingServiceType.testFeature)
+      id === knobInjectingServiceType.testFeature.id
+        ? Effect.succeed(knobInjectingServiceType.testFeature)
         : customPluginRegistry.loadServiceFeature(id),
   };
 
@@ -5583,7 +5584,7 @@ describe("Compose runtime knobs", () => {
         planTestLandofile(appPlanner, injectedLandofile, providerCapabilities),
       ).pipe(
         Effect.provide(AppPlannerLayer.layer),
-        Effect.provide(Layer.succeed(PluginRegistry, initInjectingRegistry)),
+        Effect.provide(Layer.succeed(PluginRegistry, knobInjectingRegistry)),
       ),
     );
 
@@ -5596,7 +5597,7 @@ describe("Compose runtime knobs", () => {
       expect(expectSomeFailure(exit)).toMatchObject({
         _tag: "CapabilityError",
         service: "web",
-        key: "init",
+        key: "read_only",
         capability: "composeSpec",
       });
     });

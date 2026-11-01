@@ -73,6 +73,16 @@ package:
 lando init --source=npm --package=@lando/recipe-foo --path=recipes/my-recipe
 ```
 
+Npm sources read your npm user config (`~/.npmrc`, or
+`NPM_CONFIG_USERCONFIG`) for scoped registries and `_authToken` bearer tokens,
+including `${VAR}` environment references. The same configuration applies to npm
+recipe parents and Landofile `npm:` includes. See
+[private registry setup](../plugins/install-from-npm.mdx#install-from-a-private-registry).
+An explicit `--registry-url=<url>` overrides npm registry selection for this
+initialization. Lando doesn't read project-level `.npmrc` files or save tokens.
+After initialization, run `lando app:config --format=json` from the generated
+app directory to verify the resulting Landofile.
+
 ## registry
 
 ```sh

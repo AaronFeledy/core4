@@ -16,7 +16,7 @@ Every command has exactly one kind and one namespace.
 | Kind | Source | Registry representation |
 |---|---|---|
 | Built-in | Core | Static `LandoCommandSpec` entry adapting Effect command logic |
-| Plugin | Plugin manifest `provides.commands` | Lazy-loaded `LandoCommandSpec` |
+| Plugin | Plugin manifest command descriptors (§9.4) | Descriptor-owned identity and aliases plus a lazily loaded `ExecutableCommandSpec`, validated at load (§8.3, §9.7) |
 | Tooling | Landofile `tooling:` | Generated registry shim from the app command index |
 | Management | Core or plugin with `hidden: true` | Hidden registry entry |
 
@@ -46,7 +46,9 @@ Canonical ids determine lifecycle names `cli-<canonical-id>-<phase>`, generated 
 | string array | Register each token independently |
 | `{ name, deprecated }` | Register named alias or aliases with a `DeprecationNotice` |
 
-Aliases MUST NOT collide with another top-level alias, a top-level topic, or `help`, `--help`, or `--version`. Conflicts produce `CommandAliasConflictError`: built-ins win; plugin conflicts use §4.3 precedence or fail; tooling conflicts fail unless global config explicitly disables the existing alias. Reserved tooling names follow the next paragraph instead.
+Aliases MUST NOT collide with another top-level alias, a top-level topic, or `help`, `--help`, or `--version`. The built-in aliases `recipes` and `scratch` are the only exceptions: they are also core help topics, so `lando help <t>` and `lando <t> --help` render the topic while bare `lando <t>` runs the alias. Built-in conflicts produce `CommandAliasConflictError` at registration; tooling conflicts fail unless global config explicitly disables the existing alias. Reserved tooling names follow the next paragraph instead.
+
+Plugin command descriptors (§9.4) MAY declare colon-form `aliases` and a `topLevelAlias` with the grammar above. Every canonical id is reserved before any alias is assigned. A plugin alias that claims a built-in id or alias, a core help topic, a reserved token, or a task in the current app's tooling is dropped in that context, its command stays available by canonical id, and the conflict is reported as a `CommandAliasConflictError` diagnostic naming the winner and the losing plugin. Between plugins, the first owner in discovery precedence keeps the token and the later claim becomes a diagnostic. Installing a plugin MUST NOT make an otherwise valid app's `app:cache:refresh` fail, and a stale or missing app command cache still refuses tooling-shaped tokens rather than dispatching a plugin alias in their place. A deprecated plugin alias emits its `DeprecationNotice` when used.
 
 `global:` is reserved for `meta:global:*` (§20.7.1). Tooling task names `run`, `scratch`, and `scratch:*` are reserved outright for built-in scratch commands (§21.10.2); lint and planning reject them as `landofile.tooling`. App-context `commandAliases.custom:` remaps apply to plugin claims only, not reserved tooling names.
 
@@ -101,31 +103,30 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `apps:scratch:run` | `scratch:run`, `run` | `scratch` | Scope-bound toolbox execution; `--keep` detaches |
 | `apps:scratch:start` | `scratch:start`, `scratch` | `scratch` | `--fork` or `--from`; isolation, cwd mount, global-storage, detach controls |
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop selected or foreground scratch and destroy it |
-| `meta:bun` | `bun` | `minimal` | Embedded Bun proxy through `BunSelfRunner` |
+| `meta:bun` | `bun` | `minimal` | Transparent embedded Bun argv proxy (§8.2.4) |
 | `meta:config` | `config` | `none` | Read, validate, or repair `<userConfRoot>/config.yml` |
 | `meta:doctor` | `doctor` | `none` | Self-resilient diagnostics (§10.9.1) |
 | `meta:snapshots:gc` | `snapshots:gc` | `provider` | Reports orphaned native snapshot images; `--prune` rechecks catalog references and eligibility before no-start removal. Stopped providers are reported unavailable during discovery; a runtime stopping after recheck causes failed removal, never startup or repair (§10.11.2). |
 | `meta:events:follow` | `events` | `minimal` | Trace events; `--follow`, `--format`, `--event`, `--scope`, `--since` |
 | `meta:global:config` | `global:config` | `plugins` | Read or write the global app Landofile without an eager provider runtime |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy global resources; `--provider=<id>` restricts applied evidence and cleanup to that provider; `--purge` includes service/app data volumes |
+| `meta:global:disable` | `global:disable` | `global` | Save disabled policy for selectors or `--all`; protect running/unknown consumers unless invocation-scoped `--allow-disruption`; ownership-verified selected cleanup and generation; named volumes retained; `--dry-run` previews without writes |
+| `meta:global:enable` | `global:enable` | `global` | Enable contribution/package selectors or `--all`; regenerate without starting; `--dry-run` previews without writes |
 | `meta:global:info` | `global:info` | `global` | Global info; `--service`, `--format` |
-| `meta:global:install` | `global:install` | `global` | Enable `globalServices:`, write `global.config.yml`, regenerate `dist`; does not start |
-| `meta:global:list` | `global:list` | `minimal` | List global services, enablement, source, status |
+| `meta:global:list` | `global:list` | `plugins` | List current contribution eligibility, policy source, capability evidence, and retained policies without provider runtime construction |
 | `meta:global:logs` | `global:logs` | `global` | Stream global logs |
 | `meta:global:rebuild` | `global:rebuild` | `global` | Regenerate, destroy, build, apply, then revalidate the router (§20.6.5) |
+| `meta:global:reconcile` | `global:reconcile` | `global` | Preserve policy, repeat consumer protection, retry pending cleanup, and generate eligible config without starting; invocation-scoped `--allow-disruption`; `--dry-run` previews without writes |
 | `meta:global:restart` | `global:restart` | `global` | Global stop, then start, then router startup revalidation (§20.6.5) |
 | `meta:global:start` | `global:start` | `global` | Start all or repeated `--service` subset |
-| `meta:global:status` | `global:status` | `global` | Report global app status |
+| `meta:global:status` | `global:status` | `global` | Report desired policy, observed state, and pending work without requiring a valid desired Landofile |
 | `meta:global:stop` | `global:stop` | `global` | Stop global services |
-| `meta:global:uninstall` | `global:uninstall` | `global` | Disable contributions and stop affected services |
 | `meta:mcp` | `mcp` | `plugins` | MCP over stdio; `--allow`, `--deny`, `--tooling`, `--list` |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install plugin |
-| `meta:plugin:build` | none | `minimal` | Build through `BunSelfRunner.buildLib` |
+| `meta:plugin:build` | none | `minimal` | Build (including declarations) through the private Bun self-execution wrapper |
 | `meta:plugin:link` | none | `plugins` | Link current plugin |
-| `meta:plugin:login` | `plugin:login` | `minimal` | Authenticate plugin source |
-| `meta:plugin:logout` | `plugin:logout` | `minimal` | Forget authentication |
-| `meta:plugin:new` | none | `minimal` | Scaffold plugin through `BunSelfRunner.create` |
-| `meta:plugin:publish` | none | `minimal` | Publish; reads `<userDataRoot>/plugin-auth.json` |
+| `meta:plugin:new` | none | `minimal` | Scaffold a plugin from a built-in template |
+| `meta:plugin:publish` | none | `minimal` | Publish; reads registry credentials from the user's npm config |
 | `meta:plugin:remove` | `plugin:remove` | `plugins` | Remove plugin |
 | `meta:plugin:test` | none | `minimal` | Run plugin tests |
 | `meta:plugin:unlink` | none | `plugins` | Remove link and optionally restore registry copy |
@@ -137,7 +138,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `meta:uninstall` | `uninstall` | `none` | Remove recorded Lando-owned files through a command-owned maintenance runtime that does not require valid global configuration; `--yes`, `--dry-run` |
 | `meta:update` | `update` | `plugins` | Update core and plugins |
 | `meta:version` | `version` | `none` | Print embedded version |
-| `meta:x` | `x` | `minimal` | One-shot package execution through `BunSelfRunner.x` |
+| `meta:x` | `x` | `minimal` | One-shot package execution (`bun x`) through the private Bun self-execution wrapper (§8.2.4) |
 
 Command-wide rules:
 
@@ -196,7 +197,7 @@ Lint validates retained root/include fragments in their authoring role and attem
 
 Conversion is preview-only without `--write`, MUST be explicit or unambiguous, and MUST NOT build an `AppPlan` or contact a runtime provider. Declared refresh is the separate §7.4.2 mode: `--refresh [<id>]` materializes and MAY fetch nonsecret remote metadata; `--refresh [<id>] --check` MUST use local state only and MUST NOT write. Conversion selectors and `--write` MUST NOT combine with refresh mode. Translators MAY also load in the bounded lifecycle refresh phase, never discovery or ordinary loading.
 
-Only encoders with registered safe target mappings MAY write. `--file` MUST remain within that layer's authorized dependency closure. Preview and write MUST produce identical ordered, redacted diagnostics: `generated`, `dropped`, `rewritten`, `unsupported`, `non-portable`, and `needs-review`. Unsupported input or unpreservable loss MUST block writing.
+Only encoders with registered safe target mappings MAY write. `--file` MUST remain within that layer's authorized dependency closure. Preview and write MUST produce identical ordered, redacted diagnostics: `generated`, `dropped`, `rewritten`, `unsupported`, `non-portable`, and `needs-review`. `unsupported` diagnostics MUST block writing; §7.4.1 defines when a loss is `dropped` rather than `unsupported`. A blocked write's tagged `ConfigTranslateError` carries the same ordered, redacted diagnostic array the preview reports. Human translation output MUST summarize diagnostic counts before grouping and present kinds in the order `unsupported`, `non-portable`, `needs-review`, `dropped`, `rewritten`, `generated`, with remediation for blocking, review, and dropped items; siblings MAY share one line only when kind, source, parent path, message, and remediation match, and grouping MUST NOT alter structured diagnostics. A successful human write reports written, removed, and backup counts, backup paths, review and drop counts, and the `lando app:config:lint` follow-up; diagnostic comments never enter saved files.
 
 All remote commands MUST enforce central effective protection (§10.12.8), independent of dispatcher. Push/destructive actions MUST name every target; protected typed confirmation MUST NOT be satisfied by `--yes`, MCP elicitation, recipe/tooling flags, or library input. Tether MUST reject those entry points outright (§10.12.5).
 
@@ -220,11 +221,21 @@ In compiled mode, the host line evaluator MUST append a scoped private `bun` lau
 
 #### 8.2.4 The `meta:bun` and `meta:x` commands
 
-`meta:bun` forwards Bun argv to `BunSelfRunner`; `meta:x` requires a package spec and invokes `BunSelfRunner.x`. Both use caller cwd, stream output, preserve child exit status, run at `minimal`, and publish `cli-meta:bun-*`, `cli-meta:x-*`, and `pre-bun-self-exec`/`post-bun-self-exec`.
+`meta:bun` is a transparent Bun argv proxy with no blanket verb allowlist; `meta:x` requires a package spec and proxies `x <spec> …`. Both use caller cwd, run at `minimal`, and publish `cli-meta:bun-*` / `cli-meta:x-*` plus redacted `pre-bun-self-exec`/`post-bun-self-exec`. They go through the private Bun self-execution wrapper (§2.1, §3.4), which self-spawns the current executable (`process.execPath` with `BUN_BE_BUN=1`) through the injected `ProcessRunner` and MUST NOT search `PATH` for Bun. Lando's own global flags precede the command id; every token after `bun` or `x` is Bun argv and MUST be forwarded unchanged. Core reserves aliases `bun` and `x`.
 
-For every verb, the default `BunSelfRunner` MUST prepend a scoped private `lando` launcher to the child's effective `PATH` whenever a target resolves: the `lando` on that effective `PATH`, else the running compiled CLI. Source or library mode with no `lando` on `PATH` creates no launcher. When a launcher is present, a bare `lando` in package scripts, lifecycle scripts, or `x` binaries MUST run as Lando with neither `BUN_BE_BUN` nor `BUN_FEATURE_FLAG_NO_ORPHANS` set. Other commands keep their Bun environment, so `bun` in a package script still uses the embedded Bun without a host installation. Caller environment overrides MUST NOT disable `BUN_BE_BUN` or `LANDO_DISALLOW_BUN_BE_BUN_REENTRY` in the child. The launcher MUST preserve `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1`, so nested `lando bun` remains refused, and its directory MUST be removed only after the child exits, including on interruption. This only changes the child's command resolution: embedded mode still self-spawns `process.execPath` with `BUN_BE_BUN=1`, never a Bun selected from `PATH`. A path-qualified call to a Lando binary is outside this guarantee.
+**Output and stdin.** In human (`text`) mode, `meta:bun` and `meta:x` inherit the CLI's stdin, stdout, and stderr; that passthrough is raw and is the one place child output bypasses redaction. Under `--format=json` or `--format=yaml` the child still inherits CLI stdin, but its stdout and stderr are collected and the command emits one `CommandResultEnvelope` after exit, not `StreamFrame`s; no raw child bytes and no `meta:x` banner reach machine stdout. Collected output lives in `envelope.output` as channel-tagged chunks, not in every operation's `result`; completion status lives in `result.exitCode`. Collection is capped at 1 MiB of raw bytes per channel for the whole invocation across every child it starts; exceeding the cap fails with `ProcessExecError`, never a truncated success, and no later stage runs. Order within one channel is preserved; the contract makes no claim about interleaving between channels. The frame policy of other commands is unchanged. Direct library and event-driven execution collect by default and never implicitly attach host stdin or output.
 
-`BunSelfRunner` prevents recursive `BUN_BE_BUN` entry with `BunSelfReentryError`. Child failures return `BunSelfExecError`. Offline uncached `meta:x` returns `BunSelfOfflineError`; `meta:bun` passes offline policy through. Core reserves aliases `bun` and `x`.
+The invocation-wide collector above belongs to the CLI adapter. Direct and event-driven calls retain the per-child capture limit; they MUST NOT be described as implicitly sharing the CLI collector across independent calls.
+
+**Completion.** Child exit codes are data, not Effect failures of the wrapper: a successful Effect returns `{ exitCode }` (and `meta:x` also returns `spec`). Command specs install `commandCompletionFromExitCode` so nonzero completion yields `{ ok: false, exitCode }`, a `LandoCommandError` carrying the command id and that exit code, and the completed typed value (§8.3). Direct `invokeOperation` does not apply that command policy and reports successful Effect execution separately. Preparation failures are `FileIoError`; startup, I/O, and collection-overflow failures are `ProcessExecError`; timeouts are `ProcessTimeoutError`; recursive `BUN_BE_BUN` entry fails with `BunSelfReentryError`. There is no offline tag and no inferred offline classifier: offline or network policy is Bun's own behavior on the child.
+
+**Launcher.** For every invocation, the wrapper MUST prepend a scoped private `lando` launcher to the child's effective `PATH` whenever a target resolves: the `lando` on that effective `PATH`, else the running compiled CLI. Source mode with no `lando` on `PATH` creates no launcher. When a launcher is present, a bare `lando` in package scripts, lifecycle scripts, or `x` binaries MUST run as Lando with neither `BUN_BE_BUN` nor `BUN_FEATURE_FLAG_NO_ORPHANS` set. Other commands keep their Bun environment, so a bare `bun` inside those scripts still reaches the current executable without a host Bun install. Caller environment overrides MUST NOT disable `BUN_BE_BUN` or `LANDO_DISALLOW_BUN_BE_BUN_REENTRY` in the child. The launcher MUST preserve `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1`, so nested `lando bun` remains refused, and its directory MUST be removed only after the child exits, including on interruption. This only changes the child's command resolution: the self-spawn remains `process.execPath` with `BUN_BE_BUN=1`, never a Bun selected from `PATH`. A path-qualified call to a Lando binary is outside this guarantee.
+
+**Managed children.** `meta:plugin:build` (including declaration build), `meta:plugin:test`, `meta:plugin:publish`, trusted postinstall during `meta:plugin:add` and `meta:update`, and recipe `postInit` Bun actions stream live progress through `Renderer` in human mode and preserve their completion summaries; in machine mode they collect under the same per-channel cap into `envelope.output`. `meta:plugin:remove` collects quietly in both modes. Managed children MUST NOT inherit CLI stdin. Recipe `postInit` Bun and command actions MAY receive explicitly bound input, which takes precedence over default closed stdin. Canonical redaction runs before any collected output reaches events, envelopes, logs, or errors, and an explicit `BUN_AUTH_TOKEN` is always protected. When a collected managed operation fails, its error carries at most 8 KiB total of redacted UTF-8 diagnostic output, stderr first and then stdout, with an explicit clipping indicator. A human-streamed failure points to the already-displayed output instead; retained live tails for that case are deferred.
+
+**Plugin operation failures.** Plugin acquisition and lifecycle paths that treat a nonzero package-manager child as a command failure MUST raise `PluginPackageOperationError` with `operation` in `resolve`, `download`, `verify`, `extract`, `postinstall`, or `remove` and package context; `exitCode` is present only when a child was observed to exit nonzero, because acquisition downloads and extracts are not a `bun install`. The CLI exits `1`. A failure stops every later Lando activation, deletion, registry, cache, or trust-mutation step; it does not roll back effects the child already produced, and explicit persistent trust grants are retained (§9.6). Direct `meta:plugin:build` and `meta:plugin:test` and the final `meta:plugin:publish` child follow the exit-as-data completion above. A failed prerequisite rebuild or retest inside publication stops with `PluginPublishValidationError` before any publish result exists.
+
+In a batch update, failed-operation mutation safety applies to the affected plugin; earlier successful activations remain committed. Ordinary package failures may be reported per row while the batch continues. `ProcessExecError` and `ProcessTimeoutError` MUST abort the update invocation, including capture overflow. Once the shared collector exceeds its budget, catching that failure MUST NOT authorize another Bun child in the same invocation.
 
 #### 8.2.5 The `app:open` command
 
@@ -232,7 +243,7 @@ For every verb, the default `BunSelfRunner` MUST prepend a scoped private `lando
 
 #### 8.2.6 The `meta:mcp` command
 
-`meta:mcp` serves stdio MCP; streamable HTTP transport is not specified and is sequenced in the ROADMAP (§10.14). Tools derive solely from `LandoCommandSpec` and return §8.11 envelopes. Effective allowance is default `mcpAllowed` plus global `mcp.allow` and `--allow`, minus config or CLI denies. Destructive commands are never default-allowed. `--tooling` or `mcp.tooling: true` adds resolved tooling. `--list` returns the effective catalog and exits.
+`meta:mcp` serves stdio MCP; streamable HTTP transport is not specified and is sequenced in the ROADMAP (§10.14). Tools derive from built-in `LandoCommandSpec`s and from plugin commands (manifest descriptor plus loaded `ExecutableCommandSpec`) and return §8.11 envelopes. Effective allowance is the default set (built-ins with `mcpAllowed` and bundled plugin descriptors with `mcpAllowed`) plus global `mcp.allow` and `--allow`, minus config or CLI denies. A plugin descriptor's `mcpAllowed` from any other discovery source marks eligibility only: the command needs explicit allowance, and a plugin that replaces a bundled command id does not inherit the bundled default. `--allow` accepts built-in, plugin, and (with tooling) tooling ids. Destructive commands are never default-allowed. `--list` reports each plugin tool's plugin and discovery source and lists diagnostics for eligible commands that were excluded. `--tooling` or `mcp.tooling: true` adds resolved tooling. `--list` returns the effective catalog and exits.
 
 The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-call events to `pre-mcp-call`/`post-mcp-call`. It MUST NOT be host-proxy or recipe-post-init allowed.
 
@@ -242,7 +253,7 @@ The command retains one runtime, publishes `cli-meta:mcp-*`, and delegates per-c
 
 ### 8.3 Command contract
 
-Every built-in and plugin command conforms to `LandoCommandSpec`; invocation conforms to `CommandInput`.
+Every built-in command conforms to `LandoCommandSpec`; invocation conforms to `CommandInput`. Plugin commands split their contract in two. The manifest command descriptor (§9.4) owns identity and everything listed or routed without running plugin code: `id`, `summary`, `hidden`, `aliases`, `topLevelAlias`, `mcpAllowed`, and `deprecated`. The command module implements `ExecutableCommandSpec` from `@lando/sdk/plugins`, the executable subset `LandoCommandSpec` extends: `id`, `namespace`, `bootstrap`, optional `summary`, optional `flags`, `args`, and `strict`, `run`, `resultSchema`, and optional `completion`, `render`, and `redactionTokens`. `LandoCommandSpec` keeps `summary` required. Loading validates the id against the descriptor and canonical form, the namespace against the id prefix, the bootstrap level, a module `summary` (when present) against the descriptor summary, `run`, `resultSchema`, flag and arg declaration shapes, and §8.3.1 `yes`; a mismatch fails only that command with `PluginDescriptorMismatchError` or `PluginLoadError` (§9.7). Built-in registry fields without a plugin counterpart (`helpGroup`, docs and acceptance metadata, host-proxy and recipe allowlists, `streaming`) do not apply to plugin commands.
 
 Named command types are `CommandNamespace`, `LandoCommandSpec<A, E extends LandoCommandError>`, `CommandInput`, `FlagSpec`, `ArgSpec`, `CommandDocsMetadata`, `AcceptanceCheckId`, `StreamFrameSchema`, and `LandoCommandRequirements`.
 
@@ -280,7 +291,9 @@ The adapter supplies universal format flags and IO bindings.
 
 Process-backed commands explicitly classify their typed process exit code: nonzero completion produces `ok: false`, a `LandoCommandError` with command id, exit code, and remediation, and the completed typed value. Successfully produced diagnostic reports MAY remain `ok: true` while returning a nonzero shell code for findings, independently of result format. Actual Effect failures retain their original Cause and do not invoke a completion policy; pure interruption remains cancellation. Completion-policy defects MUST NOT silently default to success.
 
-Read-only and non-destructive commands MAY set `mcpAllowed`; destructive built-ins MUST NOT. A destructive self-allow returns `McpAllowlistConflictError`. Host-proxy lifecycle commands MUST NOT self-allow; denied requests return `HostProxyCommandNotAllowedError`. Missing required registry metadata or `resultSchema` returns `CommandRegistrationError`.
+Read-only and non-destructive commands MAY set `mcpAllowed`; destructive commands MUST NOT. A command is destructive for MCP when it is on the core forbidden list, its id ends in a §8.3.1 destructive verb, or it declares `yes`. `mcpAllowed` nominates a command for the default set; omitting it does not prevent explicit allowance of a validated command. MCP's destructive classification and confirmation apply even when a command's `yes` declaration is a no-op on the direct CLI. A destructive built-in self-allow returns `McpAllowlistConflictError` at registration; a destructive plugin descriptor with `mcpAllowed` is excluded from defaults and reported as an `McpAllowlistConflictError` diagnostic, and stays explicitly allowable with confirmation through `yes` or elicitation. Host-proxy lifecycle commands MUST NOT self-allow; denied requests return `HostProxyCommandNotAllowedError`. Missing required registry metadata or `resultSchema` returns `CommandRegistrationError`.
+
+The core forbidden list includes `meta:global:disable` and `meta:global:reconcile` because they can remove containers and routes. Their explicitly allowed MCP tools MUST report `destructive: true`. These policy commands retain their separate acknowledgement contract (§20.3.1): no `yes` flag or generic elicitation is added; `allow-disruption` acknowledges consumer impact for that invocation only and never bypasses ownership, dependency, or active-admission safeguards.
 
 Command registration and invocation preserve these schema-backed `_tag` values:
 
@@ -291,7 +304,7 @@ Command registration and invocation preserve these schema-backed `_tag` values:
 | `CommandRegistrationError` | Invalid or incomplete `LandoCommandSpec` |
 | `CommandInputValidationError` | Input rejected by target schema |
 | `DeprecationContradictionError` | Alias deprecation contradicts canonical command |
-| `McpAllowlistConflictError` | Destructive built-in attempts default MCP allowance |
+| `McpAllowlistConflictError` | Destructive built-in attempts default MCP allowance, or destructive plugin descriptor nominated with `mcpAllowed` (reported as a diagnostic) |
 | `HostProxyCommandNotAllowedError` | Host-proxy canonical id not allowlisted |
 | `NotImplementedError` | Registered deferred command plan |
 
@@ -312,13 +325,13 @@ Source mode and the compiled `$bunfs` binary share one registry and `runCli` dis
 - Each `LandoCommandSpec` is registered once. Deferred ids live in the deferred-command plan table (`core/src/cli/deferred-commands.ts`) and return phase-tagged `NotImplementedError`.
 - Cross-cutting CLI helpers live under `core/src/cli/` and MUST NOT be duplicated by entry mode.
 - Source and relocated binary MUST have identical exit codes, tagged-error fields, and §8.11 output.
-- Help, version, unknown-command, topics, and aliases derive from the registry.
+- Help, version, unknown-command, topics, and aliases derive from the registry; help listings, plugin topics, and unknown-command suggestions also project plugin commands from the plugin contribution graph (§8.4.2, §9.7).
 - Canonical ids and aliases are colon-form tokens. Compatibility normalization is limited to `apps scratch run`; `scratch <start|stop|destroy|list|info|logs|gc|run>`; `meta recipes` and `recipes` with `list|describe|validate`; `share <list|stop>`; `meta global` and `global` with `config|destroy|info|install|list|logs|rebuild|restart|start|status|stop|uninstall`; global config `set|unset|edit|validate`; `app includes <update|verify>`; and `app config` with `translate|lint|set|unset|edit|validate`. Unsupported `apps list` and `app start` remain unknown.
 - Level-`none` files MUST NOT import OCLIF, heavy Effect graphs, `@lando/sdk`, renderers, or plugins (§1.2).
 - `@lando/core/oclif` is not exported; embedding uses `@lando/core/cli` (§16.2).
 - `SIGINT` interrupts the active Effect fiber and finalizes scoped resources. Foreground tooling/scripts MAY use an abort signal; while a keyboard-attached container PTY owns the terminal, Ctrl+C reaches that PTY rather than Lando. The shared core interruption projection owns `CommandInterruptedError` with optional `signal: SIGINT|SIGTERM`, message `Command interrupted.`, and retry remediation. An interruption-only CLI failure MUST use exit 130 for SIGINT and 143 for SIGTERM, based on the signal observed at failure time, never generic internal Effect interruption text. An absent or unrecognized signal reason uses status 1 and MUST NOT expose the reason value. This is one core-local contract, not a parallel SDK error tag. Mixed typed failures, defects, interruption, and cleanup failures MUST retain the existing cause projection and roles; cancellation MUST NOT erase them. Scope finalizers, broken-pipe silence, and MCP request-cancellation/session-close suppression remain unchanged. This contract does not add container process joining, provider supervision, or graceful signal forwarding to arbitrary script grandchildren.
 
-The historical OCLIF manifest is replaced by the registry-derived embedded manifest plus `plugin-command` and `app-command` indexes (§12.1). Router bootstrap MUST NOT parse Landofiles, resolve includes, contact plugin sources, import command modules, or initialize providers.
+The historical OCLIF manifest is replaced by the registry-derived embedded manifest plus the `app-command` index (§12.1). Router bootstrap MUST NOT parse Landofiles, resolve includes, contact plugin sources, import command modules, or initialize providers. Plugin commands resolve only after routing finds no built-in or tooling owner, in the separate plugin-resolution phase (§3.2, §9.7).
 
 #### 8.4.2 Help projection
 
@@ -326,11 +339,15 @@ Help is a registry projection, not a `LandoCommandSpec`; it has no registry entr
 
 Outside an app, exact `--help` or `-h` MAY use manifest-only level-`none` output. All other help routes through `runCli`; compiled help lives on that path, not in another dispatcher.
 
-The locked **COMMON** ids are `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `app:info`, `app:logs`, `app:exec`, `app:ssh`, `apps:init`, `apps:list`, `meta:setup`, and `meta:doctor`. **THIS APP** appears only with a fresh app command cache. **MORE** points to full and JSON catalogs. Each command gets one row whose primary token prefers a custom alias, then an enabled implicit alias, then canonical id.
+The locked **COMMON** ids are `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `app:info`, `app:logs`, `app:exec`, `app:ssh`, `apps:init`, `apps:list`, `meta:setup`, and `meta:doctor`. **THIS APP** appears only with a fresh app command cache. **MORE** points to topic pages, including plugin topics, and to the full and JSON catalogs. Each command gets one row whose primary token prefers a custom alias, then an enabled implicit alias, then canonical id.
 
 Color requires TTY stdout, renderer `lando`, non-JSON format, and no host color opt-out (§8.9); cold help MUST NOT import a renderer. Machine help uses `encodeCommandResult` with command `cli:help`. Topic pages cover registered namespaces and command tokens and show aliases, deferred status, flags, and args.
 
 Root, all-command, and topic machine help return the catalog with structural `toolingMetadata` availability. An explicit command target returns a `target` descriptor with canonical identity, typeable token, summary, source, and the shared input declaration/revision for tooling. Missing/stale/invalid tooling metadata and unknown targets MUST produce their precise tagged recovery failures rather than silently returning a root catalog. Disabled-target help MUST refuse without entering command execution. Enabled internal tasks remain absent from listings but support explicit direct help; task-owned help-token policy remains unchanged. JSON/YAML help flags MUST NOT emit human help text.
+
+Plugin commands appear in help from their manifest descriptors (§9.4, §9.7), never from the embedded built-in manifest, and listing them MUST NOT import plugin code. Level-`none` root help MAY list bundled plugin topics from the build-time bundled command descriptor table (§12.1) and MUST NOT perform plugin discovery; built-in target help and core topic text pages MUST NOT acquire plugin metadata. A plugin command row uses its preferred alias or canonical id as the typeable token and its descriptor summary; machine rows and targets carry `source: "plugin"`, the contributing `plugin` name, its discovery `provenance`, and `implementation`: `discovered` from the descriptor alone or `validated` once its module loaded. A command whose module fails to load stays listed and its own help and invocation report a bounded, redacted `loadError` (`_tag`, `message`, optional `remediation`). Machine catalogs carry `pluginMetadata` with discovery status and bounded, redacted manifest-resolution `diagnostics` (dropped aliases, shadowed command ids, unreadable plugins), each naming the winning owner (`source` plus `commandId` or `pluginName`) and the losing plugin command where applicable; `lando help --all` lists up to three conflicts and points to the machine catalog for the rest. Listings do not evaluate plugin modules, so missing loaders and executable validation failures surface when the command is used or described. Built-in and tooling rows render whatever plugin discovery reports.
+
+A namespace head owned by plugin command ids and not a core namespace or topic is a plugin topic for `lando help <ns>` and `lando <ns> --help`; its description is the contributing plugin's manifest description when exactly one contributing plugin supplies one, otherwise a generic namespace description. Plugin commands shadowed by a built-in id or alias, or by a positively resolved tooling task, are omitted from listings, topics, and suggestions, matching dispatch. `lando help <token>` resolution prefers a core topic, then a built-in, then a positively resolved tooling task, alias, or script, then a plugin command, then a plugin topic. A tooling cache miss or unknown tooling task on a help route defers its failure until plugin lookup also misses; an explicit `app:<task>` token defers only when a fresh tooling index positively lacks the task, and a missing or stale index keeps its tooling recovery failure. Invocation follows the same rule: a colon token, including `app:<task>`, reaches plugin dispatch after a fresh-index tooling miss. Bare invocation of a token that tooling cannot resolve still fails closed with the tooling error, with remediation naming the matching plugin topic or command. Unknown-command remediation names `lando help <topic>` for a core topic head, a plugin topic head, or a colon token under a plugin topic, otherwise the one built-in or plugin command whose id minus its namespace equals the token, otherwise `lando help --all`.
 
 ### 8.5 Tooling schema
 
@@ -345,7 +362,7 @@ Metadata MUST normalize once after layers/includes and drive CLI, help, machine 
 `ToolingTask` includes:
 
 - Command graph: `cmd`, ordered `cmds`, `deps`, `aliases`, `namespace`, `topLevelAlias`, `internal`, `disabled`.
-- Execution: `service`, `engine`, `bootstrap`, `user`, `dir`, `appMount`, `stdio`, `interactive`, `passThrough`, `hostProxyAllowed`.
+- Execution: `service`, `engine`, `bootstrap`, `user`, `dir`, `appMount`, `stdio`, `interactive`, `passThrough`.
 - Data: `vars`, `env`, `dotenv`, `flags: FlagSpec`, `args: ArgSpec`.
 - Freshness and policy: `sources`, `generates`, `method`, `status`, `preconditions`, `if`, `run`, `platforms`, `output`, `failFast`, `silent`.
 - Documentation and evolution: `desc`, `summary`, `description`, `usage`, `examples`, `deprecated: DeprecationNotice`.
@@ -369,7 +386,7 @@ MCP tooling call events MUST NOT project request-derived `appRef` before authori
 
 MCP tooling input schemas MUST project the canonical declaration into real `enum`, typed `default`, boolean type (including false), member `required` plus required parent groups, and `additionalProperties: false`. Sensitive members use `writeOnly: true`; `x-lando-input-revision` and `x-lando-accepts-arguments` expose the revision and raw policy. Defaults MUST NOT exist only in descriptions. Generic MCP/event admission MUST NOT bind against retained metadata; authoritative execution remains the single binder.
 
-`ToolingTaskInput` accepts a `ToolingTaskShape` object, literal `false`, or a non-empty string other than the exact string `disabled`. Literal `false` decodes to `{ disabled: true }`; a command string decodes to `{ cmd: <string> }`. The bare string `disabled` is rejected with remediation to use `false`; object-form `cmd: disabled` remains valid. Shorthands are interpreted after layer composition and replace an inherited task of the same name wholesale. An empty shorthand string is invalid; an object may still contain `cmd: ""`. `cmd` normalizes to one ordered `cmds` step. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. `hostProxyAllowed` defaults false and adds the canonical id to `host-proxy-allowlist` (§10.10, §12.1).
+`ToolingTaskInput` accepts a `ToolingTaskShape` object, literal `false`, or a non-empty string other than the exact string `disabled`. Literal `false` decodes to `{ disabled: true }`; a command string decodes to `{ cmd: <string> }`. The bare string `disabled` is rejected with remediation to use `false`; object-form `cmd: disabled` remains valid. Shorthands are interpreted after layer composition and replace an inherited task of the same name wholesale. An empty shorthand string is invalid; an object may still contain `cmd: ""`. `cmd` normalizes to one ordered `cmds` step. `description` aliases `summary`. `namespace` defaults to `app`; `topLevelAlias` follows §8.1.2. Built-in ids are reserved. Tooling tasks are never host-proxy eligible (§10.10, §12.1).
 
 #### 8.5.2 Commands and dependencies
 
@@ -484,7 +501,7 @@ Tooling caches and paths are persisted contracts:
 |---|---|
 | `app-command` / app command index | Routing metadata at `<userCacheRoot>/apps/<app-id>/commands.bin` |
 | app-plan cache | Compiled `ToolingProgram` and app plan (§12.1) |
-| `host-proxy-allowlist` | Canonical host-proxy command/task ids |
+| `host-proxy-allowlist` | Canonical built-in command ids permitted through host-proxy |
 | `.lando/scripts/**/*.bun.sh` | Auto-discovered CLI task source |
 | `LANDO_INPUT` | Data-only `ToolingInputValues` JSON: exactly `{ flags, args }` for script tasks (§8.5.9) |
 
@@ -609,13 +626,13 @@ Actions run in order only after the static create transaction (§8.8.7) and requ
 | `gitInit` | Reserved; preparation rejects it before any output is committed until an implementation ships (issue #1851) |
 | `message` | Emit renderer-aware expression text |
 | `command` | Invoke a `recipePostInitAllowed` canonical command at its bootstrap level |
-| `bun` | Invoke `BunSelfRunner` with `verb: script\|install\|add\|create\|run\|x` |
+| `bun` | Bounded recipe Bun action (`verb: script\|install\|add\|create\|run\|x`) through the private Bun self-execution wrapper (§8.2.4) under recipe action and path restrictions; not the transparent `meta:bun` proxy |
 
 `command` actions MAY bind named `stdin` and `secretEnv`. Bun verbs use their declared shapes: `script` plus argv, `install`, `add` dependency groups, `create` template/destination, package-script `run`, and package-spec `x`.
 
 The initial generated `postInit.command` allowlist is `app:config:translate` and `app:start`. Start requires explicit opt-in and MUST NOT be the default. Plugin installation, updates, setup, global config, shell integration, and arbitrary tooling are forbidden.
 
-All Bun actions are destination-bounded, redacted, recursion-guarded, lifecycle-evented, and shape-validated. Violations use `BunSelfArgvShapeError`, `BunActionOutsideDestinationError`, `BunCreateOutsideDestinationError`, `BunScriptOutsideRecipeError`, or `BunScriptChecksumError`. Interruptions return `RecipeInterruptedError`; committed or externally created files are not rolled back. Network-capable Bun verbs are the explicit recipe network exception and SHOULD be user-controllable. Arbitrary shell hooks are forbidden outside bounded `verb: script`.
+All Bun actions are destination-bounded, redacted, and shape-validated by the recipe post-init runtime, not by blanket proxy verb checks in the wrapper. "Bounded" here means action and path restrictions; the output byte budget of §8.2.4 applies separately on top. Bun and command actions ignore ambient CLI stdin and accept only explicitly bound action input. The wrapper returns child exit codes as data; nonzero exits and path/argv violations produce internal `RecipePostInitError` values. Public initialization maps those failures to `RecipeInitPostInitError`, retaining the failed action, committed-file context, and `rolledBack: false`, not promising the low-level `kind` or child `exitCode`. Script contents MUST match their prepared digest immediately before invocation; changed content fails through that same public boundary. Interruptions return `RecipeInterruptedError`; committed or externally created files are not rolled back. Network-capable Bun verbs are the explicit recipe network exception and SHOULD be user-controllable. Arbitrary shell hooks are forbidden outside bounded `verb: script`.
 
 #### 8.8.9 Init lifecycle
 
@@ -699,11 +716,7 @@ Recipe and init failures preserve these schema-backed `_tag` values:
 | `RecipeOutputValidationError` | Manifest, authoring, Landofile, or auxiliary output invalid |
 | `RecipeForbiddenCommandError` | Programmatic command outside `runs` |
 | `RecipeForbiddenFetchError` | URL outside `fetchAllowlist` |
-| `BunSelfArgvShapeError` | Invalid bounded Bun action payload |
-| `BunActionOutsideDestinationError` | Bun cwd escapes destination |
-| `BunCreateOutsideDestinationError` | Create destination escapes recipe root |
-| `BunScriptOutsideRecipeError` | Script path escapes recipe tree |
-| `BunScriptChecksumError` | Embedded script checksum mismatch |
+| `RecipeInitPostInitError` | Public post-init failure, including bounded Bun failures and changed prepared scripts; retains failed-action and committed-file context with `rolledBack: false` |
 | `RecipeInterruptedError` | Init interrupted after scoped cancellation |
 
 Recipe persisted locations are `recipes/<id>/`, `<userDataRoot>/recipe-cache/git/<sha>/`, `<userDataRoot>/recipe-cache/tarball/<sha256>/`, (npm tarballs included). Compiled manifests, generated Landofiles, and derived snapshots MUST remain independent of provider state.
@@ -931,7 +944,7 @@ Published schemas are `CommandResultFormat` (`text|json|table|yaml|ndjson`), `Fa
 | `ok` | Success discriminator |
 | `result` | Optional command `resultSchema` value |
 | `error` | Optional primary `TaggedErrorJson`; non-empty `error.additionalErrors` carries ordered, non-recursive additional tagged failures with required `role` |
-| `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses |
+| `output` | Optional `CommandOutput`: bounded, redacted text chunks with channel/provenance and an explicit truncation flag; mandatory for completed MCP command responses; carries the collected child output of Bun-backed commands under `json`/`yaml` (§8.2.4) |
 | `warnings` | `CommandWarning[]` |
 | `deprecations` | `DeprecationUse[]` |
 
@@ -957,7 +970,7 @@ Validation failures carry the collected `issues` (`ValidationIssue`: `path` as a
 
 Outside the command-result boundary, an unrecoverable entrypoint failure MAY emit only a stderr diagnostic, redacted as §10.10.2 describes, and exit non-zero; it MUST NOT emit a partial stdout envelope.
 
-`yaml` is boundary-owned: `--format=yaml` MUST emit the same envelope `--format=json` emits for that command, serialized through the `@lando/sdk/yaml` scalar and mapping-key policy, and parsing that YAML MUST yield the same model the JSON parses to. Redaction, `--json` projection, `--jq`, warning capture, and the closed-pipe policy apply to `yaml` exactly as to `json`; they share the command-result boundary. Every YAML projection MUST round-trip its input model, including strings YAML could reinterpret: the `[redacted]` sentinel, `yes`/`no`/`on`/`off`, numeric-looking strings, `null`/`~`, values containing `: `, and leading `*`, `&`, `%`, `@`. `@lando/sdk/yaml` is the one quoting policy; the CLI emitter and the shared Compose serializer owned by `@lando/container-runtime` consume it rather than re-implementing it.
+`yaml` is boundary-owned: `--format=yaml` MUST emit the same envelope `--format=json` emits for that command, serialized through the `@lando/sdk/yaml` scalar and mapping-key policy, and parsing that YAML MUST yield the same model the JSON parses to. Redaction, `--json` projection, `--jq`, warning capture, and the closed-pipe policy apply to `yaml` exactly as to `json`; they share the command-result boundary. Every YAML projection MUST round-trip its input model, including strings YAML could reinterpret: the `[redacted]` sentinel, `yes`/`no`/`on`/`off`, numeric-looking strings, `null`/`~`, values containing `: `, and leading `*`, `&`, `%`, `@`. `@lando/sdk/yaml` is the one quoting policy; the CLI emitter and the shared Compose serializer owned by `@lando/container-runtime` consume it rather than re-implementing it. A command MAY declare a justified YAML `documentOutput` exception in its command metadata when its successful result is itself a product document; `app:config:translate` preview uses it to emit the target Landofile with diagnostic comments. Failures, JSON output, and runs using `--json` projection or `--jq` keep the canonical envelope.
 
 **Closed pipe.** A downstream consumer that closes stdout or stderr early (`head`, `jq -e`, a terminated agent) ends output cleanly: Lando MUST NOT report an internal error or print a stack trace, MUST stop writing to the closed stream, and MUST exit with the conventional terminated-pipeline status `141`. stdout and stderr follow this rule independently, since they can be redirected separately. `@lando/renderer` owns the guard, so every renderer and machine format inherits it.
 

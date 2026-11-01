@@ -7,6 +7,7 @@ import { Effect, Schema } from "effect";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { AbsolutePath, AppId, type AppPlan, ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   tomcat9ServiceType,
@@ -106,11 +107,7 @@ describe("Tomcat authored HTTP port", () => {
         name: "web",
         primary: true,
       });
-      expect(result.plan.healthcheck?.command).toEqual([
-        "bash",
-        "-c",
-        `exec 3<>/dev/tcp/127.0.0.1/${selectedPort}`,
-      ]);
+      expect(result.plan.healthcheck).toEqual(tcpProbe(selectedPort, 20));
     },
   );
 

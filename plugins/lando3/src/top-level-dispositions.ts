@@ -137,6 +137,24 @@ export const TOP_LEVEL_DISPOSITIONS: Readonly<Record<string, Disposition>> = {
 
 export const hasTopLevelDisposition = (key: string): boolean => Object.hasOwn(TOP_LEVEL_DISPOSITIONS, key);
 
+export const orphanConfigDiagnostic = (
+  merged: MergedLegacyValue | undefined,
+  fallback: ConfigTranslateSourceId,
+): ReadonlyArray<ConfigTranslateDiagnostic> => {
+  if (merged?.kind !== "mapping" || !merged.entries.has("config")) return [];
+  const occurrence = occurrencesAt(merged, ["config"]).at(-1);
+  return [
+    {
+      kind: "unsupported",
+      sourceId: occurrence?.sourceId ?? fallback,
+      keyPath: ["config"],
+      ...spanOf(occurrence),
+      message: "config has no Lando 3 recipe to apply to.",
+      remediation: "Add a recipe, or remove config and author the Lando 4 services directly.",
+    },
+  ];
+};
+
 export const unknownKeyDiagnostics = (
   unknownKeys: readonly Lando3Path[],
   merged: MergedLegacyValue | undefined,
@@ -146,13 +164,15 @@ export const unknownKeyDiagnostics = (
     .filter((path) => !(path.length === 1 && typeof path[0] === "string" && hasTopLevelDisposition(path[0])))
     .map((keyPath) => {
       const occurrence = occurrencesAt(merged, keyPath).at(-1);
+      const authoredPath = occurrence?.keyPath ?? keyPath;
+      const displayPath = formatPath(authoredPath);
       return {
         kind: "dropped" as const,
         sourceId: occurrence?.sourceId ?? fallback,
-        keyPath: [...keyPath],
+        keyPath: [...authoredPath],
         ...spanOf(occurrence),
-        message: `${formatPath(keyPath)} is not a Lando 3 key and was ignored by Lando 3 as well.`,
-        remediation: `Remove ${formatPath(keyPath)}, or author the Lando 4 value you intended.`,
+        message: `${displayPath} is not a Lando 3 key and was ignored by Lando 3 as well.`,
+        remediation: `Remove ${displayPath}, or author the Lando 4 value you intended.`,
       };
     });
 

@@ -1,13 +1,22 @@
 import { mock } from "bun:test";
 import { appendFile } from "node:fs/promises";
+import type { LandoRuntimeOptions } from "@lando/engine/runtime/runtime-options";
 import { ProviderId } from "@lando/sdk/schema";
-import { EventService, RouterService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  ConfigService,
+  EventService,
+  PathsService,
+  RouterService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
 import { Effect, Layer } from "effect";
 import { makeLandoRuntime } from "../../../src/runtime/layer.ts";
 
 const originalRuntime = makeLandoRuntime;
-const eventPath = process.argv[process.argv.indexOf("--test-events") + 1];
+const eventsFlag = process.argv.indexOf("--test-events");
+const eventPath =
+  process.env.LANDO_TEST_HOST_PROXY_EVENTS ?? (eventsFlag === -1 ? undefined : process.argv[eventsFlag + 1]);
 if (eventPath === undefined) throw new TypeError("Missing test event path");
 const provider = {
   ...TestRuntimeProvider,
@@ -58,8 +67,46 @@ const router = Layer.succeed(
 );
 
 mock.module("../../../src/runtime/layer.ts", () => ({
-  makeLandoRuntime: (options: unknown) => {
+  makeLandoRuntime: (options: LandoRuntimeOptions & { readonly bootstrap: "app" }) => {
     const base = originalRuntime(options);
+    const observedRouter = Layer.effect(
+      RouterService,
+      Effect.gen(function* () {
+        const config = yield* (yield* ConfigService).load;
+        const port = config.router?.httpPort ?? 80;
+        const paths = yield* PathsService;
+        yield* Effect.promise(() =>
+          appendFile(
+            eventPath,
+            `${JSON.stringify({ configPort: port, roots: paths.roots, platform: paths.platform })}\n`,
+          ),
+        );
+        const service = yield* RouterService;
+        return RouterService.of({
+          ...service,
+          observeRoutes: (app, routes) =>
+            service.observeRoutes(app, routes).pipe(
+              Effect.map((result) => ({
+                ...result,
+                configuredAuthorities: result.configuredAuthorities.map((authority) => ({
+                  ...authority,
+                  port,
+                })),
+                observation:
+                  result.observation.status === "present"
+                    ? {
+                        ...result.observation,
+                        publications: result.observation.publications.map((publication) => ({
+                          ...publication,
+                          authority: { ...publication.authority, port },
+                        })),
+                      }
+                    : result.observation,
+              })),
+            ),
+        });
+      }),
+    ).pipe(Layer.provide(Layer.merge(base, router)));
     const events = Layer.effect(
       EventService,
       Effect.gen(function* () {
@@ -71,14 +118,14 @@ mock.module("../../../src/runtime/layer.ts", () => ({
               .publish(event)
               .pipe(
                 Effect.andThen(
-                  event._tag === "pre-host-proxy-call"
-                    ? Effect.promise(() => appendFile(eventPath, `${JSON.stringify(event.request)}\n`))
+                  event._tag === "pre-host-proxy-call" || event._tag === "post-host-proxy-call"
+                    ? Effect.promise(() => appendFile(eventPath, `${JSON.stringify(event)}\n`))
                     : Effect.void,
                 ),
               ),
         });
       }),
     ).pipe(Layer.provide(base));
-    return Layer.mergeAll(base, registry, router, events);
+    return Layer.mergeAll(base, registry, observedRouter, events);
   },
 }));

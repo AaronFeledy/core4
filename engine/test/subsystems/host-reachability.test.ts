@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
+import { DEBUGGER_HOST_ALIAS } from "@lando/sdk/schema";
 import {
   HOST_GATEWAY_TARGET,
   HOST_INTERNAL_ALIAS,
@@ -66,5 +67,33 @@ describe("applyHostReachability", () => {
       "none",
     );
     expect(result.hostAliases).toEqual([]);
+  });
+
+  it("Given an unreachable host, When applied, Then every host-gateway sentinel alias is dropped", () => {
+    const result = applyHostReachability(
+      plan({
+        hostAliases: [
+          { hostname: HOST_INTERNAL_ALIAS, ip: HOST_GATEWAY_TARGET },
+          { hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET },
+          { hostname: "another-gateway.internal", ip: HOST_GATEWAY_TARGET },
+          { hostname: "custom.internal", ip: "10.0.0.1" },
+        ],
+      }),
+      "none",
+    );
+    expect(result.hostAliases).toEqual([{ hostname: "custom.internal", ip: "10.0.0.1" }]);
+  });
+
+  it("Given a reachable host, When applied, Then the debugger alias is preserved", () => {
+    const result = applyHostReachability(
+      plan({
+        hostAliases: [{ hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET }],
+      }),
+      "native",
+    );
+    expect(result.hostAliases).toEqual([
+      { hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET },
+      { hostname: HOST_INTERNAL_ALIAS, ip: HOST_GATEWAY_TARGET },
+    ]);
   });
 });

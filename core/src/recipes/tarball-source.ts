@@ -37,7 +37,10 @@ import {
 } from "./source-support";
 
 export interface TarballRecipeFetcher {
-  readonly fetch: (url: string) => Promise<Uint8Array>;
+  readonly fetch: (
+    url: string,
+    options?: { readonly authorization?: string; readonly redactionTokens?: ReadonlyArray<string> },
+  ) => Promise<Uint8Array>;
 }
 
 export interface TarballRecipeExtractor {
@@ -81,7 +84,7 @@ const SHA256_RE = /^[0-9a-f]{64}$/u;
 export const makeTarballRecipeFetcher = (
   retainedDownloader?: typeof Downloader.Service,
 ): TarballRecipeFetcher => ({
-  fetch: (url) =>
+  fetch: (url, options) =>
     Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
@@ -92,6 +95,10 @@ export const makeTarballRecipeFetcher = (
           const downloader = yield* Downloader;
           const result = yield* downloader.download({
             url,
+            ...(options?.authorization === undefined
+              ? {}
+              : { headers: [{ name: "authorization", value: options.authorization }] }),
+            ...(options?.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
             destination: { kind: "file", directory, filename: "archive" },
           });
           const bytes = yield* Effect.promise(() => readFile(result.path ?? join(directory, "archive")));

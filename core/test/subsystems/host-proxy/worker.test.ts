@@ -335,6 +335,7 @@ const listenControlServerForRecord = async <Record extends TestControlRecord>(
           transport: record.transport,
           protocolVersion: record.protocolVersion,
           pid: record.pid,
+          bridge: "none",
         }),
       );
       return;
@@ -372,8 +373,9 @@ describe("detached host-proxy worker manager", () => {
           appId: "demo",
           sessionId: "session",
           transport: "unix-socket",
-          protocolVersion: 2,
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           pid,
+          bridge: "none",
         }),
       ).toBe(false);
     } finally {
@@ -485,7 +487,7 @@ describe("detached host-proxy worker manager", () => {
       expect(writes[0]).toContain('"id":"demo"');
       expect(writes.join("\n")).not.toContain("secret-token");
       expect(record).toContain('"controlToken": "control-token"');
-      expect(record).toContain('"protocolVersion": 2');
+      expect(JSON.parse(record).protocolVersion).toBe(HOST_PROXY_WORKER_PROTOCOL_VERSION);
       expect(record).toContain('"providerId": "lando"');
       expect(record).toContain('"containerUrl": "http://host.containers.internal:32123"');
       expect(record).toContain('"probeServices": [\n    "appserver",\n    "worker"\n  ]');
@@ -709,57 +711,63 @@ console.log(JSON.stringify({
     }
   });
 
-  test("shuts down a bridged Windows worker through its TCP control listener", async () => {
-    const root = await tempRoot();
-    const base = workerRecord(root);
-    let shutdowns = 0;
-    const server = createServer((request, response) => {
-      if (request.headers["x-lando-host-proxy-control"] !== base.controlToken) {
-        response.writeHead(401).end();
-        return;
-      }
-      const pathname = new URL(request.url ?? "", "http://control.invalid").pathname;
-      if (pathname === "/_lando/host-proxy/identify") {
-        response.writeHead(200, { "content-type": "application/json" }).end(
-          JSON.stringify({
-            appId: base.appId,
-            sessionId: "session-1",
-            configDigest: base.configDigest,
-            transport: "tcp-host-gateway",
-            protocolVersion: base.protocolVersion,
-            pid: base.pid,
-          }),
-        );
-        return;
-      }
-      if (pathname === "/_lando/host-proxy/shutdown") {
-        shutdowns += 1;
-        response.writeHead(202).end();
-        setImmediate(() => server.close());
-        return;
-      }
-      response.writeHead(404).end();
-    });
-    try {
-      await new Promise<void>((resolveListen, rejectListen) => {
-        server.once("error", rejectListen);
-        server.listen(0, "127.0.0.1", resolveListen);
+  test.each(["alive", "dead", undefined] as const)(
+    "shuts down a bridged Windows worker with bridge=%s through its TCP control listener",
+    async (bridge) => {
+      const root = await tempRoot();
+      const base = workerRecord(root);
+      let shutdowns = 0;
+      const server = createServer((request, response) => {
+        if (request.headers["x-lando-host-proxy-control"] !== base.controlToken) {
+          response.writeHead(401).end();
+          return;
+        }
+        const pathname = new URL(request.url ?? "", "http://control.invalid").pathname;
+        if (pathname === "/_lando/host-proxy/identify") {
+          response.writeHead(200, { "content-type": "application/json" }).end(
+            JSON.stringify({
+              appId: base.appId,
+              sessionId: "session-1",
+              configDigest: base.configDigest,
+              transport: "tcp-host-gateway",
+              protocolVersion: base.protocolVersion,
+              pid: base.pid,
+              ...(bridge === undefined ? {} : { bridge }),
+            }),
+          );
+          return;
+        }
+        if (pathname === "/_lando/host-proxy/shutdown") {
+          shutdowns += 1;
+          response.writeHead(202).end();
+          setImmediate(() => server.close());
+          return;
+        }
+        response.writeHead(404).end();
       });
-      const address = server.address();
-      if (address === null || typeof address === "string") throw new Error("Expected TCP control port.");
-      const bridgedRecord = { ...base, url: `http://127.0.0.1:${address.port}` };
-      await Effect.runPromise(writeWorkerRecord(app, { userDataRoot: root }, bridgedRecord));
-      expect(await Effect.runPromise(probeWorker(bridgedRecord))).toBe("live");
-      expect(
-        await Effect.runPromise(terminateOwnedHostProxyWorker(app, { paths: { userDataRoot: root } })),
-      ).toBe("terminated");
-      expect(shutdowns).toBe(1);
-      expect(await Bun.file(workerStatePath(app, { userDataRoot: root })).exists()).toBe(false);
-    } finally {
-      server.close();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
+      try {
+        await new Promise<void>((resolveListen, rejectListen) => {
+          server.once("error", rejectListen);
+          server.listen(0, "127.0.0.1", resolveListen);
+        });
+        const address = server.address();
+        if (address === null || typeof address === "string") throw new Error("Expected TCP control port.");
+        const bridgedRecord = { ...base, url: `http://127.0.0.1:${address.port}` };
+        await Effect.runPromise(writeWorkerRecord(app, { userDataRoot: root }, bridgedRecord));
+        expect(await Effect.runPromise(probeWorker(bridgedRecord))).toBe(
+          bridge === "alive" ? "live" : "dead",
+        );
+        expect(
+          await Effect.runPromise(terminateOwnedHostProxyWorker(app, { paths: { userDataRoot: root } })),
+        ).toBe("terminated");
+        expect(shutdowns).toBe(1);
+        expect(await Bun.file(workerStatePath(app, { userDataRoot: root })).exists()).toBe(false);
+      } finally {
+        server.close();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("rejects control identity when the worker pid does not match persisted state", async () => {
     const root = await tempRoot();
@@ -1090,10 +1098,17 @@ console.log(JSON.stringify({
     "%s refreshes routes and cwd mounts in the same real worker",
     async (reusePolicy) => {
       const root = await tempRoot();
+      const localApp = { ...app, root: AbsolutePath.make(join(root, "app")) };
+      const localPlan = { ...plan, root: localApp.root };
+      await mkdir(join(localApp.root, "web"), { recursive: true });
+      await writeFile(
+        join(localApp.root, ".lando.yml"),
+        "name: demo\nservices:\n  appserver:\n    type: nginx\nproxy:\n  appserver:\n    - changed.lndo.site\n",
+      );
       const eventPath = join(root, "requests.jsonl");
       const options = {
-        app,
-        plan,
+        app: localApp,
+        plan: localPlan,
         paths: { userDataRoot: root },
         shimArtifactPath: await fakeShim(root),
         spawnWorker: async (spec: Parameters<typeof defaultSpawnWorker>[0]) => {
@@ -1101,9 +1116,8 @@ console.log(JSON.stringify({
             ...spec,
             argv: [
               process.execPath,
-              "--preload",
-              fileURLToPath(new URL("./observed-worker-preload.ts", import.meta.url)),
-              ...spec.argv.slice(1),
+              fileURLToPath(new URL("./call-test-entry.ts", import.meta.url)),
+              ...spec.argv.slice(2),
               "--test-events",
               eventPath,
             ],
@@ -1114,15 +1128,19 @@ console.log(JSON.stringify({
       };
       const first = await Effect.runPromise(startDetachedHostProxyWorker(options));
       try {
-        const before = await Effect.runPromise(readWorkerRecord(app, options.paths));
+        const before = await Effect.runPromise(readWorkerRecord(localApp, options.paths));
         const service: ServicePlan = {
           ...servicePlan("appserver", "/changed"),
+          mounts: servicePlan("appserver", "/changed").mounts.map((mount) => ({
+            ...mount,
+            source: localApp.root,
+          })),
           endpoints: [
             { _tag: "internal", protocol: "http", port: PortNumber.make(80), name: "http", primary: true },
           ],
         };
         const updated: AppPlan = {
-          ...plan,
+          ...localPlan,
           metadata: { ...plan.metadata, resolvedAt: DateTime.makeUnsafe("2026-02-01T00:00:00Z") },
           services: { [service.name]: service },
           routes: [
@@ -1140,7 +1158,7 @@ console.log(JSON.stringify({
         const second = await Effect.runPromise(
           startDetachedHostProxyWorker({ ...options, plan: updated, reusePolicy }),
         );
-        const after = await Effect.runPromise(readWorkerRecord(app, options.paths));
+        const after = await Effect.runPromise(readWorkerRecord(localApp, options.paths));
         const wire = Schema.encodeUnknownSync(AppPlan)(updated);
         for (const invalid of [{}, { ...wire, root: "/foreign" }, { ...wire, provider: "docker" }]) {
           const status = await new Promise<number | undefined>((resolve, reject) => {
@@ -1164,10 +1182,14 @@ console.log(JSON.stringify({
             request.on("error", reject);
             request.end(JSON.stringify(invalid));
           });
-          expect(status).toBe(400);
+          expect(status).toBe(503);
         }
         const result = await Effect.runPromise(
-          sendHostProxyRunLando(second, { argv: ["open", "--print"], cwd: "/changed/web", tty: false }),
+          sendHostProxyRunLando(second, {
+            argv: ["app:open", "--print", "--format=json"],
+            cwd: "/changed/web",
+            tty: false,
+          }),
         );
         expect(after?.pid).toBe(before?.pid);
         expect([second.sessionId, second.token, second.controlToken]).toEqual([
@@ -1175,8 +1197,9 @@ console.log(JSON.stringify({
           first.token,
           first.controlToken,
         ]);
-        expect(result.envelope).toMatchObject({ ok: true });
-        expect(result.envelope.result).toMatchObject({
+        const envelope = JSON.parse(result.stdout);
+        expect(envelope).toMatchObject({ ok: true });
+        expect(envelope.result).toMatchObject({
           targets: [expect.objectContaining({ url: expect.stringContaining("changed.lndo.site") })],
         });
         expect(
@@ -1184,13 +1207,156 @@ console.log(JSON.stringify({
             .trim()
             .split("\n")
             .map((line) => JSON.parse(line)),
-        ).toContainEqual(expect.objectContaining({ cwd: "/srv/apps/demo/web" }));
+        ).toContainEqual(
+          expect.objectContaining({
+            _tag: "pre-host-proxy-call",
+            request: expect.objectContaining({ cwd: join(localApp.root, "web") }),
+          }),
+        );
       } finally {
         await first.close();
         await rm(root, { recursive: true, force: true });
       }
     },
   );
+
+  test("disk config changes reach fresh children without worker restart", async () => {
+    const root = await tempRoot();
+    const localApp = { ...app, root: AbsolutePath.make(join(root, "app")) };
+    await mkdir(localApp.root);
+    await writeFile(
+      join(localApp.root, ".lando.yml"),
+      "name: demo\nservices:\n  appserver:\n    type: nginx\nproxy:\n  appserver:\n    - demo.lndo.site\n",
+    );
+    const eventPath = join(root, "generations.jsonl");
+    const service: ServicePlan = {
+      ...servicePlan("appserver", "/app"),
+      endpoints: [
+        {
+          _tag: "internal" as const,
+          protocol: "http" as const,
+          port: PortNumber.make(80),
+          name: "http",
+          primary: true,
+        },
+      ],
+    };
+    const routed: AppPlan = {
+      ...plan,
+      root: localApp.root,
+      services: { [service.name]: service },
+      routes: [
+        {
+          service: service.name,
+          endpoint: "http",
+          hostname: "demo.lndo.site",
+          scheme: "http",
+          pathPrefix: "/",
+          priority: 2,
+          backend: { service: service.name, protocol: "http", port: PortNumber.make(80) },
+        },
+      ],
+    };
+    const paths = {
+      ...makeLandoPaths({ userDataRoot: root }).roots,
+      userConfRoot: join(root, "conf"),
+      userCacheRoot: join(root, "cache"),
+      systemPluginRoot: join(root, "plugins"),
+      platform: "linux",
+    };
+    const options = {
+      app: localApp,
+      plan: routed,
+      paths,
+      shimArtifactPath: await fakeShim(root),
+      spawnWorker: async (spec: Parameters<typeof defaultSpawnWorker>[0]) => {
+        const worker = await defaultSpawnWorker({
+          ...spec,
+          argv: [
+            process.execPath,
+            fileURLToPath(new URL("./call-test-entry.ts", import.meta.url)),
+            ...spec.argv.slice(2),
+            "--test-events",
+            eventPath,
+          ],
+        });
+        spawnedPids.add(worker.pid);
+        return worker;
+      },
+    };
+    const ensure = async (port: number) => {
+      await mkdir(paths.userConfRoot, { recursive: true });
+      await writeFile(join(paths.userConfRoot, "config.yml"), `router:\n  httpPort: ${port}\n`);
+      return Effect.runPromise(startDetachedHostProxyWorker({ ...options, reusePolicy: "exact" }));
+    };
+    const first = await ensure(19001);
+    const request = () =>
+      Effect.runPromise(
+        sendHostProxyRunLando(first, {
+          argv: ["app:open", "--print", "--format=json"],
+          cwd: "/app",
+          tty: false,
+        }),
+      );
+    const observed = async () =>
+      (await readFile(eventPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+    try {
+      const before = await Effect.runPromise(readWorkerRecord(localApp, paths));
+      expect(JSON.parse((await request()).stdout).result).toMatchObject({
+        targets: [expect.objectContaining({ url: "https://demo.lndo.site:19001" })],
+      });
+      const same = await ensure(19001);
+      const refreshed = await ensure(19002);
+      expect(JSON.parse((await request()).stdout).result).toMatchObject({
+        targets: [expect.objectContaining({ url: "https://demo.lndo.site:19002" })],
+      });
+      for (const session of [same, refreshed])
+        expect([session.sessionId, session.token, session.controlToken, session.socketPath]).toEqual([
+          first.sessionId,
+          first.token,
+          first.controlToken,
+          first.socketPath,
+        ]);
+      expect((await Effect.runPromise(readWorkerRecord(localApp, paths)))?.pid).toBe(before?.pid);
+      expect((await observed()).filter((entry) => entry.configPort !== undefined)).toEqual(
+        [19001, 19002].map((configPort) => ({
+          configPort,
+          roots: {
+            userConfRoot: paths.userConfRoot,
+            userCacheRoot: paths.userCacheRoot,
+            userDataRoot: paths.userDataRoot,
+            systemPluginRoot: paths.systemPluginRoot,
+          },
+          platform: "linux",
+        })),
+      );
+      await writeFile(join(paths.userConfRoot, "config.yml"), "router:\n  httpPort: invalid\n");
+      expect((await request()).exitCode).not.toBe(0);
+      await ensure(19002);
+      expect(JSON.parse((await request()).stdout).result).toMatchObject({
+        targets: [expect.objectContaining({ url: "https://demo.lndo.site:19002" })],
+      });
+      await writeFile(join(paths.userConfRoot, "config.yml"), "router:\n  httpPort: 19004\n");
+      const adopted = await Effect.runPromise(
+        startDetachedHostProxyWorker({
+          ...options,
+          paths: { ...paths, userCacheRoot: join(root, "foreign-cache") },
+          reusePolicy: "adopt",
+        }),
+      );
+      await adopted.close();
+      expect(JSON.parse((await request()).stdout).result).toMatchObject({
+        targets: [expect.objectContaining({ url: "https://demo.lndo.site:19004" })],
+      });
+      expect(pidIsAlive(before?.pid ?? 0)).toBe(true);
+    } finally {
+      await first.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   test("worker payload config digest is deterministic and independent of routes", async () => {
     const root = await tempRoot();
@@ -1267,7 +1433,7 @@ console.log(JSON.stringify({
     "identity-digest",
     "shim",
     "socket-file",
-    "socket-public",
+    "run-directory-public",
   ] as const)(
     "replaces a rejected %s real worker record without signalling foreign workers",
     async (rejection) => {
@@ -1328,9 +1494,9 @@ console.log(JSON.stringify({
             await rm(before.socketPath);
             await writeFile(before.socketPath, "not a socket", { mode: 0o600 });
             break;
-          case "socket-public":
+          case "run-directory-public":
             if (before.socketPath === undefined) throw new Error("Expected socket");
-            await chmod(before.socketPath, 0o666);
+            await chmod(dirname(before.socketPath), 0o755);
             break;
         }
         if (rejection !== "dead")
@@ -1401,7 +1567,7 @@ console.log(JSON.stringify({
       );
       expect(control.shutdowns()).toBe(1);
       expect((await Effect.runPromise(readWorkerRecord(app, { userDataRoot: root })))?.protocolVersion).toBe(
-        2,
+        HOST_PROXY_WORKER_PROTOCOL_VERSION,
       );
       await session.close();
     } finally {

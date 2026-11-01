@@ -7,7 +7,7 @@ import type { LandoEvent } from "@lando/sdk/services";
 import { Effect } from "effect";
 import type { InitAppOptions } from "../../src/cli/commands/init-options.ts";
 import { prepareInitApp } from "../../src/cli/commands/init-preparation.ts";
-import { initApp } from "../../src/cli/commands/init.ts";
+import { initAppWithProcessRunner as initApp } from "../_support/private-file-access.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 
 const roots: string[] = [];

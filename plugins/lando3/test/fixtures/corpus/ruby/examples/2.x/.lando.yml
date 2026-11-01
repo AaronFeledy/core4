@@ -1,0 +1,14 @@
+name: lando-ruby-2
+services:
+  defaults:
+    type: ruby
+    command: ruby /app/server.rb
+  patch:
+    type: ruby:2.7.7
+  cli:
+    type: ruby
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/ruby": ./../../

@@ -1,13 +1,10 @@
+import { DEBUGGER_HOST_ALIAS, HOST_GATEWAY_TARGET } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
-import {
-  addEnvRecord,
-  loopbackTcpHealthcheck,
-  serviceFeatureApply,
-  serviceFeatureValidateEffective,
-} from "./_feature-helpers.ts";
+import { addEnvRecord, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
 import { landoErrorPagesBuildStep } from "./http-errors.ts";
 import { phpBaselineBuildStep } from "./php-baseline.ts";
@@ -60,7 +57,10 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     composerStepId: PHP_COMPOSER_STEP_ID,
   });
   if (packages !== undefined) ctx.addBuildStep(packages);
-  if (xdebug !== false) addEnvRecord(ctx, phpXdebugConfigEnv());
+  if (xdebug !== false) {
+    addEnvRecord(ctx, phpXdebugConfigEnv());
+    ctx.addHostAlias({ hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET });
+  }
   switch (mode.via) {
     case "apache":
       ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
@@ -87,7 +87,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     default:
       absurd(mode);
   }
-  if (mode.listener !== undefined) ctx.setHealthcheck(loopbackTcpHealthcheck(mode.listener.port, 10));
+  if (mode.listener !== undefined) ctx.setHealthcheck(tcpProbe(mode.listener.port, 10));
   applyAuthoredProcessFields(ctx, ["user", "command", "entrypoint"]);
   ctx.addExtension("lando-service-php", { allowOverride, webroot, version, via });
 };

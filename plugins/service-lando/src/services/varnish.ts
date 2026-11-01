@@ -10,7 +10,7 @@ import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveBindSource } from "./_volume-helpers.ts";
 
-const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
+export const DEFAULT_PORT = Schema.decodeUnknownSync(PortNumber)(80);
 const DEFAULT_BACKEND_PORT = "80";
 const VCL_TARGET = "/etc/varnish/default.vcl";
 const GENERATED_VCL_PATH = "/tmp/lando-backend.vcl";

@@ -6,12 +6,9 @@ import {
   APP_COMMAND_MAGIC,
   type AppCommandIndexPayload,
   COMMAND_INDEX_SCHEMA_VERSION,
-  PLUGIN_COMMAND_MAGIC,
   decodeAppCommandIndex,
-  decodePluginCommandIndex,
   deriveAppCommandToolingFingerprint,
   encodeAppCommandIndex,
-  encodePluginCommandIndex,
 } from "../../src/cache/command-index.ts";
 
 describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
@@ -101,15 +98,22 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
     expect(view.getBigUint64(4, true)).toBe(COMMAND_INDEX_SCHEMA_VERSION);
   });
 
-  test("decodeAppCommandIndex returns null for the plugin magic (cache type mismatch)", () => {
-    const pluginBytes = encodePluginCommandIndex({
+  test("decodeAppCommandIndex returns null for a non-app magic (cache type mismatch)", () => {
+    const bytes = encodeAppCommandIndex({
       schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
       landoVersion: "0.0.0",
-      pluginNames: [],
+      appName: "n",
+      sourceFile: "/x/.lando.yml",
+      sourceMtimeMs: 0,
+      sourceSize: 0,
+      versionConstraints: [],
       generatedAtMs: 0,
       entries: [],
     });
-    expect(decodeAppCommandIndex(pluginBytes)).toBeNull();
+    // Flip first magic byte so the header no longer matches APP_COMMAND_MAGIC.
+    const wrong = new Uint8Array(bytes);
+    wrong[0] = 0x00;
+    expect(decodeAppCommandIndex(wrong)).toBeNull();
   });
 
   test("decodeAppCommandIndex returns null for truncated bytes", () => {
@@ -133,56 +137,6 @@ describe("encodeAppCommandIndex / decodeAppCommandIndex", () => {
     const bytes = encodeAppCommandIndex(payload);
     new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setBigUint64(4, 999n, true);
     expect(decodeAppCommandIndex(bytes)).toBeNull();
-  });
-});
-
-describe("encodePluginCommandIndex / decodePluginCommandIndex", () => {
-  test("roundtrips a plugin command index payload", () => {
-    const payload = {
-      schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
-      landoVersion: "0.0.0",
-      pluginNames: ["@lando/provider-lando", "@lando/service-lando"],
-      pluginListSha: "a".repeat(64),
-      commandsByPlugin: {
-        "@lando/provider-lando": ["meta:setup"],
-        "@lando/service-lando": ["meta:service:list"],
-      },
-      generatedAtMs: 1_700_000_000_000,
-      entries: [
-        { id: "meta:plugin:add", summary: "", hidden: false },
-        { id: "meta:plugin:remove", summary: "", hidden: false },
-      ],
-    };
-    const bytes = encodePluginCommandIndex(payload);
-    expect(decodePluginCommandIndex(bytes)).toEqual(payload);
-  });
-
-  test("writes the plugin magic identifier at the file head", () => {
-    const bytes = encodePluginCommandIndex({
-      schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
-      landoVersion: "0.0.0",
-      pluginNames: [],
-      generatedAtMs: 0,
-      entries: [],
-    });
-    for (let i = 0; i < PLUGIN_COMMAND_MAGIC.length; i++) {
-      expect(bytes[i]).toBe(PLUGIN_COMMAND_MAGIC[i] as number);
-    }
-  });
-
-  test("decodePluginCommandIndex returns null for the app magic (cache type mismatch)", () => {
-    const appBytes = encodeAppCommandIndex({
-      schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
-      landoVersion: "0.0.0",
-      appName: "n",
-      sourceFile: "/x/.lando.yml",
-      sourceMtimeMs: 0,
-      sourceSize: 0,
-      versionConstraints: [],
-      generatedAtMs: 0,
-      entries: [],
-    });
-    expect(decodePluginCommandIndex(appBytes)).toBeNull();
   });
 });
 

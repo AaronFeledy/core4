@@ -511,6 +511,8 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
 const landoRuntimeLiveTestSteps = `      - name: Run provider integration tests
         env:
           LANDO_PROVIDER_TEST_SUITE: \${{ matrix.suite }}
+          LANDO_SCENARIO_E2E_BINARY: \${{ github.workspace }}/dist/lando
+          LANDO_NATIVE_INIT_E2E: "1"
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
@@ -561,7 +563,7 @@ const landoProviderIntegrationSteps = `${landoRootlessPrereqSteps}\n\n${landoRun
 
 const linuxRuntimeBundleCacheMiss = "steps.runtime-bundle-cache.outputs.cache-hit != 'true'";
 
-const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
+export const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 40
     steps:
@@ -743,7 +745,7 @@ const guideScenarioRunCommand =
   "bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**";
 const guideScenarioLiveOutputEnv = `          LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"`;
 
-const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
+export const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 
 ${landoRuntimeBundleSetupSteps}`;
 

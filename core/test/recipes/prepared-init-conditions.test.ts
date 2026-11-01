@@ -49,6 +49,9 @@ test.each(["false", false])(
       ).toEqual([selected]);
       const lines: string[] = [];
       await runPostInit({
+        runBun: async () => {
+          throw new TypeError("Unexpected Bun action");
+        },
         actions: prepared.actions.map(({ value: action }) => action),
         destination: prepared.appRoot,
         recipeId: compiled.manifest.id,

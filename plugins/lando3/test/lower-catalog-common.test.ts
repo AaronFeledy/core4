@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { lowerCatalogCommon } from "../src/lower-catalog-common.ts";
 import type { ServiceLoweringContext } from "../src/lowering-contract.ts";
+import { testPorts } from "./fixtures/test-ports.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: testPorts().serviceFacts,
   serviceName: "app",
   keyPath: ["services", "app"],
   fallbackSourceId: "base",
@@ -29,9 +31,9 @@ describe("lowerCatalogCommon", () => {
 
   test("translates Tomcat webroot when it names a relative build directory", () => {
     // Given / When: Lando 3 uses a build directory as its webroot base.
-    const result = lowerCatalogCommon({ type: "tomcat", webroot: "target/app" }, ctx);
+    const result = lowerCatalogCommon({ type: "tomcat:10", webroot: "target/app" }, ctx);
     // Then: translation selects its ROOT webapp and reports lost multi-webapp deployment.
-    expect(result.patch).toEqual({ type: "tomcat", webroot: "target/app/webapps/ROOT" });
+    expect(result.patch).toEqual({ type: "tomcat:10", webroot: "target/app/webapps/ROOT" });
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics).toEqual([
       expect.objectContaining({
@@ -47,9 +49,9 @@ describe("lowerCatalogCommon", () => {
     "normalizes Tomcat source webroot %s",
     (webroot) => {
       // Given / When: a relative or absolute-looking legacy source path is lowered.
-      const result = lowerCatalogCommon({ type: "tomcat", webroot }, ctx);
+      const result = lowerCatalogCommon({ type: "tomcat:10", webroot }, ctx);
       // Then: the source path remains app-relative and only its ROOT webapp is deployed.
-      expect(result.patch).toEqual({ type: "tomcat", webroot: "site/webapps/ROOT" });
+      expect(result.patch).toEqual({ type: "tomcat:10", webroot: "site/webapps/ROOT" });
       expect(result.diagnostics).toEqual([
         expect.objectContaining({ kind: "needs-review", keyPath: [...ctx.keyPath, "webroot"] }),
       ]);
@@ -95,10 +97,10 @@ describe("lowerCatalogCommon", () => {
       kinds: [],
     },
     {
-      name: "publication without catalog port",
+      name: "publication with the default PHP listener",
       service: { type: "php:8.3", portforward: true },
-      patch: { type: "php:8.3" },
-      kinds: ["dropped"],
+      patch: { type: "php:8.3", ports: ["80"] },
+      kinds: ["rewritten"],
     },
     {
       name: "PHP config slots",
@@ -208,8 +210,8 @@ describe("lowerCatalogCommon", () => {
     {
       name: "internal SSL port",
       service: { type: "nginx", ssl: 3000, sslExpose: false },
-      patch: { type: "nginx", certs: true, endpoints: [{ _tag: "internal", protocol: "https", port: 3000 }] },
-      kinds: ["rewritten"],
+      patch: { type: "nginx", certs: true },
+      kinds: [],
     },
     {
       name: "published SSL port",
@@ -217,15 +219,14 @@ describe("lowerCatalogCommon", () => {
       patch: {
         type: "nginx",
         certs: true,
-        endpoints: [{ _tag: "published", protocol: "https", port: 3000, publication: {} }],
       },
-      kinds: ["rewritten"],
+      kinds: ["needs-review"],
     },
     {
       name: "sport string",
       service: { type: "nginx", sport: "8443" },
-      patch: { type: "nginx", certs: true, endpoints: [{ _tag: "internal", protocol: "https", port: 8443 }] },
-      kinds: ["rewritten"],
+      patch: { type: "nginx" },
+      kinds: ["dropped"],
     },
     {
       name: "sport overrides SSL port",
@@ -233,50 +234,49 @@ describe("lowerCatalogCommon", () => {
       patch: {
         type: "nginx",
         certs: true,
-        endpoints: [{ _tag: "published", protocol: "https", port: 8443, publication: {} }],
       },
-      kinds: ["rewritten"],
+      kinds: ["needs-review"],
     },
     {
       name: "enabled certificates",
       service: { type: "nginx", ssl: true },
       patch: { type: "nginx", certs: true },
-      kinds: ["rewritten"],
+      kinds: ["needs-review"],
     },
     {
       name: "disabled certificates",
       service: { type: "nginx", ssl: false },
       patch: { type: "nginx", certs: false },
-      kinds: ["rewritten"],
+      kinds: [],
     },
     {
       name: "environment list",
-      service: { type: "node", environment: ["A=1", "B=x=y", "EMPTY="] },
-      patch: { type: "node", environment: { A: "1", B: "x=y", EMPTY: "" } },
+      service: { type: "node:22", environment: ["A=1", "B=x=y", "EMPTY="] },
+      patch: { type: "node:22", environment: { A: "1", B: "x=y", EMPTY: "" } },
       kinds: [],
     },
     {
       name: "environment mapping",
-      service: { type: "node", environment: { A: 1, B: false, EMPTY: "", OMIT: null } },
-      patch: { type: "node", environment: { A: "1", B: "false", EMPTY: "" } },
+      service: { type: "node:22", environment: { A: 1, B: false, EMPTY: "", OMIT: null } },
+      patch: { type: "node:22", environment: { A: "1", B: "false", EMPTY: "" } },
       kinds: ["dropped"],
     },
     ...["cached", "delegated", "consistent"].map((app_mount) => ({
       name: `${app_mount} mount consistency`,
-      service: { type: "node", app_mount },
-      patch: { type: "node" },
+      service: { type: "node:22", app_mount },
+      patch: { type: "node:22" },
       kinds: ["dropped"],
     })),
     ...[false, "disabled", "off"].map((app_mount) => ({
       name: `${app_mount} app mount`,
-      service: { type: "node", app_mount },
-      patch: { type: "node", appMount: false },
+      service: { type: "node:22", app_mount },
+      patch: { type: "node:22", appMount: false },
       kinds: ["rewritten"],
     })),
     {
       name: "direct common fields",
-      service: { type: "node", command: ["npm", "start"], port: "3001", webroot: "public", user: "node" },
-      patch: { type: "node", command: ["npm", "start"], port: 3001, webroot: "public", user: "node" },
+      service: { type: "node:22", command: ["npm", "start"], port: "3001", webroot: "public", user: "node" },
+      patch: { type: "node:22", command: ["npm", "start"], port: 3001, webroot: "public", user: "node" },
       kinds: [],
     },
     {
@@ -299,8 +299,8 @@ describe("lowerCatalogCommon", () => {
     },
     {
       name: "legacy path and scripts directory",
-      service: { type: "node", path: ["/tools"], scriptsDir: "scripts" },
-      patch: { type: "node" },
+      service: { type: "node:22", path: ["/tools"], scriptsDir: "scripts" },
+      patch: { type: "node:22" },
       kinds: ["dropped", "dropped"],
     },
     {
@@ -403,7 +403,7 @@ describe("lowerCatalogCommon", () => {
     expect(result.patch).toEqual({});
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]?.kind).toBe("unsupported");
-    expect(result.diagnostics[0]?.message).toContain(type === "php" ? "unspecified" : "1.6");
+    expect(result.diagnostics[0]?.message).toContain(type === "php" ? "Lando 3 used php 7.4" : "1.6");
     if (type === "php") expect(result.diagnostics[0]?.remediation).toContain("8.3");
   });
 
@@ -472,11 +472,11 @@ describe("lowerCatalogCommon", () => {
 
   test.each(["mem", "plugins"])("drops %s when it is not an option of the service", (key) => {
     // Given an explicitly authored key unsupported by this service type.
-    const service = { type: "node", [key]: false };
+    const service = { type: "node:22", [key]: false };
     // When lowered.
     const result = lowerCatalogCommon(service, ctx);
     // Then the key is dropped with removal remediation, without blocking.
-    expect(result.patch).toEqual({ type: "node" });
+    expect(result.patch).toEqual({ type: "node:22" });
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({ kind: "dropped", keyPath: [...ctx.keyPath, key] });
@@ -486,9 +486,9 @@ describe("lowerCatalogCommon", () => {
 
   test("drops moreHttpPorts with manual endpoint remediation", () => {
     // Given / When
-    const result = lowerCatalogCommon({ type: "node", moreHttpPorts: ["8888"] }, ctx);
+    const result = lowerCatalogCommon({ type: "node:22", moreHttpPorts: ["8888"] }, ctx);
     // Then
-    expect(result.patch).toEqual({ type: "node" });
+    expect(result.patch).toEqual({ type: "node:22" });
     expect(result.blocked).toBeUndefined();
     expect(result.diagnostics).toHaveLength(1);
     expect(result.diagnostics[0]).toMatchObject({
@@ -501,9 +501,9 @@ describe("lowerCatalogCommon", () => {
 
   test("rewrites meUser as the service user", () => {
     // Given / When
-    const result = lowerCatalogCommon({ type: "node", meUser: "node" }, ctx);
+    const result = lowerCatalogCommon({ type: "node:22", meUser: "node" }, ctx);
     // Then
-    expect(result.patch).toEqual({ type: "node", user: "node" });
+    expect(result.patch).toEqual({ type: "node:22", user: "node" });
     expect(result.diagnostics).toEqual([
       expect.objectContaining({
         kind: "rewritten",

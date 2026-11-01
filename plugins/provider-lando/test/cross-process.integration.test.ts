@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -638,6 +638,31 @@ describe("provider-lando cross-process state", () => {
         if (!(failed.failure instanceof ProviderUnavailableError)) throw new Error("expected volume failure");
         expect(failed.failure.operation).toBe("bringDown.volume");
         expect(failed.failure.details).toEqual({
+          shutdownObservations: [
+            {
+              appId: plan.id,
+              providerId,
+              service: web.name,
+              containerId: "lando-crossprocessapp-web-id",
+              status: "unknown",
+              reason: "not-exited",
+            },
+            {
+              appId: plan.id,
+              providerId,
+              service: database.name,
+              containerId: "lando-crossprocessapp-database-id",
+              status: "unknown",
+              reason: "not-exited",
+            },
+          ],
+        });
+        expect(failed.failure.cause).toBeInstanceOf(ProviderUnavailableError);
+        if (!(failed.failure.cause instanceof ProviderUnavailableError))
+          throw new Error("expected volume cause");
+        expect(failed.failure.cause.providerId).toBe(providerId);
+        expect(failed.failure.cause.operation).toBe("bringDown.volume");
+        expect(failed.failure.cause.details).toEqual({
           name: "crossprocessapp_database_data",
           body: "volume busy",
         });
@@ -724,7 +749,7 @@ describe("provider-lando cross-process state", () => {
     });
   });
 
-  test("the same provider layer self-heals a killed managed runtime before inspect", async () => {
+  test("inspect reports an unavailable killed managed runtime without repairing it", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakePodmanState();
       const paths = runtimePaths(stateDir);
@@ -736,19 +761,23 @@ describe("provider-lando cross-process state", () => {
         (pid) => livePids.has(pid),
         (pid) => livePids.add(pid),
       );
-      let forceUnreachableUntilNextLaunch = false;
-      let launchBaseline = 0;
+      let runtimeAvailable = true;
+      let downloads = 0;
       const pingObservations: string[] = [];
+      const requestApi = fake.api.request;
+      if (requestApi === undefined) throw new Error("expected request-capable fixture");
       const podmanApi: PodmanApiClient = {
         ...fake.api,
         ping: Effect.gen(function* () {
-          if (!forceUnreachableUntilNextLaunch || launchCount() > launchBaseline) {
+          if (runtimeAvailable) {
             pingObservations.push("reachable");
             return;
           }
           pingObservations.push("unreachable-after-kill");
           return yield* Effect.fail(unavailable());
         }),
+        request: (request) =>
+          Effect.suspend(() => (runtimeAvailable ? requestApi(request) : Effect.fail(unavailable()))),
       };
 
       const provider = await runOnce(
@@ -758,6 +787,10 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi,
               podmanService: serviceRunner,
+              artifactDownload: () => {
+                downloads += 1;
+                return Effect.fail(unavailable());
+              },
               stateDir,
               appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
@@ -774,25 +807,33 @@ describe("provider-lando cross-process state", () => {
       const firstPid = Number(await readFile(paths.providerPidPath, "utf8"));
       expect(livePids.has(firstPid)).toBe(true);
 
-      launchBaseline = firstLaunches;
-      forceUnreachableUntilNextLaunch = true;
+      const serviceCallsBeforeInspect = [...serviceCalls];
+      const pingCountBeforeInspect = pingObservations.length;
+      const configFiles = await readdir(paths.runtimeConfigDir);
+      const configStats = await Promise.all(
+        configFiles.map((file) => stat(join(paths.runtimeConfigDir, file))),
+      );
+      runtimeAvailable = false;
       livePids.delete(firstPid);
 
-      const snapshot = await runOnce(provider.inspect({ app: plan.id, service: web.name }));
+      const result = await runOnce(Effect.result(provider.inspect({ app: plan.id, service: web.name })));
 
-      expect(snapshot.app).toBe(plan.id);
-      expect(snapshot.service).toBe(web.name);
-      expect(snapshot.state).toBe("running");
-      expect(launchCount()).toBe(firstLaunches + 1);
-      expect(serviceCalls.slice(-2)).toEqual([
-        ["isAlive", firstPid],
-        ["launch", canonicalRuntimeArgs(paths)],
-      ]);
-      const healedPid = Number(await readFile(paths.providerPidPath, "utf8"));
-      expect(healedPid).not.toBe(firstPid);
-      expect(livePids.has(healedPid)).toBe(true);
-      expect(pingObservations).toContain("unreachable-after-kill");
-      expect(pingObservations.at(-1)).toBe("reachable");
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") throw new Error("expected unavailable inspection");
+      expect(result.failure).toBeInstanceOf(ProviderUnavailableError);
+      if (!(result.failure instanceof ProviderUnavailableError)) throw new Error("expected provider failure");
+      expect(result.failure.providerId).toBe(providerId);
+      expect(result.failure.operation).toBe("podman-api");
+      expect(launchCount()).toBe(firstLaunches);
+      expect(serviceCalls).toEqual(serviceCallsBeforeInspect);
+      expect(downloads).toBe(0);
+      expect(pingObservations).toHaveLength(pingCountBeforeInspect);
+      expect(await readFile(paths.providerPidPath, "utf8")).toBe(String(firstPid));
+      expect(await readdir(paths.runtimeConfigDir)).toEqual(configFiles);
+      const afterStats = await Promise.all(
+        configFiles.map((file) => stat(join(paths.runtimeConfigDir, file))),
+      );
+      expect(afterStats.map((info) => info.mtimeMs)).toEqual(configStats.map((info) => info.mtimeMs));
     });
   });
 

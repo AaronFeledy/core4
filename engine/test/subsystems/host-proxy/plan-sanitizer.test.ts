@@ -40,13 +40,15 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
       LANDO_HOST_PROXY_SESSION: "session-id",
     },
     mounts: [
-      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
-        type: "bind" as const,
-        source: "/tmp/lando-shim",
-        target: PortablePath.make(target),
-        readOnly: true,
-        realization: "passthrough" as const,
-      })),
+      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open", "/run/lando/host-proxy/credentials"].map(
+        (target) => ({
+          type: "bind" as const,
+          source: "/tmp/lando-shim",
+          target: PortablePath.make(target),
+          readOnly: true,
+          realization: "passthrough" as const,
+        }),
+      ),
       {
         type: "bind",
         source: "/tmp/lando-shim",
@@ -142,11 +144,15 @@ test("sanitizer strips ssh-agent overlay", async () => {
     extensions: {},
   };
   const overlaid = Effect.runSync(
-    withSshAgentOverlay(plan, {
-      kind: "ssh",
-      socketName: "agent.sock",
-      mount: { _tag: "volume", volume: "agent" },
-    }),
+    withSshAgentOverlay(
+      plan,
+      {
+        kind: "ssh",
+        socketName: "agent.sock",
+        mount: { _tag: "volume", volume: "agent" },
+      },
+      { knownHostsFile: "/home/user/.ssh/known_hosts" },
+    ),
   );
   // When
   const result = await Effect.runPromise(
@@ -206,6 +212,60 @@ test("sanitizer strips gpg-agent overlay", async () => {
   );
   expect(overlaid.services[service.name]?.environment.GNUPGHOME).toBe("/tmp/lando-gnupg");
   expect(overlaid.services[service.name]?.mounts).toHaveLength(2);
+  // When
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      return (yield* AppPlanSanitizer).sanitizeForPersistence(overlaid);
+    }).pipe(Effect.provide(AppPlanSanitizerLayer.layer)),
+  );
+  // Then
+  expect(result).toEqual(plan);
+});
+
+test("sanitizer strips resolved debugger host back to the gateway sentinel", async () => {
+  const { applyDebuggerHost } = await import("../../../src/subsystems/debugger-host.ts");
+  const { DEBUGGER_HOST_ALIAS, HOST_GATEWAY_TARGET } = await import("@lando/sdk/schema");
+  // Given
+  const metadata = {
+    resolvedAt: DateTime.makeUnsafe("2026-01-01T00:00:00Z"),
+    source: "sanitizer-test",
+    runtime: 4,
+  } satisfies AppPlan["metadata"];
+  const service: ServicePlan = {
+    name: ServiceName.make("web"),
+    type: "lando",
+    provider: ProviderId.make("lando"),
+    primary: true,
+    environment: {},
+    mounts: [],
+    endpoints: [],
+    routes: [],
+    dependsOn: [],
+    hostAliases: [
+      { hostname: "host.lando.internal", ip: HOST_GATEWAY_TARGET },
+      { hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET },
+    ],
+    metadata,
+    extensions: {},
+  };
+  const plan: AppPlan = {
+    id: AppId.make("demo"),
+    name: "demo",
+    slug: "demo",
+    root: AbsolutePath.make("/app/demo"),
+    provider: ProviderId.make("lando"),
+    services: { [service.name]: service },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  };
+  const overlaid = applyDebuggerHost(plan, "192.0.2.40");
+  expect(overlaid.services[service.name]?.hostAliases).toContainEqual({
+    hostname: DEBUGGER_HOST_ALIAS,
+    ip: "192.0.2.40",
+  });
   // When
   const result = await Effect.runPromise(
     Effect.gen(function* () {

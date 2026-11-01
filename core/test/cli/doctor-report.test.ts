@@ -329,7 +329,7 @@ describe("meta:doctor combined report", () => {
     }
     expect(text).toContain("global-app:");
     expect(text).toContain("solution[manual]:");
-    expect(text).toContain("lando global:install");
+    expect(text).toContain("lando global:reconcile");
     expect(text).not.toContain("[object Object]");
   });
 
@@ -347,7 +347,7 @@ describe("meta:doctor combined report", () => {
     expect(check?.name).toBe("global-app");
     expect(check?.status).toBe("warn");
     expect(check?.context.installed).toBe("false");
-    expect(check?.solutions[0]?.command).toBe("lando global:install");
+    expect(check?.solutions[0]?.command).toBe("lando global:reconcile");
   });
 
   test("combined ndjson renderer emits provider, subsystem, and global-app checks in one stream", async () => {
@@ -357,6 +357,7 @@ describe("meta:doctor combined report", () => {
     const checks = eventPayloads(ndjson);
     expect(checks.map((line) => line.name)).toEqual([
       "subsystems",
+      "debugger-host",
       "selected-provider",
       "runtime-service",
       "exec-umask",

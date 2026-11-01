@@ -16,7 +16,7 @@ import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 const DEFAULT_IMAGE = "opensearchproject/opensearch:2";
 const VERSIONS = ["2"] as const;
 const ARTIFACTS = { "2": DEFAULT_IMAGE } as const;
-const DEFAULT_PORT = 9200;
+export const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/opensearch/data");
 export const OPENSEARCH_FEATURE_ID = "service-lando.opensearch";
 

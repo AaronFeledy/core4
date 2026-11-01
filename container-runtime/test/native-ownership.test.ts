@@ -190,8 +190,8 @@ for (const path of ["bring-up", "bring-down"] as const) {
       // When bring-up fails closed or bring-down validates ownership.
       const result = await Effect.runPromise(
         (path === "bring-up"
-          ? bringUp(aliased, { api: fake.api, ctx })
-          : bringDown({ ...aliased, services: {} }, { api: fake.api, ctx })
+          ? bringUp(aliased, { api: fake.api, ctx }).pipe(Effect.asVoid)
+          : bringDown({ ...aliased, services: {} }, { api: fake.api, ctx }).pipe(Effect.asVoid)
         ).pipe(Effect.result),
       );
       // Then neither path can delete the aliased network.

@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 
 import { LandofileShape, RabbitMQServiceConfig, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
 
 import {
   RABBITMQ_FEATURE_ID,
@@ -138,14 +139,8 @@ describe("rabbitmq ServiceType", () => {
           RABBITMQ_DEFAULT_USER: "lando",
           RABBITMQ_DEFAULT_PASS: "lando",
         });
-        expect(plan.healthcheck).toEqual({
-          kind: "command",
-          command: ["rabbitmq-diagnostics", "-q", "ping"],
-          intervalSeconds: 10,
-          timeoutSeconds: 5,
-          retries: 5,
-          startPeriodSeconds: 30,
-        });
+        expect(plan.healthcheck).toEqual(rabbitmqProbes(5672).healthcheck);
+        expect(plan.readiness).toEqual(rabbitmqProbes(5672).readiness);
       });
 
       test("resolves default tooling", async () => {
@@ -205,7 +200,8 @@ describe("rabbitmq ServiceType", () => {
           RABBITMQ_NODE_PORT: "25672",
           EXTRA_VAR: "extra",
         });
-        expect(plan.healthcheck?.command).toEqual(["rabbitmq-diagnostics", "-q", "ping"]);
+        expect(plan.healthcheck).toEqual(rabbitmqProbes(25672).healthcheck);
+        expect(plan.readiness).toEqual(rabbitmqProbes(25672).readiness);
         expect(plan.command).toEqual(["rabbitmq-server"]);
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(String(plan.workingDirectory)).toBe("/var/lib/rabbitmq");

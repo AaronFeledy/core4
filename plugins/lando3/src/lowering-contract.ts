@@ -1,10 +1,19 @@
 import type { ConfigTranslateDiagnostic, ConfigTranslateExpectation } from "@lando/sdk/schema";
-import type { Lando3Path, LegacyOccurrence } from "./contract.ts";
+import type { ClaimCursor } from "./claims.ts";
+import type { Lando3Path, Lando3TranslatorPorts, LegacyOccurrence } from "./contract.ts";
 
 export type V4Wire = Readonly<Record<string, unknown>>;
 
+export type MountFilterLocation = {
+  readonly keyPath: Lando3Path;
+  readonly occurrence: LegacyOccurrence | undefined;
+};
+
 export interface ServiceLoweringContext {
+  readonly serviceFacts: Lando3TranslatorPorts["serviceFacts"];
   readonly serviceName: string;
+  readonly appSlug?: string;
+  readonly cursor?: ClaimCursor;
   readonly keyPath: Lando3Path;
   readonly fallbackSourceId: string;
   /** Looks up a path relative to this service, such as ["overrides", "tty"]. */
@@ -12,10 +21,12 @@ export interface ServiceLoweringContext {
   readonly topLevel: {
     readonly excludes: ReadonlyArray<string>;
     readonly includes: ReadonlyArray<string>;
+    readonly includeLocations?: readonly MountFilterLocation[];
   };
 }
 
 export interface LoweringPatch {
+  readonly claims?: readonly Lando3Path[];
   readonly patch: V4Wire;
   readonly companions?: Readonly<Record<string, V4Wire>>;
   readonly topLevel?: V4Wire;
@@ -71,6 +82,7 @@ export const mergePatches = (...patches: ReadonlyArray<LoweringPatch>): Lowering
         ? { topLevel: mergeWire(merged.topLevel ?? {}, next.topLevel ?? {}) }
         : {}),
       diagnostics: [...merged.diagnostics, ...next.diagnostics],
+      claims: [...(merged.claims ?? []), ...(next.claims ?? [])],
       ...(merged.blocked === true || next.blocked === true ? { blocked: true as const } : {}),
     };
   }, emptyPatch);

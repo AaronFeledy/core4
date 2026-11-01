@@ -50,6 +50,7 @@ const OPTIONAL_FIELDS = [
   "composeServiceFields",
   "fileSyncTargets",
   "hostProxy",
+  "serviceInit",
 ] as const;
 
 const COMPOSE_PRESERVED_PATH_KEYS = ["depends_on.*.restart", "healthcheck.start_interval"] as const;
@@ -71,7 +72,6 @@ const COMPOSE_SERVICE_KNOB_KEYS = [
   "dns_search",
   "dns_opt",
   "extra_hosts",
-  "init",
   "stop_signal",
   "stop_grace_period",
   "security_opt",
@@ -167,7 +167,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the documented capability fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(37);
+    expect(actual).toHaveLength(38);
   });
 
   test("defaults architectureEmulation to false when omitted", () => {

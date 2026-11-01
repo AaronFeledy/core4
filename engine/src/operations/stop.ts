@@ -37,6 +37,7 @@ import {
   prepareOwnedResourceCleanup,
   tearDownOwnedResources,
 } from "./owned-resource-teardown.ts";
+import { withShutdownObservations } from "./shutdown-observations.ts";
 import { preflightStopApp, stopAppWithPlanUnlocked } from "./stop-internal.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
@@ -208,12 +209,13 @@ const stopOrphans = (
     groups: resolution.groups,
     options: { volumes: false, purgeCaches: false },
   }).pipe(
-    Effect.map(
-      (removed): StopAppResult =>
+    Effect.map((removed): StopAppResult => {
+      const base: StopAppResult =
         removed.services.length === 0 && !removed.ownedChanged
           ? unchangedResult(removed.app)
-          : { app: removed.app, outcome: "stopped", servicesStopped: removed.services },
-    ),
+          : { app: removed.app, outcome: "stopped", servicesStopped: removed.services };
+      return withShutdownObservations(base, removed.shutdownObservations);
+    }),
   );
 
 const stopDesiredOrUnchanged = (

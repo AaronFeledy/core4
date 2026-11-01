@@ -18,6 +18,7 @@ import {
   ShellRunner,
   ToolingEngine,
 } from "@lando/sdk/services";
+import { ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { DateTime, Effect, Layer, Schema } from "effect";
@@ -25,6 +26,7 @@ import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { makeShellRunnerService } from "../../src/services/shell-runner.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
 
@@ -51,14 +53,19 @@ const harness = (
   const plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
+    BunProcessRunner.layer,
     testEnvironmentResolverLayer,
     EventRuntime.layer,
     Layer.succeed(PrivateFileAccessService, ownerOnlyFileAccess),
     Layer.succeed(
       ShellRunner,
-      makeShellRunnerService(() => {
-        throw new Error("unused REPL");
-      }, ownerOnlyFileAccess),
+      makeShellRunnerService(
+        () => {
+          throw new Error("unused REPL");
+        },
+        ownerOnlyFileAccess,
+        Effect.runSync(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer))),
+      ),
     ),
     Layer.succeed(
       ToolingEngine,

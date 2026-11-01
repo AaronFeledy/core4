@@ -51,6 +51,93 @@ jobs:
           path: core/container-helper/dist/
           if-no-files-found: error
           retention-days: 14
+  runtime-bundle-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Restore assembled Linux x64 runtime bundle
+        id: runtime-bundle-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          key: runtime-bundle-linux-x64-${{ hashFiles('plugins/provider-lando/runtime-bundle-sources.json', 'scripts/assemble-runtime-bundle.ts', 'scripts/runtime-bundle-fetch.ts', 'scripts/runtime-bundle-licenses.ts', 'scripts/linux-podman-source-build.ts', 'scripts/linux-podman-portability.ts', 'scripts/patches/netavark-v2.0.0-systemd-user-bus.patch', 'scripts/runtime-bundle-sources.ts', 'scripts/runtime-bundle-supply-chain.ts', 'scripts/build-runtime-bundle.ts') }}
+
+      - name: Setup Bun
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Setup Go for Linux Podman source build
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.25.6
+
+      - name: Setup Rust for Linux helper source builds
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4
+
+      - name: Install Linux Podman source-build prerequisites
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          UBUNTU_SNAPSHOT=20261019T000000Z
+          printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
+          # Prefer snapshot dependencies even when the runner has newer versions installed.
+          printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
+          for DELAY in 0 5 15 45; do
+            if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
+            if sudo apt-get update --error-on=any; then break; fi
+            if [ "$DELAY" -eq 45 ]; then
+              echo "::error title=runtime-bundle-apt-snapshot::Failed to update Ubuntu snapshot $UBUNTU_SNAPSHOT indexes after 4 attempts"
+              exit 1
+            fi
+          done
+          PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev patch pkg-config protobuf-compiler uidmap)
+          sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
+          for PACKAGE in "${PACKAGES[@]}"; do
+            INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
+            POLICY="$(apt-cache policy "$PACKAGE")"
+            CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
+            test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
+            if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
+              $1 == "***" && $2 == candidate { candidate_block = 1; next }
+              candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
+              candidate_block { candidate_block = 0 }
+              END { exit found ? 0 : 1 }
+            ' <<< "$POLICY"; then
+              echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
+              exit 1
+            fi
+          done
+
+      - name: Assemble current-commit Linux x64 runtime bundle
+        if: steps.runtime-bundle-cache.outputs.cache-hit != 'true'
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
+
+      - name: Upload current-commit Linux x64 runtime bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-bundle-linux-x64-current
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::runtime-bundle-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 40m)"
+
 
   file-sync-contract-linux-x64:
     runs-on: ubuntu-26.04
@@ -72,6 +159,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run file-sync contract matrix (linux-x64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -98,6 +187,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run file-sync contract matrix (darwin-arm64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -124,6 +215,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run file-sync contract matrix (darwin-x64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -150,6 +243,8 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run file-sync contract matrix (windows-x64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -157,7 +252,7 @@ jobs:
           LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   provider-lando-e2e-linux-x64:
-    needs: [container-helper]
+    needs: [container-helper, runtime-bundle-linux-x64]
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
@@ -191,46 +286,53 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      - name: Install Podman 6 toolchain (Homebrew; Ubuntu/OBS lack Podman 6)
+      - name: Build Linux x64 binary
+        run: |
+          mkdir -p dist
+          bun run --filter='@lando/core' build:manifest
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          ./dist/lando --version
+
+      - name: Provision rootless runtime prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y uidmap fuse-overlayfs
-          if ! command -v brew >/dev/null 2>&1; then
-            test -x /home/linuxbrew/.linuxbrew/bin/brew
-            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
           fi
-          brew update
-          brew install podman
-          BREW_PREFIX="$(brew --prefix)"
-          echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
-          echo "LANDO_CI_PODMAN_HELPER_DIR=$BREW_PREFIX/opt/podman/libexec/podman" >> "$GITHUB_ENV"
-          # The OCI runtime and monitor are separate Homebrew formulae that Homebrew does
-          # not link onto PATH, so a bundle-staging step that searches PATH would copy
-          # the runner's preinstalled (older) crun/conmon and Podman 6 would reject their
-          # OCI config version. Export the Podman 6 toolchain directories so staging can
-          # prefer them over the system copies.
-          toolchain_dirs="$BREW_PREFIX/opt/podman/libexec/podman:$BREW_PREFIX/bin"
-          for dep in crun conmon fuse-overlayfs; do
-            dep_prefix="$(brew --prefix "$dep" 2>/dev/null || true)"
-            if test -n "$dep_prefix" && test -d "$dep_prefix/bin"; then
-              toolchain_dirs="$dep_prefix/bin:$toolchain_dirs"
-            fi
-          done
-          echo "LANDO_CI_PODMAN_TOOLCHAIN_DIRS=$toolchain_dirs" >> "$GITHUB_ENV"
-          # The managed runtime resolves its OCI runtime from the default system search
-          # list (/usr/bin/crun first), not from the bundle or helper_binaries_dir, so a
-          # runner's preinstalled crun that predates Podman 6 makes container start fail
-          # with "crun: unknown version specified". Overwrite the default-path crun with
-          # the Podman 6 toolchain build (its interpreter/RPATH stay absolute to the
-          # Homebrew prefix, which persists on the runner).
-          crun_prefix="$(brew --prefix crun 2>/dev/null || true)"
-          if test -n "$crun_prefix" && test -x "$crun_prefix/bin/crun"; then
-            sudo install -m 0755 "$crun_prefix/bin/crun" /usr/bin/crun
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
           fi
-          # User-level container configs override any system files wholesale, so seed
-          # them instead of mutating /etc: a distro-era /etc/containers/registries.conf
-          # can be v1-format TOML, and appending v2 keys to it makes every podman
-          # engine load fail with "registries.conf must be in v2 format but is in v1".
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
+
+      - name: Download current-commit Linux x64 runtime bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-linux-x64-current
+          path: dist/cache/runtime-bundle
+
+      - name: Build local runtime bundle manifest
+        run: |
+          test -f dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64 --runtime-version "$RUNTIME_VERSION")"
+          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+
+      - name: Seed rootless containers user config
+        run: |
+          # User-level configs override system files wholesale. Distro
+          # /etc/containers/registries.conf can still be v1 TOML; Podman 6
+          # rejects that with "registries.conf must be in v2 format but is in v1".
           mkdir -p "$HOME/.config/containers"
           if ! test -f "$HOME/.config/containers/registries.conf"; then
             printf 'unqualified-search-registries = ["docker.io"]\n' > "$HOME/.config/containers/registries.conf"
@@ -238,83 +340,88 @@ jobs:
           if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
             printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > "$HOME/.config/containers/policy.json"
           fi
-          # The runner image's system-level container config is outside our control and
-          # changes between image releases. Pin the cgroup manager at user level so this
-          # lane remains deterministic.
-          if ! test -f "$HOME/.config/containers/containers.conf"; then
-            if test -d /run/systemd/system; then
-              printf '[engine]\ncgroup_manager = "systemd"\n' > "$HOME/.config/containers/containers.conf"
-            else
-              printf '[engine]\ncgroup_manager = "cgroupfs"\n' > "$HOME/.config/containers/containers.conf"
-            fi
-          fi
-          # A system-level storage.conf left behind by a distro podman install pins the
-          # rootful runroot/graphroot, which Podman 6 honors literally for rootless
-          # users. Seed a rootless-safe user-level storage.conf so the default service
-          # always resolves user paths.
-          if ! test -f "$HOME/.config/containers/storage.conf"; then
-            printf '[storage]\ndriver = "overlay"\nrunroot = "%s"\ngraphroot = "%s"\n' \
-              "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/containers" \
-              "$HOME/.local/share/containers/storage" > "$HOME/.config/containers/storage.conf"
-          fi
-          podman --version
 
-      - name: Assert Podman 6 host contract
+      - name: Configure rootless overlay storage
         run: |
-          MINIMUM="6.0.0"
-          version_output="$(podman --version 2>/dev/null || true)"
-          numbers="$(printf '%s\n' "$version_output" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
-          remediation="Install Podman >= $MINIMUM (Homebrew formula: podman) before Podman-backed CI runs."
-          if test -z "$numbers"; then
-            echo "::error title=podman6-contract::Could not parse a Podman version from '${version_output:-<no podman on PATH>}'. $remediation"
-            exit 1
-          fi
-          major="${numbers%%.*}"
-          minor_patch="${numbers#*.}"
-          minor="${minor_patch%%.*}"
-          patch="${minor_patch#*.}"
-          floor_major="${MINIMUM%%.*}"
-          floor_minor_patch="${MINIMUM#*.}"
-          floor_minor="${floor_minor_patch%%.*}"
-          floor_patch="${floor_minor_patch#*.}"
-          meets=yes
-          if test "$major" -lt "$floor_major"; then
-            meets=no
-          elif test "$major" -eq "$floor_major"; then
-            if test "$minor" -lt "$floor_minor"; then
-              meets=no
-            elif test "$minor" -eq "$floor_minor" && test "$patch" -lt "$floor_patch"; then
-              meets=no
-            fi
-          fi
-          if test "$meets" = no; then
-            echo "::error title=podman6-contract::Podman $numbers (from '$version_output') does not satisfy the >= $MINIMUM host contract. $remediation"
-            exit 1
-          fi
-          echo "podman6-contract: $numbers satisfies >= $MINIMUM"
+          cat > dist/cache/runtime-bundle/storage.conf <<EOF
+          [storage]
+          driver = "overlay"
 
-      - name: Enable unprivileged port binding
-        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          [storage.options.overlay]
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
+          EOF
+          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
-      - name: Start Podman socket
+      - name: Prepare provider via lando setup
         run: |
-          podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
-          echo "$!" > /tmp/podman-service.pid
-          for i in {1..30}; do test -S /tmp/podman.sock && break; sleep 1; done
-          curl --fail --max-time 5 --unix-socket /tmp/podman.sock http://localhost/_ping
-          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
 
-      - name: Build Linux x64 binary
+      - name: Verify managed runtime socket
         run: |
-          bun run --filter='@lando/core' build:manifest
-          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
-          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./core/dist/lando --version "$VERSION" --minify --sourcemap=external
-          bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
-          ./core/dist/lando --version
+          for _ in {1..30}; do
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
+            sleep 1
+          done
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          curl --fail --max-time 5 --unix-socket "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
+
+      - name: Gate platform readiness doctor
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
+
+      - name: Configure Docker socket
+        run: |
+          test -S /var/run/docker.sock
+          echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
+
+      - name: Pre-pull container images
+        run: |
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          pull_image() {
+            local image="$1"
+            for attempt in 1 2 3; do
+              "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull "$image" && return 0
+              if test "$attempt" -eq 3; then return 1; fi
+              sleep $((attempt * 5))
+            done
+          }
+          docker_pull_image() {
+            local image="$1"
+            for attempt in 1 2 3; do
+              docker pull "$image" && return 0
+              if test "$attempt" -eq 3; then return 1; fi
+              sleep $((attempt * 5))
+            done
+          }
+          pull_image docker.io/library/alpine:3.21
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/node:22
+          pull_image docker.io/library/postgres:16
+          pull_image docker.io/library/postgres:16-alpine
+          pull_image docker.io/library/golang:1.22
+          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image docker.io/getmeili/meilisearch:v1.11
+          pull_image docker.io/axllent/mailpit:v1.30.1
+          pull_image docker.io/library/mariadb:11.4
+          pull_image docker.io/library/memcached:1.6
+          pull_image docker.io/library/mongo:7
+          pull_image docker.io/library/mysql:8.0
+          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/opensearchproject/opensearch:2
+          pull_image docker.io/library/solr:9
+          pull_image docker.io/library/traefik:v3.3
+          pull_image docker.io/valkey/valkey:8
+          docker_pull_image docker.io/library/node:22-alpine
+          docker_pull_image docker.io/library/node:22
 
       - name: Run e2e guide scenarios
         run: |
-          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\[e2e\]"
         env:
           LANDO_GUIDE_E2E: "1"
           LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"
@@ -322,23 +429,26 @@ jobs:
 
       - name: Run live integration suites
         run: |
-          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
         env:
           LANDO_CONFIG__default_provider_id: lando
 
-      - name: Teardown Podman
+      - name: Teardown Lando runtime
         if: always()
         run: |
-          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
-          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
-          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
-          rm -f /tmp/podman.sock /tmp/podman-service.pid
+          dist/lando poweroff || true
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
 
       - name: Collect provider-lando e2e diagnostics
         if: failure()
         run: |
           mkdir -p provider-lando-e2e-diagnostics
-          cp /tmp/podman-service.log provider-lando-e2e-diagnostics/podman-service.log || true
+          dist/lando doctor --format json > provider-lando-e2e-diagnostics/doctor.json 2>&1 || true
+          cp "$LANDO_USER_DATA_ROOT/runtime/run/service.log" provider-lando-e2e-diagnostics/podman-service.log || true
+          cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-lando-e2e-diagnostics/lando-logs || true
           cp -r dist/transcripts/guides provider-lando-e2e-diagnostics/guide-transcripts || true
           journalctl --no-pager --since "-30 minutes" > provider-lando-e2e-diagnostics/journalctl.log 2>&1 || true
 
@@ -352,7 +462,7 @@ jobs:
           retention-days: 7
 
   service-listeners-linux-x64:
-    needs: [container-helper]
+    needs: [container-helper, runtime-bundle-linux-x64]
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
@@ -391,46 +501,54 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      - name: Install Podman 6 toolchain (Homebrew; Ubuntu/OBS lack Podman 6)
+      - name: Compile current listener CLI
+        run: |
+          mkdir -p dist
+          bun run --filter='@lando/core' build:manifest
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          ./dist/lando --version
+          echo "LANDO_SCENARIO_E2E_BINARY=$GITHUB_WORKSPACE/dist/lando" >> "$GITHUB_ENV"
+
+      - name: Provision rootless runtime prerequisites
         run: |
           sudo apt-get update
           sudo apt-get install -y uidmap fuse-overlayfs
-          if ! command -v brew >/dev/null 2>&1; then
-            test -x /home/linuxbrew/.linuxbrew/bin/brew
-            eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
           fi
-          brew update
-          brew install podman
-          BREW_PREFIX="$(brew --prefix)"
-          echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"
-          echo "LANDO_CI_PODMAN_HELPER_DIR=$BREW_PREFIX/opt/podman/libexec/podman" >> "$GITHUB_ENV"
-          # The OCI runtime and monitor are separate Homebrew formulae that Homebrew does
-          # not link onto PATH, so a bundle-staging step that searches PATH would copy
-          # the runner's preinstalled (older) crun/conmon and Podman 6 would reject their
-          # OCI config version. Export the Podman 6 toolchain directories so staging can
-          # prefer them over the system copies.
-          toolchain_dirs="$BREW_PREFIX/opt/podman/libexec/podman:$BREW_PREFIX/bin"
-          for dep in crun conmon fuse-overlayfs; do
-            dep_prefix="$(brew --prefix "$dep" 2>/dev/null || true)"
-            if test -n "$dep_prefix" && test -d "$dep_prefix/bin"; then
-              toolchain_dirs="$dep_prefix/bin:$toolchain_dirs"
-            fi
-          done
-          echo "LANDO_CI_PODMAN_TOOLCHAIN_DIRS=$toolchain_dirs" >> "$GITHUB_ENV"
-          # The managed runtime resolves its OCI runtime from the default system search
-          # list (/usr/bin/crun first), not from the bundle or helper_binaries_dir, so a
-          # runner's preinstalled crun that predates Podman 6 makes container start fail
-          # with "crun: unknown version specified". Overwrite the default-path crun with
-          # the Podman 6 toolchain build (its interpreter/RPATH stay absolute to the
-          # Homebrew prefix, which persists on the runner).
-          crun_prefix="$(brew --prefix crun 2>/dev/null || true)"
-          if test -n "$crun_prefix" && test -x "$crun_prefix/bin/crun"; then
-            sudo install -m 0755 "$crun_prefix/bin/crun" /usr/bin/crun
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
           fi
-          # User-level container configs override any system files wholesale, so seed
-          # them instead of mutating /etc: a distro-era /etc/containers/registries.conf
-          # can be v1-format TOML, and appending v2 keys to it makes every podman
-          # engine load fail with "registries.conf must be in v2 format but is in v1".
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
+
+      - name: Download current-commit Linux x64 runtime bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-linux-x64-current
+          path: dist/cache/runtime-bundle
+
+      - name: Build local runtime bundle manifest
+        run: |
+          test -f dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64 --runtime-version "$RUNTIME_VERSION")"
+          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+
+      - name: Seed rootless containers user config
+        run: |
+          # User-level configs override system files wholesale. Distro
+          # /etc/containers/registries.conf can still be v1 TOML; Podman 6
+          # rejects that with "registries.conf must be in v2 format but is in v1".
           mkdir -p "$HOME/.config/containers"
           if ! test -f "$HOME/.config/containers/registries.conf"; then
             printf 'unqualified-search-registries = ["docker.io"]\n' > "$HOME/.config/containers/registries.conf"
@@ -438,80 +556,87 @@ jobs:
           if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
             printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > "$HOME/.config/containers/policy.json"
           fi
-          # The runner image's system-level container config is outside our control and
-          # changes between image releases. Pin the cgroup manager at user level so this
-          # lane remains deterministic.
-          if ! test -f "$HOME/.config/containers/containers.conf"; then
-            if test -d /run/systemd/system; then
-              printf '[engine]\ncgroup_manager = "systemd"\n' > "$HOME/.config/containers/containers.conf"
-            else
-              printf '[engine]\ncgroup_manager = "cgroupfs"\n' > "$HOME/.config/containers/containers.conf"
-            fi
-          fi
-          # A system-level storage.conf left behind by a distro podman install pins the
-          # rootful runroot/graphroot, which Podman 6 honors literally for rootless
-          # users. Seed a rootless-safe user-level storage.conf so the default service
-          # always resolves user paths.
-          if ! test -f "$HOME/.config/containers/storage.conf"; then
-            printf '[storage]\ndriver = "overlay"\nrunroot = "%s"\ngraphroot = "%s"\n' \
-              "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/containers" \
-              "$HOME/.local/share/containers/storage" > "$HOME/.config/containers/storage.conf"
-          fi
-          podman --version
 
-      - name: Assert Podman 6 host contract
+      - name: Configure rootless overlay storage
         run: |
-          MINIMUM="6.0.0"
-          version_output="$(podman --version 2>/dev/null || true)"
-          numbers="$(printf '%s\n' "$version_output" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"
-          remediation="Install Podman >= $MINIMUM (Homebrew formula: podman) before Podman-backed CI runs."
-          if test -z "$numbers"; then
-            echo "::error title=podman6-contract::Could not parse a Podman version from '${version_output:-<no podman on PATH>}'. $remediation"
-            exit 1
-          fi
-          major="${numbers%%.*}"
-          minor_patch="${numbers#*.}"
-          minor="${minor_patch%%.*}"
-          patch="${minor_patch#*.}"
-          floor_major="${MINIMUM%%.*}"
-          floor_minor_patch="${MINIMUM#*.}"
-          floor_minor="${floor_minor_patch%%.*}"
-          floor_patch="${floor_minor_patch#*.}"
-          meets=yes
-          if test "$major" -lt "$floor_major"; then
-            meets=no
-          elif test "$major" -eq "$floor_major"; then
-            if test "$minor" -lt "$floor_minor"; then
-              meets=no
-            elif test "$minor" -eq "$floor_minor" && test "$patch" -lt "$floor_patch"; then
-              meets=no
-            fi
-          fi
-          if test "$meets" = no; then
-            echo "::error title=podman6-contract::Podman $numbers (from '$version_output') does not satisfy the >= $MINIMUM host contract. $remediation"
-            exit 1
-          fi
-          echo "podman6-contract: $numbers satisfies >= $MINIMUM"
+          cat > dist/cache/runtime-bundle/storage.conf <<EOF
+          [storage]
+          driver = "overlay"
 
-      - name: Start explicit listener test socket
+          [storage.options.overlay]
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
+          EOF
+          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
+
+      - name: Prepare provider via lando setup
         run: |
-          socket="$RUNNER_TEMP/listener-podman.sock"
-          podman system service --time=0 "unix://$socket" > "$RUNNER_TEMP/listener-podman.log" 2>&1 &
-          echo "$!" > "$RUNNER_TEMP/listener-podman.pid"
-          for i in {1..30}; do test -S "$socket" && break; sleep 1; done
-          curl --fail --max-time 5 --unix-socket "$socket" http://localhost/_ping
-          echo "LANDO_TEST_PODMAN_SOCKET=$socket" >> "$GITHUB_ENV"
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
+
+      - name: Verify managed runtime socket
+        run: |
+          for _ in {1..30}; do
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
+            sleep 1
+          done
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          curl --fail --max-time 5 --unix-socket "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
+
+      - name: Gate platform readiness doctor
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
+
+      - name: Configure Docker socket
+        run: |
+          test -S /var/run/docker.sock
+          echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
+
+      - name: Pre-pull container images
+        run: |
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          pull_image() {
+            local image="$1"
+            for attempt in 1 2 3; do
+              "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull "$image" && return 0
+              if test "$attempt" -eq 3; then return 1; fi
+              sleep $((attempt * 5))
+            done
+          }
+          docker_pull_image() {
+            local image="$1"
+            for attempt in 1 2 3; do
+              docker pull "$image" && return 0
+              if test "$attempt" -eq 3; then return 1; fi
+              sleep $((attempt * 5))
+            done
+          }
+          pull_image docker.io/library/alpine:3.21
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/node:22
+          pull_image docker.io/library/postgres:16
+          pull_image docker.io/library/postgres:16-alpine
+          pull_image docker.io/library/golang:1.22
+          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image docker.io/getmeili/meilisearch:v1.11
+          pull_image docker.io/axllent/mailpit:v1.30.1
+          pull_image docker.io/library/mariadb:11.4
+          pull_image docker.io/library/memcached:1.6
+          pull_image docker.io/library/mongo:7
+          pull_image docker.io/library/mysql:8.0
+          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/opensearchproject/opensearch:2
+          pull_image docker.io/library/solr:9
+          pull_image docker.io/library/traefik:v3.3
+          pull_image docker.io/valkey/valkey:8
+          docker_pull_image docker.io/library/node:22-alpine
+          docker_pull_image docker.io/library/node:22
 
       - name: Build test-only pinned MinIO BYO image
         run: bun scripts/build-service-listener-qa-image.ts "$LANDO_TEST_MINIO_IMAGE"
-
-      - name: Compile current listener CLI
-        run: |
-          bun run --filter='@lando/core' build:manifest
-          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./core/dist/lando --version 0.0.0-listener-qa --minify --sourcemap=external
-          bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
-          ./core/dist/lando --version
-          echo "LANDO_SCENARIO_E2E_BINARY=$GITHUB_WORKSPACE/core/dist/lando" >> "$GITHUB_ENV"
 
       - name: Require all four serial real-service journeys
         shell: bash
@@ -520,10 +645,23 @@ jobs:
           bun test plugins/service-lando/test/service-listener-journeys.integration.test.ts --max-concurrency=1 2>&1 | tee "$RUNNER_TEMP/listener-acceptance.log"
           grep -E '^SERVICE_LISTENER_ACCEPTANCE completed=4/4 cases=' "$RUNNER_TEMP/listener-acceptance.log"
 
-      - name: Stop listener test socket
+      - name: Teardown Lando runtime
         if: always()
         run: |
-          if test -f "$RUNNER_TEMP/listener-podman.pid"; then kill "$(cat "$RUNNER_TEMP/listener-podman.pid")"; fi
+          dist/lando poweroff || true
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
+
+      - name: Collect listener diagnostics
+        if: always()
+        run: |
+          mkdir -p service-listener-diagnostics
+          dist/lando doctor --format json > service-listener-diagnostics/doctor.json 2>&1 || true
+          cp "$LANDO_USER_DATA_ROOT/runtime/run/service.log" service-listener-diagnostics/podman-service.log || true
+          cp -r "$LANDO_USER_CACHE_ROOT/logs" service-listener-diagnostics/lando-logs || true
+          journalctl --no-pager --since "-30 minutes" > service-listener-diagnostics/journalctl.log 2>&1 || true
 
       - name: Upload listener diagnostics
         if: always()
@@ -532,7 +670,8 @@ jobs:
           name: service-listener-acceptance-linux-x64
           path: |
             ${{ runner.temp }}/listener-acceptance.log
-            ${{ runner.temp }}/listener-podman.log
+            service-listener-diagnostics
+            provider-diagnostics
           if-no-files-found: warn
           retention-days: 7
 
@@ -561,6 +700,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Download container helper
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -717,6 +859,8 @@ jobs:
           set -euo pipefail
           UBUNTU_SNAPSHOT=20261019T000000Z
           printf 'APT::Snapshot "%s";\nAcquire::Retries "3";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
+          # Prefer snapshot dependencies even when the runner has newer versions installed.
+          printf 'Package: *\nPin: origin "snapshot.ubuntu.com"\nPin-Priority: 1001\n' | sudo tee /etc/apt/preferences.d/lando-runtime-bundle-snapshot
           for DELAY in 0 5 15 45; do
             if [ "$DELAY" -gt 0 ]; then sleep "$DELAY"; fi
             if sudo apt-get update --error-on=any; then break; fi
@@ -877,6 +1021,7 @@ jobs:
           retention-days: 7
 
   nightly-tier-unit-tests-linux-x64:
+    needs: [container-helper]
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
@@ -890,10 +1035,24 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Download container helper
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Run nightly-tier unit tests
         run: bun test core/test/scripts/codegen-ci.test.ts core/test/build/linux-acceptance-criteria-10-14.test.ts
 
   refresh-test-timings-linux-x64:
+    needs: [container-helper]
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
@@ -910,15 +1069,26 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
+      - name: Download container helper
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
       - name: Refresh unit-test timings
         run: bun run scripts/update-test-timings.ts
 
       - name: Upload refreshed timings
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v6
         with:
           name: bun-test-timings
           path: .bun-test-timings.json
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
 
@@ -956,6 +1126,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Download container helper
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

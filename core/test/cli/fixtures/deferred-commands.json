@@ -1,8 +1,4 @@
 {
   "_doc": "Every remaining deferred canonical command and its planned release phase.",
-  "commands": [
-    { "id": "meta:events:follow", "phase": "4.1" },
-    { "id": "meta:plugin:login", "phase": "4.1" },
-    { "id": "meta:plugin:logout", "phase": "4.1" }
-  ]
+  "commands": [{ "id": "meta:events:follow", "phase": "4.1" }]
 }

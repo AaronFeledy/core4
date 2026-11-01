@@ -1,6 +1,9 @@
+import { RedactionService } from "@lando/redaction/service";
+import { Renderer } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 
+import { renderTranslateDiagnostics } from "../../../commands/app-config-translate-output.ts";
 import { Flags } from "../../../spec/metadata";
 
 import {
@@ -58,6 +61,8 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       ? flags.file.filter((file): file is string => typeof file === "string")
       : undefined;
     const privateFileAccess = yield* PrivateFileAccessService;
+    const renderer = yield* Renderer;
+    const redaction = yield* RedactionService;
     return yield* appConfigTranslate({
       write: flags.write === true,
       list: flags.list === true,
@@ -66,6 +71,20 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
       ...(typeof flags.to === "string" ? { to: flags.to } : {}),
       ...(files === undefined ? {} : { files }),
       privateFileAccess,
+      ...(flags.format === "json" || flags.format === "yaml" || flags.format === "ndjson"
+        ? {}
+        : {
+            onWriteBlocked: (diagnostics) =>
+              redaction
+                .forProfile("secrets", { sourceEnv: process.env })
+                .pipe(
+                  Effect.flatMap((redactor) =>
+                    renderer.output.stderr(
+                      `${redactor.redactString(renderTranslateDiagnostics(diagnostics))}\n`,
+                    ),
+                  ),
+                ),
+          }),
     });
   }),
   documentOutput: {

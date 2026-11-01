@@ -554,6 +554,7 @@ describe("resolveLandofileIncludes", () => {
   test("creates an npm include lock entry with resolved version and checksum", async () => {
     const bytes = new Uint8Array([1, 2, 3]);
     const npmRecipeSource: NpmIncludeRecipeSource = {
+      fetchTarball: async () => bytes,
       resolve: async () => ({
         packageName: "@acme/fragments",
         version: "1.2.3",

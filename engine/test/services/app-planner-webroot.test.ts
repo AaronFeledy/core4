@@ -66,7 +66,7 @@ test("Ruby preserves authored nested context and cwd through the complete planne
   expect(web?.environment.LANDO_WEBROOT).toBe("/site/frontend/public");
   expect(web?.extensions["lando-service-ruby"]).toMatchObject({ webroot: "/site/frontend/public" });
   expect(String(web?.workingDirectory)).toBe("/site");
-  expect(web?.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+  expect(web?.command).toEqual(["tail", "-f", "/dev/null"]);
 });
 
 test("Ruby omits only implicit context when the app mount is disabled", async () => {

@@ -5,6 +5,7 @@ import type { ContainerHelperArtifact, ContainerHelperTarget } from "@lando/sdk/
 import type { Downloader } from "@lando/sdk/services";
 import type { Effect } from "effect";
 import type * as HttpClient from "effect/http/HttpClient";
+import type { HostConfigReadPolicy } from "./services/config.ts";
 
 export interface EngineCompositionInputs {
   readonly bundledPluginModules: ReadonlyArray<LandoPluginModule>;
@@ -13,12 +14,19 @@ export interface EngineCompositionInputs {
   readonly landofileSourcePorts: (
     client: HttpClient.HttpClient,
     downloader: typeof Downloader.Service,
+    runtime?: LandofileSourcePortRuntime,
   ) => Pick<LandofileRuntimeInputs["ports"], "npmRecipeSource" | "tarball">;
   readonly hostProxyWorkerEntry: () => HostProxyWorkerEntry;
   readonly resolveContainerHelper: (
     target: ContainerHelperTarget,
     options: { readonly cacheRoot: string },
   ) => Effect.Effect<ContainerHelperArtifact, ContainerHelperUnavailableError>;
+}
+
+/** Runtime capabilities that host-side source acquisition must honor. */
+export interface LandofileSourcePortRuntime {
+  readonly registerSecrets?: (values: ReadonlyArray<string>) => Promise<void>;
+  readonly readPolicy?: HostConfigReadPolicy;
 }
 
 export interface HostProxyWorkerEntry {
@@ -53,8 +61,11 @@ export const builtInCommandIds = (): ReadonlyArray<string> => requireComposition
 export const landofileRuntimeInputs = (): LandofileRuntimeInputs =>
   requireComposition().landofileRuntimeInputs;
 
-export const landofileSourcePorts = (client: HttpClient.HttpClient, downloader: typeof Downloader.Service) =>
-  requireComposition().landofileSourcePorts(client, downloader);
+export const landofileSourcePorts = (
+  client: HttpClient.HttpClient,
+  downloader: typeof Downloader.Service,
+  runtime?: LandofileSourcePortRuntime,
+) => requireComposition().landofileSourcePorts(client, downloader, runtime);
 
 export const hostProxyWorkerEntry = (): HostProxyWorkerEntry => requireComposition().hostProxyWorkerEntry();
 

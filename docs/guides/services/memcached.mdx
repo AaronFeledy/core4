@@ -47,6 +47,10 @@ The Landofile above declares `memcached-tool` as an app tooling alias. Run it af
 lando memcached-tool stats
 ```
 
+## Configure the listener
+
+Set `port:` to change Memcached's listener and healthcheck together. An authored `command:` owns the listener configuration; pass the planned port with `-p`. An authored `entrypoint:` still receives Lando's command with `-p` and must execute the supplied command and arguments. If Memcached never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+
 ## Pin a version
 
 Set `image:` when the default image isn't enough. For example, a Debian-based image:

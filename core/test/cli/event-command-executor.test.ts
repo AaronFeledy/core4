@@ -1,4 +1,4 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,16 +28,17 @@ import { attachEffectiveTooling } from "@lando/engine/planner/effective-tooling"
 import { PluginContributionGraph } from "@lando/engine/plugins/contribution-graph";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { EventCommandExecutor } from "@lando/engine/services/event-command-executor";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeShellRunnerService } from "@lando/engine/services/shell-runner";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
+import { ProcessRunner, type ProcessSpawnOptions } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import type { BuiltInCommandEntry } from "../../src/cli/built-in-command-registry.ts";
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { metaBunSpec } from "../../src/cli/command-specs/meta/bun.ts";
 import { metaXSpec } from "../../src/cli/command-specs/meta/x.ts";
-import { defaultBunSelfSpawner } from "../../src/cli/commands/bun-self-runner.ts";
 import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.ts";
 import { validateEventCommandInput } from "../../src/cli/event-command-input.ts";
 import { ResultTerminal } from "../../src/cli/result-terminal.ts";
@@ -45,6 +46,7 @@ import type { LandoCommandSpec } from "../../src/cli/spec/command-base.ts";
 import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import { Args, Flags } from "../../src/cli/spec/metadata.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+import { processRunnerFor } from "../_support/process-runner.ts";
 import { environmentResolverLayer } from "../_support/value-contracts.ts";
 
 class EventCommandTestError extends Schema.TaggedError<EventCommandTestError>()("EventCommandTestError", {
@@ -57,7 +59,9 @@ interface Harness {
   readonly presentation: string[];
 }
 
-const makeHarness = (): Harness => {
+const makeHarness = (
+  runner = Effect.runSync(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer))),
+): Harness => {
   const events: LandoEvent[] = [];
   const presentation: string[] = [];
   const eventService: EventServiceShape = {
@@ -106,11 +110,16 @@ const makeHarness = (): Harness => {
       Context.add(RedactionService, redaction),
       Context.add(EnvironmentValueResolver, resolver),
       Context.add(PrivateFileAccessService, ownerOnlyFileAccess),
+      Context.add(ProcessRunner, runner),
       Context.add(
         ShellRunner,
-        makeShellRunnerService(() => {
-          throw new TypeError("Interactive shell IO was not expected in this test.");
-        }, ownerOnlyFileAccess),
+        makeShellRunnerService(
+          () => {
+            throw new TypeError("Interactive shell IO was not expected in this test.");
+          },
+          ownerOnlyFileAccess,
+          runner,
+        ),
       ),
     ),
   };
@@ -479,8 +488,7 @@ describe("EventCommandExecutorLayer.layer", () => {
 
   test("returns meta:bun nonzero exit without mutating the embedding host exit code", async () => {
     // Given
-    const harness = makeHarness();
-    const spawn = spyOn(defaultBunSelfSpawner, "spawn").mockResolvedValue({ exitCode: 7 });
+    const harness = makeHarness(processRunnerFor(() => Effect.succeed({ exitCode: 7 })));
     const priorExitCode = process.exitCode;
     process.exitCode = 91;
 
@@ -501,15 +509,21 @@ describe("EventCommandExecutorLayer.layer", () => {
       expect(result.exitCode).toBe(7);
       expect(process.exitCode).toBe(91);
     } finally {
-      spawn.mockRestore();
       process.exitCode = priorExitCode ?? 0;
     }
   });
 
   test("runs meta:x from structured args and returns nonzero without mutating host exit code", async () => {
     // Given
-    const harness = makeHarness();
-    const spawn = spyOn(defaultBunSelfSpawner, "spawn").mockResolvedValue({ exitCode: 9 });
+    const requests: ProcessSpawnOptions[] = [];
+    const harness = makeHarness(
+      processRunnerFor((input) =>
+        Effect.sync(() => {
+          requests.push(input);
+          return { exitCode: 9 };
+        }),
+      ),
+    );
     const priorExitCode = process.exitCode;
     process.exitCode = 92;
 
@@ -527,13 +541,15 @@ describe("EventCommandExecutorLayer.layer", () => {
       );
 
       // Then
-      expect(spawn).toHaveBeenCalledWith(
-        expect.objectContaining({ cmd: [process.execPath, "x", "example-package", "--example-flag"] }),
-      );
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        cmd: process.execPath,
+        args: ["x", "example-package", "--example-flag"],
+        capture: true,
+      });
       expect(result.exitCode).toBe(9);
       expect(process.exitCode).toBe(92);
     } finally {
-      spawn.mockRestore();
       process.exitCode = priorExitCode ?? 0;
     }
   });
@@ -775,7 +791,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       name: "@example/commands",
       version: "1.0.0",
       api: 4,
-      contributes: { commands: ["meta:example:hello"] },
+      contributes: { commands: [{ id: "meta:example:hello", summary: "Hello from a plugin." }] },
     });
     const module = {
       name: manifest.name,
@@ -805,6 +821,7 @@ describe("EventCommandExecutorLayer.layer", () => {
         {
           id: "meta:example:hello",
           pluginName: String(manifest.name),
+          descriptor: { id: "meta:example:hello", summary: "Hello from a plugin." },
           source: "explicit",
           load:
             module.commands.get("meta:example:hello") ??

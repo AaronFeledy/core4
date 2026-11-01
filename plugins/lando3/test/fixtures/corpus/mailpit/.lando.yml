@@ -1,0 +1,16 @@
+name: lando-mailpit-plugin
+
+services:
+  node:
+    type: lando
+    image: node:20
+    build:
+      - npm install
+    scanner: false
+    ssl: false
+    sslExpose: false
+tooling:
+  node:
+    service: node
+  npm:
+    service: node

@@ -8,6 +8,7 @@
  */
 import { isLegacyTagged } from "@lando/sdk/landofile";
 import { type ConfigTranslateDiagnostic, ConfigTranslateSourceId, ServiceName } from "@lando/sdk/schema";
+import { serviceCursor } from "./claims.ts";
 import type { Lando3Path } from "./contract.ts";
 import {
   type LoweringPatch,
@@ -15,7 +16,12 @@ import {
   hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import { type Report, lowerText } from "./lowering-report.ts";
-import { droppedServiceKey, rewrittenServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
+import {
+  droppedServiceKey,
+  needsReviewServiceKey,
+  rewrittenServiceKey,
+  unsupportedServiceKey,
+} from "./service-diagnostics.ts";
 
 /** Lando 4 bounds for the post-start probe. */
 const MAX_RETRIES = 20;
@@ -101,7 +107,9 @@ const lowerScanner = (
   }
   if (retries !== undefined || typeof scanner.timeout === "number") {
     diagnostics.push(
-      rewrittenServiceKey({
+      (timeout !== undefined || (retry !== undefined && retry > MAX_RETRIES)
+        ? needsReviewServiceKey
+        : rewrittenServiceKey)({
         ctx,
         relative: ["scanner"],
         message: `Rewrote scanner retry as retries${retry !== undefined && retry > MAX_RETRIES ? ` capped at ${MAX_RETRIES}` : ""} and the per-attempt timeout as one deadline covering every attempt.`,
@@ -169,6 +177,11 @@ export const lowerScannerAndHome = (
   service: Readonly<Record<string, unknown>>,
   ctx: ServiceLoweringContext,
 ): LoweringPatch => {
+  const cursor = serviceCursor(service, ctx);
+  cursor.take(["scanner"]);
+  for (const key of ["path", "okCodes", "retry", "timeout", "maxRedirects"]) cursor.mapTo(["scanner", key]);
+  cursor.take(["home"]);
+  cursor.mapTo(["home", "path"]);
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   const patch: Record<string, unknown> = {};
   if (Object.hasOwn(service, "scanner")) {
@@ -179,7 +192,7 @@ export const lowerScannerAndHome = (
     const home = lowerAuthoredHome(service.home, ctx, diagnostics);
     if (home !== undefined) patch.home = home;
   }
-  return { patch, diagnostics };
+  return { patch, claims: cursor.claims, diagnostics };
 };
 
 /**
@@ -195,6 +208,7 @@ export const withHomeIntent = (
   if (lowered.blocked === true || Object.hasOwn(patch, "home")) return lowered;
   if (service.home !== undefined && service.home !== true) return lowered;
   if (service.api !== 4 && service.type === "compose") return lowered;
+  if (service.api === 4 && service.type === "l337") return lowered;
   const occurrence = ctx.occurrenceAt([]);
   return {
     ...lowered,

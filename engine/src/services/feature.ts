@@ -95,6 +95,9 @@ const makeContext = (
   setCommand: (command) => {
     draft.command = Array.isArray(command) ? [...command] : command;
   },
+  setInit: (init) => {
+    draft.init = init;
+  },
   setArtifact: (artifact) => {
     draft.artifact = { ...artifact };
   },
@@ -120,6 +123,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
 > {
   const facts = input.prepared.facts;
   const draft = makeDraft({ ...facts.base, defaultFeatures: [] });
+  if (facts.baseKind === "lando") draft.init = true;
   const orderedFeatures = input.prepared.features;
   draft.featureIds = orderedFeatures.map((feature) => feature.id);
   const endpointContributions = input.endpointContributions;
@@ -138,6 +142,7 @@ export const applyPreparedService = Effect.fn("ServiceFeature.applyPreparedServi
     { discard: true },
   );
 
+  if (facts.normalizedConfig.init !== undefined) draft.init = facts.normalizedConfig.init;
   const finalized = finalizeDraft(draft);
   if (finalized instanceof ServiceFeatureError) return yield* Effect.fail(finalized);
   return { plan: finalized, endpointContributions, featureIds: draft.featureIds };

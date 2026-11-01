@@ -8,8 +8,9 @@ import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 import { servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
-const DEFAULT_PORT = 5000;
-const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
+export const DEFAULT_PORT = 5000;
+export const APP_MOUNT_TARGET = "/app";
+const DEFAULT_COMMAND = ["tail", "-f", "/dev/null"] as const;
 const VERSIONS = ["8.0", "9.0"] as const;
 const ARTIFACTS = {
   "8.0": "mcr.microsoft.com/dotnet/sdk:8.0",
@@ -68,7 +69,7 @@ const makeDotnetServiceType = (id: string, image: string): ServiceType => ({
         certs: input.service.certs ?? true,
         storage: [...(input.service.storage ?? []), NUGET_CACHE],
       },
-      features: [{ id: DOTNET_FEATURE_ID }, { id: "lando.app-mount", config: { target: "/app" } }],
+      features: [{ id: DOTNET_FEATURE_ID }, { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } }],
     });
   },
 });

@@ -17,7 +17,7 @@ import { plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "localstack/localstack:4.14.0";
-const DEFAULT_PORT = 4566;
+export const DEFAULT_PORT = 4566;
 const DATA_TARGET = PortablePath.make("/var/lib/localstack");
 
 export const LOCALSTACK_FEATURE_ID = "service-lando.localstack" as const;

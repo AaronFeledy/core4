@@ -21,6 +21,7 @@ export interface HttpJsonResult {
 }
 
 export interface HttpJsonOptions {
+  readonly redactionTokens?: ReadonlyArray<string>;
   /** Extra request headers (e.g. `accept: application/json`). */
   readonly headers?: ReadonlyArray<{ readonly name: string; readonly value: string }>;
   /** Redirect mode; defaults to following redirects like the prior fetch calls. */
@@ -64,6 +65,7 @@ export const httpJsonFetch = async (
         const get = client.get(url, headers === undefined ? undefined : { headers }).pipe(
           Effect.provideService(RequestPolicy, {
             redirect: options.redirect ?? "follow",
+            ...(options.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
           }),
         );
         const response = yield* get;

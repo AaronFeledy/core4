@@ -147,6 +147,9 @@ export function redactProviderError(error: ProviderError, redactor: Redactor): P
                 lines: error.logTail.lines.map(redactor.redactString),
               },
             }),
+        ...(error.listener === undefined
+          ? {}
+          : { listener: { ...error.listener, service: redactor.redactString(error.listener.service) } }),
       });
     case "VolumeOperationError":
       return new VolumeOperationError({

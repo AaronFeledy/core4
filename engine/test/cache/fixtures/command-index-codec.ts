@@ -3,7 +3,7 @@ import { normalizeToolingInput } from "@lando/landofile/tooling-input-normalize"
 import { sha256Hex } from "@lando/sdk/digest";
 import { ToolingInputDeclaration } from "@lando/sdk/schema";
 import { Result, Schema } from "effect";
-import type { AppCommandIndexPayload, PluginCommandIndexPayload } from "../../../src/cache/command-index.ts";
+import type { AppCommandIndexPayload } from "../../../src/cache/command-index.ts";
 
 export const input = Result.getOrThrowWith(
   normalizeToolingInput("deploy", {
@@ -41,19 +41,9 @@ export const app = {
   generatedAtMs: 20,
   entries: [entry, { id: "app:check", summary: "Check", hidden: true, source: "bun-script" }],
 } satisfies AppCommandIndexPayload;
-export const plugin = {
-  schemaVersion: 6,
-  landoVersion: "4.0.0",
-  pluginNames: ["@lando/example"],
-  pluginListSha: sha256Hex("plugins"),
-  commandsByPlugin: { "@lando/example": ["app:deploy"] },
-  manifestFingerprint: sha256Hex("manifest"),
-  generatedAtMs: 20,
-  entries: [entry],
-} satisfies PluginCommandIndexPayload;
 
 // Deliberately bypass the typed encoder to model untrusted persisted v8 objects.
-export const abi6Bytes = (magic: "LCAC" | "LCPC", payload: unknown): Uint8Array => {
+export const abi6Bytes = (magic: "LCAC", payload: unknown): Uint8Array => {
   const header = Buffer.alloc(12);
   header.write(magic);
   header.writeBigUInt64LE(6n, 4);

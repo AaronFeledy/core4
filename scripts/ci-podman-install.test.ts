@@ -12,10 +12,7 @@ import {
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
-const hostPodmanWorkflowPaths = [
-  ".github/workflows/nightly.yml",
-  ".github/workflows/provider-matrix.yml",
-] as const;
+const hostPodmanWorkflowPaths = [".github/workflows/provider-matrix.yml"] as const;
 
 const installPodman6Script = renderInstallPodman6Step()
   .split("\n")
@@ -150,12 +147,15 @@ describe("Podman user container configuration", () => {
 });
 
 describe("generated workflows carry the Podman 6 host contract", () => {
-  test("ci.yml keeps managed-runtime setup independent of host Podman", async () => {
-    const contents = await Bun.file(join(REPO_ROOT, ".github/workflows/ci.yml")).text();
-    expect(contents).toContain("lando setup");
-    expect(contents).not.toContain("Install Podman 6 toolchain");
-    expect(contents).not.toContain("Assert Podman 6 host contract");
-  });
+  test.each(["ci.yml", "nightly.yml"])(
+    "%s keeps managed-runtime setup independent of host Podman",
+    async (workflow) => {
+      const contents = await Bun.file(join(REPO_ROOT, ".github/workflows", workflow)).text();
+      expect(contents).toContain("lando setup");
+      expect(contents).not.toContain("Install Podman 6 toolchain");
+      expect(contents).not.toContain("Assert Podman 6 host contract");
+    },
+  );
 
   for (const path of hostPodmanWorkflowPaths) {
     test(`${path} installs Podman 6 and asserts the floor before Podman-backed steps`, async () => {
@@ -164,10 +164,7 @@ describe("generated workflows carry the Podman 6 host contract", () => {
       expect(contents).toContain("brew update\n          brew install podman");
       const assertIndex = contents.indexOf("Assert Podman 6 host contract");
       expect(assertIndex).toBeGreaterThan(0);
-      const podmanUseMarkers =
-        path === ".github/workflows/provider-matrix.yml"
-          ? ["podman system service"]
-          : ["podman system service", "lando setup"];
+      const podmanUseMarkers = ["podman system service"];
       const firstPodmanUse = Math.min(
         ...podmanUseMarkers.map((marker) => contents.indexOf(marker)).filter((index) => index >= 0),
       );

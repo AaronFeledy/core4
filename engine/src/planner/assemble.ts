@@ -74,7 +74,11 @@ import { resolveKnownEventSet } from "./event-set.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
-import { agentSocketCapabilityErrors, assertRouteNetworkingSupported } from "./resource-capabilities.ts";
+import {
+  agentSocketCapabilityErrors,
+  assertRouteNetworkingSupported,
+  assertServiceInitSupported,
+} from "./resource-capabilities.ts";
 import { attachScanPlans } from "./scanner-plan.ts";
 import { plannerSeededFeatureIds } from "./seed-validation.ts";
 import { resolveServiceConfigSources } from "./service-config-files.ts";
@@ -373,6 +377,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertAuthoredNetworksSupported(provider, providerCapabilities, cached.networking);
       yield* validateServiceDependencies(appRoot, cached.services);
       yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
+      yield* assertServiceInitSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
@@ -515,6 +520,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     effectiveEventsFor(planServices(finalized.services)),
   );
   yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
+  yield* assertServiceInitSupported(provider, providerCapabilities, plan.services);
   yield* assertAuthoredNetworksSupported(provider, providerCapabilities, plan.networking);
   yield* validateServiceProbes(plan);
   yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);

@@ -1,7 +1,9 @@
 import { splitComposeCommand } from "@lando/sdk/landofile";
 import type { ConfigTranslateDiagnostic } from "@lando/sdk/schema";
+import { serviceCursor } from "./claims.ts";
 import { CAPABILITY_FRAGILE_KEYS, COMPOSE_KEY_RENAMES, dispositionOf } from "./compose-disposition-of.ts";
 import type { Lando3Path } from "./contract.ts";
+import { type AssignmentPolicy, lowerAssignments } from "./environment.ts";
 import { withoutHostAlias, withoutHostIpVariable } from "./host-reachability.ts";
 import {
   type LoweringPatch,
@@ -9,7 +11,6 @@ import {
   hasPlainObjectPrototype,
 } from "./lowering-contract.ts";
 import {
-  droppedServiceKey,
   needsReviewServiceKey,
   rejectedComposeKey,
   rewrittenServiceKey,
@@ -25,17 +26,18 @@ export const lowerComposeFields = (
   ctx: ServiceLoweringContext,
   options: ComposeFieldOptions,
 ): LoweringPatch => {
+  const cursor = serviceCursor(value, ctx, options.basePath);
+  cursor.take(options.basePath);
   const fields = new Map<string, unknown>();
   const diagnostics: ConfigTranslateDiagnostic[] = [];
   let blocked = false;
   const drop = (relative: Lando3Path): void => {
     diagnostics.push(
-      droppedServiceKey({
-        ctx,
+      cursor.dropTree(
         relative,
-        message: "This Compose field or value has no supported Lando 4 representation.",
-        remediation: "Set an explicit supported value in the generated service before starting it.",
-      }),
+        "This Compose field or value has no supported Lando 4 representation.",
+        "Set an explicit supported value in the generated service before starting it.",
+      ),
     );
   };
   const rewrite = (relative: Lando3Path, target: string): void => {
@@ -49,32 +51,14 @@ export const lowerComposeFields = (
     );
   };
   const reject = (key: string, relative: Lando3Path): void => {
+    cursor.acceptNoOp(relative);
     diagnostics.push(rejectedComposeKey({ ctx, relative, key }));
     blocked = true;
   };
-  const stringMap = (input: unknown, relative: Lando3Path): Readonly<Record<string, string>> => {
-    const entries = new Map<string, string>();
-    if (Array.isArray(input)) {
-      input.forEach((entry: unknown, index) => {
-        const equals = typeof entry === "string" ? entry.indexOf("=") : -1;
-        if (typeof entry === "string" && equals > 0) {
-          entries.set(entry.slice(0, equals), entry.slice(equals + 1));
-        } else {
-          drop([...relative, index]);
-        }
-      });
-    } else if (hasPlainObjectPrototype(input)) {
-      for (const [key, entry] of Object.entries(input)) {
-        if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") {
-          entries.set(key, String(entry));
-        } else {
-          drop([...relative, key]);
-        }
-      }
-    } else {
-      drop(relative);
-    }
-    return Object.fromEntries(entries);
+  const assignments = (input: unknown, relative: Lando3Path, policy: AssignmentPolicy) => {
+    const result = lowerAssignments(input, { ctx: { ...ctx, cursor }, relative }, policy);
+    diagnostics.push(...result.diagnostics);
+    return result.entries;
   };
 
   if (!hasPlainObjectPrototype(value)) {
@@ -148,10 +132,13 @@ export const lowerComposeFields = (
             }),
       );
     } else if (key === "environment") {
-      output = withoutHostIpVariable(stringMap(input, relative), ctx, relative, diagnostics);
+      output = withoutHostIpVariable(assignments(input, relative, "environment"), ctx, diagnostics);
     } else if (key === "labels") {
-      output = stringMap(input, relative);
+      output = Object.fromEntries(
+        assignments(input, relative, "labels").map(({ name, value }) => [name, value]),
+      );
     } else if (key === "build") {
+      cursor.take(relative);
       if (typeof input === "string") {
         output = { context: input };
         rewrite(relative, "build.context");
@@ -166,15 +153,22 @@ export const lowerComposeFields = (
               reject(dotted, path);
               break;
             case "normalized":
+              if (buildKey !== "args") cursor.mapTo(path);
               build.set(
                 buildKey === "dockerfile_inline" ? "dockerfileInline" : buildKey,
-                buildKey === "args" ? stringMap(entry, path) : entry,
+                buildKey === "args"
+                  ? Object.fromEntries(
+                      assignments(entry, path, "build-args").map(({ name, value }) => [name, value]),
+                    )
+                  : entry,
               );
               break;
             case "preserved":
             case "unknown":
-              if (buildKey === "dockerfileInline") build.set(buildKey, entry);
-              else drop(path);
+              if (buildKey === "dockerfileInline") {
+                cursor.mapTo(path);
+                build.set(buildKey, entry);
+              } else drop(path);
               break;
             default:
               return buildDisposition satisfies never;
@@ -194,6 +188,21 @@ export const lowerComposeFields = (
         }
       }
     } else if ((key === "volumes" || key === "ports") && Array.isArray(input)) {
+      if (key === "ports") {
+        output = input.map((entry: unknown, index) => {
+          if (typeof entry === "string") {
+            const random = /^(?:(.+):)?0:(\d+(?:-\d+)?(?:\/(?:tcp|udp))?)$/.exec(entry);
+            if (random === null) return entry;
+            rewrite([...relative, index], "ports with an omitted random host port");
+            return random[1] === undefined ? random[2] : `${random[1]}::${random[2]}`;
+          }
+          if (hasPlainObjectPrototype(entry) && (entry.published === 0 || entry.published === "0")) {
+            rewrite([...relative, index, "published"], "ports with an omitted random host port");
+            return Object.fromEntries(Object.entries(entry).filter(([key]) => key !== "published"));
+          }
+          return entry;
+        });
+      }
       input.forEach((entry: unknown, index) => {
         if (!hasPlainObjectPrototype(entry)) return;
         for (const nestedKey of Object.keys(entry)) {
@@ -203,7 +212,14 @@ export const lowerComposeFields = (
       });
     }
     const target = Object.hasOwn(COMPOSE_KEY_RENAMES, key) ? COMPOSE_KEY_RENAMES[key] : undefined;
+    if (!["build", "environment", "labels"].includes(key)) cursor.mapTo(relative);
+    cursor.take(relative);
     fields.set(target ?? key, output);
   }
-  return { patch: Object.fromEntries(fields), diagnostics, ...(blocked ? { blocked: true as const } : {}) };
+  return {
+    patch: Object.fromEntries(fields),
+    claims: cursor.claims,
+    diagnostics,
+    ...(blocked ? { blocked: true as const } : {}),
+  };
 };

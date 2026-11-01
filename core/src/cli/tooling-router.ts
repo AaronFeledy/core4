@@ -24,7 +24,9 @@ import {
   resolveBuiltInCommand,
 } from "./built-in-command-registry";
 import { activeCommandAliases, commandAliasPolicyError } from "./command-alias-policy";
+import { buildCommandCatalog } from "./command-catalog";
 import { escapeDiagnosticText } from "./diagnostic-text";
+import { type PluginCommandCatalog, createPluginCommandCatalog } from "./plugin-command-catalog";
 import { toolingCacheRecovery } from "./tooling-cache-status";
 import { type ToolingRoute, bunScriptRoute, normalizedToolingRoute } from "./tooling-route";
 
@@ -38,10 +40,12 @@ const canonicalBuiltIn = (commandId: string): BuiltInCommandEntry | undefined =>
 export interface ResolveToolingRouteOptions {
   readonly cwd?: string;
   readonly cacheRoot?: string;
+  /** The invocation's plugin catalog; routing never acquires a second one. */
+  readonly catalog?: PluginCommandCatalog;
 }
 
 export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
-  options: { readonly cwd?: string; readonly cacheRoot?: string } = {},
+  options: ResolveToolingRouteOptions = {},
 ): Effect.fn.Return<
   ReadonlyArray<readonly [string, string]> | undefined,
   CacheError | CommandAliasConflictError | CommandAliasTargetError
@@ -53,9 +57,12 @@ export const resolveAppCommandHelpAliases = Effect.fnUntraced(function* (
     ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
   }).pipe(Effect.catchTag("LandofileFormConflictError", () => Effect.succeed(null)));
   if (cache === null) return undefined;
-  const policyError = commandAliasPolicyError(cache);
+  const catalog = options.catalog ?? createPluginCommandCatalog();
+  const plugins = (yield* Effect.promise(() => catalog.list())).rows;
+  const pluginIds = plugins.map((entry) => entry.id);
+  const policyError = commandAliasPolicyError(cache, pluginIds);
   if (policyError !== undefined) return yield* Effect.fail(policyError);
-  return activeCommandAliases(cache);
+  return activeCommandAliases(cache, plugins);
 });
 
 export const toolingName = (token: string): string | undefined => {
@@ -127,12 +134,23 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
 
   const policy = cache.aliasPolicy;
   const aliasesEnabled = policy?.enabled !== false;
-  const policyError = commandAliasPolicyError(cache);
+  // Plugin aliases yield to built-in aliases, and only custom aliases can make plugin ids change
+  // policy validation, so a built-in alias routes without acquiring plugin metadata.
+  const builtInOnly = buildCommandCatalog([], cache);
+  const pluginsMatter =
+    Object.keys(policy?.custom ?? {}).length > 0 || builtInOnly.resolve(token)?.source !== "built-in";
+  const plugins = pluginsMatter
+    ? (yield* Effect.promise(() => (options.catalog ?? createPluginCommandCatalog()).list())).rows
+    : [];
+  const catalog = pluginsMatter ? buildCommandCatalog(plugins, cache) : builtInOnly;
+  const pluginIds = plugins.map((entry) => entry.id);
+  const policyError = commandAliasPolicyError(cache, pluginIds);
   if (policyError !== undefined) return yield* Effect.fail(policyError);
 
   const custom =
     policy?.custom !== undefined && Object.hasOwn(policy.custom, token) ? policy.custom[token] : undefined;
   if (aliasesEnabled && custom !== undefined) {
+    if (pluginIds.includes(custom)) return { _tag: "plugin", commandId: custom, token } as const;
     const builtInTarget = canonicalBuiltIn(custom);
     if (builtInTarget !== undefined) {
       return {
@@ -158,8 +176,11 @@ export const resolveToolingRoute = Effect.fnUntraced(function* (
 
   if (aliasesEnabled && policy?.disabled.includes(token)) return { _tag: "alias-disabled", token } as const;
 
-  const registeredAlias = resolveBuiltInCommand(token);
-  const isKnownAlias = custom !== undefined || registeredAlias !== undefined;
+  const catalogEntry = catalog.resolve(token);
+  if (catalogEntry?.source === "plugin" && catalogEntry.id !== token)
+    return { _tag: "plugin", commandId: catalogEntry.id, token } as const;
+  const registeredAlias = catalogEntry?.source === "built-in" ? canonicalBuiltIn(catalogEntry.id) : undefined;
+  const isKnownAlias = custom !== undefined || resolveBuiltInCommand(token) !== undefined;
   if (aliasesEnabled && registeredAlias !== undefined) {
     return {
       _tag: "built-in",

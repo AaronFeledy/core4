@@ -53,6 +53,7 @@ for (const [label, metadata, remediation] of [
             landofile: { includes: [{ source: "npm:fragments", path: "web.yml" }] },
             deps: {
               npmRecipeSource: {
+                fetchTarball: async () => new TextEncoder().encode("tampered"),
                 resolve: async () => ({
                   packageName: "fragments",
                   version: "1.0.0",

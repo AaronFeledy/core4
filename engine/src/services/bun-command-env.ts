@@ -72,6 +72,7 @@ export const createBunCommandEnv = async (
     readonly command: "lando" | "bun";
     readonly env: Readonly<Record<string, string>>;
     readonly cwd: string;
+    readonly tempRoot?: string;
   },
   runtime: BunCommandRuntime = bunCommandRuntime(),
 ): Promise<{ readonly env: Record<string, string>; readonly [Symbol.asyncDispose]: () => Promise<void> }> => {
@@ -82,7 +83,7 @@ export const createBunCommandEnv = async (
       ? (Bun.which("lando", { PATH: effectivePath, cwd: options.cwd }) ?? fallback)
       : fallback;
   if (target === undefined) return { env: { ...options.env }, [Symbol.asyncDispose]: async () => {} };
-  const directory = await mkdtemp(join(tmpdir(), "lando-script-bin-"));
+  const directory = await mkdtemp(join(options.tempRoot ?? tmpdir(), "lando-script-bin-"));
   const dispose = () => rm(directory, { recursive: true, force: true });
   try {
     const launcher = commandLauncher(options.command, target, runtime.platform);
