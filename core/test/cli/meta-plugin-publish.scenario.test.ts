@@ -143,7 +143,7 @@ describe("meta:plugin:publish command", () => {
         }).pipe(buildingProcess(spawns), Effect.provide(recordingEventLayer(events))),
       );
       expect(result.registry).toBe(override ?? "https://scope.test/path/");
-      expect(spawns[0]?.env.BUN_AUTH_TOKEN).toBe(token);
+      expect(spawns[0]?.env.BUN_CONFIG_TOKEN).toBe(token);
       expect(JSON.stringify(spawns[0]?.cmd)).not.toContain(token);
       expect(JSON.stringify(result)).not.toContain(token);
       expect(JSON.stringify(events)).not.toContain(token);
@@ -268,13 +268,14 @@ describe("meta:plugin:publish command", () => {
     expect(publishSpawn?.cmd).toEqual([
       "/opt/bun",
       "publish",
+      expect.stringMatching(/^--config=.+/u),
       "--tag",
       "latest",
       "--registry",
       "https://registry.npmjs.org/",
     ]);
     expect(publishSpawn?.cwd).toBe(join(root, "dist"));
-    expect(publishSpawn?.env.BUN_AUTH_TOKEN).toBe("secret-token");
+    expect(publishSpawn?.env.BUN_CONFIG_TOKEN).toBe("secret-token");
     expect(events.map((event) => event._tag)).toContain("cli-meta:plugin:publish-start");
     expect(events.map((event) => event._tag)).toContain("cli-meta:plugin:publish-complete");
   });
@@ -362,12 +363,13 @@ describe("meta:plugin:publish command", () => {
     expect(publishSpawn?.cmd).toEqual([
       "/opt/bun",
       "publish",
+      expect.stringMatching(/^--config=.+/u),
       "--tag",
       "latest",
       "--registry",
       "https://npm.acme.test/",
     ]);
-    expect(publishSpawn?.env.BUN_AUTH_TOKEN).toBe("acme-token");
+    expect(publishSpawn?.env.BUN_CONFIG_TOKEN).toBe("acme-token");
   });
 
   test("missing auth produces a tagged remediation and never publishes", async () => {

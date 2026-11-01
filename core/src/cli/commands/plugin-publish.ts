@@ -8,7 +8,7 @@ import { PluginManifestError, RecipeSourceError } from "@lando/sdk/errors";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
 import { hostConfigReadPolicy } from "@lando/engine/services/config";
 import { type NpmRegistryConfig, loadNpmRegistryConfig } from "../../recipes/npm-registry-config";
-import { bunSelfRun } from "./bun-self-runner";
+import { publishWithCredential } from "./npm-publish-runner";
 import { publishOptionalEvent } from "./optional-event-publish";
 import { pluginBuild } from "./plugin-build";
 import { isArtifactStale, listOutputs, outputDirectoryExists } from "./plugin-build-files";
@@ -224,9 +224,8 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
     let published = false;
     let exitCode = 0;
     if (!dryRun) {
-      const authorization = npmConfig.authorizationFor(registry, registry);
-      const token = authorization?.slice("Bearer ".length);
-      if (token === undefined) {
+      const credential = npmConfig.credentialFor(registry, registry);
+      if (credential === undefined) {
         return yield* Effect.fail(
           new PluginPublishAuthError({
             message: `No registry auth for ${registry} in ${npmConfig.path}.`,
@@ -235,14 +234,16 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
           }),
         );
       }
-      const publish = yield* bunSelfRun({
-        argv: ["publish", "--tag", tag, "--registry", registry],
-        cwd: join(pluginRoot, "dist"),
-        env: { BUN_AUTH_TOKEN: token },
-        verb: "publish",
-        callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
-        ...bunOptions,
-      });
+      const publish = yield* publishWithCredential(
+        credential,
+        { registry, packageName: typeof pkg.name === "string" ? pkg.name : manifest.name, tag },
+        {
+          cwd: join(pluginRoot, "dist"),
+          verb: "publish",
+          callerSubsystem: `plugin-authoring:meta:plugin:publish:${manifest.name}`,
+          ...bunOptions,
+        },
+      );
       exitCode = publish.exitCode;
       published = exitCode === 0;
     }
@@ -265,18 +266,4 @@ export const pluginPublish = Effect.fn("PluginPublish.publish")(function* (
   }).pipe(Effect.tapError(() => publishCompleteEvent(false, 1)));
 });
 
-export const renderPluginPublishResult = (result: PluginPublishResult): string => {
-  const outcome = result.dryRun
-    ? "dry-run (no publish)"
-    : result.published
-      ? "published"
-      : `failed (exit ${result.exitCode})`;
-  return [
-    `plugin-publish: ${result.pluginName}`,
-    `registry: ${result.registry}`,
-    `tag: ${result.tag}`,
-    `contents: ${result.packageContents.join(", ")}`,
-    "validation: ok",
-    `result: ${outcome}`,
-  ].join("\n");
-};
+export { renderPluginPublishResult } from "./plugin-publish-render";
