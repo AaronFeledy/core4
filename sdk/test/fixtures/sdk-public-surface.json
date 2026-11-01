@@ -20,6 +20,7 @@
     "RouteInputError"
   ],
   "configErrorFields": ["_tag", "cause", "issues", "message", "path", "remediation"],
+  "configTranslateErrorFields": ["_tag", "cause", "diagnostics", "message", "remediation", "translator"],
   "managedFileTransactionErrorReasons": [
     "path",
     "conflict",

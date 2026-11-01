@@ -1,4 +1,5 @@
 import { Effect, Schema } from "effect";
+import { ConfigTranslateDiagnostic } from "../schema/config-translate-diagnostic";
 import { ValidationIssue } from "../schema/validation-issue";
 
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
@@ -19,6 +20,7 @@ export class ConfigTranslateError extends Schema.TaggedError<ConfigTranslateErro
   message: Schema.String,
   translator: Schema.optional(Schema.String),
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  diagnostics: Schema.optional(Schema.Array(ConfigTranslateDiagnostic)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
