@@ -26,6 +26,26 @@ export const serviceHasGpgAgentFeature = (service: ServicePlan): boolean =>
 export const gpgAgentEligibleServices = (plan: AppPlan) =>
   Object.values(plan.services).filter(serviceHasGpgAgentFeature);
 
+export const validateGpgAgentOverlay = (plan: AppPlan) =>
+  Effect.forEach(
+    gpgAgentEligibleServices(plan),
+    (service) => {
+      const duplicate =
+        duplicateMountTarget(orderMounts(service.mounts)) ??
+        service.mounts.find((mount) => ownedTargets.includes(mount.target))?.target;
+      return duplicate === undefined
+        ? Effect.void
+        : Effect.fail(
+            new GpgAgentTransportError({
+              message: `GPG agent mount target ${duplicate} collides with a planned mount on ${service.name}.`,
+              stage: "bridge",
+              remediation: "Remove the conflicting mount or disable the gpg-agent feature for this service.",
+            }),
+          );
+    },
+    { discard: true },
+  );
+
 const agentSocketName = `${target}/${GPG_AGENT_SOCKET_NAME}`;
 const ownedEnvironmentValue = (name: string): string | undefined => {
   switch (name) {
