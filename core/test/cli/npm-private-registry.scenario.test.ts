@@ -3,12 +3,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-test.skipIf(process.platform === "win32")(
-  "source CLI installs from a private HTTPS npm registry and safely reports rejected auth",
-  async () => {
+test.skipIf(process.platform === "win32").each(["bearer", "basic", "password"] as const)(
+  "source CLI installs with %s from a private HTTPS npm registry and safely reports rejected auth",
+  async (kind) => {
     const root = await mkdtemp(join(tmpdir(), "lando-private-npm-"));
     const cli = new URL("../../bin/lando.ts", import.meta.url).pathname;
     const token = "local-private-registry-canary-1489";
+    const basic = Buffer.from(`alice:${token}`).toString("base64");
+    const expectedAuth = kind === "bearer" ? `Bearer ${token}` : `Basic ${basic}`;
     const packageName = "@acme/lando-plugin-private";
     const requests: { path: string; authenticated: boolean }[] = [];
     const inMemoryPemCommand =
@@ -35,10 +37,15 @@ test.skipIf(process.platform === "win32")(
         JSON.stringify({
           name: packageName,
           version: "1.0.0",
+          scripts: { postinstall: "bun postinstall.mjs" },
           landoPlugin: { name: packageName, version: "1.0.0", api: 4, entry: "index.js" },
         }),
       );
       await writeFile(join(root, "package", "index.js"), "export {};\n");
+      await writeFile(
+        join(root, "package", "postinstall.mjs"),
+        'const response = await fetch(`${process.env.LANDO_TEST_REGISTRY}postinstall`, {headers: {authorization: process.env.LANDO_TEST_REGISTRY_AUTH}}); if (!response.ok) throw new Error("postinstall registry request failed"); await Bun.write("postinstall-ok", "ok");\n',
+      );
       await mkdir(join(root, "package", "fragments"));
       await writeFile(
         join(root, "package", "fragments", "shared.yml"),
@@ -58,7 +65,7 @@ test.skipIf(process.platform === "win32")(
         tls: { cert, key },
         fetch: (request) => {
           const url = new URL(request.url);
-          const authenticated = request.headers.get("authorization") === `Bearer ${token}`;
+          const authenticated = request.headers.get("authorization") === expectedAuth;
           requests.push({ path: url.pathname, authenticated });
           if (!authenticated) return new Response(`rejected ${token}`, { status: 401 });
           if (url.pathname === "/archive.tgz") return new Response(archive);
@@ -71,11 +78,18 @@ test.skipIf(process.platform === "win32")(
       const registry = server.url.href;
       const env = {
         ...process.env,
-        HOME: root,
-        USERPROFILE: root,
+        LANDO_TEST_REGISTRY: registry,
+        LANDO_TEST_REGISTRY_AUTH: expectedAuth,
         NPM_CONFIG_USERCONFIG: join(root, "absent-user-config"),
         "npm_config_@acme:registry": registry,
-        [`npm_config_//127.0.0.1:${server.port}/:_authToken`]: token,
+        ...(kind === "bearer"
+          ? { [`npm_config_//127.0.0.1:${server.port}/:_authToken`]: token }
+          : kind === "basic"
+            ? { [`npm_config_//127.0.0.1:${server.port}/:_auth`]: basic }
+            : {
+                [`npm_config_//127.0.0.1:${server.port}/:username`]: "alice",
+                [`npm_config_//127.0.0.1:${server.port}/:_password`]: Buffer.from(token).toString("base64"),
+              }),
         LANDO_NETWORK_CA_CERTS: JSON.stringify([join(root, "ca.pem")]),
         LANDO_USER_CONF_ROOT: join(root, "conf"),
         LANDO_USER_DATA_ROOT: join(root, "data"),
@@ -106,7 +120,11 @@ test.skipIf(process.platform === "win32")(
       expect(requests).toEqual([
         { path: "/@acme%2flando-plugin-private", authenticated: true },
         { path: "/archive.tgz", authenticated: true },
+        { path: "/postinstall", authenticated: true },
       ]);
+      expect(
+        await Bun.file(join(root, "data", "plugins", packageName, "1.0.0", "postinstall-ok")).text(),
+      ).toBe("ok");
       const rejected = await run(["plugin:add", "@acme/denied", "--trust"], {
         [`npm_config_//127.0.0.1:${server.port}/:_authToken`]: "wrong-local-token",
       });
@@ -119,6 +137,7 @@ test.skipIf(process.platform === "win32")(
       expect(rejected.stdout).toContain(":_authToken token from your npm configuration");
       expect(installed.stdout + installed.stderr + rejected.stdout + rejected.stderr).not.toContain(token);
       expect(rejected.stdout + rejected.stderr).not.toContain("wrong-local-token");
+      expect(installed.stdout + installed.stderr + rejected.stdout + rejected.stderr).not.toContain(basic);
       const app = join(root, "include-app");
       await mkdir(app);
       await writeFile(
