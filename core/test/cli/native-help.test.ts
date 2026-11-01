@@ -102,7 +102,7 @@ describe("native registry help", () => {
     expect(result.stdout).toContain("USAGE");
     expect(result.stdout).toContain("Lando  ");
     expect(result.stdout).toContain(`${process.platform}-${process.arch}`);
-    expect(result.stdout).not.toContain("meta:plugin:login");
+    expect(result.stdout).not.toContain("meta:events:follow");
     expect(result.stdout).not.toContain("node-v");
     expect(result.stdout).not.toContain("TOPICS");
     expect(result.stdout).not.toContain("COMMANDS");
@@ -115,20 +115,19 @@ describe("native registry help", () => {
     const help = renderColdAllHelp({ style: false });
 
     // Then
-    expect(help).toContain("plugin:login");
-    expect(help).toContain("meta:plugin:login");
+    expect(help).toContain("events:follow");
+    expect(help).toContain("meta:events:follow");
   });
 
-  test("Given a registered command, when its help is requested, then catalog metadata and spec-owned flags render", async () => {
+  test("Given a registered command, when its help is requested, then catalog metadata and global flags render", async () => {
     // Given / When
-    const result = await runCli(["meta:plugin:login", "--help"]);
+    const result = await runCli(["meta:events:follow", "--help"]);
 
     // Then
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Authenticate with a plugin source.");
-    expect(result.stdout).not.toContain("Authenticate with a private plugin registry.");
-    expect(result.stdout).toContain("meta:plugin:login");
-    expect(result.stdout).toContain("--registry");
+    expect(result.stdout).toContain("Follow the lifecycle event trace stream for diagnostics and e2e tests.");
+    expect(result.stdout).toContain("meta:events:follow");
+    expect(result.stdout).toContain("--format");
   });
 
   test.each(["app:pull", "pull"] as const)(
@@ -145,7 +144,7 @@ describe("native registry help", () => {
 
   test("Given a deferred command, when help is requested, then its phase status renders successfully", async () => {
     // Given / When
-    const result = await runCli(["plugin:login", "--help"]);
+    const result = await runCli(["events", "--help"]);
 
     // Then
     expect(result.exitCode).toBe(0);
@@ -227,7 +226,7 @@ describe("native unknown-command failures", () => {
   test("Given an ambiguous, absent, or deferred suffix, when searched, then no canonical command is suggested", () => {
     expect(suggestCommandForSuffix("config")).toBeUndefined();
     expect(suggestCommandForSuffix("does-not-exist")).toBeUndefined();
-    expect(suggestCommandForSuffix("plugin:login")).toBeUndefined();
+    expect(suggestCommandForSuffix("events:follow")).toBeUndefined();
   });
 
   test("Given control characters in a near suffix, when dispatched, then the generic diagnostic stays escaped", async () => {

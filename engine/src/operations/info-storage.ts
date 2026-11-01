@@ -73,7 +73,10 @@ export const projectServiceMounts = (
   const internalTargets = new Set(
     service.mounts.filter((mount) => !userMounts.includes(mount)).map((mount) => String(mount.target)),
   );
-  if (sshAgentActive) internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.ssh);
+  if (sshAgentActive) {
+    internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.ssh);
+    internalTargets.add("/etc/ssh/ssh_known_hosts");
+  }
   if (gpgAgentActive) {
     internalTargets.add(AGENT_SOCKET_CONTAINER_DIR.gpg);
     internalTargets.add("/run/lando/gpg-agent-keys");

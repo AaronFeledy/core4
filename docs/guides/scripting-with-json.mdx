@@ -142,9 +142,22 @@ clipped. When the output already streamed to your terminal, the error points
 you back to it instead of repeating it.
 
 Redaction runs before anything reaches the envelope, events, or logs. Registry
-credentials such as the `BUN_AUTH_TOKEN` that `meta:plugin:publish` passes to
-its child are protected. The human `lando bun` and `lando x` passthrough is the
-exception: that output is yours, unchanged.
+secrets that `meta:plugin:publish` hands its child (`BUN_CONFIG_TOKEN` for
+Bearer or `LANDO_NPM_BASIC_PASSWORD` for Basic), including encoded Basic
+authorization headers, are protected, as are resolved token values registered
+from your npm config. Complete bare `${IDENT}` / `${IDENT?}` placeholders in remediation stay
+readable so you can see which env var to export. The human `lando bun` and
+`lando x` passthrough is the exception: that output is yours, unchanged.
+
+The shared Bun runner applies Lando's resolved CA and proxy policy to plugin
+installation, builds, tests, publication, removal, post-init commands, and
+`lando bun` / `lando x`. Default host trust uses `NODE_EXTRA_CA_CERTS`; strict
+trust uses `--cafile` for supported package commands. Because bunx doesn't honor
+that replacement-CA flag, strict `lando x` adds `--no-install`: an installed
+local binary can run, but a missing binary fails without registry requests.
+Commands whose strict registry policy cannot be projected fail with
+`BunChildNetworkPolicyError` and remediation. Arbitrary programs run by a
+script can still choose their own network behavior; this isn't a sandbox.
 
 A failed managed operation stops later activation, deletion, registry refresh,
 or cache mutation for that plugin. A batch update can continue after ordinary

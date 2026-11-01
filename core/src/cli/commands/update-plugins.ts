@@ -23,11 +23,7 @@ import {
 } from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore, ProcessRunner } from "@lando/sdk/services";
-import {
-  DEFAULT_NPM_REGISTRY_URL,
-  type NpmPackument,
-  type NpmRegistryClient,
-} from "../../recipes/npm-source";
+import type { NpmPackument, NpmRegistryClient } from "../../recipes/npm-source";
 import { retainedRecipeSources } from "../../recipes/runtime-sources";
 import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../../recipes/tarball-source";
 import { pluginAdd } from "./plugin-add";
@@ -118,12 +114,12 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
   if (userDataRoot === undefined) userDataRoot = yield* config.get("userDataRoot");
   const paths = makeLandoPaths(userDataRoot === undefined ? {} : { userDataRoot });
   const pluginsRoot = options.pluginsRoot ?? paths.pluginsDir;
-  const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
-  const sources = yield* retainedRecipeSources(registryUrl);
-  const registryClient = options.registryClient ?? sources.npmRegistryClient;
+  const registryUrl = options.registryUrl;
 
   return (input) =>
     Effect.gen(function* () {
+      const sources = yield* retainedRecipeSources(registryUrl);
+      const registryClient = options.registryClient ?? sources.npmRegistryClient;
       const inventory = yield* inventoryFor(
         pluginsRoot,
         trustStore,
@@ -166,7 +162,7 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
             spec: `${row.name}@${row.targetVersion}`,
             pluginsRoot,
             ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-            registryUrl,
+            ...(registryUrl === undefined ? {} : { registryUrl }),
             registryClient,
             fetcher: options.fetcher ?? sources.tarballRecipeFetcher,
             ...(options.extractor === undefined ? {} : { extractor: options.extractor }),

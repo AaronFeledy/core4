@@ -21,6 +21,7 @@ import {
   discoverHostSshAgent,
   hostSshAgentSourceLabel,
 } from "../subsystems/ssh-agent/host-agent-discovery.ts";
+import { hostKnownHostsFile } from "../subsystems/ssh-agent/host-known-hosts.ts";
 import {
   sshAgentEligibleServices,
   stripSshAgentOverlay,
@@ -273,7 +274,18 @@ export const withStartedSshAgent = Effect.fnUntraced(function* <A, E, R>(
     }),
   );
   const session = yield* acquire;
+  if (session === undefined) return yield* options.use(stripSshAgentOverlay(plan));
+  const knownHostsFile = yield* hostKnownHostsFile(options.home ?? homedir());
   return yield* options.use(
-    session === undefined ? stripSshAgentOverlay(plan) : yield* withSshAgentOverlay(plan, session),
+    yield* withSshAgentOverlay(
+      plan,
+      session,
+      knownHostsFile === undefined
+        ? {}
+        : {
+            knownHostsFile: knownHostsFile.path,
+            knownHostsSourceIdentity: knownHostsFile.sourceIdentity,
+          },
+    ),
   );
 });

@@ -8,7 +8,12 @@ import { layer as sanitizerLayer } from "../../src/subsystems/host-proxy/plan-sa
 import { withSshAgentOverlay } from "../../src/subsystems/ssh-agent/overlay.ts";
 import { plan, runInfo, service } from "./info-storage-fixture.ts";
 
-const targets = ["/run/lando/ssh-agent", "/run/lando/gpg-agent", "/run/lando/gpg-agent-keys"] as const;
+const targets = [
+  "/run/lando/ssh-agent",
+  "/etc/ssh/ssh_known_hosts",
+  "/run/lando/gpg-agent",
+  "/run/lando/gpg-agent-keys",
+] as const;
 const eligible: ServicePlan = {
   ...service,
   extensions: {
@@ -94,11 +99,15 @@ for (const target of targets) {
 
 const overlays = {
   ssh: (input: AppPlan) =>
-    withSshAgentOverlay(input, {
-      kind: "ssh",
-      socketName: "agent.sock",
-      mount: { _tag: "volume", volume: "ssh-relay" },
-    }),
+    withSshAgentOverlay(
+      input,
+      {
+        kind: "ssh",
+        socketName: "agent.sock",
+        mount: { _tag: "volume", volume: "ssh-relay" },
+      },
+      { knownHostsFile: "/home/user/.ssh/known_hosts" },
+    ),
   gpg: (input: AppPlan) =>
     withGpgAgentOverlay(
       input,

@@ -2,9 +2,13 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
-import { NotImplementedError, PluginManifestError, PluginPackageOperationError } from "@lando/sdk/errors";
 import {
-  DEFAULT_NPM_REGISTRY_URL,
+  NotImplementedError,
+  PluginManifestError,
+  PluginPackageOperationError,
+  RecipeSourceError,
+} from "@lando/sdk/errors";
+import {
   defaultNpmRegistryClient,
   parseNpmPackageSpec,
   resolveNpmPackageVersion,
@@ -75,7 +79,7 @@ export const acquirePluginPackage = async (
   let operation: PluginPackageOperationError["operation"] = "resolve";
   try {
     const parsed = parseNpmPackageSpec(options.spec);
-    const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
+    const registryUrl = options.registryUrl;
     const client = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
     const packument = await client.fetchPackument(parsed.name);
     if (packument === undefined)
@@ -105,7 +109,10 @@ export const acquirePluginPackage = async (
     );
     if (options.expectedActivation === undefined && exists) return { created: false, packageDir };
     operation = "download";
-    const archiveBytes = await (options.fetcher ?? defaultTarballRecipeFetcher).fetch(dist.tarball);
+    const archiveBytes =
+      client.fetchTarball === undefined
+        ? await (options.fetcher ?? defaultTarballRecipeFetcher).fetch(dist.tarball)
+        : await client.fetchTarball({ packageName: parsed.name, dist }, options.fetcher);
     operation = "verify";
     verifyNpmPackageDistIntegrity(archiveBytes, dist, dist.tarball);
     operation = "extract";
@@ -130,7 +137,10 @@ export const acquirePluginPackage = async (
       packageSpec: options.spec,
       cwd: pluginsRoot,
       detail: cause instanceof Error ? cause.message : String(cause),
-      remediation: "Correct the reported package acquisition failure and retry plugin installation.",
+      remediation:
+        cause instanceof RecipeSourceError
+          ? cause.remediation
+          : "Correct the reported package acquisition failure and retry plugin installation.",
     });
   }
 };

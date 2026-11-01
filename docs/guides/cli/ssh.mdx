@@ -39,7 +39,7 @@ Pipe a script in, and the shell runs it without a terminal, then exits at the en
 lando ssh < setup.sh
 ```
 
-## Host keys
+## SSH identities
 
 By default the bundled SSH-agent sidecar loads keys from the host `~/.ssh` directory (`id_rsa`, `id_ed25519`, and the other `ssh-add` defaults). Passphrase-protected keys are skipped. Every service sees the agent at `SSH_AUTH_SOCK=/run/lando/ssh-agent/agent.sock`.
 
@@ -49,7 +49,24 @@ To use your own agent instead (1Password, YubiKey, gpg-agent), set `sshAgent.sid
 
 A Landofile `keys:` list is not a canonical key.
 
+## Host keys
+
+When SSH agent forwarding is active, your services trust the hosts in your host `~/.ssh/known_hosts`. If that path is a regular file, Lando binds it read-only at `/etc/ssh/ssh_known_hosts` in each eligible service, in both sidecar and host-agent modes. Git and Composer can use those trusted hosts without a host-key prompt, including in non-interactive runs and services with `home: false`. OpenSSH also checks the service user's own known hosts, so you can still add hosts there. Lando never copies or rewrites your host file.
+
+If you create or replace the host file after the app started, run `lando start` from your app directory. Lando recreates the affected service to mount the current file, including after an atomic replacement by `ssh-keygen -R` or a symlink retarget. Appending entries to the existing file keeps the same bind and does not require a restart. If the file disappears or becomes inaccessible, the next start omits the bind. The host file must be readable by the service user; OpenSSH creates it with mode `0644`.
+
+If your service mounts its own `/etc/ssh/ssh_known_hosts` or an ancestor directory such as `/etc/ssh`, `/etc`, or `/`, Lando keeps your mount instead. SSH host-key verification remains enabled.
+
 ## Next
 
 - [Run commands inside a service](./exec.mdx)
 - [Everyday commands](./everyday-commands.mdx)
+
+<Guide>
+  <Scenario id="ssh-shell-help" render={false} reason="Shell access requires a running service; help can verify the documented shell selection flags without a provider.">
+    <Step name="check-shell-flags">
+      <Run command="lando ssh --help" />
+      <Verify command="lando ssh --help" expect={{ stdout: { regex: "--service" } }} />
+    </Step>
+  </Scenario>
+</Guide>

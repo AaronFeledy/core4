@@ -64,6 +64,9 @@ export const makeTestLandofilePorts = (
   resolveUserCacheRoot: () => cacheRoot,
   resolveUserIncludesDir: () => userIncludesDir,
   npmRecipeSource: {
+    fetchTarball: async () => {
+      throw new Error("Unexpected npm tarball port call in test");
+    },
     resolve: async () => {
       throw new Error("Unexpected npm recipe source port call in test");
     },

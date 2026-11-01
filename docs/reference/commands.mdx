@@ -586,7 +586,7 @@ Flags:
 | `--package` | npm package spec <name>[@version] (for --source=npm). |
 | `--path` | Subdirectory within a remote recipe source. |
 | `--recipe` | Recipe to apply. |
-| `--registry-url` | Override the recipe registry base URL (for --source=registry). |
+| `--registry-url` | Override the registry base URL for --source=registry or --source=npm, including npm recipe parents. |
 | `--source` | Remote recipe source (git, tarball, npm, registry). |
 | `--url` | Remote recipe source URL (for --source=git/tarball); git accepts @ref (tag, branch, or full commit SHA). |
 | `--yes, -y` | Accept every prompt's default without asking. |
@@ -1203,7 +1203,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--force` | Re-install even if already present. |
-| `--trust` | Trust the plugin for this session (required for non-interactive installs; persistent trust is not supported). |
+| `--trust` | Trust the plugin and save that trust by package name (required for non-interactive installs). |
 | `--yes, -y` | Alias of --trust. |
 
 ## `lando meta:plugin:build`
@@ -1220,30 +1220,6 @@ Arguments:
 | Argument | Description |
 | --- | --- |
 | `path` | Plugin authoring directory to link (defaults to cwd). |
-
-## `lando meta:plugin:login`
-
-Authenticate with a plugin source.
-
-Aliases: `lando plugin:login`
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--registry` | Registry URL. |
-
-## `lando meta:plugin:logout`
-
-Forget plugin source authentication.
-
-Aliases: `lando plugin:logout`
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--registry` | Registry URL. |
 
 ## `lando meta:plugin:new`
 

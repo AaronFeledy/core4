@@ -10,17 +10,22 @@ import {
 } from "@lando/sdk/errors";
 
 import { type GitRecipeCloner, resolveGitRecipeSource } from "../git-source";
-import { resolveNpmRecipeSource } from "../npm-source";
+import { type NpmRegistryClient, resolveNpmRecipeSource } from "../npm-source";
 import { resolveRegistryRecipeSource } from "../registry-source";
 import type { RecipeTransportEvidence } from "../resolved-source-types";
 import type { ResolvedRecipe } from "../source";
 import { recipeTransportEvidence } from "../source-support";
+import type { TarballRecipeExtractor, TarballRecipeFetcher } from "../tarball-source";
 import { parseRecipeYaml } from "./parser";
 
 export interface RemoteParentContext {
   readonly onWarn?: (message: string) => void | Promise<void>;
   readonly userDataRoot?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
+  readonly npmRegistryClient?: NpmRegistryClient;
+  readonly registryUrl?: string;
+  readonly tarballRecipeFetcher?: TarballRecipeFetcher;
+  readonly tarballRecipeExtractor?: TarballRecipeExtractor;
 }
 
 export interface RawRemoteParent {
@@ -144,6 +149,10 @@ const resolveRemote = async (ref: string, ctx: RemoteParentContext): Promise<Res
       const parsed = parseNpmRef(ref);
       return resolveNpmRecipeSource({
         package: parsed.package,
+        ...(ctx.registryUrl === undefined ? {} : { registryUrl: ctx.registryUrl }),
+        ...(ctx.npmRegistryClient === undefined ? {} : { registryClient: ctx.npmRegistryClient }),
+        ...(ctx.tarballRecipeFetcher === undefined ? {} : { fetcher: ctx.tarballRecipeFetcher }),
+        ...(ctx.tarballRecipeExtractor === undefined ? {} : { extractor: ctx.tarballRecipeExtractor }),
         ...(parsed.path === undefined ? {} : { path: parsed.path }),
         ...(ctx.userDataRoot === undefined ? {} : { userDataRoot: ctx.userDataRoot }),
       });

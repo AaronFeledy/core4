@@ -175,18 +175,18 @@ export const fetchNpm = async (
     snapshotSubdir: "package",
     acquire: async (resolved) => {
       const packageSpec = resolved === undefined ? parsed.packageSpec : `${parsed.packageName}@${resolved}`;
-      const resolvedPackage = await (ctx.deps.npmRecipeSource ?? requiredPorts(ctx).npmRecipeSource)
-        .resolve(packageSpec)
-        .catch((cause: unknown) => {
-          throw includeError({
-            message: `Could not resolve npm include package ${packageSpec}: ${causeMessage(cause)}`,
-            source: entry.source,
-            kind:
-              cause instanceof RecipeSourceError && cause.kind !== "registry-failed"
-                ? "source-unresolved"
-                : "fetch-failed",
-          });
+      const npmSource = ctx.deps.npmRecipeSource ?? requiredPorts(ctx).npmRecipeSource;
+      const resolvedPackage = await npmSource.resolve(packageSpec).catch((cause: unknown) => {
+        throw includeError({
+          message: `Could not resolve npm include package ${packageSpec}: ${causeMessage(cause)}`,
+          ...(cause instanceof RecipeSourceError ? { remediation: cause.remediation } : {}),
+          source: entry.source,
+          kind:
+            cause instanceof RecipeSourceError && cause.kind !== "registry-failed" && cause.kind !== "auth"
+              ? "source-unresolved"
+              : "fetch-failed",
         });
+      });
       if (!RESOLVED_FORMAT.npm.pattern.test(resolvedPackage.version))
         throw includeError({
           message: `npm include ${entry.source} resolved to an invalid version: ${resolvedPackage.version}.`,
@@ -197,9 +197,10 @@ export const fetchNpm = async (
       await mkdir(npmRoot, { recursive: true });
       const stagingDir = await mkdtemp(join(npmRoot, ".staging-"));
       try {
-        const archive = await (ctx.deps.npmFetcher ?? requiredPorts(ctx).tarball).fetch(
-          resolvedPackage.dist.tarball,
-        );
+        const archive =
+          ctx.deps.npmFetcher === undefined
+            ? await npmSource.fetchTarball(resolvedPackage)
+            : await ctx.deps.npmFetcher.fetch(resolvedPackage.dist.tarball);
         const integrity = checkNpmPackageDistIntegrity(archive, resolvedPackage.dist);
         switch (integrity.status) {
           case "verified":
@@ -239,6 +240,7 @@ export const fetchNpm = async (
         if (cause instanceof LandofileIncludeError) throw cause;
         throw includeError({
           message: `Could not acquire npm include ${entry.source}: ${causeMessage(cause)}`,
+          ...(cause instanceof RecipeSourceError ? { remediation: cause.remediation } : {}),
           source: entry.source,
           kind: "fetch-failed",
         });

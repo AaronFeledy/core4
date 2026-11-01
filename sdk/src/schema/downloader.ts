@@ -23,6 +23,20 @@ export const DownloadRequest = Schema.Struct({
   offline: Schema.optionalKey(Schema.Boolean),
   callerId: Schema.optionalKey(Schema.String),
   redactionTokens: Schema.optionalKey(Schema.Array(Schema.String)),
+  headers: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        name: Schema.String.annotate({ description: "HTTP request header name." }),
+        value: Schema.String.annotate({
+          description:
+            "HTTP request header value; sensitive values must also be supplied as redactionTokens.",
+        }),
+      }),
+    ).annotate({
+      description:
+        "Additional HTTP request headers. Authorization is stripped on cross-origin redirects and does not affect verified cache lookup.",
+    }),
+  ),
 });
 export type DownloadRequest = typeof DownloadRequest.Type;
 

@@ -141,7 +141,7 @@ Home contents stay out of build keys. Filling up `~/.npm` will not trigger a reb
 
 ## Reach your host from inside a service
 
-Containers get `host.lando.internal` pointing at your host machine, plus `LANDO_HOST_IP` holding that name so your code does not have to hardcode it. Use it for a debugger listening on your laptop, or a service you run outside Lando:
+Containers get `host.lando.internal` pointing at your host machine, plus `LANDO_HOST_IP` holding that name so your code does not have to hardcode it. Use it for a service you run outside Lando:
 
 ```sh
 lando ssh -s app -c 'curl -sf http://host.lando.internal:5000/'
@@ -149,6 +149,8 @@ lando ssh -s app -c 'echo $LANDO_HOST_IP'
 ```
 
 Both exist only when your provider says it can reach the host. A provider that cannot is not an error: you simply get neither the alias nor the variable, so check for `LANDO_HOST_IP` rather than assuming it.
+
+Debuggers use a separate alias, `debugger.lando.internal`, which follows global `debugger.host` and defaults to the same gateway. Leave `host.lando.internal` alone when the IDE needs a different address. See [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx).
 
 If the request is refused, see [Reach host services and sibling stacks](../subsystems/host-services.mdx) for the bind address and `extra_hosts` names.
 
