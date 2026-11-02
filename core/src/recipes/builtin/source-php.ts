@@ -76,6 +76,7 @@ export const drupalWebVariants = [
           type: "nginx",
           backend: "appserver",
           webroot: "{{ recipe.webroot }}",
+          noScripts: ["sites/*/files"],
           routes: defaultRoutes,
         },
       },
