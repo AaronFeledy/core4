@@ -44,7 +44,7 @@ Lint reports every independent load failure in one run: broken layers, load expr
 | `router.bind-address-global-only` | A Landofile `router.bindAddress` does not bind the shared router | `router.bindAddress` |
 | `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
 | `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
-| `landofile.load` | Layer parse errors, failed load or recipe/env expressions, invalid include conditions, include and tooling include failures, lock mismatches, and invalid `lando:` ranges | `includes[1].when`, `toolingIncludes.docs`, `lando` |
+| `landofile.load` | Layer parse errors, failed load or recipe/env expressions, `${secret:...}` references outside a binding site, invalid include conditions, include and tooling include failures, lock mismatches, and invalid `lando:` ranges; `reason` names the cause | `includes[1].when`, `toolingIncludes.docs`, `lando` |
 | `env-file.read` | A declared env file is missing or cannot be read | `env_file[0]`, `services.web.envFile[0]` |
 | `env-file.syntax` | Invalid env-file entries, including a bare name without `=` or unmatched quotes | `env_file[0]`, `services.web.envFile[0]` |
 | `env-file.literal` | A warning when double-quoted escapes change a value, or an unquoted or double-quoted value contains `${` | `env_file[0]`, `services.web.envFile[0]` |
@@ -109,10 +109,10 @@ lando app:config:lint --format=json
 JSON output is a stable `ConfigLintResult` for editor integrations:
 
 ```
-{ app, file, valid, violations: [{ rule, severity, path, message, scopes, source: { file, layer, path }, suggestion?, line?, column? }] }
+{ app, file, valid, violations: [{ rule, reason?, severity, path, message, scopes, source: { file, layer, path }, suggestion?, line?, column? }] }
 ```
 
-Each finding extends `ValidationIssue` with a stable `rule` and a `severity` of `error` or `warning`. `valid` means there are no error-severity findings; warnings alone leave it true. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it.
+Each finding extends `ValidationIssue` with a stable `rule` and a `severity` of `error` or `warning`. `valid` means there are no error-severity findings; warnings alone leave it true. `path` is an array of keys and indexes, `["services", "web", "ports", 0, "target"]`, so a consumer walks it without splitting on dots or guessing whether `0` was a key or an index. `message` says what is wrong. `suggestion`, when present, says how to fix it. A `landofile.load` finding also carries `reason`, a stable id for the cause: the failing issue's own rule, such as `unsupported-secret-reference` or `unsupported-expression`, or the failure's error tag, such as `LandofileIncludeError`. Match on `reason` instead of parsing `message`.
 
 `scopes` lists `fragment`, `effective`, or both: `fragment` means the file is wrong on its own, `effective` means the composed app is. `source.path` is the original authored path, so `working_dir` can be the source of an effective `workingDirectory` finding. Coordinates come only from retained source content; transformed templates and TypeScript don't get guessed YAML coordinates.
 
@@ -184,6 +184,7 @@ Your editor can catch the structural problems (unknown keys, wrong literal types
       <Run command="lando app:config:lint --format=json" expectExit={1} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.load\"[\\s\\S]*\"rule\":\\s*\"landofile\\.load\"", not: { regex: "\"rule\":\\s*\"landofile\\.load\"[\\s\\S]*\"rule\":\\s*\"landofile\\.load\"[\\s\\S]*\"rule\":\\s*\"landofile\\.load\"" } } }} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "missing-a\\.yml[\\s\\S]*missing-b\\.yml" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.load\",\\s*\"reason\":\\s*\"LandofileIncludeError\"" } }} />
     </Step>
     <Step name="cleanup-broken-includes"><Cleanup /></Step>
   </Scenario>
