@@ -98,10 +98,14 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
           .filter((feature) => !substituted.has(feature.id))
           .flatMap((feature) => feature.validation?.handledServiceFields ?? []),
       );
-      for (const field of ["webroot", "consolePort"] as const) {
+      for (const field of ["webroot", "consolePort", "noScripts"] as const) {
         if (seed.authoredService[field] === undefined || claims.has(field)) continue;
+        if (field === "noScripts" && seed.authoredService.noScripts?.length === 0) continue;
         const message = `Service ${name} has an explicit ${field}, but no composed feature declares support for it.`;
-        const remediation = `Remove ${field} or select a supporting feature that validates and uses the effective ${field}.`;
+        const remediation =
+          field === "noScripts"
+            ? "noScripts applies only to an nginx service with a PHP-FPM backend that uses Lando's generated configuration. Remove noScripts or set noScripts: [], and deny PHP under these paths in your own server configuration."
+            : `Remove ${field} or select a supporting feature that validates and uses the effective ${field}.`;
         record(
           new LandofileValidationError({
             file: `${input.appRoot}/.lando.yml`,

@@ -154,7 +154,7 @@ export const nginxServiceFeature: ServiceFeatureDefinition = {
     if (service.command !== undefined || service.entrypoint !== undefined)
       return { handledServiceFields: [] };
     resolveWebroot("nginx", service.webroot, service.appMount);
-    return { handledServiceFields: ["webroot"] };
+    return { handledServiceFields: service.backend?.trim() ? ["webroot", "noScripts"] : ["webroot"] };
   }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
