@@ -1,7 +1,15 @@
+import { LandofileValidationError } from "@lando/sdk/errors";
+import type { LandofileLayer } from "@lando/sdk/schema";
 import { buildArgumentPath } from "./load-expression-shape.ts";
 import { SECRET_BINDING_SITES } from "./secret-reference.ts";
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+// Lando owns `LANDO` and `LANDO_*` environment keys, so a suggestion must not tell authors to bind one.
+const usableName = (candidate: unknown): candidate is string =>
+  typeof candidate === "string" &&
+  IDENTIFIER.test(candidate) &&
+  candidate !== "LANDO" &&
+  !candidate.startsWith("LANDO_");
 const genericSuggestion = (): string =>
   `Use \${secret:...} only in ${new Intl.ListFormat("en", { type: "disjunction" }).format(
     SECRET_BINDING_SITES.map((site) => site.label.replaceAll("`", "")),
@@ -23,20 +31,28 @@ export const unsupportedSecretReference = (
   value: string,
 ): { readonly message: string; readonly suggestion: string } => {
   const buildArgument = buildArgumentPath(path);
-  const listKey = value.includes("=") ? value.slice(0, value.indexOf("=")) : undefined;
-  const name =
-    [...(buildArgument ? [path[4], listKey] : []), reference].find(
-      (candidate): candidate is string => typeof candidate === "string" && IDENTIFIER.test(candidate),
-    ) ?? "SECRET";
+  const listKey =
+    typeof path[4] === "number" && value.includes("=") ? value.slice(0, value.indexOf("=")) : undefined;
+  const name = (buildArgument ? [path[4], listKey, reference] : [reference]).find(usableName) ?? "SECRET";
   const service = `services.${path[1]}`;
   const tooling = `tooling.${path[1]}`;
   const shell = `$${name}`;
   const binding = "${secret:...} reference";
+  const afterStart = `For runtime use, set ${service}.environment.${name} to the ${binding}. For setup that needs it, add an events.post-start step with service ${path[1]}, env.${name} set to the reference, and ${shell} in its cmd; it runs in the started container.`;
   const rules = [
     {
       matches: buildArgument,
       extra: " Build arguments can be recorded in image history.",
-      suggestion: `For runtime use, set ${service}.environment.${name} to the ${binding}. For setup that needs it, add an events.post-start step with service ${path[1]}, env.${name} set to the reference, and ${shell} in its cmd; it runs in the started container.`,
+      suggestion: afterStart,
+    },
+    {
+      matches:
+        path[0] === "services" &&
+        path[2] === "build" &&
+        (path[3] === "dockerfile_inline" || path[3] === "dockerfileInline") &&
+        path.length === 4,
+      extra: " Dockerfile instructions run before secrets resolve and can be recorded in image history.",
+      suggestion: afterStart,
     },
     {
       matches: buildStepPath(path, "artifact"),
@@ -55,10 +71,18 @@ export const unsupportedSecretReference = (
       matches:
         path[0] === "tooling" &&
         ((path[2] === "cmd" && path.length === 3) ||
-          (path[2] === "cmds" &&
-            typeof path[3] === "number" &&
-            (path.length === 4 || (path.length === 5 && path[4] === "cmd")))),
+          (path[2] === "cmds" && typeof path[3] === "number" && path.length === 4)),
       suggestion: `Set ${tooling}.env.${name} to the ${binding} and write ${shell} in the command. The shell reads it when the task runs.`,
+    },
+    {
+      // A step's own env overlays the task env, so only the step binding is sure to reach it.
+      matches:
+        path[0] === "tooling" &&
+        path[2] === "cmds" &&
+        typeof path[3] === "number" &&
+        path[4] === "cmd" &&
+        path.length === 5,
+      suggestion: `Set ${tooling}.cmds.${path[3]}.env.${name} to the ${binding} and write ${shell} in the command. The shell reads it when the step runs.`,
     },
     {
       matches: path[0] === "tooling" && path[2] === "cmd" && typeof path[3] === "number" && path.length === 4,
@@ -69,8 +93,12 @@ export const unsupportedSecretReference = (
       suggestion: `Use the object form: set events.${path[1]}.${path[2]}.cmd to this command with ${shell} in place of the reference, and events.${path[1]}.${path[2]}.env.${name} to the ${binding}. The shell reads it when the step runs.`,
     },
     {
-      matches: path[0] === "events" && typeof path[2] === "number" && path.length === 4 && path[3] === "cmd",
-      suggestion: `Set events.${path[1]}.${path[2]}.env.${name} to the ${binding} and write ${shell} in the step's cmd.`,
+      matches:
+        path[0] === "events" &&
+        typeof path[2] === "number" &&
+        path.length === 4 &&
+        (path[3] === "cmd" || path[3] === "defer"),
+      suggestion: `Set events.${path[1]}.${path[2]}.env.${name} to the ${binding} and write ${shell} in the step's ${path[3] === "defer" ? "deferred command" : "cmd"}.`,
     },
     {
       matches: path[0] === "services" && path[2] === "command" && path.length === 3,
@@ -79,7 +107,7 @@ export const unsupportedSecretReference = (
     {
       matches:
         path[0] === "services" && path[2] === "command" && typeof path[3] === "number" && path.length === 4,
-      suggestion: `Set ${service}.environment.${name} to the ${binding} and read ${name} from the environment in your program, or use a string command that reads ${shell}. Array commands run without a shell.`,
+      suggestion: `Set ${service}.environment.${name} to the ${binding}. Array commands run without a shell, so read ${name} from the environment in your program, or use a string command that reads ${shell}. On type: compose, a string command is split into arguments too, so write sh -c with ${shell} inside one quoted argument.`,
     },
     {
       matches:
@@ -94,4 +122,22 @@ export const unsupportedSecretReference = (
     message: `Secret references are not supported at ${path.join(".")}.${rule?.extra ?? ""}`,
     suggestion: rule?.suggestion ?? genericSuggestion(),
   };
+};
+
+export const unsupportedSecretReferenceError = (
+  source: {
+    readonly file: string;
+    readonly layer: LandofileLayer;
+    readonly path: ReadonlyArray<string | number>;
+  },
+  reference: string,
+  value: string,
+): LandofileValidationError => {
+  const { message, suggestion } = unsupportedSecretReference(source.path, reference, value);
+  return new LandofileValidationError({
+    file: source.file,
+    message,
+    remediation: suggestion,
+    issues: [{ path: source.path, message, rule: "unsupported-secret-reference", suggestion, source }],
+  });
 };

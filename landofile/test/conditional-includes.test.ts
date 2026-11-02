@@ -113,6 +113,25 @@ test.each([
   ]);
 });
 
+test("rejects a secret reference in an include condition with secret-specific guidance", async () => {
+  // Given
+  await writeFile(
+    join(root, ".lando.yml"),
+    "name: conditional\nincludes:\n  - source: ./absent.yml\n    when: '${secret:TOKEN}'\n",
+  );
+  // When
+  const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
+  // Then
+  expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
+    {
+      path: ["includes", 0, "when"],
+      reason: "unsupported-secret-reference",
+      message: "Secret references are not supported at includes.0.when.",
+      source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["includes", 0, "when"] },
+    },
+  ]);
+});
+
 test.each(["canonical", "shorthand"])(
   "prunes disabled %s tooling before unresolved vars (#1569 QA25)",
   async (form) => {

@@ -112,6 +112,16 @@ test.each([
     ["services", "app", "entrypoint"],
     "Set services.app.environment.TOKEN",
   ],
+  [
+    { services: { app: { build: { dockerfile_inline: "FROM node\nRUN fetch ${secret:TOKEN}" } } } },
+    ["services", "app", "build", "dockerfile_inline"],
+    "For runtime use, set services.app.environment.TOKEN",
+  ],
+  [
+    { events: { "post-stop": [{ defer: "notify ${secret:TOKEN}" }] } },
+    ["events", "post-stop", 0, "defer"],
+    "Set events.post-stop.0.env.TOKEN",
+  ],
 ] as const)(
   "reports the authored shorthand path for site-aware guidance: %j",
   async (value, path, suggestion) => {
@@ -123,7 +133,7 @@ test.each([
       issues: [{ path, rule: "unsupported-secret-reference" }],
     });
     if (!(failure instanceof LandofileValidationError)) throw failure;
-    expect(failure.issues[0]?.suggestion?.startsWith(suggestion)).toBe(true);
+    expect(failure.issues[0]?.suggestion).toStartWith(suggestion);
   },
 );
 

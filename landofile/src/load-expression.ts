@@ -35,7 +35,7 @@ import {
 } from "./load-expression-shape.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
-import { unsupportedSecretReference } from "./unsupported-secret-reference.ts";
+import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
 
 export type { ResolveLandofileLoadExpressionsOptions } from "./load-expression-shape.ts";
 
@@ -60,30 +60,25 @@ export const resolveLandofileLoadExpressions = (
     try: () => {
       const session = new LandofileFileSession(options.source, options.policy);
       const pendingSites: ParsedPendingSite[] = [];
-      const reject = (
-        path: ReadonlyArray<string | number>,
-        issue: { readonly message: string; readonly suggestion: string; readonly rule: string },
-      ): never => {
+      const unsupported = (path: ReadonlyArray<string | number>, description: string): never => {
+        const message = `${description} are not supported at ${path.join(".")}.`;
+        const suggestion =
+          "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope.";
         throw new LandofileValidationError({
           file: options.source.sourcePath,
-          message: issue.message,
-          remediation: issue.suggestion,
+          message,
+          remediation: suggestion,
           issues: [
             {
               path,
-              ...issue,
+              message,
+              rule: "unsupported-expression",
+              suggestion,
               source: { file: options.source.sourcePath, layer: options.source.layer, path },
             },
           ],
         });
       };
-      const unsupported = (path: ReadonlyArray<string | number>, description: string): never =>
-        reject(path, {
-          message: `${description} are not supported at ${path.join(".")}.`,
-          suggestion:
-            "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope.",
-          rule: "unsupported-expression",
-        });
       const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
         try {
           return visitValue(value, path);
@@ -144,12 +139,12 @@ export const resolveLandofileLoadExpressions = (
               ],
             });
           const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
-          if (secret !== undefined && !eligibleBindingPath(path)) {
-            return reject(path, {
-              ...unsupportedSecretReference(path, secret.name, value),
-              rule: "unsupported-secret-reference",
-            });
-          }
+          if (secret !== undefined && !eligibleBindingPath(path))
+            throw unsupportedSecretReferenceError(
+              { file: options.source.sourcePath, layer: options.source.layer, path },
+              secret.name,
+              value,
+            );
           if (parsed.success.segments.some((segment) => segment.kind === "ShellParamSegment"))
             return unsupported(path, "Configuration expressions");
           const secretMembers = expressionScopeMembers(parsed.success, "secrets");

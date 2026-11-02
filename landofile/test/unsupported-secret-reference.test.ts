@@ -69,10 +69,16 @@ test.each([
       "Set services.app.environment.TOKEN to the ${secret:...} reference and write $TOKEN in the step. The step's shell reads it from the container environment.",
   },
   {
-    path: ["tooling", "task", "cmds", 0, "cmd"],
+    path: ["tooling", "task", "cmds", 0],
     extra: "",
     suggestion:
       "Set tooling.task.env.TOKEN to the ${secret:...} reference and write $TOKEN in the command. The shell reads it when the task runs.",
+  },
+  {
+    path: ["tooling", "task", "cmds", 0, "cmd"],
+    extra: "",
+    suggestion:
+      "Set tooling.task.cmds.0.env.TOKEN to the ${secret:...} reference and write $TOKEN in the command. The shell reads it when the step runs.",
   },
   {
     path: ["tooling", "task", "cmd", 0],
@@ -93,6 +99,24 @@ test.each([
       "Set events.post-start.0.env.TOKEN to the ${secret:...} reference and write $TOKEN in the step's cmd.",
   },
   {
+    path: ["events", "post-start", 0, "defer"],
+    extra: "",
+    suggestion:
+      "Set events.post-start.0.env.TOKEN to the ${secret:...} reference and write $TOKEN in the step's deferred command.",
+  },
+  {
+    path: ["services", "app", "build", "dockerfile_inline"],
+    extra: " Dockerfile instructions run before secrets resolve and can be recorded in image history.",
+    suggestion:
+      "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.",
+  },
+  {
+    path: ["services", "app", "build", "dockerfileInline"],
+    extra: " Dockerfile instructions run before secrets resolve and can be recorded in image history.",
+    suggestion:
+      "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.",
+  },
+  {
     path: ["services", "app", "command"],
     extra: "",
     suggestion:
@@ -102,7 +126,7 @@ test.each([
     path: ["services", "app", "command", 0],
     extra: "",
     suggestion:
-      "Set services.app.environment.TOKEN to the ${secret:...} reference and read TOKEN from the environment in your program, or use a string command that reads $TOKEN. Array commands run without a shell.",
+      "Set services.app.environment.TOKEN to the ${secret:...} reference. Array commands run without a shell, so read TOKEN from the environment in your program, or use a string command that reads $TOKEN. On type: compose, a string command is split into arguments too, so write sh -c with $TOKEN inside one quoted argument.",
   },
   {
     path: ["services", "app", "entrypoint"],
@@ -138,6 +162,7 @@ test.each([
   [["services", "app", "build", "args", 0], "db.pass", "TOKEN=prefix-${secret:db.pass}", "TOKEN"],
   [["services", "app", "build", "args", 0], "TOKEN", "bad-key=${secret:TOKEN}", "TOKEN"],
   [["services", "app", "build", "args", "bad-key"], "TOKEN", "${secret:TOKEN}", "TOKEN"],
+  [["services", "app", "build", "args", "bad-key"], "TOKEN", "x=${secret:TOKEN}", "TOKEN"],
   [
     ["services", "app", "build", "args", "bad-key"],
     "op://Vault/Item/field",
@@ -147,6 +172,9 @@ test.each([
   [["services", "app", "command"], "TOKEN", "${secret:TOKEN}", "TOKEN"],
   [["services", "app", "command"], "op://Vault/Item/field", "${secret:op://Vault/Item/field}", "SECRET"],
   [["services", "app", "command"], "db.pass", "${secret:db.pass}", "SECRET"],
+  [["services", "app", "command"], "LANDO_TOKEN", "${secret:LANDO_TOKEN}", "SECRET"],
+  [["services", "app", "command"], "LANDO", "${secret:LANDO}", "SECRET"],
+  [["services", "app", "build", "args", "LANDO_TOKEN"], "TOKEN", "${secret:TOKEN}", "TOKEN"],
 ] as const)("derives a safe environment name at %j for %s", (path, reference, value, name) => {
   // Given a map key, list assignment, or secret identifier.
   const buildArgument = path[2] === "build";

@@ -11,6 +11,7 @@ test("the secret guide table matches the shipped binding sites in order", async 
   const headingIndex = guide.indexOf(heading);
   expect(headingIndex).toBeGreaterThanOrEqual(0);
   const section = guide.slice(headingIndex + heading.length).split(/^## /m)[0] ?? "";
+  const listFormat = new Intl.ListFormat("en", { type: "disjunction" });
   // When
   const table = /^\| Site \| YAML path \|\r?\n\|[^\n]+\|\r?\n((?:\|[^\n]+\|(?:\r?\n|$))+)/m.exec(section);
   const rows = (table?.[1] ?? "")
@@ -26,7 +27,7 @@ test("the secret guide table matches the shipped binding sites in order", async 
   expect(rows).toEqual(
     SECRET_BINDING_SITES.map((site) => [
       site.label.charAt(0).toUpperCase() + site.label.slice(1),
-      new Intl.ListFormat("en", { type: "disjunction" }).format(site.paths.map((path) => `\`${path}\``)),
+      listFormat.format(site.paths.map((path) => `\`${path}\``)),
     ]),
   );
 });
