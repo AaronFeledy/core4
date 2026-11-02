@@ -72,7 +72,7 @@ const phpFastcgiCommand = (
   webroot: string,
   ports: { readonly listen: number; readonly fpm: number },
   user: string | undefined,
-  uploadDirs: ReadonlyArray<string> | undefined,
+  uploadDirs: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> =>
   nginxLauncherCommand({
     user,
@@ -92,10 +92,10 @@ const phpFastcgiCommand = (
       "    fastcgi_split_path_info ^(.+?\\.php)(/.*)$;",
       // Decide on the same variable FastCGI executes, avoiding URI-regex drift
       // such as the %0A newline bypass.
-      ...((uploadDirs?.length ?? 0) === 0
+      ...(uploadDirs.length === 0
         ? []
         : [
-            `    if ($fastcgi_script_name ~* "^/(?:${uploadDirs?.map(uploadDirRegex).join("|")})/") { return 403; }`,
+            `    if ($fastcgi_script_name ~* "^/(?:${uploadDirs.map(uploadDirRegex).join("|")})/") { return 403; }`,
           ]),
       "    if (!-f $document_root$fastcgi_script_name) { return 404; }",
       `    fastcgi_pass ${backend}:${String(ports.fpm)};`,
