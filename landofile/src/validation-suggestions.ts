@@ -1,5 +1,11 @@
 import { expressionInterpolationsTouchOnlyScopes, parseExpressionEither } from "@lando/sdk/expressions";
-import { composeServiceDispositions, composeTopLevelDispositions, isPlainRecord } from "@lando/sdk/landofile";
+import {
+  composeServiceDispositions,
+  composeTopLevelDispositions,
+  isLandofileOverride,
+  isLandofileReset,
+  isPlainRecord,
+} from "@lando/sdk/landofile";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
@@ -25,10 +31,14 @@ const isMisplacedComposeSurfaceKey = (
   Object.prototype.hasOwnProperty.call(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
 
 export const valueAtPath = (value: unknown, path: ValidationIssuePath): unknown => {
-  let current = value;
+  const unwrap = (entry: unknown): unknown => {
+    if (isLandofileOverride(entry)) return unwrap(entry.value);
+    return isLandofileReset(entry) ? undefined : entry;
+  };
+  let current = unwrap(value);
   for (const key of path) {
-    if (Array.isArray(current) && typeof key === "number") current = current[key];
-    else if (isPlainRecord(current)) current = current[String(key)];
+    if (Array.isArray(current) && typeof key === "number") current = unwrap(current[key]);
+    else if (isPlainRecord(current)) current = unwrap(current[String(key)]);
     else return undefined;
   }
   return current;
