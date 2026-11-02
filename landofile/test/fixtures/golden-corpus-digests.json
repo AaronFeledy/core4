@@ -1028,6 +1028,24 @@
       "digest": "4ca83b9cfe7169e2ff669a2c9ba702f47b64f5566abcf688531369c6b86bb1af"
     },
     {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-build-args",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-command-misuse",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-commands",
+      "digest": "c9273ee4bc5f75c4b17c5297ec9294d46652e0085854700626e975c73c1ed55e"
+    },
+    {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-demo",
       "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25"
     },
