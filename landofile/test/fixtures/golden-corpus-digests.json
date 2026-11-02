@@ -136,6 +136,13 @@
       "digest": "ab78ee10251571f12549ce10a6d9728201df7344889fe42eee427380bf283cb9"
     },
     {
+      "fixture": "docs/guides/config-lint/fixtures/two-broken-includes",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileLoadError"
+      }
+    },
+    {
       "fixture": "docs/guides/config-lint/fixtures/wrong-filter-prefix",
       "invalid": {
         "status": "invalid",
@@ -422,6 +429,10 @@
     {
       "fixture": "docs/guides/in-container-context/fixtures/in-container-context-demo",
       "digest": "eecdc6a40547a6b5a56ecce4f679bf88bdfb0851730e3ecb3304d25e3c420de8"
+    },
+    {
+      "fixture": "docs/guides/includes-and-lockfile/fixtures/conditional-fragment",
+      "digest": "df55d2a36ecc86c27bba36a4e80ffff8e59eff68ea0ef961a52d228e531fe0ec"
     },
     {
       "fixture": "docs/guides/includes-and-lockfile/fixtures/includes-lockfile-demo",
@@ -1291,10 +1302,10 @@
       "after": {
         "invalid": {
           "status": "invalid",
-          "tag": "ConfigExpressionError"
+          "tag": "LandofileLoadError"
         }
       },
-      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. A bare recipe supplies no options, so this fixture remains rejected with a located ConfigExpressionError; no bare-recipe acceptance is introduced."
+      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. A bare recipe supplies no options, so this fixture remains rejected with a located ConfigExpressionError; no bare-recipe acceptance is introduced. Each missing recipe option is now its own located ConfigExpressionError, reported together as LandofileLoadError in one load."
     },
     "docs/guides/config-lint/fixtures/config-lint-demo": {
       "before": {
@@ -1426,10 +1437,10 @@
       "after": {
         "invalid": {
           "status": "invalid",
-          "tag": "ConfigExpressionError"
+          "tag": "LandofileLoadError"
         }
       },
-      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. Missing options on the bare recipe now produce a located ConfigExpressionError while the same invalid fixture remains refused."
+      "reason": "The compiled authoring pipeline evaluates recorded recipe lookups before strict final validation. Missing options on the bare recipe now produce a located ConfigExpressionError while the same invalid fixture remains refused. Each missing recipe option is now its own located ConfigExpressionError, reported together as LandofileLoadError in one load."
     },
     "docs/guides/networks/fixtures/networks-demo": {
       "before": {

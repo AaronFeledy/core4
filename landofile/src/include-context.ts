@@ -1,20 +1,26 @@
 import type {
   ComposeKeyRejectedError,
   ConfigExpressionError,
+  Lando3LandofileDetected,
+  LandofileDialectMixError,
   LandofileIncludeError,
+  LandofileLoadError,
+  LandofileLoadFailure,
   LandofileLockMismatchError,
   LandofileParseError,
   LandofileValidationError,
   ManagedFileTransactionError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { ParsedPendingSite } from "@lando/sdk/schema";
+import type { IncludeEntry, ParsedPendingSite } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { Effect } from "effect";
 import { includeError } from "./include-guard.ts";
 import type { LandofileLoadPolicy } from "./load-expression-file.ts";
 import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
+import type { LoadFailureRecorder } from "./load-failures.ts";
 import type { LandofileLoadScope } from "./pipeline/materialize.ts";
+import type { AuthoredOrigin } from "./pipeline/prepare.ts";
 import type {
   GitAcquisitionPort,
   LandofileRuntimePorts,
@@ -42,6 +48,7 @@ export interface LandofileRelaxedRead {
   readonly appRoot: string;
 }
 export interface ResolveLandofileIncludesOptions {
+  readonly recorder?: LoadFailureRecorder | undefined;
   readonly pendingSites?: ParsedPendingSite[] | undefined;
   readonly loadScope?: LandofileLoadScope;
   readonly landofile: Record<string, unknown>;
@@ -80,6 +87,12 @@ export interface RemoteIncludeOrigin {
   readonly cacheRoot: string;
 }
 export interface ResolveContext {
+  readonly observeInclude?: (
+    request: { readonly entry: IncludeEntry; readonly origin: AuthoredOrigin; readonly source: string },
+    acquired: { readonly fragment: FragmentResult; readonly parsed: Record<string, unknown> } | undefined,
+    context: Pick<ResolveContext, "remoteOrigin" | "sourceRoot">,
+  ) => Effect.Effect<void>;
+  readonly recorder?: LoadFailureRecorder | undefined;
   readonly pendingSites?: ParsedPendingSite[] | undefined;
   readonly ancestors?: ReadonlyArray<string>;
   readonly remoteOrigin?: RemoteIncludeOrigin | undefined;
@@ -101,6 +114,7 @@ export interface ResolveContext {
     complete: boolean;
   };
   readonly lockEntries: ReadonlyMap<string, LockEntry>;
+  readonly lockAvailable?: boolean;
   readonly stagedLocks: Map<string, LockEntry>;
   readonly noNetwork: boolean;
   readonly loadPolicy: LandofileLoadPolicy;
@@ -144,9 +158,13 @@ export const resolveCacheRoot = (
   return Effect.fail(missingRuntimeInput("cache root"));
 };
 export type ResolveIncludesError =
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
+  | LandofileLoadFailure
   | ConfigExpressionError
   | ComposeKeyRejectedError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileParseError
   | LandofileValidationError

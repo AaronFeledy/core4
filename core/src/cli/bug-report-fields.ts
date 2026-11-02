@@ -1,6 +1,7 @@
 import type { TaggedErrorJson } from "@lando/sdk/schema";
 import { ListenerObservation } from "@lando/sdk/schema";
 import { Schema } from "effect";
+import { formatDiagnosticFailures, formatDiagnosticPath } from "./diagnostic-failures";
 import { formatStructuredIssue } from "./validation-issue-text";
 
 const consumed = new Set([
@@ -54,7 +55,13 @@ export const diagnosticFields = (
       out.push(["step", String(error.step)]);
       continue;
     }
-    if (key === "issues") {
+    const path = key === "path" ? formatDiagnosticPath(value) : undefined;
+    if (key === "failures") {
+      const text = formatDiagnosticFailures(value);
+      if (text !== undefined) out.push([key, text]);
+    } else if (path !== undefined) {
+      out.push([key, path]);
+    } else if (key === "issues") {
       const text = error.issues
         ?.flatMap((issue) => {
           const line = formatStructuredIssue(issue);

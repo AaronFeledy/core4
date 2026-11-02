@@ -1,0 +1,63 @@
+{
+  "provenanceCommit": "ddce3e78790bd7522778b7e5f813a4a07294c2b2",
+  "review": "Approved optional when addition to object-form IncludeEntry for every kind and toolingIncludes namespace entries. Do not regenerate this file from current artifacts. Only closed objects whose properties exactly match includeEntryKeys (after checksum removal) or toolingIncludeKeys gain when; string shorthand, required keys, and all existing constraints remain unchanged. Bare values admit boolean or string; authoring applies the reviewed expression grammar, and directive-capable authoring additionally admits optional-value override and reset envelopes. Replay after the independently pinned authoring projection without changing its historical digest.",
+  "sources": [
+    "sdk/src/schema/landofile-includes.ts",
+    "sdk/src/schema/landofile.ts",
+    "sdk/src/schema/landofile-authoring.ts"
+  ],
+  "includeEntryKeys": [
+    "aliases",
+    "excludes",
+    "flatten",
+    "internal",
+    "kind",
+    "namespace",
+    "optional",
+    "path",
+    "source",
+    "vars",
+    "version"
+  ],
+  "toolingIncludeKeys": ["aliases", "excludes", "file", "flatten", "internal", "optional", "vars"],
+  "bareWhen": { "anyOf": [{ "type": "boolean" }, { "type": "string" }] },
+  "authoringWhen": {
+    "anyOf": [
+      {
+        "anyOf": [
+          { "type": "boolean" },
+          { "pattern": "^\\{\\{(?!#)-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])", "type": "string" }
+        ]
+      },
+      {
+        "anyOf": [
+          { "type": "string" },
+          {
+            "pattern": "^(?:\\{\\{\\{\\{|\\$\\$\\{|\\{\\{#(?:(?!#\\}\\})[\\s\\S])*#\\}\\}|(?!\\{\\{|\\$\\$\\{|\\$\\{|\\$[A-Za-z_])[\\s\\S])*(?:\\{\\{(?!#)(?:(?!\\{\\{|\\}\\})[\\s\\S])+\\}\\}|\\$(?:[A-Za-z_][A-Za-z0-9_]*|\\{(?:secret:[^}]+|[A-Za-z_][A-Za-z0-9_]*(?:(?::-|-|:\\?|:\\+)[^}]*)?)\\}))",
+            "type": "string"
+          }
+        ]
+      }
+    ]
+  },
+  "directiveWhen": {
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "_tag": { "enum": ["LandofileOverride"], "type": "string" },
+          "value": { "$ref": "#/$defs/When" }
+        },
+        "required": ["_tag"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": { "_tag": { "enum": ["LandofileReset"], "type": "string" } },
+        "required": ["_tag"],
+        "type": "object"
+      },
+      { "$ref": "#/$defs/When" }
+    ]
+  }
+}

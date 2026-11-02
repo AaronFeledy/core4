@@ -9,6 +9,7 @@ import type {
   LandofileFormConflictError,
   LandofileImportRefMisuseError,
   LandofileIncludeError,
+  LandofileLoadError,
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
   LandofileLockMismatchError,
@@ -35,6 +36,7 @@ export type LandofileServiceError =
   | LandofileTimeoutError
   | LandofileFormConflictError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileImportRefMisuseError
   | LandofileLoadLimitError

@@ -13,7 +13,7 @@ import { Effect, Option, Redacted, Schema } from "effect";
 
 const expressionError = new ConfigExpressionError({
   message: "Expression resolved to a missing value.",
-  path: "services.appserver.environment.GREETING",
+  path: ["services", "appserver", "environment", "GREETING"],
   expression: "hi-{{ app.nope }}",
   filePath: "/app/.lando.yml",
   remediation: "Fix the expression.",
@@ -33,7 +33,7 @@ for (const format of ["json", "yaml"] as const) {
       format === "json" ? JSON.parse(line) : Bun.YAML.parse(line),
     );
     expect(envelope.error).toMatchObject({
-      path: "services.appserver.environment.GREETING",
+      path: ["services", "appserver", "environment", "GREETING"],
       expression: "hi-{{ app.nope }}",
       filePath: "/app/.lando.yml",
     });
@@ -44,7 +44,7 @@ test("preserves expression context when building an MCP envelope", () => {
   const input = options(expressionError);
   const envelope = Effect.runSync(buildCommandResultEnvelope(input));
   expect(envelope.error).toMatchObject({
-    path: "services.appserver.environment.GREETING",
+    path: ["services", "appserver", "environment", "GREETING"],
     expression: "hi-{{ app.nope }}",
     filePath: "/app/.lando.yml",
   });
@@ -58,7 +58,7 @@ test("preserves expression context when encoding a terminal stream frame", () =>
     _tag: "result",
     envelope: {
       error: {
-        path: "services.appserver.environment.GREETING",
+        path: ["services", "appserver", "environment", "GREETING"],
         expression: "hi-{{ app.nope }}",
         filePath: "/app/.lando.yml",
       },

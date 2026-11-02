@@ -38,7 +38,8 @@ export const compiledValueError = (
   );
   return new ConfigExpressionError({
     message: issue?.message ?? "Expression result does not match its destination type.",
-    path: path.join("."),
+    path,
+    ...(site === undefined ? {} : { source: site.source }),
     expression: site === undefined ? "" : siteExpression(site),
     filePath: site !== undefined && "file" in site.source ? site.source.file : input.filePath,
     remediation: "Return a value accepted by the destination field.",
@@ -50,6 +51,7 @@ export const survivingSites = (
   origins: ValueOrigins<AuthoredOrigin>,
   sites: readonly ParsedPendingSite[],
 ): readonly ParsedPendingSite[] => {
+  if (sites.length === 0) return [];
   const byOrigin = new Map(sites.map((site) => [site.id, site]));
   const result: ParsedPendingSite[] = [];
   const visit = (node: ValueOrigins<AuthoredOrigin>, path: ValidationIssuePath): void => {
@@ -71,13 +73,8 @@ export const replaceSiteValue = (
   if (key === undefined) return replacement;
   if (Array.isArray(value) && typeof key === "number")
     return value.map((entry, index) => (index === key ? replaceSiteValue(entry, rest, replacement) : entry));
-  if (isPlainRecord(value))
-    return Object.fromEntries(
-      Object.entries(value).map(([name, entry]) => [
-        name,
-        name === key ? replaceSiteValue(entry, rest, replacement) : entry,
-      ]),
-    );
+  if (isPlainRecord(value) && typeof key === "string" && Object.hasOwn(value, key))
+    return { ...value, [key]: replaceSiteValue(value[key], rest, replacement) };
   return value;
 };
 
@@ -139,7 +136,8 @@ export const consumeSites = (input: {
         return Result.fail(
           new ConfigExpressionError({
             message: "Invalid secret reference identifier.",
-            path: site.path.join("."),
+            path: site.path,
+            source: site.source,
             expression: siteExpression(site, input.document, input.pathPrefix?.length),
             filePath: "file" in site.source ? site.source.file : "<landofile>",
             remediation: "Use a supported secret store URI or a valid bare identifier.",
@@ -151,7 +149,7 @@ export const consumeSites = (input: {
       site.template,
       { ...input.context, secrets },
       {
-        path: site.path.join("."),
+        path: site.path,
         filePath: "file" in site.source ? site.source.file : undefined,
         expression: siteExpression(site, input.document, input.pathPrefix?.length),
         budget: input.budget ?? {
@@ -166,7 +164,8 @@ export const consumeSites = (input: {
       return Result.fail(
         new ConfigExpressionError({
           message: evaluated.failure.message,
-          path: site.path.join("."),
+          path: site.path,
+          source: site.source,
           expression: siteExpression(site, input.document, input.pathPrefix?.length),
           filePath: "file" in site.source ? site.source.file : "<landofile>",
           remediation: evaluated.failure.remediation,

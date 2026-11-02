@@ -1,32 +1,35 @@
 import { sha256Hex } from "@lando/sdk/digest";
-import { LandofileIncludeError, LandofileLockMismatchError, causeMessage } from "@lando/sdk/errors";
+import { LandofileLoadFailure } from "@lando/sdk/errors";
 import { isMergeDirective, override } from "@lando/sdk/landofile";
-import { Effect } from "effect";
+import { isPlainRecord } from "@lando/sdk/landofile";
+import { Effect, Schema } from "effect";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
+import { hasIncludeConditions } from "./include-condition-shape.ts";
+import { reserveConditionalSelectors } from "./include-conditional-selectors.ts";
+import { materializeIncludeConditions } from "./include-conditions.ts";
 import type { ResolveContext, ResolveIncludesError } from "./include-context.ts";
-import { ownVersionConstraintEntries, parseFragment, withoutIncludeArrays } from "./include-fragment.ts";
-import { hasIncludeCycle } from "./include-graph.ts";
+import { ownVersionConstraintEntries, withoutIncludeArrays } from "./include-fragment.ts";
 import { attributeIncludeError, includeError } from "./include-guard.ts";
 import {
   getIncludeOverlays,
   includeAcquisitionView,
   rememberIncludeOverlays,
 } from "./include-layer-overlays.ts";
-import { fetchLocal, fetchUser } from "./include-local.ts";
-import { stageFragmentLock } from "./include-lockfile.ts";
 import {
   getLandofileIncludeSources,
   getLocalIncludePaths,
   rememberLandofileIncludeSources,
   rememberLocalIncludePaths,
 } from "./include-provenance.ts";
-import { fetchRemoteRelative } from "./include-remote-relative.ts";
-import { fetchGit, fetchNpm } from "./include-remote.ts";
-import { authoredIncludeEntriesWithPaths, classify, normalizeInclude } from "./include-source.ts";
+import { acquireIncludeRequest } from "./include-request.ts";
+import { authoredIncludeEntriesWithPaths } from "./include-source.ts";
+import { prepareIncludeAcquisition } from "./load-acquisition.ts";
 import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "./load-expression-provenance.ts";
+import { loadPathBlocked } from "./load-failures.ts";
+import { buildLandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
 import { rememberOrigins } from "./pipeline/origins.ts";
 import { getSourceDocuments, rememberSourceDocuments } from "./pipeline/source-table.ts";
 import {
@@ -44,12 +47,15 @@ import {
 export const resolveTree = Effect.fnUntraced(function* (
   landofile: Record<string, unknown>,
   ctx: ResolveContext,
-  depth: number,
-  stack: ReadonlyArray<string>,
-  source: string,
-  layer: VersionConstraintEntry["layer"],
-  order: VersionConstraintEntry["order"],
+  traversal: {
+    readonly depth: number;
+    readonly stack: ReadonlyArray<string>;
+    readonly source: string;
+    readonly layer: VersionConstraintEntry["layer"];
+    readonly order: VersionConstraintEntry["order"];
+  },
 ): Effect.fn.Return<Record<string, unknown>, ResolveIncludesError> {
+  const { depth, stack, source, layer, order } = traversal;
   if (depth > ctx.maxDepth)
     return yield* Effect.fail(
       includeError({
@@ -58,17 +64,46 @@ export const resolveTree = Effect.fnUntraced(function* (
         kind: "max-depth",
       }),
     );
-  const sourced = copyLandofileProvenance(
-    landofile,
+  const file = getSourceDocuments(landofile)[0]?.file ?? source;
+  if (hasIncludeConditions(landofile))
+    yield* reserveConditionalSelectors(landofile, ctx, { file, layer, path: [] });
+  const conditioned = yield* materializeIncludeConditions(landofile, {
+    source: { sourcePath: file, sourceRoot: ctx.sourceRoot, appRoot: ctx.appRoot, layer },
+    policy: ctx.userOwned ? { ...ctx.loadPolicy, allowFileAccess: false } : ctx.loadPolicy,
+    scope: {
+      ...(ctx.loadScope ??
+        (yield* buildLandofileLoadScope([{ file, value: landofile }], undefined, ctx.pendingSites))),
+      recorder: ctx.recorder,
+      includeMode: ctx.mode === "pin" ? "conditional" : "all",
+    },
+    ...(ctx.onRelaxedRead === undefined ? {} : { onRelaxedRead: ctx.onRelaxedRead }),
+  });
+  let sourced = copyLandofileProvenance(
+    conditioned,
     rememberLandofileReferencedFiles(
-      resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot),
-      getLandofileReferencedFiles(landofile),
+      resolveToolingIncludeSourceRoots(conditioned, ctx.sourceRoot, ctx.appRoot),
+      getLandofileReferencedFiles(conditioned),
     ),
   );
+  if (ctx.loadScope !== undefined) {
+    const materialized = yield* materializeLandofileLayer(source, sourced, {
+      ...ctx.loadScope,
+      recorder: ctx.recorder,
+      pendingSites: ctx.pendingSites ?? ctx.loadScope.pendingSites ?? [],
+      siteFilter: (site) => site.path[0] === "includes" || site.path[0] === "include",
+    });
+    if (isPlainRecord(materialized)) sourced = materialized;
+  }
+  if (ctx.recorder !== undefined)
+    sourced = prepareIncludeAcquisition(sourced, {
+      recorder: ctx.recorder,
+      source: { file: source, layer, path: [] },
+    });
   const acquisition = yield* Effect.try({
     try: () => includeAcquisitionView(sourced),
     catch: (cause) => validationErrorFromCause(source, sourced, cause),
   });
+  if (ctx.recorder !== undefined && ctx.recorder.failures.length > 0) ctx.walk.complete = false;
   const incompatible = assertCompatibleIncludeFields(acquisition);
   if (incompatible !== undefined)
     return yield* Effect.fail(
@@ -94,83 +129,48 @@ export const resolveTree = Effect.fnUntraced(function* (
   const localIncludePaths: string[] = [...getLocalIncludePaths(landofile)];
   const includeSources = [...getLandofileIncludeSources(landofile)];
   for (const { entry: rawEntry, path } of includes) {
-    const entry = normalizeInclude(rawEntry);
-    const attributeError = (error: ResolveIncludesError): ResolveIncludesError =>
-      attributeIncludeError(error, { path, file: getSourceDocuments(sourced)[0]?.file ?? source, layer });
-    const fragment = yield* Effect.tryPromise({
-      try: async () => {
-        const kind = classify(entry.source);
-        if (ctx.userOwned && (kind === "git" || kind === "npm"))
-          throw includeError({
-            message: `User Landofile profile ${source} must not declare remote include ${entry.source}.`,
-            source: entry.source,
-            kind: "source-unresolved",
-            remediation: "Use relative or user: YAML includes inside the user includes directory.",
-          });
-        switch (kind) {
-          case "local":
-            return ctx.remoteOrigin === undefined ? fetchLocal(entry, ctx) : fetchRemoteRelative(entry, ctx);
-          case "user":
-            return fetchUser(entry, ctx);
-          case "git":
-            return fetchGit(entry, ctx);
-          case "npm":
-            return fetchNpm(entry, ctx);
-        }
-      },
-      catch: (cause) =>
-        cause instanceof LandofileIncludeError || cause instanceof LandofileLockMismatchError
-          ? cause
-          : includeError({ message: causeMessage(cause), source: entry.source, kind: "fetch-failed" }),
-    }).pipe(Effect.mapError(attributeError));
-    if (fragment === undefined) continue;
-    yield* stageFragmentLock(fragment, ctx).pipe(Effect.mapError(attributeError));
-    if (hasIncludeCycle(stack, fragment.sourceId))
-      return yield* Effect.fail(
-        attributeError(
-          includeError({
-            message: `Landofile include cycle detected at ${entry.source}.`,
-            source: entry.source,
-            kind: "cycle",
-          }),
-        ),
+    const origin = { file: getSourceDocuments(sourced)[0]?.file ?? source, layer, path };
+    if (loadPathBlocked(ctx.recorder, origin)) continue;
+    yield* Effect.gen(function* () {
+      const attributeError = (error: ResolveIncludesError): ResolveIncludesError =>
+        attributeIncludeError(error, origin);
+      const acquired = yield* acquireIncludeRequest(
+        {
+          entry: rawEntry,
+          origin,
+          source,
+        },
+        { ...ctx, ancestors: stack },
       );
-    const parsed = yield* parseFragment(
-      {
-        ...fragment,
-        kind:
-          path[0] === "include"
-            ? "compose"
-            : typeof rawEntry === "string"
-              ? "landofile"
-              : (rawEntry.kind ?? "landofile"),
-      },
-      ctx,
-      layer,
-    ).pipe(Effect.mapError(attributeError));
-    const nested = yield* resolveTree(
-      parsed,
-      {
-        ...ctx,
-        ancestors: [...stack, fragment.sourceId],
-        sourceRoot: fragment.root,
-        userOwned: fragment.userOwned,
-        remoteOrigin: fragment.remoteOrigin,
-      },
-      depth + 1,
-      [...stack, fragment.sourceId],
-      fragment.sourceId,
-      layer,
-      order,
-    ).pipe(Effect.mapError(attributeError));
-    fragments.push(nested);
-    fragmentRecords.push(...getIncludeOverlays(nested));
-    localIncludePaths.push(...getLocalIncludePaths(nested));
-    includeSources.push(...getLandofileIncludeSources(nested), {
-      id: fragment.inventoryId,
-      sha256: sha256Hex(fragment.content),
-    });
-    if (!fragment.locked) localIncludePaths.push(fragment.filePath);
+      if (acquired === undefined) return;
+      const { fragment, parsed } = acquired;
+      const nested = yield* resolveTree(
+        parsed,
+        {
+          ...ctx,
+          ancestors: [...stack, fragment.sourceId],
+          sourceRoot: fragment.root,
+          userOwned: fragment.userOwned,
+          remoteOrigin: fragment.remoteOrigin,
+        },
+        { depth: depth + 1, stack: [...stack, fragment.sourceId], source: fragment.sourceId, layer, order },
+      ).pipe(Effect.mapError(attributeError));
+      fragments.push(nested);
+      fragmentRecords.push(...getIncludeOverlays(nested));
+      localIncludePaths.push(...getLocalIncludePaths(nested));
+      includeSources.push(...getLandofileIncludeSources(nested), {
+        id: fragment.inventoryId,
+        sha256: sha256Hex(fragment.content),
+      });
+      if (!fragment.locked) localIncludePaths.push(fragment.filePath);
+    }).pipe(
+      Effect.catch((error) => {
+        if (ctx.recorder === undefined || !Schema.is(LandofileLoadFailure)(error)) return Effect.fail(error);
+        ctx.recorder.record(error);
+        ctx.walk.complete = false;
+        return Effect.void;
+      }),
+    );
   }
   const toolingSources = [...fragmentRecords, sourced];
   const toolingEntries = composeToolingIncludeEntries(toolingSources);

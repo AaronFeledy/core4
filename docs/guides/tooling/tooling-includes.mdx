@@ -56,9 +56,41 @@ Save the Landofile and referenced files, then run `lando app:config --format=jso
 
 ## Know the resolution contract
 
+Both `kind: tooling` entries and the `toolingIncludes:` shorthand accept `when`.
+For example, enable a namespace with an optional environment flag:
+
+```yaml
+toolingIncludes:
+  docs:
+    file: ./docs/.lando.tasks.yml
+    when: "{{ boolean(default(env.DOCS_TOOLS, '0')) }}"
+```
+
+`default()` makes an unset flag resolve to false instead of failing the load.
+Conditions must be booleans or whole-value expressions over `recipe` and `env`
+that return booleans. A false condition skips the file and its other expressions,
+including `vars`, before acquisition. This differs from `optional: true`, which
+tolerates a missing file rather than deciding whether to load it.
+
+`app:includes:update` and `app:includes:verify` ignore conditions and still walk
+disabled tooling entries. See [Include a fragment only when a condition holds](../landofile/includes-and-lockfile.mdx#include-a-fragment-only-when-a-condition-holds)
+for failure attribution and lockfile rules.
+
 Included tasks register as `app:<namespace>:<task>`. `flatten: true` drops the namespace prefix. `internal: true` hides tasks from command listings while leaving them callable. `aliases: [documentation]` aliases the include namespace. `excludes: [publish]` removes tasks before flattening or namespace registration.
 
 Include-level `vars:` apply to every included task unless the task defines the same var. `optional: true` suppresses missing-fragment errors. Fragments that include each other fail closed with `LandofileIncludeError` (`kind: "cycle"`), the same error a Landofile include cycle raises. Every tooling include failure names the entry that declared it: `path` is `["includes", <index>]` or `["toolingIncludes", <namespace>]`, next to the file and layer that hold it, so `lando app:config:lint` reports the problem at that entry.
+
+Independent tooling and Landofile load failures are reported together. A single
+failure keeps its original tagged error; two or more produce `LandofileLoadError`
+with a `failures` list containing each error and its remediation. Lando skips
+failed entries and continues loading the others. A task collision rejects the
+later include's entire contribution, not just the colliding task. Effective
+configuration checks run only when every load succeeds.
+
+In text output, `lando start` lists each failure's path and location, followed by
+its own `↳` remediation. JSON keeps the structured members under `error.failures`.
+See [Include Landofile fragments](../landofile/includes-and-lockfile.mdx#pin-a-remote-include)
+for how to fix several failures in one run.
 
 For nested includes, task vars win over inner include vars, which win over outer include vars. A higher-layer object can change an included object's command or metadata and keep its include defaults. Replacing the task with a string, `false`, `!override`, or `!reset` drops those defaults. An object replacing an included string also starts fresh. Use `!reset` on one task var to remove that default, or `vars: !reset` / `vars: !override` to clear or replace the whole var map. Later layers won't bring the removed defaults back. Included tasks are inherited like any other value, so a higher layer's `tooling: !reset` or `tooling: !override` replaces them too.
 

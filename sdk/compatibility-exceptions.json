@@ -5512,5 +5512,83 @@
     "changeKind": "unsupported-construct",
     "path": "$.contributes.commands.items.anyOf",
     "justification": "Reviewed pre-release contract change propagated from PluginContribution: manifest command contributions are CommandContribution descriptors, and a manifest that repeats a command id is rejected. Bundled manifests keep plugin.yaml, package.json landoPlugin, and src/index.ts identical under descriptor parity tests; no string-form shim is retained for this unreleased surface."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.includes.items.anyOf",
+    "justification": "Reviewed additive pre-release change: object-form includes of every kind (landofile, compose, tooling) gain an optional `when` (boolean or whole-value recipe/env expression that must yield a boolean; false skips the entry before acquisition). Existing string and object entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:IdentityScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.includes.items.anyOf",
+    "justification": "Reviewed additive pre-release change: object-form includes of every kind (landofile, compose, tooling) gain an optional `when` (boolean or whole-value recipe/env expression that must yield a boolean; false skips the entry before acquisition). Existing string and object entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:LoadScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-construct",
+    "path": "$.document.includes.items.anyOf",
+    "justification": "Reviewed additive pre-release change: object-form includes of every kind (landofile, compose, tooling) gain an optional `when` (boolean or whole-value recipe/env expression that must yield a boolean; false skips the entry before acquisition). Existing string and object entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:ServiceScopedLandofile",
+    "changeKind": "unsupported-keyword",
+    "path": "$.document.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.toolingIncludes.additionalProperties",
+    "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
   }
 ]

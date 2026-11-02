@@ -32,11 +32,8 @@ export interface MaterializeLandofileScopesInput {
 
 export type DeferredExpressionSites = readonly ParsedPendingSite[];
 export type ServiceCredsScope = Readonly<Record<string, ServiceExpressionFacts>>;
-export const deferredSiteKey = (path: ValidationIssuePath): string => path.join(".");
-export const configExpressionIssuePath = (error: ConfigExpressionError): ValidationIssuePath =>
-  error.path.length === 0
-    ? []
-    : error.path.split(".").map((part) => (/^(?:0|[1-9][0-9]*)$/.test(part) ? Number(part) : part));
+export const deferredSiteKey = (path: ValidationIssuePath): string => JSON.stringify(path);
+export const configExpressionIssuePath = (error: ConfigExpressionError): ValidationIssuePath => error.path;
 
 const decodeDocument = (document: unknown, filePath: string, pendingSites: readonly ParsedPendingSite[]) =>
   Schema.decodeUnknownEffect(Schema.toType(LandofileShape))(document, { onExcessProperty: "error" }).pipe(
@@ -162,7 +159,7 @@ export const referencedServices = (
       return Result.fail(
         new ConfigExpressionError({
           message: "A services.<name> reference must name the service literally.",
-          path: deferredSiteKey(site.path),
+          path: site.path,
           expression: JSON.stringify(site.template),
           filePath,
           remediation: "Write the service name directly, for example services.database.creds.user.",
@@ -201,7 +198,7 @@ export const orderServicesByCredsReferences = (input: {
       return Result.fail(
         new ConfigExpressionError({
           message: `Service connection reference cycle involving ${stuck}.`,
-          path: `services.${stuck}`,
+          path: ["services", stuck],
           expression: "services",
           filePath: input.landofilePath,
           remediation: "Break the service connection reference cycle.",

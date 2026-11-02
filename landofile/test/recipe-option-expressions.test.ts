@@ -235,7 +235,7 @@ describe("recipe option expressions in a loaded Landofile", () => {
             failure: {
               _tag: "ConfigExpressionError",
               filePath: join(root, ".lando.base.yml"),
-              path: "services.web.primary",
+              path: ["services", "web", "primary"],
               expression: "{{ env.LANDO_TYPED_MISSING }}",
             },
           });
@@ -353,7 +353,7 @@ describe("recipe option expressions in a loaded Landofile", () => {
         expect(Exit.isFailure(exit)).toBe(true);
         expect(failureValue(exit)).toMatchObject({
           _tag: "ConfigExpressionError",
-          path: "services.appserver.type",
+          path: ["services", "appserver", "type"],
           filePath: join(appRoot, ".lando.yml"),
           expression: "php:{{ recipe.missing }}",
         });
@@ -382,7 +382,7 @@ describe("recipe option expressions in a loaded Landofile", () => {
         expect(Exit.isFailure(exit)).toBe(true);
         expect(failureValue(exit)).toMatchObject({
           _tag: "ConfigExpressionError",
-          path: "services.appserver.type",
+          path: ["services", "appserver", "type"],
           filePath: join(appRoot, ".lando.yml"),
         });
         expect(failureMessage(exit)).toContain("records no recipe options");
@@ -495,7 +495,7 @@ describe("env expressions in a loaded Landofile", () => {
           expect(Exit.isFailure(exit)).toBe(true);
           expect(failureValue(exit)).toMatchObject({
             _tag: "ConfigExpressionError",
-            path: "services.web.image",
+            path: ["services", "web", "image"],
             filePath: join(appRoot, ".lando.yml"),
             expression: "node:{{ env.LANDO_MISSING_FIXTURE }}",
           });
@@ -524,7 +524,7 @@ describe("env expressions in a loaded Landofile", () => {
         expect(Exit.isFailure(exit)).toBe(true);
         expect(failureValue(exit)).toMatchObject({
           _tag: "ConfigExpressionError",
-          path: "services.web.image",
+          path: ["services", "web", "image"],
           filePath: join(appRoot, ".lando.yml"),
           expression: "{{ range(0, 50000) }}",
         });
@@ -674,7 +674,7 @@ describe("shell parameter text alongside deferred-scope expressions", () => {
         expect(Exit.isFailure(exit)).toBe(true);
         expect(failureValue(exit)).toMatchObject({
           _tag: "ConfigExpressionError",
-          path: "tooling.scaffold.cmd",
+          path: ["tooling", "scaffold", "cmd"],
           filePath: join(appRoot, ".lando.yml"),
         });
       },

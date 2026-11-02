@@ -167,6 +167,7 @@ describe("renderIncludesVerifyResult", () => {
   test.each(["json", "yaml"])("a mismatched %s report keeps the machine success exit policy", (format) => {
     // Given
     const report: IncludeVerifyReport = {
+      failures: [],
       lockfilePath: "/x/.lando.lock.yml",
       entries: [{ source: "a", status: "missing", expected: null, actual: "v:hash" }],
       mismatches: [],
@@ -177,8 +178,35 @@ describe("renderIncludesVerifyResult", () => {
     // Then
     expect(code).toEqual({ ok: true, exitCode: 1 });
   });
+  test("text output escapes control bytes from failures and sources", () => {
+    const report: IncludeVerifyReport = {
+      failures: [
+        {
+          _tag: "LandofileIncludeError",
+          message: "Include ./a.yml\u001b[2J does not exist.",
+          remediation: "Fix\u0007 the include.",
+        },
+      ],
+      lockfilePath: "/x/.lando.lock.yml",
+      entries: [
+        {
+          source: "github:acme/x\u001b]0;pwned\u0007.yml",
+          status: "missing",
+          expected: null,
+          actual: "v:hash",
+        },
+      ],
+      mismatches: [],
+      ok: false,
+    };
+    const text = renderIncludesVerifyResult(report, "text");
+    expect(text).not.toContain("\u001b");
+    expect(text).not.toContain("\u0007");
+    expect(text).toContain("does not exist.");
+  });
   test("a mismatch names the update command without changing process.exitCode", () => {
     const report: IncludeVerifyReport = {
+      failures: [],
       lockfilePath: "/x/.lando.lock.yml",
       entries: [
         {
@@ -214,6 +242,7 @@ describe("renderIncludesVerifyResult", () => {
 
   test("an ok report does not set a non-zero exit code", () => {
     const report: IncludeVerifyReport = {
+      failures: [],
       lockfilePath: "/x/.lando.lock.yml",
       entries: [],
       mismatches: [],
@@ -229,6 +258,7 @@ describe("renderIncludesVerifyResult", () => {
 
   test("AppIncludesVerifyResultSchema encodes the report including the mismatch schema", () => {
     const report: IncludeVerifyReport = {
+      failures: [],
       lockfilePath: "/x/.lando.lock.yml",
       entries: [{ source: "a", status: "missing", expected: null, actual: "v:hash" }],
       mismatches: [
@@ -264,11 +294,11 @@ describe("lando app:includes:verify (source dispatch)", () => {
       const result = await runCli(["app:includes:verify", "--renderer=plain"], dir);
       // Then
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain(
+      expect(result.stdout).toContain(
         "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
       );
-      expect(result.stderr).not.toContain("The durable state file is corrupt");
-      expect(result.stderr).not.toContain("StateStoreError");
+      expect(result.stdout + result.stderr).not.toContain("The durable state file is corrupt");
+      expect(result.stdout + result.stderr).not.toContain("StateStoreError");
     });
   });
   test("a Landofile with no includes verifies ok and exits 0", async () => {

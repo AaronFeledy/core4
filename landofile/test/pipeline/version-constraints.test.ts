@@ -163,7 +163,7 @@ test("attributes an unresolved shadowed range to its original layer and path", a
       expect(error).toMatchObject({
         _tag: "ConfigExpressionError",
         filePath: join(root, ".lando.base.yml"),
-        path: "lando",
+        path: ["lando"],
         expression: "{{ env.MISSING }}",
       });
     },

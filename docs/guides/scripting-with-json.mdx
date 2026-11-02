@@ -458,8 +458,8 @@ established. That warning is not in the JSON or YAML envelope. Call
 to converge.
 
 The error also keeps its remaining JSON-safe fields directly under `error`.
-For example, `ConfigExpressionError` carries `error.path` (a dotted string),
-`error.expression`, and `error.filePath`; `ConfigError` carries `error.path`
+For example, `ConfigExpressionError` carries `error.path` (an array of keys and
+indexes, like each `issues[].path`), `error.expression`, and `error.filePath`; `ConfigError` carries `error.path`
 and, for a global config that fails validation, `error.issues` and
 `error.remediation` (see below).
 JSON, YAML, terminal result frames, and MCP envelopes preserve the same fields
@@ -468,6 +468,13 @@ are excluded. Fields containing class instances, unsupported values, cycles,
 or nesting beyond 32 levels are omitted whole rather than partly serialized.
 Plain error reports show scalar fields and scalar arrays after their existing
 diagnostic details; use the envelope for nested objects.
+
+When a Landofile fails to load in more than one place, the error is
+`LandofileLoadError` and `error.failures` holds each underlying error in the same
+JSON-safe form, each with its own `_tag`, `message`, `remediation`, and location
+fields. With a single problem the error is that problem itself, so a script can
+read `error.failures` when `_tag` is `LandofileLoadError` and treat the error as
+its only failure otherwise.
 
 ## Read validation issues
 

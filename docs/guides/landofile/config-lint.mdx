@@ -28,7 +28,7 @@ For example, `tooling.old-build: disabled` is one finding at fragment and effect
 
 ## What lint catches
 
-After expression materialization succeeds, lint collects independent findings from the completed resolve pass in one run. An unresolved expression stops materialization at its first error. Lint retains earlier fragment findings, but cannot report checks that depend on the unfinished resolve pass.
+Lint reports every independent load failure in one run: broken layers, load expressions, includes, tooling includes, recipe/env expressions, and `lando:` ranges. It skips the failed entries and continues with what loaded, retaining fragment findings from those files. Checks that depend on a failed entry are skipped instead of producing follow-on errors. Effective configuration and service checks run only after the entire load stage succeeds.
 
 | Rule | What it checks | Example path |
 | --- | --- | --- |
@@ -44,7 +44,7 @@ After expression materialization succeeds, lint collects independent findings fr
 | `router.bind-address-global-only` | A Landofile `router.bindAddress` does not bind the shared router | `router.bindAddress` |
 | `landofile.event` | Each key under `events:` is a lifecycle event or the `pre-`/`post-` bracket of a tooling task | `events.pre-buidl` |
 | `landofile.tooling` | No tooling task takes `run`, `scratch`, or a `scratch:*` name, which belong to scratch apps, or a name whose `pre-`/`post-` events are reserved, such as `start` or `pull` | `tooling.run` |
-| `landofile.load` | An include or tooling include that cannot be read, fetched, or that cycles | `includes[1]`, `toolingIncludes.docs` |
+| `landofile.load` | Layer parse errors, failed load or recipe/env expressions, invalid include conditions, include and tooling include failures, lock mismatches, and invalid `lando:` ranges | `includes[1].when`, `toolingIncludes.docs`, `lando` |
 | `env-file.read` | A declared env file is missing or cannot be read | `env_file[0]`, `services.web.envFile[0]` |
 | `env-file.syntax` | Invalid env-file entries, including a bare name without `=` or unmatched quotes | `env_file[0]`, `services.web.envFile[0]` |
 | `env-file.literal` | A warning when double-quoted escapes change a value, or an unquoted or double-quoted value contains `${` | `env_file[0]`, `services.web.envFile[0]` |
@@ -178,6 +178,15 @@ tooling:
 Your editor can catch the structural problems (unknown keys, wrong literal types, an expression where none belongs) before you run anything; lint still owns resolving expressions. See [Validate a Landofile in your editor](./editor-validation.mdx) for the one-line modeline.
 
 <Guide>
+  <Scenario id="two-layers-two-load-failures" render>
+    <Step name="lint-both-layers">
+      <UseFixture name="two-broken-includes" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"rule\":\\s*\"landofile\\.load\"[\\s\\S]*\"rule\":\\s*\"landofile\\.load\"", not: { regex: "\"rule\":\\s*\"landofile\\.load\"[\\s\\S]*\"rule\":\\s*\"landofile\\.load\"[\\s\\S]*\"rule\":\\s*\"landofile\\.load\"" } } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "missing-a\\.yml[\\s\\S]*missing-b\\.yml" } }} />
+    </Step>
+    <Step name="cleanup-broken-includes"><Cleanup /></Step>
+  </Scenario>
   <Scenario id="filter-reports-only-selected-type" render>
     <Step name="lint-filter-prefix">
       <UseFixture name="wrong-filter-prefix" />

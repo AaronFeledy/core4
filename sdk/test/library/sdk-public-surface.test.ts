@@ -6,6 +6,7 @@ import ts from "typescript";
 
 import {
   ConfigError,
+  ConfigExpressionError,
   ConfigTranslateError,
   ManagedFileTransactionError,
   NoProviderInstalledError,
@@ -137,6 +138,7 @@ describe("SDK public-surface snapshot", () => {
       LandofileFormConflictError: true,
       LandofileImportRefMisuseError: true,
       LandofileIncludeError: true,
+      LandofileLoadError: true,
       LandofileLoadLimitError: true,
       LandofileLoadOutsideRootError: true,
       LandofileLockMismatchError: true,
@@ -153,6 +155,11 @@ describe("SDK public-surface snapshot", () => {
   });
   test("matches the structured global config error fields", () => {
     expect(Object.keys(ConfigError.fields).sort()).toEqual(publicSurface.configErrorFields);
+  });
+  test("matches structured expression error provenance", () => {
+    expect(Object.keys(ConfigExpressionError.fields).sort()).toEqual(
+      publicSurface.configExpressionErrorFields,
+    );
   });
   test("matches the structured translation error fields", () => {
     // Given

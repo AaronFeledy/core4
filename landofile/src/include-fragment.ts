@@ -26,6 +26,12 @@ export const parseFragment = (
   layer: VersionConstraintEntry["layer"],
 ): Effect.Effect<Record<string, unknown>, ResolveIncludesError> =>
   parseLandofile({ file: fragment.filePath, content: fragment.content, cwd: fragment.root }).pipe(
+    Effect.tap((parsed) => {
+      const check = rejectComposeKeys(fragment.authoredSource, parsed);
+      if (ctx.recorder === undefined) return check;
+      ctx.recorder.effectiveChecks.push(check);
+      return Effect.void;
+    }),
     Effect.map((parsed) =>
       Predicate.isObjectOrArray(parsed)
         ? rememberSourceDocuments(parsed, [
@@ -46,6 +52,7 @@ export const parseFragment = (
         source: { appRoot: ctx.appRoot, sourcePath: fragment.filePath, sourceRoot: fragment.root, layer },
         policy: fragment.userOwned ? { ...ctx.loadPolicy, allowFileAccess: false } : ctx.loadPolicy,
         pendingSites: ctx.pendingSites,
+        recorder: ctx.recorder,
       }).pipe(
         Effect.map((resolved) => ({
           ...resolved,
@@ -72,7 +79,6 @@ export const parseFragment = (
     Effect.map(({ value, dependencies }) =>
       Predicate.isObjectOrArray(value) ? rememberLandofileReferencedFiles(value, dependencies) : value,
     ),
-    Effect.flatMap((parsed) => rejectComposeKeys(fragment.authoredSource, parsed)),
     Effect.flatMap(
       (
         parsed,

@@ -1,17 +1,5 @@
+import { formatValidationIssuePath } from "@lando/sdk/schema";
 import { escapeDiagnosticText } from "./diagnostic-text.ts";
-
-const formatIssuePath = (path: readonly (string | number)[]): string => {
-  let formatted = "";
-  for (const segment of path) {
-    formatted =
-      typeof segment === "number"
-        ? `${formatted}[${segment}]`
-        : formatted.length === 0
-          ? segment
-          : `${formatted}.${segment}`;
-  }
-  return formatted;
-};
 
 export const formatStructuredIssue = (issue: unknown): string | undefined => {
   if (typeof issue !== "object" || issue === null) return undefined;
@@ -24,14 +12,14 @@ export const formatStructuredIssue = (issue: unknown): string | undefined => {
     if (typeof segment !== "string" && typeof segment !== "number") return undefined;
     segments.push(segment);
   }
-  const where = formatIssuePath(segments);
+  const where = formatValidationIssuePath(segments);
   const hint = typeof suggestion === "string" ? `${/[.?!:]$/.test(message) ? "" : "."} ${suggestion}` : "";
   const source = Reflect.get(issue, "source");
   const sourceFile = typeof source === "object" && source !== null ? Reflect.get(source, "file") : undefined;
   const sourcePath = typeof source === "object" && source !== null ? Reflect.get(source, "path") : undefined;
   const authored =
     Array.isArray(sourcePath) && sourcePath.every((key) => typeof key === "string" || typeof key === "number")
-      ? formatIssuePath(sourcePath)
+      ? formatValidationIssuePath(sourcePath)
       : undefined;
   const location = typeof sourceFile === "string" ? `${escapeDiagnosticText(sourceFile)}: ` : "";
   const original =
