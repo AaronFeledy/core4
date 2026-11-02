@@ -862,6 +862,10 @@
       "digest": "17a41f4e0275bd952c91b884adc108734ab2da08868d164e1e825c975fd3319f"
     },
     {
+      "fixture": "docs/guides/php-security-updates/fixtures/php-patch-demo",
+      "digest": "43a0da45c65ed6015ebef28a09db0e7ef2bd6fcf11d952bd22bfc79050d823a3"
+    },
+    {
       "fixture": "docs/guides/php-version-matrix/fixtures/php-81",
       "digest": "3b6fffcafc0bb668041f8a77101c654b7ad66878f9cdb136484771db02dc70a5"
     },
