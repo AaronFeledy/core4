@@ -49,12 +49,14 @@ export interface SecretRedactor {
 export const createSecretRedactor = (
   values: Iterable<string>,
   authoritativeValues: Iterable<string> = [],
+  wholeTokenValues: Iterable<string> = [],
 ): SecretRedactor & typeof redactedInspection => {
   const authoritative = [...authoritativeValues].filter((value) => value.length > 0);
   const unsafe = authoritative.filter((value) => !isUsableExactRedactionValue(value));
   const unique = Array.from(new Set([...values, ...authoritative])).filter(isUsableExactRedactionValue);
-  const matcher = new LiteralMatcher(unique.map(stringUnits));
-  const canCrossSentinel = unique.some((value) => {
+  const wholeToken = [...new Set(wholeTokenValues)].filter(isUsableExactRedactionValue);
+  const matcher = new LiteralMatcher(unique.map(stringUnits), wholeToken.map(stringUnits));
+  const canCrossSentinel = [...unique, ...wholeToken].some((value) => {
     if (value.includes(REDACTED)) return true;
     for (let length = 1; length < Math.min(value.length, REDACTED.length + 1); length += 1) {
       if (value.endsWith(REDACTED.slice(0, length)) || value.startsWith(REDACTED.slice(-length))) {
@@ -64,7 +66,7 @@ export const createSecretRedactor = (
     return false;
   });
 
-  if (unique.length === 0 && unsafe.length === 0) {
+  if (matcher.empty && unsafe.length === 0) {
     return {
       ...redactedInspection,
       redact: (text) => text,

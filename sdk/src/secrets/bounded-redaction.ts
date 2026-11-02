@@ -1,5 +1,5 @@
 import { LOG_LINE_TRUNCATED_MARKER } from "../log-follow/marker.ts";
-import type { LiteralMatcher } from "./literal-matcher.ts";
+import { type LiteralMatcher, isRedactionTokenBoundaryUnit } from "./literal-matcher.ts";
 
 const CHUNK_CODE_UNITS = 1_024;
 const SEGMENT_CODE_UNITS = 64 * 1_024;
@@ -90,7 +90,15 @@ export const replaceLiteralMatchesBounded = (
     while (marker !== -1 && marker < index) {
       marker = text.indexOf(LOG_LINE_TRUNCATED_MARKER, marker + LOG_LINE_TRUNCATED_MARKER.length);
     }
-    let end = matcher.matchAt(text, index, marker).end;
+    let end = matcher.matchAt(text, index, {
+      marker,
+      leftBoundary:
+        isRedactionTokenBoundaryUnit(index === 0 ? undefined : text.charCodeAt(index - 1)) &&
+        !text.endsWith(replacement, index),
+      rightBoundary: (end) =>
+        isRedactionTokenBoundaryUnit(end === text.length ? undefined : text.charCodeAt(end)) &&
+        !text.startsWith(replacement, end),
+    }).end;
     if (end === index) continue;
     while (sentinel !== -1 && sentinel + replacement.length <= index) {
       sentinel = text.indexOf(replacement, sentinel + replacement.length);
