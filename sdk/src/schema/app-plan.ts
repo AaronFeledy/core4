@@ -33,6 +33,7 @@ import {
   ProviderId,
   ServiceName,
 } from "./primitives.ts";
+import { SHA256_HEX_PATTERN, patternString } from "./string-forms.ts";
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // Description of what a provider must realize.
@@ -434,6 +435,10 @@ export const AppPlan = Schema.Struct({
   events: Schema.optionalKey(EventsPlan).annotate({
     description:
       "Effective event steps resolved from current project and host configuration, never applied state.",
+  }),
+  committedLiteralDigests: Schema.optionalKey(Schema.Array(patternString(SHA256_HEX_PATTERN))).annotate({
+    description:
+      "Value-free SHA-256 digests of sensitive values written as literals in committed YAML Landofile layers; such values are masked only as whole tokens wherever they appear.",
   }),
   metadata: PlanMetadata.annotate({ description: "Plan provenance and resolution timestamp." }),
   extensions: ProviderExtensionConfig.annotate({ description: "Provider-specific extension intent." }),

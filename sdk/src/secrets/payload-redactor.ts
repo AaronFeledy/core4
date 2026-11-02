@@ -1,6 +1,10 @@
 import { redactedInspection } from "./inspection.ts";
-import { LiteralMatcher } from "./literal-matcher.ts";
-import { REDACTED } from "./redactor.ts";
+import {
+  LiteralMatcher,
+  type TieredRedactionValues,
+  isRedactionTokenBoundaryUnit,
+} from "./literal-matcher.ts";
+import { REDACTED, isUsableExactRedactionValue } from "./redactor.ts";
 
 /** Value-only byte redaction. Each instance owns one ordered payload stream. */
 export interface PayloadRedactor {
@@ -12,24 +16,35 @@ export interface PayloadRedactor {
  * Read the live value set before every write. The getter should return the same
  * iterable until its generation changes. Registrations apply prospectively,
  * including to the held tail, but cannot retract bytes already delivered.
- * Retained input is at most the longest secret minus one byte, never a chunk.
+ * Retained input is at most the longest value, never a chunk.
  */
-export const createPayloadRedactor = (getValues: () => Iterable<string>): PayloadRedactor => {
+export const createPayloadRedactor = (
+  getValues: () => Iterable<string> | TieredRedactionValues,
+): PayloadRedactor => {
   const encoder = new TextEncoder();
   const replacement = encoder.encode(REDACTED);
-  let previous: Iterable<string> | undefined;
+  let previous: Iterable<string> | TieredRedactionValues | undefined;
   let matcher = new LiteralMatcher([]);
   let pending: Uint8Array = new Uint8Array(0);
   // End of the union whose sentinel was already emitted, relative to pending.
   let coveredUntil = 0;
+  let previousByte: number | undefined;
 
   const redact = (chunk: Uint8Array, final: boolean): Uint8Array => {
     const values = getValues();
     if (values !== previous) {
-      matcher = new LiteralMatcher(Array.from(values, (value) => encoder.encode(value)));
+      const tiers = "substring" in values ? values : { substring: values, wholeToken: [] };
+      const encode = (entries: Iterable<string>) => Array.from(entries, (value) => encoder.encode(value));
+      matcher = new LiteralMatcher(
+        encode(tiers.substring),
+        encode([...tiers.wholeToken].filter(isUsableExactRedactionValue)),
+      );
       previous = values;
     }
-    if (matcher.empty && pending.length === 0) return chunk;
+    if (matcher.empty && pending.length === 0) {
+      if (chunk.length > 0) previousByte = chunk[chunk.length - 1];
+      return chunk;
+    }
     const input = pending.length === 0 ? chunk : new Uint8Array(pending.length + chunk.length);
     if (pending.length > 0) {
       input.set(pending);
@@ -41,7 +56,10 @@ export const createPayloadRedactor = (getValues: () => Iterable<string>): Payloa
     let index = 0;
     for (; index < input.length; index += 1) {
       if (!matcher.canStart(input[index])) continue;
-      const match = matcher.matchAt(input, index);
+      const match = matcher.matchAt(input, index, {
+        final,
+        leftBoundary: isRedactionTokenBoundaryUnit(index === 0 ? previousByte : input[index - 1]),
+      });
       if (!final && match.partial) {
         // Covered bytes must remain raw here: an overlapping occurrence may
         // start inside them and extend the union in a subsequent chunk.
@@ -55,6 +73,7 @@ export const createPayloadRedactor = (getValues: () => Iterable<string>): Payloa
       }
     }
     const tail = input.subarray(start, index);
+    if (index > 0) previousByte = input[index - 1];
     coveredUntil = Math.max(0, coveredUntil - index);
     if (pieces.length === 0) return tail;
     pieces.push(tail);

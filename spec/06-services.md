@@ -601,7 +601,7 @@ Providers declaring `serviceLogSources` MUST support finite snapshots and scoped
 
 Providers return raw `LogChunk`s. Renderer, lifecycle, telemetry, and machine-output boundaries apply `RedactionService` exactly once. Library log streams and app-owned files remain raw.
 
-A line cut by the line bound ends in the SDK truncation marker. Redaction masks any trailing prefix of a known secret value before that marker, so the bound never exposes part of a secret.
+A line cut by the line bound ends in the SDK truncation marker. Before that marker, the value layer masks a nonempty proper prefix of a known value when a `substring` value continues from it, or when a `whole-token` value continues from it and the prefix's original left neighbour is a boundary (§3.7). The marker does not create a left boundary.
 
 #### 6.14.6 Catalog defaults
 

@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { RedactionValues } from "@lando/redaction/service";
 import type { CommandOutput, CommandOutputChunk } from "@lando/sdk/schema";
-import { type Redactor, createPayloadRedactor } from "@lando/sdk/secrets";
+import { type Redactor, type TieredRedactionValues, createSecretRedactor } from "@lando/sdk/secrets";
 import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";
 
 export const DEFAULT_OUTPUT_BYTES = 128 * 1024;
@@ -40,19 +40,26 @@ export class OutputCapture {
   readonly #chunks: CommandOutputChunk[] = [];
   #bytes = 0;
   #truncated = false;
-  readonly #values: () => Iterable<string>;
+  readonly #values: () => Iterable<string> | TieredRedactionValues;
+  readonly #bodyRedactor: Redactor | undefined;
   #knownValues: RedactionValues | undefined;
+  #knownSubstring: RedactionValues | undefined;
   #resultValues = new RedactionValues();
   #prepared = false;
   #profileChanged = false;
 
-  constructor(values: () => Iterable<string> = () => []) {
+  constructor(values: () => Iterable<string> | TieredRedactionValues = () => [], bodyRedactor?: Redactor) {
     this.#values = values;
+    this.#bodyRedactor = bodyRedactor;
   }
 
   append(chunk: CommandOutputChunk, originalText: string): void {
     if (this.#prepared) throw stdioTransportError("MCP final output capture is already finalized.");
-    this.#knownValues ??= new RedactionValues([...this.#values(), ...this.#resultValues]);
+    if (this.#knownValues === undefined) {
+      const values = this.#currentValues();
+      this.#knownSubstring = values.substring;
+      this.#knownValues = new RedactionValues([...values.substring, ...values.wholeToken]);
+    }
     // Only retain the lost-context bit, never the pre-profile text, even after chunk eviction.
     this.#profileChanged ||= chunk.chunk !== originalText;
     this.#chunks.push(Object.freeze({ ...chunk }));
@@ -65,10 +72,20 @@ export class OutputCapture {
     this.#resultValues = new RedactionValues(values);
   }
 
+  #currentValues() {
+    const values = this.#values();
+    const tiers = "substring" in values ? values : { substring: values, wholeToken: [] };
+    return {
+      substring: new RedactionValues([...tiers.substring, ...this.#resultValues]),
+      wholeToken: new RedactionValues(tiers.wholeToken),
+    };
+  }
+
   #prepare(redactor: Redactor): void {
     if (this.#prepared) return;
     this.#prepared = true;
-    const values = Array.from(new RedactionValues([...this.#values(), ...this.#resultValues])).filter(
+    const tiers = this.#currentValues();
+    const values = Array.from(new RedactionValues([...tiers.substring, ...tiers.wholeToken])).filter(
       (value) => value.length > 0,
     );
     const texts = new Map<string, string>();
@@ -77,7 +94,10 @@ export class OutputCapture {
       texts.set(key, (texts.get(key) ?? "") + frame.chunk);
     }
     const valueBytes = values.reduce((sum, value) => sum + Buffer.byteLength(value, "utf8"), 0);
-    const lateValues = values.filter((value) => !this.#knownValues?.has(value));
+    const lateValues = values.filter(
+      (value) =>
+        !this.#knownValues?.has(value) || (tiers.substring.has(value) && !this.#knownSubstring?.has(value)),
+    );
     if (
       (this.#profileChanged && lateValues.length > 0) ||
       valueBytes * Math.max(1, texts.size) > MAX_OUTBOUND_QUEUED_BYTES
@@ -97,43 +117,29 @@ export class OutputCapture {
       }
     }
     const original = this.#chunks.splice(0);
-    const channels = new Map<
-      string,
-      {
-        readonly payload: ReturnType<typeof createPayloadRedactor>;
-        readonly decoder: TextDecoder;
-        last: number;
-      }
-    >();
+    const replay = createSecretRedactor([], tiers.substring, tiers.wholeToken);
+    const channels = new Map<string, Array<{ readonly frame: CommandOutputChunk; readonly index: number }>>();
     for (const frame of original) {
       const key = JSON.stringify([frame._tag, frame.service, frame.source]);
       if (omitted.has(key)) continue;
-      const state = channels.get(key) ?? {
-        payload: createPayloadRedactor(() => values),
-        decoder: new TextDecoder("utf-8", { ignoreBOM: true }),
-        last: this.#chunks.length,
-      };
-      channels.set(key, state);
-      state.last = this.#chunks.length;
-      this.#chunks.push({
-        ...frame,
-        chunk: state.decoder.decode(state.payload.write(encoder.encode(frame.chunk)), { stream: true }),
-      });
+      const channel = channels.get(key) ?? [];
+      channels.set(key, channel);
+      channel.push({ frame, index: this.#chunks.length });
+      this.#chunks.push(frame);
     }
-    for (const state of channels.values()) {
-      const frame = this.#chunks[state.last];
-      if (frame !== undefined)
-        this.#chunks[state.last] = {
-          ...frame,
-          chunk: frame.chunk + state.decoder.decode(state.payload.flush()),
-        };
+    for (const channel of channels.values()) {
+      const chunks = replay.redactChunks(channel.map(({ frame }) => frame.chunk));
+      for (const [offset, chunk] of chunks.entries()) {
+        const target = channel[offset];
+        if (target !== undefined) this.#chunks[target.index] = { ...target.frame, chunk };
+      }
     }
     for (let index = 0; index < this.#chunks.length; index++) {
       const frame = this.#chunks[index];
       if (frame === undefined) continue;
       this.#chunks[index] = Object.freeze({
         _tag: frame._tag,
-        chunk: redactor.redactString(frame.chunk),
+        chunk: (this.#bodyRedactor ?? redactor).redactString(frame.chunk),
         ...(frame.service === undefined ? {} : { service: redactor.redactString(frame.service) }),
         ...(frame.source === undefined ? {} : { source: redactor.redactString(frame.source) }),
       });

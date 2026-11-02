@@ -15,7 +15,12 @@ import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
 import { ensureReadableDump } from "./dump-file.ts";
-import { SqlEnvironmentSession, protectSqlEnvironment } from "./environment.ts";
+import {
+  SqlEnvironmentSession,
+  classifySqlPlan,
+  protectSqlEnvironment,
+  registerSqlLiteralCredentials,
+} from "./environment.ts";
 import { countCommand } from "./families.ts";
 import { confirmOrFail, publishTree } from "./progress.ts";
 import { waitForSqlDatabase } from "./readiness.ts";
@@ -73,7 +78,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
             ? [creds.rootPassword]
             : []),
         ];
-  const protectedEnvironment = yield* protectSqlEnvironment(rawSession, selectedCredentials, env);
+  const protectedEnvironment = yield* protectSqlEnvironment(rawSession, rawDeps.plan, selectedCredentials);
   const session = protectedEnvironment.session;
   const exec: SqlExec = (service, command, env) =>
     Stream.unwrap(
@@ -113,6 +118,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         : undefined;
     const file = hostFile(deps.plan, { ...input, service: target.name });
     const action = input.action;
+    if (action === "snapshots" || action === "prune")
+      yield* registerSqlLiteralCredentials(classifySqlPlan(deps.plan), selectedCredentials);
     let restoreSource: SnapshotInfo | undefined;
     const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
     const dump =
@@ -136,6 +143,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         service: target.name,
         command,
         env,
+        secrets: protectedEnvironment.secrets,
       });
       const count = parseCount(counted.stdout);
       yield* confirmOrFail(
@@ -222,6 +230,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       family: target.family,
       creds,
       env,
+      secrets: protectedEnvironment.secrets,
       file,
       compression,
       ...(input.compressionLevel === undefined ? {} : { compressionLevel: input.compressionLevel }),
@@ -285,7 +294,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         yield* runPhysical(
           "reset",
           () =>
-            runReset(deps.exec, target.name, target.family, creds, env).pipe(
+            runReset(deps.exec, target.name, target.family, creds, env, protectedEnvironment.secrets).pipe(
               Effect.provideService(SqlEnvironmentSession, session),
             ),
           true,
@@ -396,7 +405,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       steps,
       redactionTokens: [
         ...(action === "snapshots" || action === "prune"
-          ? secretTokens(creds)
+          ? secretTokens(creds, deps.plan)
           : protectedEnvironment.tokens()),
         ...(seedSource?.redactionTokens ?? []),
       ],

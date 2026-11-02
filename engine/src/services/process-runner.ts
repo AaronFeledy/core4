@@ -14,18 +14,22 @@ import { Context, Effect, Layer, Stream } from "effect";
 import { type CapturedHostExecutionContext, captureHostExecutionContext } from "./host-execution-context.ts";
 import { PreparedProcessBinding } from "./prepared-process.ts";
 import { runProcess, streamProcess } from "./process-execution.ts";
+import { type RunnerRedactionCarrier, runnerEnvRedaction } from "./runner-redaction.ts";
 import { environmentForRedaction } from "./tooling-input-environment.ts";
 export { withPreparedProcess } from "./prepared-process.ts";
 
 export { awaitSinkResult } from "./process-io.ts";
 export { resolveProcessCgroup } from "./process-spawn-context.ts";
 
-const ProcessRedactionTokens = Context.Reference<readonly string[]>("@lando/engine/ProcessRedactionTokens", {
-  defaultValue: () => [],
-});
+export type ProcessRedactionCarrier = RunnerRedactionCarrier;
+
+const ProcessRedactionTokens = Context.Reference<ProcessRedactionCarrier>(
+  "@lando/engine/ProcessRedactionTokens",
+  { defaultValue: (): ProcessRedactionCarrier => ({ substring: [] }) },
+);
 
 export const withProcessRedactionTokens = <A, E, R>(
-  tokens: readonly string[],
+  tokens: ProcessRedactionCarrier,
   effect: Effect.Effect<A, E, R>,
 ) => effect.pipe(Effect.provideService(ProcessRedactionTokens, tokens));
 
@@ -51,9 +55,13 @@ const execError = (input: ProcessSpawnOptions, cause: unknown): ProcessExecError
 const redactorForInput = Effect.fnUntraced(function* (context: CapturedHostExecutionContext) {
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "None") return identityRedactor;
+  const carrier = yield* ProcessRedactionTokens;
+  const tiers = yield* runnerEnvRedaction(carrier, context);
   return yield* redaction.value.forProfile("secrets", {
-    sourceEnv: yield* environmentForRedaction(context.env, context.explicitEnv),
-    authoritativeTokens: yield* ProcessRedactionTokens,
+    redactionTokens: tiers.substring,
+    wholeTokenValues: tiers.wholeToken,
+    // Explicit carrier substring stays authoritative (shell command source, overrides).
+    authoritativeTokens: carrier.substring,
   });
 });
 

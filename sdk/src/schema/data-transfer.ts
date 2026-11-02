@@ -30,6 +30,19 @@ export const DataEndpoint = Schema.Union([
     service: ServiceName,
     command: CommandSpec,
     env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+    secrets: Schema.optionalKey(
+      Schema.Struct({
+        substring: Schema.Array(Schema.String).annotate({
+          description: "Password material matched as substring (SecretRef raw, unproven literals).",
+        }),
+        wholeToken: Schema.Array(Schema.String).annotate({
+          description: "Password material matched whole-token (authored plan literals).",
+        }),
+      }),
+    ).annotate({
+      description:
+        "Tiered credential secrets for command failure-tail redaction. Never every environment value.",
+    }),
   }),
   Schema.TaggedStruct("artifact", { ref: Schema.String }),
 ]);
