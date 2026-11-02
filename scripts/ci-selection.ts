@@ -50,7 +50,7 @@ const affectsProviders = (path: string): boolean =>
   path.startsWith("sdk/src/services/provider") ||
   path.startsWith("sdk/test/contract/provider") ||
   path === ".github/workflows/ci.yml" ||
-  /^scripts\/(?:_ci-selection-workflow|build-ci-workflow|ci-selection|select-ci|validate-ci|test-shards)\.ts$/.test(
+  /^scripts\/(?:_ci-selection-workflow|build-ci-workflow|ci-selection|select-ci|validate-ci|test-shards|test-ownership)\.ts$/.test(
     path,
   );
 

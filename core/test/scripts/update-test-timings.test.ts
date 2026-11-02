@@ -36,7 +36,7 @@ test("promotes a complete fresh timing candidate after the test command succeeds
         expect(cwd).toBe(root);
         expect(cmd.slice(0, 3)).toEqual([process.execPath, "--no-orphans", "test"]);
         expect(cmd.slice(3, 3 + SHARD_RUNTIME_FLAGS.length)).toEqual([...SHARD_RUNTIME_FLAGS]);
-        expect(cmd.slice(-3)).toEqual(["--update-timings", ...files]);
+        expect(cmd.slice(-3)).toEqual(["--update-timings", ...files.map((path) => `./${path}`)]);
         const candidate = timingPath(cmd);
         expect(candidate).toStartWith(resolve(root, ".bun-test-timings-"));
         await writeFile(candidate, validCandidate);

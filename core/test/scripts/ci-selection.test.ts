@@ -19,6 +19,7 @@ describe("CI selection", () => {
     ["recipes/drupal/README.mdx", "runtime"],
     ["docs/astro.config.ts", "runtime"],
     ["scripts/build-ci-workflow.ts", "providers"],
+    ["scripts/test-ownership.ts", "providers"],
     ["plugins/service-lando/src/php-baseline.ts", "providers"],
     ["plugins/service-lando/test/php-baseline.integration.test.ts", "providers"],
     ["plugins/provider-lando/src/provider.ts", "providers"],

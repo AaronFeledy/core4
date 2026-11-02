@@ -224,7 +224,7 @@ export const selectAffectedTests = async (options: {
 }): Promise<Selection> => {
   const root = resolve(options.root ?? ROOT);
   const changed = sorted(new Set(options.changed.map((path) => relativePath(root, path))));
-  const eligible = sorted(options.eligible ?? (await collectShardedTestFiles()));
+  const eligible = sorted(options.eligible ?? (await collectShardedTestFiles(root)));
   let broadReason = changed.some((path) => CONFIG.test(path))
     ? "configuration or workspace mapping changed"
     : undefined;
