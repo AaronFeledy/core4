@@ -68,7 +68,7 @@ services:
     via: fpm
 ```
 
-With Lando's generated FastCGI configuration, requests for PHP files beneath these paths return 403, including paths such as `/uploads/file.php/extra`. The match is case-insensitive. `*` matches zero or more characters within one path segment, never across `/`: `sites/*/files` covers both `sites/default/files` and `sites/example.com/files`, and `uploads*` covers `uploads` itself as well as `uploads-old`. Front controllers such as `/index.php` and Drupal image-style fallbacks remain reachable.
+With Lando's generated FastCGI configuration, requests for PHP files beneath these paths return 403, including paths such as `/uploads/file.php/extra`. The match is case-insensitive and also covers URI-decoded line breaks in uploaded filenames. `*` matches zero or more characters within one path segment, never across `/`: `sites/*/files` covers both `sites/default/files` and `sites/example.com/files`, and `uploads*` covers `uploads` itself as well as `uploads-old`. Front controllers such as `/index.php` and Drupal image-style fallbacks remain reachable.
 
 Use letters, digits, `.`, `_`, `/`, `-`, and `*` in these paths. An entry cannot be empty, consist only of `*`, start or end with `/`, or contain `..`, `**`, an empty segment such as `a//b`, or a `.` segment such as `a/./b`.
 
