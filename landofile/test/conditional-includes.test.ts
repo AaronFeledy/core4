@@ -107,6 +107,26 @@ test.each([
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path: ["includes", 0, "when"],
+      reason: "ConfigExpressionError",
+      source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["includes", 0, "when"] },
+    },
+  ]);
+});
+
+test("rejects a secret reference in an include condition with secret-specific guidance", async () => {
+  // Given
+  await writeFile(
+    join(root, ".lando.yml"),
+    "name: conditional\nincludes:\n  - source: ./absent.yml\n    when: '${secret:TOKEN}'\n",
+  );
+  // When
+  const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
+  // Then
+  expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
+    {
+      path: ["includes", 0, "when"],
+      reason: "unsupported-secret-reference",
+      message: "Secret references are not supported at includes.0.when.",
       source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["includes", 0, "when"] },
     },
   ]);
@@ -160,10 +180,12 @@ test("keeps conditional failure paths in the declaring layer after pruning earli
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path: ["includes", 1, "when"],
+      reason: "ConfigExpressionError",
       source: { file: join(root, ".lando.local.yml"), layer: "local", path: ["includes", 1, "when"] },
     },
     {
       path: ["toolingIncludes", "docs", "when"],
+      reason: "ConfigExpressionError",
       source: {
         file: join(root, ".lando.local.yml"),
         layer: "local",

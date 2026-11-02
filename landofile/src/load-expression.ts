@@ -35,6 +35,7 @@ import {
 } from "./load-expression-shape.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
+import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
 
 export type { ResolveLandofileLoadExpressionsOptions } from "./load-expression-shape.ts";
 
@@ -137,13 +138,14 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
-          if (
-            parsed.success.segments.some(
-              (segment) =>
-                segment.kind === "ShellParamSegment" ||
-                (segment.kind === "SecretRefSegment" && !eligibleBindingPath(path)),
-            )
-          )
+          const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
+          if (secret !== undefined && !eligibleBindingPath(path))
+            throw unsupportedSecretReferenceError(
+              { file: options.source.sourcePath, layer: options.source.layer, path },
+              secret.name,
+              value,
+            );
+          if (parsed.success.segments.some((segment) => segment.kind === "ShellParamSegment"))
             return unsupported(path, "Configuration expressions");
           const secretMembers = expressionScopeMembers(parsed.success, "secrets");
           const scopes =
