@@ -157,7 +157,7 @@ describe("recipe option parity", () => {
       expect(landofile.tooling?.["drupal-scaffold"]?.cmd).toContain("recommended-project:^10");
       expect(landofile.services?.[ServiceName.make("appserver")]?.via).toBe("fpm");
       expect(landofile.services?.[ServiceName.make("edge")]?.type).toBe("nginx");
-      expect(landofile.services?.[ServiceName.make("edge")]?.noScripts).toEqual(["sites/*/files"]);
+      expect(landofile.services?.[ServiceName.make("edge")]?.uploadDirs).toEqual(["sites/*/files"]);
       expect(String(landofile.services?.[ServiceName.make("edge")]?.webroot ?? "")).toBe("web");
       expect(landofile.services?.[ServiceName.make("database")]?.type).toBe("postgres:16");
     });
@@ -188,7 +188,7 @@ describe("recipe option parity", () => {
       });
       const lempFile = await discoverFrom(lemp.directory);
       expect(lempFile.services?.[ServiceName.make("web")]?.type).toBe("nginx");
-      expect(lempFile.services?.[ServiceName.make("web")]?.noScripts).toBeUndefined();
+      expect(lempFile.services?.[ServiceName.make("web")]?.uploadDirs).toBeUndefined();
       expect(lempFile.services?.[ServiceName.make("appserver")]?.type).toBe("php:8.3");
       expect(lempFile.services?.[ServiceName.make("database")]?.type).toBe("mariadb");
     });

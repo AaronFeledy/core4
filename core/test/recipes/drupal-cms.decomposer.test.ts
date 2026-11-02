@@ -80,6 +80,7 @@ describe("drupal-cms decomposition", () => {
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,
+          uploadDirs: ["sites/*/files"],
           port: 80,
           dependsOn: ["database"],
           mounts: [
@@ -136,7 +137,7 @@ describe("drupal-cms decomposition", () => {
     });
     expect(authoring.services.edge).not.toHaveProperty("primary");
     expect(authoring.services.edge).toHaveProperty("routes");
-    expect(authoring.services.edge).toMatchObject({ noScripts: ["sites/*/files"] });
+    expect(authoring.services.edge).toMatchObject({ uploadDirs: ["sites/*/files"] });
     expect(authoring.tooling["drupal-cms-install"].cmd).toBe(DRUPAL_CMS_PGSQL_INSTALL_COMMAND);
     expect(authoring.tooling["drupal-cms-install"].cmd).toContain('--db-url="pgsql://lando:');
     expect(authoring.tooling["drupal-cms-install"].cmd).toContain("{{ app.name }}");
