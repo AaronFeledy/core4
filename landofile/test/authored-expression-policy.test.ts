@@ -50,7 +50,7 @@ test.each([
   const path = ["services", "app", "build", "args", key];
   const message = `Secret references are not supported at ${path.join(".")}. Build arguments can be recorded in image history.`;
   const suggestion =
-    "Lando never resolves secrets into build arguments. If the service needs the secret at runtime, put the ${secret:...} reference in a service environment value. Write $${secret:...} for literal text.";
+    "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.";
   // When
   const failure = await Effect.runPromise(resolve(value).pipe(Effect.flip));
   // Then
@@ -71,9 +71,12 @@ test.each([
   });
 });
 
-test.each(["prefix-${secret:TEST}", "${HOME}-${secret:TOKEN}"])(
+test.each([
+  ["prefix-${secret:TEST}", "TEST"],
+  ["${HOME}-${secret:TOKEN}", "TOKEN"],
+])(
   "rejects an unauthorized secret with secret-specific guidance, even beside a shell parameter: %s",
-  async (command) => {
+  async (command, name) => {
     // Given
     const value = { services: { web: { command } } };
     // When
@@ -82,10 +85,45 @@ test.each(["prefix-${secret:TEST}", "${HOME}-${secret:TOKEN}"])(
     expect(failure).toMatchObject({
       _tag: "LandofileValidationError",
       message: "Secret references are not supported at services.web.command.",
-      remediation:
-        "Use ${secret:...} only in a service environment value, a database or Redis password, or a tooling or event env value. Write $${secret:...} for literal text.",
+      remediation: `Set services.web.environment.${name} to the \${secret:...} reference. Write $${name} in the command when the service type runs that string as a shell script. On type: compose, the string is split into arguments and is not a shell, so write sh -c with $${name} inside one quoted argument.`,
       issues: [{ path: ["services", "web", "command"], rule: "unsupported-secret-reference" }],
     });
+  },
+);
+
+test.each([
+  [
+    { services: { app: { build: { app: "fetch ${secret:TOKEN}" } } } },
+    ["services", "app", "build", "app"],
+    "Set services.app.environment.TOKEN",
+  ],
+  [
+    { services: { app: { build: { artifact: { run: "fetch ${secret:TOKEN}" } } } } },
+    ["services", "app", "build", "artifact", "run"],
+    "Move this step to services.app.build.app",
+  ],
+  [
+    { tooling: { deploy: "deploy ${secret:TOKEN}" } },
+    ["tooling", "deploy"],
+    "Use the object form: set tooling.deploy.cmd",
+  ],
+  [
+    { services: { app: { entrypoint: "/start ${secret:TOKEN}" } } },
+    ["services", "app", "entrypoint"],
+    "Set services.app.environment.TOKEN",
+  ],
+] as const)(
+  "reports the authored shorthand path for site-aware guidance: %j",
+  async (value, path, suggestion) => {
+    // Given / When
+    const failure = await Effect.runPromise(resolve(value).pipe(Effect.flip));
+    // Then
+    expect(failure).toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: [{ path, rule: "unsupported-secret-reference" }],
+    });
+    if (!(failure instanceof LandofileValidationError)) throw failure;
+    expect(failure.issues[0]?.suggestion?.startsWith(suggestion)).toBe(true);
   },
 );
 

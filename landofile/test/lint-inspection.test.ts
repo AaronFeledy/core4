@@ -102,7 +102,9 @@ test.each([true, false])(
     // Then
     expect(refs).toEqual([revision]);
     expect(snapshot.result.valid).toBe(matches);
-    expect(snapshot.result.violations.map(({ rule }) => rule)).toEqual(matches ? [] : ["landofile.load"]);
+    expect(snapshot.result.violations.map(({ rule, reason }) => ({ rule, reason }))).toEqual(
+      matches ? [] : [{ rule: "landofile.load", reason: "LandofileLockMismatchError" }],
+    );
     expect(await lock.text()).toBe(before);
   },
 );

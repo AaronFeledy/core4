@@ -25,7 +25,6 @@ import { LandofileFileSession } from "./load-expression-file.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import {
   type ResolveLandofileLoadExpressionsOptions,
-  buildArgumentPath,
   callDepth,
   containsContextPath,
   containsLoad,
@@ -36,6 +35,7 @@ import {
 } from "./load-expression-shape.ts";
 import { LOAD_DEFERRED_EXPRESSION_SCOPES } from "./recipe-expressions.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
+import { unsupportedSecretReference } from "./unsupported-secret-reference.ts";
 
 export type { ResolveLandofileLoadExpressionsOptions } from "./load-expression-shape.ts";
 
@@ -143,16 +143,10 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
-          if (
-            parsed.success.segments.some((segment) => segment.kind === "SecretRefSegment") &&
-            !eligibleBindingPath(path)
-          ) {
-            const buildArgument = buildArgumentPath(path);
+          const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
+          if (secret !== undefined && !eligibleBindingPath(path)) {
             return reject(path, {
-              message: `Secret references are not supported at ${path.join(".")}.${buildArgument ? " Build arguments can be recorded in image history." : ""}`,
-              suggestion: buildArgument
-                ? "Lando never resolves secrets into build arguments. If the service needs the secret at runtime, put the ${secret:...} reference in a service environment value. Write $${secret:...} for literal text."
-                : "Use ${secret:...} only in a service environment value, a database or Redis password, or a tooling or event env value. Write $${secret:...} for literal text.",
+              ...unsupportedSecretReference(path, secret.name, value),
               rule: "unsupported-secret-reference",
             });
           }

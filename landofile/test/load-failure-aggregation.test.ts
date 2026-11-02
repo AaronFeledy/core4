@@ -90,12 +90,24 @@ test("lint reports build argument secrets as load failures with safe runtime gui
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path,
+      reason: "unsupported-secret-reference",
       message:
         "Secret references are not supported at services.app.build.args.TOKEN. Build arguments can be recorded in image history.",
       suggestion:
-        "Lando never resolves secrets into build arguments. If the service needs the secret at runtime, put the ${secret:...} reference in a service environment value. Write $${secret:...} for literal text.",
+        "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.",
       source: { file, layer: "canonical", path },
     },
+  ]);
+});
+
+test("lint carries the failure tag as reason for a missing include", async () => {
+  // Given
+  await writeFile(join(root, ".lando.yml"), "name: aggregate\nincludes: [./missing.yml]\n");
+  // When
+  const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
+  // Then
+  expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
+    { path: ["includes", 0], reason: "LandofileIncludeError" },
   ]);
 });
 

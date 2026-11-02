@@ -19,8 +19,16 @@ test.each(["app:config:lint", "start", "app:includes:update", "app:includes:veri
           result: {
             valid: false,
             violations: [
-              { rule: "landofile.load", source: { file: join(fixture.root, ".lando.yml") } },
-              { rule: "landofile.load", source: { file: join(fixture.root, ".lando.local.yml") } },
+              {
+                rule: "landofile.load",
+                reason: "LandofileIncludeError",
+                source: { file: join(fixture.root, ".lando.yml") },
+              },
+              {
+                rule: "landofile.load",
+                reason: "LandofileIncludeError",
+                source: { file: join(fixture.root, ".lando.local.yml") },
+              },
             ],
           },
         });

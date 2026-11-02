@@ -107,6 +107,7 @@ test.each([
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path: ["includes", 0, "when"],
+      reason: "ConfigExpressionError",
       source: { file: join(root, ".lando.yml"), layer: "canonical", path: ["includes", 0, "when"] },
     },
   ]);
@@ -160,10 +161,12 @@ test("keeps conditional failure paths in the declaring layer after pruning earli
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path: ["includes", 1, "when"],
+      reason: "ConfigExpressionError",
       source: { file: join(root, ".lando.local.yml"), layer: "local", path: ["includes", 1, "when"] },
     },
     {
       path: ["toolingIncludes", "docs", "when"],
+      reason: "ConfigExpressionError",
       source: {
         file: join(root, ".lando.local.yml"),
         layer: "local",

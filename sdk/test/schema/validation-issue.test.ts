@@ -54,6 +54,21 @@ describe("validation issues", () => {
     // Then
     expect(Schema.encodeSync(ConfigLintViolation)(decoded)).toEqual(finding);
   });
+  test("round-trips a load finding's machine-readable reason", () => {
+    // Given
+    const finding = {
+      rule: "landofile.load",
+      reason: "unsupported-secret-reference",
+      severity: "error",
+      path: ["services", "app", "build", "args", "TOKEN"],
+      message: "Secret references are not supported at services.app.build.args.TOKEN.",
+    } satisfies typeof ConfigLintViolation.Encoded;
+    // When
+    const decoded = Schema.decodeUnknownSync(ConfigLintViolation)(finding, authoredDecode);
+    // Then
+    expect(decoded.reason).toBe("unsupported-secret-reference");
+    expect(Schema.encodeSync(ConfigLintViolation)(decoded)).toEqual(finding);
+  });
   test("preserves an issue's authored source independently of its effective path", () => {
     // Given
     const issue = {
