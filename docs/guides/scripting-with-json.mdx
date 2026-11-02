@@ -401,7 +401,7 @@ lando info --format=json | jq '.result'
 git status --short
 ```
 
-This holds on Linux and macOS when Lando exits normally, when you stop it with
+This holds on macOS and glibc-based Linux when Lando exits normally, when you stop it with
 Ctrl-C or `SIGTERM`, and when `lando update` restarts into the new binary. A
 process that writes to the same stream while Lando is still running is not
 covered: if the reader falls behind, that process can see a full pipe as a

@@ -158,7 +158,7 @@ Releases include public schema and command-schema artifacts, declaration bundles
 
 | Cadence | Platforms/providers | Required scope |
 |---|---|---|
-| Per PR: platform matrix | All six compile targets: macOS arm64/x64, Linux x64/arm64, Windows x64/arm64 | Portable static gates, builds, relocated-binary smoke (including native libc binding round trips and the shared-pipe stdio check, §8.11.2), and scenario guides. Compilation alone is not evidence of live-provider readiness. |
+| Per PR: platform matrix | All six compile targets: macOS arm64/x64, Linux x64/arm64, Windows x64/arm64 | Portable static gates, builds, relocated-binary smoke (on the four POSIX targets, also native libc binding round trips and the shared-pipe stdio check, §8.11.2), and scenario guides. Compilation alone is not evidence of live-provider readiness. |
 | Per PR: unit and runtime gates | Linux x64 | Sharded unit tests, e2e smoke, and gating performance tests. The platform matrix MUST NOT be reported as full native unit-suite coverage on every target. |
 | Nightly | Linux x64/arm64, macOS arm64 | Full e2e against the default managed runtime, all generated e2e guides, release-shaped binaries, library publish rehearsal, and gating platform perf. |
 | Weekly | Managed runtime, Docker Desktop/Engine, Podman Desktop/Podman, Lima, OrbStack on applicable hosts | Provider contracts plus full e2e and generated e2e guide scenarios across the provider matrix. |
