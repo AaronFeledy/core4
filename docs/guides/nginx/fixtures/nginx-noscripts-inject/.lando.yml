@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid unsafe noScripts interpolation must fail native authoring validation
 name: nginx-noscripts-inject
 runtime: 4
 services:
