@@ -65,6 +65,23 @@ describe("verifyLandofileIncludes", () => {
       }),
     );
 
+  test("keeps a lock mismatch and a load failure without false stale descendants (#1646)", async () => {
+    const source = "github:acme/fragments/postgres.yml";
+    await writeFile(
+      join(appRoot, ".lando.lock.yml"),
+      `${lockfile(source, "a".repeat(40), "a".repeat(64))}  - source: github:acme/fragments/unreachable.yml\n    resolved: ${"a".repeat(40)}\n    checksum: ${"b".repeat(64)}\n`,
+    );
+    const report = await runVerify(
+      { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }, "./missing.yml"] },
+      clonerFor(FRAGMENT, "a".repeat(40)),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.mismatches).toHaveLength(1);
+    expect(report.mismatches[0]).toMatchObject({ _tag: "LandofileLockMismatchError", source });
+    expect(report.failures).toMatchObject([{ _tag: "LandofileIncludeError", path: ["includes", 1] }]);
+    expect(report.entries.map((entry) => entry.status)).toEqual(["mismatch"]);
+  });
+
   test("a Landofile with no remote includes verifies ok with no entries", async () => {
     const report = await runVerify({ name: "demo", recipe: "lamp" });
     expect(report.entries).toEqual([]);
