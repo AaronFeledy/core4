@@ -33,10 +33,10 @@ Voice: concrete, command-first, little ceremony. Sound like someone who ships La
 
 Any of these fails the page. Rewrite that item. Do not ship.
 
-- Em dash (`—`) or en dash (`–`) anywhere in user-facing prose, including ranges. Use a comma, period, parentheses, or "to". The Bad specimen in [examples.md](examples.md#bad) illustrates the ban
+- Em dash (`—`) or en dash (`–`) in user-facing prose, including ranges (literal glyphs in code spans are fine). Use a comma, period, parentheses, or "to". The Bad specimen in [examples.md](examples.md#bad) illustrates the ban
 - Throat-clearing: "In this guide we will", "In this document we will", "It's important to note", "Let's explore"
 - Marketing adjectives: robust, seamless, leverage, comprehensive, utilize, empower, unlock, cutting-edge, "Simply just easily"
-- Machine-voice filler: delve, journey, landscape, tapestry, "not just X but Y", "Whether you're", closing recaps such as "In short" or "That's it"
+- Machine-voice filler: delve, journey, landscape, tapestry, "not just X but Y", "Whether you're"
 - A link to another guide that is not a relative `.mdx` path, such as `./php.mdx` or `../config/offline-dev.mdx`
 - First-person-plural lecture ("we will now")
 - Invented CLI output, `...`, "output omitted", or empty `<Inspect output />` sold as a transcript
