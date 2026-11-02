@@ -68,6 +68,8 @@ For hot reload through the proxy while you edit, see [Run Vite HMR with the Lara
 
 ## See what the recipe writes
 
+The appserver sets `uploadDirs: [storage]` beneath webroot `public` to keep PHP out of uploaded files, including through the `public/storage` symlink.
+
 | Piece | What you get |
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: laravel`, webroot `public`, Composer `2`, Apache on port `80`, depends on `database` and `cache` |

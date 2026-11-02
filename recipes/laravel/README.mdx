@@ -110,6 +110,7 @@ For day-to-day tooling and DB/Redis hosts, see [Run the Laravel recipe](/guides/
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"postgres:16\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"composer\":\\s*\"2\\.7\\.7\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"webroot\":\\s*\"public\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uploadDirs\":\\s*\\[\\s*\"storage\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"via\":\\s*\"cli\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"worker\":\\s*\\{[\\s\\S]*?\"restart\":\\s*\"unless-stopped\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"appserver\":\\s*\\{(?:(?!\"worker\":)[\\s\\S])*?\"appMount\":\\s*\\{[^}]*\"target\":\\s*\"/app\"[^}]*\"includes\":\\s*\\[\\s*\"vendor\"\\s*\\]" } }} />
