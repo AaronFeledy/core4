@@ -1,5 +1,6 @@
 import { type ConfigLintViolation, formatValidationIssuePath } from "@lando/sdk/schema";
 import { escapeDiagnosticText } from "../diagnostic-text";
+import { formatValidationFixEdits } from "../validation-fix-text.ts";
 
 const formatPath = (path: ConfigLintViolation["path"]): string => {
   const formatted = formatValidationIssuePath(path);
@@ -31,6 +32,8 @@ const renderViolation = (violation: ConfigLintViolation): string => {
       lines.push(`${index === 0 ? "    fix: " : "       | "}${escapeDiagnosticText(line)}`);
     }
   }
+  if (violation.fix !== undefined)
+    lines.push(...formatValidationFixEdits(violation.fix).map((line) => `       | ${line}`));
   return lines.join("\n");
 };
 

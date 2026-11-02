@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { executionSite, executionSiteKey } from "./execution-site.ts";
 
 import { layerMerge } from "./layer-merge.ts";
 import { PortablePath, ToolingEnvironment, ToolingVarLiteral } from "./primitives.ts";
@@ -51,14 +52,20 @@ const EventStepTail = {
 const EventCmdFields = {
   service: Schema.optionalKey(Schema.String),
   dir: Schema.optionalKey(PortablePath),
-  env: Schema.optionalKey(ToolingEnvironment),
+  env: executionSiteKey(Schema.optionalKey(ToolingEnvironment), "secret-binding"),
   user: Schema.optionalKey(Schema.String),
 };
 
 const EventCommandFields = {
-  flags: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  args: Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
-  raw: Schema.optionalKey(Schema.Array(Schema.String)),
+  flags: executionSiteKey(
+    Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
+    "event-lando-command",
+  ),
+  args: executionSiteKey(
+    Schema.optionalKey(Schema.Record(Schema.String, EventCommandInputValue)),
+    "event-lando-command",
+  ),
+  raw: executionSiteKey(Schema.optionalKey(Schema.Array(Schema.String)), "event-lando-command"),
 };
 
 const EventTaskFields = {
@@ -68,7 +75,7 @@ const EventTaskFields = {
 export const EventCommandStep = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
-  command: Schema.String,
+  command: executionSiteKey(Schema.String, "event-lando-command"),
   defer: Forbidden,
   for: Forbidden,
   ...EventCommandFields,
@@ -94,7 +101,7 @@ export const EventTaskStep = Schema.Struct({
 export type EventTaskStep = typeof EventTaskStep.Type;
 
 export const EventCmdStep = Schema.Struct({
-  cmd: Schema.String,
+  cmd: executionSiteKey(Schema.String, "event-step"),
   task: Forbidden,
   command: Forbidden,
   defer: Forbidden,
@@ -151,14 +158,14 @@ const EventDeferredCmdShorthand = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
   command: Forbidden,
-  defer: Schema.String,
+  defer: executionSiteKey(Schema.String, "event-step"),
   for: Forbidden,
   ...EventCmdFields,
   ...EventStepTail,
 });
 
 const EventDeferredCmdStep = Schema.Struct({
-  cmd: Schema.String,
+  cmd: executionSiteKey(Schema.String, "event-step"),
   task: Forbidden,
   command: Forbidden,
   defer: Schema.Literal(true),
@@ -180,7 +187,7 @@ const EventDeferredTaskStep = Schema.Struct({
 const EventDeferredCommandStep = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
-  command: Schema.String,
+  command: executionSiteKey(Schema.String, "event-lando-command"),
   defer: Schema.Literal(true),
   for: Forbidden,
   ...EventCommandFields,
@@ -199,7 +206,7 @@ export const EventDeferStep = Schema.Union([
 export type EventDeferStep = typeof EventDeferStep.Type;
 
 const EventForCmdStep = Schema.Struct({
-  cmd: Schema.String,
+  cmd: executionSiteKey(Schema.String, "event-step"),
   task: Forbidden,
   command: Forbidden,
   defer: Forbidden,
@@ -221,7 +228,7 @@ const EventForTaskStep = Schema.Struct({
 const EventForCommandStep = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
-  command: Schema.String,
+  command: executionSiteKey(Schema.String, "event-lando-command"),
   defer: Forbidden,
   for: EventForSelector,
   ...EventCommandFields,
@@ -232,7 +239,7 @@ const EventForDeferredCmdStep = Schema.Struct({
   cmd: Forbidden,
   task: Forbidden,
   command: Forbidden,
-  defer: Schema.String,
+  defer: executionSiteKey(Schema.String, "event-step"),
   for: EventForSelector,
   ...EventCmdFields,
   ...EventStepTail,
@@ -250,7 +257,7 @@ export const EventForStep = Schema.Union([
 export type EventForStep = typeof EventForStep.Type;
 
 export const EventStep = Schema.Union([
-  Schema.String,
+  executionSite(Schema.String, "event-step"),
   EventCmdStep,
   EventTaskStep,
   EventCommandStep,

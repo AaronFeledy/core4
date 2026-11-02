@@ -2,6 +2,11 @@ import { Schema } from "effect";
 
 import { ValidationIssue, ValidationIssuePath } from "./validation-issue.ts";
 
+export const LandofileLoadIssueRule = {
+  unsupportedExpression: "unsupported-expression",
+  unsupportedSecretReference: "unsupported-secret-reference",
+} as const;
+
 // Config-lint result shapes — the stable, editor/LSP-facing output of
 // `lando app:config:lint`. Validating a Landofile against the canonical
 // `LandofileShape` schema yields zero or more structured violations. The
@@ -16,7 +21,7 @@ export const ConfigLintViolation = Schema.Struct({
   rule: Schema.String.annotate({ description: "Stable diagnostic rule identifier." }),
   reason: Schema.optionalKey(Schema.String).annotate({
     description:
-      "Machine-readable cause within rule. landofile.load findings carry the failing validation issue's rule, or the load failure's tag when the issue has none.",
+      "Machine-readable cause within rule. landofile.load findings carry the failing validation issue's rule (including unsupported-expression and unsupported-secret-reference), or the load failure's tag when the issue has none.",
   }),
   severity: Schema.Literals(["error", "warning"]).annotate({
     description: "Whether the finding prevents configuration validity.",
@@ -27,6 +32,7 @@ export const ConfigLintViolation = Schema.Struct({
   message: Schema.String,
   /** Likely fix, such as the closest allowed key or a Compose disposition. */
   suggestion: Schema.optionalKey(Schema.String),
+  fix: ValidationIssue.fields.fix,
   /** 1-based source line for diagnostics that can be located. */
   line: Schema.optionalKey(Schema.Number),
   /** 1-based source column for diagnostics that can be located. */

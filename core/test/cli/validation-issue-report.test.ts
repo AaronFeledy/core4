@@ -7,6 +7,7 @@ import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
 import { buildBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
+import { formatStructuredIssue } from "../../src/cli/validation-issue-text.ts";
 
 const issue = {
   path: ["services", "web", "ports", 0],
@@ -15,6 +16,49 @@ const issue = {
 } as const;
 
 describe("validation issue rendering", () => {
+  test("appends readable ordered edits and keeps block YAML in the load-failure report", () => {
+    const error = new LandofileValidationError({
+      file: "/tmp/app/.lando.yml",
+      message: "Invalid secret site.",
+      remediation: "Apply the fix.",
+      issues: [
+        {
+          ...issue,
+          fix: {
+            edits: [
+              { op: "set", path: ["tooling", "deploy", "env", "TOKEN"], value: "${secret:TOKEN}" },
+              {
+                op: "set",
+                path: ["events", "post-start", 0],
+                value: { cmd: "echo $TOKEN", env: { TOKEN: "${secret:TOKEN}" } },
+              },
+            ],
+          },
+        },
+      ],
+    });
+    const text = renderPlainBugReport(buildBugReport({ error, context: { commandId: "app:start" } }));
+    expect(text).toContain(
+      [
+        '       | tooling.deploy.env.TOKEN: "${secret:TOKEN}"',
+        "       | events.post-start[0]:",
+        '       |   cmd: "echo $TOKEN"',
+        "       |   env:",
+        '       |     TOKEN: "${secret:TOKEN}"',
+      ].join("\n"),
+    );
+  });
+
+  test("escapes edit controls in structured issue text", () => {
+    const text = formatStructuredIssue({
+      ...issue,
+      fix: { edits: [{ op: "set", path: ["bad\n\u001b"], value: { cmd: "echo\u009b" } }] },
+    });
+    expect(text?.split("\n").slice(1)).toEqual([
+      "       | bad\\u000a\\u001b:",
+      '       |   cmd: "echo\\u009b"',
+    ]);
+  });
   test("prints config field issues and repair guidance in plain output", () => {
     const error = new ConfigError({
       message: "Invalid global configuration.",
@@ -56,6 +100,9 @@ describe("validation issue rendering", () => {
   test("json command envelope carries structured issues", () => {
     const sourcedIssue = {
       ...issue,
+      fix: {
+        edits: [{ op: "set", path: ["tooling", "deploy", "cmd"], value: "echo $TOKEN" }] as const,
+      },
       source: { file: "/tmp/app/.lando.local.yml", layer: "local" as const, path: issue.path },
     };
     const error = new LandofileValidationError({

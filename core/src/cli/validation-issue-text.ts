@@ -1,5 +1,7 @@
-import { formatValidationIssuePath } from "@lando/sdk/schema";
+import { ValidationFix, formatValidationIssuePath } from "@lando/sdk/schema";
+import { Schema } from "effect";
 import { escapeDiagnosticText } from "./diagnostic-text.ts";
+import { formatValidationFixEdits } from "./validation-fix-text.ts";
 
 export const formatStructuredIssue = (issue: unknown): string | undefined => {
   if (typeof issue !== "object" || issue === null) return undefined;
@@ -24,5 +26,9 @@ export const formatStructuredIssue = (issue: unknown): string | undefined => {
   const location = typeof sourceFile === "string" ? `${escapeDiagnosticText(sourceFile)}: ` : "";
   const original =
     authored !== undefined && authored !== where ? ` (authored ${escapeDiagnosticText(authored)})` : "";
-  return `${location}${where.length === 0 ? "" : `${where}: `}${message}${hint}${original}`;
+  const line = `${location}${where.length === 0 ? "" : `${where}: `}${message}${hint}${original}`;
+  const fix = Reflect.get(issue, "fix");
+  return Schema.is(ValidationFix)(fix)
+    ? [line, ...formatValidationFixEdits(fix).map((edit) => `       | ${edit}`)].join("\n")
+    : line;
 };

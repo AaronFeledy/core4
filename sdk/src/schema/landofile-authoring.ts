@@ -1,5 +1,6 @@
 import { SchemaAST as AST, Schema } from "effect";
 import { authoringSource, recordAuthoringSource, recordExpressionSlot } from "./authoring-issue-metadata.ts";
+import { executionSiteSources } from "./execution-site-source.ts";
 import {
   type AuthoringExpression,
   type AuthoringExpressionExpectedType,
@@ -151,6 +152,8 @@ export const deriveAuthoringAst = (ast: AST.AST, options: DeriveAuthoringOptions
     caches.set(options.slotFor, pair);
   }
   const derive = (node: AST.AST, allowExpression: boolean): AST.AST => {
+    const executionSource = executionSiteSources.get(node);
+    if (executionSource !== undefined) return derive(executionSource, allowExpression);
     const memo = options.partial
       ? allowExpression
         ? pair[3]

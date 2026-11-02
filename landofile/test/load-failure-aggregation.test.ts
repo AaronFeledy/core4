@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { LandofileLoadIssueRule } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { lintLandofileSnapshot } from "../src/lint.ts";
 import { createLoadFailureRecorder } from "../src/load-failures.ts";
@@ -90,11 +91,9 @@ test("lint reports build argument secrets as load failures with safe runtime gui
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     {
       path,
-      reason: "unsupported-secret-reference",
-      message:
-        "Secret references are not supported at services.app.build.args.TOKEN. Build arguments can be recorded in image history.",
-      suggestion:
-        "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.",
+      reason: LandofileLoadIssueRule.unsupportedSecretReference,
+      message: expect.stringContaining("image history"),
+      suggestion: expect.stringContaining("services.app.environment.TOKEN"),
       source: { file, layer: "canonical", path },
     },
   ]);
@@ -109,6 +108,47 @@ test("lint carries the failure tag as reason for a missing include", async () =>
   expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
     { path: ["includes", 0], reason: "LandofileIncludeError" },
   ]);
+});
+
+test("lint retains complete multi-reference fixes with physical source attribution", async () => {
+  const file = join(root, ".lando.yml");
+  await writeFile(file, 'name: aggregate\ntooling:\n  deploy:\n    cmd: "deploy ${secret:A} ${secret:B}"\n');
+  const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
+  expect(snapshot.result.violations).toMatchObject([
+    {
+      rule: "landofile.load",
+      reason: LandofileLoadIssueRule.unsupportedSecretReference,
+      path: ["tooling", "deploy", "cmd"],
+      source: { file, path: ["tooling", "deploy", "cmd"] },
+      fix: {
+        edits: [
+          { op: "set", path: ["tooling", "deploy", "env", "A"], value: "${secret:A}" },
+          { op: "set", path: ["tooling", "deploy", "env", "B"], value: "${secret:B}" },
+          { op: "set", path: ["tooling", "deploy", "cmd"], value: "deploy $A $B" },
+        ],
+      },
+    },
+  ]);
+});
+
+test("compose fragments use their implicit service type for remediation before stamping defaults", async () => {
+  await writeFile(
+    join(root, ".lando.yml"),
+    "name: aggregate\nincludes:\n  - source: ./compose.yml\n    kind: compose\n",
+  );
+  await writeFile(join(root, "compose.yml"), 'services:\n  app:\n    command: "echo ${secret:TOKEN}"\n');
+  const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
+  const issue = snapshot.result.violations.find(
+    (issue) => issue.reason === LandofileLoadIssueRule.unsupportedSecretReference,
+  );
+  expect(issue?.suggestion).not.toContain("when the service type");
+  expect(issue?.fix).toBeUndefined();
+  expect(issue).toMatchObject({
+    rule: "landofile.load",
+    path: ["services", "app", "command"],
+    source: { file: join(root, "compose.yml") },
+    suggestion: expect.stringContaining("sh -c"),
+  });
 });
 
 test("blocks acquisition after an eager include-source failure", async () => {

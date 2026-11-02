@@ -16,7 +16,7 @@ import {
 } from "@lando/sdk/expressions";
 import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/landofile";
 
-import type { ParsedPendingSite } from "@lando/sdk/schema";
+import { LandofileLoadIssueRule, type ParsedPendingSite } from "@lando/sdk/schema";
 import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
 import { includeEntryPath } from "./include-condition-shape.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
@@ -72,7 +72,7 @@ export const resolveLandofileLoadExpressions = (
             {
               path,
               message,
-              rule: "unsupported-expression",
+              rule: LandofileLoadIssueRule.unsupportedExpression,
               suggestion,
               source: { file: options.source.sourcePath, layer: options.source.layer, path },
             },
@@ -138,13 +138,19 @@ export const resolveLandofileLoadExpressions = (
                 },
               ],
             });
-          const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
-          if (secret !== undefined && !eligibleBindingPath(path))
-            throw unsupportedSecretReferenceError(
-              { file: options.source.sourcePath, layer: options.source.layer, path },
-              secret.name,
+          const references = parsed.success.segments.flatMap((segment) =>
+            segment.kind === "SecretRefSegment" ? [segment.name] : [],
+          );
+          if (references.length > 0 && !eligibleBindingPath(path))
+            throw unsupportedSecretReferenceError({
+              source: { file: options.source.sourcePath, layer: options.source.layer, path },
+              references,
               value,
-            );
+              ...(options.pathPrefix === undefined ? { document: options.value } : {}),
+              ...(options.defaultServiceType === undefined
+                ? {}
+                : { defaultServiceType: options.defaultServiceType }),
+            });
           if (parsed.success.segments.some((segment) => segment.kind === "ShellParamSegment"))
             return unsupported(path, "Configuration expressions");
           const secretMembers = expressionScopeMembers(parsed.success, "secrets");
