@@ -13,7 +13,7 @@ test("MCP command failures preserve and redact passthrough expression fields", a
       Effect.fail(
         new ConfigExpressionError({
           message: "Missing value",
-          path: "services.appserver.environment.GREETING",
+          path: ["services", "appserver", "environment", "GREETING"],
           expression: `hi-${secret}-{{ app.nope }}`,
           filePath: "/app/.lando.yml",
           remediation: "Fix expression",
@@ -37,7 +37,7 @@ test("MCP command failures preserve and redact passthrough expression fields", a
         ok: false,
         error: {
           _tag: "ConfigExpressionError",
-          path: "services.appserver.environment.GREETING",
+          path: ["services", "appserver", "environment", "GREETING"],
           expression: "hi-[redacted]-{{ app.nope }}",
           filePath: "/app/.lando.yml",
         },
