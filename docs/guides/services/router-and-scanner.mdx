@@ -157,6 +157,14 @@ Loopback targets (`localhost`, IPv4 loopback addresses, and `::1`) connect direc
 
 If a probe fails, the message Lando prints has already been through redaction, so a URL with credentials in it won't leak them into your terminal or logs.
 
+When the router can't reach a service, or the connection fails, a warning can include the service's observed TCP bindings and configuration advice:
+
+```text
+Lando could not reach http://app.example.test/: the router could not reach app. No TCP listener observed on 3000; observed ports: none. Make app listen on 3000. Make your server listen on 0.0.0.0:3000; your application owns this listener and Lando sets `PORT` to 3000.
+```
+
+Lando reads that evidence once per service per scan, only when the failed URL targets the service's expected listener. A missing router route, an app or web-server response, or a ready URL doesn't trigger the read. Secondary listeners don't inherit evidence for a different port. If the socket table can't be read, the warning keeps its original reachability message without guessing. These findings remain warnings, not a new startup gate; structured start results include the evidence in the affected `checks` entries as `listener`. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start) for the listener findings and ownership advice.
+
 ## Turn scanning off
 
 Skip one service:

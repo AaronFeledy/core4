@@ -81,9 +81,21 @@ services:
     port: 8080
 ```
 
-Lando plans no home store for the `nginx` account, whose home on this image is its cache directory; set `home.path:` when you want a directory to survive a rebuild. `port:` moves the listen port itself, not just Lando's endpoint, because Lando templates it into the generated config. A non-root process can't bind below 1024 on the default `lando` provider, so pick something at or above `1024`.
+Lando plans no home store for the `nginx` account, whose home on this image is
+its cache directory; set `home.path:` when you want a directory to survive a
+rebuild. `port:` moves the listen port itself, not just Lando's endpoint,
+because Lando templates it into the generated config. A non-root process can't
+bind below 1024 on the default `lando` provider, so pick something at or above
+`1024`.
 
-`static:caddy` writes nothing at start either, but it still listens on `80` by default, so the same port rule applies there.
+If you set your own `command:`, Lando preserves it instead of generating the
+launcher. Include the nginx `listen <port>;` directive or Caddy's
+`--listen :<port>` flag with your planned port number. Lando never appends it
+to your command. If startup fails, Lando includes a hint naming that setting.
+An authored `entrypoint:` alone still receives Lando's generated command.
+
+`static:caddy` writes nothing at start either, but it still listens on `80` by
+default, so the same port rule applies there.
 
 ## Pin a version
 

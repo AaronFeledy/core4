@@ -11,7 +11,12 @@ import {
 } from "./_feature-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  type ListenerContract,
+  launcherAuthority,
+  plannedPort,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 import { landoErrorPagesBuildStep, nginxErrorPageConfigLines } from "./http-errors.ts";
@@ -28,7 +33,22 @@ export const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
 export const STATIC_FEATURE_ID = "service-lando.static" as const;
 export const STATIC_FEATURE_PRIORITY = 600;
 
-export const DEFAULT_PORT = 80;
+export const STATIC_LISTENERS = {
+  nginx: {
+    port: 80,
+    daemon: "nginx",
+    when: "type: static or static:nginx",
+    launcher: { setting: (port: number) => `listen ${port};` },
+  },
+  caddy: {
+    port: 80,
+    daemon: "caddy",
+    when: "type: static:caddy",
+    launcher: { setting: (port: number) => `--listen :${port}` },
+  },
+} as const satisfies Readonly<Record<SupportedStaticServer, ListenerContract>>;
+export const STATIC_LISTENER = STATIC_LISTENERS.nginx;
+export const DEFAULT_PORT = STATIC_LISTENER.port;
 export const APP_MOUNT_TARGET = "/app";
 
 export const nginxRootLiteral = (path: string): string => JSON.stringify(path);
@@ -90,7 +110,7 @@ const configFor = (ctx: ServiceFeatureContext): StaticFeatureConfig => ctx.confi
 const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const { docRoot, server } = configFor(ctx);
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, STATIC_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? STATIC_SERVER_IMAGES[server] });
   const ownsCommand = service.command === undefined && service.entrypoint === undefined;
@@ -100,7 +120,14 @@ const applyStaticFeature = (ctx: ServiceFeatureContext): void => {
     // its own server block, is still the planned command.
     if (ownsCommand) ctx.addBuildStep(nginxDefaultSiteRemovalBuildStep());
   }
-  ctx.setCommand(service.command ?? defaultStaticCommand(server, docRoot, port, service.user));
+  // Only an authored command replaces the generated launcher; entrypoint still
+  // receives Lando's listen-port argv.
+  if (service.command !== undefined) {
+    ctx.setCommand(service.command);
+    ctx.setListenerAuthority(launcherAuthority(STATIC_LISTENERS[server], port));
+  } else {
+    ctx.setCommand(defaultStaticCommand(server, docRoot, port, service.user));
+  }
   applyAuthoredProcessFields(ctx, ["user"]);
   ctx.setHealthcheck(tcpProbe(port, 10));
 
@@ -122,7 +149,10 @@ export const staticServiceFeature: ServiceFeatureDefinition = {
   }),
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "http" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, STATIC_LISTENER),
+        protocol: "http",
+      }),
     ),
   apply: serviceFeatureApply(STATIC_FEATURE_ID, "service-lando.static failed to apply", applyStaticFeature),
 };

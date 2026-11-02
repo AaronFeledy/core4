@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 import { ConfigTranslateDiagnostic } from "../schema/config-translate-diagnostic";
-import { ValidationIssue } from "../schema/validation-issue";
+import { ValidationIssue, ValidationIssuePath, ValidationIssueSource } from "../schema/validation-issue";
 
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
   message: Schema.String,
@@ -89,8 +89,11 @@ export class ConfigExpressionError extends Schema.TaggedError<ConfigExpressionEr
   {
     message: Schema.String,
     expression: Schema.String,
-    path: Schema.String,
+    path: ValidationIssuePath,
     filePath: Schema.String,
+    source: Schema.optional(ValidationIssueSource).annotate({
+      description: "Authored expression location, preserving literal path keys and the declaring layer.",
+    }),
     remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}

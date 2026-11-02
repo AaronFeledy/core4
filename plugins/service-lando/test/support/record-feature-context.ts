@@ -25,6 +25,7 @@ export const recordFeatureContext = (
     addHostAlias: record("addHostAlias"),
     setHealthcheck: record("setHealthcheck"),
     setReadiness: record("setReadiness"),
+    setListenerAuthority: record("setListenerAuthority"),
     setCerts: record("setCerts"),
     setEntrypoint: record("setEntrypoint"),
     setCommand: record("setCommand"),

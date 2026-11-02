@@ -1290,7 +1290,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(
       fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp-web")?.body,
     ).toMatchObject({
-      Cmd: ["sh", "-lc", "npm start"],
+      Cmd: ["sh", "-c", "npm start"],
       Entrypoint: ["docker-entrypoint.sh"],
       HostConfig: {
         Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-cace0001:/cache:ro"],

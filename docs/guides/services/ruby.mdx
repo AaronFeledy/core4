@@ -40,13 +40,23 @@ services:
 The default keep-alive command holds the container open so you can install
 gems and run your app. The commands below assume an existing Rails project and a `bundle` tooling alias targeting `app`; the Ruby service alone does not declare that alias:
 
+Add `framework: rails` to the `app` service before running Rails so it receives the host default described below.
+
 ```sh
 # Declare a bundle tooling alias to install gems inside the service
 lando bundle install
 
-# Run a Rails server with lando exec; bind to 0.0.0.0 so the proxy can reach it
-lando exec app -- bundle exec rails server -b 0.0.0.0
+# Run Rails using the preset's PORT and BINDING
+lando exec app -- bundle exec rails server
 ```
+
+## Pass `port:` to your Ruby server
+
+See the [Ruby listener reference](../../reference/service-listeners.mdx#ruby) for default ports, variables, and host defaults. Rails reads `PORT` and `BINDING`; Sinatra reads `PORT`, and custom code can read `ENV["PORT"]`.
+
+Set `port:` to change the internal HTTP endpoint and `PORT` together. An authored `environment.PORT` must be a literal integer equal to the planned port; malformed or unequal values fail planning at `services.app.environment.PORT`, including inherited `appEnv` and env-file values. Set `port:` instead. `BINDING` is an overridable host default, not a port setting.
+
+For Sinatra in development, pass `-o 0.0.0.0` when starting the app, such as `lando exec app -- bundle exec ruby app.rb -o 0.0.0.0`. Sinatra reads `PORT` but otherwise binds localhost in development. Non-Rails servers do not gain Rails' `BINDING` behavior.
 
 Ruby publishes its port endpoint but has no default healthcheck or readiness probe, even with an authored `command:`. Add `readiness:` when you want start to wait for application readiness; use `healthcheck:` separately for native ongoing monitoring. Without an effective readiness command, Lando checks that the process stays running.
 
@@ -79,7 +89,7 @@ lando exec app -- printenv LANDO_WEBROOT
 
 The webroot doesn't move the working directory or start a Rails server.
 Use `workingDirectory:` and `command:` for those. The Rails preset supplies
-development environment defaults; an authored environment value still wins.
+development environment and host defaults; authored values for those defaults still win.
 With `appMount: false`, Ruby omits its implicit webroot context. If you explicitly
 set a relative or absolute `webroot:`, planning fails instead of silently dropping it.
 Remove `webroot:` or enable the app mount. A plugin can also supply a feature

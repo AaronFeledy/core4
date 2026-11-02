@@ -1,0 +1,5 @@
+name: valkey-port
+services:
+  cache:
+    type: valkey
+    port: 6380

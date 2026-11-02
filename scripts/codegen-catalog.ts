@@ -224,6 +224,13 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    dependsOn: ["php-msmtp-pins", "tomcat-catalog"],
+    id: "service-listener-reference",
+    ownership: "derived",
+    script: "build-service-listener-reference.ts",
+    workspace: "repo",
+  },
+  {
     id: "opentui-native-stubs",
     ownership: "derived",
     script: "build-opentui-native-stubs.ts",

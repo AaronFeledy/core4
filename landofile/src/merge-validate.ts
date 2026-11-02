@@ -1,22 +1,26 @@
 import { Effect } from "effect";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
-import { publishIncludeProposals } from "./include-session.ts";
+import { createIncludeResolutionSession, publishIncludeProposals } from "./include-session.ts";
+import { ensureConsistentRoot } from "./load-context.ts";
 import type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
 import { finalizeLandofile } from "./pipeline/finalize.ts";
 import { classifyLoadFailure } from "./pipeline/legacy.ts";
 import { getSourceDocuments } from "./pipeline/source-table.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
-import { composeLandofileRootLayers } from "./root-compile.ts";
+import { evaluateLandofileRootLayers } from "./root-compile.ts";
 
 export const finalizeLandofileRootLayers = Effect.fnUntraced(function* (
-  evaluated: Effect.Success<ReturnType<typeof composeLandofileRootLayers>>,
+  evaluated: Effect.Success<ReturnType<typeof evaluateLandofileRootLayers>>,
   canonicalPath: string,
   inputs?: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
 ) {
   const { merged, runtime, session } = evaluated;
   const appRoot = runtime.appRoot;
   const landofile = yield* finalizeLandofile(canonicalPath, merged, {
+    scope: evaluated.scope,
     appRoot,
+    rootDocuments: evaluated.rootDocuments,
+    recorder: runtime.recorder,
     overrides: inputs?.overrides,
     pendingSites: runtime.pendingSites,
     env: runtime.compilationContext?.env,
@@ -37,6 +41,11 @@ export const mergeLandofileRootLayers = Effect.fnUntraced(function* (
   canonicalPath: string,
   inputs?: LandofileRuntimeInputs & { readonly overrides?: LandofileFinalizeOverrides | undefined },
 ) {
-  const evaluated = yield* composeLandofileRootLayers(appRoot, inputs);
+  yield* ensureConsistentRoot(appRoot, inputs);
+  const session = yield* createIncludeResolutionSession({ appRoot, ...inputs });
+  const evaluated = yield* evaluateLandofileRootLayers(appRoot, {
+    session,
+    ...(inputs === undefined ? {} : { inputs }),
+  });
   return yield* finalizeLandofileRootLayers(evaluated, canonicalPath, inputs);
 });

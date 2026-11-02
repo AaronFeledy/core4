@@ -2,7 +2,7 @@ import { availableParallelism } from "node:os";
 
 import { gateId } from "@lando/container-runtime/dependency-gates";
 import { runDependencySchedule } from "@lando/container-runtime/dependency-schedule";
-import { listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
+import { listenerAuthorityAction, listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
 import { dependencyGateRemediation } from "@lando/container-runtime/podman/bring-up";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
@@ -270,6 +270,11 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         primaryGate?.value._tag === "gate" ? input.plan.services[primaryGate.value.service] : undefined;
       const diagnostic =
         listener !== undefined && service !== undefined ? listenerDiagnostic(listener, service) : undefined;
+      const action =
+        diagnostic?.action ??
+        (primaryGate?.value._tag === "gate" && primaryGate.value.condition === "service_healthy"
+          ? listenerAuthorityAction(service)
+          : undefined);
       const remediation =
         ordered[0]?.remediation ??
         "Inspect the reported app-phase build step failures, fix them, and rebuild.";
@@ -283,9 +288,11 @@ export const runAppBuild = Effect.fn("BuildOrchestrator.runAppBuild")(function* 
         failures: ordered,
         ...(listener === undefined ? {} : { listener }),
         remediation:
-          diagnostic === undefined || listener === undefined
+          action === undefined || service === undefined
             ? remediation
-            : `${diagnostic.action}\n${dependencyGateRemediation(input.plan, listener.service)}`,
+            : input.redactor.redactString(
+                `${action}\n${diagnostic?.authority === undefined ? "" : `${diagnostic.authority}\n`}${dependencyGateRemediation(input.plan, service.name)}`,
+              ),
       });
     }
   });

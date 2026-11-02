@@ -12,6 +12,7 @@ import { hasIncludeCycle } from "./include-graph.ts";
 import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
 import { fileExists, readText } from "./include-local.ts";
 import { lockValue } from "./include-lockfile.ts";
+import { reserveIncludeSelector, selectorLabel } from "./include-selector.ts";
 
 // A resolved revision becomes a cache directory name and, for git, a fetch ref.
 export const RESOLVED_FORMAT = {
@@ -21,9 +22,6 @@ export const RESOLVED_FORMAT = {
     label: "exact npm package version",
   },
 } as const;
-
-// An include without version: or @ref follows the remote default.
-const selectorLabel = (selector: string | undefined): string => selector ?? "<default>";
 
 export type RemoteFragmentResult = FragmentResult & { readonly snapshotRoot: string };
 
@@ -51,14 +49,7 @@ export const readPinnedFragment = async (
       source: entry.source,
       kind: "cycle",
     });
-  if (ctx.walk.selectors.has(sourceId) && ctx.walk.selectors.get(sourceId) !== version)
-    throw includeError({
-      message: `Conflicting selectors for ${sourceId}: ${selectorLabel(ctx.walk.selectors.get(sourceId))} and ${selectorLabel(version)}.`,
-      source: sourceId,
-      kind: "source-unresolved",
-      remediation: "Include each remote fragment at one version.",
-    });
-  ctx.walk.selectors.set(sourceId, version);
+  reserveIncludeSelector(ctx.walk.selectors, { sourceId, version });
   const proposed = ctx.mode === "pin" ? ctx.stagedLocks.get(sourceId) : undefined;
   const locked = proposed ?? ctx.lockEntries.get(sourceId);
   const mismatch = (expected: string, actual: string, observed: "requested" | "found" = "requested") =>

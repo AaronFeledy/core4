@@ -6,21 +6,32 @@ import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
 import { appNameFor } from "../app-name.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
 const DEFAULT_IMAGE = "valkey/valkey:8";
-export const DEFAULT_PORT = 6379;
+export const VALKEY_LISTENER = {
+  port: 6379,
+  daemon: "Valkey",
+  when: "All Valkey services",
+  launcher: { setting: (port: number) => `--port ${port}` },
+} as const;
+export const DEFAULT_PORT = VALKEY_LISTENER.port;
 const DATA_TARGET = PortablePath.make("/data");
 export const VALKEY_FEATURE_ID = "service-lando.valkey";
 
 const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const appName = appNameFor(ctx);
-  const port = service.port ?? DEFAULT_PORT;
+  const port = plannedPort(service, VALKEY_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
-  ctx.setCommand(service.command ?? ["valkey-server", "--appendonly", "yes", "--port", String(port)]);
+  if (service.command !== undefined) {
+    ctx.setCommand(service.command);
+    ctx.setListenerAuthority(launcherAuthority(VALKEY_LISTENER, port));
+  } else {
+    ctx.setCommand(["valkey-server", "--appendonly", "yes", "--port", String(port)]);
+  }
   ctx.addStorage({
     store: `${appName}-valkey-data`,
     target: DATA_TARGET,
@@ -37,7 +48,10 @@ export const valkeyServiceFeature: ServiceFeatureDefinition = {
   priority: 600,
   declareEndpoints: (ctx) =>
     Effect.sync(() =>
-      servicePortEndpoints(ctx, { port: ctx.normalizedConfig.port ?? DEFAULT_PORT, protocol: "tcp" }),
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, VALKEY_LISTENER),
+        protocol: "tcp",
+      }),
     ),
   apply: serviceFeatureApply(VALKEY_FEATURE_ID, "valkey service feature failed to apply", applyValkeyFeature),
 };

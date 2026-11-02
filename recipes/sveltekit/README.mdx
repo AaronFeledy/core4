@@ -40,7 +40,9 @@ lando init --recipe sveltekit --name=my-sveltekit --yes \
 | `adapter` | `node`, `auto` | `node` |
 | `database` | `none`, `postgres`, `mariadb` | `none` |
 
-The scaffold writes only `.lando.yml`. It declares a `web` service on `node:<node>` listening on port 5173 with your adapter choice exposed as the `SVELTEKIT_ADAPTER` environment variable. Pick `postgres` or `mariadb` and the Landofile adds a `database` service of that type that `web` waits on. Keep `none` and there is no `database` service at all.
+The scaffold writes only `.lando.yml`. It declares a `web` service on `node:<node>` with an HTTP endpoint on port 5173 and your adapter choice exposed as the `SVELTEKIT_ADAPTER` environment variable. Pick `postgres` or `mariadb` and the Landofile adds a `database` service of that type that `web` waits on. Keep `none` and there is no `database` service at all.
+
+Lando sets `PORT` from `port:` (default `5173` here), but Vite does not read it automatically. Configure Vite's `server.host` as `0.0.0.0`, `server.port` as `Number(process.env.PORT)`, and `server.allowedHosts` with the hostname from `lando info`. Then run your project's dev script with `lando npm run dev`. An authored `environment.PORT` must match `port:` or planning fails. `lando start` keeps the Node service idle; it does not start Vite.
 
 Two tooling commands ship with the Landofile, both running inside the `web` service:
 

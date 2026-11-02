@@ -47,9 +47,36 @@ The Landofile above declares `memcached-tool` as an app tooling alias. Run it af
 lando memcached-tool stats
 ```
 
-## Configure the listener
+## Change the port
 
-Set `port:` to change Memcached's listener and healthcheck together. An authored `command:` owns the listener configuration; pass the planned port with `-p`. An authored `entrypoint:` still receives Lando's command with `-p` and must execute the supplied command and arguments. If Memcached never becomes ready, `lando start` reports which ports it's actually listening on, so a launcher that ignores `port:` is easy to spot. See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+Set `port:` to move the daemon's listener, healthcheck, and endpoint together:
+
+```yaml
+services:
+  cache:
+    type: memcached
+    port: 11212
+```
+
+Lando starts `memcached` with `-p 11212`. Other services connect to
+`cache:11212`. Memcached has no daemon-native port environment variable.
+Update any tooling that hardcodes `11211` when you move the port.
+
+An authored `command:` owns the listener configuration: pass the planned port
+with `-p 11212`. An authored `entrypoint:` still receives Lando's command
+with `-p` and must execute the supplied command and arguments. See
+[Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start).
+
+Apply the change with `lando rebuild`.
+
+  <Scenario id="custom-port" render={false} reason="Plan a non-default Memcached listen port">
+    <Step name="plan-port">
+      <UseFixture name="memcached-port" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*11212" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
 
 ## Pin a version
 

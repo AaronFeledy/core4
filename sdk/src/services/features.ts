@@ -26,6 +26,7 @@ import type {
   EnvironmentValue,
   HealthcheckPlan,
   HostAliasPlan,
+  ListenerAuthority,
   PortablePath,
   ProviderCapabilities,
   ServiceConfig,
@@ -167,6 +168,8 @@ export interface ServiceFeatureContext {
   setHealthcheck(healthcheck: HealthcheckPlan): void;
   /** Set startup readiness independently from ongoing health. */
   setReadiness(readiness: HealthcheckPlan): void;
+  /** Set structured listener ownership and configuration advice, not an observed failure cause. */
+  setListenerAuthority(authority: ListenerAuthority): void;
   /** Set the service certificate plan. */
   setCerts(certs: CertificatePlan): void;
   /** Set the service entrypoint. */

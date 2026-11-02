@@ -80,7 +80,8 @@ export const doctor = Effect.fn("Doctor.collect")(
     const registry = yield* RuntimeProviderRegistry;
     const sourceEnv = { ...(options.env ?? process.env) };
     const { redactor, redact } = yield* resolveSecretsRedactor({ sourceEnv });
-    const probeBudget = probeBudgetMs(doctorSectionBudgetMs(sourceEnv));
+    const sectionBudget = doctorSectionBudgetMs(sourceEnv);
+    const probeBudget = probeBudgetMs(sectionBudget);
     const selfChecks: DoctorSelfCheck[] = [];
 
     const gathered = yield* gatherSelectionInputs(options);

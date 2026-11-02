@@ -29,9 +29,10 @@ const reserved = new Set([
   "redactionTokens",
   "additionalErrors",
   "role",
+  "failures",
 ]);
 
-export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => {
+const projectTaggedError = (error: unknown, ancestors: readonly unknown[]): typeof TaggedErrorJson.Type => {
   const record = error !== null && typeof error === "object" && !types.isProxy(error) ? error : undefined;
   const tag = text(ownValue(record, "_tag"));
   const message =
@@ -68,8 +69,26 @@ export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => 
     const decoded = Schema.decodeUnknownResult(TaggedErrorJson.schema.fields[key])(value);
     if (Result.isSuccess(decoded) && decoded.success !== undefined) extra[key] = decoded.success;
   }
+  const failures = ownValue(record, "failures");
+  if (Array.isArray(failures) && !types.isProxy(failures) && ancestors.length < 8) {
+    const members: (typeof TaggedErrorJson.Type)[] = [];
+    for (let index = 0; index < failures.length; index++) {
+      const member = ownValue(failures, String(index));
+      if (
+        member !== null &&
+        typeof member === "object" &&
+        text(ownValue(member, "_tag")) !== undefined &&
+        member !== error &&
+        !ancestors.includes(member)
+      )
+        members.push(projectTaggedError(member, [...ancestors, error]));
+    }
+    extra.failures = members;
+  }
   return { ...extra, ...base };
 };
+
+export const taggedErrorJson = (error: unknown): typeof TaggedErrorJson.Type => projectTaggedError(error, []);
 
 /** A tagged error that surfaced as a defect still has its own message and remediation. */
 const isDiagnosticError = (error: unknown): boolean => {

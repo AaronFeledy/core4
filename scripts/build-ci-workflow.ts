@@ -272,10 +272,10 @@ ${renderSmokeCommands(platform)}
           LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
         run: bun test core/test/build/host-execution-compiled.test.ts
 
-      - name: Verify compiled renderer output
+      - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/${platform.binaryName}
-        run: bun test core/test/build/renderer-output-compiled.test.ts
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload ${platform.id} binary
         if: always()

@@ -1,6 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { LandofileFormConflictError, LandofileWriteValidationError } from "@lando/sdk/errors";
+import {
+  LandofileFormConflictError,
+  LandofileLoadFailure,
+  LandofileWriteValidationError,
+} from "@lando/sdk/errors";
 import { LandofileAuthoringFragmentNative, validationIssue } from "@lando/sdk/schema";
 import { Effect, Result, Schema } from "effect";
 import { createIncludeResolutionSession } from "./include-session.ts";
@@ -86,10 +90,18 @@ export const compileLandofileReplacement = Effect.fn("Landofile.compileReplaceme
                 }),
           ),
         ),
-        Effect.map((source) => ({ source, layer })),
+        Effect.map((source) => [{ source, layer }]),
+        Effect.catch((error) => {
+          if (layer.filePath === replacement.targetFile || !Schema.is(LandofileLoadFailure)(error))
+            return Effect.fail(error);
+          runtime.recorder?.record(error);
+          if (runtime.recorder !== undefined) runtime.recorder.recipeAvailable = false;
+          return Effect.succeed([]);
+        }),
       ),
     );
-    const candidate = acquired.find(({ layer }) => layer.filePath === replacement.targetFile);
+    const sources = acquired.flat();
+    const candidate = sources.find(({ layer }) => layer.filePath === replacement.targetFile);
     if (candidate === undefined) return yield* Effect.die("Replacement source was not acquired.");
     const decoded = Schema.decodeUnknownResult(LandofileAuthoringFragmentNative)(candidate.source.value, {
       onExcessProperty: "error",
@@ -107,12 +119,24 @@ export const compileLandofileReplacement = Effect.fn("Landofile.compileReplaceme
         ),
       );
     }
-    const prepared = yield* Effect.forEach(acquired, ({ source, layer }) =>
-      prepareLandofileValue(source).pipe(Effect.map(({ value }) => ({ layer, landofile: value }))),
+    const prepared = yield* Effect.forEach(sources, ({ source, layer }) =>
+      prepareLandofileValue(source).pipe(
+        Effect.map(({ value }) => [{ layer, landofile: value }]),
+        Effect.catch((error) => {
+          if (!Schema.is(LandofileLoadFailure)(error)) return Effect.fail(error);
+          runtime.recorder?.record(error);
+          return Effect.succeed([]);
+        }),
+      ),
     );
-    const merged = yield* composePreparedLayers(prepared, runtime, { session, inputs });
+    const { document: merged, scope } = yield* composePreparedLayers(prepared.flat(), runtime, {
+      session,
+      inputs,
+    });
     const landofile = yield* finalizeLandofile(join(replacement.appRoot, ".lando.yml"), merged, {
+      scope,
       appRoot: replacement.appRoot,
+      recorder: runtime.recorder,
       overrides: inputs.overrides,
       pendingSites: runtime.pendingSites,
       loadPolicy: runtime.policy,

@@ -675,6 +675,209 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  service-listener-matrix-linux-x64:
+    needs: [container-helper, runtime-bundle-linux-x64]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    env:
+      LANDO_TEST_LISTENER_MATRIX_STRICT: "1"
+      LANDO_TEST_LISTENER_MATRIX_MSSQL: "1"
+      LANDO_TEST_MINIO_IMAGE: localhost/lando-listener-minio:matrix-qa
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Isolate Lando roots
+        shell: bash
+        run: |
+          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
+          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
+          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
+          echo "LANDO_SYSTEM_PLUGIN_ROOT=$RUNNER_TEMP/lando-system-plugins" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download container helper
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: container-helper
+          path: core/container-helper/dist
+
+      - name: Restore container helper permissions
+        shell: bash
+        run: chmod +x core/container-helper/dist/linux-*/lando-container-helper
+
+      - name: Regenerate derived sources
+        run: bun run codegen
+
+      - name: Compile current matrix CLI
+        run: |
+          mkdir -p dist
+          bun run --filter='@lando/core' build:manifest
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          ./dist/lando --version
+          echo "LANDO_SCENARIO_E2E_BINARY=$GITHUB_WORKSPACE/dist/lando" >> "$GITHUB_ENV"
+
+      - name: Provision rootless runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y uidmap fuse-overlayfs
+          if ! grep -q "^$(id -un):" /etc/subuid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subuid
+          fi
+          if ! grep -q "^$(id -un):" /etc/subgid; then
+            echo "$(id -un):100000:65536" | sudo tee -a /etc/subgid
+          fi
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
+          fi
+          sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
+          sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
+
+      - name: Download current-commit Linux x64 runtime bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: runtime-bundle-linux-x64-current
+          path: dist/cache/runtime-bundle
+
+      - name: Build local runtime bundle manifest
+        run: |
+          test -f dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64 --runtime-version "$RUNTIME_VERSION")"
+          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+
+      - name: Seed rootless containers user config
+        run: |
+          # User-level configs override system files wholesale. Distro
+          # /etc/containers/registries.conf can still be v1 TOML; Podman 6
+          # rejects that with "registries.conf must be in v2 format but is in v1".
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\n' > "$HOME/.config/containers/registries.conf"
+          fi
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\n' > "$HOME/.config/containers/policy.json"
+          fi
+
+      - name: Configure rootless overlay storage
+        run: |
+          cat > dist/cache/runtime-bundle/storage.conf <<EOF
+          [storage]
+          driver = "overlay"
+
+          [storage.options.overlay]
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
+          EOF
+          echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
+
+      - name: Prepare provider via lando setup
+        run: |
+          export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+          mkdir -p "$XDG_RUNTIME_DIR"
+          dist/lando setup --yes --provider=lando --skip-install-ca --skip-shell-integration --skip-file-sync
+          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
+
+      - name: Verify managed runtime socket
+        run: |
+          for _ in {1..30}; do
+            test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" && break
+            sleep 1
+          done
+          test -S "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock"
+          curl --fail --max-time 5 --unix-socket "$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" http://localhost/_ping
+          echo "LANDO_TEST_PODMAN_SOCKET=$LANDO_USER_DATA_ROOT/runtime/run/podman.sock" >> "$GITHUB_ENV"
+
+      - name: Gate platform readiness doctor
+        run: bun run scripts/platform-readiness-doctor.ts --binary dist/lando --report provider-diagnostics/platform-readiness-doctor.json
+
+      - name: Configure Docker socket
+        run: |
+          test -S /var/run/docker.sock
+          echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
+
+      - name: Pre-pull container images
+        run: |
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          pull_image() {
+            local image="$1"
+            for attempt in 1 2 3; do
+              "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" pull "$image" && return 0
+              if test "$attempt" -eq 3; then return 1; fi
+              sleep $((attempt * 5))
+            done
+          }
+          docker_pull_image() {
+            local image="$1"
+            for attempt in 1 2 3; do
+              docker pull "$image" && return 0
+              if test "$attempt" -eq 3; then return 1; fi
+              sleep $((attempt * 5))
+            done
+          }
+          pull_image docker.io/library/alpine:3.21
+          pull_image docker.io/library/node:24
+          pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/node:22
+          pull_image docker.io/library/postgres:16
+          pull_image docker.io/library/postgres:16-alpine
+          pull_image docker.io/library/golang:1.22
+          pull_image docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+          pull_image docker.io/getmeili/meilisearch:v1.11
+          pull_image docker.io/axllent/mailpit:v1.30.1
+          pull_image docker.io/library/mariadb:11.4
+          pull_image docker.io/library/memcached:1.6
+          pull_image docker.io/library/mongo:7
+          pull_image docker.io/library/mysql:8.0
+          pull_image docker.io/library/nginx:1.27
+          pull_image docker.io/opensearchproject/opensearch:2
+          pull_image docker.io/library/solr:9
+          pull_image docker.io/library/traefik:v3.3
+          pull_image docker.io/valkey/valkey:8
+          docker_pull_image docker.io/library/node:22-alpine
+          docker_pull_image docker.io/library/node:22
+
+      - name: Build test-only pinned MinIO BYO image
+        run: bun scripts/build-service-listener-qa-image.ts "$LANDO_TEST_MINIO_IMAGE"
+
+      - name: Require complete serial listener matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun test plugins/service-lando/test/listener-matrix.integration.test.ts --max-concurrency=1 2>&1 | tee "$RUNNER_TEMP/listener-matrix.log"
+          grep -E '^SERVICE_LISTENER_MATRIX completed=([1-9][0-9]*)/\1 cases=.+$' "$RUNNER_TEMP/listener-matrix.log"
+
+      - name: Teardown Lando runtime
+        if: always()
+        run: |
+          dist/lando poweroff || true
+          LANDO_PODMAN="$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          LANDO_PODMAN_ARGS=(--root "$LANDO_USER_DATA_ROOT/runtime/storage" --runroot "$LANDO_USER_DATA_ROOT/runtime/run" --config "$LANDO_USER_DATA_ROOT/runtime/config")
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" ps -aq --filter "name=lando-" | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" rm -f || true
+          "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network ls --format '{{.Name}}' | grep '^lando-' | xargs -r "$LANDO_PODMAN" "${LANDO_PODMAN_ARGS[@]}" network rm || true
+
+      - name: Upload listener matrix diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: service-listener-matrix-linux-x64
+          path: |
+            ${{ runner.temp }}/listener-matrix.log
+            provider-diagnostics
+          if-no-files-found: warn
+          retention-days: 7
+
   published-manifest-setup-linux-x64:
     needs: [container-helper]
     strategy:

@@ -1,0 +1,7 @@
+name: localstack-gateway-extra
+services:
+  aws:
+    type: localstack
+    port: 14566
+    environment:
+      GATEWAY_LISTEN: " [::]:14566, :4566 "

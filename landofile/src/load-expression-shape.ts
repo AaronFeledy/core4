@@ -2,6 +2,7 @@ import { type ExpressionNode, type ExpressionTemplate, parseExpressionEither } f
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { Predicate, Result } from "effect";
 import type { LandofileLoadPolicy, LandofileLoadSource } from "./load-expression-file.ts";
+import type { LoadFailureRecorder } from "./load-failures.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
 
 export const keyValueEntryPath = (path: readonly (string | number)[]): boolean =>
@@ -25,6 +26,8 @@ export const keyValueEntryHasExpression = (
 };
 
 export interface ResolveLandofileLoadExpressionsOptions {
+  readonly pathPrefix?: readonly (string | number)[];
+  readonly recorder?: LoadFailureRecorder | undefined;
   readonly value: unknown;
   readonly source: LandofileLoadSource;
   readonly policy: LandofileLoadPolicy;

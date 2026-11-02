@@ -117,7 +117,7 @@ test("rejects a non-string result at a plan-time text site", async () => {
     compileTestLandofile(landofile).pipe(Effect.flatMap(plan), Effect.flip),
   );
   // Then
-  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: "services.database.database" });
+  expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "database", "database"] });
   expect(error.message).toContain("Expected string");
 });
 
@@ -227,7 +227,7 @@ test("fails the plan with a ConfigExpressionError at the deferred value path", a
     expect(result.failure).toMatchObject({
       _tag: "ConfigExpressionError",
       expression: "{{ app.nope }}",
-      path: "services.database.database",
+      path: ["services", "database", "database"],
       filePath: `${root}/.lando.yml`,
     });
   } finally {

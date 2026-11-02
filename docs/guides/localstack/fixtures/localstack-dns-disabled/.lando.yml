@@ -1,0 +1,7 @@
+name: localstack-dns-disabled
+services:
+  aws:
+    type: localstack
+    port: 53
+    environment:
+      DNS_ADDRESS: "0"

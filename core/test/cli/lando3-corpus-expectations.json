@@ -240,7 +240,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -306,7 +306,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -338,7 +338,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -353,8 +353,23 @@
       "violations": [
         {
           "rule": "landofile.load",
-          "path": [],
+          "path": ["events", "post-start", 1, "cmd"],
           "message": "Landofile load could not read paperback-writer.sh."
+        },
+        {
+          "rule": "landofile.load",
+          "path": ["events", "post-start", 4, "cmd"],
+          "message": "Landofile load could not read paperback-writer.sh."
+        },
+        {
+          "rule": "landofile.load",
+          "path": ["events", "post-start", 7, "cmd"],
+          "message": "Landofile load could not read paperback-writer.sh."
+        },
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -370,7 +385,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -402,7 +417,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -468,7 +483,17 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
+        },
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
+        },
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 1],
+          "message": "Include docker-compose/moar.yml at <app>/docker-compose/moar.yml does not exist."
         }
       ]
     },
@@ -484,7 +509,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -500,7 +525,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -526,7 +551,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -542,7 +567,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -558,7 +583,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -584,7 +609,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -600,7 +625,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -652,7 +677,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -705,8 +730,18 @@
       "violations": [
         {
           "rule": "landofile.load",
-          "path": [],
+          "path": ["tooling", "all-the-words", "cmds", 0, "cmd"],
           "message": "Landofile load could not read word.sh."
+        },
+        {
+          "rule": "landofile.load",
+          "path": ["tooling", "word-imported", "cmd"],
+          "message": "Landofile load could not read word.sh."
+        },
+        {
+          "rule": "landofile.load",
+          "path": ["includes", 0],
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },
@@ -722,7 +757,7 @@
         {
           "rule": "landofile.load",
           "path": ["includes", 0],
-          "message": "Could not read include fragment compose.yml at <app>/compose.yml: ENOENT: no such file or directory, open '<app>/compose.yml'"
+          "message": "Include compose.yml at <app>/compose.yml does not exist."
         }
       ]
     },

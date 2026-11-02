@@ -492,7 +492,7 @@ describe("container plan helpers", () => {
     ).toEqual({
       Image: "nginx:latest",
       Env: ["FOO=bar", "BAZ=qux"],
-      Cmd: ["sh", "-lc", "echo hi"],
+      Cmd: ["sh", "-c", "echo hi"],
       Entrypoint: ["docker-entrypoint.sh"],
       WorkingDir: "/app",
       Healthcheck: {

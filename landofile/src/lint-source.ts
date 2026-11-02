@@ -1,5 +1,18 @@
-import type { ConfigLintViolation, ValidationIssue } from "@lando/sdk/schema";
-import type { SourceDocument } from "./pipeline/source-table.ts";
+import type { ConfigLintViolation, LandofileShape, ValidationIssue } from "@lando/sdk/schema";
+import { type SourceDocument, getSourceDocuments } from "./pipeline/source-table.ts";
+import { getLandofileValueSource } from "./validation.ts";
+
+export const attributeEffectiveLintIssue = (
+  landofile: LandofileShape,
+  issue: ValidationIssue & { readonly rule: string; readonly severity?: "error" | "warning" },
+): ConfigLintViolation => {
+  const source = issue.source ?? getLandofileValueSource(landofile, issue.path);
+  return attributeLintIssue(
+    { ...issue, severity: issue.severity ?? "error", ...(source === undefined ? {} : { source }) },
+    "effective",
+    getSourceDocuments(landofile),
+  );
+};
 
 export const sourceCoordinates = (source: SourceDocument, path: readonly (string | number)[]) => {
   if (source.form !== "yaml" || /^template:/m.test(source.content)) return {};

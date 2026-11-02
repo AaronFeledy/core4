@@ -1,0 +1,6 @@
+name: localstack-dns-extra-collision
+services:
+  aws:
+    type: localstack
+    environment:
+      GATEWAY_LISTEN: "0.0.0.0:4566,0.0.0.0:53"

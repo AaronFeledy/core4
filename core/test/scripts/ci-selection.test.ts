@@ -385,6 +385,7 @@ describe("CI selection", () => {
 
 describe("platform build path selection", () => {
   test.each([
+    "engine/src/runtime/libc.ts",
     "core/test/build/host-execution-compiled.test.ts",
     "core/test/build/opentui-compiled-acceptance.test.ts",
     "core/test/build/support/fixture.ts",

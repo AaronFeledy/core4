@@ -1,0 +1,5 @@
+name: tomcat-reserved-shutdown
+services:
+  appserver:
+    type: tomcat
+    port: 8005

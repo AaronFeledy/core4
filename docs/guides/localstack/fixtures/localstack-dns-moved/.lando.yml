@@ -1,0 +1,7 @@
+name: localstack-dns-moved
+services:
+  aws:
+    type: localstack
+    port: 53
+    environment:
+      DNS_PORT: "1053"

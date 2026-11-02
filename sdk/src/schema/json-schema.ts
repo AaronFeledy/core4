@@ -342,6 +342,7 @@ import {
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
+import { ListenerAuthority } from "./listener.ts";
 import { LogSource, LogSourceId, LogSourceInput, LogSourceStrategy, LogSourceStream } from "./log-source.ts";
 import {
   CommandCompletion,
@@ -722,6 +723,7 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceFeatureValidationResult,
   CheckResult,
   CertificatePlan,
+  ListenerAuthority,
   HostAliasPlan,
   ServiceDependencyCondition,
   DependencyPlan,

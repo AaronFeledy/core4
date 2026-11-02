@@ -28,6 +28,8 @@ services:
     <Step name="start">
       <Run command="lando start" />
       <Verify event="post-start" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -61,7 +63,13 @@ lando exec web -- go build -o /tmp/app .
 lando exec web -- go run .
 ```
 
-Bind your HTTP server to port `8080` on an interface reachable from the app network, not only container loopback, so the proxy can reach it at the app URL.
+## Pass `port:` to your Go server
+
+See the [Go listener reference](../../reference/service-listeners.mdx#go) for the default port and projected variable.
+
+Lando sets `PORT` from the same port used by the internal HTTP endpoint. Go's `net/http`, Echo, and Fiber do not read it automatically. Read it in your application and bind a non-loopback address, for example `http.ListenAndServe(":" + os.Getenv("PORT"), handler)`. The empty host listens on all interfaces so the proxy can reach it.
+
+An authored `environment.PORT` must be a literal integer equal to the planned port; a malformed or unequal value fails planning at `services.web.environment.PORT`. This includes inherited `appEnv` and env-file values. Change `port:` instead of overriding `PORT`, and update any hard-coded port in your application.
 
 Go publishes its port endpoint but has no default healthcheck or readiness probe, even with an authored `command:`. Add `readiness:` when you want start to wait for application readiness; use `healthcheck:` separately for native ongoing monitoring. Without an effective readiness command, Lando checks that the process stays running.
 

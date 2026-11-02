@@ -109,13 +109,13 @@ export const planServiceDrafts = Effect.fn("AppPlanner.planServices")(function* 
                   ...artifactScripts.map((script, index) => ({
                     id: `authored-artifact:${index + 1}`,
                     phase: "build" as const,
-                    command: ["sh", "-lc", script.run],
+                    command: ["sh", "-c", script.run],
                     ...(script.user === undefined ? {} : { user: script.user }),
                   })),
                   ...appScripts.map((script, index) => ({
                     id: `authored-app:${index + 1}`,
                     phase: "app" as const,
-                    command: { command: ["sh", "-lc", script.run] },
+                    command: { command: ["sh", "-c", script.run] },
                     ...(script.user === undefined ? {} : { user: script.user }),
                   })),
                 ],

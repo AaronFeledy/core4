@@ -1,5 +1,6 @@
+import { LandofileLoadFailure } from "@lando/sdk/errors";
 import { Logger } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   getLandofileIncludeSources,
   getLocalIncludePaths,
@@ -17,15 +18,28 @@ import {
 import type { LandofileEvaluationInputs } from "../ports.ts";
 import { getVersionConstraintEntries, rememberVersionConstraintEntries } from "../version-constraint.ts";
 import { foldAuthoredOverlays } from "./fold.ts";
+import { type LandofileLoadScope, buildLandofileLoadScope } from "./materialize.ts";
 import type { AuthoredOrigin } from "./prepare.ts";
 import { getSourceDocuments, rememberSourceDocuments } from "./source-table.ts";
 
 export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
   layers: readonly { readonly layer: PresentLandofileLayer; readonly landofile: Record<string, unknown> }[],
   context: Omit<LandofileLoadContext, "layer">,
-  evaluation: { readonly session: IncludeResolutionSession; readonly inputs?: LandofileEvaluationInputs },
+  evaluation: {
+    readonly session: IncludeResolutionSession;
+    readonly inputs?: LandofileEvaluationInputs;
+    readonly scope?: LandofileLoadScope | undefined;
+  },
 ) {
   const logger = yield* Effect.serviceOption(Logger);
+  const loadScope = evaluation.scope ?? {
+    ...(yield* buildLandofileLoadScope(
+      layers.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
+      context.compilationContext?.env,
+      context.pendingSites,
+    )),
+    recorder: context.recorder,
+  };
   const loaded = yield* Effect.forEach(layers, ({ layer, landofile }) =>
     resolveLandofileIncludeLayers(
       {
@@ -37,6 +51,8 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
         resolveTooling: false,
         loadPolicy: context.policy,
         pendingSites: context.pendingSites,
+        recorder: context.recorder,
+        loadScope,
         ...(evaluation.inputs?.ports === undefined ? {} : { ports: evaluation.inputs.ports }),
         ...(logger._tag === "None"
           ? {}
@@ -53,7 +69,15 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
             }),
       },
       evaluation.session,
-    ).pipe(Effect.map((resolved) => ({ ...resolved, layer }))),
+    ).pipe(
+      Effect.map((resolved) => ({ ...resolved, layer })),
+      Effect.catch((error) => {
+        if (context.recorder === undefined || !Schema.is(LandofileLoadFailure)(error))
+          return Effect.fail(error);
+        context.recorder.record(error);
+        return Effect.succeed({ layer, provenance: {}, overlays: [] });
+      }),
+    ),
   );
   const overlays = loaded.flatMap(({ overlays }) => overlays);
   const fallback: AuthoredOrigin = {
@@ -82,5 +106,5 @@ export const composePreparedLayers = Effect.fn("Landofile.compose")(function* (
     document,
     loaded.flatMap(({ provenance, layer }) => getVersionConstraintEntries(provenance, layer.filePath)),
   );
-  return document;
+  return { document, scope: loadScope };
 });

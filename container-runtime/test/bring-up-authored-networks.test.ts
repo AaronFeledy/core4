@@ -1,14 +1,48 @@
 import { expect, test } from "bun:test";
-import { type AppPlan, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, type ListenerAuthority, ServiceName } from "@lando/sdk/schema";
 import { Effect, Result } from "effect";
 import { dockerLifecycleDialect, libpodLifecycleDialect } from "../src/dialect.ts";
 import type { EngineHttpRequest } from "../src/engine-api.ts";
 import { networkOwnershipLabels } from "../src/native-ownership.ts";
 import { bringDown } from "../src/podman/bring-down.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { APPLY_REMEDIATION, bringUp } from "../src/podman/bring-up.ts";
 import { field, networkApi, networkPlan } from "./authored-network-fixture.ts";
 
 const ctx = { providerId: "docker", remediation: "Retry.", env: {} };
+test("omits listener advice on network-connect failure", async () => {
+  // Given
+  const fake = networkApi({ connectStatus: 500 });
+  const plan = {
+    ...networkPlan,
+    services: Object.fromEntries(
+      Object.entries(networkPlan.services).map(([name, service]) => [
+        name,
+        {
+          ...service,
+          listenerAuthority: {
+            owner: "launcher",
+            daemon: "node",
+            port: 3000,
+            setting: "--port 3000",
+          } satisfies ListenerAuthority,
+        },
+      ]),
+    ),
+  };
+  // When
+  const result = await Effect.runPromise(
+    bringUp(plan, { api: fake.api, ctx, dialect: dockerLifecycleDialect }).pipe(Effect.result),
+  );
+  // Then
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    failure: {
+      _tag: "ServiceStartError",
+      operation: "bringUp.network.connect",
+      remediation: APPLY_REMEDIATION,
+    },
+  });
+});
 const endpoints = {
   "lando-networks": { Aliases: ["web", "frontend"] },
   lando_bridge_network: { Aliases: ["web.networks.internal"] },

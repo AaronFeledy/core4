@@ -96,6 +96,7 @@
     "codegen:command-reference": "bun run scripts/build-command-reference.ts",
     "codegen:compose-key-matrix": "bun run scripts/build-compose-key-matrix.ts",
     "codegen:service-type-reference": "bun run scripts/build-service-type-reference.ts",
+    "codegen:service-listener-reference": "bun run scripts/build-service-listener-reference.ts",
     "codegen:recipe-readmes": "bun run scripts/build-recipe-readmes.ts",
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
     "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",

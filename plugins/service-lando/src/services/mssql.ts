@@ -22,8 +22,9 @@ import { mssqlHealthcheck, mssqlStartupCommand } from "./mssql-startup.ts";
 
 export const MSSQL_LISTENER = {
   port: 1433,
-  variable: "MSSQL_TCP_PORT",
+  variables: ["MSSQL_TCP_PORT"],
   daemon: "SQL Server",
+  when: "All SQL Server services",
   reserved: [{ port: 1434, use: "dedicated admin connection" }],
 } as const;
 const DATA_TARGET = PortablePath.make("/var/opt/mssql");

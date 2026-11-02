@@ -3,9 +3,19 @@ import type { Lando3TranslatorPorts } from "../../src/contract.ts";
 export const serviceFacts: Lando3TranslatorPorts["serviceFacts"] = {
   apache: { versions: [], listener: { port: 80 }, httpPort: 80, appMountTarget: "/app" },
   compose: { versions: [], appMountTarget: "/app" },
-  dotnet: { versions: ["8.0", "9.0"], listener: { port: 5000 }, httpPort: 5000, appMountTarget: "/app" },
-  elasticsearch: { versions: ["8"], listener: { port: 9200 } },
-  go: { versions: ["1.22", "1.23"], listener: { port: 8080 }, httpPort: 8080, appMountTarget: "/app" },
+  dotnet: {
+    versions: ["8.0", "9.0"],
+    listener: { port: 5000, variable: "ASPNETCORE_HTTP_PORTS" },
+    httpPort: 5000,
+    appMountTarget: "/app",
+  },
+  elasticsearch: { versions: ["8"], listener: { port: 9200, variable: "http.port" } },
+  go: {
+    versions: ["1.22", "1.23"],
+    listener: { port: 8080, variable: "PORT" },
+    httpPort: 8080,
+    appMountTarget: "/app",
+  },
   lando: { versions: [], appMountTarget: "/app" },
   localstack: { versions: [], listener: { port: 4566 }, httpPort: 4566 },
   mailhog: { versions: [], listener: { port: 1025 }, httpPort: 8025 },
@@ -32,11 +42,11 @@ export const serviceFacts: Lando3TranslatorPorts["serviceFacts"] = {
   nginx: { versions: [], listener: { port: 80 }, httpPort: 80, appMountTarget: "/app" },
   node: {
     versions: ["lts", "22", "24", "26"],
-    listener: { port: 3000 },
+    listener: { port: 3000, variable: "PORT" },
     httpPort: 3000,
     appMountTarget: "/app",
   },
-  opensearch: { versions: ["2"], listener: { port: 9200 }, httpPort: 9200 },
+  opensearch: { versions: ["2"], listener: { port: 9200, variable: "http.port" }, httpPort: 9200 },
   php: {
     versions: ["8.1", "8.2", "8.3", "8.4", "8.5", "8.6"],
     listener: { port: 80 },
@@ -49,14 +59,24 @@ export const serviceFacts: Lando3TranslatorPorts["serviceFacts"] = {
     listener: { port: 5432, variable: "PGPORT" },
     configTargets: { server: "/etc/lando/postgresql.conf" },
   },
-  python: { versions: ["3.12"], listener: { port: 8000 }, httpPort: 8000, appMountTarget: "/app" },
+  python: {
+    versions: ["3.12"],
+    listener: { port: 8000, variable: "PORT" },
+    httpPort: 8000,
+    appMountTarget: "/app",
+  },
   rabbitmq: {
     versions: ["3", "4"],
     listener: { port: 5672, variable: "RABBITMQ_NODE_PORT" },
     httpPort: 15672,
   },
   redis: { versions: ["7"], listener: { port: 6379 } },
-  ruby: { versions: ["3.3"], listener: { port: 3000 }, httpPort: 3000, appMountTarget: "/app" },
+  ruby: {
+    versions: ["3.3"],
+    listener: { port: 3000, variable: "PORT" },
+    httpPort: 3000,
+    appMountTarget: "/app",
+  },
   solr: {
     versions: ["9"],
     listener: { port: 8983 },

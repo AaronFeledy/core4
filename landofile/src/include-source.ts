@@ -3,6 +3,7 @@ import type { IncludeEntry, LandofileShape } from "@lando/sdk/schema";
 import { gitCloneUrl, isGitSource, isLiteralGitRef, splitSourceRef } from "./git-ref.ts";
 import type { NormalizedInclude } from "./include-context.ts";
 import { includeError } from "./include-guard.ts";
+import { getOrigins } from "./pipeline/origins.ts";
 import { hasToolingIncludes } from "./tooling-include-entries.ts";
 
 export const normalizeInclude = (entry: IncludeEntry): NormalizedInclude =>
@@ -19,10 +20,24 @@ export const authoredIncludeEntries = (
 export const authoredIncludeEntriesWithPaths = (landofile: Pick<LandofileShape, "include" | "includes">) => [
   ...(landofile.includes ?? []).flatMap((entry, index) =>
     typeof entry === "string" || entry.kind !== "tooling"
-      ? [{ entry, path: ["includes", index] as const }]
+      ? [
+          {
+            entry,
+            path: getOrigins(landofile)?.children.get("includes")?.children.get(index)?.source.path ?? [
+              "includes",
+              index,
+            ],
+          },
+        ]
       : [],
   ),
-  ...(landofile.include ?? []).map((entry, index) => ({ entry, path: ["include", index] as const })),
+  ...(landofile.include ?? []).map((entry, index) => ({
+    entry,
+    path: getOrigins(landofile)?.children.get("include")?.children.get(index)?.source.path ?? [
+      "include",
+      index,
+    ],
+  })),
 ];
 export const hasResolvableIncludes = (
   landofile: Pick<LandofileShape, "include" | "includes" | "toolingIncludes">,

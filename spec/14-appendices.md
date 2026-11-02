@@ -41,7 +41,7 @@ Core MUST NOT contain, in source or `package.json` dependencies:
 
 The implementation must satisfy every item below; binary-shipping criteria remain in §17.9. Which items are met at a given point in time is tracked in `ROADMAP.md`, not here.
 
-- Landofile discovery works from subdirectories; configured names and pre/post merge files work; `load()` and `import()` decode YAML, JSON, TOML, text, and binary; expressions resolve across Landofiles, includes, global config, events, and tooling without implicit shell execution (§7.3, §7.7).
+- Landofile discovery works from subdirectories; the fixed six-layer merge works; `load()` and `import()` decode YAML, JSON, TOML, text, and binary; expressions resolve across Landofiles, includes, global config, events, and tooling without implicit shell execution (§7.3, §7.7).
 - Canonical namespaced commands and configured top-level aliases both resolve. Global `commandAliases.disabled`/`custom` require no rebuild; app-local custom aliases override built-in, plugin, or global aliases only in that app while canonical ids remain callable.
 - Tooling can wrap a canonical command with `command:` plus surrounding shell steps. Literal and resolved flags/args/raw inputs validate against the target's command declaration (`LandoCommandSpec` for built-ins, `ExecutableCommandSpec` for plugin commands) or raise `CommandInputValidationError`; direct and indirect cycles raise `ToolingCommandCycleError`; effective bootstrap is the reachable maximum and is cached.
 - Tooling defaults to `app:` and may request `topLevelAlias`; plugin namespaces must match id prefixes; all alias collisions fail with remediation.
