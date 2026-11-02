@@ -5,10 +5,10 @@ import {
   jsonEquals,
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
-import { noScriptsDeltas } from "./fixtures/x-extension-no-scripts.delta.ts";
+import { uploadDirsDeltas } from "./fixtures/x-extension-upload-dirs.delta.ts";
 import { wireObject } from "./x-extension-wire-proof.ts";
 
-export const evolveHistoricalNoScripts = (historical: JsonSchema): JsonSchema => {
+export const evolveHistoricalUploadDirs = (historical: JsonSchema): JsonSchema => {
   const visit = (value: JsonValue): JsonValue => {
     if (Array.isArray(value)) return value.map(visit);
     if (!isJsonObject(value)) return value;
@@ -20,13 +20,13 @@ export const evolveHistoricalNoScripts = (historical: JsonSchema): JsonSchema =>
       fields.type === undefined ||
       fields.image === undefined ||
       fields.ports === undefined ||
-      fields.noScripts !== undefined
+      fields.uploadDirs !== undefined
     )
       return next;
-    const delta = noScriptsDeltas.find(({ witness }) => jsonEquals(fields.consolePort, witness));
+    const delta = uploadDirsDeltas.find(({ witness }) => jsonEquals(fields.consolePort, witness));
     return delta === undefined
       ? next
-      : { ...next, properties: { ...fields, noScripts: structuredClone(delta.field) } };
+      : { ...next, properties: { ...fields, uploadDirs: structuredClone(delta.field) } };
   };
   return normalizeJsonSchema(wireObject(visit(historical)));
 };

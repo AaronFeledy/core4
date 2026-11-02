@@ -41,7 +41,6 @@ import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
-import { evolveHistoricalNoScripts } from "./x-extension-no-scripts-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
@@ -50,6 +49,7 @@ import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import { DIRECTIVE_TRANSPORT_JUSTIFICATION, expectedWireExceptions } from "./x-extension-wire-proof.ts";
 
 const captured = parseCapturedExtension(await Bun.file(FIXTURE_PATH).json());
@@ -64,7 +64,7 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalNoScripts(
+  evolveHistoricalUploadDirs(
     evolveHistoricalConsolePort(
       evolveHistoricalToolingSensitivity(
         evolveHistoricalAppMountAcceleration(

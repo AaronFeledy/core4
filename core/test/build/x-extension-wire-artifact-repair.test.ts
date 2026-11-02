@@ -18,7 +18,6 @@ import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts"
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
-import { evolveHistoricalNoScripts } from "./x-extension-no-scripts-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
@@ -27,6 +26,7 @@ import {
   evolveHistoricalToolingShorthand,
 } from "./x-extension-tooling-shorthand-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import {
   WIRE_TARGETS,
   atWirePath,
@@ -112,7 +112,7 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
-  const evolved = evolveHistoricalNoScripts(
+  const evolved = evolveHistoricalUploadDirs(
     evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
   );
   evolvedTypedCache.set(source, evolved);
@@ -177,7 +177,7 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalNoScripts(evolveHistoricalAuthoringProjection(historical, "services"));
+    const repaired = evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services"));
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",

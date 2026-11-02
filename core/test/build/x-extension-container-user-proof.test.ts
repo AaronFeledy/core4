@@ -23,7 +23,6 @@ import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadat
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
-import { evolveHistoricalNoScripts } from "./x-extension-no-scripts-proof.ts";
 import { evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
@@ -32,6 +31,7 @@ import {
   evolveHistoricalToolingSensitivity,
   evolveHistoricalToolingShorthand,
 } from "./x-extension-tooling-shorthand-proof.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 
 const landofileWithUser = (user: JsonValue) => ({
   properties: {
@@ -180,7 +180,7 @@ test.each([
     ),
   );
   const current = schemaAt(await loadNormalizedArtifact("schema:TemplateRenderContext"), "$.landofile");
-  expect(jsonEquals(evolveHistoricalNoScripts(expected), current)).toBe(true);
+  expect(jsonEquals(evolveHistoricalUploadDirs(expected), current)).toBe(true);
   const properties = current.properties;
   if (!isJsonObject(properties)) throw new TypeError("Missing properties");
   const services = properties.services;

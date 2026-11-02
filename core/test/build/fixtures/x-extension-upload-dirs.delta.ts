@@ -11,15 +11,15 @@ const path = Schema.String.check(
 );
 const port = Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 1, maximum: 65535 }));
 const model = Schema.Struct({
-  noScripts: Schema.optionalKey(Schema.Array(path)),
+  uploadDirs: Schema.optionalKey(Schema.Array(path)),
   consolePort: Schema.optionalKey(port),
 });
 const authoringModel = Schema.Struct({
-  noScripts: Schema.optionalKey(Schema.Array(Schema.String)),
+  uploadDirs: Schema.optionalKey(Schema.Array(Schema.String)),
   consolePort: Schema.optionalKey(Schema.Number),
 });
 
-export const noScriptsDeltas = (["bare", "authoring", "fragment"] as const).map((mode) => {
+export const uploadDirsDeltas = (["bare", "authoring", "fragment"] as const).map((mode) => {
   const projected =
     mode === "bare"
       ? model
@@ -41,7 +41,7 @@ export const noScriptsDeltas = (["bare", "authoring", "fragment"] as const).map(
   );
   return {
     mode,
-    field: wireObject(wireObject(schema.properties).noScripts),
+    field: wireObject(wireObject(schema.properties).uploadDirs),
     witness: wireObject(wireObject(schema.properties).consolePort),
   };
 });

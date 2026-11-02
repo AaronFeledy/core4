@@ -18,11 +18,11 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
-import { evolveHistoricalNoScripts } from "./x-extension-no-scripts-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
 const historicalExpected = evolveHistoricalConsolePort(
@@ -46,7 +46,7 @@ const historicalExpected = evolveHistoricalConsolePort(
     ),
   ),
 );
-const expected = evolveHistoricalNoScripts(
+const expected = evolveHistoricalUploadDirs(
   evolveHistoricalAuthoringProjection(historicalExpected, "services"),
 );
 
