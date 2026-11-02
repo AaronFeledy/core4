@@ -579,13 +579,14 @@ describe("meta:doctor combined report", () => {
     }
   });
 
-  test("doctor --app fails version-constraint reporting when includes cannot resolve", async () => {
+  test.each([1, 2])("doctor --app reports all %s unresolved includes", async (count) => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-include-")));
     await writeFile(
       join(dir, ".lando.yml"),
       ["name: doctor-app", "includes:", "  - ./missing.yml", ""].join("\n"),
     );
+    if (count === 2) await writeFile(join(dir, ".lando.local.yml"), "includes: [./also-missing.yml]\n");
     const previousCwd = process.cwd();
     try {
       process.chdir(dir);
@@ -597,10 +598,14 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "fail",
         severity: "error",
-        context: { declared: "(unresolved includes)" },
+        context: { declared: count === 1 ? "(unresolved includes)" : "(Landofile load failures)" },
       });
       expect(report.appVersionConstraints?.checks[0]?.context.includeResolution).toContain("missing.yml");
-      expect(renderDoctorReport(report)).toContain("lando app:includes:update");
+      if (count === 1) expect(renderDoctorReport(report)).toContain("lando app:includes:update");
+      else
+        expect(report.appVersionConstraints?.checks[0]?.context.includeResolution).toContain(
+          "also-missing.yml",
+        );
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
