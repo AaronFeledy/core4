@@ -28,7 +28,7 @@
       "plugins/*"
     ],
     "catalog": {
-      "effect": "4.0.0"
+      "effect": "4.0.7"
     }
   },
   "engines": {
