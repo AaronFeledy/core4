@@ -102,9 +102,12 @@ test("isolates factory collectors while resolving the live redactor only once", 
 test("reuses filtered exact tokens until the live source identity changes", async () => {
   let enumerations = 0;
   const tokens = {
-    *[Symbol.iterator]() {
-      enumerations += 1;
-      yield "cache-secret";
+    wholeToken: [],
+    substring: {
+      *[Symbol.iterator]() {
+        enumerations += 1;
+        yield "cache-secret";
+      },
     },
   };
   const result = await Effect.runPromise(

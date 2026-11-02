@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { planRedactionValues } from "@lando/redaction/plan-values";
 import { ConfigExpressionError } from "@lando/sdk/errors";
 import { type LandofileShape, PortNumber, ServiceName } from "@lando/sdk/schema";
 import { FileSystem, PluginRegistry, type ServiceType } from "@lando/sdk/services";
@@ -12,7 +13,6 @@ import { Effect, Layer, Result, Schema } from "effect";
 import { effectiveToolingForPlan } from "../../src/planner/effective-tooling.ts";
 import { serviceCredsScopeForPlan } from "../../src/planner/landofile-scopes.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
-import { collectAppPlanRedactionTokens } from "../../src/services/app-plan-redaction.ts";
 import * as BunFileSystem from "../../src/services/file-system.ts";
 import { compileTestLandofile } from "../compiled-landofile.ts";
 import { planApp } from "../plan-app.ts";
@@ -182,7 +182,7 @@ test("resolves services.<name>.creds.* before the reading service's type runs, w
     expect(app.extensions.compose).toMatchObject({ "x-creds": "appdb" });
     expect(landofile.services[ServiceName.make("web")]?.environment?.DATABASE_URL).toBe(DATABASE_URL);
     // The interpolated password stays redactable through the plan's secret-shaped env values.
-    expect(collectAppPlanRedactionTokens(app)).toContain("s3cret-pw");
+    expect(planRedactionValues(app).substring).toContain("s3cret-pw");
     expect(serviceCredsScopeForPlan(app)).toEqual({
       database: {
         port: PortNumber.make(5432),

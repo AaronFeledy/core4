@@ -399,7 +399,7 @@ test.each([
       Effect.provideService(GlobalAppService, globalApp),
       Effect.provideService(RedactionService, {
         registerValues: () => Effect.void,
-        payloadValues: () => Effect.succeed(() => ["super-secret"]),
+        payloadValues: () => Effect.succeed(() => ({ substring: ["super-secret"], wholeToken: [] })),
         forProfile: () => Effect.succeed(redactor),
       }),
       Effect.provideService(PathsService, makeLandoPaths({ platform: "linux" })),

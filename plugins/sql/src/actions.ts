@@ -24,7 +24,7 @@ import { checkedSqlExecution } from "./checked-execution.ts";
 import type { DumpCompression } from "./compression.ts";
 import { withHostDumpCompression } from "./compression.ts";
 import type { SqlCreds } from "./creds.ts";
-import { resolveSqlEnvironment } from "./environment.ts";
+import { type SqlCredentialSecrets, resolveSqlEnvironment } from "./environment.ts";
 import { type SqlFamily, dumpCommand, loadCommand, resetCommand } from "./families.ts";
 import {
   mssqlBackupCommand,
@@ -75,6 +75,7 @@ export const runExport = Effect.fn("Sql.export")(function* (
     readonly family: SqlFamily;
     readonly creds: SqlCreds;
     readonly env: Environment;
+    readonly secrets: () => SqlCredentialSecrets;
     readonly file: string;
     readonly compression: DumpCompression;
     readonly compressionLevel?: number;
@@ -116,13 +117,16 @@ export const runExport = Effect.fn("Sql.export")(function* (
           });
         });
       }
+      const env = yield* resolveSqlEnvironment(input.env);
+      const secrets = input.secrets();
       return yield* mover.transfer({
         from: {
           _tag: "serviceCmd",
           app,
           service,
           command: dumpCommand(input.family, input.creds),
-          env: yield* resolveSqlEnvironment(input.env),
+          env,
+          secrets,
         },
         to: { _tag: "hostPath", path },
         overwrite: true,
@@ -140,6 +144,7 @@ export const runImport = Effect.fn("Sql.import")(function* (
     readonly family: SqlFamily;
     readonly creds: SqlCreds;
     readonly env: Environment;
+    readonly secrets: () => SqlCredentialSecrets;
     readonly file: string;
     readonly compression: DumpCompression;
     readonly expectedDigest?: string;
@@ -187,6 +192,8 @@ export const runImport = Effect.fn("Sql.import")(function* (
           return transfer;
         });
       }
+      const env = yield* resolveSqlEnvironment(input.env);
+      const secrets = input.secrets();
       return yield* mover.transfer({
         from: { _tag: "hostPath", path, trusted: true },
         to: {
@@ -194,7 +201,8 @@ export const runImport = Effect.fn("Sql.import")(function* (
           app,
           service,
           command: loadCommand(input.family, input.creds),
-          env: yield* resolveSqlEnvironment(input.env),
+          env,
+          secrets,
         },
         overwrite: true,
         ...(digest === undefined ? {} : { expectedDigest: digest }),
@@ -209,6 +217,7 @@ export const runReset = Effect.fn("Sql.reset")(function* (
   family: SqlFamily,
   creds: SqlCreds,
   env: Environment,
+  secrets: () => SqlCredentialSecrets = () => ({ substring: [], wholeToken: [] }),
 ) {
   const usesMysqlRoot = (family === "mysql" || family === "mariadb") && creds.rootPassword !== undefined;
   const command = resetCommand(family, usesMysqlRoot ? { ...creds, user: "root" } : creds);
@@ -217,6 +226,7 @@ export const runReset = Effect.fn("Sql.reset")(function* (
     service,
     command,
     env: resetEnv,
+    secrets,
     stdout: "discard",
   });
 });

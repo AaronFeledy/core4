@@ -7,8 +7,14 @@
  * secret values out of user-visible output.
  */
 export * from "./redactor.ts";
+export { encodeUriComponent } from "./uri-component.ts";
 export * from "./redactor-profiles.ts";
 export * from "./payload-redactor.ts";
+export {
+  type RedactionMatch,
+  type TieredRedactionValues,
+  isRedactionTokenBoundaryUnit,
+} from "./literal-matcher.ts";
 export * from "./public-default-credentials.ts";
 export { isSecretEnvName, isSecretFieldName, isSecretStructuralName } from "./secret-names.ts";
 export { parseSecretReference, type ParsedSecretReference } from "./reference.ts";

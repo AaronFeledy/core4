@@ -1,4 +1,5 @@
 import { StartFailureLogRedactor } from "@lando/container-runtime/redact";
+import { planRedactionValues } from "@lando/redaction/plan-values";
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   HealthcheckError,
@@ -18,7 +19,6 @@ import {
 } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { type Context, Effect, type Option } from "effect";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
 import {
   type HostProbeRunners,
   interruptOnAbort,
@@ -91,13 +91,22 @@ export const makeProviderFactory = (services: ProviderRuntimeContext) => {
             }),
             apply: Effect.fnUntraced(function* (plan, options) {
               yield* validateHealthcheckExecution(plan, services.hostProbeRunners ?? {});
-              const tokens = [...collectAppPlanRedactionTokens(plan)];
-              const redactorOptions = { sourceEnv: { ...process.env }, redactionTokens: tokens };
+              const values = planRedactionValues(plan);
+              const redactorOptions = {
+                sourceEnv: { ...process.env },
+                redactionTokens: values.substring,
+                wholeTokenValues: values.wholeToken,
+              };
               const redactor =
                 redaction._tag === "Some"
                   ? yield* redaction.value
-                      .registerValues(tokens)
-                      .pipe(Effect.andThen(redaction.value.forProfile("secrets", redactorOptions)))
+                      .registerValues(values.substring)
+                      .pipe(
+                        Effect.andThen(
+                          redaction.value.registerValues(values.wholeToken, { match: "whole-token" }),
+                        ),
+                        Effect.andThen(redaction.value.forProfile("secrets", redactorOptions)),
+                      )
                   : createStandaloneRedactor("secrets", redactorOptions);
               return yield* runtime
                 .apply(plan, {

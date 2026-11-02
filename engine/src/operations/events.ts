@@ -15,20 +15,12 @@ import type {
 import { LANDO_HOST_EVENT_ENV, ServiceName } from "@lando/sdk/schema";
 import { EventService, type LandoEvent, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
 
-import {
-  RedactionService,
-  collectSecretEnvValues,
-  collectSecretStructuralValues,
-} from "@lando/redaction/service";
+import { RedactionService, collectSecretStructuralValues } from "@lando/redaction/service";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
-import { effectiveToolingForPlan } from "../planner/effective-tooling.ts";
 import { invocationAuthorityForPlan, sitesUnder } from "../planner/invocation-authority.ts";
-import {
-  collectAppPlanPublicCredentialValues,
-  collectAppPlanRedactionTokens,
-} from "../services/app-plan-redaction.ts";
 import { EventCommandExecutor } from "../services/event-command-executor.ts";
+import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { type EventRuntimeError, isEventRuntimeError } from "../tooling/event-errors.ts";
 import { EventStepCompileError, compileEventStepProgram } from "../tooling/step-compiler.ts";
 import type { ToolingCommandStepLeaf } from "../tooling/step-program.ts";
@@ -46,28 +38,6 @@ const authoredStepKind = (step: EventStep): "cmd" | "task" | "command" => {
   if ("task" in step && step.task !== undefined) return "task";
   if ("command" in step && step.command !== undefined) return "command";
   return "cmd";
-};
-
-const redactionValuesForStep = (
-  step: EventStep,
-  tooling: ReturnType<typeof effectiveToolingForPlan>,
-  publicValues: ReadonlySet<string>,
-): ReadonlyArray<string> => {
-  if (typeof step === "string") return [];
-  const env =
-    "task" in step && step.task !== undefined
-      ? tooling?.[step.task]?.env
-      : "env" in step
-        ? step.env
-        : undefined;
-  return env === undefined
-    ? []
-    : collectSecretEnvValues(
-        Object.fromEntries(
-          Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-        ),
-        publicValues,
-      );
 };
 
 const eventError = (
@@ -176,10 +146,12 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
   payload?: ExpressionContext["event"],
 ): Effect.fn.Return<void, EventRuntimeError> {
   const redactionOption = yield* Effect.serviceOption(RedactionService);
+  const planValues = yield* registerPlanRedaction(plan);
   const inspectRedactor = Option.isSome(redactionOption)
     ? yield* redactionOption.value.forProfile("secrets", {
         sourceEnv: process.env,
-        redactionTokens: collectAppPlanRedactionTokens(plan),
+        redactionTokens: planValues.substring,
+        wholeTokenValues: planValues.wholeToken,
       })
     : { redactString: () => "Provider inspection failed." };
   const compiled = yield* resolveCompiledSteps(plan, event, inspectRedactor);
@@ -218,42 +190,45 @@ export const runAppEvent = Effect.fn("AppOperation.runEvent")(function* (
           }),
         );
       }
-      const tooling = effectiveToolingForPlan(plan);
-      const appPlanRedactionTokens = collectAppPlanRedactionTokens(plan);
-      const publicValues = collectAppPlanPublicCredentialValues(plan);
+      const appPlanRedactionTokens = planValues.substring;
+      const publicValues = planValues.publicValues;
       const redactor = yield* redactionOption.value.forProfile("secrets", {
         sourceEnv: process.env,
-        redactionTokens: [
-          ...appPlanRedactionTokens,
-          ...runnable.flatMap((entry) => redactionValuesForStep(entry.step, tooling, publicValues)),
-        ],
+        redactionTokens: appPlanRedactionTokens,
       });
-      const collectRecords = (
-        records: EventRedactionSources["env"],
-        collect: typeof collectSecretEnvValues,
-      ): string[] =>
+      const collectRecords = (records: EventRedactionSources["env"]): string[] =>
         (records ?? []).flatMap((record) => {
           if (record === undefined) return [];
           return Object.entries(record).flatMap(([name, value]) =>
             (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
-              typeof occurrence === "string" ? collect({ [name]: occurrence }, publicValues) : [],
+              typeof occurrence === "string"
+                ? collectSecretStructuralValues({ [name]: occurrence }, publicValues)
+                : [],
             ),
           );
         });
-      const redactorFor = (sources: EventRedactionSources) => {
+      const redactorFor = Effect.fnUntraced(function* (sources: EventRedactionSources) {
+        const envValues = (sources.env ?? []).flatMap((record) =>
+          Object.entries(record ?? {}).flatMap(([name, value]) =>
+            (Array.isArray(value) ? value : [value]).flatMap((occurrence) =>
+              typeof occurrence === "string" ? [{ [name]: occurrence }] : [],
+            ),
+          ),
+        );
+        const values = yield* registerPlanRedaction(plan, envValues);
         const redactionTokens = [
-          ...appPlanRedactionTokens,
           ...(sources.directTokens ?? []),
-          ...collectRecords(sources.env, collectSecretEnvValues),
-          ...collectRecords(sources.input, collectSecretStructuralValues),
+          ...values.substring,
+          ...collectRecords(sources.input),
         ];
-        return redactionOption.value
+        yield* redactionOption.value.registerValues(redactionTokens);
+        return yield* redactionOption.value
           .forProfile("secrets", {
             sourceEnv: process.env,
             redactionTokens,
           })
           .pipe(Effect.map((redactor) => ({ redactor, redactionTokens })));
-      };
+      });
       const commandExecutor = yield* Effect.serviceOption(EventCommandExecutor);
       const validate = Option.isSome(commandExecutor) ? commandExecutor.value.validate : undefined;
       const validateCommand =

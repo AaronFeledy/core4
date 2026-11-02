@@ -609,6 +609,31 @@ describe("applied plan records", () => {
     expect(written).toEqual([record]);
   });
 
+  test.each(["per-app", "record"] as const)(
+    "%s persistence retains committed digests when removing events without an injected sanitizer",
+    async (layout) => {
+      const written: unknown[] = [];
+      const annotated = {
+        ...plan,
+        services: {
+          [service.name]: {
+            ...currentService,
+            name: service.name,
+            environment: { API_TOKEN: "private-token" },
+          },
+        },
+        committedLiteralDigests: ["a".repeat(64), "b".repeat(64)],
+      };
+      const store =
+        layout === "per-app"
+          ? makeAppliedPlanStore({ providerId: "lando", layout: "per-app" })
+          : makeAppliedPlanStore({ providerId: "lando", layout: "record" });
+      await Effect.runPromise(store.persistAppliedPlan(writingStateStore(written), annotated));
+      const { events: _events, ...expected } = annotated;
+      expect(written).toEqual([layout === "per-app" ? expected : { [plan.id]: expected }]);
+    },
+  );
+
   test("the record layout persists the plan without its Landofile events", async () => {
     const written: unknown[] = [];
     const store = makeAppliedPlanStore({ providerId: "podman", layout: "record" });

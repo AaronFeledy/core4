@@ -13,7 +13,7 @@ const identityRedaction = Layer.succeed(
   RedactionService,
   RedactionService.of({
     ...makeRedactionService(),
-    payloadValues: () => Effect.succeed(() => []),
+    payloadValues: () => Effect.succeed(() => ({ substring: [], wholeToken: [] })),
     forProfile: () => Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: {} })),
   }),
 );

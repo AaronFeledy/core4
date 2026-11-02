@@ -54,7 +54,7 @@ export const withBunShellScriptInputs = Effect.fnUntraced(function* <
         : [];
     }),
   );
-  const result = yield* withShellRedactionTokens(prepared.redactionTokens, execute).pipe(
+  const result = yield* withShellRedactionTokens({ substring: prepared.redactionTokens }, execute).pipe(
     Effect.provideService(ToolingBooleanEnvironment, booleanEnvironment),
   );
   if (Option.isNone(redaction)) return result;

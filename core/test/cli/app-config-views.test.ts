@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as ConfigLayer from "@lando/engine/services/config";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { LandofileService } from "@lando/sdk/services";
 import { Effect, Layer, Schema } from "effect";
 import {
@@ -35,6 +36,28 @@ const run = (options: AppConfigOptions) =>
   );
 
 describe("raw and merged inspection", () => {
+  test("raw inspection retains misplaced directives with substring-only redaction", async () => {
+    await write(
+      ".lando.yml",
+      "name: inspection\nservices:\n  web:\n    logs:\n      - id: !override access\n        path: /tmp/log\n    environment:\n      DB_PASSWORD: private-canary\n",
+    );
+    const raw = await run({ source: "raw" });
+    expect(raw).toMatchObject({
+      source: "raw",
+      layers: [
+        {
+          document: {
+            services: {
+              web: { logs: [{ id: { _tag: "LandofileOverride", value: "access" }, path: "/tmp/log" }] },
+            },
+          },
+        },
+      ],
+      redactionTokens: ["private-canary"],
+    });
+    await expect(run({ source: "merged" })).rejects.toMatchObject({ _tag: "LandofileValidationError" });
+  });
+
   test("exposes final-invalid authored layers without finalizing", async () => {
     await write(".lando.base.yml", "name: inspection\nservices:\n  web:\n    primary: true\n");
     await write(
@@ -132,11 +155,49 @@ describe("raw and merged inspection", () => {
       ".lando.yml",
       "services:\n  web:\n    environment:\n      PASSWORD: top-canary\nx-echo: base-canary=with-equals\n",
     );
-    const result = await run({ source: "merged", path: "x-echo" });
-    expect("redactionTokens" in result ? result.redactionTokens : []).toEqual(
-      expect.arrayContaining(["base-canary=with-equals", "top-canary", "directive-canary"]),
+    const redaction = makeRedactionService();
+    const text = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* appConfig({ source: "merged", path: "x-echo", cwd: dir });
+        return (yield* redaction.forProfile("secrets")).redactString(
+          "base-canary=with-equals top-canary directive-canary base-canary=with-equals-suffix",
+        );
+      }).pipe(
+        Effect.provideService(RedactionService, redaction),
+        Effect.provide(layer),
+        Effect.provide(ConfigLayer.layer),
+      ),
     );
+    expect(text).toBe("[redacted] [redacted] [redacted] base-canary=with-equals-suffix");
   });
+
+  test.each(["raw", "merged"] as const)(
+    "%s keeps canonical literals whole-token and local values substring",
+    async (source) => {
+      await write(
+        ".lando.yml",
+        "name: inspection\nservices:\n  web:\n    environment:\n      DB_PASSWORD: wordpress\n",
+      );
+      await write(
+        ".lando.local.yml",
+        "services:\n  web:\n    environment:\n      LOCAL_PASSWORD: localword\n",
+      );
+      const redaction = makeRedactionService();
+      const text = await Effect.runPromise(
+        Effect.gen(function* () {
+          yield* appConfig({ source, cwd: dir });
+          return (yield* redaction.forProfile("secrets")).redactString(
+            "wordpress wordpress-seo localword-seo",
+          );
+        }).pipe(
+          Effect.provideService(RedactionService, redaction),
+          Effect.provide(layer),
+          Effect.provide(ConfigLayer.layer),
+        ),
+      );
+      expect(text).toBe("[redacted] wordpress-seo [redacted]-seo");
+    },
+  );
 
   test("result schemas reject incomplete resolved views and malformed writes", () => {
     expect(Schema.is(AppConfigResultSchema)({ source: "resolved", landofile: { runtime: "invalid" } })).toBe(
