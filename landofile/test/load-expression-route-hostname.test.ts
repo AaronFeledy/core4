@@ -121,7 +121,7 @@ describe("landofile load-time route hostname expressions", () => {
     });
   });
 
-  test("rejects secret references outside a service environment value", async () => {
+  test("rejects secret references outside authorized binding sites", async () => {
     await withApp(async (appRoot) => {
       // Given
       const value = { services: { appserver: { image: "${secret:IMAGE}" } } };
@@ -133,7 +133,7 @@ describe("landofile load-time route hostname expressions", () => {
       if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
       expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
         _tag: "LandofileValidationError",
-        issues: [{ path: ["services", "appserver", "image"], rule: "unsupported-expression" }],
+        issues: [{ path: ["services", "appserver", "image"], rule: "unsupported-secret-reference" }],
       });
     });
   });

@@ -28,7 +28,6 @@ test.each([
   [{ "x-${HOME}": "inert" }, ["x-${HOME}"]],
   [{ "{{ load('./missing') }}": "inert" }, ["{{ load('./missing') }}"]],
   [{ tooling: { test: { cmd: "echo ${HOME}" } } }, ["tooling", "test", "cmd"]],
-  [{ services: { web: { command: "prefix-${secret:TEST}" } } }, ["services", "web", "command"]],
 ] as const)("rejects active authored syntax at its member path: %j", async (value, path) => {
   // Given / When
   const result = await Effect.runPromise(Effect.result(resolve(value)));
@@ -41,6 +40,90 @@ test.each([
     { path, rule: "unsupported-expression", source: { file: source.sourcePath, layer: "base", path } },
   ]);
   expect(result.failure.issues[0]?.suggestion).toBeString();
+});
+
+test.each([
+  [{ services: { app: { build: { args: { TOKEN: "${secret:TOKEN}" } } } } }, "TOKEN"],
+  [{ services: { app: { build: { args: ["TOKEN=prefix-${secret:TOKEN}"] } } } }, 0],
+] as const)("rejects a build argument secret with image-history guidance: %j", async (value, key) => {
+  // Given
+  const path = ["services", "app", "build", "args", key];
+  const message = `Secret references are not supported at ${path.join(".")}. Build arguments can be recorded in image history.`;
+  const suggestion =
+    "Lando never resolves secrets into build arguments. If the service needs the secret at runtime, put the ${secret:...} reference in a service environment value. Write $${secret:...} for literal text.";
+  // When
+  const failure = await Effect.runPromise(resolve(value).pipe(Effect.flip));
+  // Then
+  expect(failure).toBeInstanceOf(LandofileValidationError);
+  expect(failure).toMatchObject({
+    file: source.sourcePath,
+    message,
+    remediation: suggestion,
+    issues: [
+      {
+        path,
+        rule: "unsupported-secret-reference",
+        message,
+        suggestion,
+        source: { file: source.sourcePath, layer: "base", path },
+      },
+    ],
+  });
+});
+
+test.each(["prefix-${secret:TEST}", "${HOME}-${secret:TOKEN}"])(
+  "rejects an unauthorized secret with secret-specific guidance, even beside a shell parameter: %s",
+  async (command) => {
+    // Given
+    const value = { services: { web: { command } } };
+    // When
+    const failure = await Effect.runPromise(resolve(value).pipe(Effect.flip));
+    // Then
+    expect(failure).toMatchObject({
+      _tag: "LandofileValidationError",
+      message: "Secret references are not supported at services.web.command.",
+      remediation:
+        "Use ${secret:...} only in a service environment value, a database or Redis password, or a tooling or event env value. Write $${secret:...} for literal text.",
+      issues: [{ path: ["services", "web", "command"], rule: "unsupported-secret-reference" }],
+    });
+  },
+);
+
+test("decodes an escaped build argument secret as literal text through the full loader", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-build-arg-escape-"));
+  try {
+    const file = join(root, ".lando.yml");
+    await writeFile(
+      file,
+      'name: literal\nservices:\n  app:\n    type: node\n    build:\n      context: .\n      args:\n        TOKEN: "$${secret:TOKEN}"\n',
+    );
+    // When
+    const loaded = await Effect.runPromise(loadLandofileLayers(root, file));
+    // Then
+    expect(loaded).toMatchObject({ services: { app: { build: { args: { TOKEN: "${secret:TOKEN}" } } } } });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps loaded secret-shaped text in a build argument as literal data", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-build-arg-loaded-"));
+  try {
+    const file = join(root, ".lando.yml");
+    await writeFile(join(root, "token.txt"), "${secret:TOKEN}");
+    await writeFile(
+      file,
+      "name: loaded\nservices:\n  app:\n    type: node\n    build:\n      context: .\n      args:\n        TOKEN: \"{{ load('./token.txt') }}\"\n",
+    );
+    // When
+    const loaded = await Effect.runPromise(loadLandofileLayers(root, file));
+    // Then
+    expect(loaded).toMatchObject({ services: { app: { build: { args: { TOKEN: "${secret:TOKEN}" } } } } });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test.each([

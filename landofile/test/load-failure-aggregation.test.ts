@@ -75,6 +75,30 @@ test.each([
   ).toEqual([["x-a"], ["x-b"]]);
 });
 
+test("lint reports build argument secrets as load failures with safe runtime guidance", async () => {
+  // Given
+  const file = join(root, ".lando.yml");
+  const path = ["services", "app", "build", "args", "TOKEN"];
+  await writeFile(
+    file,
+    'name: aggregate\nservices:\n  app:\n    type: node\n    build:\n      context: .\n      args:\n        TOKEN: "${secret:TOKEN}"\n',
+  );
+  // When
+  const snapshot = await Effect.runPromise(lintLandofileSnapshot({ cwd: root }, inputs()));
+  // Then
+  expect(snapshot.result.valid).toBe(false);
+  expect(snapshot.result.violations.filter((issue) => issue.rule === "landofile.load")).toMatchObject([
+    {
+      path,
+      message:
+        "Secret references are not supported at services.app.build.args.TOKEN. Build arguments can be recorded in image history.",
+      suggestion:
+        "Lando never resolves secrets into build arguments. If the service needs the secret at runtime, put the ${secret:...} reference in a service environment value. Write $${secret:...} for literal text.",
+      source: { file, layer: "canonical", path },
+    },
+  ]);
+});
+
 test("blocks acquisition after an eager include-source failure", async () => {
   await writeFile(
     join(root, ".lando.yml"),

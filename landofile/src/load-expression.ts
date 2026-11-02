@@ -25,6 +25,7 @@ import { LandofileFileSession } from "./load-expression-file.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import {
   type ResolveLandofileLoadExpressionsOptions,
+  buildArgumentPath,
   callDepth,
   containsContextPath,
   containsLoad,
@@ -59,25 +60,30 @@ export const resolveLandofileLoadExpressions = (
     try: () => {
       const session = new LandofileFileSession(options.source, options.policy);
       const pendingSites: ParsedPendingSite[] = [];
-      const unsupported = (path: ReadonlyArray<string | number>, description: string): never => {
-        const message = `${description} are not supported at ${path.join(".")}.`;
-        const suggestion =
-          "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope.";
+      const reject = (
+        path: ReadonlyArray<string | number>,
+        issue: { readonly message: string; readonly suggestion: string; readonly rule: string },
+      ): never => {
         throw new LandofileValidationError({
           file: options.source.sourcePath,
-          message,
-          remediation: suggestion,
+          message: issue.message,
+          remediation: issue.suggestion,
           issues: [
             {
               path,
-              message,
-              rule: "unsupported-expression",
-              suggestion,
+              ...issue,
               source: { file: options.source.sourcePath, layer: options.source.layer, path },
             },
           ],
         });
       };
+      const unsupported = (path: ReadonlyArray<string | number>, description: string): never =>
+        reject(path, {
+          message: `${description} are not supported at ${path.join(".")}.`,
+          suggestion:
+            "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope.",
+          rule: "unsupported-expression",
+        });
       const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
         try {
           return visitValue(value, path);
@@ -138,12 +144,19 @@ export const resolveLandofileLoadExpressions = (
               ],
             });
           if (
-            parsed.success.segments.some(
-              (segment) =>
-                segment.kind === "ShellParamSegment" ||
-                (segment.kind === "SecretRefSegment" && !eligibleBindingPath(path)),
-            )
-          )
+            parsed.success.segments.some((segment) => segment.kind === "SecretRefSegment") &&
+            !eligibleBindingPath(path)
+          ) {
+            const buildArgument = buildArgumentPath(path);
+            return reject(path, {
+              message: `Secret references are not supported at ${path.join(".")}.${buildArgument ? " Build arguments can be recorded in image history." : ""}`,
+              suggestion: buildArgument
+                ? "Lando never resolves secrets into build arguments. If the service needs the secret at runtime, put the ${secret:...} reference in a service environment value. Write $${secret:...} for literal text."
+                : "Use ${secret:...} only in a service environment value, a database or Redis password, or a tooling or event env value. Write $${secret:...} for literal text.",
+              rule: "unsupported-secret-reference",
+            });
+          }
+          if (parsed.success.segments.some((segment) => segment.kind === "ShellParamSegment"))
             return unsupported(path, "Configuration expressions");
           const secretMembers = expressionScopeMembers(parsed.success, "secrets");
           const scopes =
