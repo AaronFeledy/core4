@@ -13,7 +13,7 @@ const evaluate = (source: string, supplied: ExpressionContext = context, options
   const parsed = parseExpressionEither(source, { filePath: "/app/.lando.yml" });
   if (Result.isFailure(parsed)) throw parsed.failure;
   return evaluateTemplateEither(parsed.success, supplied, {
-    path: "services.web.environment.URL",
+    path: ["services", "web", "environment", "URL"],
     filePath: "/app/.lando.yml",
     expression: source,
     ...options,
@@ -84,7 +84,7 @@ test.each([
   if (Result.isSuccess(result)) throw new Error("Expected binding failure");
   expect(result.failure).toMatchObject({
     _tag: "ConfigExpressionError",
-    path: "services.web.environment.URL",
+    path: ["services", "web", "environment", "URL"],
     filePath: "/app/.lando.yml",
   });
 });

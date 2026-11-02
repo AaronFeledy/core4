@@ -31,7 +31,7 @@ export interface EvaluationBudget {
 }
 
 export interface EvaluateExpressionOptions {
-  readonly path?: string | undefined;
+  readonly path?: ConfigExpressionError["path"] | undefined;
   readonly expression?: string | undefined;
   readonly filePath?: string | undefined;
   readonly helperOverrides?: Readonly<Record<string, ExpressionHelperOverride>> | undefined;
