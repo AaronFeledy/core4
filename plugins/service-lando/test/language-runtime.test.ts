@@ -164,6 +164,8 @@ for (const fixture of fixtures) {
     frameworks: ["none"],
     presets: {
       none: {
+        daemon: fixture.displayName,
+        variables: ["PORT"],
         port: fixture.resolution.features[0].config.port,
         webroot: "/app",
         env: new Map(),

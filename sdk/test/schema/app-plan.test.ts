@@ -115,6 +115,32 @@ describe("AppRef", () => {
 });
 
 describe("ServicePlan", () => {
+  test("preserves listener authority through service and executable app plan codecs", () => {
+    // Given service-type advice in a current executable plan.
+    const listenerAuthority = {
+      owner: "launcher",
+      daemon: "mongod",
+      port: 27018,
+      setting: "--port 27018",
+    } as const;
+    const service = Schema.decodeUnknownSync(ServicePlan)({ ...servicePlanFixture, listenerAuthority });
+    const plan = Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+      ...appPlanFixture,
+      valueModel: 1,
+      services: { web: Schema.encodeSync(ServicePlan)(service) },
+    });
+
+    // When both schemas encode and decode their wire representation.
+    const serviceRoundTrip = Schema.decodeUnknownSync(ServicePlan)(Schema.encodeSync(ServicePlan)(service));
+    const planRoundTrip = Schema.decodeUnknownSync(CurrentExecutableAppPlan)(
+      Schema.encodeSync(AppPlan)(plan),
+    );
+
+    // Then the exact advice survives both boundaries.
+    expect(serviceRoundTrip.listenerAuthority).toEqual(listenerAuthority);
+    expect(planRoundTrip.services[ServiceName.make("web")]?.listenerAuthority).toEqual(listenerAuthority);
+  });
+
   test.each(["redis-password", { _tag: "SecretRef", reference: "REDIS_PASSWORD" }])(
     "rejects coexisting SQL connection and non-SQL credentials with password %j",
     (password) => {

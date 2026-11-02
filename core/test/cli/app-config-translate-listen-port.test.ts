@@ -65,14 +65,12 @@ test.each([
         [root],
       );
       // Then
-      if (variable !== "PORT")
-        expect(translated.diagnostics).toContainEqual(
-          expect.objectContaining({
-            kind: "needs-review",
-            keyPath: ["services", "server", "environment", variable],
-          }),
-        );
-      else expect(translated.diagnostics).toEqual([]);
+      expect(translated.diagnostics).toContainEqual(
+        expect.objectContaining({
+          kind: "needs-review",
+          keyPath: ["services", "server", "environment", variable],
+        }),
+      );
       expect(lint.valid).toBe(true);
       expect(lint.violations).toEqual([]);
       const server = plan.services[ServiceName.make("server")];

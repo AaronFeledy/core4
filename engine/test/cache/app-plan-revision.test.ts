@@ -221,7 +221,7 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(46n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(47n);
   expect(key).not.toBe("52ac114b46244edd3741469e45ce9009aa2a3c67f99bc8c2983104e3f399b737");
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });

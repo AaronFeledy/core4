@@ -107,7 +107,11 @@ test("failed dependency observes its own TCP namespace alongside its logs", asyn
     ...original,
     services: {
       ...original.services,
-      [dbName]: { ...db, endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }] },
+      [dbName]: {
+        ...db,
+        endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+        listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
+      },
     },
   } satisfies AppPlan;
   const fake = makePodmanApi(1);
@@ -151,6 +155,11 @@ test("failed dependency observes its own TCP namespace alongside its logs", asyn
     listener: { service: "db", port: 6380, state: "not-listening" },
   });
   expect(observed).toEqual(["/containers/lando-bring-up-order-app-db/exec"]);
+  if (error._tag !== "ServiceStartError") throw error;
+  expect(error.remediation.split("\n").slice(0, 2)).toEqual([
+    "Make db listen on 6380, or set `port: 6379` if that is the port it uses.",
+    "Pass `--port 6380` to Redis in your command or entrypoint; Lando sets the listener from port: only in its own launcher.",
+  ]);
 });
 
 const makePodmanApi = (

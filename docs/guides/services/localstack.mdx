@@ -16,9 +16,11 @@ services:
     type: localstack
 ```
 
-LocalStack serves its AWS-compatible APIs through the gateway on port `4566`.
-Point your SDK or application at `http://aws:4566` from another service in the
-app.
+LocalStack serves its AWS-compatible APIs through the gateway on port `4566` by
+default. Set `port:` to choose the planned listener. Lando never derives that
+planned port from `GATEWAY_LISTEN`; the environment only names binds that must
+include it. Point your SDK or application at `http://aws:4566`, or at the
+service name with your authored `port:`, from another service in the app.
 
 <Guide>
   <Scenario id="resolves-localstack-service" render>
@@ -35,6 +37,141 @@ app.
     </Step>
   </Scenario>
 
+## Change the gateway port
+
+Set `port:` to move the primary gateway listener, healthcheck, and endpoint
+together:
+
+```yaml
+services:
+  aws:
+    type: localstack
+    port: 14566
+```
+
+Without an authored `GATEWAY_LISTEN`, Lando sets `GATEWAY_LISTEN=0.0.0.0:14566`.
+When you author `GATEWAY_LISTEN`, Lando preserves your string verbatim. Use one or more
+comma-separated wildcard binds (`:port`, `0.0.0.0:port`, or `[::]:port`). Exactly
+one bind must use the planned port. Extra wildcard binds become additional
+internal endpoints named `gateway-<port>`. Loopback hosts, bare port numbers,
+duplicates, malformed values, and non-wildcard addresses fail planning at
+`services.<name>.environment.GATEWAY_LISTEN`.
+
+```yaml
+services:
+  aws:
+    type: localstack
+    port: 14566
+    environment:
+      GATEWAY_LISTEN: " [::]:14566, :4566 "
+```
+
+Validate with `lando app:cache:refresh --format=json` before start.
+
+  <Scenario id="gateway-extra-listener" render={false} reason="Preserve authored GATEWAY_LISTEN and advertise extra wildcard binds">
+    <Step name="plan-extra">
+      <UseFixture name="localstack-gateway-extra" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "GATEWAY_LISTEN" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*14566" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="reject-gateway-loopback" render={false} reason="Reject non-wildcard GATEWAY_LISTEN before provider action">
+    <Step name="reject-loopback">
+      <UseFixture name="localstack-gateway-reject-loopback" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"aws\",\\s*\"environment\",\\s*\"GATEWAY_LISTEN\"\\s*\\]" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="reject-gateway-duplicate" render={false} reason="Reject duplicate GATEWAY_LISTEN ports before provider action">
+    <Step name="reject-duplicate">
+      <UseFixture name="localstack-gateway-reject-duplicate" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "duplicate or conflicting" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="reject-gateway-missing-planned" render={false} reason="Reject GATEWAY_LISTEN that omits the planned port">
+    <Step name="reject-missing">
+      <UseFixture name="localstack-gateway-reject-missing-planned" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "14566" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+## Keep gateway ports separate from DNS
+
+LocalStack also runs a DNS server on TCP and UDP port `53`. Neither `port:`
+nor an extra `GATEWAY_LISTEN` bind can use that port while DNS is enabled.
+Planning rejects a primary collision at `services.<name>.port` and an extra
+gateway collision at `services.<name>.environment.GATEWAY_LISTEN`.
+
+To use `53` for the gateway, move DNS with `DNS_PORT`:
+
+```yaml
+services:
+  aws:
+    type: localstack
+    port: 53
+    environment:
+      DNS_PORT: "1053"
+```
+
+The gateway now uses `53` and DNS uses `1053`; no gateway bind may use `1053`.
+`DNS_PORT` must be one integer from `1` to `65535`, even when DNS is disabled.
+
+Alternatively, set `environment.DNS_ADDRESS: "0"` to disable the DNS server
+and release its port. Disabling DNS also removes LocalStack's DNS-based name
+resolution, so use it only when your application does not need that behavior.
+Other `DNS_ADDRESS` values do not release the reserved port.
+
+Validate either change with `lando app:cache:refresh --format=json` before start.
+
+  <Scenario id="reject-dns-primary" render={false} reason="Reject gateway on the default DNS listener">
+    <Step name="reject-dns">
+      <UseFixture name="localstack-dns-collision" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "DNS server" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="reject-dns-extra-gateway" render={false} reason="Reject an extra gateway on the DNS listener">
+    <Step name="reject-extra">
+      <UseFixture name="localstack-dns-extra-collision" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "GATEWAY_LISTEN" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="move-dns-port" render={false} reason="Release the default DNS port for the primary gateway">
+    <Step name="plan-moved-dns">
+      <UseFixture name="localstack-dns-moved" />
+      <Run command="lando app:cache:refresh --format=json" />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="disable-dns" render={false} reason="Release the DNS port by explicitly disabling its server">
+    <Step name="plan-disabled-dns">
+      <UseFixture name="localstack-dns-disabled" />
+      <Run command="lando app:cache:refresh --format=json" />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
 ## Keep local AWS data
 
 Lando mounts persistent storage at `/var/lib/localstack`. Queues, buckets, and
@@ -42,8 +179,9 @@ other supported state survive normal stop and start cycles, so you can reuse loc
 
 ## Check readiness
 
-The service checks `http://localhost:4566/_localstack/health` inside the
-container. Lando waits for that healthcheck before treating LocalStack as ready.
+The service checks `/_localstack/health` on the planned gateway port inside the
+container, using `4566` when `port:` is omitted. Lando waits for that healthcheck
+before treating LocalStack as ready.
 If the service stays unhealthy, inspect its logs before debugging your app.
 
 ```sh

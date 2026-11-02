@@ -266,7 +266,7 @@ test("fails with ConfigExpressionError when a fresh task reads a service the pla
   // Then the tagged planner error names the tooling path
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { _tag: "ConfigExpressionError", path: "tooling.custom.cmd" },
+    failure: { _tag: "ConfigExpressionError", path: ["tooling", "custom", "cmd"] },
   });
   expect(f.calls).toHaveLength(0);
 });
@@ -279,7 +279,7 @@ test("fails with ConfigExpressionError when a fresh task references an unknown a
   // Then the tagged planner error names the tooling path
   expect(result).toMatchObject({
     _tag: "Failure",
-    failure: { _tag: "ConfigExpressionError", path: "tooling.custom.cmd" },
+    failure: { _tag: "ConfigExpressionError", path: ["tooling", "custom", "cmd"] },
   });
   expect(f.calls).toHaveLength(0);
 });

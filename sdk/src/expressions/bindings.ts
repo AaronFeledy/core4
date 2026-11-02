@@ -68,14 +68,14 @@ export const encodeEnvironmentComponent = (value: EnvironmentValue): Environment
 export const bindingExpressionError = (
   message: string,
   site: {
-    readonly path?: string | undefined;
+    readonly path?: ConfigExpressionError["path"] | undefined;
     readonly filePath?: string | undefined;
     readonly expression?: string | undefined;
   },
 ): ConfigExpressionError =>
   new ConfigExpressionError({
     message,
-    path: site.path ?? "",
+    path: site.path ?? [],
     filePath: site.filePath ?? "",
     expression: site.expression ?? "",
     remediation:

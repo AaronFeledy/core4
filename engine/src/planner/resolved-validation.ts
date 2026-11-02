@@ -37,7 +37,9 @@ export const validateResolvedLandofile = (input: {
   const routes = new Map<string, ReadonlyArray<NormalizedRoute> | undefined>();
   const isBlocked = (path: ValidationIssuePath) => {
     const key = deferredSiteKey(path);
-    return Iterable.some(blocked, (site) => site === key || site.startsWith(`${key}.`));
+    // Keys are JSON arrays, so a descendant site repeats this key's elements followed by a comma.
+    const descendant = `${key.slice(0, -1)},`;
+    return Iterable.some(blocked, (site) => path.length === 0 || site === key || site.startsWith(descendant));
   };
   const checkRoutes = (entries: readonly RouteInput[] | undefined, prefix: ValidationIssuePath) => {
     const normalized: NormalizedRoute[] = [];

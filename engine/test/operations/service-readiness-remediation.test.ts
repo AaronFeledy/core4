@@ -14,6 +14,7 @@ test.each(["user", "global", "scratch"])("%s readiness includes observed listene
   const service = {
     ...web,
     endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+    listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
   } as const;
   const plannedApp = {
     ...plan,
@@ -50,6 +51,10 @@ test.each(["user", "global", "scratch"])("%s readiness includes observed listene
   });
   expect(error.lastStatus).toBe("missing readiness tool");
   expect(error.message).toContain("no TCP listener observed on 6380; observed ports: 6379");
+  expect(error.remediation.split("\n").slice(0, 2)).toEqual([
+    "Make web listen on 6380, or set `port: 6379` if that is the port it uses.",
+    "Pass `--port 6380` to Redis in your command or entrypoint; Lando sets the listener from port: only in its own launcher.",
+  ]);
   expect(error.remediation).toContain(
     kind === "global"
       ? "lando global:logs"

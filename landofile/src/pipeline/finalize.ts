@@ -1,4 +1,3 @@
-import { LandofileParseError } from "@lando/sdk/errors";
 import { isPlainRecord, mergeValuesWithOrigins, valueOriginAt, withValueOrigins } from "@lando/sdk/landofile";
 import { AbsolutePath, LandofileShape, LoadScopedLandofile, type ParsedPendingSite } from "@lando/sdk/schema";
 import type { Logger } from "@lando/sdk/services";
@@ -11,11 +10,14 @@ import { decodedPendingSites } from "../decoded-sites.ts";
 import type { LandofileRelaxedRead } from "../include-context.ts";
 import { includeAcquisitionView } from "../include-layer-overlays.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "../include-provenance.ts";
+import { prepareIncludeAcquisition } from "../load-acquisition.ts";
 import type { LandofileLoadPolicy } from "../load-expression-file.ts";
 import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "../load-expression-provenance.ts";
+import { type LoadFailureRecorder, createLoadFailureRecorder, finishLoadStage } from "../load-failures.ts";
+import { loadVersionConstraints } from "../load-version-constraints.ts";
 import { applyToolingIncludeDefaults } from "../tooling-include-defaults.ts";
 import {
   getInternalToolingTasks,
@@ -25,13 +27,9 @@ import {
 import { resolveToolingIncludes } from "../tooling-includes.ts";
 import { rejectUnsupportedToolingFeatures, scanToolingForUnsupported } from "../tooling-unsupported.ts";
 import { validateLandofile, validationErrorFromCause } from "../validation.ts";
-import {
-  type VersionConstraintEntry,
-  getVersionConstraintEntries,
-  isValidSemverRange,
-  rememberVersionConstraintEntries,
-} from "../version-constraint.ts";
+import { rememberVersionConstraintEntries } from "../version-constraint.ts";
 import { type LandofileFinalizeOverrides, applyFinalizeOverrides } from "./finalize-overrides.ts";
+import { finishClassifiedLoadStage } from "./load-stage.ts";
 import {
   type LandofileLoadScope,
   buildLandofileLoadScope,
@@ -39,13 +37,15 @@ import {
 } from "./materialize.ts";
 import { getOrigins, rememberOrigins } from "./origins.ts";
 import type { AuthoredOrigin } from "./prepare.ts";
-import { getSourceDocuments, rememberSourceDocuments } from "./source-table.ts";
+import { type SourceDocument, getSourceDocuments, rememberSourceDocuments } from "./source-table.ts";
 
 export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   file: string,
   authoredDocument: Record<string, unknown>,
   context: {
+    readonly recorder?: LoadFailureRecorder | undefined;
     readonly appRoot: string;
+    readonly rootDocuments?: readonly SourceDocument[];
     readonly overrides?: LandofileFinalizeOverrides | undefined;
     readonly pendingSites?: ParsedPendingSite[] | undefined;
     readonly env?: Readonly<Record<string, string>> | undefined;
@@ -58,10 +58,12 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   // Replacement origins on overridden keys make every origin-filtered site consumer drop the
   // displaced expressions; shadowed `lando:` sites stay in scope for constraint accumulation.
   const document = applyFinalizeOverrides(authoredDocument, context.overrides);
-  const scope =
-    context.scope ??
-    (yield* buildLandofileLoadScope([{ file, value: document }], context.env, context.pendingSites));
-  const constraintScope = { ...scope, pendingSites: [...(scope.pendingSites ?? [])] };
+  const recorder = context.recorder ?? context.scope?.recorder ?? createLoadFailureRecorder();
+  const scope = {
+    ...(context.scope ??
+      (yield* buildLandofileLoadScope([{ file, value: document }], context.env, context.pendingSites))),
+    recorder,
+  };
   const composed = yield* Effect.try({
     try: () =>
       composedCarrier({
@@ -70,8 +72,16 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
         context: captureCompilationContext(context.appRoot, scope.env),
       }),
     catch: (cause) => validationErrorFromCause(file, document, cause),
+  }).pipe(
+    Effect.catch((error) => {
+      recorder.record(error);
+      return Effect.succeed({ document });
+    }),
+  );
+  const materialized = yield* materializeLandofileLayer(file, composed.document, {
+    ...scope,
+    siteFilter: (site) => site.path[0] !== "lando",
   });
-  const materialized = yield* materializeLandofileLayer(file, composed.document, scope);
   if (!isPlainRecord(materialized))
     return yield* Effect.fail(validationErrorFromCause(file, materialized, undefined));
   // A whole-map expression can introduce service ids after the authored map was filtered.
@@ -79,10 +89,19 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     context.overrides?.excludedServices === undefined
       ? materialized
       : applyFinalizeOverrides(materialized, { excludedServices: context.overrides.excludedServices });
-  const acquisition = yield* Effect.try({
-    try: () => includeAcquisitionView(value),
-    catch: (cause) => validationErrorFromCause(file, value, cause),
+  const acquisitionDocument = prepareIncludeAcquisition(value, {
+    recorder,
+    source: { file, layer: "canonical", path: [] },
   });
+  const acquisition = yield* Effect.try({
+    try: () => includeAcquisitionView(acquisitionDocument),
+    catch: (cause) => validationErrorFromCause(file, value, cause),
+  }).pipe(
+    Effect.catch((error) => {
+      recorder.record(error);
+      return Effect.succeed(includeAcquisitionView({}));
+    }),
+  );
   const origin: AuthoredOrigin = { file, layer: "canonical", path: [] };
   const ownOrigins = getOrigins(value) ?? withValueOrigins(value, (path) => ({ ...origin, path })).origins;
   const logger = context.logger;
@@ -100,13 +119,14 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
             })
             .pipe(Effect.catch(() => Effect.void)));
   const tooling = yield* resolveToolingIncludes({
+    recorder,
     landofile: acquisition,
     loadScope: scope,
     appRoot: context.appRoot,
     sourceRoot: context.appRoot,
     ...(context.loadPolicy === undefined ? {} : { loadPolicy: context.loadPolicy }),
     ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
-    origins: ownOrigins,
+    origins: getOrigins(acquisitionDocument) ?? ownOrigins,
   });
   rememberSourceDocuments(document, [...getSourceDocuments(document), ...tooling.sources]);
   rememberSourceDocuments(value, getSourceDocuments(document));
@@ -124,7 +144,7 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
   );
   const tasks = isPlainRecord(merged.value) ? merged.value.tooling : undefined;
   const { include: _include, includes: _includes, toolingIncludes: _toolingIncludes, ...rest } = value;
-  const assembled = copyLandofileProvenance(value, {
+  const assembled: Record<string, unknown> = copyLandofileProvenance(value, {
     ...rest,
     ...(isPlainRecord(tasks) && Object.keys(tasks).length > 0 ? { tooling: tasks } : {}),
   });
@@ -150,6 +170,16 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     ]),
   );
   const effectiveOrigins = getOrigins(assembled) ?? ownOrigins;
+  const constraints = yield* loadVersionConstraints(document, file, scope);
+  for (const entry of constraints)
+    if (valueOriginAt(ownOrigins, ["lando"]).source.file === entry.source) assembled.lando = entry.range;
+  yield* context.rootDocuments === undefined
+    ? finishLoadStage(file, recorder)
+    : finishClassifiedLoadStage(file, recorder, {
+        appRoot: context.appRoot,
+        documents: context.rootDocuments,
+      });
+  yield* Effect.forEach(recorder.effectiveChecks, (check) => check);
   const unsupported = scanToolingForUnsupported(assembled);
   const unsupportedPath =
     unsupported === undefined
@@ -177,32 +207,6 @@ export const finalizeLandofile = Effect.fn("Landofile.finalize")(function* (
     return yield* Effect.fail(
       composeKeyRejectedError({ source: valueOriginAt(effectiveOrigins, path).source.file, match: compose }),
     );
-  }
-  const constraints: VersionConstraintEntry[] = [];
-  for (const entry of getVersionConstraintEntries(document, file)) {
-    const authored = { lando: entry.range };
-    const origins = withValueOrigins(authored, (path) => ({
-      file: entry.source,
-      layer: entry.layer,
-      path,
-    })).origins;
-    const resolved = yield* materializeLandofileLayer(
-      entry.source,
-      rememberOrigins(authored, origins),
-      constraintScope,
-    );
-    const range = isPlainRecord(resolved) ? resolved.lando : undefined;
-    if (typeof range !== "string" || !isValidSemverRange(range))
-      return yield* Effect.fail(
-        new LandofileParseError({
-          message: `Landofile "lando:" is not a valid semver range: "${range}". Use npm semver syntax such as ">=4.1 <5", "^4", or "4.x".`,
-          filePath: entry.source,
-          line: undefined,
-          column: undefined,
-          remediation: `Edit the lando: field in ${entry.source} to a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".`,
-        }),
-      );
-    constraints.push({ ...entry, range });
   }
   rememberVersionConstraintEntries(assembled, constraints);
   const validated = yield* validateLandofile(file, assembled);

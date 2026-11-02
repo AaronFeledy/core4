@@ -33,6 +33,11 @@ const derivedTypeScriptPolicies = [
     trackingPath: "docs/reference/service-types.mdx",
   },
   {
+    ids: ["service-listener-reference"],
+    ignoreProbe: "docs/reference/service-listeners.mdx",
+    trackingPath: "docs/reference/service-listeners.mdx",
+  },
+  {
     ids: ["command-registry-manifest", "setup-plugin-flags"],
     ignoreProbe: "core/src/cli/generated/command-ids.ts",
     trackingPath: "core/src/cli/generated",

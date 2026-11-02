@@ -1266,10 +1266,10 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun test core/test/build/host-execution-compiled.test.ts
 
-      - name: Verify compiled renderer output
+      - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload darwin-arm64 binary
         if: always()
@@ -1349,10 +1349,10 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun test core/test/build/host-execution-compiled.test.ts
 
-      - name: Verify compiled renderer output
+      - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -1432,10 +1432,10 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun test core/test/build/host-execution-compiled.test.ts
 
-      - name: Verify compiled renderer output
+      - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload linux-arm64 binary
         if: always()
@@ -1515,10 +1515,10 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
         run: bun test core/test/build/host-execution-compiled.test.ts
 
-      - name: Verify compiled renderer output
+      - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando
-        run: bun test core/test/build/renderer-output-compiled.test.ts
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload linux-x64 binary
         if: always()
@@ -1595,10 +1595,10 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
         run: bun test core/test/build/host-execution-compiled.test.ts
 
-      - name: Verify compiled renderer output
+      - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-x64.exe
-        run: bun test core/test/build/renderer-output-compiled.test.ts
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload windows-x64 binary
         if: always()
@@ -1675,10 +1675,10 @@ jobs:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
         run: bun test core/test/build/host-execution-compiled.test.ts
 
-      - name: Verify compiled renderer output
+      - name: Verify compiled renderer output and native stdio flags
         env:
           LANDO_TEST_COMPILED_CLI: ./dist/lando-windows-arm64.exe
-        run: bun test core/test/build/renderer-output-compiled.test.ts
+        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts
 
       - name: Upload windows-arm64 binary
         if: always()

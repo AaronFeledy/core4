@@ -4,7 +4,12 @@ import {
   containerDestinationRefusalMessage,
   parseContainerDestination,
 } from "@lando/sdk/schema";
-import { type DraftServicePlan, deterministicMetadata, sortRecord } from "./draft.ts";
+import {
+  type DraftServicePlan,
+  deterministicMetadata,
+  pickDraftOptionalServicePlanFields,
+  sortRecord,
+} from "./draft.ts";
 
 const destinationError = (target: string, reason: "not-absolute" | "root"): ServiceFeatureError =>
   new ServiceFeatureError({
@@ -63,29 +68,19 @@ export const finalizeDraft = (draft: DraftServicePlan): ServicePlan | ServiceFea
   return {
     name: draft.name,
     type: draft.type,
-    ...(draft.serviceTypeId === undefined ? {} : { serviceTypeId: draft.serviceTypeId }),
     provider: draft.provider,
     primary: draft.primary,
-    ...(draft.artifact === undefined ? {} : { artifact: draft.artifact }),
-    ...(draft.command === undefined ? {} : { command: draft.command }),
-    ...(draft.entrypoint === undefined ? {} : { entrypoint: draft.entrypoint }),
-    ...(draft.init === undefined ? {} : { init: draft.init }),
+    ...pickDraftOptionalServicePlanFields(draft),
     environment: sortRecord(draft.environment),
     ...(draft.connection !== undefined
       ? { connection: draft.connection }
       : draft.nonSqlCreds === undefined
         ? {}
         : { nonSqlCreds: draft.nonSqlCreds }),
-    ...(draft.user === undefined ? {} : { user: draft.user }),
-    ...(draft.workingDirectory === undefined ? {} : { workingDirectory: draft.workingDirectory }),
     mounts,
     endpoints: draft.endpoints.map((endpoint) => ({ ...endpoint })),
     routes: [],
     dependsOn: draft.dependsOn.map((dependency) => ({ ...dependency })),
-    ...(draft.healthcheck === undefined ? {} : { healthcheck: draft.healthcheck }),
-    ...(draft.readiness === undefined ? {} : { readiness: draft.readiness }),
-    ...(draft.readinessSource === undefined ? {} : { readinessSource: draft.readinessSource }),
-    ...(draft.certs === undefined ? {} : { certs: draft.certs }),
     hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
     metadata: deterministicMetadata,
     extensions: { ...coreExtension, ...(draft.extensions ?? {}) },

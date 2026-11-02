@@ -1,4 +1,5 @@
 import type { InfoAppResult, InfoAppService, InfoLogSource } from "@lando/sdk/app";
+import type { ListenerAuthority } from "@lando/sdk/schema";
 
 import { linkKnownHttpUrls } from "@lando/renderer/console-layout";
 import {
@@ -48,6 +49,21 @@ const credsText = (creds: NonNullable<InfoAppService["creds"]>): string => {
 
 const detailList = new Intl.ListFormat("en", { type: "conjunction" });
 
+const listenerText = (authority: ListenerAuthority): string => {
+  switch (authority.owner) {
+    case "application":
+      return `app-owned · sets ${authority.variables.map((variable) => `\`${variable}\``).join(", ")}`;
+    case "launcher":
+      return `your command must pass \`${authority.setting}\``;
+    case "image":
+      return `your image must set \`${authority.setting}\`${authority.file === undefined ? "" : ` in ${authority.file}`}`;
+    default: {
+      const unreachable: never = authority;
+      return unreachable;
+    }
+  }
+};
+
 const planMetadataFields = (service: InfoAppService): NonNullable<SummaryRow["fields"]> =>
   [
     ...(service.artifact === undefined
@@ -62,6 +78,9 @@ const planMetadataFields = (service: InfoAppService): NonNullable<SummaryRow["fi
           },
         ]),
     ...(service.user === undefined ? [] : [{ label: "user", value: service.user }]),
+    ...(service.listenerAuthority === undefined
+      ? []
+      : [{ label: "listener", value: listenerText(service.listenerAuthority) }]),
   ].map((field) => ({ ...field, value: escapeDiagnosticText(field.value) }));
 
 /** One pointer to the JSON contract for the details the summary leaves out. */

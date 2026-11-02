@@ -108,7 +108,7 @@ test("attributes an unresolved tooling flag expression to its authored fragment"
   expect(error).toMatchObject({
     _tag: "ConfigExpressionError",
     filePath,
-    path: "tooling.build.flags.debug.required",
+    path: ["tooling", "build", "flags", "debug", "required"],
     expression: "{{ recipe.missing }}",
   });
 });

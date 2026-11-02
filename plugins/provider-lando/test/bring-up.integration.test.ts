@@ -662,7 +662,7 @@ describe("provider-lando bringUp", () => {
       (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
     );
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
-    expect(nodeCreateBody?.Cmd).toEqual(["sh", "-lc", command]);
+    expect(nodeCreateBody?.Cmd).toEqual(["sh", "-c", command]);
   });
 
   test("retains already-started services when cancellation is observed", async () => {

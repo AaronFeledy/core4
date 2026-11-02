@@ -43,6 +43,7 @@ import type {
   LandofileFormConflictError,
   LandofileImportRefMisuseError,
   LandofileIncludeError,
+  LandofileLoadError,
   LandofileLoadExpressionError,
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
@@ -145,6 +146,7 @@ type LegacyDiscoverChannel =
   | LandofileTimeoutError
   | LandofileFormConflictError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileImportRefMisuseError
   | LandofileLoadLimitError
@@ -179,6 +181,7 @@ type LegacyStartAppError =
   | LandofileValidationError
   | RouteInputError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
@@ -236,6 +239,7 @@ type LegacyStopAppError =
   | LandofileValidationError
   | RouteInputError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | NotImplementedError
@@ -268,6 +272,7 @@ type LegacyInfoAppError =
   | LandofileValidationError
   | RouteInputError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
@@ -302,6 +307,7 @@ type LegacyExecAppError =
   | LandofileValidationError
   | RouteInputError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
@@ -338,6 +344,7 @@ type LegacyToolingError =
   | LandofileValidationError
   | RouteInputError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLoadExpressionError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
@@ -369,6 +376,7 @@ type LegacyLogsAppError =
   | LandofileValidationError
   | RouteInputError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | NotImplementedError

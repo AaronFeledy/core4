@@ -13,6 +13,7 @@ import {
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
 import { resolveMailListeners } from "./_mail-listeners.ts";
+export { MAILPIT_LISTENER } from "./_mail-listeners.ts";
 
 import { MAILPIT_IMAGE } from "../mailpit-constants.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";

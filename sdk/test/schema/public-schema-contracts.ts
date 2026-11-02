@@ -167,6 +167,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   AppRemoteMutationResult: APP_RESULTS_CONTRACT_TEST_FILE,
   ShareStopAppResult: APP_RESULTS_CONTRACT_TEST_FILE,
   EndpointRef: "sdk/test/schema/endpoint-foundation.test.ts",
+  ListenerAuthority: "sdk/test/schema/listener.test.ts",
   ObservedPublication: "sdk/test/schema/endpoint-foundation.test.ts",
   PublicationObservation: "sdk/test/schema/endpoint-foundation.test.ts",
   EndpointInvariantIssue: "sdk/test/schema/endpoint-foundation.test.ts",

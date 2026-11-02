@@ -54,6 +54,17 @@ const fixture = () => {
   };
 };
 
+test("does not publish a successful remote proposal when an independent local include fails (#1646)", async () => {
+  const { inputs, acquisitions, publications } = fixture();
+  const file = join(root, ".lando.yml");
+  await writeFile(file, `name: aggregate\n${source}  - ./missing.yml\n`);
+  const error = await Effect.runPromise(Effect.flip(loadLandofileLayers(root, file, inputs)));
+  expect(error._tag).toBe("LandofileIncludeError");
+  expect(acquisitions).toEqual(["a".repeat(40)]);
+  expect(publications).toEqual([]);
+  expect(await Bun.file(join(root, ".lando.lock.yml")).exists()).toBe(false);
+});
+
 test.each(["load", "candidate"] as const)(
   "read-only %s never acquires or publishes an unpinned remote include",
   async (entry) => {

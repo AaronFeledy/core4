@@ -36,7 +36,7 @@ Set either one in your shell before `lando start` and the app picks it up on the
 LANDO_NODE_VERSION=22 lando start
 ```
 
-The `web` service also carries the primary route, so `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it.
+The `web` service also carries the primary route, so `lando start` prints the app URL at `https://<app-name>.lndo.site`. `lando info` repeats it. The Node service stays idle until you add a server command. It supplies `PORT` from `port:` (default `3000`); read `process.env.PORT` in your server and bind all interfaces. An unequal or malformed authored `environment.PORT` fails planning, so change `port:` instead.
 
 Open the generated Landofile once the scaffold lands. It is short on purpose: one service, one route, two environment lookups. Copy the pattern when your own app needs config that changes between machines.
 

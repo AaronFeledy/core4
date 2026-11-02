@@ -39,7 +39,9 @@ lando init --recipe astro --name=my-astro --yes \
 | `node` | `lts`, `22` | `lts` |
 | `database` | `none`, `postgres`, `mariadb` | `none` |
 
-The scaffold writes only `.lando.yml`. It declares a `web` service on `node:<node>` listening on port 4321 with `ASTRO_TELEMETRY_DISABLED=1` set, to disable Astro telemetry prompts. Pick `postgres` or `mariadb` and the Landofile adds a `database` service of that type that `web` waits on. Keep `none` and there is no `database` service at all.
+The scaffold writes only `.lando.yml`. It declares a `web` service on `node:<node>` with an HTTP endpoint on port 4321 and `ASTRO_TELEMETRY_DISABLED=1` set, to disable Astro telemetry prompts. Pick `postgres` or `mariadb` and the Landofile adds a `database` service of that type that `web` waits on. Keep `none` and there is no `database` service at all.
+
+Lando derives `PORT` from `port:` (default `4321` here), but Astro's Vite development server still needs explicit host and port configuration. After installing your app, run `lando astro dev --host 0.0.0.0 --port 4321 --allowed-hosts my-astro.lndo.site`, replacing the hostname with the one from `lando info`. Keep the port argument aligned when you change `port:`. An unequal or malformed authored `environment.PORT` fails planning. `lando start` keeps the Node service idle; it does not start Astro.
 
 Two tooling commands ship with the Landofile, both running inside the `web` service:
 

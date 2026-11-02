@@ -6,6 +6,7 @@ import ts from "typescript";
 
 import {
   ConfigError,
+  ConfigExpressionError,
   ConfigTranslateError,
   ManagedFileTransactionError,
   NoProviderInstalledError,
@@ -101,6 +102,12 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
 
 // Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
 describe("SDK public-surface snapshot", () => {
+  test("matches every ServiceFeatureContext member signature", () => {
+    const members = interfaces.get("ServiceFeatureContext")?.members;
+    expect(members?.map((member) => normalizeSignature(member.getText())).sort()).toEqual(
+      publicSurface.serviceFeatureContextMembers.map(normalizeSignature).sort(),
+    );
+  });
   test("matches endpoint declaration signatures and excludes apply-time endpoint mutation", () => {
     for (const [name, signature] of Object.entries(publicSurface.featureEndpointDeclarations)) {
       const member = interfaces
@@ -131,6 +138,7 @@ describe("SDK public-surface snapshot", () => {
       LandofileFormConflictError: true,
       LandofileImportRefMisuseError: true,
       LandofileIncludeError: true,
+      LandofileLoadError: true,
       LandofileLoadLimitError: true,
       LandofileLoadOutsideRootError: true,
       LandofileLockMismatchError: true,
@@ -147,6 +155,11 @@ describe("SDK public-surface snapshot", () => {
   });
   test("matches the structured global config error fields", () => {
     expect(Object.keys(ConfigError.fields).sort()).toEqual(publicSurface.configErrorFields);
+  });
+  test("matches structured expression error provenance", () => {
+    expect(Object.keys(ConfigExpressionError.fields).sort()).toEqual(
+      publicSurface.configExpressionErrorFields,
+    );
   });
   test("matches the structured translation error fields", () => {
     // Given

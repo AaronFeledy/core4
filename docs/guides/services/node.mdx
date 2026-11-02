@@ -68,8 +68,8 @@ The explicit-version example below keeps the version in the Landofile with
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"gulp-cli\":\\s*\"latest\"" } }} />
     </Step>
     <Step name="plan">
-      <Run command="lando app:cache:refresh" />
-      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: node-globals" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -119,9 +119,13 @@ lando npm start
 lando exec app -- node server.js
 ```
 
-The default HTTP port is `3000`. Lando sets `PORT=3000` but keeps the default command idle, so it does not probe a server you have not started.
+## Pass `port:` to your app
 
-Set `port:` when your app listens somewhere else. Lando uses it for the internal endpoint and the default `PORT` value:
+Lando derives `PORT` from `port:` for the internal HTTP endpoint; see the [service listener reference](../../reference/service-listeners.mdx#node) for defaults and variables. Next.js, Nuxt, and Remix read `PORT`, and your own server can read `process.env.PORT`.
+
+Your server must listen on an interface reachable from other containers, such as `0.0.0.0`.
+
+Set `port:` to change both the endpoint and `PORT`:
 
 ```yaml
 services:
@@ -131,7 +135,9 @@ services:
     command: node server.mjs
 ```
 
-An explicit `environment.PORT` still wins for the process environment. The endpoint continues to use `port:`, so keep those values aligned unless your command intentionally translates between them.
+An authored `environment.PORT` must be a literal integer equal to the planned port. A different or malformed value fails planning at `services.app.environment.PORT`, including values inherited from `appEnv` or env files. Set `port:` instead of overriding `PORT`.
+
+Vite does not read `PORT`. For `port: 5173`, use `vite --host 0.0.0.0 --port 5173` in your npm script, or set the equivalent Vite configuration. Keep that port aligned when you change the Landofile.
 
 Node has no default healthcheck or readiness probe, even with an authored `command:`. A command might be a server, an asset watcher, or a queue worker. Add `readiness:` when you want start to wait for application readiness; otherwise Lando checks that the process stays running. Use `healthcheck:` separately for ongoing native monitoring. A command string is enough, and the official `node` image ships `curl`:
 
@@ -148,7 +154,7 @@ services:
 
 `lando stop` sends SIGTERM to the container and waits for the stop grace period before it kills the process. A Node service runs under a small init process by default, so your command does not become PID 1, where the kernel ignores a signal nobody handles. Init forwards the stop signal to the process it started and reaps orphaned children, so an unhandled SIGTERM ends Node right away instead of waiting out the grace period. Handle SIGTERM in your app when it should finish in-flight requests before it exits.
 
-Init forwards the signal only to the process it started. A string `command:` runs under `sh -lc`, and that shell receives the signal instead of your server; `npm start` and similar wrappers decide for themselves whether to pass it on. Write the command as a list, such as `["node", "server.mjs"]`, or `exec` your server from the shell, so the signal reaches it directly. You don't need `tini` or `dumb-init` in the image for this; Lando already runs init in front of your command.
+Init forwards the signal only to the process it started. A string `command:` runs under `sh -c`, and that shell receives the signal instead of your server; `npm start` and similar wrappers decide for themselves whether to pass it on. Write the command as a list, such as `["node", "server.mjs"]`, or `exec` your server from the shell, so the signal reaches it directly. You don't need `tini` or `dumb-init` in the image for this; Lando already runs init in front of your command.
 
 The default follows the service's Lando base, not its image name, so it also applies when you set a custom `image:` on a Node service. Set `init: false` when your image supplies its own init or its process must run as PID 1; that process then owns signal handling and child reaping, and Lando no longer needs an init helper for that service:
 
@@ -173,8 +179,8 @@ After a stop, the `stopped:` line repeats the exit code the runtime reported bes
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"init\":\\s*false" } }} />
     </Step>
     <Step name="plan">
-      <Run command="lando app:cache:refresh" />
-      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: node-init-off" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
@@ -203,11 +209,22 @@ After a stop, the `stopped:` line repeats the exit code the runtime reported bes
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*5173" } }} />
     </Step>
     <Step name="plan">
-      <Run command="lando app:cache:refresh" />
-      <Verify command="lando app:cache:refresh" expect={{ stdout: { regex: "refreshed: node-port" } }} />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejects-mismatched-port" render={false} reason="Real planner rejects PORT that disagrees with the internal endpoint">
+    <Step name="configure-mismatch">
+      <Run runtime="library" code={`yield* Effect.promise(() => Bun.write(join(context.testDir, ".lando.yml"), "name: node-port-mismatch\nservices:\n  app:\n    type: node:22\n    port: 5173\n    environment:\n      PORT: 9000\n"));`} displayCode={`await Bun.write(".lando.yml", "name: node-port-mismatch\nservices:\n  app:\n    type: node:22\n    port: 5173\n    environment:\n      PORT: 9000\n");`} />
+    </Step>
+    <Step name="reject">
+      <Run runtime="library" code={`lastRun = yield* context.runCli("lando app:cache:refresh --format=json");
+expect(lastRun.exitCode).toBe(1);`} displayCode={`lando app:cache:refresh --format=json`} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "services\\.app\\.environment\\.PORT" }} />
     </Step>
   </Scenario>
 

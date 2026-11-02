@@ -139,7 +139,7 @@ test("rejects non-string results in the deferred service-credential pass", () =>
     // When
     const error = await failure(landofile);
     // Then
-    expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: "services.web.database" });
+    expect(error).toMatchObject({ _tag: "ConfigExpressionError", path: ["services", "web", "database"] });
     expect(error.message).toContain("Expected string");
   }));
 
@@ -250,7 +250,7 @@ test("fails at the value path when the referenced service does not exist", () =>
     expect(error).toMatchObject({
       _tag: "ConfigExpressionError",
       expression: "{{ services.nope.creds.user }}",
-      path: "services.web.environment.DATABASE_URL",
+      path: ["services", "web", "environment", "DATABASE_URL"],
       filePath: `${root}/.lando.yml`,
     });
     expect(error.remediation).toContain("context values");
@@ -275,7 +275,7 @@ test("fails when the referenced service publishes no credentials", () =>
       ),
     );
     expect(error).toMatchObject({
-      path: "services.web.environment.CACHE_PASSWORD",
+      path: ["services", "web", "environment", "CACHE_PASSWORD"],
       expression: "{{ services.cache.creds.password }}",
     });
   }));
@@ -297,7 +297,7 @@ test("rejects a service that reads its own credentials and a pair that read each
         root,
       ),
     );
-    expect(self).toMatchObject({ path: "services.database", expression: "services" });
+    expect(self).toMatchObject({ path: ["services", "database"], expression: "services" });
     expect(self.message).toContain("Service connection reference cycle involving database");
 
     const mutual = await failure(
@@ -320,7 +320,7 @@ test("rejects a service that reads its own credentials and a pair that read each
         root,
       ),
     );
-    expect(mutual).toMatchObject({ path: "services.a" });
+    expect(mutual).toMatchObject({ path: ["services", "a"] });
     expect(mutual.message).toContain("Service connection reference cycle involving a");
   }));
 
@@ -341,7 +341,7 @@ test("requires a literal service name in a services reference", () =>
         root,
       ),
     );
-    expect(error).toMatchObject({ path: "services.web.environment.USER" });
+    expect(error).toMatchObject({ path: ["services", "web", "environment", "USER"] });
     expect(error.message).toContain("name the service literally");
   }));
 

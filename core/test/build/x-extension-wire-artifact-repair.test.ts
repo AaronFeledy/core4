@@ -16,6 +16,7 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
+import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
@@ -110,7 +111,7 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
-  const evolved = evolveHistoricalAuthoringProjection(historical, source);
+  const evolved = evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source));
   evolvedTypedCache.set(source, evolved);
   return evolved;
 };
@@ -196,7 +197,7 @@ describe("embedded wire closed x-* artifact repair", () => {
       async () => {
         // Given the independently pinned typed grammar, with every union alternative intact.
         const current = schemaAt(await currentArtifact(surface), path);
-        // When the separately reviewed shorthand, timestamps, and include-checksum deltas follow closed-x repair.
+        // When the separately reviewed evolutions, including include conditions, follow closed-x repair.
         const repaired = evolvedTyped(source);
         // Then the entire normalized subtree matches, not just the reported keyword.
         expect(jsonEquals(repaired, current)).toBe(true);

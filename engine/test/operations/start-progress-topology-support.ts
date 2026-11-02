@@ -308,7 +308,7 @@ export const makeHarness = (
             origin: "created",
           },
         })),
-    execStream: () => Stream.empty,
+    execStream: options.providerOverrides?.execStream ?? (() => Stream.empty),
     exec: options.exec ?? TestRuntimeProvider.exec,
     logs: options.logs ?? (() => Stream.empty),
   };

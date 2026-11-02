@@ -2,7 +2,12 @@ import { DEBUGGER_HOST_ALIAS, HOST_GATEWAY_TARGET } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
 import { Effect, Schema, absurd } from "effect";
 import { addEnvRecord, serviceFeatureApply, serviceFeatureValidateEffective } from "./_feature-helpers.ts";
-import { servicePortEndpoints } from "./_port-helpers.ts";
+import {
+  assertListenerConfig,
+  imageAuthority,
+  launcherAuthority,
+  servicePortEndpoints,
+} from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 import { DEBIAN_APACHE_PORTS_CONF_PATH, apacheListenBuildStep, authoredListenPort } from "./apache.ts";
@@ -13,6 +18,7 @@ import { PHP_COMPOSER_STEP_ID, phpPrerequisiteBuildSteps, resolvePhpComposer } f
 import { PhpRuntimePolicy } from "./php-runtime-policy.ts";
 import {
   PHP_CLI_KEEP_ALIVE,
+  PHP_LISTENERS,
   SUPPORTED_PHP_VERSIONS,
   apacheDefaultSiteRemovalBuildStep,
   apacheStartCommand,
@@ -38,6 +44,9 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     ctx.config,
   );
   const mode = phpServingMode(via, authoredListenPort(service.port));
+  if (mode.listener !== undefined) {
+    assertListenerConfig(service, mode.via === "fpm" ? PHP_LISTENERS.fpm : PHP_LISTENERS.apache);
+  }
   if (policy.reference !== undefined) ctx.setArtifact({ kind: "ref", ref: policy.reference });
   const stock = policy.artifactSource === "stock";
   const xdebug = resolvePhpXdebug(service.xdebug);
@@ -87,7 +96,22 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     default:
       absurd(mode);
   }
-  if (mode.listener !== undefined) ctx.setHealthcheck(tcpProbe(mode.listener.port, 10));
+  if (mode.listener !== undefined) {
+    ctx.setHealthcheck(tcpProbe(mode.listener.port, 10));
+    const contract = mode.via === "fpm" ? PHP_LISTENERS.fpm : PHP_LISTENERS.apache;
+    switch (policy.processAuthority) {
+      case "authored":
+        ctx.setListenerAuthority(launcherAuthority(contract, mode.listener.port));
+        break;
+      case "image-default":
+        ctx.setListenerAuthority(imageAuthority(contract, mode.listener.port));
+        break;
+      case "lando":
+        break;
+      default:
+        absurd(policy.processAuthority);
+    }
+  }
   applyAuthoredProcessFields(ctx, ["user", "command", "entrypoint"]);
   ctx.addExtension("lando-service-php", { allowOverride, webroot, version, via });
 };

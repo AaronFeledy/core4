@@ -55,6 +55,7 @@ const affectsProviders = (path: string): boolean =>
   );
 
 const affectsPlatformBuild = (path: string): boolean =>
+  path === "engine/src/runtime/libc.ts" ||
   path.startsWith("core/test/build/") ||
   /^scripts\/(?:codegen|build-command-registry-manifest|build-compiled-binary|sanitize-compiled-binary|smoke-windows-binary|check-compiled-binary-notices)\.ts$/.test(
     path,

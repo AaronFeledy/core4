@@ -13,8 +13,9 @@ Layers. See [Embedding Lando](../../docs/embedding.md) for runtime configuration
 Language-runtime `ServiceType`s accept an optional `framework:` field that
 selects port, environment, and supported root-context defaults. It does not
 start an application server. Framework presets are pure config:
-they emit the same fields a user would write by hand and any value can be
-overridden in the Landofile.
+they supply defaults you can change in the Landofile. Port-bearing listener
+variables are derived from `port:` and must not disagree with it; ordinary
+host and framework environment defaults remain overridable.
 
 The Beta scope is intentionally narrower than the canonical GA-target catalog
 (full version sets and framework coverage for every service type). New
@@ -95,7 +96,17 @@ below 1024. The warning is conditional on the identity resolving to non-root;
 it neither probes bind permission nor changes ports or fails start. Provider
 names and rootless mode are not proof of effective bind permission.
 
-Node exposes port `3000` and sets `PORT=3000` by default. Set `port:` to change the endpoint and default `PORT`. The default idle Node process exits cleanly on SIGTERM or SIGINT and has no healthcheck. When `command:` is authored, Lando generates a TCP healthcheck against the configured service port. An authored `environment.PORT` still wins without changing the endpoint or healthcheck target.
+## Language runtime listeners
+
+Set `port:` to change the internal HTTP endpoint and the corresponding process variables together. The generated [service listener reference](https://aaronfeledy.github.io/core4/reference/service-listeners/) lists default ports, port and bind variables, host defaults, secondary listeners, and launcher or custom-image requirements for each family and variant.
+
+Each runtime exports its `ListenerContract` constants from its service module. The feature validates authored port variables through `validateEffective` before plan-cache lookup. A malformed value or one unequal to the planned port fails at `services.<name>.environment.<VAR>`, including inherited `appEnv` and env-file values. Set `port:` instead. Authored host variables still win over the ordinary defaults in the reference.
+
+Next.js, Nuxt, Remix, Gunicorn, Rails, and Sinatra read `PORT`; Uvicorn CLI reads `UVICORN_*`, and `flask run` reads `FLASK_RUN_*`. FastAPI CLI reads `PORT`, not `UVICORN_*`: `fastapi run` binds all interfaces, while `fastapi dev` still needs `--host 0.0.0.0`. Django `runserver` needs `0.0.0.0:<port>` in argv. Vite needs matching `--port` and `--host` flags or configuration. Sinatra in development still needs `-o 0.0.0.0`. Go applications must read `os.Getenv("PORT")` themselves; net/http, Echo, and Fiber do not do so automatically.
+
+Use `dotnet run --no-launch-profile` so a launch profile's `applicationUrl` does not override `ASPNETCORE_HTTP_PORTS` through `ASPNETCORE_URLS`. Authored `ASPNETCORE_URLS`, `--urls`, and Kestrel code remain author-owned overrides and must match the endpoint.
+
+Presets never start an application server. Python, Ruby, Go, and .NET keep `tail -f /dev/null`; Node keeps its idle process, which exits cleanly on SIGTERM or SIGINT. Author `command:` or use tooling to run the app. These runtimes do not infer healthchecks from ports or authored commands.
 
 ## Capture PHP mail
 

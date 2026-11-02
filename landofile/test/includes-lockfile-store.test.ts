@@ -164,24 +164,25 @@ describe("store-backed include lockfile", () => {
     const lockPath = join(appRoot, ".lando.lock.yml");
     const corrupt = "::: not valid lockfile yaml :::\n";
     await writeFile(lockPath, corrupt, "utf8");
-    const error = await Effect.runPromise(
-      Effect.flip(
-        verifyLandofileIncludes({
-          landofile: landofile(),
-          appRoot,
-          cacheRoot,
-          ports: makeTestLandofilePorts(cacheRoot),
-          stateStore,
-          deps: { gitCloner: clonerReturning("abc123") },
-        }),
-      ),
+    const report = await Effect.runPromise(
+      verifyLandofileIncludes({
+        landofile: landofile(),
+        appRoot,
+        cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
+        stateStore,
+        deps: { gitCloner: clonerReturning("abc123") },
+      }),
     );
-    expect(error).toMatchObject({
-      _tag: "LandofileParseError",
-      filePath: lockPath,
-      remediation:
-        "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
-    });
+    expect(report.ok).toBe(false);
+    expect(report.failures).toMatchObject([
+      {
+        _tag: "LandofileParseError",
+        filePath: lockPath,
+        remediation:
+          "Restore .lando.lock.yml from version control or remove it, then run lando app:includes:update.",
+      },
+    ]);
     expect((await readdir(appRoot)).some((name) => name.startsWith(".lando.lock.yml.corrupt-"))).toBe(false);
     expect(await readFile(lockPath, "utf8")).toBe(corrupt);
   });

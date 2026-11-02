@@ -7,6 +7,7 @@ import { Environment } from "./environment-value.ts";
 import { FileSyncSessionSpec } from "./file-sync-engine.ts";
 import { FileSyncPolicy } from "./file-sync-policy.ts";
 import { EventsPlan } from "./landofile-events.ts";
+import { ListenerAuthority } from "./listener.ts";
 import { LogSource } from "./log-source.ts";
 import { DataStorePlan, MountPlan } from "./mounts.ts";
 import {
@@ -108,6 +109,9 @@ const ServicePlanFields = {
   readinessSource: Schema.optionalKey(Schema.Literals(["authored", "contributed"])).annotate({
     description:
       "Origin of explicit lifecycle readiness; absent for historical plans with unknown provenance.",
+  }),
+  listenerAuthority: Schema.optionalKey(ListenerAuthority).annotate({
+    description: "Structured ownership and configuration advice for the planned listener.",
   }),
   scanner: Schema.optionalKey(ScanPlan).annotate({
     description: "Fully resolved settings for this service's post-start URL scan.",

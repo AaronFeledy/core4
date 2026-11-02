@@ -157,6 +157,7 @@ const fixtureFiles = ["docs/guides/**/fixtures/**", "recipes/*/.scaffold/**"]
 const fixtureRoots = [...new Set(fixtureFiles.map(dirname))];
 const outcomes: { fixture: string; leaves?: number; reason?: string }[] = [];
 const acquisitionExclusions = new Map([
+  ["docs/guides/config-lint/fixtures/two-broken-includes", "LandofileLoadError"],
   ["docs/guides/compose-service-block/fixtures/compose-service-block-rejected", "ComposeKeyRejectedError"],
   ["docs/guides/networks/fixtures/networks-pinned-address", "ComposeKeyRejectedError"],
   ["docs/guides/includes-and-lockfile/fixtures/user-profile-demo", "LandofileIncludeError"],

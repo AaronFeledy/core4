@@ -22,6 +22,8 @@ This part defines the single machine-readable deprecation contract for every pub
 
 `AppPlacementError`, required `RuntimeProviderRegistry.appliedPlansFor`, `resolveAppliedPlan`, and `resolveTeardownEvidence` members (§5.3.1), and `GlobalAppService.providerId` (§20.5) are additive pre-release SDK contract changes. Registry implementations MUST supply the required members; consumers MUST preserve the declared placement-error channels, including scratch acquisition. These unreleased contract additions require public-surface fixture updates, not a deprecation cycle or compatibility adapters.
 
+`ListenerAuthority`, `ServicePlan.listenerAuthority`, and `ServiceFeatureContext.setListenerAuthority` replace the unreleased `startupFailureHint` and `setStartupFailureHint` contracts. The replacement requires updated public-surface fixtures, regenerated schema artifacts, and app-plan cache invalidation, not a deprecation cycle or compatibility adapter. Historical applied plans remain readable for observation and teardown without reconstructing authority.
+
 ### 18.2 The `DeprecationNotice` schema
 
 `DeprecationNotice` is an Effect Schema in `@lando/sdk`, re-exported by `@lando/core/schema`, and published through the §13.2 artifact set.

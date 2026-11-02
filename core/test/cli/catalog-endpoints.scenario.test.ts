@@ -56,7 +56,7 @@ for (const format of ["json", "yaml"] as const) {
         ok: false,
         error: {
           _tag: "ConfigExpressionError",
-          path: "services.appserver.environment.GREETING",
+          path: ["services", "appserver", "environment", "GREETING"],
           expression: "hi-{{ app.nope }}",
           filePath,
         },

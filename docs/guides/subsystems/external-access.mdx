@@ -95,6 +95,26 @@ On a typed service such as `node` or `mysql`, `ports:` adds host publications wi
 
 `lando info` shows the result as connections grouped by scope. The `0.0.0.0:8080:80` publication above is the Host connection `tcp://localhost:8080`; Lando shows a wildcard bind as `localhost`, the address you use from this machine. `web` also keeps its App Network address, `tcp://web:80`, for other services in the app. `web` is a raw Compose service, so Lando knows that port only as TCP and does not hyperlink or scan it. Declare `protocol: http` in an explicit `endpoints:` entry when you want HTTP treatment.
 
+When Lando records that your application, command, or custom image configures a
+typed service's listener, `lando info` adds a `listener` row. Application-owned
+listeners list the port variables Lando sets, such as `PORT` and
+`FLASK_RUN_PORT`. A replacement command gets the argument it must pass, such as
+`--port 27018`; a custom image gets the setting it must supply and its file when
+known. The row is configuration advice from the plan, not a socket observation
+or a readiness result. It is absent when no ownership advice was recorded.
+
+For the structured fields, run:
+
+```sh
+lando info --format=json
+```
+
+Read `result.services[].listenerAuthority` for the owner (`application`,
+`launcher`, or `image`), daemon, planned port, and variables or setting. Info
+does not run probes or add container inspections for this row. To observe a
+running service's TCP bindings, use
+[`lando doctor --app`](./doctor-walkthrough.mdx#check-the-apps-tcp-listeners).
+
 Another device can reach an explicitly bound `IP:port`. To use a proxy hostname there, point it at the app host's LAN IP with your own DNS or hosts entry and ensure the proxy listener and firewall allow LAN access.
 
 ## Custom domains and DNS rebinding

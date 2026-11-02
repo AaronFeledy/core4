@@ -1,7 +1,7 @@
 import type { ListenerObservation } from "@lando/sdk/schema";
 import { Cause, type Context, DateTime, Duration, Effect, Option, Stream } from "effect";
 import { PROVIDER_LABEL } from "../labels.ts";
-import { listenerDiagnostic } from "../listener-diagnostic.ts";
+import { listenerAuthorityAction, listenerDiagnostic } from "../listener-diagnostic.ts";
 import { observeTcpListener } from "../listener-observation.ts";
 
 import {
@@ -1216,12 +1216,15 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
           listener !== undefined && dependency !== undefined
             ? listenerDiagnostic(listener, dependency)
             : undefined;
+        const action =
+          diagnostic?.action ??
+          (blocked.unmetGate.endsWith(":healthy") ? listenerAuthorityAction(dependency) : undefined);
         return Effect.fail(
           podmanFailure(deps, {
             service,
             operation: "bringUp.schedule",
             message: `${diagnostic === undefined ? "" : `Dependency ${blocked.dependency}: ${diagnostic.finding}. `}Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
-            remediation: `${diagnostic === undefined ? "" : `${diagnostic.action}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
+            remediation: `${action === undefined ? "" : `${deps.redactor.redactString(action)}\n`}${diagnostic?.authority === undefined ? "" : `${deps.redactor.redactString(diagnostic.authority)}\n`}${dependencyGateRemediation(plan, blocked.dependency)}`,
             ...(listener === undefined ? {} : { listener }),
             ...(blocked.lastError === undefined ? {} : { details: { readinessFailure: blocked.lastError } }),
             ...(logTail === undefined ? {} : { logTail }),
