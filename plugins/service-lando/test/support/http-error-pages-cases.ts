@@ -50,16 +50,50 @@ export const phpFixtureFiles: Readonly<Record<string, string>> = {
   "uploads/x.phar": "<?php\necho strrev('DETUCEXE_RAHP') . \"\\n\";\n",
 };
 
-/** Drupal-shaped upload tree used to prove noScripts cannot execute PHP. */
-export const nginxNoScriptFixtureFiles: Readonly<Record<string, string>> = {
+/** Upload payload source must not contain the marker used to detect execution. */
+const uploadPayload = `<?php echo strrev('DETUCEXE_DAOLPU') . "\\n";`;
+export const uploadDirFixtureFiles: Readonly<Record<string, string>> = {
   ...phpFixtureFiles,
   "install.php": `<?php\necho ${JSON.stringify(INSTALL_OK)};\n`,
-  "sites/default/files/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
-  "sites/default/files/x\ny.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
-  "uploads/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
-  "uploads/x\ny.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
-  "uploads-old/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
+  ...Object.fromEntries(
+    ["uploads", "sites/default/files", "sites/example.com/files"].flatMap((tree) =>
+      ["x.php", "x\ny.php", "x\ry.php", "x.PHP", "sub/x.php", "x.jpg"].map((file) => [
+        `${tree}/${file}`,
+        uploadPayload,
+      ]),
+    ),
+  ),
+  "uploads-old/x.php": uploadPayload,
+  "uploads/.htaccess": "AddHandler application/x-httpd-php .jpg\nAddType application/x-httpd-php .jpg\n",
 };
+
+export const apacheUploadDirFixtureFiles: Readonly<Record<string, string>> = {
+  ...uploadDirFixtureFiles,
+  ".htaccess":
+    "RewriteEngine On\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteCond %{REQUEST_FILENAME} !-d\nRewriteRule ^ index.php [L]\n",
+};
+
+// Fetch normalizes /uploads/./x.php, /uploads/sub/../x.php and
+// /uploads/%2e/x.php before sending. This fetch-only harness cannot send them raw.
+export const uploadDirHostilePaths: ReadonlyArray<string> = [
+  "/uploads/x.php",
+  "/uploads/x.php/extra",
+  "/uploads/x%0Ay.php",
+  "/uploads/x%0Ay.php/extra",
+  "/uploads/x%0Dy.php",
+  "/uploads/x.PHP",
+  "/UPLOADS/x.php",
+  "/uploads//x.php",
+  "/uploads%2fx.php",
+  "/uploads/x.php%00.jpg",
+  "/uploads/x.php.",
+  "/uploads/x.php%20",
+  "/uploads/x.jpg",
+  "/uploads/sub/x.php",
+  "/sites/default/files/x.php",
+  "/sites/default/files/x%0Ay.php",
+  "/sites/example.com/files/x.php",
+];
 
 /** Response headers the app set itself and the server must pass through. */
 export interface AppOwnedHeaders {
@@ -161,12 +195,13 @@ export const nginxFpmCases: ReadonlyArray<ErrorPageCase> = [
   request("explains a missing script with the Lando 404 page", "/missing.php", 404, { page: 404 }),
 ];
 
-export const nginxNoScriptCases: ReadonlyArray<ErrorPageCase> = [
+export const uploadDirCases: ReadonlyArray<ErrorPageCase> = [
   request("serves the PHP index", "/", 200, { exact: PHP_INDEX }, { headers: { marker: "index" } }),
   request("keeps index.php PATH_INFO on the front controller", "/index.php/node/1", 200, {
     exact: PHP_INDEX,
   }),
   request("serves install.php outside the denied tree", "/install.php", 200, { exact: INSTALL_OK }),
+  request("serves a static asset outside the denied tree", "/asset.txt", 200, { exact: PHP_ASSET }),
   request(
     "falls through a missing image-style derivative to index.php",
     "/sites/default/files/styles/thumbnail/public/missing.jpg",
@@ -177,23 +212,7 @@ export const nginxNoScriptCases: ReadonlyArray<ErrorPageCase> = [
   request("denies PHP when uploads* matches zero extra characters", "/uploads/x.php", 403, { page: 403 }),
   request("denies PHP when uploads* matches a suffix", "/uploads-old/x.php", 403, { page: 403 }),
   request("denies PATH_INFO under sites/*/files", "/sites/default/files/x.php/extra", 403, { page: 403 }),
-  request("denies a URI-decoded newline in a Drupal upload filename", "/sites/default/files/x%0Ay.php", 403, {
-    page: 403,
-  }),
-  request("denies a URI-decoded newline in an upload filename", "/uploads/x%0Ay.php", 403, { page: 403 }),
-  request("denies PATH_INFO after an upload filename containing a newline", "/uploads/x%0Ay.php/extra", 403, {
-    page: 403,
-  }),
-  request("denies a %2e segment under sites/*/files", "/sites/default/files/%2e/x.php", 403, {
-    page: 403,
-  }),
-  request("denies a .. segment that stays under sites/*/files", "/sites/default/files/foo/../x.php", 403, {
-    page: 403,
-  }),
   request("denies doubled slashes under sites/*/files", "/sites/default/files//x.php", 403, { page: 403 }),
-  request("denies a case-folded .PHP under sites/*/files", "/sites/default/files/x.PHP", 403, {
-    page: 403,
-  }),
 ];
 
 export const apacheCases: ReadonlyArray<ErrorPageCase> = [

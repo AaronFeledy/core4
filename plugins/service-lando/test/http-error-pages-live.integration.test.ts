@@ -7,13 +7,16 @@ import {
   PATHINFO_OK,
   PHAR_EXECUTED,
   PHP_INDEX,
+  UPLOAD_EXECUTED,
   apacheCases,
+  apacheUploadDirFixtureFiles,
   nginxFpmCases,
-  nginxNoScriptCases,
-  nginxNoScriptFixtureFiles,
   phpFixtureFiles,
   staticCases,
   staticFixtureFiles,
+  uploadDirCases,
+  uploadDirFixtureFiles,
+  uploadDirHostilePaths,
 } from "./support/http-error-pages-cases.ts";
 import {
   type ErrorPageServer,
@@ -32,7 +35,8 @@ const suites: ReadonlyArray<{
   { server: "static", files: staticFixtureFiles, cases: staticCases },
   { server: "nginx", files: staticFixtureFiles, cases: staticCases },
   { server: "nginx-fpm", files: phpFixtureFiles, cases: nginxFpmCases },
-  { server: "nginx-fpm-noscripts", files: nginxNoScriptFixtureFiles, cases: nginxNoScriptCases },
+  { server: "nginx-fpm-upload-dirs", files: uploadDirFixtureFiles, cases: uploadDirCases },
+  { server: "apache-upload-dirs", files: apacheUploadDirFixtureFiles, cases: uploadDirCases },
   {
     server: "apache",
     files: {
@@ -112,6 +116,19 @@ for (const suite of suites) {
       expect(body).toMatch(/^PATH_INFO=$/m);
       expect(body).not.toMatch(/^PATH_INFO=\/.+/m);
     }, 30_000);
+
+    if (suite.server === "nginx-fpm-upload-dirs" || suite.server === "apache-upload-dirs") {
+      test("never executes PHP for hostile upload paths or uploaded handler overrides", async () => {
+        if (stack === undefined) throw new Error(`${suite.server} stack did not start`);
+        for (const path of uploadDirHostilePaths) {
+          const response = await stack.request(`${stack.baseUrl}${path}`, {
+            redirect: "manual",
+            signal: AbortSignal.timeout(15_000),
+          });
+          expect(await response.text(), path).not.toContain(UPLOAD_EXECUTED);
+        }
+      }, 300_000);
+    }
 
     if (suite.server !== "nginx-fpm") return;
 
