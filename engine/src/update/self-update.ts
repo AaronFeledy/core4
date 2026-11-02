@@ -23,7 +23,7 @@ export interface UpdateSelfUpdateOptions {
   readonly arch?: string;
   readonly argv?: ReadonlyArray<string>;
   readonly env?: Readonly<Record<string, string | undefined>>;
-  readonly execve?: UpdateExecve;
+  readonly execve: UpdateExecve;
   readonly rename?: UpdateRename;
   readonly replaceWindows?: UpdateWindowsReplacement;
 }
@@ -32,20 +32,6 @@ export const stringEnv = (env: Readonly<Record<string, string | undefined>>): Re
   Object.fromEntries(
     Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
   );
-
-interface ExecveProcess {
-  readonly execve?: (path: string, argv: ReadonlyArray<string>, env: Record<string, string>) => never;
-}
-
-const defaultExecve: UpdateExecve = (input) =>
-  Effect.try({
-    try: () => {
-      const execve = (process as ExecveProcess).execve;
-      if (execve === undefined) throw new Error("process.execve is not available in this runtime");
-      execve(input.path, input.argv, input.env);
-    },
-    catch: (cause) => cause,
-  });
 
 export const posixPermissionRemediation = (executablePath: string): string =>
   `Lando will not run sudo automatically. Fix write permissions for ${dirname(executablePath)}, reinstall Lando into a user-writable directory, or download the matching Lando binary from GitHub Releases and run: sudo install -m 755 <downloaded-lando-binary> ${executablePath}`;
@@ -86,7 +72,7 @@ export const resolveSelfUpdateOptions = (
     // the invocation argv; absent that, re-exec falls back to the bare executable.
     argv: input.argv ?? [],
     env: input.env ?? process.env,
-    execve: input.execve ?? defaultExecve,
+    execve: input.execve,
     rename: input.rename ?? rename,
     replaceWindows: input.replaceWindows ?? defaultWindowsReplacement,
   };

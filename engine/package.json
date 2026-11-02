@@ -173,6 +173,7 @@
     "./runtime/cwd": "./src/runtime/cwd.ts",
     "./runtime/host-maintenance": "./src/runtime/host-maintenance.ts",
     "./runtime/interrupt": "./src/runtime/interrupt.ts",
+    "./runtime/libc": "./src/runtime/libc.ts",
     "./runtime/managed-provider-machine": "./src/runtime/managed-provider-machine.ts",
     "./runtime/observability": "./src/runtime/observability.ts",
     "./runtime/process-signals": "./src/runtime/process-signals.ts",

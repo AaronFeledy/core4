@@ -1,18 +1,5 @@
 import { readFileSync } from "node:fs";
-
-const darwinIgnoresInterrupt = (): boolean => {
-  // Query sigaction without changing disposition. Darwin's handler is the first pointer.
-  const { dlopen, ptr } = require("bun:ffi") as typeof import("bun:ffi");
-  const libc = dlopen("/usr/lib/libSystem.B.dylib", {
-    sigaction: { args: ["i32", "ptr", "ptr"], returns: "i32" },
-  });
-  try {
-    const action = new BigUint64Array(2);
-    return libc.symbols.sigaction(2, null, ptr(action)) === 0 && action[0] === 1n;
-  } finally {
-    libc.close();
-  }
-};
+import { darwinIgnoresInterrupt } from "./libc.ts";
 
 // SIG_IGN survives exec. Installing a listener would undo the shell's policy.
 export const defaultInterruptSignals = (): ReadonlyArray<NodeJS.Signals> => {
