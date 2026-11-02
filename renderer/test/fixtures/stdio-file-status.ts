@@ -1,23 +1,20 @@
 import { dlopen } from "bun:ffi";
+import { fileStatusFlags } from "@lando/engine/runtime/libc";
 import { preserveStdioFileStatusFlags, restoreStdioFileStatusFlags } from "@lando/renderer/stdio-flags";
 
 const scenario = process.argv[2] ?? "natural";
-const libcPath = process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6";
-const bit = process.platform === "darwin" ? 0x4 : 0o4000;
-// Same variadic-safe nine-argument shape as the code under test; reads use a plain 3-arg F_GETFL.
+const oracle = dlopen(process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6", {
+  fcntl: { args: ["i32", "i32", "i32"], returns: "i32" },
+});
+// Change fd 1 through the shared binding, then confirm with an independent 3-arg F_GETFL.
 const setNonblock = (enabled: boolean): void => {
-  const libc = dlopen(libcPath, {
-    fcntl: { args: ["i32", "i32", "i64", "i64", "i64", "i64", "i64", "i64", "i64"], returns: "i32" },
-  });
-  const oracle = dlopen(libcPath, { fcntl: { args: ["i32", "i32", "i32"], returns: "i32" } });
-  const current = oracle.symbols.fcntl(1, 3, 0);
-  const value = BigInt(enabled ? current | bit : current & ~bit);
-  libc.symbols.fcntl(1, 4, value, value, value, value, value, value, value);
-  if (((oracle.symbols.fcntl(1, 3, 0) & bit) !== 0) !== enabled) {
+  const flags = fileStatusFlags();
+  if (flags === undefined) throw new Error("Expected native file-status bindings");
+  const current = flags.get(1);
+  flags.set(1, enabled ? current | flags.nonblock : current & ~flags.nonblock);
+  if (((oracle.symbols.fcntl(1, 3, 0) & flags.nonblock) !== 0) !== enabled) {
     throw new Error(`Fixture failed to ${enabled ? "set" : "clear"} O_NONBLOCK`);
   }
-  oracle.close();
-  libc.close();
 };
 if (scenario === "initially-nonblocking") setNonblock(true);
 if (scenario !== "control") preserveStdioFileStatusFlags();

@@ -657,7 +657,6 @@ describe("update signed manifest", () => {
   });
 
   test("POSIX core-only self-update re-execs with a one-shot result handoff", async () => {
-    // Given an owned binary to replace.
     const root = await makeTempRoot("lando-self-update-");
     const executablePath = await seedOwnedBinary(root);
     const originalRecord = await Bun.file(join(root, "install", "record.json")).json();
@@ -687,7 +686,6 @@ describe("update signed manifest", () => {
     const stateStore = makeTestStateStore();
     const handoff = makeUpdateHandoff(stateStore.service);
 
-    // When the verified update reaches POSIX re-exec.
     const result = await Effect.runPromise(
       update({
         channel: "stable",
@@ -716,7 +714,6 @@ describe("update signed manifest", () => {
       ),
     );
 
-    // Then the replacement and one-shot handoff remain intact.
     expect(result).toEqual({
       updatedCore: true,
       updatedPlugins: [],
@@ -1148,7 +1145,6 @@ describe("update signed manifest", () => {
   });
 
   test("POSIX self-update retains the new binary and backup when re-exec fails", async () => {
-    // Given a valid update and an execve failure.
     const root = await makeTempRoot("lando-self-update-exec-rollback-");
     const executablePath = await seedOwnedBinary(root);
 
@@ -1160,7 +1156,6 @@ describe("update signed manifest", () => {
       platform: "linux-x64",
     });
 
-    // When the process fails to re-exec.
     const tag = await failureTag(
       runUpdate({
         channel: "stable",
@@ -1179,7 +1174,6 @@ describe("update signed manifest", () => {
       }),
     );
 
-    // Then the existing tagged failure and recoverable binaries are preserved.
     expect(tag).toBe("UpdatePermissionError");
     expect(await readFile(executablePath, "utf8")).toBe("new-binary");
     expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");

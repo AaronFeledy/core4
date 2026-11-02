@@ -60,12 +60,5 @@ const loadLibc = (): Libc | undefined => {
 
 export const fileStatusFlags = (): FileStatusFlags | undefined => loadLibc()?.flags;
 
-export const darwinIgnoresInterrupt = (): boolean => {
-  if (process.platform !== "darwin") return false;
-  try {
-    return loadLibc()?.ignoresInterrupt() ?? false;
-  } catch {
-    // Unavailable native signal queries retain the default interrupt behavior.
-    return false;
-  }
-};
+export const darwinIgnoresInterrupt = (): boolean =>
+  process.platform === "darwin" && (loadLibc()?.ignoresInterrupt() ?? false);
