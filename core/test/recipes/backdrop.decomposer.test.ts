@@ -62,6 +62,7 @@ describe("backdrop decomposition", () => {
           type: "php:{{ recipe.php }}",
           primary: true,
           framework: "backdrop",
+          uploadDirs: ["files"],
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,
