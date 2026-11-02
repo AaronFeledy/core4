@@ -546,29 +546,27 @@ export const PhpComposerConfig = Schema.Struct({
 export type PhpComposerConfig = typeof PhpComposerConfig.Type;
 
 /**
- * One `noScripts` entry: a webroot-relative URI path nginx must not execute as
- * PHP. The allowlist is the only characters interpolated into a generated
- * `location` regex; `*` is a single path segment. Empty values, a bare `*`, a
- * leading or trailing `/`, empty / `.` / `..` segments, `**`, spaces, and
- * nginx metacharacters are rejected so a Landofile cannot close the server
- * block, inject another location, or author a path nginx would normalize away.
+ * One `uploadDirs` entry: a webroot-relative directory that must not execute as
+ * PHP. Only allowlisted characters enter server regexes; `*` stays within one
+ * segment. Reject configuration injection and paths a server would normalize
+ * away before making an execution decision.
  */
-export const NGINX_NO_SCRIPT_PATH_PATTERN =
+export const UPLOAD_DIR_PATTERN =
   /^(?!\/)(?!\*$)(?!.*\/\/)(?!.*\.\.)(?!.*\*\*)(?!.*\/$)(?!(?:^|.*\/)\.(?:\/|$))[A-Za-z0-9._/*-]+$/u;
 
-export const isNginxNoScriptPath = (value: string): boolean => NGINX_NO_SCRIPT_PATH_PATTERN.test(value);
+export const isUploadDir = (value: string): boolean => UPLOAD_DIR_PATTERN.test(value);
 
-export const NginxNoScriptPath = Schema.String.pipe(
+export const UploadDir = Schema.String.pipe(
   Schema.check(
-    Schema.isPattern(NGINX_NO_SCRIPT_PATH_PATTERN, {
+    Schema.isPattern(UPLOAD_DIR_PATTERN, {
       message:
-        "noScripts entries must be non-empty webroot-relative URI paths using letters, digits, '.', '_', '/', '-' and single-segment '*'. They cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include spaces or nginx metacharacters.",
+        "uploadDirs entries must be non-empty webroot-relative directory paths using letters, digits, '.', '_', '/', '-' and single-segment '*'. They cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include spaces or server metacharacters.",
     }),
   ),
 ).annotate({
-  description: "Webroot-relative URI path where an nginx FastCGI front must not execute PHP.",
+  description: "Webroot-relative directory that holds user uploads and must never execute PHP.",
 });
-export type NginxNoScriptPath = typeof NginxNoScriptPath.Type;
+export type UploadDir = typeof UploadDir.Type;
 
 /**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
@@ -694,9 +692,9 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",
     }),
-    noScripts: Schema.optionalKey(Schema.Array(NginxNoScriptPath)).annotate({
+    uploadDirs: Schema.optionalKey(Schema.Array(UploadDir)).annotate({
       description:
-        "Webroot-relative URI paths where an nginx FastCGI front must not execute PHP. Each path may use a single-segment '*' and cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include nginx metacharacters.",
+        "Webroot-relative directories that hold user uploads. Lando never runs PHP from them. Each path may use a single-segment '*' and cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include server metacharacters.",
     }),
     allowOverride: Schema.optionalKey(Schema.Boolean).annotate({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",

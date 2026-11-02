@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { PhpServiceConfig } from "@lando/sdk/schema/services/php";
 import { Result, Schema, SchemaIssue } from "effect";
 
 import {
   LandofileShape,
-  NGINX_NO_SCRIPT_PATH_PATTERN,
-  NginxNoScriptPath,
   ServiceConfig,
   ServiceName,
-  isNginxNoScriptPath,
+  UPLOAD_DIR_PATTERN,
+  UploadDir,
+  isUploadDir,
 } from "@lando/sdk/schema";
 
 const decodeService = (raw: unknown, options?: { readonly onExcessProperty?: "error" }): ServiceConfig =>
@@ -23,10 +24,10 @@ const decodeLandofileService = (raw: unknown): ServiceConfig => {
   return service;
 };
 
-const nginxNoScriptIssueCount = (path: string): number => {
-  const result = Schema.decodeUnknownResult(NginxNoScriptPath)(path);
+const uploadDirIssueCount = (path: string): number => {
+  const result = Schema.decodeUnknownResult(UploadDir)(path);
   if (!Result.isFailure(result)) {
-    throw new Error("expected NginxNoScriptPath decode to fail");
+    throw new Error("expected UploadDir decode to fail");
   }
   return SchemaIssue.makeFormatterStandardSchemaV1()(result.failure.issue).issues.length;
 };
@@ -77,55 +78,62 @@ const rejectedPaths = [
   "*",
 ] as const;
 
-describe("NginxNoScriptPath", () => {
+describe("UploadDir", () => {
   test.each(["sites/*/files", "uploads", "sites/default/files", "wp-content/uploads", "a.b_c-d/e"])(
     "accepts %j",
     (path) => {
-      expect(isNginxNoScriptPath(path)).toBe(true);
-      expect(NGINX_NO_SCRIPT_PATH_PATTERN.test(path)).toBe(true);
-      expect(Schema.decodeUnknownSync(NginxNoScriptPath)(path)).toBe(path);
+      expect(isUploadDir(path)).toBe(true);
+      expect(UPLOAD_DIR_PATTERN.test(path)).toBe(true);
+      expect(Schema.decodeUnknownSync(UploadDir)(path)).toBe(path);
     },
   );
 
   test.each([...rejectedPaths])("rejects %j", (path) => {
-    expect(isNginxNoScriptPath(path)).toBe(false);
-    expect(NGINX_NO_SCRIPT_PATH_PATTERN.test(path)).toBe(false);
-    expect(nginxNoScriptIssueCount(path)).toBe(1);
-    expect(Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ noScripts: [path] }))).toBe(true);
+    expect(isUploadDir(path)).toBe(false);
+    expect(UPLOAD_DIR_PATTERN.test(path)).toBe(false);
+    expect(uploadDirIssueCount(path)).toBe(1);
+    expect(Result.isFailure(Schema.decodeUnknownResult(ServiceConfig)({ uploadDirs: [path] }))).toBe(true);
     expect(
       Result.isFailure(
         Schema.decodeUnknownResult(LandofileShape)({
           name: "myapp",
-          services: { web: { type: "nginx", noScripts: [path] } },
+          services: { web: { type: "nginx", uploadDirs: [path] } },
         }),
       ),
     ).toBe(true);
   });
 
   test("publishes the allowlist pattern", () => {
-    expect(NGINX_NO_SCRIPT_PATH_PATTERN.test("sites/*/files")).toBe(true);
-    expect(NGINX_NO_SCRIPT_PATH_PATTERN.test("**")).toBe(false);
+    expect(UPLOAD_DIR_PATTERN.test("sites/*/files")).toBe(true);
+    expect(UPLOAD_DIR_PATTERN.test("**")).toBe(false);
   });
 });
 
-describe("ServiceConfig.noScripts", () => {
+describe("ServiceConfig.uploadDirs", () => {
+  test("accepts upload directories on the PHP per-type contract", () => {
+    const config = Schema.decodeUnknownSync(PhpServiceConfig)(
+      { type: "php:8.3", uploadDirs: ["uploads"] },
+      { onExcessProperty: "error" },
+    );
+    expect(config.uploadDirs).toEqual(["uploads"]);
+  });
   test.each([{ onExcessProperty: "error" as const }, {}])(
     "accepts its canonical list under %j and decode(decode(x))",
     (options) => {
-      const input = { type: "nginx", noScripts: ["sites/*/files", "uploads"] };
+      const input = { type: "nginx", uploadDirs: ["sites/*/files", "uploads"] };
       const once = decodeService(input, options);
-      expect(once.noScripts).toEqual(["sites/*/files", "uploads"]);
+      expect(once.uploadDirs).toEqual(["sites/*/files", "uploads"]);
       expect(decodeService(once, options)).toEqual(once);
-      expect(Schema.encodeSync(ServiceConfig)(once).noScripts).toEqual(["sites/*/files", "uploads"]);
+      expect(Schema.encodeSync(ServiceConfig)(once).uploadDirs).toEqual(["sites/*/files", "uploads"]);
     },
   );
 
   test("omits the field when it is not authored", () => {
-    expect(decodeService({ type: "nginx" }).noScripts).toBeUndefined();
-    expect(decodeLandofileService({ type: "nginx" }).noScripts).toBeUndefined();
+    expect(decodeService({ type: "nginx" }).uploadDirs).toBeUndefined();
+    expect(decodeLandofileService({ type: "nginx" }).uploadDirs).toBeUndefined();
   });
 
   test("accepts an empty list so a recipe default can be cleared", () => {
-    expect(decodeService({ type: "nginx", noScripts: [] }).noScripts).toEqual([]);
+    expect(decodeService({ type: "nginx", uploadDirs: [] }).uploadDirs).toEqual([]);
   });
 });
