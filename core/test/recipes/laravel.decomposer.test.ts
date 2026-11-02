@@ -35,6 +35,7 @@ const expected = {
       type: "php:{{ recipe.php }}",
       primary: true,
       framework: "laravel",
+      uploadDirs: ["storage"],
       webroot: "{{ recipe.webroot }}",
       composer: "{{ recipe.composer }}",
       allowOverride: true,
