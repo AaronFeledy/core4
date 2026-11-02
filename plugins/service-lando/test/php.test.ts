@@ -138,6 +138,19 @@ describe("PHP Apache upload directories", () => {
     }
   });
 
+  test("joins a filesystem-root webroot with exactly one separator", async () => {
+    // Given
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      webroot: "/",
+      uploadDirs: ["app/uploads"],
+    });
+    // When
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    // Then
+    expect(directives).toContain('<DirectoryMatch "(?i)^/(?:app/uploads)(?:/|$)">');
+  });
+
   test.each([
     { command: ["custom"] },
     { entrypoint: ["custom"] },

@@ -236,7 +236,7 @@ export const apacheStartCommand = (
     ...(uploadDirs.length === 0
       ? []
       : [
-          `<DirectoryMatch "(?i)^${apacheDirectivePath(webroot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))}/(?:${apacheDirectivePath(uploadDirs.map(uploadDirRegex).join("|"))})(?:/|$)">`,
+          `<DirectoryMatch "(?i)^${apacheDirectivePath(webroot.replace(/\/$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))}/(?:${apacheDirectivePath(uploadDirs.map(uploadDirRegex).join("|"))})(?:/|$)">`,
           "<IfModule php_module>",
           "php_admin_flag engine off",
           "</IfModule>",
