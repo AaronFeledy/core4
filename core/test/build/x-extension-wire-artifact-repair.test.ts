@@ -18,6 +18,7 @@ import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts"
 import { evolveHistoricalIncludeChecksum } from "./x-extension-include-checksum-proof.ts";
 import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalNoScripts } from "./x-extension-no-scripts-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
@@ -111,7 +112,9 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
-  const evolved = evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source));
+  const evolved = evolveHistoricalNoScripts(
+    evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+  );
   evolvedTypedCache.set(source, evolved);
   return evolved;
 };
@@ -133,9 +136,9 @@ describe("embedded wire closed x-* artifact repair", () => {
   });
 
   test("pins the reviewed directive transport capture independently of the historical repair", () => {
-    expect(directiveCapture.provenanceCommit).toBe("491495c9b73368f606ff3412c7f4c7787d4ecf09");
+    expect(directiveCapture.provenanceCommit).toBe("31996b06836f2647a61851f5a8d337df6d61ba23");
     expect(createHash("sha256").update(directiveBytes).digest("hex")).toBe(
-      "2651176b2e47793da5e8d50a32ff08ab07a47d09b99c2296e8de1ca2f22eab69",
+      "28de00715c624a03f017e473db4124e9c137dae14064669f3957429c501be10a",
     );
     expect(jsonEquals(directiveCaptured.fragment, captured.fragment)).toBe(false);
   });
@@ -174,7 +177,7 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalAuthoringProjection(historical, "services");
+    const repaired = evolveHistoricalNoScripts(evolveHistoricalAuthoringProjection(historical, "services"));
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",

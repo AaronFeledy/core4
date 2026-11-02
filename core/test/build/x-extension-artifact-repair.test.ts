@@ -41,6 +41,7 @@ import { includeChecksumDelta } from "./x-extension-include-checksum-proof.ts";
 import { includeWhenDelta } from "./x-extension-include-when-proof.ts";
 import { evolveHistoricalNativeInit } from "./x-extension-native-init-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalNoScripts } from "./x-extension-no-scripts-proof.ts";
 import { CURRENT_SERVICE_PORT, evolveHistoricalServicePort } from "./x-extension-port-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
@@ -63,30 +64,32 @@ const repairedLandofile = (): JsonSchema =>
   normalizeJsonSchema(requireObject(repairClosedExtension(capturedLandofile), "repaired landofile"));
 
 const expectedLandofile = (): JsonSchema =>
-  evolveHistoricalConsolePort(
-    evolveHistoricalToolingSensitivity(
-      evolveHistoricalAppMountAcceleration(
-        evolveHistoricalToolingShorthand(
-          evolveHistoricalEnvironment(
-            evolveHistoricalEndpointMetadata(
-              evolveHistoricalServicePort(
-                evolveHistoricalTimestamps(
-                  evolveHistoricalContainerUser(
-                    evolveHistoricalReadiness(
-                      evolveHistoricalShorthand(
-                        evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+  evolveHistoricalNoScripts(
+    evolveHistoricalConsolePort(
+      evolveHistoricalToolingSensitivity(
+        evolveHistoricalAppMountAcceleration(
+          evolveHistoricalToolingShorthand(
+            evolveHistoricalEnvironment(
+              evolveHistoricalEndpointMetadata(
+                evolveHistoricalServicePort(
+                  evolveHistoricalTimestamps(
+                    evolveHistoricalContainerUser(
+                      evolveHistoricalReadiness(
+                        evolveHistoricalShorthand(
+                          evolveHistoricalNetworks(evolveHistoricalNativeInit(repairedLandofile()), "bare"),
+                        ),
                       ),
                     ),
+                    "bare",
                   ),
-                  "bare",
                 ),
               ),
             ),
+            "bare",
           ),
-          "bare",
         ),
+        "bare",
       ),
-      "bare",
     ),
   );
 

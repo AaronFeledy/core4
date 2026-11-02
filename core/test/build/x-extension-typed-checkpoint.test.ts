@@ -18,6 +18,7 @@ import { evolveHistoricalConsolePort } from "./x-extension-console-port-proof.ts
 import { evolveHistoricalEndpointMetadata } from "./x-extension-endpoint-metadata-proof.ts";
 import { evolveHistoricalEnvironment } from "./x-extension-environment-proof.ts";
 import { evolveHistoricalNetworks } from "./x-extension-networks-proof.ts";
+import { evolveHistoricalNoScripts } from "./x-extension-no-scripts-proof.ts";
 import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
@@ -45,7 +46,9 @@ const historicalExpected = evolveHistoricalConsolePort(
     ),
   ),
 );
-const expected = evolveHistoricalAuthoringProjection(historicalExpected, "services");
+const expected = evolveHistoricalNoScripts(
+  evolveHistoricalAuthoringProjection(historicalExpected, "services"),
+);
 
 const mutateFirst = (value: JsonValue, change: (schema: JsonSchema) => JsonSchema | undefined): JsonValue => {
   if (isJsonObject(value)) {
