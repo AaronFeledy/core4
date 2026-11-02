@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { RedactionValues } from "@lando/redaction/service";
 import type { CommandOutput, CommandOutputChunk } from "@lando/sdk/schema";
-import { type Redactor, type TieredRedactionValues, createPayloadRedactor } from "@lando/sdk/secrets";
+import { type Redactor, type TieredRedactionValues, createSecretRedactor } from "@lando/sdk/secrets";
 import { MAX_OUTBOUND_QUEUED_BYTES, stdioTransportError } from "./stdio-limits";
 
 export const DEFAULT_OUTPUT_BYTES = 128 * 1024;
@@ -117,36 +117,22 @@ export class OutputCapture {
       }
     }
     const original = this.#chunks.splice(0);
-    const channels = new Map<
-      string,
-      {
-        readonly payload: ReturnType<typeof createPayloadRedactor>;
-        readonly decoder: TextDecoder;
-        last: number;
-      }
-    >();
+    const replay = createSecretRedactor([], tiers.substring, tiers.wholeToken);
+    const channels = new Map<string, Array<{ readonly frame: CommandOutputChunk; readonly index: number }>>();
     for (const frame of original) {
       const key = JSON.stringify([frame._tag, frame.service, frame.source]);
       if (omitted.has(key)) continue;
-      const state = channels.get(key) ?? {
-        payload: createPayloadRedactor(() => tiers),
-        decoder: new TextDecoder("utf-8", { ignoreBOM: true }),
-        last: this.#chunks.length,
-      };
-      channels.set(key, state);
-      state.last = this.#chunks.length;
-      this.#chunks.push({
-        ...frame,
-        chunk: state.decoder.decode(state.payload.write(encoder.encode(frame.chunk)), { stream: true }),
-      });
+      const channel = channels.get(key) ?? [];
+      channels.set(key, channel);
+      channel.push({ frame, index: this.#chunks.length });
+      this.#chunks.push(frame);
     }
-    for (const state of channels.values()) {
-      const frame = this.#chunks[state.last];
-      if (frame !== undefined)
-        this.#chunks[state.last] = {
-          ...frame,
-          chunk: frame.chunk + state.decoder.decode(state.payload.flush()),
-        };
+    for (const channel of channels.values()) {
+      const chunks = replay.redactChunks(channel.map(({ frame }) => frame.chunk));
+      for (const [offset, chunk] of chunks.entries()) {
+        const target = channel[offset];
+        if (target !== undefined) this.#chunks[target.index] = { ...target.frame, chunk };
+      }
     }
     for (let index = 0; index < this.#chunks.length; index++) {
       const frame = this.#chunks[index];

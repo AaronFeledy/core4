@@ -41,20 +41,57 @@ describe("MCP live progress", () => {
       Effect.gen(function* () {
         const { sink, owner, text, service } = yield* progressFixture();
         yield* service.registerValues(["wordpress"], { match: "whole-token" });
+        yield* service.registerValues(["privateprefix"]);
         yield* sink.emit({ kind: "bytes", _tag: "stdout", chunk: "wordpress" });
-        yield* sink.emit({ kind: "bytes", _tag: "stdout", chunk: " wordpress-seo\n" });
+        yield* sink.emit({
+          kind: "bytes",
+          _tag: "stdout",
+          chunk: " wordpress-seo\nprivateprefixwordpress\nwordpressprivateprefix\n",
+        });
         yield* owner.finish();
-        expect(text()).toBe("[redacted] wordpress-seo\n");
+        const expected = "[redacted] wordpress-seo\n[redacted]wordpress\nwordpress[redacted]\n";
+        expect(text()).toBe(expected);
         const redactor = yield* service.forProfile("secrets");
         expect(
           owner.capture
             .snapshot(redactor)
             .chunks.map((frame) => frame.chunk)
             .join(""),
-        ).toBe("[redacted] wordpress-seo\n");
+        ).toBe(expected);
       }),
     );
   });
+  test.each(["whole-token", "substring-upgrade"] as const)(
+    "retained replay applies late %s registrations",
+    async (mode) => {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const { sink, owner, service, text } = yield* progressFixture();
+          yield* service.registerValues(["privateprefix"]);
+          if (mode === "substring-upgrade")
+            yield* service.registerValues(["wordpress"], { match: "whole-token" });
+          yield* sink.emit({
+            kind: "bytes",
+            _tag: "stdout",
+            chunk: "wordpress\nwordpress-seo\nprivateprefixwordpress\nwordpressprivateprefix\n",
+          });
+          yield* owner.finish();
+          expect(text()).toBe(
+            `${mode === "whole-token" ? "wordpress" : "[redacted]"}\nwordpress-seo\n[redacted]wordpress\nwordpress[redacted]\n`,
+          );
+          yield* service.registerValues(["wordpress"], {
+            match: mode === "whole-token" ? "whole-token" : "substring",
+          });
+          const retained = owner.capture.snapshot(yield* service.forProfile("secrets"));
+          expect(retained.chunks.map((frame) => frame.chunk).join("")).toBe(
+            mode === "whole-token"
+              ? "[redacted]\nwordpress-seo\n[redacted]wordpress\nwordpress[redacted]\n"
+              : "[redacted]\n[redacted]-seo\n[redacted][redacted]\n[redacted][redacted]\n",
+          );
+        }),
+      );
+    },
+  );
   test("preserves CRLF, BOM and an unterminated byte tail", async () => {
     await Effect.runPromise(
       Effect.gen(function* () {

@@ -50,7 +50,11 @@ export const createSecretRedactor = (
   values: Iterable<string>,
   authoritativeValues: Iterable<string> = [],
   wholeTokenValues: Iterable<string> = [],
-): SecretRedactor & typeof redactedInspection => {
+): SecretRedactor &
+  typeof redactedInspection & {
+    /** Replay pre-redacted fragments as one lexical stream, preserving fragment order. */
+    readonly redactChunks: (chunks: readonly string[]) => readonly string[];
+  } => {
   const authoritative = [...authoritativeValues].filter((value) => value.length > 0);
   const unsafe = authoritative.filter((value) => !isUsableExactRedactionValue(value));
   const unique = Array.from(new Set([...values, ...authoritative])).filter(isUsableExactRedactionValue);
@@ -71,18 +75,33 @@ export const createSecretRedactor = (
       ...redactedInspection,
       redact: (text) => text,
       redactBounded: retainWithinBytes,
+      redactChunks: (chunks) => chunks,
     };
   }
 
   // Only sentinel-crossing values can create new occurrences in emitted output.
-  const redactWithin = (text: string, maxBytes: number): string | undefined => {
+  const redactWithin = (
+    text: string,
+    maxBytes: number,
+    onPass?: (replacements: readonly (readonly [number, number])[]) => void,
+  ): string | undefined => {
     let result = text;
     for (let pass = 0; pass < 8; pass += 1) {
-      const replaced = replaceLiteralMatchesBounded(result, matcher, { replacement: REDACTED, maxBytes });
+      const replacements: Array<readonly [number, number]> | undefined =
+        onPass === undefined ? undefined : [];
+      const replaced = replaceLiteralMatchesBounded(result, matcher, {
+        replacement: REDACTED,
+        maxBytes,
+        ...(replacements === undefined
+          ? {}
+          : { onReplacement: (start: number, end: number) => replacements.push([start, end]) }),
+      });
       if (replaced === undefined) return undefined;
+      if (replacements !== undefined) onPass?.(replacements);
       if (!canCrossSentinel || replaced === result) return replaced;
       result = replaced;
     }
+    onPass?.([[0, result.length]]);
     return retainWithinBytes(REDACTED, maxBytes);
   };
   // Suppress the entire detail rather than corrupt an ANSI sequence with a numeric replacement.
@@ -95,6 +114,32 @@ export const createSecretRedactor = (
     redactBounded: (text, maxBytes) => {
       if (containsUnsafe(text)) return retainWithinBytes(REDACTED, maxBytes);
       return redactWithin(text, maxBytes);
+    },
+    redactChunks: (chunks) => {
+      const text = chunks.join("");
+      if (containsUnsafe(text)) return chunks.map((_, index) => (index === 0 ? REDACTED : ""));
+      let result = chunks;
+      redactWithin(text, Number.MAX_SAFE_INTEGER, (replacements) => {
+        let offset = 0;
+        let replacementIndex = 0;
+        result = result.map((chunk) => {
+          const start = offset;
+          offset += chunk.length;
+          let cursor = start;
+          const pieces: string[] = [];
+          for (let match = replacements[replacementIndex]; match !== undefined && match[0] < offset; ) {
+            pieces.push(chunk.slice(cursor - start, Math.max(cursor, match[0]) - start));
+            if (match[0] >= start) pieces.push(REDACTED);
+            cursor = Math.min(match[1], offset);
+            if (match[1] > offset) break;
+            replacementIndex++;
+            match = replacements[replacementIndex];
+          }
+          pieces.push(chunk.slice(cursor - start));
+          return pieces.join("");
+        });
+      });
+      return result;
     },
   };
 };

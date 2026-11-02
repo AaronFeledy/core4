@@ -77,7 +77,15 @@ const appendReplacement = (
 export const replaceLiteralMatchesBounded = (
   text: string,
   matcher: LiteralMatcher,
-  { replacement, maxBytes }: { readonly replacement: string; readonly maxBytes: number },
+  {
+    replacement,
+    maxBytes,
+    onReplacement,
+  }: {
+    readonly replacement: string;
+    readonly maxBytes: number;
+    readonly onReplacement?: (start: number, end: number) => void;
+  },
 ): string | undefined => {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) return undefined;
   let builder: BoundedStringBuilder | undefined;
@@ -118,6 +126,7 @@ export const replaceLiteralMatchesBounded = (
     }
     builder ??= new BoundedStringBuilder(maxBytes);
     if (unionStart !== -1) {
+      onReplacement?.(unionStart, unionEnd);
       if (!builder.append(text.slice(copiedUntil, unionStart)) || !builder.append(replacement)) {
         return undefined;
       }
@@ -129,6 +138,7 @@ export const replaceLiteralMatchesBounded = (
   if (builder === undefined) {
     return maxBytes === Number.MAX_SAFE_INTEGER ? text : retainWithinBytes(text, maxBytes);
   }
+  onReplacement?.(unionStart, unionEnd);
   return builder.append(text.slice(copiedUntil, unionStart)) &&
     builder.append(replacement) &&
     builder.append(text.slice(unionEnd))

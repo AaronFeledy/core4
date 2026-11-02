@@ -36,6 +36,12 @@ test.each([
   expect(redactor.redact(output)).toBe(output);
   expect(redactor.redactBounded?.(input, encoder.encode(output).length)).toBe(output);
   expect(redactor.redactBounded?.(input, 0)).toBeUndefined();
+  for (let split = 0; split <= input.length; split++) {
+    const chunks = [input.slice(0, split), "", input.slice(split)];
+    const replay = redactor.redactChunks(chunks);
+    expect(replay).toHaveLength(chunks.length);
+    expect(replay.join("")).toBe(expected);
+  }
 });
 
 test("boundary units share the ASCII and non-ASCII token alphabet", () => {
@@ -61,6 +67,9 @@ test.each([
   expect(output).toBe(expected);
   expect(redactor.redact(output)).toBe(output);
   expect(redactor.redactBounded?.(input, 1000)).toBe(output);
+  for (let split = 0; split <= input.length; split++) {
+    expect(redactor.redactChunks([input.slice(0, split), input.slice(split)]).join("")).toBe(expected);
+  }
 });
 
 test("truncation prefixes respect tiers at every marker", () => {
@@ -132,6 +141,7 @@ test("partial intersections widen both ends without masking wholly contained val
   // Then
   expect(output).toBe(REDACTED);
   expect(redactor.redact(output)).toBe(output);
+  expect(redactor.redactChunks(["[redacted]", "x", "[redacted]"])).toEqual([REDACTED, "", ""]);
 });
 
 test("string occurrences use UTF-16 units even for lone surrogate values", () => {
@@ -153,4 +163,5 @@ test("fixed-point iteration fails closed at the pass cap and stays idempotent", 
   expect(output).toBe(REDACTED);
   expect(redactor.redact(output)).toBe(output);
   expect(redactor.redactBounded?.(input, 100)).toBe(output);
+  expect(redactor.redactChunks(["x".repeat(10), "x".repeat(10), "ab"]).join("")).toBe(REDACTED);
 });
