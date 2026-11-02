@@ -5590,5 +5590,65 @@
     "changeKind": "unsupported-keyword",
     "path": "$.landofile.toolingIncludes.additionalProperties",
     "justification": "Reviewed additive pre-release change: object-form toolingIncludes entries gain the same optional `when` condition as includes. Existing entries validate unchanged; no field is removed or narrowed."
+  },
+  {
+    "surface": "command:app:destroy",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "command:app:stop",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "command:meta:global:destroy",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "command:meta:global:stop",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "schema:DestroyAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "schema:DestroyOutcome",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "schema:FileSyncQuiesceResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "schema:ObservedServiceRemoval",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "schema:ServiceShutdownObservation",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
+  },
+  {
+    "surface": "schema:StopAppResult",
+    "changeKind": "unsupported-construct",
+    "path": "$.shutdownObservations.items.anyOf",
+    "justification": "Reviewed optional ValidationIssue.fix addition in the failure member's structured issues. Union variants and existing fields are unchanged; readers may ignore the ordered authored-document edits."
   }
 ]

@@ -1,6 +1,7 @@
 import { Effect, Schema, SchemaIssue, SchemaTransformation } from "effect";
 
 import { Environment, EnvironmentValue } from "./environment-value.ts";
+import { executionSite } from "./execution-site.ts";
 import { mapInputWithPrecheck } from "./map-input.ts";
 
 // =============================================================================
@@ -25,7 +26,10 @@ const EnvironmentMapInput = mapInputWithPrecheck(
   reservedKeyCheck,
 );
 
-export const ComposeEnvironmentInput = Schema.Union([EnvironmentMapInput, Schema.Array(Schema.String)])
+export const ComposeEnvironmentInput = executionSite(
+  Schema.Union([EnvironmentMapInput, Schema.Array(Schema.String)]),
+  "secret-binding",
+)
   .annotate({ description: DESCRIPTION })
   .pipe(
     Schema.decodeTo(

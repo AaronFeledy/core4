@@ -18,6 +18,7 @@ import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { ComposeEnvironmentInput } from "./environment-input.ts";
 import { EnvironmentValue } from "./environment-value.ts";
+import { executionSite, executionSiteKey } from "./execution-site.ts";
 import { LandofileEvents } from "./landofile-events.ts";
 import { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
 export { IncludeEntry, ToolingIncludeShape } from "./landofile-includes.ts";
@@ -613,10 +614,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description: "Container image reference used by the service.",
     }),
     build: Schema.optionalKey(BuildBlock),
-    command: Schema.optionalKey(CommandSpec).annotate({
+    command: executionSiteKey(Schema.optionalKey(CommandSpec), "service-command").annotate({
       description: "Command executed when the service starts.",
     }),
-    entrypoint: Schema.optionalKey(CommandSpec).annotate({
+    entrypoint: executionSiteKey(Schema.optionalKey(CommandSpec), "service-entrypoint").annotate({
       description: "Entrypoint used to launch the service container.",
     }),
     user: Schema.optionalKey(ContainerUser).annotate({
@@ -628,7 +629,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     database: Schema.optionalKey(Schema.String).annotate({
       description: "Default database, bucket, or equivalent data namespace created for the service.",
     }),
-    password: Schema.optionalKey(EnvironmentValue).annotate({
+    password: executionSiteKey(Schema.optionalKey(EnvironmentValue), "secret-binding").annotate({
       description:
         "Redis authentication password, passed through the container environment rather than command arguments.",
     }),
@@ -695,7 +696,7 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
       description:
         'PHP database client selection: "auto" detects database service families, false installs none, or "<family>:<version>" forces one client.',
     }),
-    environment: Schema.optionalKey(ComposeEnvironmentInput),
+    environment: executionSiteKey(Schema.optionalKey(ComposeEnvironmentInput), "secret-binding"),
     envFile: Schema.optionalKey(ComposeEnvFileInput),
     labels: Schema.optionalKey(ComposeLabelsInput),
 
@@ -755,8 +756,8 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
         "Hostnames routed to service endpoints. An empty list disables the generated default route.",
     }),
 
-    healthcheck: Schema.optionalKey(HealthcheckInput),
-    readiness: Schema.optionalKey(HealthcheckInput).annotate({
+    healthcheck: executionSiteKey(Schema.optionalKey(HealthcheckInput), "healthcheck"),
+    readiness: executionSiteKey(Schema.optionalKey(HealthcheckInput), "healthcheck").annotate({
       description:
         "Lifecycle readiness probe, independent of native healthcheck; false explicitly disables command readiness, not process supervision.",
     }),
@@ -859,7 +860,7 @@ export type ToolingVarDefault = typeof ToolingVarDefault.Type;
  * ToolingVarSh — `vars.<name>: { sh: <command> }`. Evaluated at task
  * invocation time via the task's selected engine.
  */
-export const ToolingVarSh = Schema.Struct({ sh: Schema.String });
+export const ToolingVarSh = Schema.Struct({ sh: executionSiteKey(Schema.String, "tooling-var") });
 export type ToolingVarSh = typeof ToolingVarSh.Type;
 
 /**
@@ -894,7 +895,7 @@ export const ToolingStepShape = Schema.Struct({
   user: Schema.optionalKey(Schema.String).annotate({
     description: "User this step runs as; overrides the task user.",
   }),
-  env: Schema.optionalKey(ToolingEnvironment).annotate({
+  env: executionSiteKey(Schema.optionalKey(ToolingEnvironment), "secret-binding").annotate({
     description: "Environment overlaid on the task environment for this step.",
   }),
 });
@@ -941,11 +942,15 @@ export const ToolingTaskShape = Schema.Struct({
   summary: Schema.optionalKey(Schema.String).annotate({
     description: "Short task help, used when description is absent.",
   }),
-  cmd: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])).annotate({
+  cmd: executionSiteKey(
+    Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+    "tooling-cmd",
+  ).annotate({
     description: "Single shell command or argv array run by the task.",
   }),
-  cmds: Schema.optionalKey(
-    layerMerge(Schema.Array(Schema.Union([Schema.String, ToolingStepShape])), REPLACE),
+  cmds: executionSiteKey(
+    Schema.optionalKey(layerMerge(Schema.Array(Schema.Union([Schema.String, ToolingStepShape])), REPLACE)),
+    "tooling-cmds",
   ).annotate({
     description: "Ordered shell commands or command steps with task-local execution overrides.",
   }),
@@ -953,7 +958,7 @@ export const ToolingTaskShape = Schema.Struct({
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Working directory used when the tooling task runs.",
   }),
-  env: Schema.optionalKey(ToolingEnvironment).annotate({
+  env: executionSiteKey(Schema.optionalKey(ToolingEnvironment), "secret-binding").annotate({
     description: "Environment variables applied to this tooling task after app-wide tooling defaults.",
   }),
   vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
@@ -969,7 +974,7 @@ const TOOLING_TASK_FORMS = {
 };
 const ToolingTaskShorthand = Schema.Union([
   Schema.Literal(false),
-  Schema.String.check(
+  executionSite(Schema.String, "tooling-task").check(
     Schema.isMinLength(toolingTaskStringConstraints.minLength, {
       message: "Expected a non-empty command string; use false to disable a task",
     }),
@@ -1011,7 +1016,7 @@ export const ToolingDefaultsShape = Schema.Struct({
   dir: Schema.optionalKey(PortablePath).annotate({
     description: "Default working directory inherited by tooling tasks.",
   }),
-  env: Schema.optionalKey(ToolingEnvironment).annotate({
+  env: executionSiteKey(Schema.optionalKey(ToolingEnvironment), "secret-binding").annotate({
     description: "Default environment variables inherited by tooling tasks.",
   }),
   vars: Schema.optionalKey(Schema.Record(Schema.String, ToolingVar)).annotate({
