@@ -309,7 +309,6 @@ const applyPosixSelfUpdate = ({
         // it now because a successful execve replaces the process before the finalizer runs.
         yield* cleanupUpdateTempDir(tempDir);
         const execArgv = [executablePath, ...reexecUserArgv(selfUpdate.argv)];
-        yield* Effect.sync(() => selfUpdate.beforeExecve?.());
         yield* selfUpdate
           .execve({ path: executablePath, argv: execArgv, env: stringEnv(selfUpdate.env) })
           .pipe(

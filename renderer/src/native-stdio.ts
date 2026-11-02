@@ -1,70 +1,7 @@
-import { fstatSync, writeSync } from "node:fs";
+import { writeSync } from "node:fs";
 import { outputDrainWaiters } from "./output-streams.ts";
 
 export const BROKEN_PIPE_EXIT_CODE = 141;
-
-interface StdioSnapshot {
-  readonly fd: number;
-  readonly dev: bigint;
-  readonly ino: bigint;
-  readonly flags: number;
-}
-let stdioFlagsInstalled = false;
-let reconcileStdioFlags: (() => void) | undefined;
-
-export const restoreStdioFileStatusFlags = (): void => {
-  reconcileStdioFlags?.();
-};
-
-export const preserveStdioFileStatusFlags = (): void => {
-  if (stdioFlagsInstalled) return;
-  stdioFlagsInstalled = true;
-  if (process.platform !== "linux" && process.platform !== "darwin") return;
-  try {
-    const { dlopen } = require("bun:ffi") as typeof import("bun:ffi");
-    // Keep libc open: the exit listener still needs its symbols.
-    const libc = dlopen(process.platform === "linux" ? "libc.so.6" : "/usr/lib/libSystem.B.dylib", {
-      fcntl: {
-        args: ["i32", "i32", "i64", "i64", "i64", "i64", "i64", "i64", "i64"],
-        returns: "i32",
-      },
-    });
-    // SysV x86-64 / Linux AAPCS64 use arg 3 for variadic ints; Apple arm64
-    // uses the stack, whose first slot is arg 9 after x0–x7. Fill both locations.
-    const fcntl = (fd: number, cmd: number, value = 0n): number =>
-      libc.symbols.fcntl(fd, cmd, value, value, value, value, value, value, value);
-    const F_GETFL = 3;
-    const F_SETFL = 4;
-    const nonblock = process.platform === "linux" ? 0o4000 : 0x4;
-    const snapshots: StdioSnapshot[] = [];
-    for (const fd of [0, 1, 2]) {
-      try {
-        const { dev, ino } = fstatSync(fd, { bigint: true });
-        const flags = fcntl(fd, F_GETFL);
-        if (flags >= 0) snapshots.push({ fd, dev, ino, flags });
-      } catch {
-        // Closed or unavailable inherited descriptors need no restoration.
-      }
-    }
-    reconcileStdioFlags = () => {
-      for (const snapshot of snapshots) {
-        try {
-          const { dev, ino } = fstatSync(snapshot.fd, { bigint: true });
-          if (dev !== snapshot.dev || ino !== snapshot.ino) continue;
-          const current = fcntl(snapshot.fd, F_GETFL);
-          if (current >= 0 && (current & nonblock) !== (snapshot.flags & nonblock)) {
-            fcntl(snapshot.fd, F_SETFL, BigInt((current & ~nonblock) | (snapshot.flags & nonblock)));
-          }
-        } catch {
-          // Exit cleanup is best-effort when a descriptor has been closed or replaced.
-        }
-      }
-    };
-    process.once("exit", restoreStdioFileStatusFlags);
-  } catch {
-    // Native flag restoration is best-effort on hosts without these libc symbols (e.g. musl).
-  }
-};
 
 type StdioDestination = "stdout" | "stderr";
 interface OutputStream {

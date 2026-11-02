@@ -3,17 +3,21 @@ import { Effect } from "effect";
 import { Flags } from "../../spec/metadata";
 
 import {
+  type UpdateExecve,
   type UpdateOptions,
   type UpdateResult,
   UpdateResultSchema,
   makeUpdateHandoff,
   update,
 } from "@lando/engine/operations/update";
-import { restoreStdioFileStatusFlags } from "@lando/renderer/native-stdio";
 import { StateStore } from "@lando/sdk/services";
 import { makePluginUpdateRunner } from "../../commands/update-plugins";
+import { execProcess } from "../../process-lifecycle";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { specFlagsOf } from "../../spec/input-coercion";
+
+const execve: UpdateExecve = (input) =>
+  Effect.try({ try: () => execProcess(input), catch: (cause) => cause });
 
 export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
   const flags = specFlagsOf(input);
@@ -25,7 +29,7 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
     ...(only === "core" || only === "plugins" ? { only } : {}),
     // The CLI shell owns process-entry facts; the engine operation must not
     // read process.argv itself (engine-closure), so supply the re-exec argv here.
-    selfUpdate: { argv: process.argv, beforeExecve: restoreStdioFileStatusFlags },
+    selfUpdate: { argv: process.argv, execve },
   };
 };
 

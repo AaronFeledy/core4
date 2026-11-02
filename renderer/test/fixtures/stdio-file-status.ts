@@ -1,5 +1,5 @@
 import { dlopen } from "bun:ffi";
-import { preserveStdioFileStatusFlags, restoreStdioFileStatusFlags } from "@lando/renderer/native-stdio";
+import { preserveStdioFileStatusFlags, restoreStdioFileStatusFlags } from "@lando/renderer/stdio-flags";
 
 const scenario = process.argv[2] ?? "natural";
 const libcPath = process.platform === "darwin" ? "/usr/lib/libSystem.B.dylib" : "libc.so.6";
