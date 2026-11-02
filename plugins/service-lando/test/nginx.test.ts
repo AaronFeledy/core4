@@ -11,13 +11,13 @@ import type {
 import { ServiceConfigIssue } from "../src/services/_feature-helpers.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
-import { nginxNoScriptDenyLocations, nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
 import {
   NGINX_FEATURE_ID,
   nginxPhpFpmWireFeature,
   nginxServiceFeature,
   nginxServiceType,
 } from "../src/services/nginx.ts";
+import { uploadDirRegex } from "../src/services/upload-dirs.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { expectSharedErrorPagesBuildStep } from "./support/error-pages.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
@@ -55,15 +55,21 @@ const composeNginxPlan = (raw: unknown, serviceName = "web"): Promise<ServicePla
 const planCommandText = (command: ServicePlan["command"]): string =>
   Array.isArray(command) ? command.join(" ") : typeof command === "string" ? command : "";
 
-const noScriptDeny = (glob: string): string =>
-  `location ~* ^/${nginxNoScriptRegex(glob)}/[\\s\\S]*\\.php(/|$) { deny all; }`;
+const uploadDirGuard = (globs: readonly string[]): string =>
+  `    if ($fastcgi_script_name ~* "^/(?:${globs.map(uploadDirRegex).join("|")})/") { return 403; }`;
 
-const expectNoScriptDenyBeforePhp = (command: string, glob = "sites/*/files"): void => {
-  const deny = noScriptDeny(glob);
+const expectUploadDirGuard = (command: string, globs = ["sites/*/files"]): void => {
+  const deny = uploadDirGuard(globs);
   const phpLocation = "location ~ [^/]\\.php(/|$) {";
   expect(command).toContain(deny);
-  expect(command.indexOf(deny)).toBeGreaterThan(-1);
-  expect(command.indexOf(phpLocation)).toBeGreaterThan(command.indexOf(deny));
+  expect(command.split(deny)).toHaveLength(2);
+  expect(command.indexOf(deny)).toBeGreaterThan(command.indexOf(phpLocation));
+  expect(command.indexOf(deny)).toBeGreaterThan(command.indexOf("fastcgi_split_path_info"));
+  expect(command.indexOf(deny)).toBeLessThan(command.indexOf("if (!-f"));
+  const pattern = deny.split('"')[1];
+  expect(pattern).not.toContain(".*");
+  expect(pattern).not.toContain("$");
+  expect(command).not.toContain("deny all;");
 };
 
 const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp): Promise<void> => {
@@ -298,17 +304,16 @@ describe("nginx PHP FastCGI preset", () => {
     expect([...script.matchAll(/>\s*(\S+)/gu)].map((match) => match[1])).toEqual(["/tmp/lando-nginx.conf"]);
   });
 
-  test("denies PHP under authored noScripts before the FastCGI location", async () => {
+  test("denies PHP under authored uploadDirs inside the FastCGI location", async () => {
     const plan = await composeNginxPlan({
       type: "nginx",
       backend: "appserver",
       webroot: "/app/web",
-      noScripts: ["sites/*/files", "uploads"],
+      uploadDirs: ["sites/*/files", "uploads"],
     });
 
     const command = planCommandText(plan.command);
-    expectNoScriptDenyBeforePhp(command, "sites/*/files");
-    expectNoScriptDenyBeforePhp(command, "uploads");
+    expectUploadDirGuard(command, ["sites/*/files", "uploads"]);
     expectPhpFpmPathInfoWire(command);
   });
 });
@@ -341,7 +346,7 @@ describe("nginx PHP FPM app-feature wire", () => {
     readonly webroot?: string;
     readonly command?: ReadonlyArray<string>;
     readonly user?: string;
-    readonly noScripts?: ReadonlyArray<string>;
+    readonly uploadDirs?: ReadonlyArray<string>;
   }): AppFeatureServiceView => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
@@ -354,7 +359,7 @@ describe("nginx PHP FPM app-feature wire", () => {
           ...(input.webroot === undefined ? {} : { webroot: input.webroot }),
           ...(input.command === undefined ? {} : { command: input.command }),
           ...(input.user === undefined ? {} : { user: input.user, home: false }),
-          ...(input.noScripts === undefined ? {} : { noScripts: input.noScripts }),
+          ...(input.uploadDirs === undefined ? {} : { uploadDirs: input.uploadDirs }),
         },
       },
     });
@@ -416,7 +421,7 @@ describe("nginx PHP FPM app-feature wire", () => {
     expect(commands.get("appserver")).toBeUndefined();
   });
 
-  test("wired FastCGI command denies authored noScripts before the PHP location", async () => {
+  test("wired FastCGI command denies authored uploadDirs inside the PHP location", async () => {
     const { context, commands } = applyWire([
       viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm", port: 9070 }),
       viewOf({
@@ -424,27 +429,35 @@ describe("nginx PHP FPM app-feature wire", () => {
         serviceType: "nginx",
         backend: "appserver",
         webroot: "web",
-        noScripts: ["sites/*/files"],
+        uploadDirs: ["sites/*/files"],
       }),
     ]);
 
     await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
 
     const command = commandText(commands.get("edge"));
-    expectNoScriptDenyBeforePhp(command);
+    expectUploadDirGuard(command);
     expectPhpFpmPathInfoWire(command);
   });
 
-  test("wired FastCGI command does not invent noScripts from a Drupal framework", async () => {
-    const { context, commands } = applyWire([
-      viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm" }),
-      viewOf({ serviceName: "edge", serviceType: "nginx", backend: "appserver" }),
-    ]);
+  test.each([{ uploadDirs: undefined }, { uploadDirs: [] }])(
+    "wired FastCGI omits upload protection for %j",
+    async ({ uploadDirs }) => {
+      const { context, commands } = applyWire([
+        viewOf({ serviceName: "appserver", serviceType: "php:8.3", via: "fpm" }),
+        viewOf({
+          serviceName: "edge",
+          serviceType: "nginx",
+          backend: "appserver",
+          ...(uploadDirs === undefined ? {} : { uploadDirs }),
+        }),
+      ]);
 
-    await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
+      await Effect.runPromise(nginxPhpFpmWireFeature.apply(context));
 
-    expect(commandText(commands.get("edge"))).not.toContain(noScriptDeny("sites/*/files"));
-  });
+      expect(commandText(commands.get("edge"))).not.toContain("return 403;");
+    },
+  );
 
   test("wired FastCGI command carries PATH_INFO after fastcgi_params and 404s a missing script file", async () => {
     const { context, commands } = applyWire([
@@ -512,41 +525,39 @@ describe("nginx PHP FPM app-feature wire", () => {
   });
 });
 
-describe("nginx noScripts glob translation", () => {
+describe("uploadDirs glob translation", () => {
   test("defensive interpolation validation identifies the invalid list entry", () => {
     try {
-      nginxNoScriptDenyLocations(["uploads", "files; injected"]);
+      ["uploads", "files; injected"].map(uploadDirRegex);
       throw new Error("Expected unsafe interpolation rejection");
     } catch (error) {
       if (!(error instanceof ServiceConfigIssue)) throw error;
-      expect(error.path).toEqual(["noScripts", 1]);
+      expect(error.path).toEqual(["uploadDirs", 1]);
       expect(error.suggestion).toBeDefined();
     }
   });
   test("escapes dots and limits each * to characters within one path segment", () => {
-    expect(nginxNoScriptRegex("sites/*/files")).toBe("sites/[^/]*/files");
-    expect(nginxNoScriptRegex("uploads")).toBe("uploads");
-    expect(nginxNoScriptRegex("sites/default.files")).toBe("sites/default\\.files");
+    expect(uploadDirRegex("sites/*/files")).toBe("sites/[^/]*/files");
+    expect(uploadDirRegex("uploads")).toBe("uploads");
+    expect(uploadDirRegex("sites/default.files")).toBe("sites/default\\.files");
   });
 
   test.each(["uploads", "uploads-old"])("uploads* protects %s itself", (directory) => {
-    const deny = new RegExp(`^/${nginxNoScriptRegex("uploads*")}/[\\s\\S]*\\.php(/|$)`, "i");
+    const deny = new RegExp(`^/${uploadDirRegex("uploads*")}/`, "i");
     expect(deny.test(`/${directory}/payload.PHP/extra`)).toBe(true);
     expect(deny.test("/uploads/other/payload.php")).toBe(true);
     expect(deny.test("/other/uploads/payload.php")).toBe(false);
   });
 
-  test.each(["/uploads/x\ny.php", "/uploads/x\ny.php/extra", "/uploads/nested\npath/x.php"])(
-    "denies PHP when the decoded path contains a newline: %j",
-    (path) => {
-      // Given
-      const [location] = nginxNoScriptDenyLocations(["uploads"]);
-      const pattern = location?.match(/^\s*location ~\* (.+) \{ deny all; \}$/u)?.[1];
-      if (pattern === undefined) throw new Error("Expected generated nginx deny location");
-      // When
-      const denied = new RegExp(pattern, "i").test(path);
-      // Then
-      expect(denied).toBe(true);
+  test.each([{ uploadDirs: undefined }, { uploadDirs: [] }])(
+    "omits the guard when uploadDirs is %j",
+    async ({ uploadDirs }) => {
+      const plan = await composeNginxPlan({
+        type: "nginx",
+        backend: "appserver",
+        ...(uploadDirs === undefined ? {} : { uploadDirs }),
+      });
+      expect(planCommandText(plan.command)).not.toContain("return 403;");
     },
   );
 
@@ -573,7 +584,7 @@ describe("nginx noScripts glob translation", () => {
     "a//b",
     "*",
   ])("rejects %j instead of interpolating it", (path) => {
-    expect(() => nginxNoScriptRegex(path)).toThrow(/nginx noScripts path is not a safe webroot-relative URI/);
+    expect(() => uploadDirRegex(path)).toThrow(/uploadDirs path is not a safe webroot-relative directory/);
   });
 });
 import { serviceAppMount } from "@lando/sdk/schema";
