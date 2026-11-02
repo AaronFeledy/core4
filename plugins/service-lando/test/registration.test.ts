@@ -740,7 +740,7 @@ describe("@lando/service-lando registration", () => {
       : typeof edge.command === "string"
         ? edge.command
         : "";
-    const deny = `location ~* ^/${nginxNoScriptRegex("sites/*/files")}/.*\\.php(/|$) { deny all; }`;
+    const deny = `location ~* ^/${nginxNoScriptRegex("sites/*/files")}/[\\s\\S]*\\.php(/|$) { deny all; }`;
     expect(command).toContain(deny);
     expect(command.indexOf(deny)).toBeLessThan(command.indexOf("location ~ [^/]\\.php(/|$) {"));
     expectPhpFpmPathInfoWire(command);

@@ -55,7 +55,9 @@ export const nginxNoScriptFixtureFiles: Readonly<Record<string, string>> = {
   ...phpFixtureFiles,
   "install.php": `<?php\necho ${JSON.stringify(INSTALL_OK)};\n`,
   "sites/default/files/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
+  "sites/default/files/x\ny.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
   "uploads/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
+  "uploads/x\ny.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
   "uploads-old/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
 };
 
@@ -175,6 +177,13 @@ export const nginxNoScriptCases: ReadonlyArray<ErrorPageCase> = [
   request("denies PHP when uploads* matches zero extra characters", "/uploads/x.php", 403, { page: 403 }),
   request("denies PHP when uploads* matches a suffix", "/uploads-old/x.php", 403, { page: 403 }),
   request("denies PATH_INFO under sites/*/files", "/sites/default/files/x.php/extra", 403, { page: 403 }),
+  request("denies a URI-decoded newline in a Drupal upload filename", "/sites/default/files/x%0Ay.php", 403, {
+    page: 403,
+  }),
+  request("denies a URI-decoded newline in an upload filename", "/uploads/x%0Ay.php", 403, { page: 403 }),
+  request("denies PATH_INFO after an upload filename containing a newline", "/uploads/x%0Ay.php/extra", 403, {
+    page: 403,
+  }),
   request("denies a %2e segment under sites/*/files", "/sites/default/files/%2e/x.php", 403, {
     page: 403,
   }),

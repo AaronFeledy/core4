@@ -56,7 +56,7 @@ const planCommandText = (command: ServicePlan["command"]): string =>
   Array.isArray(command) ? command.join(" ") : typeof command === "string" ? command : "";
 
 const noScriptDeny = (glob: string): string =>
-  `location ~* ^/${nginxNoScriptRegex(glob)}/.*\\.php(/|$) { deny all; }`;
+  `location ~* ^/${nginxNoScriptRegex(glob)}/[\\s\\S]*\\.php(/|$) { deny all; }`;
 
 const expectNoScriptDenyBeforePhp = (command: string, glob = "sites/*/files"): void => {
   const deny = noScriptDeny(glob);
@@ -530,11 +530,25 @@ describe("nginx noScripts glob translation", () => {
   });
 
   test.each(["uploads", "uploads-old"])("uploads* protects %s itself", (directory) => {
-    const deny = new RegExp(`^/${nginxNoScriptRegex("uploads*")}/.*\\.php(/|$)`, "i");
+    const deny = new RegExp(`^/${nginxNoScriptRegex("uploads*")}/[\\s\\S]*\\.php(/|$)`, "i");
     expect(deny.test(`/${directory}/payload.PHP/extra`)).toBe(true);
     expect(deny.test("/uploads/other/payload.php")).toBe(true);
     expect(deny.test("/other/uploads/payload.php")).toBe(false);
   });
+
+  test.each(["/uploads/x\ny.php", "/uploads/x\ny.php/extra", "/uploads/nested\npath/x.php"])(
+    "denies PHP when the decoded path contains a newline: %j",
+    (path) => {
+      // Given
+      const [location] = nginxNoScriptDenyLocations(["uploads"]);
+      const pattern = location?.match(/^\s*location ~\* (.+) \{ deny all; \}$/u)?.[1];
+      if (pattern === undefined) throw new Error("Expected generated nginx deny location");
+      // When
+      const denied = new RegExp(pattern, "i").test(path);
+      // Then
+      expect(denied).toBe(true);
+    },
+  );
 
   test.each([
     "files; } location / {",

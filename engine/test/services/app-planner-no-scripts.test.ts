@@ -61,7 +61,7 @@ test("nginx with a backend generates PHP denial before FastCGI", async () => {
   // Then
   const plannedCommand = result.services[ServiceName.make("web")]?.command;
   const command = typeof plannedCommand === "string" ? plannedCommand : (plannedCommand?.join(" ") ?? "");
-  const deny = "location ~* ^/uploads[^/]*/.*\\.php(/|$) { deny all; }";
+  const deny = "location ~* ^/uploads[^/]*/[\\s\\S]*\\.php(/|$) { deny all; }";
   expect(command).toContain(deny);
   expect(command.indexOf(deny)).toBeLessThan(command.indexOf("location ~ [^/]\\.php(/|$)"));
 });

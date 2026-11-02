@@ -20,9 +20,10 @@ export const nginxNoScriptRegex = (path: string, index = 0): string => {
 /**
  * Deny locations that must sit before the PHP FastCGI location so upload
  * trees cannot execute `.php` (including PATH_INFO). `~*` keeps the match
- * case-insensitive on macOS bind mounts.
+ * case-insensitive on macOS bind mounts. Match URI-decoded line breaks too:
+ * PCRE's `.` would let an uploaded filename containing LF bypass the denial.
  */
 export const nginxNoScriptDenyLocations = (paths: ReadonlyArray<string> | undefined): ReadonlyArray<string> =>
   (paths ?? []).map(
-    (path, index) => `  location ~* ^/${nginxNoScriptRegex(path, index)}/.*\\.php(/|$) { deny all; }`,
+    (path, index) => `  location ~* ^/${nginxNoScriptRegex(path, index)}/[\\s\\S]*\\.php(/|$) { deny all; }`,
   );
