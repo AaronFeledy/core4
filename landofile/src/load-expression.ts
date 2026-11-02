@@ -1,13 +1,10 @@
 import { Effect, Predicate, Result } from "effect";
 
 import {
-  LandofileExpressionEvalError,
-  LandofileExpressionForbiddenError,
-  LandofileExpressionParseError,
   LandofileImportRefMisuseError,
   LandofileLoadLimitError,
-  LandofileLoadOutsideRootError,
-  LandofileParseError,
+  type LandofileLoadOutsideRootError,
+  type LandofileParseError,
   LandofileValidationError,
 } from "@lando/sdk/errors";
 import {
@@ -21,7 +18,9 @@ import { isLandofileOverride, isLandofileReset, override } from "@lando/sdk/land
 
 import type { ParsedPendingSite } from "@lando/sdk/schema";
 import { INVOCATION_SCOPES, authoredSiteId, executableExpressionPath } from "./compiled-sites.ts";
+import { includeEntryPath } from "./include-condition-shape.ts";
 import { decodeImplicitFileRef, makeLandofileLoadHelperOverrides } from "./load-expression-decoders.ts";
+import { normalizeLoadExpressionFailure } from "./load-expression-failure.ts";
 import { LandofileFileSession } from "./load-expression-file.ts";
 import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
 import {
@@ -80,6 +79,29 @@ export const resolveLandofileLoadExpressions = (
         });
       };
       const visit = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
+        try {
+          return visitValue(value, path);
+        } catch (cause) {
+          if (options.recorder === undefined) throw cause;
+          const source = { file: options.source.sourcePath, layer: options.source.layer, path };
+          options.recorder.record(normalizeLoadExpressionFailure(cause, options.source, path), source);
+          return value;
+        }
+      };
+      const visitValue = (value: unknown, path: ReadonlyArray<string | number>): unknown => {
+        if (includeEntryPath(path) && Predicate.isObject(value) && Object.hasOwn(value, "when")) return value;
+        const key = path.at(-1);
+        if (typeof key === "string" && (key.includes("{{") || key.includes("${"))) {
+          const parsed = parseExpressionEither(key, {
+            filePath: options.source.sourcePath,
+            bareShellParameters: "preserve",
+          });
+          if (
+            Result.isFailure(parsed) ||
+            parsed.success.segments.some((segment) => segment.kind !== "LiteralSegment")
+          )
+            return unsupported(path, "Key expressions");
+        }
         if (
           Predicate.isObject(value) &&
           "_tag" in value &&
@@ -191,28 +213,23 @@ export const resolveLandofileLoadExpressions = (
           }
           return text === value ? result : `${value.slice(0, value.indexOf("=") + 1)}${String(result)}`;
         }
+        if (!Predicate.isObjectOrArray(value)) return value;
         if (isLandofileReset(value)) return value;
-        if (isLandofileOverride(value)) return override(visit(value.value, path));
-        if (Array.isArray(value)) return value.map((entry, index) => visit(entry, [...path, index]));
-        if (!Predicate.isObject(value)) return value;
-        return Object.fromEntries(
-          Object.entries(value).map(([key, entry]) => {
-            if (key.includes("{{") || key.includes("${")) {
-              const parsed = parseExpressionEither(key, {
-                filePath: options.source.sourcePath,
-                bareShellParameters: "preserve",
-              });
-              if (
-                Result.isFailure(parsed) ||
-                parsed.success.segments.some((segment) => segment.kind !== "LiteralSegment")
-              )
-                return unsupported([...path, key], "Key expressions");
-            }
-            return [key, visit(entry, [...path, key])];
-          }),
-        );
+        if (isLandofileOverride(value)) {
+          const resolved = visit(value.value, path);
+          return resolved === value.value ? value : override(resolved);
+        }
+        let resolved: object | undefined;
+        for (const key of Object.keys(value)) {
+          const entry = Reflect.get(value, key);
+          const next = visit(entry, [...path, Array.isArray(value) ? Number(key) : key]);
+          if (next === entry) continue;
+          resolved ??= Array.isArray(value) ? [...value] : { ...value };
+          Reflect.set(resolved, key, next);
+        }
+        return resolved ?? value;
       };
-      const value = visit(options.value, []);
+      const value = visit(options.value, options.pathPrefix ?? []);
       options.pendingSites?.push(...pendingSites);
       return {
         value,
@@ -221,35 +238,5 @@ export const resolveLandofileLoadExpressions = (
         relaxedReads: session.relaxedReads,
       };
     },
-    catch: (cause): ResolveLandofileLoadExpressionError => {
-      if (
-        cause instanceof LandofileImportRefMisuseError ||
-        cause instanceof LandofileLoadLimitError ||
-        cause instanceof LandofileLoadOutsideRootError ||
-        cause instanceof LandofileValidationError
-      )
-        return cause;
-      if (
-        cause instanceof LandofileExpressionEvalError ||
-        cause instanceof LandofileExpressionForbiddenError ||
-        cause instanceof LandofileExpressionParseError
-      ) {
-        return new LandofileParseError({
-          message: cause.message,
-          filePath: options.source.sourcePath,
-          line: undefined,
-          column: undefined,
-          remediation: cause.remediation,
-          cause,
-        });
-      }
-      return new LandofileParseError({
-        message: cause instanceof Error ? cause.message : "Landofile load/import evaluation failed.",
-        filePath: options.source.sourcePath,
-        line: undefined,
-        column: undefined,
-        remediation: "Check the load/import expression and referenced local file.",
-        cause,
-      });
-    },
+    catch: (cause) => normalizeLoadExpressionFailure(cause, options.source),
   });

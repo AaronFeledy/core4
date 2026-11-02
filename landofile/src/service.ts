@@ -1,8 +1,6 @@
-import { join } from "node:path";
-import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
+import { LandofileNotFoundError } from "@lando/sdk/errors";
 import { LandofileService, ManagedFileTransactionGuard, StateStore } from "@lando/sdk/services";
-import { Cause, Effect, Layer } from "effect";
-import { LANDOFILE_NAME } from "./discovery.ts";
+import { Effect, Layer } from "effect";
 import { compileLandofileFile } from "./file-compile.ts";
 import { createIncludeResolutionSession } from "./include-session.ts";
 import { presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
@@ -14,6 +12,7 @@ import type { LandofileRuntimeInputs } from "./ports.ts";
 import { evaluateLandofileRootLayers } from "./root-compile.ts";
 
 export { LandofileService } from "@lando/sdk/services";
+export { finishLoadStage } from "./load-failures.ts";
 export { validateLandofileReplacement } from "./replacement.ts";
 export { acquireLandofileReplacement, prepareLandofileReplacement } from "./prepared-replacement.ts";
 export type { LandofileFinalizeOverrides } from "./pipeline/finalize-overrides.ts";
@@ -73,31 +72,17 @@ export const loadLandofileFile = Effect.fn("Landofile.loadFile")(function* (
 
 export const loadLandofileLayers = Effect.fn("Landofile.loadLayers")(mergeLandofileRootLayers);
 
-const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(
-  function* (inputs: LandofileRuntimeInputs) {
-    const cwd = yield* discoveryCwd();
-    yield* ensureConsistentRoot(cwd, inputs);
-    const discovered = yield* findDiscoveredLandofilePath();
-    if (discovered.appRoot !== cwd) yield* ensureConsistentRoot(discovered.appRoot, inputs);
-    const session = yield* createIncludeResolutionSession({ appRoot: discovered.appRoot, ...inputs });
-    const evaluated = yield* evaluateLandofileRootLayers(discovered.appRoot, { session, inputs });
-    return yield* finalizeLandofileRootLayers(evaluated, discovered.filePath, inputs);
-  },
-  Effect.catchCause((cause) => {
-    const failure = Cause.findErrorOption(cause);
-    if (failure._tag === "Some") return Effect.fail(failure.value);
-    return Effect.fail(
-      new LandofileParseError({
-        message: "Failed to load Landofile.",
-        filePath: join(process.cwd(), LANDOFILE_NAME),
-        line: undefined,
-        column: undefined,
-        remediation: `Correct the Landofile under ${process.cwd()} or run the command from a Lando app root.`,
-        cause,
-      }),
-    );
-  }),
-);
+const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(function* (
+  inputs: LandofileRuntimeInputs,
+) {
+  const cwd = yield* discoveryCwd();
+  yield* ensureConsistentRoot(cwd, inputs);
+  const discovered = yield* findDiscoveredLandofilePath();
+  if (discovered.appRoot !== cwd) yield* ensureConsistentRoot(discovered.appRoot, inputs);
+  const session = yield* createIncludeResolutionSession({ appRoot: discovered.appRoot, ...inputs });
+  const evaluated = yield* evaluateLandofileRootLayers(discovered.appRoot, { session, inputs });
+  return yield* finalizeLandofileRootLayers(evaluated, discovered.filePath, inputs);
+});
 
 export const layer = (inputs: LandofileRuntimeInputs) =>
   Layer.effect(

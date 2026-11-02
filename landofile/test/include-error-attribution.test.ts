@@ -51,7 +51,13 @@ describe("include entry error attribution", () => {
     // When
     const error = await resolveFailure({ includes });
     // Then
-    expect(error).toMatchObject({ path: ["includes", 1], file: join(root, ".lando.yml") });
+    expect(error).toMatchObject({
+      _tag: "LandofileLoadError",
+      failures: [
+        { path: ["includes", 1], file: join(root, ".lando.yml") },
+        { path: ["includes", 0], file: join(root, ".lando.yml") },
+      ],
+    });
   });
 
   test("keeps the innermost fragment's entry and physical file", async () => {

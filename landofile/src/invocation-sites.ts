@@ -66,7 +66,7 @@ export const compileInvocationSites = (
           ? cause
           : new ConfigExpressionError({
               message: "Invalid static invocation capture.",
-              path: site.path.join("."),
+              path: site.path,
               expression: siteExpression(site, document),
               filePath: "file" in site.source ? site.source.file : "<invocation>",
               remediation: "Use a valid bounded static value or binding reference.",
@@ -103,7 +103,7 @@ export const evaluateInvocationSite = (site: InvocationSite, context: Expression
       services: { ...context.services, __invocationCaptures: site.captures },
     },
     {
-      path: site.source.path.join("."),
+      path: site.source.path,
       filePath: "file" in site.source ? site.source.file : "<invocation>",
       expression: site.expression,
       budget: { maxSteps: 1024, maxDepth: 32, maxOutputBytes: 65536, maxCollectionSize: 256 },
@@ -112,7 +112,7 @@ export const evaluateInvocationSite = (site: InvocationSite, context: Expression
   if (Result.isFailure(result))
     throw new ConfigExpressionError({
       message: result.failure.message,
-      path: site.source.path.join("."),
+      path: site.source.path,
       expression: site.expression,
       filePath: "file" in site.source ? site.source.file : "<invocation>",
       remediation: result.failure.remediation,

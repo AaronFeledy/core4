@@ -1,6 +1,6 @@
-import { mergeLandofiles } from "@lando/sdk/landofile";
+import { LANDOFILE_MERGE_DIRECTIVE, isPlainRecord, mergeLandofiles } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
-import { Schema } from "effect";
+import { Predicate, Schema } from "effect";
 
 import { copyLandofileProvenance } from "./copy-provenance.ts";
 
@@ -23,6 +23,13 @@ const AcquisitionShape = Schema.Struct({
   toolingIncludes: LandofileShape.schema.fields.toolingIncludes,
   lando: Schema.optionalKey(Schema.String),
 });
+export const decodeIncludeAcquisition = Schema.decodeUnknownResult(AcquisitionShape);
+const containsDirective = (value: unknown): boolean => {
+  if (Predicate.hasProperty(value, LANDOFILE_MERGE_DIRECTIVE)) return true;
+  if (Array.isArray(value)) return value.some(containsDirective);
+  if (!isPlainRecord(value)) return false;
+  return Object.values(value).some(containsDirective);
+};
 export const includeAcquisitionView = (overlay: Record<string, unknown>) => {
   const projection = Object.fromEntries(
     ["includes", "include", "toolingIncludes", "lando"].flatMap((key) =>
@@ -31,9 +38,9 @@ export const includeAcquisitionView = (overlay: Record<string, unknown>) => {
   );
   return copyLandofileProvenance(
     overlay,
-    Schema.decodeUnknownSync(AcquisitionShape)(mergeLandofiles([projection]), {
-      onExcessProperty: "error",
-      errors: "all",
-    }),
+    Schema.decodeUnknownSync(AcquisitionShape)(
+      containsDirective(projection) ? mergeLandofiles([projection]) : projection,
+      { onExcessProperty: "error", errors: "all" },
+    ),
   );
 };
