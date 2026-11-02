@@ -95,7 +95,7 @@ services:
 
 Shorthand and object routes live in the same list. `app.lndo.site:8080/admin` and `{hostname: app.lndo.site, endpoint: 8080, pathPrefix: /admin}` mean the same thing.
 
-Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, shorthand, and authored HTTP endpoint selection after the expression resolves, under rule `landofile.route`. Independent findings are reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues. An expression that cannot resolve still stops materialization at its first error.
+Routes may use expressions such as `{{ app.name }}.{{ proxy.defaultDomain }}`. Lint, `lando start`, and `lando app:cache:refresh` all check `hostname`, `pathPrefix`, shorthand, and authored HTTP endpoint selection after the expression resolves, under rule `landofile.route`. Independent findings are reported together: lint lists them as violations, and start or refresh fails with one `LandofileValidationError` carrying the same issues. Load-time expression failures are reported together; effective route checks wait until the load stage succeeds.
 
 Layer merging matches routes by the same scheme, case-insensitive hostname, and path-prefix identity used for conflict detection, regardless of spelling. Omitted scheme means HTTPS and omitted path prefix means `/`. Backend ports do not change that identity. `both` participates in both schemes; overlaying only HTTPS keeps the inherited HTTP entry.
 
