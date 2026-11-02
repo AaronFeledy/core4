@@ -1,10 +1,10 @@
-name: nginx-noscripts
+name: nginx-upload-dirs
 runtime: 4
 services:
   web:
     type: nginx
     backend: app
-    noScripts:
+    uploadDirs:
       - sites/*/files
   app:
     type: "php:8.3"

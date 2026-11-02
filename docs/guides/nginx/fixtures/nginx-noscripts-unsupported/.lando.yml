@@ -1,5 +1,0 @@
-name: nginx-noscripts-unsupported
-services:
-  web:
-    type: nginx
-    noScripts: [uploads]

@@ -53,14 +53,14 @@ services:
 
 ## Stop PHP in upload directories
 
-Add `noScripts:` to the nginx service from the PHP example above. List upload directories as URI paths relative to the webroot, not host filesystem paths:
+Set `uploadDirs:` on the nginx service in front of PHP-FPM, not on the FPM service. Lando's generated PHP location blocks execution from these webroot-relative directories:
 
 ```yaml
 services:
   web:
     type: nginx
     backend: app
-    noScripts:
+    uploadDirs:
       - sites/*/files
       - uploads
   app:
@@ -68,55 +68,41 @@ services:
     via: fpm
 ```
 
-With Lando's generated FastCGI configuration, requests for PHP files beneath these paths return 403, including paths such as `/uploads/file.php/extra`. The match is case-insensitive and also covers URI-decoded line breaks in uploaded filenames. `*` matches zero or more characters within one path segment, never across `/`: `sites/*/files` covers both `sites/default/files` and `sites/example.com/files`, and `uploads*` covers `uploads` itself as well as `uploads-old`. Front controllers such as `/index.php` and Drupal image-style fallbacks remain reachable.
+The nginx service needs a non-empty `backend` and Lando's generated launcher, with no authored `command:` or `entrypoint:`. See [Keep PHP out of upload directories](./php.mdx#keep-php-out-of-upload-directories) for syntax, recipe defaults, Apache support, and how to check or clear the setting.
 
-Use letters, digits, `.`, `_`, `/`, `-`, and `*` in these paths. An entry cannot be empty, consist only of `*`, start or end with `/`, or contain `..`, `**`, an empty segment such as `a//b`, or a `.` segment such as `a/./b`.
-
-From the app directory, check the path syntax before rebuilding:
-
-```sh
-lando app:config:lint
-```
-
-An invalid entry produces a violation under `services.<name>.noScripts`. Fix it before running `lando rebuild` to apply the configuration.
-
-Drupal and Drupal CMS set `sites/*/files` automatically when you choose nginx. Set `noScripts: []` on that nginx service to clear the recipe default. This removes Lando's protection, so deny PHP under the upload paths in your own configuration if you replace the generated launcher.
-
-Lando rejects a non-empty `noScripts` when it cannot generate the deny rules: on other service types, nginx without a non-empty `backend`, or nginx with an authored `command:` or `entrypoint:`. Remove the field or set `noScripts: []`, and supply the protection in your own server configuration. An empty list is accepted on every service type, including a recipe edge with a replacement command.
-
-  <Scenario id="authored-noscripts" render>
+  <Scenario id="authored-upload-dirs" render>
     <Step name="scaffold">
-      <UseFixture name="nginx-noscripts" />
+      <UseFixture name="nginx-upload-dirs" />
     </Step>
     <Step name="inspect">
       <Run command="lando app:config --format=json" />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"noScripts\":\\s*\\[\\s*\"sites/\\*/files\"" } }} />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uploadDirs\":\\s*\\[\\s*\"sites/\\*/files\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
     </Step>
   </Scenario>
 
-  <Scenario id="rejects-noscripts-injection" render={false} reason="Regression for noScripts allowlist">
+  <Scenario id="rejects-upload-dirs-injection" render={false} reason="Regression for uploadDirs allowlist">
     <Step name="scaffold">
-      <UseFixture name="nginx-noscripts-inject" />
+      <UseFixture name="nginx-upload-dirs-inject" />
     </Step>
     <Step name="lint">
       <Run command="lando app:config:lint --format=json" expectExit={1} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"noScripts\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"uploadDirs\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
     </Step>
   </Scenario>
 
-  <Scenario id="rejects-unsupported-noscripts" render={false} reason="Reject protection that nginx cannot generate">
+  <Scenario id="rejects-unsupported-upload-dirs" render={false} reason="Reject protection that nginx cannot generate">
     <Step name="lint">
-      <UseFixture name="nginx-noscripts-unsupported" />
+      <UseFixture name="nginx-upload-dirs-unsupported" />
       <Run command="lando app:config:lint --format=json" expectExit={1} />
       <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"noScripts\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"web\",\\s*\"uploadDirs\"" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
