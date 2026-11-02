@@ -1,6 +1,10 @@
 import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
-import { acquireLandofileRootLayers, composeLandofileRootLayers } from "@lando/landofile/service";
+import {
+  acquireLandofileRootLayers,
+  composeLandofileRootLayers,
+  finishLoadStage,
+} from "@lando/landofile/service";
 import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { encodeLandofileSourceValue } from "@lando/sdk/landofile";
 import { LandofileSourceValue, validationIssue } from "@lando/sdk/schema";
@@ -101,6 +105,11 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
         return { source, ...projection, layers, redactionTokens };
       }
       const composed = yield* composeLandofileRootLayers(appRoot, inputs);
+      if (composed.runtime.recorder !== undefined)
+        yield* finishLoadStage(
+          composed.sources.find(({ layer }) => layer.layer === "canonical")?.source.file ?? appRoot,
+          composed.runtime.recorder,
+        );
       const redactionTokens = composed.documents.flatMap((document) =>
         collectAuthoredRedactionTokens(document.document),
       );

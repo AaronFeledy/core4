@@ -3,9 +3,11 @@ import { ConfigService, Logger, ManagedFileTransactionGuard } from "@lando/sdk/s
 import { type Context, Effect } from "effect";
 import { captureCompilationContext } from "./compilation.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
+import { type LoadFailureRecorder, createLoadFailureRecorder } from "./load-failures.ts";
 import type { LandofileRuntimeInputs } from "./ports.ts";
 
 export interface LandofileLoadContext {
+  readonly recorder?: LoadFailureRecorder;
   readonly validCanonicalFile?: string;
   readonly pendingSites?: ParsedPendingSite[];
   readonly compilationContext?: CompilationContext;
@@ -63,6 +65,7 @@ export const loadContext = Effect.fnUntraced(function* (
     appRoot,
     policy,
     pendingSites: [],
+    recorder: createLoadFailureRecorder(),
     compilationContext: captureCompilationContext(appRoot, env),
     ...(logger._tag === "Some" ? { logger: logger.value } : {}),
   };

@@ -118,6 +118,7 @@ export const resolveLandofileSourceExpressions = Effect.fn("Landofile.resolveSou
     source: { appRoot: context.appRoot, sourcePath: file, sourceRoot: dirname(file), layer: context.layer },
     policy: context.policy,
     pendingSites: context.pendingSites,
+    recorder: context.recorder,
   });
   if (context.logger !== undefined) {
     const logger = context.logger;
@@ -179,14 +180,12 @@ export const prepareLandofileValue = Effect.fnUntraced(function* <
     readonly context: LandofileLoadContext;
   },
 >(source: S) {
-  const checked = yield* checkLandofileSource(source.file, source.value);
-  return yield* resolveLandofileSourceExpressions({ ...source, value: checked });
-});
-
-const checkLandofileSource = Effect.fnUntraced(function* (file: string, value: unknown) {
-  return yield* rejectUnsupportedToolingFeatures(file, value).pipe(
-    Effect.flatMap((supported) => rejectComposeKeys(file, supported)),
+  const check = rejectUnsupportedToolingFeatures(source.file, source.value).pipe(
+    Effect.flatMap((value) => rejectComposeKeys(source.file, value)),
   );
+  if (source.context.recorder === undefined) yield* check;
+  else source.context.recorder.effectiveChecks.push(check);
+  return yield* resolveLandofileSourceExpressions(source);
 });
 
 export const prepareLandofileLayer = Effect.fn("Landofile.prepareLayer")(function* (
