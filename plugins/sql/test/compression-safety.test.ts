@@ -120,7 +120,7 @@ describe("host dump compression safety", () => {
                     .resolveEnvironment(env ?? {})
                     .pipe(Effect.map((resolved) => harness.deps.exec(service, command, resolved))),
                 ),
-              input,
+              { ...input, secrets: () => ({ substring: [], wholeToken: [] }) },
             ).pipe(Effect.provideService(SqlEnvironmentSession, session), Effect.flip),
           ),
         ),

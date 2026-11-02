@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { makeDiagnosticTail } from "@lando/redaction";
 import { RedactionService } from "@lando/redaction/service";
+import { sha256Hex } from "@lando/sdk/digest";
 import { SnapshotNotFoundError } from "@lando/sdk/errors";
 import {
   type DatabaseConnection,
@@ -17,6 +18,7 @@ import { sourcePlan } from "./support/source-plan.ts";
 import { valueResolver } from "./support/value-resolver.ts";
 
 afterEach(cleanupSqlTestDeps);
+
 const safeDiagnostic = (secrets: readonly string[]) =>
   Effect.gen(function* () {
     const tail = yield* makeDiagnosticTail();
@@ -25,53 +27,197 @@ const safeDiagnostic = (secrets: readonly string[]) =>
     for (const secret of secrets) expect(safe).not.toContain(secret);
   });
 
-test.each(["lando", "x"])(
-  "registers selected literal password %s before first exec and transfer",
-  async (password) => {
-    const connection: DatabaseConnection = {
-      family: "postgres",
-      port: PortNumber.make(5432),
-      creds: { user: "user", database: "database", password, rootPassword: "unused-root-secret" },
-    };
-    const harness = makeSqlTestDeps({
-      password: "unused",
-      connection,
-      type: "postgres:17",
-      observedVersion: "17.1",
-    });
-    let checkedExec = false;
-    let checkedTransfer = false;
-    await Effect.runPromise(
+const readableDiagnostic = (publicValues: readonly string[]) =>
+  Effect.gen(function* () {
+    const tail = yield* makeDiagnosticTail();
+    const sample = publicValues.map((value) => `/tmp/${value}-pc-qa/dump`).join("\n");
+    tail.write(new TextEncoder().encode(sample));
+    const safe = tail.finish() ?? "";
+    for (const value of publicValues) expect(safe).toContain(value);
+  });
+
+test("registers non-public literal password before first exec and transfer", async () => {
+  const password = "private-app-secret";
+  const connection: DatabaseConnection = {
+    family: "postgres",
+    port: PortNumber.make(5432),
+    creds: { user: "user", database: "database", password, rootPassword: "unused-root-secret" },
+  };
+  const harness = makeSqlTestDeps({
+    password: "unused",
+    connection,
+    type: "postgres:17",
+    observedVersion: "17.1",
+  });
+  let checkedExec = false;
+  let checkedTransfer = false;
+  await Effect.runPromise(
+    executeDbCommand(
+      {
+        ...harness.deps,
+        exec: (service, command, env) =>
+          Stream.unwrap(
+            Effect.gen(function* () {
+              yield* safeDiagnostic([password]);
+              checkedExec = true;
+              return harness.deps.exec(service, command, env);
+            }),
+          ),
+        transfer: (spec) =>
+          safeDiagnostic([password]).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                checkedTransfer = true;
+              }),
+            ),
+            Effect.andThen(harness.deps.transfer(spec)),
+          ),
+      },
+      { action: "import", file: "dump.sql", yes: true },
+    ),
+  );
+  expect(checkedExec).toBe(true);
+  expect(checkedTransfer).toBe(true);
+});
+
+test.each(["export", "import"] as const)(
+  "%s classifies public password lando with explicit empty secrets",
+  async (action) => {
+    const harness = makeSqlTestDeps({ password: "lando" });
+    let transfers = 0;
+    const result = await Effect.runPromise(
       executeDbCommand(
         {
           ...harness.deps,
-          exec: (service, command, env) =>
-            Stream.unwrap(
-              Effect.gen(function* () {
-                yield* safeDiagnostic([password]);
-                checkedExec = true;
-                return harness.deps.exec(service, command, env);
-              }),
-            ),
           transfer: (spec) =>
-            safeDiagnostic([password]).pipe(
-              Effect.andThen(
-                Effect.sync(() => {
-                  checkedTransfer = true;
-                }),
-              ),
-              Effect.andThen(harness.deps.transfer(spec)),
-            ),
+            Effect.gen(function* () {
+              yield* readableDiagnostic(["lando"]);
+              const endpoint = action === "export" ? spec.from : spec.to;
+              if (endpoint._tag !== "serviceCmd") throw new Error("Expected command endpoint");
+              expect(endpoint.env).toEqual({ MYSQL_PWD: "lando" });
+              // DataMover must not receive public defaults as secrets.
+              expect(endpoint.secrets).toEqual({ substring: [], wholeToken: [] });
+              transfers += 1;
+              return yield* harness.deps.transfer(spec);
+            }),
         },
-        { action: "import", file: "dump.sql", yes: true },
+        { action, file: "dump.sql", yes: true },
       ),
     );
-    expect(checkedExec).toBe(true);
-    expect(checkedTransfer).toBe(true);
+    expect(transfers).toBe(1);
+    expect(result.redactionTokens).not.toContain("lando");
   },
 );
 
-test("registers raw referenced Mongo password, encoded password and full emitted URI before transfer", async () => {
+test("user and database identities are never registered as secrets", async () => {
+  const password = "distinct-password";
+  const harness = makeSqlTestDeps({
+    password,
+    connection: {
+      family: "mysql",
+      port: PortNumber.make(3306),
+      creds: { user: "wpuser", database: "wpdb", password, rootPassword: "root-secret" },
+    },
+    environment: {
+      MYSQL_USER: "wpuser",
+      MYSQL_PASSWORD: password,
+      MYSQL_DATABASE: "wpdb",
+    },
+  });
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const redaction = yield* RedactionService;
+      const redactor = yield* redaction.forProfile("secrets");
+      yield* executeDbCommand(harness.deps, { action: "export", file: "dump.sql", yes: true });
+      expect(redactor.redactString("user wpuser database wpdb")).toBe("user wpuser database wpdb");
+      expect(redactor.redactString(`pwd ${password}`)).toBe("pwd [redacted]");
+    }).pipe(Effect.provide(RedactionService.layer), Effect.scoped),
+  );
+});
+
+test("authored whole-token password masks whole tokens only, not compound paths", async () => {
+  const password = "wordpress";
+  const harness = makeSqlTestDeps({ password });
+  const { AppPlan, AbsolutePath, AppId, ProviderId, ServiceName, ServicePlan } = await import(
+    "@lando/sdk/schema"
+  );
+  const { DateTime } = await import("effect");
+  const provider = ProviderId.make("test");
+  const metadata = {
+    resolvedAt: DateTime.makeUnsafe("2026-10-01T00:00:00Z"),
+    source: "fixture",
+    runtime: 4 as const,
+  };
+  const appPlan = AppPlan.make({
+    id: AppId.make(harness.deps.plan.id),
+    name: harness.deps.plan.name,
+    slug: "sql-app",
+    root: AbsolutePath.make(harness.deps.plan.root),
+    provider,
+    committedLiteralDigests: [sha256Hex(password)],
+    services: {
+      [ServiceName.make("database")]: ServicePlan.make({
+        name: ServiceName.make("database"),
+        type: "mysql:8.0",
+        provider,
+        primary: true,
+        connection: {
+          family: "mysql",
+          port: PortNumber.make(3306),
+          creds: { user: "wp", database: "wp", password, rootPassword: "root-secret" },
+        },
+        environment: { MYSQL_USER: "wp", MYSQL_DATABASE: "wp" },
+        mounts: [],
+        endpoints: [],
+        routes: [],
+        dependsOn: [],
+        hostAliases: [],
+        metadata,
+        extensions: {},
+      }),
+    },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  });
+  // Project through toSqlPlan so appPlan is the real AppPlan, not a cast.
+  const { toSqlPlan } = await import("../src/views.ts");
+  const deps = { ...harness.deps, plan: toSqlPlan(appPlan) };
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const redaction = yield* RedactionService;
+      const redactor = yield* redaction.forProfile("secrets");
+      yield* executeDbCommand(deps, { action: "export", file: "dump.sql", yes: true });
+      expect(redactor.redactString("PASSWORD=wordpress")).toBe("PASSWORD=[redacted]");
+      expect(redactor.redactString("wp-content/plugins/wordpress-seo")).toBe(
+        "wp-content/plugins/wordpress-seo",
+      );
+      // Command-result tokens remain substring-only and exclude whole-token tier.
+      let capturedSecrets: { substring: readonly string[]; wholeToken: readonly string[] } | undefined;
+      const result = yield* executeDbCommand(
+        {
+          ...deps,
+          transfer: (spec) =>
+            Effect.gen(function* () {
+              if (spec.from._tag === "serviceCmd") capturedSecrets = spec.from.secrets;
+              return yield* harness.deps.transfer(spec);
+            }),
+        },
+        {
+          action: "export",
+          file: "dump2.sql",
+          yes: true,
+        },
+      );
+      expect(result.redactionTokens).not.toContain(password);
+      expect(capturedSecrets).toEqual({ substring: [], wholeToken: [password] });
+    }).pipe(Effect.provide(RedactionService.layer), Effect.scoped),
+  );
+});
+
+test("registers raw referenced Mongo password, encoded password before transfer; secrets exclude user", async () => {
   const raw = "p:/?#'!\n☃";
   const root = "separate-root-secret";
   const connection: DatabaseConnection = {
@@ -102,7 +248,12 @@ test("registers raw referenced Mongo password, encoded password and full emitted
             if (spec.from._tag !== "serviceCmd") throw new Error("Expected command source");
             const uri = spec.from.env?.MONGO_URI;
             if (uri === undefined) throw new Error("Expected resolved Mongo URI");
-            yield* safeDiagnostic([raw, encodeUriComponent(raw), uri]);
+            yield* safeDiagnostic([raw, encodeUriComponent(raw)]);
+            // SecretRef raw is substring; no URI double-registration from SQL.
+            expect(spec.from.secrets?.substring ?? []).toEqual(expect.arrayContaining([raw]));
+            expect(spec.from.secrets?.wholeToken ?? []).toEqual([]);
+            expect(JSON.stringify(spec.from.secrets)).not.toContain('"user"');
+            expect(JSON.stringify(spec.from.secrets)).not.toContain("database");
             transferred = true;
             return yield* harness.deps.transfer(spec);
           }),
@@ -178,7 +329,7 @@ const credentialConnection = (
 const unusedCredentialCases: ReadonlyArray<{ readonly label: string; readonly password: EnvironmentValue }> =
   [
     { label: "literal lando", password: "lando" },
-    { label: "literal x", password: "x" },
+    { label: "literal private", password: "private-unused" },
     { label: "missing reference", password: { _tag: "SecretRef", reference: "MISSING_APP" } },
   ];
 
@@ -221,7 +372,6 @@ for (const { label, password } of unusedCredentialCases) {
           expect(redactor.redactString("lando db:snapshots preexisting-secret x")).toBe(
             "lando db:snapshots [redacted] x",
           );
-          // The same parent scope still serves the next metadata-only command.
           yield* executeDbCommand(
             { ...harness.deps, environmentResolver: values.resolver },
             { action: "snapshots", yes: true },
@@ -265,7 +415,9 @@ for (const { label, password } of unusedCredentialCases) {
         ).pipe(Effect.result);
         if (result._tag !== "Failure") throw new Error("Expected refused reset");
         expect(result.failure).toMatchObject({ _tag: "SqlConfirmRequiredError" });
-        expect(redactor.redactString("lando db:snapshots x")).toBe("lando db:snapshots x");
+        expect(redactor.redactString("lando db:snapshots private-unused")).toBe(
+          "lando db:snapshots private-unused",
+        );
       }).pipe(Effect.provide(RedactionService.layer), Effect.scoped),
     );
     expect(values.reads).toEqual([]);
@@ -276,55 +428,77 @@ for (const { label, password } of unusedCredentialCases) {
   });
 }
 
-test.each(["lando", "x"])(
-  "direct export registers %s before transfer without changing its environment",
-  async (password) => {
-    const harness = makeSqlTestDeps({ password });
-    let executions = 0;
-    let transfers = 0;
-    const result = await Effect.runPromise(
-      executeDbCommand(
-        {
-          ...harness.deps,
-          exec: (...args) => {
-            executions += 1;
-            return harness.deps.exec(...args);
-          },
-          transfer: (spec) =>
-            Effect.gen(function* () {
-              yield* safeDiagnostic([password]);
-              if (spec.from._tag !== "serviceCmd") throw new Error("Expected command source");
-              expect(spec.from.env).toEqual({ MYSQL_PWD: password });
-              transfers += 1;
-              return yield* harness.deps.transfer(spec);
-            }),
+test("direct export registers private password before transfer without changing its environment", async () => {
+  const password = "private-export-secret";
+  const harness = makeSqlTestDeps({ password });
+  let executions = 0;
+  let transfers = 0;
+  const result = await Effect.runPromise(
+    executeDbCommand(
+      {
+        ...harness.deps,
+        exec: (...args) => {
+          executions += 1;
+          return harness.deps.exec(...args);
         },
-        { action: "export", file: "dump.sql", yes: true },
-      ),
-    );
-    expect(executions).toBe(0);
-    expect(transfers).toBe(1);
-    expect(result.redactionTokens).toContain(password);
-  },
-);
+        transfer: (spec) =>
+          Effect.gen(function* () {
+            yield* safeDiagnostic([password]);
+            if (spec.from._tag !== "serviceCmd") throw new Error("Expected command source");
+            expect(spec.from.env).toEqual({ MYSQL_PWD: password });
+            expect(spec.from.secrets).toEqual({ substring: [password], wholeToken: [] });
+            transfers += 1;
+            return yield* harness.deps.transfer(spec);
+          }),
+      },
+      { action: "export", file: "dump.sql", yes: true },
+    ),
+  );
+  expect(executions).toBe(0);
+  expect(transfers).toBe(1);
+  expect(result.redactionTokens).toContain(password);
+});
 
-test("failed first registration stays closed and cached while protecting known literals", async () => {
+test("failed first registration stays closed and cached while protecting known non-public literals", async () => {
   const values = valueResolver({});
   await Effect.runPromise(
     Effect.gen(function* () {
       const session = yield* values.resolver.openSession();
       const protectedEnvironment = yield* protectSqlEnvironment(
         session,
-        ["lando", { _tag: "SecretRef", reference: "MISSING_ROOT" }],
-        { MYSQL_PWD: "lando" },
+        {
+          id: "app",
+          name: "app",
+          root: "/",
+          services: {
+            database: {
+              name: "database",
+              type: "mysql",
+              environment: { MYSQL_PASSWORD: "private-literal" },
+              extensions: {},
+              connection: {
+                family: "mysql",
+                port: PortNumber.make(3306),
+                creds: {
+                  user: "app",
+                  database: "app",
+                  password: "private-literal",
+                  rootPassword: { _tag: "SecretRef", reference: "MISSING_ROOT" },
+                },
+              },
+              storage: [],
+            },
+          },
+        },
+        ["private-literal", { _tag: "SecretRef", reference: "MISSING_ROOT" }],
       );
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const result = yield* protectedEnvironment.session
-          .resolveEnvironment({ MYSQL_PWD: "lando" })
+          .resolveEnvironment({ MYSQL_PWD: "private-literal" })
           .pipe(Effect.result);
         if (result._tag !== "Failure") throw new Error("Expected unavailable credential");
         expect(result.failure).toMatchObject({ _tag: "SecretNotFoundError" });
-        yield* safeDiagnostic(["lando"]);
+        yield* safeDiagnostic(["private-literal"]);
       }
       expect(protectedEnvironment.tokens()).toEqual([]);
     }).pipe(Effect.provide(RedactionService.layer), Effect.scoped),
@@ -337,7 +511,10 @@ test("missing selected reset credential blocks every raw execution and transfer"
   const values = valueResolver({});
   const harness = makeSqlTestDeps({
     password: "unused",
-    connection: credentialConnection("mysql", "lando", { _tag: "SecretRef", reference: "MISSING_ROOT" }),
+    connection: credentialConnection("mysql", "private-app", {
+      _tag: "SecretRef",
+      reference: "MISSING_ROOT",
+    }),
   });
   let executions = 0;
   await Effect.runPromise(
@@ -354,7 +531,7 @@ test("missing selected reset credential blocks every raw execution and transfer"
         { action: "reset", yes: true },
       ).pipe(Effect.result);
       expect(result._tag).toBe("Failure");
-      yield* safeDiagnostic(["lando"]);
+      yield* safeDiagnostic(["private-app"]);
     }).pipe(Effect.provide(RedactionService.layer), Effect.scoped),
   );
   expect(values.reads).toEqual(["MISSING_ROOT"]);
@@ -552,3 +729,19 @@ test.each(["seeded", "nonempty"] as const)(
     expect(harness.transfers()).toEqual([]);
   },
 );
+
+test("export failure outside the app root keeps public default lando in path fields", async () => {
+  const harness = makeSqlTestDeps({ password: "lando" });
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const redaction = yield* RedactionService;
+      const redactor = yield* redaction.forProfile("secrets");
+      yield* executeDbCommand(harness.deps, { action: "export", file: "dump.sql", yes: true });
+      const path = "/tmp/lando-pc-qa.vATMuJ/dump";
+      expect(redactor.redactString(path)).toBe(path);
+      expect(redactor.redactString("Host data endpoint escapes the permitted app root.")).toContain(
+        "app root",
+      );
+    }).pipe(Effect.provide(RedactionService.layer), Effect.scoped),
+  );
+});

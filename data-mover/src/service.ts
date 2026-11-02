@@ -21,11 +21,7 @@ import {
 import { findAppRoot } from "@lando/landofile/discovery";
 import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { isPathWithin } from "@lando/paths";
-import {
-  RedactionService,
-  collectUrlCredentialValues,
-  createStandaloneRedactor,
-} from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   ArtifactTransferError,
@@ -77,6 +73,7 @@ import { decodeArchiveStream, encodeArchiveStream } from "./archive-stream.ts";
 import { checkedTransferCommand, serviceCommandFailure } from "./command-failure.ts";
 import { execStdoutStream } from "./exec-stream.ts";
 import { legacySnapshotReferences, orphanedSnapshotMethods } from "./orphaned-snapshots.ts";
+import { checkedServiceCommand, serviceCommandStdout } from "./service-command-redaction.ts";
 import {
   type SnapshotPersistence,
   findSnapshotInfo,
@@ -745,12 +742,9 @@ const streamFromProvider = (
         .pipe(Stream.mapError((cause) => providerFailure("exportArtifact", cause)));
     case "serviceCmd": {
       const command = providerCommandSpec(endpoint.command, endpoint.env);
-      const values = Object.values(command.env ?? {}).filter((value) => value.length > 0);
-      return execStdoutStream(
+      return serviceCommandStdout(
         provider.execStream({ app: endpoint.app, service: endpoint.service }, command),
-        (exitCode, stderrTail, evidence) =>
-          serviceCommandFailure("execStream", exitCode, stderrTail, evidence),
-        [...values, ...collectUrlCredentialValues(values)],
+        endpoint,
       );
     }
     case "stream":
@@ -956,11 +950,9 @@ const writeStreamToEndpoint = Effect.fnUntraced(function* (
       );
       const stdinStream = Bun.file(staged.path).stream();
       const command = { ...providerCommandSpec(target.command, target.env), stdinStream };
-      const values = Object.values(command.env ?? {}).filter((value) => value.length > 0);
-      yield* checkedTransferCommand(
+      yield* checkedServiceCommand(
         provider.execStream({ app: target.app, service: target.service }, command),
-        "exec",
-        [...values, ...collectUrlCredentialValues(values)],
+        target,
       );
       return {
         accelerated: true,
