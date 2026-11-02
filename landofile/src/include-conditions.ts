@@ -28,6 +28,7 @@ import { createLoadFailureRecorder, finishLoadStage, loadPathBlocked } from "./l
 import { type LandofileLoadScope, materializeLandofileLayer } from "./pipeline/materialize.ts";
 import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
 import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import { unsupportedSecretReferenceError } from "./unsupported-secret-reference.ts";
 import { validationErrorFromCause } from "./validation.ts";
 
 export interface IncludeMaterializationContext {
@@ -116,6 +117,11 @@ export const materializeIncludeConditions = Effect.fnUntraced(function* (
           }),
           source,
         );
+        continue;
+      }
+      const secret = parsed.success.segments.find((segment) => segment.kind === "SecretRefSegment");
+      if (secret !== undefined) {
+        recorder.record(unsupportedSecretReferenceError(source, secret.name, target.value.when), source);
         continue;
       }
       scope.pendingSites.push({

@@ -143,6 +143,7 @@ describe("include entry error attribution", () => {
     expect(result.violations).toEqual([
       expect.objectContaining({
         rule: "landofile.load",
+        reason: "LandofileIncludeError",
         path: ["includes", 0],
         source: { file: join(root, "fragment.yml"), layer: "local", path: ["includes", 0] },
       }),
@@ -174,6 +175,7 @@ describe("include entry error attribution", () => {
       expect(result.violations).toEqual([
         expect.objectContaining({
           rule: "landofile.load",
+          reason: "LandofileIncludeError",
           path: ["includes", 1],
           source: {
             file: join(root, nested ? "fragment.yml" : ".lando.yml"),
