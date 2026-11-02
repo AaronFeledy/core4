@@ -389,6 +389,24 @@ for stderr, and a closed stderr does not truncate the envelope on stdout.
 Grab the Lando exit status from `PIPESTATUS` in bash or `pipestatus` in zsh;
 the pipeline's own status is whatever the last consumer returned.
 
+## Share one output stream with other commands
+
+Scripts often send every command to one log. Lando gives that stream back the
+way it found it, so the commands that run after Lando keep writing to it:
+
+```sh
+#!/usr/bin/env bash
+exec > >(tee run.log) 2>&1   # every command below shares one pipe
+lando info --format=json | jq '.result'
+git status --short
+```
+
+This holds on Linux and macOS when Lando exits normally, when you stop it with
+Ctrl-C or `SIGTERM`, and when `lando update` restarts into the new binary. A
+process that writes to the same stream while Lando is still running is not
+covered: if the reader falls behind, that process can see a full pipe as a
+write error.
+
 ## Ask only for a format the command produces
 
 `--format` offers `text`, `json`, and `yaml` on every command. Those three are

@@ -159,7 +159,7 @@ If you are looking for a public surface or policy:
 | Renderer events, capability snapshots, first paint, task trees, keymaps, and query-free notifications | 08 | §8.9 |
 | Host color opt-out (`NO_COLOR`, `TERM=dumb`) for narration, result decoration, help, and hyperlinks | 08 | §8.4.2 + §8.9 |
 | `InteractionService`, prompt schemas, and interaction errors | 08 | §8.10 |
-| Command completion, result projection, machine envelopes, bounded output capture, streams, and closed pipes | 08 + 11 | §8.3 + §8.11 + §10.14 |
+| Command completion, result projection, machine envelopes, bounded output capture, streams, closed pipes, and shared stdio descriptors | 08 + 11 | §8.3 + §8.11 + §10.14 |
 | Output routing table, JSON frame-stream events, and dropped-event warnings | 08 | §8.11.3 |
 | History-plus-live event subscriptions (`subscribeWithHistory`) | 03 | §11.1 |
 | Library entry points and runtime factory | 09 | §16.2 + §16.3 |

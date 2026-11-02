@@ -46,7 +46,9 @@ const writeLine = async (destination: "stdout" | "stderr", text: string): Promis
 const isCompiledEntry = Bun.isStandaloneExecutable;
 
 const main = async (): Promise<void> => {
-  const { installBrokenPipeExitPolicy } = await import("@lando/renderer/native-stdio");
+  const { preserveStdioFileStatusFlags, restoreStdioFileStatusFlags, installBrokenPipeExitPolicy } =
+    await import("@lando/renderer/native-stdio");
+  preserveStdioFileStatusFlags();
   installBrokenPipeExitPolicy();
   if (argv[0] === "__internal:host-proxy-worker") {
     await import("../src/runtime/engine-composition");
@@ -65,81 +67,85 @@ const main = async (): Promise<void> => {
     process.exitCode = (await Effect.runPromise(runWindowsReplacementProcess(argv[1], argv[2]))) ? 0 : 1;
     return;
   }
-  if (existsSync(join(resolveLandoRoots().userCacheRoot, "update-handoff"))) {
-    const { surfaceDeferredUpdateReceipts } = await import("../src/cli/update-receipts.ts");
-    if (await surfaceDeferredUpdateReceipts(argv)) return;
-  }
-  // Only single-token forms can be remapped by commandAliases; multi-token
-  // registered paths such as `recipes list` stay on the cold path in-app.
-  const appSensitiveAlias =
-    argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "");
-  const discovery = { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() };
-  const hasAppContext = async (): Promise<boolean> =>
-    (await discovery.resolver.resolve(discovery.cwd)).kind === "found";
-  const appAliasContext = appSensitiveAlias && (await hasAppContext());
-  const coldPathAllowed = !hasDiagnosticOverride(argv, process.env);
+  await runWithProcessSignalReraise(
+    async (state) => {
+      if (existsSync(join(resolveLandoRoots().userCacheRoot, "update-handoff"))) {
+        const { surfaceDeferredUpdateReceipts } = await import("../src/cli/update-receipts.ts");
+        if (await surfaceDeferredUpdateReceipts(argv)) return;
+      }
+      // Only single-token forms can be remapped by commandAliases; multi-token
+      // registered paths such as `recipes list` stay on the cold path in-app.
+      const appSensitiveAlias =
+        argv.length === 1 && ["version", "shellenv", "recipes", "--help", "-h"].includes(argv[0] ?? "");
+      const discovery = { cwd: process.cwd(), resolver: makeAppDiscoveryResolver() };
+      const hasAppContext = async (): Promise<boolean> =>
+        (await discovery.resolver.resolve(discovery.cwd)).kind === "found";
+      const appAliasContext = appSensitiveAlias && (await hasAppContext());
+      const coldPathAllowed = !hasDiagnosticOverride(argv, process.env);
 
-  // Every text form of the version command prints the bare embedded version.
-  const versionRequest =
-    (argv.length === 1 &&
-      (argv[0] === "--version" ||
-        argv[0] === "-V" ||
-        argv[0] === "-v" ||
-        argv[0] === "meta:version" ||
-        (argv[0] === "version" && !appAliasContext))) ||
-    (argv.length === 2 && argv[0] === "meta" && argv[1] === "version");
+      // Every text form of the version command prints the bare embedded version.
+      const versionRequest =
+        (argv.length === 1 &&
+          (argv[0] === "--version" ||
+            argv[0] === "-V" ||
+            argv[0] === "-v" ||
+            argv[0] === "meta:version" ||
+            (argv[0] === "version" && !appAliasContext))) ||
+        (argv.length === 2 && argv[0] === "meta" && argv[1] === "version");
 
-  if (coldPathAllowed && versionRequest) {
-    const { CORE_VERSION } = await import("@lando/engine/version");
-    await writeLine("stdout", CORE_VERSION);
-    return;
-  }
+      if (coldPathAllowed && versionRequest) {
+        const { CORE_VERSION } = await import("@lando/engine/version");
+        await writeLine("stdout", CORE_VERSION);
+        return;
+      }
 
-  if (
-    coldPathAllowed &&
-    ((argv.length === 1 && (argv[0] === "meta:shellenv" || (argv[0] === "shellenv" && !appAliasContext))) ||
-      (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv"))
-  ) {
-    const { defaultShellenvShell, renderShellenv } = await import("../src/cli/commands/shellenv");
-    await writeLine("stdout", renderShellenv(defaultShellenvShell()));
-    return;
-  }
+      if (
+        coldPathAllowed &&
+        ((argv.length === 1 &&
+          (argv[0] === "meta:shellenv" || (argv[0] === "shellenv" && !appAliasContext))) ||
+          (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv"))
+      ) {
+        const { defaultShellenvShell, renderShellenv } = await import("../src/cli/commands/shellenv");
+        await writeLine("stdout", renderShellenv(defaultShellenvShell()));
+        return;
+      }
 
-  if (
-    coldPathAllowed &&
-    argv.length === 1 &&
-    (argv[0] === "--help" || argv[0] === "-h") &&
-    !appAliasContext
-  ) {
-    const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
-    await writeLine("stdout", renderColdRootHelp());
-    return;
-  }
+      if (
+        coldPathAllowed &&
+        argv.length === 1 &&
+        (argv[0] === "--help" || argv[0] === "-h") &&
+        !appAliasContext
+      ) {
+        const { renderColdRootHelp } = await import("../src/cli/cold-path-output");
+        await writeLine("stdout", renderColdRootHelp());
+        return;
+      }
 
-  if (
-    coldPathAllowed &&
-    ((argv.length === 1 &&
-      (argv[0] === "meta:recipes:list" || (argv[0] === "recipes" && !appAliasContext))) ||
-      (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list") ||
-      (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list"))
-  ) {
-    const { renderColdRecipesList } = await import("../src/cli/cold-path-output");
-    await writeLine("stdout", renderColdRecipesList());
-    return;
-  }
+      if (
+        coldPathAllowed &&
+        ((argv.length === 1 &&
+          (argv[0] === "meta:recipes:list" || (argv[0] === "recipes" && !appAliasContext))) ||
+          (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list") ||
+          (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list"))
+      ) {
+        const { renderColdRecipesList } = await import("../src/cli/cold-path-output");
+        await writeLine("stdout", renderColdRecipesList());
+        return;
+      }
 
-  // Bun's compiled Windows entry can exit while CLI work waits on a promise
-  // with no refed native handle. Keep dispatch alive until it fully settles.
-  const keepAlive = setInterval(() => undefined, 60_000);
-  try {
-    await runWithProcessSignalReraise(async (state) => {
-      const { runCli } = await import("@lando/core/cli");
-      if (state.received() !== undefined) return;
-      await runCli({ argv, rootUrl: import.meta.url, discovery, signal: state.signal });
-    });
-  } finally {
-    clearInterval(keepAlive);
-  }
+      // Bun's compiled Windows entry can exit while CLI work waits on a promise
+      // with no refed native handle. Keep dispatch alive until it fully settles.
+      const keepAlive = setInterval(() => undefined, 60_000);
+      try {
+        const { runCli } = await import("@lando/core/cli");
+        if (state.received() !== undefined) return;
+        await runCli({ argv, rootUrl: import.meta.url, discovery, signal: state.signal });
+      } finally {
+        clearInterval(keepAlive);
+      }
+    },
+    { beforeReraise: restoreStdioFileStatusFlags },
+  );
 };
 
 main().catch(async (error: unknown) => {

@@ -24,6 +24,7 @@ import {
   updateChannelForVersion,
 } from "@lando/engine/operations/update";
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
+import { restoreStdioFileStatusFlags } from "@lando/renderer/native-stdio";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
 import { buildBugReport } from "../../src/cli/bug-report.ts";
@@ -657,6 +658,7 @@ describe("update signed manifest", () => {
   });
 
   test("POSIX core-only self-update re-execs with a one-shot result handoff", async () => {
+    // Given an owned binary and process preparation required before replacement.
     const root = await makeTempRoot("lando-self-update-");
     const executablePath = await seedOwnedBinary(root);
     const originalRecord = await Bun.file(join(root, "install", "record.json")).json();
@@ -669,6 +671,7 @@ describe("update signed manifest", () => {
       platform: "linux-x64",
     });
     const probeCommands: string[] = [];
+    const reexecOrder: string[] = [];
     const execs: Array<{
       readonly path: string;
       readonly argv: ReadonlyArray<string>;
@@ -686,6 +689,7 @@ describe("update signed manifest", () => {
     const stateStore = makeTestStateStore();
     const handoff = makeUpdateHandoff(stateStore.service);
 
+    // When the verified update reaches POSIX re-exec.
     const result = await Effect.runPromise(
       update({
         channel: "stable",
@@ -699,8 +703,12 @@ describe("update signed manifest", () => {
         selfUpdate: {
           argv: ["/previous/lando", "update", "--channel=stable"],
           env: { PATH: "/usr/bin", LANDO_CHANNEL: "stable" },
+          beforeExecve: () => {
+            reexecOrder.push("before");
+          },
           execve: (input) =>
             Effect.sync(() => {
+              reexecOrder.push("execve");
               execs.push(input);
             }),
         },
@@ -714,6 +722,8 @@ describe("update signed manifest", () => {
       ),
     );
 
+    // Then preparation precedes re-exec exactly once and the handoff remains intact.
+    expect(reexecOrder).toEqual(["before", "execve"]);
     expect(result).toEqual({
       updatedCore: true,
       updatedPlugins: [],
@@ -1143,6 +1153,7 @@ describe("update signed manifest", () => {
   });
 
   test("POSIX self-update retains the new binary and backup when re-exec fails", async () => {
+    // Given a valid update and an execve failure after process preparation.
     const root = await makeTempRoot("lando-self-update-exec-rollback-");
     const executablePath = await seedOwnedBinary(root);
 
@@ -1154,6 +1165,8 @@ describe("update signed manifest", () => {
       platform: "linux-x64",
     });
 
+    const reexecOrder: string[] = [];
+    // When the prepared process fails to re-exec.
     const tag = await failureTag(
       runUpdate({
         channel: "stable",
@@ -1164,7 +1177,13 @@ describe("update signed manifest", () => {
           checksumsText: `${binarySha}  ./dist/lando-linux-x64\n`,
         }),
         selfUpdate: {
-          execve: () => Effect.fail(new Error("execve failed")),
+          beforeExecve: () => {
+            reexecOrder.push("before");
+          },
+          execve: () =>
+            Effect.sync(() => {
+              reexecOrder.push("execve");
+            }).pipe(Effect.andThen(Effect.fail(new Error("execve failed")))),
         },
         updateStatePath: join(root, "state.json"),
         verifyChecksumSignature: checksumVerifierFor(),
@@ -1172,6 +1191,8 @@ describe("update signed manifest", () => {
       }),
     );
 
+    // Then the existing tagged failure and recoverable binaries are preserved.
+    expect(reexecOrder).toEqual(["before", "execve"]);
     expect(tag).toBe("UpdatePermissionError");
     expect(await readFile(executablePath, "utf8")).toBe("new-binary");
     expect(await readFile(`${executablePath}.bak`, "utf8")).toBe("old-binary");
@@ -1416,7 +1437,7 @@ describe("update signed manifest", () => {
   });
 
   test("source and compiled input helpers map update flags identically", () => {
-    const cliSelfUpdate = { selfUpdate: { argv: process.argv } };
+    const cliSelfUpdate = { selfUpdate: { argv: process.argv, beforeExecve: restoreStdioFileStatusFlags } };
     expect(updateOptionsFromInput({ flags: { channel: "next", "dry-run": true } })).toEqual({
       channel: "next",
       dryRun: true,

@@ -9,6 +9,7 @@ import {
   makeUpdateHandoff,
   update,
 } from "@lando/engine/operations/update";
+import { restoreStdioFileStatusFlags } from "@lando/renderer/native-stdio";
 import { StateStore } from "@lando/sdk/services";
 import { makePluginUpdateRunner } from "../../commands/update-plugins";
 import type { LandoCommandSpec } from "../../spec/command-base";
@@ -24,7 +25,7 @@ export const updateOptionsFromInput = (input: unknown): UpdateOptions => {
     ...(only === "core" || only === "plugins" ? { only } : {}),
     // The CLI shell owns process-entry facts; the engine operation must not
     // read process.argv itself (engine-closure), so supply the re-exec argv here.
-    selfUpdate: { argv: process.argv },
+    selfUpdate: { argv: process.argv, beforeExecve: restoreStdioFileStatusFlags },
   };
 };
 

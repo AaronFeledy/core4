@@ -24,6 +24,7 @@ export interface UpdateSelfUpdateOptions {
   readonly argv?: ReadonlyArray<string>;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly execve?: UpdateExecve;
+  readonly beforeExecve?: () => void;
   readonly rename?: UpdateRename;
   readonly replaceWindows?: UpdateWindowsReplacement;
 }
@@ -70,6 +71,7 @@ export interface ResolvedSelfUpdateOptions {
   readonly argv: ReadonlyArray<string>;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly execve: UpdateExecve;
+  readonly beforeExecve?: () => void;
   readonly rename: UpdateRename;
   readonly replaceWindows: UpdateWindowsReplacement;
 }
@@ -87,6 +89,7 @@ export const resolveSelfUpdateOptions = (
     argv: input.argv ?? [],
     env: input.env ?? process.env,
     execve: input.execve ?? defaultExecve,
+    ...(input.beforeExecve === undefined ? {} : { beforeExecve: input.beforeExecve }),
     rename: input.rename ?? rename,
     replaceWindows: input.replaceWindows ?? defaultWindowsReplacement,
   };
