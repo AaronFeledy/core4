@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { StreamFrame } from "@lando/sdk/schema";
 import * as Schema from "effect/Schema";
+import { withFifoChild } from "../cli/stdio-file-status-support.ts";
 import { runCaptured } from "./fixtures/host-execution-process.ts";
 
 const suppliedBinary = process.env.LANDO_TEST_COMPILED_CLI;
@@ -144,4 +145,18 @@ describe.skipIf(suppliedBinary === undefined)("supplied compiled renderer output
       envelope: { ok: false, error: { _tag: "ToolingExecError" } },
     });
   }, 35_000);
+
+  for (const args of [["--version"], ["version", "--format=json"]]) {
+    test.skipIf(windows)(
+      `hands a shared pipe back blocking after ${args.join(" ")} (#1466)`,
+      async () => {
+        // Given / When: the native binary writes to a pipe the test keeps open.
+        await withFifoChild([binary, ...args], { cwd: app, env }, async (child) => {
+          // Then: it succeeds, and the helper checks O_NONBLOCK on the shared description.
+          expect(await child.exited).toBe(0);
+        });
+      },
+      20_000,
+    );
+  }
 });

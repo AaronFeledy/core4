@@ -10,6 +10,9 @@ interface Libc {
   readonly ignoresInterrupt: () => boolean;
 }
 
+const F_GETFL = 3;
+const F_SETFL = 4;
+
 let loaded = false;
 let libc: Libc | undefined;
 
@@ -38,8 +41,8 @@ const loadLibc = (): Libc | undefined => {
       library.symbols.fcntl(fd, cmd, value, value, value, value, value, value, value);
     libc = {
       flags: {
-        get: (fd) => fcntl(fd, 3),
-        set: (fd, flags) => fcntl(fd, 4, BigInt(flags)),
+        get: (fd) => fcntl(fd, F_GETFL),
+        set: (fd, flags) => fcntl(fd, F_SETFL, BigInt(flags)),
         nonblock: process.platform === "linux" ? 0o4000 : 0x4,
       },
       ignoresInterrupt: () => {

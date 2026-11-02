@@ -719,6 +719,10 @@ describe("ci workflow", () => {
       expect(build).toContain("        run: bun test core/test/build/opentui-compiled-acceptance.test.ts");
       expect(build).toContain(`          LANDO_TEST_COMPILED_CLI: ./dist/${binary}`);
       expect(build).toContain("        run: bun test core/test/build/host-execution-compiled.test.ts");
+      // Native FFI calling conventions differ per platform, so every build lane round-trips them.
+      expect(build).toContain(
+        "        run: bun test core/test/build/renderer-output-compiled.test.ts engine/test/runtime/libc.test.ts",
+      );
       expect(build.indexOf(`Build ${target} binary`)).toBeLessThan(
         build.indexOf("Verify compiled host execution"),
       );

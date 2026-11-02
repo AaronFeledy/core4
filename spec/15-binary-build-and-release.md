@@ -124,7 +124,7 @@ The pipeline SHOULD produce reproducible binaries from identical source, Bun ver
 
 #### 17.6.2 Atomic replace and rollback
 
-The updater MUST resolve the Lando install record and reject foreign ownership. On POSIX it uses a same-filesystem atomic replacement while retaining one backup, and restores inherited stdio file-status flags (§8.11.2) immediately before re-exec so the new process snapshots the shell's original state. On Windows, where the running executable cannot replace itself, it MUST stage a versioned sibling and complete the rename after process exit or reboot; a documented close-process fallback is required. Both paths preserve existing permissions and ACLs.
+The updater MUST resolve the Lando install record and reject foreign ownership. On POSIX it uses a same-filesystem atomic replacement while retaining one backup, and restores inherited stdio file-status flags (§8.11.2) immediately before re-exec so the new process snapshots the shell's original state. The host supplies the re-exec primitive through its process-exit owner; the engine never replaces the process itself. On Windows, where the running executable cannot replace itself, it MUST stage a versioned sibling and complete the rename after process exit or reboot; a documented close-process fallback is required. Both paths preserve existing permissions and ACLs.
 
 Updater operations MUST touch only the recorded executable name (`lando4` or `lando4.exe` under §17.7) and its recorded siblings. They MUST NOT alter a Lando 3 `lando` or `lando.exe`, Lando 3 state, or unrelated PATH entries. Permission failure MUST surface explicit manual elevation instructions; Lando MUST NOT invoke `sudo` or UAC silently.
 
