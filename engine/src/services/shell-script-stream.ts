@@ -4,6 +4,7 @@ import { collectExecStream } from "../operations/exec-stream.ts";
 import type { StreamFrameSinkShape } from "../operations/stream-frame-sink.ts";
 import type { CapturedHostExecutionContext } from "./host-execution-context.ts";
 import * as BunProcessRunner from "./process-runner.ts";
+import type { ProcessRedactionCarrier } from "./process-runner.ts";
 import { quoteShellPath } from "./shell-quote.ts";
 
 // Scripts run on Lando's own binary as Bun, and Bun Shell exports BUN_BE_BUN and the
@@ -17,6 +18,7 @@ export const streamBunScript = Effect.fnUntraced(function* (
   output: {
     readonly sink: StreamFrameSinkShape | undefined;
     readonly context: CapturedHostExecutionContext;
+    readonly redaction?: ProcessRedactionCarrier;
   },
 ) {
   const sink = Option.fromUndefinedOr(output.sink);
@@ -29,7 +31,7 @@ export const streamBunScript = Effect.fnUntraced(function* (
     ...(options?.signal === undefined ? {} : { signal: options.signal }),
     ...(options?.capture === true ? { capture: true } : {}),
   };
-  const result = yield* BunProcessRunner.withPreparedProcess(
+  const run = BunProcessRunner.withPreparedProcess(
     input,
     (runner, request) =>
       options?.capture === true
@@ -37,6 +39,9 @@ export const streamBunScript = Effect.fnUntraced(function* (
         : collectExecStream(runner.streamWithExit(request), sink),
     { ...output.context, env: { ...output.context.env, BUN_BE_BUN: "1" } },
   );
+  const result = yield* output.redaction === undefined
+    ? run
+    : BunProcessRunner.withProcessRedactionTokens(output.redaction, run);
   return { ...result, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }, Effect.scoped);
 
@@ -46,6 +51,7 @@ export const streamBunCommand = Effect.fnUntraced(function* (
   execution: {
     readonly sink: Option.Option<StreamFrameSinkShape>;
     readonly context: CapturedHostExecutionContext;
+    readonly redaction?: ProcessRedactionCarrier;
   },
 ) {
   const source = [command, ...(options?.argv ?? []).map(quoteShellPath)].join(" ");
@@ -58,8 +64,12 @@ export const streamBunCommand = Effect.fnUntraced(function* (
     ...(options?.stdinStream === undefined ? {} : { stdinStream: options.stdinStream }),
     ...(options?.capture === true ? { capture: true } : {}),
   };
+  const carrier: ProcessRedactionCarrier = {
+    ...execution.redaction,
+    substring: [source, ...(execution.redaction?.substring ?? [])],
+  };
   const result = yield* BunProcessRunner.withProcessRedactionTokens(
-    [source],
+    carrier,
     BunProcessRunner.withPreparedProcess(
       input,
       (runner, request) =>

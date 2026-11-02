@@ -662,7 +662,7 @@ describe("ProviderExecToolingEngine.layer", () => {
       stdout += new TextDecoder().decode(payload.flush());
       expect(base.calls[0]?.command.env?.OPENCODE_CLIENT).toBe("true");
       expect(stdout).toBe('{"ok":true}');
-      expect([...values()]).not.toContain("true");
+      expect([...values().substring, ...values().wholeToken]).not.toContain("true");
     } finally {
       if (prior === undefined) Reflect.deleteProperty(process.env, "OPENCODE_CLIENT");
       else process.env.OPENCODE_CLIENT = prior;

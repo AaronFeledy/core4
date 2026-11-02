@@ -1,3 +1,4 @@
+import { authoredSourceDocument } from "@lando/landofile/authored-literal";
 import { getLandofileIncludeSources } from "@lando/landofile/include-provenance";
 import { getSourceDocuments } from "@lando/landofile/pipeline/source-table";
 import {
@@ -13,8 +14,10 @@ import { Effect, Schema } from "effect";
 import { getAtPath } from "../config-write/dot-path.ts";
 import { loadUserLandofile } from "../landofile/app-resolution.ts";
 import {
+  type LandofileRedactionValues,
   collectAuthoredRedactionTokens,
-  collectLandofileRedactionTokens,
+  mergeLandofileRedactionValues,
+  registerLandofileRedaction,
 } from "../services/app-plan-redaction.ts";
 import { findDiscoveredLandofilePath, scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 
@@ -50,6 +53,12 @@ const sourceValue = (value: unknown) =>
           "Remove non-serializable values from the Landofile sources, then retry `lando app:config`.",
       }),
   }).pipe(Effect.flatMap(inspectionValue));
+
+/** Register tiers; only substring values travel on the command result. */
+const attachRedaction = Effect.fnUntraced(function* (...parts: LandofileRedactionValues[]) {
+  const values = yield* registerLandofileRedaction(mergeLandofileRedactionValues(...parts));
+  return values.substring;
+});
 
 export const appConfigView = Effect.fn("AppOperation.configView")(function* (options: AppConfigViewOptions) {
   const source = options.source ?? "resolved";
@@ -92,9 +101,22 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
             };
           }),
         );
-        const redactionTokens = acquired.sources.flatMap(({ source }) =>
-          collectAuthoredRedactionTokens(source.value),
+        const sourceValues = yield* Effect.forEach(acquired.sources, ({ source }) =>
+          authoredSourceDocument({
+            file: source.file,
+            form: source.form,
+            layer: source.context.layer,
+            document: source.value,
+            content: source.content,
+            digest: source.digest,
+          }).pipe(
+            Effect.map(collectAuthoredRedactionTokens),
+            Effect.catchTag("LandofileValidationError", () =>
+              Effect.succeed(collectAuthoredRedactionTokens(source.value)),
+            ),
+          ),
         );
+        const redactionTokens = yield* attachRedaction(...sourceValues);
         if (options.subcommand === "get")
           return {
             source,
@@ -110,9 +132,10 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
           composed.sources.find(({ layer }) => layer.layer === "canonical")?.source.file ?? appRoot,
           composed.runtime.recorder,
         );
-      const redactionTokens = composed.documents.flatMap((document) =>
-        collectAuthoredRedactionTokens(document.document),
+      const sourceValues = yield* Effect.forEach(composed.documents, (document) =>
+        authoredSourceDocument(document).pipe(Effect.map(collectAuthoredRedactionTokens)),
       );
+      const redactionTokens = yield* attachRedaction(...sourceValues);
       const landofile = yield* sourceValue(composed.merged);
       if (selector === undefined) return { source, landofile, redactionTokens };
       const selected = getAtPath(landofile, selector);
@@ -126,15 +149,17 @@ export const appConfigView = Effect.fn("AppOperation.configView")(function* (opt
     case "resolved": {
       const service = yield* LandofileService;
       const landofile = (yield* loadUserLandofile(service)).document;
+      const sourceValues = yield* Effect.forEach(getSourceDocuments(landofile), (document) =>
+        authoredSourceDocument(document).pipe(Effect.map(collectAuthoredRedactionTokens)),
+      );
+      const redactionTokens = yield* attachRedaction(
+        collectAuthoredRedactionTokens(landofile),
+        ...sourceValues,
+      );
       const metadata = {
         app: landofile.name ?? "",
         sources: getLandofileIncludeSources(landofile),
-        redactionTokens: [
-          ...collectLandofileRedactionTokens(landofile),
-          ...getSourceDocuments(landofile).flatMap((document) =>
-            collectAuthoredRedactionTokens(document.document),
-          ),
-        ],
+        redactionTokens,
       };
       if (selector === undefined) return { source, ...metadata, landofile };
       const selected = getAtPath(landofile, selector);

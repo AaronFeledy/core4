@@ -85,6 +85,17 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
     fileSync: [],
     metadata,
     extensions: {},
+    committedLiteralDigests: ["a".repeat(64), "b".repeat(64)],
+    events: {
+      "pre-stop": [
+        {
+          step: { cmd: "echo", env: { API_TOKEN: "event-private" } },
+          source: "project",
+          sourceIndex: 0,
+          status: "active",
+        },
+      ],
+    },
   } satisfies AppPlan;
 
   // When
@@ -96,7 +107,8 @@ test("AppPlanSanitizer delegates host-proxy persistence sanitization", async () 
   );
 
   // Then
-  expect(sanitized).toEqual(stripHostProxyRunLando(fixturePlan));
+  const { events: _events, ...expected } = stripHostProxyRunLando(fixturePlan);
+  expect(sanitized).toEqual(expected);
   expect(sanitized.services[service.name]?.serviceTypeId).toBe("derived-web");
   expect(sanitized.services[service.name]?.mounts).toEqual([
     {

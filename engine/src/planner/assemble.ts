@@ -54,6 +54,7 @@ import {
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
 import { appFeatureError } from "./app-feature-error.ts";
+import { withCommittedLiteralDigests } from "./authored-literals.ts";
 import { planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
@@ -381,8 +382,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
+      const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
-        attachEffectiveTooling(cached, effectiveTooling, connectionClients, disabledToolingSources),
+        attachEffectiveTooling(proven, effectiveTooling, connectionClients, disabledToolingSources),
         executableSites,
         effectiveEventsFor(planServices(cached.services)),
       );
@@ -511,6 +513,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       }).pipe(
         Effect.tap((decoded) => validateConnectionValues(appRoot, decoded.services)),
         Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices)),
+        Effect.map((decoded) => withCommittedLiteralDigests(decoded, authoredLandofile)),
       ),
       effectiveTooling,
       connectionClients,

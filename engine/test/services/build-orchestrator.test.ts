@@ -157,7 +157,7 @@ const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
     ...makeRedactionService(),
-    payloadValues: () => Effect.succeed(() => ["topsecret"]),
+    payloadValues: () => Effect.succeed(() => ({ substring: ["topsecret"], wholeToken: [] })),
     forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
   }),
 );
@@ -1150,7 +1150,8 @@ describe("BuildOrchestratorLayer.layer", () => {
       RedactionService,
       RedactionService.of({
         ...makeRedactionService(),
-        payloadValues: (options) => Effect.succeed(() => [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""]),
+        payloadValues: (options) =>
+          Effect.succeed(() => ({ substring: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""], wholeToken: [] })),
         forProfile: (_profile, options) =>
           Effect.succeed(createRedactor("secrets", { values: [options?.sourceEnv?.BUN_AUTH_TOKEN ?? ""] })),
       } satisfies Context.Service.Shape<typeof RedactionService>),
@@ -1201,7 +1202,7 @@ describe("BuildOrchestratorLayer.layer", () => {
       RedactionService,
       RedactionService.of({
         ...makeRedactionService(),
-        payloadValues: () => Effect.succeed(() => ["latersecret"]),
+        payloadValues: () => Effect.succeed(() => ({ substring: ["latersecret"], wholeToken: [] })),
         forProfile: () =>
           Effect.sync(() => {
             profileReads += 1;

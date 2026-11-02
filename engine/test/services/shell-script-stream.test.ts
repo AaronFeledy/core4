@@ -465,7 +465,7 @@ test("preserves shell events and redacts scoped tokens in live lines", async () 
     // When
     const result = await Effect.runPromise(
       BunShellRunner.withShellRedactionTokens(
-        [secret],
+        { substring: [secret] },
         Effect.flatMap(ShellRunner, (shell) => shell.runScript(script, { cwd: root })),
       ).pipe(
         Effect.provide(layer),
