@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, nextjs, node, postgres, mariadb]
 
 # Run the Next.js recipe
 
+Create a Next.js environment with Postgres, then scaffold and run the application inside `web`. Run these commands from your host terminal.
+
 ```sh
 lando init --recipe nextjs --name=nextjs-demo --yes
 cd nextjs-demo
@@ -14,6 +16,58 @@ lando start
 ```
 
 `--yes` skips prompts. Defaults are Node lts, Postgres, and `NEXTAUTH_PROVIDER: none`. First start builds `web` and `database`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
+
+## Scaffold Next.js, then run it
+
+With the app running, generate a fresh Next.js project into the app root:
+
+```sh
+lando nextjs-scaffold
+```
+
+That runs `create-next-app@16.4.0` inside `web`, generates in a temp directory, then copies the result into the app root without overwriting `.lando.yml` or anything else you already have. It finishes with `npm install` in `/app`. Dependencies live in the service's `node_modules` volume, mounted at `/app/node_modules`, not in your host tree. You can work in the app root once the scaffold completes.
+
+The generated project is the empty TypeScript App Router template: ESLint on, Tailwind off, no `src/` directory, `@/*` import alias, Turbopack.
+
+Confirm tooling:
+
+```sh
+lando next --version
+lando npm --version
+```
+
+Start the development server:
+
+```sh
+lando next dev
+```
+
+Next listens on all interfaces by default, and the recipe sets `PORT=3000`. The `Local: http://localhost:3000` line in Next's output is a display URL, not a loopback-only bind. The command stays in the foreground; `lando start` brings up the services but doesn't launch Next. Open the URL `lando info` prints while the development server is running.
+
+### Already have a Next.js project?
+
+Skip the scaffold. Install and run:
+
+```sh
+lando npm install
+lando next dev
+```
+
+### When the scaffold refuses or fails
+
+- Any existing `package.json` in the app root stops the scaffold before it generates anything. That includes a second run. Use `lando npm install` instead.
+- If a generated top-level file collides with one you already have, the command stops and names the first conflicting path. Nothing is copied. Move or remove yours, then run it again.
+- If `npm install` fails, the generated sources stay. Fix the npm error, then run `lando npm install`. Don't scaffold again.
+
+Prefer Node 22, no database, or NextAuth at init?
+
+```sh
+lando init --recipe nextjs --name=nextjs-alt --yes \
+  --answer=node=22 \
+  --answer=database=none \
+  --answer=auth=nextauth
+cd nextjs-alt
+```
 
 ## See what the recipe writes
 
@@ -71,58 +125,6 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Auth an
   </Scenario>
 </Guide>
 
-## Scaffold Next.js, then run it
-
-With the app running, generate a fresh Next.js project into the app root:
-
-```sh
-lando nextjs-scaffold
-```
-
-That runs `create-next-app@16.4.0` inside `web`, generates in a temp directory, then copies the result into the app root without overwriting `.lando.yml` or anything else you already have. It finishes with `npm install` in `/app`. Dependencies live in the service's `node_modules` volume, mounted at `/app/node_modules`, not in your host tree. No subdirectory, no moving files by hand.
-
-The generated project is the empty TypeScript App Router template: ESLint on, Tailwind off, no `src/` directory, `@/*` import alias, Turbopack.
-
-Confirm tooling:
-
-```sh
-lando next --version
-lando npm --version
-```
-
-Start the development server:
-
-```sh
-lando next dev
-```
-
-Next listens on all interfaces by default, and the recipe sets `PORT=3000`. The `Local: http://localhost:3000` line in Next's output is a display URL, not a loopback-only bind. The command stays in the foreground; `lando start` brings up the services but doesn't launch Next. Open the URL `lando info` prints while the development server is running.
-
-### Already have a Next.js project?
-
-Skip the scaffold. Install and run:
-
-```sh
-lando npm install
-lando next dev
-```
-
-### When the scaffold refuses or fails
-
-- Any existing `package.json` in the app root stops the scaffold before it generates anything. That includes a second run. Use `lando npm install` instead.
-- If a generated top-level file collides with one you already have, the command stops and names the first conflicting path. Nothing is copied. Move or remove yours, then run it again.
-- If `npm install` fails, the generated sources stay. Fix the npm error, then run `lando npm install`. Don't scaffold again.
-
-Prefer Node 22, no database, or NextAuth at init?
-
-```sh
-lando init --recipe nextjs --name=nextjs-alt --yes \
-  --answer=node=22 \
-  --answer=database=none \
-  --answer=auth=nextauth
-cd nextjs-alt
-```
-
 ## Talk to Postgres
 
 Default recipe Postgres uses the app network hostname `database`:
@@ -144,7 +146,7 @@ services:
       DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
 ```
 
-Then `lando rebuild`. Read `process.env.DATABASE_URL` in your app code, so the password never lands in a committed file. `lando info` redacts it. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
+Then `lando start`. Read `process.env.DATABASE_URL` in your app code, so the password never lands in a committed file. `lando info` redacts it. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
 Query it with the `psql` tooling. It logs in with the service credentials, so you never type the password:
 

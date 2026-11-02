@@ -1,9 +1,11 @@
-import { Effect, Predicate, Result, Schema } from "effect";
+import { Effect, Predicate } from "effect";
 
-import { type LandofileIncludeError, LandofileParseError } from "@lando/sdk/errors";
+import { LandofileIncludeError, LandofileParseError } from "@lando/sdk/errors";
 import { ToolingIncludeShape } from "@lando/sdk/schema";
 
+import type { LandofileLayer } from "@lando/sdk/schema";
 import { includeError } from "./include-guard.ts";
+import { type LoadFailureRecorder, loadPathBlocked } from "./load-failures.ts";
 
 const FRAGMENT_KEYS = new Set(["tooling", "toolingIncludes"]);
 const TOOLING_INCLUDE_KEYS = new Set(Object.keys(ToolingIncludeShape.fields));
@@ -14,8 +16,13 @@ const ENTRY_FIELD_REMEDIATION = `A toolingIncludes: entry accepts only ${[...TOO
 export const assertToolingFragment = (
   parsed: unknown,
   source: string,
-  filePath: string,
+  context: {
+    readonly filePath: string;
+    readonly recorder?: LoadFailureRecorder | undefined;
+    readonly layer: LandofileLayer;
+  },
 ): Effect.Effect<Record<string, unknown>, LandofileIncludeError | LandofileParseError> => {
+  const filePath = context.filePath;
   if (!Predicate.isObject(parsed)) {
     return Effect.fail(
       new LandofileParseError({
@@ -23,6 +30,7 @@ export const assertToolingFragment = (
         filePath,
         line: undefined,
         column: undefined,
+        remediation: `Rewrite the tooling include at ${filePath} as a YAML mapping with only tooling fragment keys.`,
       }),
     );
   }
@@ -37,56 +45,31 @@ export const assertToolingFragment = (
       }),
     );
   }
-  if (parsed.tooling !== undefined && !Predicate.isObject(parsed.tooling)) {
-    return Effect.fail(
-      includeError({
-        message: `Tooling include ${source} declares tooling: as a non-mapping value.`,
-        source,
-        kind: "forbidden-field",
-        remediation: FRAGMENT_KEY_REMEDIATION,
-      }),
-    );
-  }
-  if (parsed.toolingIncludes !== undefined) {
-    if (!Predicate.isObject(parsed.toolingIncludes)) {
-      return Effect.fail(
-        includeError({
-          message: `Tooling include ${source} declares toolingIncludes: as a non-mapping value.`,
-          source,
-          kind: "forbidden-field",
-          remediation: FRAGMENT_KEY_REMEDIATION,
-        }),
-      );
-    }
+  if (Predicate.isObject(parsed.toolingIncludes)) {
     for (const [name, entry] of Object.entries(parsed.toolingIncludes)) {
+      const origin = { file: filePath, layer: context.layer, path: ["toolingIncludes", name] };
+      if (loadPathBlocked(context.recorder, origin)) continue;
       const unsupported = Predicate.isObject(entry)
         ? Object.keys(entry).find((key) => !TOOLING_INCLUDE_KEYS.has(key))
         : undefined;
       if (unsupported !== undefined) {
-        return Effect.fail(
-          includeError({
-            message: `Tooling include ${source} sets unsupported field "${unsupported}" on toolingIncludes.${name}.`,
-            source,
-            kind: "forbidden-field",
-            remediation: ENTRY_FIELD_REMEDIATION,
+        const error = includeError({
+          message: `Tooling include ${source} sets unsupported field "${unsupported}" on toolingIncludes.${name}.`,
+          source,
+          kind: "forbidden-field",
+          remediation: ENTRY_FIELD_REMEDIATION,
+          path: origin.path,
+        });
+        if (context.recorder === undefined) return Effect.fail(error);
+        context.recorder.record(
+          new LandofileIncludeError({
+            message: error.message,
+            source: error.source,
+            kind: error.kind,
+            remediation: error.remediation,
+            ...origin,
           }),
-        );
-      }
-      if (
-        Result.isFailure(
-          Schema.decodeUnknownResult(ToolingIncludeShape)(entry, {
-            onExcessProperty: "error",
-            errors: "all",
-          }),
-        )
-      ) {
-        return Effect.fail(
-          includeError({
-            message: `Tooling include ${source} has an invalid toolingIncludes.${name} entry.`,
-            source,
-            kind: "forbidden-field",
-            remediation: ENTRY_FIELD_REMEDIATION,
-          }),
+          origin,
         );
       }
     }

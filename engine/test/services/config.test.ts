@@ -41,6 +41,80 @@ const loadConfig = () =>
   );
 
 describe("LandoConfigService.layer", () => {
+  test("reports field issues and repair commands when config.yml is invalid", async () => {
+    await withTempConfigRoot(async (dir) => {
+      // Given an out-of-range file value.
+      const path = join(dir, "config.yml");
+      await writeFile(path, "router:\n  httpPort: 99999\n");
+      // When the global config is loaded.
+      const result = await Effect.runPromise(
+        Effect.result(
+          Effect.flatMap(ConfigService, (service) => service.load).pipe(
+            Effect.provide(LandoConfigService.layer),
+          ),
+        ),
+      );
+      // Then the failure retains its source, field, and repair guidance.
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") return;
+      expect(result.failure.path).toBe(path);
+      expect(result.failure.issues).toEqual([
+        {
+          path: ["router", "httpPort"],
+          message: expect.any(String),
+          source: { layer: "config-file", file: path, path: ["router", "httpPort"] },
+          suggestion:
+            "Run `lando config unset router.httpPort` or `lando config set router.httpPort <value>`.",
+        },
+      ]);
+      expect(result.failure.message).toContain("router.httpPort:");
+      for (const command of [
+        "lando config validate",
+        "lando config set <key> <value>",
+        "lando config unset <key>",
+        "lando config edit",
+      ]) {
+        expect(result.failure.remediation).toContain(command);
+      }
+    });
+  });
+
+  test.each([
+    "LANDO_CONFIG__ROUTER__HTTP_PORT",
+    "LANDO_ROUTER_HTTP_PORT",
+    "LANDO_NETWORK_CA_INJECT_INTO_SERVICES",
+  ])("attributes invalid values to the environment when %s overrides a valid file", async (name) => {
+    await withTempConfigRoot(async (dir) => {
+      // Given a valid file and an invalid generic or friendly override.
+      await writeFile(join(dir, "config.yml"), "router:\n  httpPort: 8080\n");
+      const previous = process.env[name];
+      process.env[name] = "99999";
+      try {
+        // When config is loaded.
+        const result = await Effect.runPromise(
+          Effect.result(
+            Effect.flatMap(ConfigService, (service) => service.load).pipe(
+              Effect.provide(LandoConfigService.layer),
+            ),
+          ),
+        );
+        // Then repair guidance targets the environment, not the valid file.
+        expect(result._tag).toBe("Failure");
+        if (result._tag !== "Failure") return;
+        expect(result.failure.issues?.[0]?.path).toEqual(
+          name === "LANDO_NETWORK_CA_INJECT_INTO_SERVICES"
+            ? ["network", "ca", "injectIntoServices"]
+            : ["router", "httpPort"],
+        );
+        expect(result.failure.message).not.toContain("Invalid config file");
+        expect(result.failure.remediation).toMatch(/(?:Unset or fix|unset) the environment override/);
+      } finally {
+        if (previous === undefined) delete process.env[name];
+        else process.env[name] = previous;
+      }
+    });
+  });
+
   test("loads config.yml and applies the LANDO_CONFIG__ overlay", async () => {
     await withTempConfigRoot(async (dir) => {
       await writeFile(
@@ -61,6 +135,74 @@ describe("LandoConfigService.layer", () => {
       expect(config.userDataRoot === "/tmp/lando-data").toBe(true);
       expect(config.defaultProviderId === "lando").toBe(true);
       expect(config.telemetry.enabled).toBe(true);
+    });
+  });
+
+  test("reports multiple fields and does not blame an unrelated environment override", async () => {
+    await withTempConfigRoot(async (dir) => {
+      await writeFile(join(dir, "config.yml"), "router:\n  httpPort: 99999\n  httpsPort: 99999\n");
+      process.env.LANDO_CONFIG__default_provider_id = "docker";
+      const result = await Effect.runPromise(
+        Effect.result(
+          Effect.flatMap(ConfigService, (service) => service.load).pipe(
+            Effect.provide(LandoConfigService.layer),
+          ),
+        ),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") return;
+      expect(result.failure.issues?.map((issue) => issue.path)).toEqual([
+        ["router", "httpPort"],
+        ["router", "httpsPort"],
+      ]);
+      expect(result.failure.message).toContain("Invalid config file");
+      expect(result.failure.message).toContain("(and 1 more issues)");
+    });
+  });
+
+  test("mixed file and environment issues retain both repair paths", async () => {
+    await withTempConfigRoot(async (dir) => {
+      await writeFile(join(dir, "config.yml"), "router:\n  httpPort: 99999\n");
+      process.env.LANDO_CONFIG__default_provider_id = "42";
+      const result = await Effect.runPromise(
+        Effect.result(
+          Effect.flatMap(ConfigService, (service) => service.load).pipe(
+            Effect.provide(LandoConfigService.layer),
+          ),
+        ),
+      );
+      expect(result._tag).toBe("Failure");
+      if (result._tag !== "Failure") return;
+      expect(result.failure.issues?.length).toBe(2);
+      expect(result.failure.remediation).toContain("environment override for defaultProviderId");
+      expect(result.failure.remediation).toContain("lando config edit");
+      expect(result.failure.message).toMatch(/\(\S+\/config\.yml and environment override LANDO_\w+\)/);
+    });
+  });
+
+  test("mixed errors name both sources when the first issue comes from the file", async () => {
+    await withTempConfigRoot(async (dir) => {
+      await writeFile(join(dir, "config.yml"), "defaultProviderId: 42\n");
+      const name = "LANDO_ROUTER_HTTP_PORT";
+      const previous = process.env[name];
+      process.env[name] = "99999";
+      try {
+        const result = await Effect.runPromise(
+          Effect.result(
+            Effect.flatMap(ConfigService, (service) => service.load).pipe(
+              Effect.provide(LandoConfigService.layer),
+            ),
+          ),
+        );
+        expect(result._tag).toBe("Failure");
+        if (result._tag !== "Failure") return;
+        expect(result.failure.issues?.[0]?.path).toEqual(["defaultProviderId"]);
+        expect(result.failure.message).toMatch(/\(\S+\/config\.yml and environment override LANDO_\w+\)/);
+        expect(result.failure.remediation).toContain("environment override for router.httpPort");
+      } finally {
+        if (previous === undefined) delete process.env[name];
+        else process.env[name] = previous;
+      }
     });
   });
 
@@ -112,6 +254,7 @@ describe("LandoConfigService.layer", () => {
         if (failure._tag === "Some") {
           expect(failure.value).toBeInstanceOf(ConfigError);
           expect(failure.value.path).toBe(filePath);
+          expect(failure.value.remediation).toContain("lando config edit");
         }
       }
     });

@@ -1,0 +1,5 @@
+name: config-lint-tooling-include
+includes:
+  - source: ./tasks/docs.yml
+    kind: tooling
+    namespace: docs

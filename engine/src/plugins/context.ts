@@ -239,6 +239,8 @@ const publishRenderNotWired = () =>
     new EventError({
       message: "publishRender is not wired for this plugin context.",
       event: "render",
+      remediation:
+        "Fix the handler or emitter for event `render`, then re-run the operation that publishes it.",
     }),
   );
 

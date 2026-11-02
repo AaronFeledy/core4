@@ -1,7 +1,7 @@
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 
 export const recordFeatureContext = (
-  input: Pick<ServiceFeatureContext, "serviceType" | "normalizedConfig" | "config">,
+  input: Pick<ServiceFeatureContext, "serviceType" | "normalizedConfig" | "config" | "connection">,
 ) => {
   const calls: unknown[][] = [];
   const record =
@@ -21,13 +21,15 @@ export const recordFeatureContext = (
     addBuildStep: record("addBuildStep"),
     addExtension: record("addExtension"),
     addStorage: record("addStorage"),
-    addEndpoint: record("addEndpoint"),
     addDependency: record("addDependency"),
     addHostAlias: record("addHostAlias"),
     setHealthcheck: record("setHealthcheck"),
+    setReadiness: record("setReadiness"),
+    setListenerAuthority: record("setListenerAuthority"),
     setCerts: record("setCerts"),
     setEntrypoint: record("setEntrypoint"),
     setCommand: record("setCommand"),
+    setInit: record("setInit"),
     setArtifact: record("setArtifact"),
     setUser: record("setUser"),
     setWorkingDirectory: record("setWorkingDirectory"),

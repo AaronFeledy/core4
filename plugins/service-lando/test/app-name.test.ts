@@ -42,6 +42,8 @@ describe("app-name consumers", () => {
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toBe(
       `lando-${createHash("sha256").update(`${input.expected}:db:root`).digest("hex").slice(0, 24)}`,
     );
-    expect(plan.storage[0]?.store).toBe(`${input.expected}-db-mysql-data`);
+    expect(plan.mounts.find((mount) => mount.type === "volume")?.store).toBe(
+      `${input.expected}-db-mysql-data`,
+    );
   });
 });

@@ -22,6 +22,7 @@ import {
   runRelease,
 } from "../../../scripts/release";
 import { generateReleaseSboms } from "../../../scripts/release-sbom";
+import { stubContainerHelperDir } from "../build/fixtures/container-helper-stubs.ts";
 
 type ReleaseStage = (typeof RELEASE_STAGES)[number];
 
@@ -32,6 +33,12 @@ const passingManifestGate = async () => ({ ok: true as const, violations: [] });
 const withReleaseFixtureRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = await mkdtemp(join(tmpdir(), "lando-release-deprecations-"));
   try {
+    await writeFixtureFile(root, "core/container-helper/dist/licenses/go/LICENSE", "fixture Go license\n");
+    await writeFixtureFile(
+      root,
+      "core/container-helper/dist/licenses/go/files.json",
+      '["licenses/go/LICENSE"]',
+    );
     await run(root);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -84,9 +91,9 @@ describe("release orchestrator", () => {
     ACTIONS_ID_TOKEN_REQUEST_TOKEN: "oidc-token",
     ACTIONS_ID_TOKEN_REQUEST_URL: "https://token.actions.githubusercontent.com/request",
     GITHUB_REF: "refs/tags/v4.0.0-beta.1",
-    GITHUB_REPOSITORY: "lando-community/core4",
+    GITHUB_REPOSITORY: "AaronFeledy/core4",
     GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
-    GITHUB_WORKFLOW_REF: "lando-community/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
+    GITHUB_WORKFLOW_REF: "AaronFeledy/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
   };
   const windowsSigningEnv = {
     LANDO_RELEASE_WINDOWS_CERTIFICATE: "certs/windows-release.pfx",
@@ -127,20 +134,113 @@ describe("release orchestrator", () => {
 
     expect(RELEASE_STAGES.map((stage) => stage.id)).toEqual([
       "1-codegen",
-      "2-typecheck",
-      "3-lint-format",
-      "4-test-gates",
-      "5-schema-artifacts",
-      "6-library-bundle",
-      "7-compile",
-      "8-strip",
-      "9-sign",
-      "10-notarize",
-      "11-manifest",
-      "12-provenance-sbom",
-      "13-publish",
+      "2-container-helper",
+      "3-typecheck",
+      "4-lint-format",
+      "5-test-gates",
+      "6-schema-artifacts",
+      "7-library-bundle",
+      "8-compile",
+      "9-strip",
+      "10-sign",
+      "11-notarize",
+      "12-manifest",
+      "13-provenance-sbom",
+      "14-publish",
     ]);
     expect(observed).toEqual(RELEASE_STAGES.map((stage) => stage.id));
+  });
+
+  test.each([undefined, ""])(
+    "builds container helpers when the prebuilt directory is %p",
+    async (helperDir) => {
+      // Given a release without prebuilt helpers.
+      const commands: ReadonlyArray<string>[] = [];
+      const stage = releaseStage("2-container-helper");
+
+      // When the helper stage runs.
+      await stage.run({
+        target: "all",
+        env: { LANDO_CONTAINER_HELPER_DIR: helperDir },
+        localRehearsal: false,
+        runner: {
+          spawn: async ({ cmd }) => {
+            commands.push(cmd);
+          },
+          shell: async () => {
+            throw new Error("unexpected shell command");
+          },
+        },
+        logger: () => {},
+        now: () => 0,
+      });
+
+      // Then Go checks and both Linux builds run through the Lando builder script.
+      expect(commands).toEqual([["bun", "run", "scripts/build-container-helper.ts", "--test"]]);
+    },
+  );
+
+  test("skips the container helper build and logs the prebuilt directory when supplied", async () => {
+    // Given helpers downloaded from CI for the release commit.
+    const commands: ReadonlyArray<string>[] = [];
+    const logs: string[] = [];
+    const helperDir = await stubContainerHelperDir();
+
+    // When the helper stage runs with the artifact directory.
+    await releaseStage("2-container-helper").run({
+      target: "library",
+      env: { LANDO_CONTAINER_HELPER_DIR: helperDir },
+      localRehearsal: false,
+      runner: {
+        spawn: async ({ cmd }) => {
+          commands.push(cmd);
+        },
+        shell: async () => {
+          throw new Error("unexpected shell command");
+        },
+      },
+      logger: (line) => {
+        logs.push(line);
+      },
+      now: () => 0,
+    });
+
+    // Then no build runs and the selected artifact location is visible.
+    expect(commands).toEqual([]);
+    expect(logs).toEqual([
+      `[release] skip 2-container-helper build (using prebuilt helpers from ${helperDir})`,
+    ]);
+    await rm(helperDir, { recursive: true, force: true });
+  });
+
+  test("reports actionable remediation when the container helper build fails", async () => {
+    // Given a builder failure.
+    const failure = new Error("provider unavailable");
+
+    // When release preparation reaches the helper stage.
+    const release = runRelease({
+      throughStage: "2-container-helper",
+      env: {},
+      deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
+      runner: {
+        spawn: async ({ stageId }) => {
+          if (stageId === "2-container-helper") throw failure;
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    // Then the stage boundary preserves the cause and recovery instructions.
+    await expect(release).rejects.toMatchObject({
+      _tag: "ReleaseStageError",
+      stageId: "2-container-helper",
+      artifactFamily: "binary+library",
+      commandSummary: "bun run scripts/build-container-helper.ts --test",
+      remediation: releaseStage("2-container-helper").remediation,
+      cause: failure,
+    });
   });
 
   test("halts on the first failed stage with a tagged release error", async () => {
@@ -155,7 +255,7 @@ describe("release orchestrator", () => {
         runner: {
           spawn: async ({ stageId }) => {
             observed.push(stageId);
-            if (stageId === "4-test-gates") throw new Error("boom");
+            if (stageId === "5-test-gates") throw new Error("boom");
           },
           shell: async ({ stageId }) => {
             observed.push(stageId);
@@ -166,13 +266,19 @@ describe("release orchestrator", () => {
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
-      stageId: "4-test-gates",
+      stageId: "5-test-gates",
       artifactFamily: "binary+library",
       commandSummary: "bun --no-orphans test",
       remediation: "Fix the failed release stage and rerun scripts/release.ts from a clean tree.",
     });
 
-    expect(observed).toEqual(["1-codegen", "2-typecheck", "3-lint-format", "4-test-gates"]);
+    expect(observed).toEqual([
+      "1-codegen",
+      "2-container-helper",
+      "3-typecheck",
+      "4-lint-format",
+      "5-test-gates",
+    ]);
   });
 
   test("blocks the release when the runtime-bundle manifest gate reports violations", async () => {
@@ -214,7 +320,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       // Intentionally no manifestGate override: exercise the real default gate.
       target: "all",
-      throughStage: "2-typecheck",
+      throughStage: "3-typecheck",
       env: localRehearsalEnv,
       runner: {
         spawn: async ({ stageId }) => {
@@ -228,7 +334,7 @@ describe("release orchestrator", () => {
       now: () => 0,
     });
 
-    expect(observed).toEqual(["1-codegen", "2-typecheck"]);
+    expect(observed).toEqual(["1-codegen", "2-container-helper", "3-typecheck"]);
   });
 
   test("uses spawn for argv-precise stages and shell for shell-shaped manifest work", async () => {
@@ -239,7 +345,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "library",
-      throughStage: "11-manifest",
+      throughStage: "12-manifest",
       env: {
         ...manifestSigningEnv,
       },
@@ -256,14 +362,19 @@ describe("release orchestrator", () => {
     });
 
     expect(spawnStages).toContainEqual({ stageId: "1-codegen", cmd: ["bun", "run", "scripts/codegen.ts"] });
-    expect(spawnStages.filter(({ stageId }) => stageId === "6-library-bundle")).toEqual(
-      releasePackageNames.map((packageName) => ({
-        stageId: "6-library-bundle",
+    expect(spawnStages.filter(({ stageId }) => stageId === "7-library-bundle")).toEqual([
+      { stageId: "7-library-bundle", cmd: ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"] },
+      ...releasePackageNames.map((packageName) => ({
+        stageId: "7-library-bundle",
         cmd: ["bun", "run", `--filter=${packageName}`, "build"],
       })),
-    );
-    expect(spawnStages).not.toContainEqual({ stageId: "6-library-bundle", cmd: ["bun", "run", "build"] });
-    expect(shellStages.some((entry) => entry.startsWith("11-manifest:mkdir -p dist"))).toBe(true);
+      {
+        stageId: "7-library-bundle",
+        cmd: ["bun", "run", "scripts/check-compiled-binary-notices.ts", "--core-dist"],
+      },
+    ]);
+    expect(spawnStages).not.toContainEqual({ stageId: "7-library-bundle", cmd: ["bun", "run", "build"] });
+    expect(shellStages.some((entry) => entry.startsWith("12-manifest:mkdir -p dist"))).toBe(true);
     expect(shellStages.some((entry) => entry.includes("gpg --batch"))).toBe(true);
     expect(shellStages.some((entry) => entry.startsWith("1-codegen:"))).toBe(false);
   });
@@ -277,7 +388,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "all",
-      throughStage: "5-schema-artifacts",
+      throughStage: "6-schema-artifacts",
       env: localRehearsalEnv,
       runner: {
         spawn: async ({ stageId, cmd }) => {
@@ -290,7 +401,7 @@ describe("release orchestrator", () => {
 
     // Then
     expect(commands).toContainEqual({
-      stageId: "5-schema-artifacts",
+      stageId: "6-schema-artifacts",
       cmd: ["bun", "run", "codegen:schema-snapshot"],
     });
   });
@@ -304,7 +415,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "all",
-      throughStage: "5-schema-artifacts",
+      throughStage: "6-schema-artifacts",
       env: localRehearsalEnv,
       runner: {
         spawn: async () => {},
@@ -314,7 +425,7 @@ describe("release orchestrator", () => {
     });
 
     // Then
-    expect(logs.some((line) => line.includes("skip 5-schema-artifacts"))).toBe(false);
+    expect(logs.some((line) => line.includes("skip 6-schema-artifacts"))).toBe(false);
   });
 
   test("stage 5 schema regeneration runs before library bundle, compile, and publish", async () => {
@@ -329,7 +440,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "all",
-      throughStage: "7-compile",
+      throughStage: "8-compile",
       env: localRehearsalEnv,
       runner: {
         spawn: async ({ stageId }) => observe(stageId),
@@ -340,10 +451,10 @@ describe("release orchestrator", () => {
 
     // Then
     expect(
-      observed.filter((stageId) => ["5-schema-artifacts", "6-library-bundle", "7-compile"].includes(stageId)),
-    ).toEqual(["5-schema-artifacts", "6-library-bundle", "7-compile"]);
-    expect(RELEASE_STAGES.findIndex(({ id }) => id === "5-schema-artifacts")).toBeLessThan(
-      RELEASE_STAGES.findIndex(({ id }) => id === "13-publish"),
+      observed.filter((stageId) => ["6-schema-artifacts", "7-library-bundle", "8-compile"].includes(stageId)),
+    ).toEqual(["6-schema-artifacts", "7-library-bundle", "8-compile"]);
+    expect(RELEASE_STAGES.findIndex(({ id }) => id === "6-schema-artifacts")).toBeLessThan(
+      RELEASE_STAGES.findIndex(({ id }) => id === "14-publish"),
     );
   });
 
@@ -366,11 +477,11 @@ describe("release orchestrator", () => {
       logger: (line) => logs.push(line),
     });
 
-    expect(logs.filter((line) => line.startsWith("[release] skip 6-library-bundle"))).toHaveLength(1);
+    expect(logs.filter((line) => line.startsWith("[release] skip 7-library-bundle"))).toHaveLength(1);
     expect(
-      logs.filter((line) => line.startsWith("[release] warning LOCAL_REHEARSAL=1: skip 13-publish")),
+      logs.filter((line) => line.startsWith("[release] warning LOCAL_REHEARSAL=1: skip 14-publish")),
     ).toHaveLength(1);
-    expect(logs).not.toContain("run:13-publish");
+    expect(logs).not.toContain("run:14-publish");
     const binaryStageOutcomes = logs
       .map(
         (line) =>
@@ -406,7 +517,7 @@ describe("release orchestrator", () => {
           released: "2026-06-17T12:00:00.000Z",
           minimum: "4.0.0-alpha.1",
           distDir: "dist",
-          repository: "lando-community/core4",
+          repository: "AaronFeledy/core4",
           allowMissingBinaries: true,
         });
         const decoded = Schema.decodeUnknownSync(UpdateManifestSchema)(manifest, {
@@ -422,18 +533,17 @@ describe("release orchestrator", () => {
             .sort(),
         );
         expect(decoded.binaries["linux-x64"]).toEqual({
-          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/lando-linux-x64",
+          url: "https://github.com/AaronFeledy/core4/releases/download/v4.0.0-next.2/lando-linux-x64",
           sha256: sha256Text("linux-x64 artifact"),
           size: "linux-x64 artifact".length,
         });
         expect(decoded.binaries["windows-x64"].sha256).toBe("0".repeat(64));
         expect(decoded.binaries["windows-x64"].size).toBe(0);
         expect(decoded.checksums).toEqual({
-          url: "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/SHA256SUMS",
-          signature:
-            "https://github.com/lando-community/core4/releases/download/v4.0.0-next.2/SHA256SUMS.sig",
+          url: "https://github.com/AaronFeledy/core4/releases/download/v4.0.0-next.2/SHA256SUMS",
+          signature: "https://github.com/AaronFeledy/core4/releases/download/v4.0.0-next.2/SHA256SUMS.sig",
         });
-        expect(decoded.notes).toBe("https://github.com/lando-community/core4/releases/tag/v4.0.0-next.2");
+        expect(decoded.notes).toBe("https://github.com/AaronFeledy/core4/releases/tag/v4.0.0-next.2");
       });
     });
   });
@@ -457,28 +567,30 @@ describe("release orchestrator", () => {
   test("exposes the required artifact-family stage split", () => {
     expect(RELEASE_STAGES.filter((stage) => stage.forBinary).map((stage) => stage.id)).toEqual([
       "1-codegen",
-      "2-typecheck",
-      "3-lint-format",
-      "4-test-gates",
-      "5-schema-artifacts",
-      "7-compile",
-      "8-strip",
-      "9-sign",
-      "10-notarize",
-      "11-manifest",
-      "12-provenance-sbom",
-      "13-publish",
+      "2-container-helper",
+      "3-typecheck",
+      "4-lint-format",
+      "5-test-gates",
+      "6-schema-artifacts",
+      "8-compile",
+      "9-strip",
+      "10-sign",
+      "11-notarize",
+      "12-manifest",
+      "13-provenance-sbom",
+      "14-publish",
     ]);
     expect(RELEASE_STAGES.filter((stage) => stage.forLibrary).map((stage) => stage.id)).toEqual([
       "1-codegen",
-      "2-typecheck",
-      "3-lint-format",
-      "4-test-gates",
-      "5-schema-artifacts",
-      "6-library-bundle",
-      "11-manifest",
-      "12-provenance-sbom",
-      "13-publish",
+      "2-container-helper",
+      "3-typecheck",
+      "4-lint-format",
+      "5-test-gates",
+      "6-schema-artifacts",
+      "7-library-bundle",
+      "12-manifest",
+      "13-provenance-sbom",
+      "14-publish",
     ]);
   });
 
@@ -501,21 +613,21 @@ describe("release orchestrator", () => {
     });
 
     expect(logs).toContain(
-      "[release] skip 9-sign (selected release platforms are signed at the manifest layer)",
+      "[release] skip 10-sign (selected release platforms are signed at the manifest layer)",
     );
-    expect(logs).toContain("[release] skip 10-notarize (no macOS release platform selected)");
+    expect(logs).toContain("[release] skip 11-notarize (no macOS release platform selected)");
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (checksum manifest signing credentials absent)",
-    );
-    expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 12-provenance-sbom (provenance and cosign credentials absent)",
+      "[release] warning LOCAL_REHEARSAL=1: skip 12-manifest signing (checksum manifest signing credentials absent)",
     );
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (publish credentials absent)",
+      "[release] warning LOCAL_REHEARSAL=1: skip 13-provenance-sbom (provenance and cosign credentials absent)",
+    );
+    expect(logs).toContain(
+      "[release] warning LOCAL_REHEARSAL=1: skip 14-publish (publish credentials absent)",
     );
 
     const manifestScripts = shellStages
-      .filter(({ stageId }) => stageId === "11-manifest")
+      .filter(({ stageId }) => stageId === "12-manifest")
       .map(({ script }) => script);
     expect(manifestScripts.some((script) => script.includes("dist/SHA256SUMS"))).toBe(true);
     expect(manifestScripts.some((script) => script.includes("dist/SHA512SUMS"))).toBe(true);
@@ -524,10 +636,10 @@ describe("release orchestrator", () => {
     expect(manifestScripts.some((script) => script.includes("'--version'"))).toBe(true);
     expect(manifestScripts.every((script) => !script.includes("'0.0.0'"))).toBe(true);
     expect(
-      shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
+      shellStages.some(({ stageId, script }) => stageId === "12-manifest" && script.includes("gpg")),
     ).toBe(false);
-    expect(shellStages.some(({ stageId }) => stageId === "12-provenance-sbom")).toBe(false);
-    expect(shellStages.some(({ stageId }) => stageId === "13-publish")).toBe(false);
+    expect(shellStages.some(({ stageId }) => stageId === "13-provenance-sbom")).toBe(false);
+    expect(shellStages.some(({ stageId }) => stageId === "14-publish")).toBe(false);
   });
 
   test("non-local release fails closed for missing platform signing credentials", async () => {
@@ -536,7 +648,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "9-sign",
+        throughStage: "10-sign",
         hostPlatform: "win32",
         env: {
           LANDO_RELEASE_SIGNING_IDENTITY: "Developer ID Application: Example",
@@ -551,7 +663,7 @@ describe("release orchestrator", () => {
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
-      stageId: "9-sign",
+      stageId: "10-sign",
       artifactFamily: "binary",
     });
   });
@@ -564,11 +676,11 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "9-sign",
+      throughStage: "10-sign",
       env: { ...macosSigningEnv, LANDO_RELEASE_PLATFORM: "darwin-x64" },
       runner: {
         spawn: async ({ stageId, cmd }) => {
-          if (stageId === "9-sign") macosCommands.push(cmd);
+          if (stageId === "10-sign") macosCommands.push(cmd);
         },
         shell: async () => {},
       },
@@ -579,12 +691,12 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "9-sign",
+      throughStage: "10-sign",
       env: { ...windowsSigningEnv, LANDO_RELEASE_PLATFORM: "windows-x64" },
       hostPlatform: "win32",
       runner: {
         spawn: async ({ stageId, cmd }) => {
-          if (stageId === "9-sign") windowsCommands.push(cmd);
+          if (stageId === "10-sign") windowsCommands.push(cmd);
         },
         shell: async () => {},
       },
@@ -602,7 +714,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "9-sign",
+      throughStage: "10-sign",
       env: { ...macosSigningEnv, ...windowsSigningEnv },
       hostPlatform: "win32",
       runner: {
@@ -614,9 +726,9 @@ describe("release orchestrator", () => {
       logger: () => {},
     });
 
-    expect(spawnStages.filter(({ stageId, cmd }) => stageId === "9-sign" && cmd[0] === "codesign")).toEqual([
+    expect(spawnStages.filter(({ stageId, cmd }) => stageId === "10-sign" && cmd[0] === "codesign")).toEqual([
       {
-        stageId: "9-sign",
+        stageId: "10-sign",
         cmd: [
           "codesign",
           "--sign",
@@ -630,7 +742,7 @@ describe("release orchestrator", () => {
         ],
       },
       {
-        stageId: "9-sign",
+        stageId: "10-sign",
         cmd: [
           "codesign",
           "--sign",
@@ -653,7 +765,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "10-notarize",
+      throughStage: "11-notarize",
       env: { ...macosSigningEnv, ...windowsSigningEnv },
       hostPlatform: "win32",
       runner: {
@@ -665,9 +777,9 @@ describe("release orchestrator", () => {
       logger: () => {},
     });
 
-    expect(spawnStages.filter(({ stageId }) => stageId === "10-notarize")).toEqual([
+    expect(spawnStages.filter(({ stageId }) => stageId === "11-notarize")).toEqual([
       {
-        stageId: "10-notarize",
+        stageId: "11-notarize",
         cmd: [
           "xcrun",
           "notarytool",
@@ -678,10 +790,10 @@ describe("release orchestrator", () => {
           "--wait",
         ],
       },
-      { stageId: "10-notarize", cmd: ["xcrun", "stapler", "staple", "./dist/lando-darwin-x64"] },
-      { stageId: "10-notarize", cmd: ["xcrun", "stapler", "validate", "./dist/lando-darwin-x64"] },
+      { stageId: "11-notarize", cmd: ["xcrun", "stapler", "staple", "./dist/lando-darwin-x64"] },
+      { stageId: "11-notarize", cmd: ["xcrun", "stapler", "validate", "./dist/lando-darwin-x64"] },
       {
-        stageId: "10-notarize",
+        stageId: "11-notarize",
         cmd: [
           "xcrun",
           "notarytool",
@@ -692,8 +804,8 @@ describe("release orchestrator", () => {
           "--wait",
         ],
       },
-      { stageId: "10-notarize", cmd: ["xcrun", "stapler", "staple", "./dist/lando-darwin-arm64"] },
-      { stageId: "10-notarize", cmd: ["xcrun", "stapler", "validate", "./dist/lando-darwin-arm64"] },
+      { stageId: "11-notarize", cmd: ["xcrun", "stapler", "staple", "./dist/lando-darwin-arm64"] },
+      { stageId: "11-notarize", cmd: ["xcrun", "stapler", "validate", "./dist/lando-darwin-arm64"] },
     ]);
   });
 
@@ -704,7 +816,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "10-notarize",
+      throughStage: "11-notarize",
       env: {
         LOCAL_REHEARSAL: "1",
         LANDO_RELEASE_PLATFORM: "darwin-x64",
@@ -722,7 +834,7 @@ describe("release orchestrator", () => {
     });
 
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 10-notarize (Apple notarization credentials absent)",
+      "[release] warning LOCAL_REHEARSAL=1: skip 11-notarize (Apple notarization credentials absent)",
     );
   });
 
@@ -734,7 +846,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "10-notarize",
+        throughStage: "11-notarize",
         hostPlatform: "win32",
         env: {
           ...windowsSigningEnv,
@@ -753,7 +865,7 @@ describe("release orchestrator", () => {
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
-      stageId: "10-notarize",
+      stageId: "11-notarize",
       artifactFamily: "binary",
     });
 
@@ -766,12 +878,12 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "9-sign",
+        throughStage: "10-sign",
         env: { ...macosSigningEnv, ...windowsSigningEnv },
         hostPlatform: "win32",
         runner: {
           spawn: async ({ stageId, cmd }) => {
-            if (stageId === "9-sign" && cmd[0] === "codesign") throw new Error("codesign failed");
+            if (stageId === "10-sign" && cmd[0] === "codesign") throw new Error("codesign failed");
           },
           shell: async () => {},
         },
@@ -779,7 +891,7 @@ describe("release orchestrator", () => {
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
-      stageId: "9-sign",
+      stageId: "10-sign",
       artifactFamily: "binary",
     });
   });
@@ -790,7 +902,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "library",
-        throughStage: "12-provenance-sbom",
+        throughStage: "13-provenance-sbom",
         env: manifestGpgOnlyEnv,
         runner: {
           spawn: async () => {},
@@ -800,7 +912,7 @@ describe("release orchestrator", () => {
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
-      stageId: "12-provenance-sbom",
+      stageId: "13-provenance-sbom",
       artifactFamily: "library",
     });
   });
@@ -819,7 +931,7 @@ describe("release orchestrator", () => {
           deprecationGate: passingDeprecationGate,
           manifestGate: passingManifestGate,
           target: "binary",
-          throughStage: "12-provenance-sbom",
+          throughStage: "13-provenance-sbom",
           env,
           runner: {
             spawn: async () => {},
@@ -829,7 +941,7 @@ describe("release orchestrator", () => {
         }),
       ).rejects.toMatchObject({
         _tag: "ReleaseStageError",
-        stageId: "11-manifest",
+        stageId: "12-manifest",
         artifactFamily: "binary",
       });
     }
@@ -843,7 +955,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "library",
-        throughStage: "11-manifest",
+        throughStage: "12-manifest",
         env: manifestGpgOnlyEnv,
         runner: {
           spawn: async () => {},
@@ -855,7 +967,7 @@ describe("release orchestrator", () => {
       });
 
       const manifestScript = shellStages.find(
-        ({ stageId, script }) => stageId === "11-manifest" && script.includes("SHA256SUMS"),
+        ({ stageId, script }) => stageId === "12-manifest" && script.includes("SHA256SUMS"),
       )?.script;
       expect(manifestScript).toContain(": > dist/SHA256SUMS");
       expect(manifestScript).toContain(": > dist/SHA512SUMS");
@@ -864,7 +976,7 @@ describe("release orchestrator", () => {
       expect(manifestScript).not.toContain("dist/update-manifest.json");
 
       const signingScript = shellStages.find(
-        ({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg --batch"),
+        ({ stageId, script }) => stageId === "12-manifest" && script.includes("gpg --batch"),
       )?.script;
       expect(signingScript).toContain("gpg --batch --yes --armor --detach-sign dist/SHA256SUMS");
       expect(signingScript).not.toContain("build-update-manifest.ts");
@@ -879,7 +991,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "11-manifest",
+        throughStage: "12-manifest",
         env: { ...macosSigningEnv, ...windowsSigningEnv, ...manifestSigningEnv },
         hostPlatform: "win32",
         runner: {
@@ -891,7 +1003,7 @@ describe("release orchestrator", () => {
         logger: () => {},
       });
 
-      const manifestScripts = shellStages.filter(({ stageId }) => stageId === "11-manifest");
+      const manifestScripts = shellStages.filter(({ stageId }) => stageId === "12-manifest");
       expect(manifestScripts[0]?.script).toContain("./dist/lando-darwin-arm64");
       expect(manifestScripts[0]?.script).toContain("./dist/lando-darwin-x64");
       expect(manifestScripts[0]?.script).toContain("./dist/lando-linux-arm64");
@@ -924,7 +1036,7 @@ describe("release orchestrator", () => {
     });
 
     test("checksum manifest generation fails when a required Linux binary is missing", async () => {
-      const manifestStage = releaseStage("11-manifest");
+      const manifestStage = releaseStage("12-manifest");
 
       await withReleaseFixtureRoot(async (root) => {
         await mkdir(join(root, "dist"), { recursive: true });
@@ -950,7 +1062,7 @@ describe("release orchestrator", () => {
     });
 
     test("signed update manifest refuses placeholder binary entries", async () => {
-      const manifestStage = releaseStage("11-manifest");
+      const manifestStage = releaseStage("12-manifest");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
@@ -982,7 +1094,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "all",
-        throughStage: "12-provenance-sbom",
+        throughStage: "13-provenance-sbom",
         hostPlatform: "win32",
         env: {
           ...macosSigningEnv,
@@ -994,7 +1106,7 @@ describe("release orchestrator", () => {
         runner: {
           spawn: async ({ stageId, cmd }) => {
             events.push(`${stageId}:${cmd.join(" ")}`);
-            if (stageId === "12-provenance-sbom") provenanceCommands.push(cmd);
+            if (stageId === "13-provenance-sbom") provenanceCommands.push(cmd);
           },
           shell: async ({ stageId, script }) => {
             events.push(`${stageId}:${script.split("\n")[0]}`);
@@ -1019,7 +1131,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1030,7 +1142,7 @@ describe("release orchestrator", () => {
         ],
       ]);
       const verifyIndex = events.findIndex((event) =>
-        event.includes("12-provenance-sbom:cosign verify-blob"),
+        event.includes("13-provenance-sbom:cosign verify-blob"),
       );
       expect(verifyIndex).toBeGreaterThanOrEqual(0);
     });
@@ -1043,7 +1155,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "12-provenance-sbom",
+        throughStage: "13-provenance-sbom",
         env: {
           LOCAL_REHEARSAL: "1",
           LANDO_RELEASE_PLATFORM: "linux-x64",
@@ -1060,12 +1172,12 @@ describe("release orchestrator", () => {
       });
 
       expect(logs).toContain(
-        "[release] warning LOCAL_REHEARSAL=1: skip 11-manifest signing (update manifest cosign credentials absent)",
+        "[release] warning LOCAL_REHEARSAL=1: skip 12-manifest signing (update manifest cosign credentials absent)",
       );
       expect(logs).toContain(
-        "[release] warning LOCAL_REHEARSAL=1: skip 12-provenance-sbom (provenance and cosign credentials absent)",
+        "[release] warning LOCAL_REHEARSAL=1: skip 13-provenance-sbom (provenance and cosign credentials absent)",
       );
-      expect(spawnStages).not.toContain("12-provenance-sbom");
+      expect(spawnStages).not.toContain("13-provenance-sbom");
     });
 
     test("binary verification signs every release binary and writes release-note commands", async () => {
@@ -1076,7 +1188,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "12-provenance-sbom",
+        throughStage: "13-provenance-sbom",
         hostPlatform: "win32",
         env: {
           ...macosSigningEnv,
@@ -1087,7 +1199,7 @@ describe("release orchestrator", () => {
         },
         runner: {
           spawn: async ({ stageId, summary, cmd }) => {
-            if (stageId === "12-provenance-sbom" && summary === "cosign-sign and verify release binaries") {
+            if (stageId === "13-provenance-sbom" && summary === "cosign-sign and verify release binaries") {
               binaryCommands.push(cmd);
             }
           },
@@ -1114,7 +1226,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1137,7 +1249,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1160,7 +1272,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1183,7 +1295,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1206,7 +1318,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1229,7 +1341,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1256,7 +1368,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "12-provenance-sbom",
+        throughStage: "13-provenance-sbom",
         env: {
           ...manifestSigningEnv,
           ...provenanceSigningEnv,
@@ -1265,7 +1377,7 @@ describe("release orchestrator", () => {
         },
         runner: {
           spawn: async ({ stageId, summary, cmd }) => {
-            if (stageId === "12-provenance-sbom" && summary === "cosign-sign and verify release binaries") {
+            if (stageId === "13-provenance-sbom" && summary === "cosign-sign and verify release binaries") {
               binaryCommands.push(cmd);
             }
           },
@@ -1291,7 +1403,7 @@ describe("release orchestrator", () => {
           deprecationGate: passingDeprecationGate,
           manifestGate: passingManifestGate,
           target: "binary",
-          throughStage: "12-provenance-sbom",
+          throughStage: "13-provenance-sbom",
           env: {
             ...manifestSigningEnv,
             ...provenanceSigningEnv,
@@ -1300,7 +1412,7 @@ describe("release orchestrator", () => {
           runner: {
             spawn: async ({ stageId, summary, cmd }) => {
               if (
-                stageId === "12-provenance-sbom" &&
+                stageId === "13-provenance-sbom" &&
                 summary === "cosign-sign and verify release binaries" &&
                 cmd[1] === "verify-blob" &&
                 cmd.at(-1) === "dist/lando-linux-x64"
@@ -1315,7 +1427,7 @@ describe("release orchestrator", () => {
         }),
       ).rejects.toMatchObject({
         _tag: "ReleaseStageError",
-        stageId: "12-provenance-sbom",
+        stageId: "13-provenance-sbom",
         artifactFamily: "binary",
         commandSummary: "generate provenance and SBOM artifacts",
       });
@@ -1330,7 +1442,7 @@ describe("release orchestrator", () => {
           deprecationGate: passingDeprecationGate,
           manifestGate: passingManifestGate,
           target: "binary",
-          throughStage: "12-provenance-sbom",
+          throughStage: "13-provenance-sbom",
           env: {
             ...manifestSigningEnv,
             ...provenanceSigningEnv,
@@ -1339,7 +1451,7 @@ describe("release orchestrator", () => {
           runner: {
             spawn: async ({ stageId, summary, cmd }) => {
               if (
-                stageId === "12-provenance-sbom" &&
+                stageId === "13-provenance-sbom" &&
                 summary === "cosign-sign and verify release binaries" &&
                 cmd[1] === "verify-blob" &&
                 cmd.at(-1) === "dist/lando-linux-x64"
@@ -1356,13 +1468,13 @@ describe("release orchestrator", () => {
         }),
       ).rejects.toMatchObject({
         _tag: "ReleaseStageError",
-        stageId: "12-provenance-sbom",
+        stageId: "13-provenance-sbom",
         artifactFamily: "binary",
         commandSummary: "generate provenance and SBOM artifacts",
       });
       expect(mismatchedVerifyCommand).toContain("--certificate-identity-regexp");
       expect(mismatchedVerifyCommand).toContain(
-        "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+        "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
       );
       expect(mismatchedVerifyCommand).toContain("--certificate-oidc-issuer");
       expect(mismatchedVerifyCommand).toContain("https://token.actions.githubusercontent.com");
@@ -1376,7 +1488,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "12-provenance-sbom",
+        throughStage: "13-provenance-sbom",
         env: {
           ...manifestSigningEnv,
           ...provenanceSigningEnv,
@@ -1384,7 +1496,7 @@ describe("release orchestrator", () => {
         },
         runner: {
           spawn: async ({ stageId, summary, cmd }) => {
-            if (stageId === "12-provenance-sbom" && summary === "cosign-sign and verify installer scripts") {
+            if (stageId === "13-provenance-sbom" && summary === "cosign-sign and verify installer scripts") {
               installerCommands.push(cmd);
             }
           },
@@ -1411,7 +1523,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1434,7 +1546,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1463,7 +1575,7 @@ describe("release orchestrator", () => {
           deprecationGate: passingDeprecationGate,
           manifestGate: passingManifestGate,
           target: "binary",
-          throughStage: "12-provenance-sbom",
+          throughStage: "13-provenance-sbom",
           env: {
             ...manifestSigningEnv,
             ...provenanceSigningEnv,
@@ -1472,7 +1584,7 @@ describe("release orchestrator", () => {
           runner: {
             spawn: async ({ stageId, summary, cmd }) => {
               if (
-                stageId === "12-provenance-sbom" &&
+                stageId === "13-provenance-sbom" &&
                 summary === "cosign-sign and verify installer scripts" &&
                 cmd[1] === "verify-blob" &&
                 cmd.at(-1) === "dist/install.sh"
@@ -1487,7 +1599,7 @@ describe("release orchestrator", () => {
         }),
       ).rejects.toMatchObject({
         _tag: "ReleaseStageError",
-        stageId: "12-provenance-sbom",
+        stageId: "13-provenance-sbom",
         artifactFamily: "binary",
         commandSummary: "generate provenance and SBOM artifacts",
       });
@@ -1495,7 +1607,7 @@ describe("release orchestrator", () => {
     });
 
     test("installer artifact staging fails closed when a trust root is missing", async () => {
-      const provenanceStage = releaseStage("12-provenance-sbom");
+      const provenanceStage = releaseStage("13-provenance-sbom");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeFixtureFile(root, "scripts/install.sh", "#!/bin/sh\n");
@@ -1528,7 +1640,7 @@ describe("release orchestrator", () => {
     });
 
     test("installer artifacts are included in the release artifact manifest", async () => {
-      const provenanceStage = releaseStage("12-provenance-sbom");
+      const provenanceStage = releaseStage("13-provenance-sbom");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeFixtureFile(root, "scripts/install.sh", "#!/bin/sh\n");
@@ -1581,7 +1693,7 @@ describe("release orchestrator", () => {
     });
 
     test("generates CycloneDX SBOMs for release artifacts and links them from the manifest", async () => {
-      const provenanceStage = releaseStage("12-provenance-sbom");
+      const provenanceStage = releaseStage("13-provenance-sbom");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeInstallerPublishFixtureFiles(root);
@@ -1632,7 +1744,7 @@ describe("release orchestrator", () => {
     });
 
     test("generates and signs SLSA provenance for release artifacts", async () => {
-      const provenanceStage = releaseStage("12-provenance-sbom");
+      const provenanceStage = releaseStage("13-provenance-sbom");
       const provenanceCommands: Array<ReadonlyArray<string>> = [];
 
       await withReleaseFixtureRoot(async (root) => {
@@ -1678,10 +1790,10 @@ describe("release orchestrator", () => {
           { name: "lando-linux-x64", digest: { sha256: binaryEntry.sha256 } },
         ]);
         expect(provenance.predicate.runDetails.builder.id).toBe(
-          "https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
+          "https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/v4.0.0-beta.1",
         );
         expect(provenance.predicate.buildDefinition.resolvedDependencies[0].uri).toBe(
-          "git+https://github.com/lando-community/core4@refs/tags/v4.0.0-beta.1",
+          "git+https://github.com/AaronFeledy/core4@refs/tags/v4.0.0-beta.1",
         );
         expect(provenance.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit).toBe(
           "0123456789abcdef0123456789abcdef01234567",
@@ -1708,7 +1820,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1731,7 +1843,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1744,7 +1856,7 @@ describe("release orchestrator", () => {
     });
 
     test("provenance stage fails when a manifest artifact lacks a matching SBOM", async () => {
-      const provenanceStage = releaseStage("12-provenance-sbom");
+      const provenanceStage = releaseStage("13-provenance-sbom");
 
       await withReleaseFixtureRoot(async (root) => {
         await writeInstallerPublishFixtureFiles(root);
@@ -1812,7 +1924,7 @@ describe("release orchestrator", () => {
     });
 
     test("provenance stage fails when a manifest artifact lacks a matching attestation", async () => {
-      const provenanceStage = releaseStage("12-provenance-sbom");
+      const provenanceStage = releaseStage("13-provenance-sbom");
       const sbom = "{}\n";
 
       await withReleaseFixtureRoot(async (root) => {
@@ -1868,7 +1980,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "11-manifest",
+        throughStage: "12-manifest",
         env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-x64" },
         hostPlatform: "win32",
         runner: {
@@ -1880,7 +1992,9 @@ describe("release orchestrator", () => {
         logger: (line) => logs.push(line),
       });
 
-      const signingCommands = spawnStages.filter(({ stageId }) => stageId === "9-sign").map(({ cmd }) => cmd);
+      const signingCommands = spawnStages
+        .filter(({ stageId }) => stageId === "10-sign")
+        .map(({ cmd }) => cmd);
       expect(signingCommands).toEqual([
         [
           "signtool",
@@ -1910,7 +2024,7 @@ describe("release orchestrator", () => {
           "cosign",
           "verify-blob",
           "--certificate-identity-regexp",
-          "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/.+$",
+          "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/.+$",
           "--certificate-oidc-issuer",
           "https://token.actions.githubusercontent.com",
           "--signature",
@@ -1920,8 +2034,8 @@ describe("release orchestrator", () => {
           "./dist/lando-windows-x64.exe",
         ],
       ]);
-      expect(spawnStages.findIndex(({ stageId }) => stageId === "9-sign")).toBeLessThan(
-        logs.findIndex((line) => line.startsWith("[release] -> 11-manifest")),
+      expect(spawnStages.findIndex(({ stageId }) => stageId === "10-sign")).toBeLessThan(
+        logs.findIndex((line) => line.startsWith("[release] -> 12-manifest")),
       );
     });
 
@@ -1932,12 +2046,12 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "9-sign",
+        throughStage: "10-sign",
         env: { ...macosSigningEnv, ...windowsSigningEnv },
         hostPlatform: "win32",
         runner: {
           spawn: async ({ stageId, cmd }) => {
-            if (stageId === "9-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
+            if (stageId === "10-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
               const binaryPath = cmd.at(-1);
               if (binaryPath !== undefined) signedBinaries.push(binaryPath);
             }
@@ -1957,12 +2071,12 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "9-sign",
+        throughStage: "10-sign",
         env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-arm64" },
         hostPlatform: "win32",
         runner: {
           spawn: async ({ stageId, cmd }) => {
-            if (stageId === "9-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
+            if (stageId === "10-sign" && cmd[0] === "signtool" && cmd[1] === "sign") {
               const binaryPath = cmd.at(-1);
               if (binaryPath !== undefined) signedBinaries.push(binaryPath);
             }
@@ -1982,7 +2096,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "9-sign",
+        throughStage: "10-sign",
         hostPlatform: "win32",
         env: {
           ...windowsSigningEnv,
@@ -1994,7 +2108,7 @@ describe("release orchestrator", () => {
         },
         runner: {
           spawn: async ({ stageId, cmd }) => {
-            if (stageId === "9-sign") signingCommands.push(cmd);
+            if (stageId === "10-sign") signingCommands.push(cmd);
           },
           shell: async () => {},
         },
@@ -2025,12 +2139,12 @@ describe("release orchestrator", () => {
           deprecationGate: passingDeprecationGate,
           manifestGate: passingManifestGate,
           target: "binary",
-          throughStage: "9-sign",
+          throughStage: "10-sign",
           env: { ...windowsSigningEnv, LOCAL_REHEARSAL: "1", LANDO_RELEASE_PLATFORM: "windows-x64" },
           hostPlatform: "win32",
           runner: {
             spawn: async ({ stageId, cmd }) => {
-              if (stageId === "9-sign" && cmd[0] === "cosign") throw new Error("cosign unavailable");
+              if (stageId === "10-sign" && cmd[0] === "cosign") throw new Error("cosign unavailable");
             },
             shell: async () => {},
           },
@@ -2038,7 +2152,7 @@ describe("release orchestrator", () => {
         }),
       ).rejects.toMatchObject({
         _tag: "ReleaseStageError",
-        stageId: "9-sign",
+        stageId: "10-sign",
         artifactFamily: "binary",
         commandSummary: "sign release binaries",
       });
@@ -2076,7 +2190,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "library",
-        throughStage: "13-publish",
+        throughStage: "14-publish",
         env: { GITHUB_TOKEN: "token" },
         runner: {
           spawn: async () => {},
@@ -2089,17 +2203,17 @@ describe("release orchestrator", () => {
       }),
     ).rejects.toMatchObject({
       _tag: "ReleaseStageError",
-      stageId: "11-manifest",
+      stageId: "12-manifest",
     });
     expect(
-      shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
+      shellStages.some(({ stageId, script }) => stageId === "12-manifest" && script.includes("gpg")),
     ).toBe(false);
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "library",
-      throughStage: "13-publish",
+      throughStage: "14-publish",
       env: { LOCAL_REHEARSAL: "1", GITHUB_TOKEN: "token" },
       runner: {
         spawn: async () => {},
@@ -2111,14 +2225,14 @@ describe("release orchestrator", () => {
       now: () => 0,
     });
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (publish credentials absent)",
+      "[release] warning LOCAL_REHEARSAL=1: skip 14-publish (publish credentials absent)",
     );
 
     await runRelease({
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "library",
-      throughStage: "13-publish",
+      throughStage: "14-publish",
       env: { LOCAL_REHEARSAL: "1", GH_TOKEN: "github-token", ...manifestSigningEnv, ...libraryPublishEnv },
       runner: {
         spawn: async () => {},
@@ -2129,17 +2243,17 @@ describe("release orchestrator", () => {
       logger: (line) => logs.push(line),
     });
     expect(logs).toContain(
-      "[release] warning LOCAL_REHEARSAL=1: skip 13-publish (local rehearsal never publishes)",
+      "[release] warning LOCAL_REHEARSAL=1: skip 14-publish (local rehearsal never publishes)",
     );
     expect(
-      shellStages.some(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
+      shellStages.some(({ stageId, script }) => stageId === "14-publish" && script.includes("npm publish")),
     ).toBe(false);
   });
 
   test("credential gates accept manifest alternatives but keep Windows signing scoped", async () => {
     const shellStages: Array<{ stageId: string; script: string }> = [];
-    const manifestStage = releaseStage("11-manifest");
-    const signingStage = releaseStage("9-sign");
+    const manifestStage = releaseStage("12-manifest");
+    const signingStage = releaseStage("10-sign");
 
     await expect(
       manifestStage.run({
@@ -2176,7 +2290,7 @@ describe("release orchestrator", () => {
     });
 
     expect(
-      shellStages.some(({ stageId, script }) => stageId === "11-manifest" && script.includes("gpg")),
+      shellStages.some(({ stageId, script }) => stageId === "12-manifest" && script.includes("gpg")),
     ).toBe(true);
     await expect(
       signingStage.run({
@@ -2194,7 +2308,7 @@ describe("release orchestrator", () => {
   });
 
   test("binary GitHub Release publishing skips npm package publication", async () => {
-    const publishStage = releaseStage("13-publish");
+    const publishStage = releaseStage("14-publish");
     const shellStages: Array<{
       readonly stageId: string;
       readonly script: string;
@@ -2275,18 +2389,18 @@ describe("release orchestrator", () => {
 
     expect(
       shellStages.some(
-        ({ stageId, script }) => stageId === "13-publish" && script.includes("'gh' 'release' 'create'"),
+        ({ stageId, script }) => stageId === "14-publish" && script.includes("'gh' 'release' 'create'"),
       ),
     ).toBe(true);
     expect(
-      shellStages.some(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
+      shellStages.some(({ stageId, script }) => stageId === "14-publish" && script.includes("npm publish")),
     ).toBe(false);
     expect(shellStages.some(({ prepareNpmDevPackages }) => prepareNpmDevPackages === true)).toBe(false);
-    expect(logs).toContain("[release] skip 13-publish npm packages (binary release target)");
+    expect(logs).toContain("[release] skip 14-publish npm packages (binary release target)");
   });
 
   test("publishes the complete GitHub Releases asset set from the release manifest", async () => {
-    const publishStage = releaseStage("13-publish");
+    const publishStage = releaseStage("14-publish");
     const shellStages: Array<{
       readonly stageId: string;
       readonly script: string;
@@ -2384,7 +2498,7 @@ describe("release orchestrator", () => {
     });
 
     const githubScript = shellStages.find(
-      ({ stageId, script }) => stageId === "13-publish" && script.includes("'gh' 'release' 'create'"),
+      ({ stageId, script }) => stageId === "14-publish" && script.includes("'gh' 'release' 'create'"),
     )?.script;
     expect(githubScript).toContain("'gh' 'release' 'create' 'v4.0.0-beta.1'");
     expect(githubScript).toContain("'--target' '0123456789abcdef0123456789abcdef01234567'");
@@ -2404,6 +2518,7 @@ describe("release orchestrator", () => {
     expect(githubScript).toContain("'dist/lando-library-4.0.0-beta.1-sbom.cdx.json'");
     expect(githubScript).toContain("'dist/lando-library-4.0.0-beta.1-provenance.slsa.json'");
     expect(githubScript).toContain("'dist/SHA256SUMS'");
+    expect(githubScript).toContain("'dist/THIRD_PARTY_NOTICES.md'");
     expect(githubScript).toContain("'dist/SHA256SUMS.asc'");
     expect(githubScript).toContain("'dist/SHA256SUMS.sig'");
     expect(githubScript).toContain("'dist/SHA256SUMS.crt'");
@@ -2415,7 +2530,7 @@ describe("release orchestrator", () => {
     expect(githubScript).toContain("'dist/release-artifacts.json'");
     expect(githubScript).toContain("'dist/release-notes.md'");
     expect(
-      shellStages.some(({ stageId, script }) => stageId === "13-publish" && script.includes("npm publish")),
+      shellStages.some(({ stageId, script }) => stageId === "14-publish" && script.includes("npm publish")),
     ).toBe(true);
     expect(
       shellStages.some(
@@ -2426,7 +2541,7 @@ describe("release orchestrator", () => {
   });
 
   test("GitHub Release publication fails when a required manifest family is missing", async () => {
-    const publishStage = releaseStage("13-publish");
+    const publishStage = releaseStage("14-publish");
 
     await withReleaseFixtureRoot(async (root) => {
       await writeFixtureFile(root, "dist/lando-linux-x64", "linux-x64 artifact");
@@ -2485,7 +2600,7 @@ describe("release orchestrator", () => {
         deprecationGate: passingDeprecationGate,
         manifestGate: passingManifestGate,
         target: "binary",
-        throughStage: "7-compile",
+        throughStage: "8-compile",
         env,
         hostPlatform: "linux",
         runner: {
@@ -2505,7 +2620,7 @@ describe("release orchestrator", () => {
       expect(failure).toBeInstanceOf(ReleaseStageError);
       expect(failure).toMatchObject({
         _tag: "ReleaseStageError",
-        stageId: "7-compile",
+        stageId: "8-compile",
         artifactFamily: "binary",
         commandSummary: `compile ${refusedPlatforms} on a linux host`,
         remediation:
@@ -2513,7 +2628,7 @@ describe("release orchestrator", () => {
       });
       if (!(failure instanceof ReleaseStageError)) throw new Error("Expected a release stage error");
       expect(failure.cause).not.toBeInstanceOf(ReleaseStageError);
-      expect(spawnStages).not.toContain("7-compile");
+      expect(spawnStages).not.toContain("8-compile");
     },
   );
 
@@ -2522,7 +2637,7 @@ describe("release orchestrator", () => {
     const commands: Array<ReadonlyArray<string>> = [];
 
     // When: the stage runs directly, bypassing the orchestrator's default.
-    const compilation = releaseStage("7-compile").run({
+    const compilation = releaseStage("8-compile").run({
       target: "binary",
       env: { LANDO_RELEASE_PLATFORM: "windows-x64" },
       localRehearsal: false,
@@ -2543,7 +2658,7 @@ describe("release orchestrator", () => {
     } else {
       await expect(compilation).rejects.toMatchObject({
         _tag: "ReleaseStageError",
-        stageId: "7-compile",
+        stageId: "8-compile",
         commandSummary: `compile windows-x64 on a ${process.platform} host`,
       });
       expect(commands).toEqual([]);
@@ -2555,7 +2670,7 @@ describe("release orchestrator", () => {
     const commands: Array<ReadonlyArray<string>> = [];
 
     // When: the compile stage runs.
-    await releaseStage("7-compile").run({
+    await releaseStage("8-compile").run({
       target: "binary",
       env: { LANDO_RELEASE_PLATFORM: "linux-x64" },
       hostPlatform: "linux",
@@ -2573,6 +2688,7 @@ describe("release orchestrator", () => {
     // Then: dependency installation, compilation, and sanitization run normally.
     expect(commands).toEqual([
       ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+      ["bun", "run", "check:compiled-binary-notices"],
       [
         "bun",
         "run",
@@ -2596,7 +2712,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "7-compile",
+      throughStage: "8-compile",
       env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "windows-x64" },
       hostPlatform: "win32",
       runner: {
@@ -2610,11 +2726,12 @@ describe("release orchestrator", () => {
 
     expect([...new Set(spawnStages.map(({ stageId }) => stageId))]).toEqual([
       "1-codegen",
-      "2-typecheck",
-      "3-lint-format",
-      "4-test-gates",
-      "5-schema-artifacts",
-      "7-compile",
+      "2-container-helper",
+      "3-typecheck",
+      "4-lint-format",
+      "5-test-gates",
+      "6-schema-artifacts",
+      "8-compile",
     ]);
     expect(spawnStages.at(-2)?.cmd).toEqual([
       "bun",
@@ -2634,7 +2751,7 @@ describe("release orchestrator", () => {
       "./dist/lando-windows-x64.exe",
     ]);
     expect(spawnStages.some(({ cmd }) => cmd.includes("linux-x64"))).toBe(false);
-    expect(logs.some((line) => line.includes("9-sign"))).toBe(false);
+    expect(logs.some((line) => line.includes("10-sign"))).toBe(false);
   });
 
   test("compile stage builds every CI platform binary with bytecode on a Windows host", async () => {
@@ -2645,23 +2762,24 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "7-compile",
+      throughStage: "8-compile",
       env: {},
       hostPlatform: "win32",
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
           spawnStages.push({ stageId, cmd });
-          if (stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts") now += 42_000;
+          if (stageId === "8-compile" && cmd[2] === "scripts/build-compiled-binary.ts") now += 42_000;
         },
         shell: async () => {},
       },
       logger: () => {},
     });
 
-    const compileCommands = spawnStages.filter(({ stageId }) => stageId === "7-compile");
+    const compileCommands = spawnStages.filter(({ stageId }) => stageId === "8-compile");
     expect(compileCommands.map(({ cmd }) => cmd)).toEqual([
       ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+      ["bun", "run", "check:compiled-binary-notices"],
       ...CI_PLATFORMS.flatMap((platform) => {
         const outfile = `./dist/lando-${platform.id}${platform.id.startsWith("windows-") ? ".exe" : ""}`;
         return [
@@ -2697,7 +2815,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "7-compile",
+      throughStage: "8-compile",
       env: {
         ...localRehearsalEnv,
         LANDO_RELEASE_PLATFORM: "linux-x64",
@@ -2713,7 +2831,7 @@ describe("release orchestrator", () => {
     });
 
     const compileCmd = spawnStages.find(
-      ({ stageId, cmd }) => stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
+      ({ stageId, cmd }) => stageId === "8-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
     );
     expect(compileCmd?.cmd).toContain("4.1.0-beta.2");
   });
@@ -2725,7 +2843,7 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "7-compile",
+      throughStage: "8-compile",
       env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
       runner: {
         spawn: async ({ stageId, cmd }) => {
@@ -2737,7 +2855,7 @@ describe("release orchestrator", () => {
     });
 
     const compileCmd = spawnStages.find(
-      ({ stageId, cmd }) => stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
+      ({ stageId, cmd }) => stageId === "8-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
     )?.cmd;
     expect(compileCmd).toBeDefined();
     expect(compileCmd).not.toContain("--version");
@@ -2757,13 +2875,13 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "7-compile",
+      throughStage: "8-compile",
       env: {},
       hostPlatform: "win32",
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
-          if (stageId !== "7-compile" || cmd[2] !== "scripts/build-compiled-binary.ts") return;
+          if (stageId !== "8-compile" || cmd[2] !== "scripts/build-compiled-binary.ts") return;
           now += cmd.includes("bun-linux-x64") ? 600_001 : 10_000;
         },
         shell: async () => {},
@@ -2776,7 +2894,7 @@ describe("release orchestrator", () => {
 
     expect(failure).toMatchObject({
       _tag: "ReleaseStageError",
-      stageId: "7-compile",
+      stageId: "8-compile",
       artifactFamily: "binary",
       cause: {
         _tag: "ReleaseCompileBudgetError",
@@ -2795,12 +2913,12 @@ describe("release orchestrator", () => {
       deprecationGate: passingDeprecationGate,
       manifestGate: passingManifestGate,
       target: "binary",
-      throughStage: "10-notarize",
+      throughStage: "11-notarize",
       env: { ...localRehearsalEnv, LANDO_RELEASE_PLATFORM: "linux-x64" },
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
-          if (stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts") now += 25_000;
+          if (stageId === "8-compile" && cmd[2] === "scripts/build-compiled-binary.ts") now += 25_000;
         },
         shell: async () => {},
       },
@@ -2810,8 +2928,8 @@ describe("release orchestrator", () => {
     const compileDurationIndex = logs.findIndex((line) =>
       line.includes("[release] compile linux-x64 completed in 25000ms (budget 600000ms)"),
     );
-    const signingSkipIndex = logs.findIndex((line) => line.includes("skip 9-sign"));
-    const notarizeSkipIndex = logs.findIndex((line) => line.includes("skip 10-notarize"));
+    const signingSkipIndex = logs.findIndex((line) => line.includes("skip 10-sign"));
+    const notarizeSkipIndex = logs.findIndex((line) => line.includes("skip 11-notarize"));
     expect(compileDurationIndex).toBeGreaterThanOrEqual(0);
     expect(signingSkipIndex).toBeGreaterThan(compileDurationIndex);
     expect(notarizeSkipIndex).toBeGreaterThan(compileDurationIndex);
@@ -2841,10 +2959,12 @@ describe("release orchestrator", () => {
 
       const codegenIndex = events.indexOf("1-codegen");
       const gateIndex = events.indexOf("deprecation-gate");
-      const typecheckIndex = events.indexOf("2-typecheck");
+      const helperIndex = events.indexOf("2-container-helper");
+      const typecheckIndex = events.indexOf("3-typecheck");
       expect(codegenIndex).toBeGreaterThanOrEqual(0);
       expect(gateIndex).toBe(codegenIndex + 1);
-      expect(typecheckIndex).toBe(gateIndex + 1);
+      expect(helperIndex).toBe(gateIndex + 1);
+      expect(typecheckIndex).toBe(helperIndex + 1);
     });
 
     test("blocks the release when a deprecation removeIn has arrived (synthetic fixture)", async () => {
@@ -2863,7 +2983,7 @@ describe("release orchestrator", () => {
 
         const failure = await runRelease({
           target: "all",
-          throughStage: "2-typecheck",
+          throughStage: "3-typecheck",
           env: {},
           deprecationGate: ({ env }) =>
             checkDeprecationReleaseGate({
@@ -2896,7 +3016,7 @@ describe("release orchestrator", () => {
     test("formats each blocked surface with file, removeIn, and the removal action", async () => {
       const failure = await runRelease({
         target: "all",
-        throughStage: "2-typecheck",
+        throughStage: "3-typecheck",
         env: {},
         deprecationGate: async () => ({
           ok: false,
@@ -2944,7 +3064,7 @@ describe("release orchestrator", () => {
       for (const local of [true, false]) {
         await runRelease({
           target: "all",
-          throughStage: "2-typecheck",
+          throughStage: "3-typecheck",
           env: local ? { LOCAL_REHEARSAL: "1" } : {},
           deprecationGate: recordingGate(local),
           runner: {

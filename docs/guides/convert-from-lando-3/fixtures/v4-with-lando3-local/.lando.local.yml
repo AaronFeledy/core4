@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid lando3 local overlay in a v4 app
 services:
   db:
     type: mariadb:11.4

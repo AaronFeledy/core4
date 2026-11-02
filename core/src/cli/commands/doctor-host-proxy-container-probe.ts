@@ -56,7 +56,7 @@ export const probeHostProxyContainer = Effect.fnUntraced(function* (
             if (Result.isFailure(execResult)) return "yellow";
             return validOpenEnvelope(execResult.success.stdout)
               ? "green"
-              : execResult.success.exitCode === 127
+              : execResult.success.exitCode === 69 || execResult.success.exitCode === 127
                 ? "red"
                 : "yellow";
           },
@@ -66,7 +66,7 @@ export const probeHostProxyContainer = Effect.fnUntraced(function* (
       options.providerExec(
         { app: AppId.make(options.appId), service: ServiceName.make(service) },
         {
-          command: ["/usr/local/bin/lando", "open", "--print"],
+          command: ["/usr/local/bin/lando", "open", "--print", "--format=json"],
           env:
             options.target.kind === "unix-socket"
               ? { LANDO_HOST_PROXY_SOCKET: HOST_PROXY_CONTAINER_SOCKET }

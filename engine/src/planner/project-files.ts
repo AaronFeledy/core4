@@ -30,6 +30,7 @@ interface ProjectFileRequest {
 const validationError = (input: ProjectFileRequest, message: string) =>
   new LandofileValidationError({
     message,
+    remediation: "Use a readable app-root-relative packageRoot and repair the reported project file.",
     file: `${input.appRoot}/.lando.yml`,
     issues: [validationIssue(["services", input.serviceName, "packageRoot"], message)],
   });

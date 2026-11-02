@@ -1,10 +1,33 @@
 import { expect, test } from "bun:test";
 
-import { Effect } from "effect";
+import { Effect, Result } from "effect";
 
 import { ServiceName } from "@lando/sdk/schema";
 
 import { validateServiceDependencies } from "../../src/services/dependency-validation.ts";
+
+test.each([true, false])(
+  "explicitly disabled readiness cannot satisfy a healthy dependency (required=%s)",
+  async (required) => {
+    // Given
+    const probe = {
+      kind: "command",
+      command: ["healthy"],
+      intervalSeconds: 0,
+      timeoutSeconds: 1,
+      retries: 0,
+    };
+    const services = {
+      web: { dependsOn: [{ service: "db", condition: "service_healthy", required }] },
+      db: { dependsOn: [], healthcheck: probe, readiness: { ...probe, kind: "none" } },
+    };
+    // When
+    const result = await Effect.runPromise(Effect.result(validateServiceDependencies("/app", services)));
+    // Then
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) expect(result.failure._tag).toBe("LandofileValidationError");
+  },
+);
 
 test("reports the first dependency cycle with authored conditions and its closing edge", async () => {
   // Given: a leading service enters a cycle that starts at db, not web.

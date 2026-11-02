@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { isLegacyTagged, parseLegacyLandofile } from "@lando/sdk/landofile";
+import { ConfigTranslateSourceId } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
+import { legacyPrefixViews } from "../src/effective-views.ts";
+import { toMergedValue } from "../src/legacy-merge.ts";
 import { hasPlainObjectPrototype } from "../src/lowering-contract.ts";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
+import { lowerServiceViews } from "../src/service-lowering.ts";
 import { type Golden, dispositionInventory, referenceVariants } from "./fixtures/disposition-inventory.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { nestedDispositions } from "./fixtures/nested-dispositions.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator, testPorts } from "./fixtures/test-ports.ts";
 
 type Path = ReadonlyArray<string | number>;
 const translate = (yaml: string) => {
@@ -56,6 +61,13 @@ const inventoryPaths = async (): Promise<ReadonlyArray<Path>> => {
     ...walk(landofile),
     ...Object.keys(hasPlainObjectPrototype(global) ? global : {}).map((key) => [key]),
     ...referenceVariants.map((key) => [key]),
+    ...nestedDispositions.flatMap(({ golden }) =>
+      golden.flatMap(({ yaml }) =>
+        walk(
+          Effect.runSync(parseLegacyLandofile({ mode: "legacy", file: ".lando.yml", content: yaml })).value,
+        ),
+      ),
+    ),
   ];
 };
 const atPath = (value: unknown, path: ReadonlyArray<string>): unknown => {
@@ -101,7 +113,14 @@ describe("Lando 3 disposition inventory", () => {
     const failures = paths.flatMap((path) => {
       const candidates = dispositionInventory.filter(({ pattern }) => matches(pattern, path));
       const length = Math.max(-1, ...candidates.map(({ pattern }) => pattern.length));
-      const winners = candidates.filter(({ pattern }) => pattern.length === length);
+      const longest = candidates.filter(({ pattern }) => pattern.length === length);
+      const specificity = Math.max(
+        -1,
+        ...longest.map(({ pattern }) => pattern.filter((key) => key !== "*").length),
+      );
+      const winners = longest.filter(
+        ({ pattern }) => pattern.filter((key) => key !== "*").length === specificity,
+      );
       return winners.length === 1
         ? []
         : [{ path, owners: winners.map(({ pattern, owner }) => ({ pattern, owner })) }];
@@ -119,7 +138,12 @@ describe("Lando 3 disposition inventory", () => {
       const aligned = entry.golden.some(({ expect: expected }) => {
         switch (entry.disposition) {
           case "target":
-            return "outputPath" in expected || expected.kind === "rewritten" || expected.kind === "generated";
+            return (
+              "outputPath" in expected ||
+              expected.kind === "rewritten" ||
+              expected.kind === "generated" ||
+              expected.kind === "needs-review"
+            );
           case "drop":
             return "kind" in expected && (expected.kind === "dropped" || expected.kind === "needs-review");
           case "unsupported":
@@ -168,6 +192,9 @@ describe("Lando 3 disposition inventory", () => {
             return translated satisfies never;
         }
         const result = translated.success;
+        expect(
+          result.diagnostics.filter(({ message }) => message.startsWith("Unclaimed Lando 3 setting ")),
+        ).toEqual([]);
         // Then assert a diagnostic at the exact authored path, or the output fragment.
         if ("kind" in golden.expect) {
           const expected = golden.expect;
@@ -216,4 +243,30 @@ describe("Lando 3 disposition inventory", () => {
       });
     }
   }
+  test("accounts for every effective kitchen-sink service leaf", async () => {
+    // Given the pinned broad fixture.
+    const file = `${import.meta.dir}/fixtures/lando3/kitchen-sink.lando.yml`;
+    const parsed = Effect.runSync(
+      parseLegacyLandofile({ mode: "legacy", file, content: await Bun.file(file).text() }),
+    );
+    const sourceId = ConfigTranslateSourceId.make("kitchen-sink");
+    // When translating the fixture.
+    const translated = lowerServiceViews(
+      legacyPrefixViews([
+        {
+          file,
+          sourceId,
+          layer: "canonical",
+          value: toMergedValue({ document: parsed, sourceId, layer: "canonical" }),
+        },
+      ]),
+      testPorts().serviceFacts,
+    );
+    // Then no silent omission reaches the residual safety net.
+    expect(
+      translated.diagnostics
+        .filter(({ message }) => message.startsWith("Unclaimed Lando 3 setting "))
+        .map(({ keyPath }) => keyPath),
+    ).toEqual([]);
+  });
 });

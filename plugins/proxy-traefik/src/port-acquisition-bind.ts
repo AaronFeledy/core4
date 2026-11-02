@@ -2,7 +2,7 @@ import { createServer } from "node:net";
 
 import { Duration, Effect } from "effect";
 
-import { redactDetails } from "@lando/container-runtime/redact";
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { errnoCode } from "@lando/sdk/errors";
 import { runProbe } from "@lando/sdk/probe";
 
@@ -46,6 +46,7 @@ export const probeBind = Effect.fn("TraefikRouter.probeBind")(function* (
   host: string,
   port: number,
 ): Effect.fn.Return<BindOutcome> {
+  const redactor = standaloneSecretsRedactor({ ...process.env });
   let last: BindOutcome = { kind: "other-error" };
   yield* runProbe(
     {
@@ -57,7 +58,7 @@ export const probeBind = Effect.fn("TraefikRouter.probeBind")(function* (
           return last.kind === "other-error" ? "yellow" : "green";
         },
         failure: (error) => {
-          last = classifyBindError(redactDetails(error));
+          last = classifyBindError(redactDetails(error, redactor));
           return last.kind === "other-error" ? "yellow" : "green";
         },
       },

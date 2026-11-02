@@ -10,7 +10,7 @@ import { PortablePath } from "@lando/sdk/schema";
 import type { LandofileShape, ToolingDefaultsShape } from "@lando/sdk/schema";
 import type { ServiceTypeResolution } from "@lando/sdk/services";
 
-import { resolveLandofileIncludes } from "../src/includes.ts";
+import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const DEFAULT_DIR = PortablePath.make("/workspace/default");

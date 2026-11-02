@@ -1,7 +1,12 @@
 # jekyll
 
-Jekyll static-site scaffold with a Ruby builder service plus an nginx
-static frontend.
+Use this recipe for a Jekyll site with a Ruby development server and an nginx
+frontend for generated static files. It expects site sources in the app root
+and Jekyll's default `_site/` output directory.
+
+## Host prerequisites
+
+- Lando v4 alpha install with `provider-lando` or `provider-docker`.
 
 ## Generated services
 
@@ -22,7 +27,3 @@ static frontend.
   `webroot` on `web` at the new directory.
 - The static frontend serves files only; rewrites and asset hashing are
   deferred.
-
-## Host prerequisites
-
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.

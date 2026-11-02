@@ -231,7 +231,7 @@ describe("catalog service config schemas", () => {
 
   test.each([
     ["RabbitMQServiceConfig", RabbitMQServiceConfig, { type: "rabbitmq", buckets: ["data"] }],
-    ["MinIOServiceConfig", MinIOServiceConfig, { type: "minio", consolePort: 9001 }],
+    ["MinIOServiceConfig", MinIOServiceConfig, { type: "minio", consoleSocket: 9001 }],
     ["LocalStackServiceConfig", LocalStackServiceConfig, { type: "localstack", services: ["s3"] }],
     ["MailpitServiceConfig", MailpitServiceConfig, { type: "mailpit", smtpPort: 1025 }],
     ["MailhogServiceConfig", MailhogServiceConfig, { type: "mailhog", smtpPort: 1025 }],

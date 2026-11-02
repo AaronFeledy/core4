@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid deliberate unknown service key for scripting-with-json guide
 name: unknown-service-key
 services:
   web:

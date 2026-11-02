@@ -10,6 +10,7 @@ import { RuntimeProvider, RuntimeProviderRegistry, TunnelService } from "@lando/
 import { TestRuntimeProvider, TestTunnelService } from "@lando/core/testing";
 import { makeLandoPaths } from "@lando/paths";
 import { AppId, ProviderId, ServiceName, type TunnelSession, type TunnelTarget } from "@lando/sdk/schema";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 
 const serviceTarget: TunnelTarget = {
   _tag: "service",
@@ -33,7 +34,7 @@ const withTempShareApp = async <T>(run: (dir: string) => Promise<T>): Promise<T>
   process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
   process.chdir(dir);
   try {
-    return await run(dir);
+    return await withEnvVar("LANDO_PROVIDER", TestRuntimeProvider.id, () => run(dir));
   } finally {
     process.chdir(original);
     if (oldDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -61,6 +62,9 @@ const providerLayers = [
   Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
       select: () => Effect.succeed(TestRuntimeProvider),
@@ -184,7 +188,8 @@ describe("share command skeleton", () => {
       expect(session.detached).toBe(true);
       expect(listed.map((entry) => entry.id)).toContain(session.id);
       expect(listed.map((entry) => entry.id)).not.toContain(otherSession.id);
-      expect(stopped).toMatchObject({ sessionId: session.id, status: "stopped" });
+      expect(stopped).toMatchObject({ sessionId: session.id });
+      expect(stopped).not.toHaveProperty("status");
       expect(detached.map((entry) => entry.operation)).toEqual(expect.arrayContaining(["record", "remove"]));
       expect(await exists(paths.tunnelRegistryFile)).toBe(true);
       expect(await exists(join(paths.tunnelRunDir, `${session.id}.json`))).toBe(false);
@@ -235,7 +240,8 @@ describe("share command skeleton", () => {
 
       expect(result.session.status).toBe("ready");
       expect(result.listed.map((entry) => entry.id)).toContain(result.session.id);
-      expect(result.stopped).toMatchObject({ sessionId: result.session.id, status: "stopped" });
+      expect(result.stopped).toMatchObject({ sessionId: result.session.id });
+      expect(result.stopped).not.toHaveProperty("status");
     });
   });
 

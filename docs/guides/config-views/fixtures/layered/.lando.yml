@@ -1,0 +1,3 @@
+services:
+  web:
+    primary: "{{ eq(1, 1) }}"

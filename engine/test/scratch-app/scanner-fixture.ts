@@ -13,6 +13,7 @@ export const service = {
   service: ServiceName.make("app"),
   providerId: ProviderId.make("other"),
   status: "running",
+  publications: { status: "unknown" as const },
   containerId: "observed-container",
   labels,
 };
@@ -31,6 +32,7 @@ export const unavailable = new ProviderUnavailableError({
   providerId: "other",
   operation: "test",
   message: "offline",
+  remediation: "Install or start the `other` provider and confirm it can perform `test`.",
 });
 
 export const fixture = (overrides: Partial<RuntimeProviderShape> = {}) => {
@@ -88,6 +90,9 @@ export const runScanner = <A, E>(
       Effect.provideService(
         RuntimeProviderRegistry,
         RuntimeProviderRegistry.of({
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed(providers.map((provider) => ProviderId.make(provider.id))),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: (target) => {

@@ -134,7 +134,6 @@ bun --no-orphans test engine/test/operations/applied-state-teardown.test.ts   # 
 bun --no-orphans test engine/test/operations/app-resolution.test.ts           # 12 pass in isolation,  3 fail in suite
 bun --no-orphans test engine/test/subsystems/host-proxy/transport.test.ts     # 27 pass in isolation,  3 fail in suite
 bun --no-orphans test engine/test/cache/planning-runtime.test.ts              #  1 pass in isolation
-bun --no-orphans test core/test/subsystems/host-proxy/shim-bin.test.ts        #  1 pass in isolation
 bun --no-orphans test plugins/service-lando/test/go.scenario.test.ts          #  5 pass in isolation
 bun --no-orphans test test/scenarios/generated/guides/apache/happy-path.test.ts
 ```

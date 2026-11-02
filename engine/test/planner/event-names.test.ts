@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import { HOST_EVENT_NAMES } from "@lando/sdk/schema";
 import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
-import { unknownEventError, unknownEventName, validEventNames } from "../../src/planner/event-names.ts";
+import { reservedEventCollisions, validEventNames } from "../../src/planner/event-names.ts";
 
 const staticNames = [
   "pre-init",
@@ -17,6 +17,10 @@ const staticNames = [
   "post-rebuild",
   "pre-destroy",
   "post-destroy",
+  "post-pull",
+  "post-push",
+  "post-switch",
+  "post-code-sync",
 ];
 
 test("hostEvents covers the ten start/stop/restart/rebuild/destroy brackets", () => {
@@ -35,7 +39,7 @@ test("hostEvents covers the ten start/stop/restart/rebuild/destroy brackets", ()
   for (const name of HOST_EVENT_NAMES) expect(staticNames).toContain(name);
 });
 
-test("enumerates canonical lifecycle names when tooling is empty", () => {
+test("enumerates lifecycle names and remote sync hooks when tooling is empty", () => {
   // Given / When
   const valid = validEventNames({});
   // Then
@@ -80,26 +84,24 @@ test("includes authored, contributed, namespaced and disabled tasks but excludes
   ).toEqual(valid);
 });
 
-test("returns the first authored unknown key when some names are invalid", () => {
+test("omits brackets for reserved tooling names", () => {
   // Given
-  const events = { "pre-start": [], "pre-absent": [], "post-absent": [] };
+  const tooling = {
+    prepare: { cmd: "ready" },
+    run: { cmd: "run" },
+    scratch: { cmd: "scratch" },
+    "scratch:gc": { cmd: "gc" },
+  };
   // When
-  const unknown = unknownEventName(events, validEventNames({}));
+  const valid = validEventNames(tooling);
   // Then
-  expect(unknown).toBe("pre-absent");
-  expect(unknownEventName(undefined, staticNames)).toBeUndefined();
+  expect(valid).toEqual([...staticNames, "post-prepare", "pre-prepare"]);
 });
 
-test("reports the complete contextual set when an event is unknown", () => {
-  // Given
-  const valid = validEventNames({ prepare: { cmd: "ready" } });
-  // When
-  const error = unknownEventError("pre-missing", valid, "/app/.lando.ts");
-  // Then
-  expect(error.validEvents).toEqual([...staticNames, "post-prepare", "pre-prepare"]);
-  expect(error.file).toBe("/app/.lando.ts");
-  for (const name of [...staticNames, "post-prepare", "pre-prepare"]) {
-    expect(error.message).toContain(name);
-    expect(error.remediation).toContain(name);
-  }
+test("reports the reserved events a tooling task's brackets would bind", () => {
+  // Given / When / Then
+  expect(reservedEventCollisions("start")).toEqual(["pre-start", "post-start"]);
+  expect(reservedEventCollisions("pull")).toEqual(["post-pull"]);
+  expect(reservedEventCollisions("code-sync")).toEqual(["post-code-sync"]);
+  expect(reservedEventCollisions("build")).toEqual([]);
 });

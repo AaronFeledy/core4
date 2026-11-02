@@ -29,6 +29,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -82,7 +83,6 @@ const withRefreshFixture = async <T>(
       provider: providerId,
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {
@@ -95,8 +95,11 @@ const withRefreshFixture = async <T>(
     landofile.tooling,
   );
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+    Layer.succeed(
+      LandofileService,
+      LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, root)) }),
+    ),
+    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
     Layer.succeed(
       PluginRegistry,
       PluginRegistry.of({
@@ -106,7 +109,7 @@ const withRefreshFixture = async <T>(
             version: "0.0.0",
             api: 4,
             bootstrap: "app",
-            contributes: { commands: ["db:seed"] },
+            contributes: { commands: [{ id: "db:seed", summary: "Seed database." }] },
           },
         ]),
         load: () => Effect.die("plugin load must not run"),
@@ -118,6 +121,9 @@ const withRefreshFixture = async <T>(
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveAppliedPlan: () => Effect.succeed(undefined),
+        resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+        appliedPlansFor: () => Effect.succeed([]),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
         select: () => Effect.die("provider must not be selected"),
@@ -282,3 +288,4 @@ test("app cache refresh accepts built-in and compiled tooling alias targets", as
     },
   );
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

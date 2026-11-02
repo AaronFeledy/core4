@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
+import { rmSync } from "node:fs";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
-import type { RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { DateTime, Effect } from "effect";
+import { RouterService, type RuntimeProviderShape, type ServiceRuntimeInfo } from "@lando/sdk/services";
+import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
+import { DateTime, Effect, Layer } from "effect";
+import { infoApp } from "../../src/operations/info.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
 import { restartApp } from "../../src/operations/restart.ts";
 import { waitForServiceReadiness } from "../../src/operations/service-readiness.ts";
@@ -16,6 +18,7 @@ const runtime = (extras: Partial<ServiceRuntimeInfo> = {}): ServiceRuntimeInfo =
   providerId: plan.provider,
   status: "running",
   state: "running",
+  publications: { status: "unknown" },
   containerId: "web-container",
   lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(0)),
   ...extras,
@@ -44,6 +47,38 @@ const jobPlan = (): AppPlan => {
   };
 };
 
+test("selected info preserves full-plan completion intent without inspecting unrelated services", async () => {
+  // Given a successful job whose completion intent comes from its consumer.
+  const plannedApp = jobPlan();
+  const inspected: string[] = [];
+  const harness = makeHarness({
+    plannedApp,
+    inspect: ({ service }) =>
+      Effect.sync(() => {
+        inspected.push(String(service));
+        return runtime({ service, status: "stopped", state: "stopped", exitCode: 0 });
+      }),
+  });
+  try {
+    // When info is requested for the full app and then only the job.
+    const [full, selected] = await Effect.runPromise(
+      Effect.gen(function* () {
+        const full = yield* infoApp({}, { ...target, plan: plannedApp });
+        inspected.length = 0;
+        const selected = yield* infoApp({ services: [web.name] }, { ...target, plan: plannedApp });
+        return [full, selected] as const;
+      }).pipe(Effect.provide(harness.layer)),
+    );
+    // Then selection changes only the output scope, not job classification.
+    expect(full.services.find((row) => row.service === web.name)?.status).toBe("completed");
+    expect(selected.services).toHaveLength(1);
+    expect(selected.services[0]?.status).toBe("completed");
+    expect(inspected).toEqual([String(web.name)]);
+  } finally {
+    rmSync(harness.userDataRoot, { recursive: true, force: true });
+  }
+});
+
 test.each([0, 1])("completion-intent services require verified exit 0 (actual %s)", async (exitCode) => {
   const provider = {
     ...TestRuntimeProvider,
@@ -66,7 +101,19 @@ test.each([0, 1])("completion-intent services require verified exit 0 (actual %s
 test.each(["restart", "rebuild"] as const)(
   "selected %s preserves completion intent from the full plan",
   async (operation) => {
-    const plannedApp = jobPlan();
+    const plannedApp: AppPlan = {
+      ...jobPlan(),
+      router: { enabled: true },
+      routes: [
+        {
+          hostname: "job.example.test",
+          scheme: "https",
+          priority: 2,
+          service: web.name,
+          backend: { service: web.name, protocol: "http", port: 3000 },
+        },
+      ],
+    };
     const harness = makeHarness({
       plannedApp,
       onApply: (_applied, options) => {
@@ -82,9 +129,29 @@ test.each(["restart", "rebuild"] as const)(
       operation === "restart"
         ? restartApp({ services: [web.name] }, selected)
         : rebuildApp({ services: [web.name] }, selected);
-    const timed = await runExitUnderClock(effect.pipe(Effect.provide(harness.layer)), "0 seconds");
-    expect(successOf(timed.exit).servicesStarted).toEqual([
-      expect.objectContaining({ name: "web", state: "completed" }),
+    const timed = await runExitUnderClock(
+      effect.pipe(
+        Effect.provide(
+          Layer.succeed(RouterService, {
+            ...TestRouterService,
+            status: Effect.succeed({
+              state: "running" as const,
+              configuredApps: [plannedApp.id],
+              authorities: [{ scheme: "https" as const, hostname: "job.example.test", port: 443 }],
+            }),
+          }),
+        ),
+        Effect.provide(harness.layer),
+      ),
+      "0 seconds",
+    );
+    const rows = successOf(timed.exit).servicesStarted;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.state).toBe("completed");
+    expect(rows[0]?.connections.map((connection) => connection.state)).toEqual([
+      "inactive",
+      "inactive",
+      "inactive",
     ]);
   },
 );

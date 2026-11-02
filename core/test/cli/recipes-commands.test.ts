@@ -40,7 +40,15 @@ const lastJsonLine = (text: string): Record<string, unknown> => {
 const writeMinimalRecipeYaml = (dir: string, id: string): void => {
   writeFileSync(
     join(dir, "recipe.yml"),
-    [`id: ${id}`, "title: Test", "description: Test recipe.", "version: 0.0.1", ""].join("\n"),
+    [
+      `id: ${id}`,
+      "title: Test",
+      "description: Test recipe.",
+      "version: 0.0.1",
+      "config:",
+      "  runtime: 4",
+      "",
+    ].join("\n"),
   );
 };
 
@@ -71,38 +79,33 @@ describe("meta:recipes:list", () => {
 });
 
 describe("meta:recipes:describe", () => {
-  test("describes the bundled toolbox recipe with its prompt defaults", async () => {
-    const result = await runCli(["meta", "recipes", "describe", "toolbox", "--format", "json"]);
-    expect(result.exitCode).toBe(0);
-    const envelope = lastJsonLine(result.stdout);
-    expect(envelope.ok).toBe(true);
-    expect(envelope.command).toBe("meta:recipes:describe");
-    const described = envelope.result as {
-      id: string;
-      prompts: ReadonlyArray<{ name: string; default?: string }>;
-    };
-    expect(described.id).toBe("toolbox");
-    expect(described.prompts.length).toBeGreaterThan(0);
-    for (const prompt of described.prompts) {
-      expect(prompt.default, `prompt "${prompt.name}" must have a default`).toBeDefined();
-    }
-  }, 30_000);
+  test.each(["toolbox", "rails"])(
+    "describes zero-option %s without an authored app-name prompt",
+    async (id) => {
+      const result = await runCli(["meta", "recipes", "describe", id, "--format", "json"]);
+      expect(result.exitCode).toBe(0);
+      expect(lastJsonLine(result.stdout)).toMatchObject({
+        ok: true,
+        command: "meta:recipes:describe",
+        result: { id, prompts: [], initializable: true, missingAnswers: [] },
+      });
+    },
+    30_000,
+  );
 
-  test("describes the bundled rails recipe with its prompt defaults", async () => {
-    const result = await runCli(["meta", "recipes", "describe", "rails", "--format", "json"]);
+  test("describes bundled lamp option defaults", async () => {
+    const result = await runCli(["meta", "recipes", "describe", "lamp", "--format", "json"]);
     expect(result.exitCode).toBe(0);
-    const envelope = lastJsonLine(result.stdout);
-    expect(envelope.ok).toBe(true);
-    expect(envelope.command).toBe("meta:recipes:describe");
-    const described = envelope.result as {
-      id: string;
-      prompts: ReadonlyArray<{ name: string; default?: string }>;
-    };
-    expect(described.id).toBe("rails");
-    expect(described.prompts.length).toBeGreaterThan(0);
-    for (const prompt of described.prompts) {
-      expect(prompt.default, `prompt "${prompt.name}" must have a default`).toBeDefined();
-    }
+    expect(lastJsonLine(result.stdout)).toMatchObject({
+      ok: true,
+      result: {
+        id: "lamp",
+        prompts: expect.arrayContaining([
+          expect.objectContaining({ name: "php", default: "8.4" }),
+          expect.objectContaining({ name: "composer", default: "2" }),
+        ]),
+      },
+    });
   }, 30_000);
 
   test("describes a repo-relative recipe.yml path", async () => {
@@ -110,7 +113,7 @@ describe("meta:recipes:describe", () => {
       "meta",
       "recipes",
       "describe",
-      "recipes/toolbox/recipe.yml",
+      "core/test/recipes/fixtures/simple-source/recipe.yml",
       "--format",
       "json",
     ]);
@@ -118,7 +121,7 @@ describe("meta:recipes:describe", () => {
     const envelope = lastJsonLine(result.stdout);
     expect(envelope.ok).toBe(true);
     expect(envelope.command).toBe("meta:recipes:describe");
-    expect((envelope.result as { id: string }).id).toBe("toolbox");
+    expect(envelope.result).toMatchObject({ id: "simple-source" });
   }, 30_000);
 
   test("unknown recipe fails with tagged RecipeManifestNotFoundError", async () => {
@@ -129,18 +132,20 @@ describe("meta:recipes:describe", () => {
     expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestNotFoundError");
   }, 30_000);
 
-  test("local recipe.ts is not evaluated by describe", async () => {
+  test("local recipe.ts cannot bypass the shared sandbox during describe", async () => {
     const dir = mkdtempSync(join(tmpdir(), "lando-recipes-describe-"));
     const marker = join(dir, "executed.txt");
     writeFileSync(
       join(dir, "recipe.ts"),
       [
-        `await Bun.write(${JSON.stringify(marker)}, "executed");`,
+        'import { execFileSync } from "node:child_process";',
+        `execFileSync("touch", [${JSON.stringify(marker)}]);`,
         "export default {",
         `  id: ${JSON.stringify(basename(dir))},`,
         '  title: "Executable",',
         '  description: "Must not execute during describe.",',
         '  version: "0.0.1",',
+        "  config: { runtime: 4 },",
         "};",
         "",
       ].join("\n"),
@@ -151,7 +156,7 @@ describe("meta:recipes:describe", () => {
     expect(result.exitCode).toBe(1);
     const envelope = lastJsonLine(result.stdout);
     expect(envelope.ok).toBe(false);
-    expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestNotFoundError");
+    expect((envelope.error as { _tag: string })._tag).toBe("RecipeManifestParseError");
     expect(existsSync(marker)).toBe(false);
   }, 30_000);
 
@@ -201,19 +206,19 @@ describe("meta:recipes:describe", () => {
       prompts: ReadonlyArray<{ name: string; default?: string }>;
     };
     expect(described.id).toBe("extends-lamp-child");
-    expect(described.prompts.map((prompt) => prompt.name)).toEqual(expect.arrayContaining(["name", "php"]));
+    expect(described.prompts.map((prompt) => prompt.name)).toContain("php");
     expect(described.prompts.find((prompt) => prompt.name === "php")?.default).toBe("8.2");
     expect("extends" in described).toBe(false);
   }, 30_000);
 });
 
 describe("meta:recipes:validate", () => {
-  test("validates the canonical toolbox recipe.yml from a repo-relative path", async () => {
+  test("validates a small authored recipe.yml from a repo-relative path", async () => {
     const result = await runCli([
       "meta",
       "recipes",
       "validate",
-      "recipes/toolbox/recipe.yml",
+      "core/test/recipes/fixtures/simple-source/recipe.yml",
       "--format",
       "json",
     ]);
@@ -222,15 +227,15 @@ describe("meta:recipes:validate", () => {
     expect(envelope.ok).toBe(true);
     expect(envelope.command).toBe("meta:recipes:validate");
     expect((envelope.result as { valid: boolean; id: string }).valid).toBe(true);
-    expect((envelope.result as { id: string }).id).toBe("toolbox");
+    expect(envelope.result).toMatchObject({ id: "simple-source" });
   }, 30_000);
 
-  test("validates the canonical rails recipe.yml from a repo-relative path", async () => {
+  test("validates an inherited recipe.yml from a repo-relative file path", async () => {
     const result = await runCli([
       "meta",
       "recipes",
       "validate",
-      "recipes/rails/recipe.yml",
+      "core/test/recipes/fixtures/extends-lamp-child/recipe.yml",
       "--format",
       "json",
     ]);
@@ -239,7 +244,7 @@ describe("meta:recipes:validate", () => {
     expect(envelope.ok).toBe(true);
     expect(envelope.command).toBe("meta:recipes:validate");
     expect((envelope.result as { valid: boolean; id: string }).valid).toBe(true);
-    expect((envelope.result as { id: string }).id).toBe("rails");
+    expect(envelope.result).toMatchObject({ id: "extends-lamp-child" });
   }, 30_000);
 
   test("rejects an invalid manifest with a tagged error envelope", async () => {
@@ -330,9 +335,9 @@ describe("recipe verb forms share JSON command identity", () => {
       },
       {
         forms: [
-          ["meta:recipes:validate", "recipes/toolbox/recipe.yml"],
-          ["recipes:validate", "recipes/toolbox/recipe.yml"],
-          ["recipes", "validate", "recipes/toolbox/recipe.yml"],
+          ["meta:recipes:validate", "core/test/recipes/fixtures/simple-source/recipe.yml"],
+          ["recipes:validate", "core/test/recipes/fixtures/simple-source/recipe.yml"],
+          ["recipes", "validate", "core/test/recipes/fixtures/simple-source/recipe.yml"],
         ],
         command: "meta:recipes:validate",
       },

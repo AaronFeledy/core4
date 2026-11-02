@@ -104,6 +104,56 @@ const withUserCacheRoot = async <T>(userCacheRoot: string, run: () => Promise<T>
   }
 };
 
+test.each(["recipe: lamp\nconfig:\n  php: '8.3'\n", "recipe: lamp\nconfig: {}\nmounts:\n  - {a: 1}\n"])(
+  "includes update rejects a legacy local layer alongside a valid canonical layer: %s",
+  async (legacy) => {
+    await withTempCwd(async (dir) => {
+      // Given
+      const canonicalFile = join(dir, ".lando.yml");
+      await writeFile(canonicalFile, "name: native\n");
+      await writeFile(join(dir, ".lando.local.yml"), legacy);
+      // When
+      const error = await Effect.runPromise(
+        appIncludesUpdate({ cwd: dir, check: true }).pipe(Effect.provide(testStateStoreLayer), Effect.flip),
+      );
+      // Then
+      expect(error).toMatchObject({ _tag: "LandofileDialectMixError", canonicalFile });
+    });
+  },
+);
+
+test("includes update compiles noncanonical typed sites with the merged root recipe scope", async () => {
+  // Given
+  await withTempCwd(async (dir) => {
+    await writeFile(
+      join(dir, ".lando.yml"),
+      [
+        "name: typed",
+        "recipe:",
+        "  id: lamp",
+        "  version: 0.1.0",
+        "  options:",
+        "    flag: false",
+        "  producer:",
+        "    sourceKind: bundled",
+        '    packageName: "@lando/recipe-lamp"',
+        "    recipeId: lamp",
+        "    manifestVersion: 0.1.0",
+        `    contentDigest: sha256:${"0".repeat(64)}`,
+        "",
+      ].join("\n"),
+    );
+    await writeFile(join(dir, ".lando.base.yml"), 'services:\n  web:\n    primary: "{{ recipe.flag }}"\n');
+    // When
+    const result = await Effect.runPromise(
+      appIncludesUpdate({ cwd: dir, check: true }).pipe(Effect.provide(testStateStoreLayer)),
+    );
+    // Then
+    expect(result.entries).toEqual([]);
+    expect(result.checkMode).toBe(true);
+  });
+});
+
 describe("renderIncludesUpdateResult", () => {
   test("check-mode drift renders remediation without changing process.exitCode", () => {
     const report: IncludeUpdateReport = {
@@ -182,8 +232,9 @@ describe("lando app:includes:update (source dispatch)", () => {
     });
   });
 
-  test("rejects non-object tooling flag metadata before updating includes", async () => {
+  test("reports structured issues for non-object tooling flag metadata before updating includes", async () => {
     await withTempCwd(async (dir) => {
+      // Given
       await writeFile(
         join(dir, ".lando.yml"),
         [
@@ -197,17 +248,24 @@ describe("lando app:includes:update (source dispatch)", () => {
         ].join("\n"),
       );
 
+      // When
       const exit = await Effect.runPromiseExit(
         appIncludesUpdate({ cwd: dir }).pipe(Effect.provide(testStateStoreLayer)),
       );
 
+      // Then
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         const failure = Cause.findErrorOption(exit.cause);
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") {
-          expect((failure.value as { _tag: string; message: string })._tag).toBe("NotImplementedError");
-          expect((failure.value as { message: string }).message).toContain('Tooling flags entry "verbose"');
+          expect(failure.value).toMatchObject({
+            _tag: "LandofileValidationError",
+            file: join(dir, ".lando.yml"),
+            issues: expect.arrayContaining([
+              expect.objectContaining({ path: ["tooling", "echo", "flags", "verbose"] }),
+            ]),
+          });
         }
       }
     });
@@ -254,7 +312,7 @@ describe("lando app:includes:update (source dispatch)", () => {
           cloneUrls.push(url);
           await mkdir(stagingDir, { recursive: true });
           await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
-          return { commitSha: url.includes("/base.git") ? "base123" : "canonical456" };
+          return { commitSha: (url.includes("/base.git") ? "a" : "b").repeat(40) };
         },
       };
       await withUserCacheRoot(join(dir, ".cache"), async () => {
@@ -286,7 +344,7 @@ describe("lando app:includes:update (source dispatch)", () => {
           cloneUrls.push(url);
           await mkdir(stagingDir, { recursive: true });
           await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
-          return { commitSha: "compose123" };
+          return { commitSha: "c".repeat(40) };
         },
       };
 
@@ -297,6 +355,40 @@ describe("lando app:includes:update (source dispatch)", () => {
 
         expect(report.entries.map((entry) => entry.source)).toEqual(["github:acme/compose/fragment.yml"]);
         expect(cloneUrls).toEqual(["https://github.com/acme/compose.git"]);
+      });
+    });
+  });
+
+  test("rejects conflicting selectors for the same fragment across root layers", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await writeFile(
+        join(dir, ".lando.base.yml"),
+        "includes:\n  - source: github:acme/shared@v1\n    path: fragment.yml\n",
+      );
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "includes:\n  - source: github:acme/shared@v2\n    path: fragment.yml\n",
+      );
+      const refs: Array<string | undefined> = [];
+      const gitCloner: GitIncludeCloner = {
+        clone: async ({ dest, ref }) => {
+          refs.push(ref);
+          await writeFile(join(dest, "fragment.yml"), "services: {}\n");
+          return { commitSha: "a".repeat(40) };
+        },
+      };
+      await withUserCacheRoot(join(dir, ".cache"), async () => {
+        // When
+        const error = await Effect.runPromise(
+          Effect.flip(
+            appIncludesUpdate({ cwd: dir, deps: { gitCloner } }).pipe(Effect.provide(testStateStoreLayer)),
+          ),
+        );
+        // Then
+        expect(error).toMatchObject({ _tag: "LandofileIncludeError", kind: "source-unresolved" });
+        expect(refs).toEqual(["v1"]);
+        expect(await Bun.file(join(dir, ".lando.lock.yml")).exists()).toBe(false);
       });
     });
   });

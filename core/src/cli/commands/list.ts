@@ -1,21 +1,13 @@
 import { access } from "node:fs/promises";
-import { basename, isAbsolute } from "node:path";
+import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { Effect, Schema } from "effect";
 
-import type {
-  AppLockTimeoutError,
-  CacheError,
-  ConfigError,
-  LandoCommandError,
-  StateStoreError,
-} from "@lando/sdk/errors";
+import type { AppLockTimeoutError, CacheError, LandoCommandError, StateStoreError } from "@lando/sdk/errors";
 import type { FileSystem, LandoPaths, StateStoreShape } from "@lando/sdk/services";
 import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
 
-import { deleteCwdAppMapEntriesForRoot, listCwdAppMapEntries } from "@lando/engine/cache/cwd-app-map";
-import { resolveUserCacheRoot } from "@lando/engine/cache/paths";
 import { withAppMutationLock } from "@lando/engine/operations/app-mutation-lock";
 import { RuntimeCwd } from "@lando/engine/runtime/cwd";
 import { hasC0OrDel, hyperlink } from "@lando/renderer/console-layout";
@@ -73,14 +65,6 @@ export interface ListServicesOptions {
 
 export type ListServicesResult = typeof AppsListResultSchema.Type;
 
-const cacheEntryToApp = (entry: { readonly appRoot: string }): AppsListEntry => ({
-  appId: basename(entry.appRoot) || entry.appRoot,
-  appName: basename(entry.appRoot) || entry.appRoot,
-  providerId: "cache",
-  appRoot: entry.appRoot,
-  services: [],
-});
-
 const linkAppRoot = (appRoot: string): string => {
   if (appRoot.length === 0 || !isAbsolute(appRoot) || hasC0OrDel(appRoot)) return appRoot;
   return hyperlink(appRoot, pathToFileURL(appRoot).href);
@@ -132,7 +116,6 @@ interface PruneServices {
 interface PruneCandidateInput {
   readonly discoverEvidence: () => Effect.Effect<AppsDiscoveryEvidence>;
   readonly entry: AppsListEntry;
-  readonly userCacheRoot: string;
 }
 
 type PruneCandidate<E, R> = (input: PruneCandidateInput) => Effect.Effect<boolean, E, R>;
@@ -140,7 +123,7 @@ type PruneCandidate<E, R> = (input: PruneCandidateInput) => Effect.Effect<boolea
 const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   options: ListServicesOptions,
   pruneCandidate?: PruneCandidate<E, R>,
-): Effect.fn.Return<ListServicesResult, CacheError | ConfigError | E | LandoCommandError, ConfigService | R> {
+): Effect.fn.Return<ListServicesResult, CacheError | E | LandoCommandError, ConfigService | R> {
   const configService = yield* ConfigService;
   const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
   if (userDataRoot === undefined) return { apps: [] };
@@ -152,9 +135,6 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
       return [];
     }
   });
-
-  const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
-  const cachedApps = yield* listCwdAppMapEntries(userCacheRoot).pipe(Effect.catch(() => Effect.succeed([])));
 
   const discoverEvidence = (): Effect.Effect<AppsDiscoveryEvidence> =>
     Effect.tryPromise(async () => {
@@ -188,7 +168,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
   const evidence = yield* discoverEvidence();
   const running = evidence.apps;
 
-  const merged = mergeAppsListEntries([...persisted, ...cachedApps.map(cacheEntryToApp), ...running]);
+  const merged = mergeAppsListEntries([...persisted, ...running]);
   const apps = yield* Effect.promise(() =>
     Promise.all(
       merged.map(async (app) => {
@@ -222,7 +202,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
       )
       .slice(0, options.pruneLimit ?? 100);
     for (const entry of candidates) {
-      const removed = yield* pruneCandidate({ discoverEvidence, entry, userCacheRoot });
+      const removed = yield* pruneCandidate({ discoverEvidence, entry });
       if (removed) pruned.push(entry);
     }
   }
@@ -249,7 +229,7 @@ const listServicesInternal = Effect.fnUntraced(function* <E, R>(
 export const listServices = Effect.fn("AppsList.listServices")(
   (
     options: ListServicesOptions = {},
-  ): Effect.Effect<ListServicesResult, CacheError | ConfigError | LandoCommandError, ConfigService> =>
+  ): Effect.Effect<ListServicesResult, CacheError | LandoCommandError, ConfigService> =>
     listServicesInternal<never, never>(options),
 );
 
@@ -257,49 +237,38 @@ export const listServicesWithPrune = Effect.fn("AppsList.listServicesWithPrune")
   options: ListServicesOptions = {},
 ): Effect.fn.Return<
   ListServicesResult,
-  AppLockTimeoutError | CacheError | ConfigError | LandoCommandError | StateStoreError,
+  AppLockTimeoutError | CacheError | LandoCommandError | StateStoreError,
   ConfigService | FileSystem | PathsService | PrivateFileAccessService | StateStore
 > {
   const paths = yield* PathsService;
   const privateFileAccess = yield* PrivateFileAccessService;
   const stateStore = yield* StateStore;
   const pruneServices = { paths, privateFileAccess, stateStore } satisfies PruneServices;
-  return yield* listServicesInternal(
-    { ...options, prune: true },
-    ({ discoverEvidence, entry, userCacheRoot }) =>
-      withAppMutationLock(
-        { id: entry.appId, root: entry.appRoot },
-        Effect.gen(function* () {
-          const currentEvidence = yield* discoverEvidence();
-          if (
-            !currentEvidence.confirmedProviderIds.includes(entry.providerId) ||
-            currentEvidence.ownedAppIds.includes(entry.appId)
-          ) {
+  return yield* listServicesInternal({ ...options, prune: true }, ({ discoverEvidence, entry }) =>
+    withAppMutationLock(
+      { id: entry.appId, root: entry.appRoot },
+      Effect.gen(function* () {
+        const currentEvidence = yield* discoverEvidence();
+        if (
+          !currentEvidence.confirmedProviderIds.includes(entry.providerId) ||
+          currentEvidence.ownedAppIds.includes(entry.appId)
+        ) {
+          return false;
+        }
+        const rootGone = yield* Effect.promise(async () => {
+          try {
+            await access(entry.appRoot);
             return false;
+          } catch {
+            return true;
           }
-          const rootGone = yield* Effect.promise(async () => {
-            try {
-              await access(entry.appRoot);
-              return false;
-            } catch {
-              return true;
-            }
-          });
-          if (!rootGone) return false;
-          const removedCache = yield* deleteCwdAppMapEntriesForRoot({
-            cacheRoot: userCacheRoot,
-            appRoot: entry.appRoot,
-          });
-          const removedState = yield* pruneAppliedPlanState(
-            pruneServices.paths,
-            pruneServices.stateStore,
-            entry,
-          );
-          return removedState || removedCache.length > 0;
-        }),
-      ).pipe(
-        Effect.provideService(PathsService, pruneServices.paths),
-        Effect.provideService(PrivateFileAccessService, pruneServices.privateFileAccess),
-      ),
+        });
+        if (!rootGone) return false;
+        return yield* pruneAppliedPlanState(pruneServices.paths, pruneServices.stateStore, entry);
+      }),
+    ).pipe(
+      Effect.provideService(PathsService, pruneServices.paths),
+      Effect.provideService(PrivateFileAccessService, pruneServices.privateFileAccess),
+    ),
   );
 });

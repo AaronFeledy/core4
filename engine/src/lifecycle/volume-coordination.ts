@@ -2,7 +2,12 @@ import { Context, Effect } from "effect";
 
 import { type StateStoreError, VolumeOperationError } from "@lando/sdk/errors";
 import type { AppPlan, VolumeIdentity, VolumeLocator, VolumeRef } from "@lando/sdk/schema";
-import { type RuntimeProviderShape, type StateStoreShape, physicalVolumeLockKey } from "@lando/sdk/services";
+import {
+  type ProviderError,
+  type RuntimeProviderShape,
+  type StateStoreShape,
+  physicalVolumeLockKey,
+} from "@lando/sdk/services";
 
 import { shellArg } from "../services/shell-quote.ts";
 
@@ -13,7 +18,7 @@ type LocatedPlanVolume = {
 
 export interface VolumeCoordination {
   readonly locators: ReadonlyArray<VolumeLocator>;
-  readonly verify: Effect.Effect<void, VolumeOperationError>;
+  readonly verify: Effect.Effect<void, ProviderError>;
 }
 
 const HeldCoordinationKeys = Context.Reference<ReadonlySet<string>>("@lando/engine/HeldCoordinationKeys", {
@@ -47,7 +52,7 @@ const sameIdentity = (left: VolumeIdentity | undefined, right: VolumeIdentity | 
 const locatePlanVolumes = (
   plan: AppPlan,
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
-): Effect.Effect<ReadonlyArray<LocatedPlanVolume>, VolumeOperationError> =>
+): Effect.Effect<ReadonlyArray<LocatedPlanVolume>, ProviderError> =>
   Effect.forEach(plan.stores, (store) => {
     const ref: VolumeRef = { app: plan.id, store: store.name, scope: store.scope };
     return provider.locateVolume(ref).pipe(
@@ -69,14 +74,6 @@ const locatePlanVolumes = (
         }
         return Effect.succeed({ ref, locator });
       }),
-      Effect.mapError((cause) =>
-        cause instanceof VolumeOperationError
-          ? cause
-          : failure(
-              provider.id,
-              `Could not locate provider volume ${store.name} for lifecycle coordination.`,
-            ),
-      ),
     );
   });
 
@@ -99,35 +96,32 @@ const uniqueByCoordinationKey = (
 const verifyLocatedVolumes = (
   expected: ReadonlyArray<LocatedPlanVolume>,
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
-): Effect.Effect<void, VolumeOperationError> =>
+): Effect.Effect<void, ProviderError> =>
   Effect.forEach(
     expected,
     (volume) =>
-      provider.locateVolume(volume.ref).pipe(
-        Effect.flatMap((current) =>
-          current.coordinationKey === volume.locator.coordinationKey &&
-          current.nativeName === volume.locator.nativeName &&
-          sameIdentity(current.identity, volume.locator.identity)
-            ? Effect.void
-            : Effect.fail(
-                failure(
-                  provider.id,
-                  `Volume ${volume.locator.nativeName} changed during lifecycle coordination.`,
+      provider
+        .locateVolume(volume.ref)
+        .pipe(
+          Effect.flatMap((current) =>
+            current.coordinationKey === volume.locator.coordinationKey &&
+            current.nativeName === volume.locator.nativeName &&
+            sameIdentity(current.identity, volume.locator.identity)
+              ? Effect.void
+              : Effect.fail(
+                  failure(
+                    provider.id,
+                    `Volume ${volume.locator.nativeName} changed during lifecycle coordination.`,
+                  ),
                 ),
-              ),
+          ),
         ),
-        Effect.mapError((cause) =>
-          cause instanceof VolumeOperationError
-            ? cause
-            : failure(provider.id, `Could not reobserve provider volume ${volume.locator.nativeName}.`),
-        ),
-      ),
     { discard: true },
   );
 
 export const verifyActiveVolumeCoordination = (
   provider: Pick<RuntimeProviderShape, "id" | "locateVolume">,
-): Effect.Effect<void, VolumeOperationError> =>
+): Effect.Effect<void, ProviderError> =>
   ActiveLocatedVolumes.pipe(Effect.flatMap((volumes) => verifyLocatedVolumes(volumes, provider)));
 
 export const withVolumeCoordinationLock = <A, E>(
@@ -149,7 +143,7 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
   readonly provider: Pick<RuntimeProviderShape, "id" | "locateVolume">;
   readonly stateStore: StateStoreShape;
   readonly body: (coordination: VolumeCoordination) => Effect.Effect<A, E>;
-}): Effect.fn.Return<A, E | VolumeOperationError | StateStoreError> {
+}): Effect.fn.Return<A, E | ProviderError | StateStoreError> {
   const planVolumes = yield* locatePlanVolumes(input.plan, input.provider);
   const located = uniqueByCoordinationKey(planVolumes);
   const keys = located.map((volume) => volume.locator.coordinationKey);
@@ -160,7 +154,7 @@ export const withPlanVolumeCoordination = Effect.fn("Lifecycle.withPlanVolumeCoo
   };
   if (keys.every((key) => held.has(key))) return yield* input.body(coordination);
 
-  const lockAll = (index: number): Effect.Effect<A, E | VolumeOperationError | StateStoreError> => {
+  const lockAll = (index: number): Effect.Effect<A, E | ProviderError | StateStoreError> => {
     const volume = located[index];
     if (volume === undefined) {
       return verifyLocatedVolumes(located, input.provider).pipe(Effect.andThen(input.body(coordination)));

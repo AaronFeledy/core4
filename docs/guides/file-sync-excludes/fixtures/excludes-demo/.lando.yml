@@ -1,0 +1,12 @@
+name: file-sync-excludes-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    appMount:
+      target: /app
+      excludes:
+        - dist
+        - coverage
+      includes:
+        - vendor

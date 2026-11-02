@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -11,6 +12,7 @@ import {
   staticServiceFeature,
 } from "../src/services/static.ts";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { NGINX_DEFAULT_SITE_BUILD_STEP_ID } from "../src/services/nginx-config.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
@@ -67,7 +69,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof ServiceTypeError
+          ? [error.message, ...(error.issues ?? []).map((issue) => issue.suggestion ?? "")].join(" ")
+          : error instanceof Error
+            ? error.message
+            : String(error);
       expect(message).toMatch(pattern);
     },
   );
@@ -92,10 +99,14 @@ describe("static ServiceType", () => {
       LANDO_SERVICE_TYPE: "static:nginx",
       LANDO_WEBROOT: "/app",
     });
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(true);
-    expect(plan.mounts).toEqual([]);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(true);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
     expect(plan.command).toEqual([
       "sh",
       "-c",
@@ -116,14 +127,16 @@ describe("static ServiceType", () => {
         ].join("\n"),
       ),
     ]);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.command).toEqual([
       "sh",
       "-c",
       expect.stringContaining("exec nginx -c /tmp/lando-nginx.conf -g 'daemon off;'"),
     ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(80, 10));
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", webroot: "/app" });
   });
 
@@ -131,7 +144,9 @@ describe("static ServiceType", () => {
     const plan = await composeStaticPlan({ type: "static" }, staticNginxServiceType, "assets");
 
     expect(plan.primary).toBe(false);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "assets" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "assets", primary: true },
+    ]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "assets",
       LANDO_SERVICE_TYPE: "static:nginx",
@@ -203,11 +218,17 @@ describe("static ServiceType", () => {
       LANDO_WEBROOT: "/app",
     });
     expect(plan.command).toEqual(["caddy", "file-server", "--listen", ":80", "--root", "/app"]);
-    expect(plan.appMount?.readOnly).toBe(true);
-    expect(plan.mounts).toEqual([]);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(serviceAppMount(plan)?.readOnly).toBe(true);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(80, 10));
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy", webroot: "/app" });
   });
 
@@ -216,7 +237,7 @@ describe("static ServiceType", () => {
 
     expect(plan.environment.LANDO_WEBROOT).toBe("/app/dist");
     expect(plan.command).toEqual(["sh", "-c", expect.stringContaining('root "/app/dist";')]);
-    expect(plan.appMount?.readOnly).toBe(true);
+    expect(serviceAppMount(plan)?.readOnly).toBe(true);
     expect(firstEndpointPort(plan)).toBe(80);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", webroot: "/app/dist" });
   });
@@ -284,3 +305,4 @@ describe("static ServiceType", () => {
     );
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

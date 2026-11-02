@@ -7,7 +7,7 @@ tags: [beta, docs, tooling, php, composer]
 
 # Run Composer on PHP
 
-Declare a `composer` tooling task against a PHP service. Lando routes it through the cache-backed tooling path, so it does not need a provider bootstrap just to find the command:
+Run Composer inside a PHP service by declaring a `composer` tooling task in `.lando.yml`. Use this complete example in a new app directory, or merge the task into an existing PHP app:
 
 ```yaml
 name: composer-php-demo
@@ -23,6 +23,8 @@ tooling:
       - composer "$@"
       - composer
 ```
+
+After completing `lando setup`, run `lando start` from the app directory. Then run `lando composer --version` to check that the task reaches Composer in the service.
 
 <Guide>
   <Scenario id="tooling-bootstrap" render>

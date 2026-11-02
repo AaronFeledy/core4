@@ -85,7 +85,7 @@ const makeDbImportPlugin = () => {
     name: "@example/db-fixture",
     version: "1.0.0",
     api: 4,
-    contributes: { commands: ["db:import"] },
+    contributes: { commands: [{ id: "db:import", summary: spec.summary ?? "Import database." }] },
   });
   return definePlugin({
     name: manifest.name,
@@ -101,7 +101,15 @@ const graphContextForPlugin = (plugin: ReturnType<typeof makeDbImportPlugin>): C
     plugins: [],
     globalPlugins: [],
     certificateAuthorities: [],
-    commands: [{ id: "db:import", pluginName: plugin.name, source: "explicit", load }],
+    commands: [
+      {
+        id: "db:import",
+        descriptor: { id: "db:import", summary: makeDbImportSpec().summary ?? "Import database." },
+        pluginName: plugin.name,
+        source: "explicit",
+        load,
+      },
+    ],
     hostContext: Context.empty(),
   });
 };
@@ -111,7 +119,6 @@ describe("plugin-owned command dispatch", () => {
     // Given
     const spec = {
       id: "db:import",
-      summary: "Import a dump.",
       namespace: "db",
       bootstrap: "app",
       resultSchema: Schema.Boolean,
@@ -128,7 +135,7 @@ describe("plugin-owned command dispatch", () => {
       pluginOwnedCommandEffect(spec, ["-y"], false).pipe(Effect.provideService(Renderer, silentRenderer)),
     );
     // Then
-    expect(target.spec).toBe(spec);
+    expect(target.spec).toMatchObject({ ...spec, summary: makeDbImportSpec().summary });
     expect(result).toBe(true);
   });
 
@@ -188,17 +195,52 @@ describe("plugin-owned command dispatch", () => {
     expect(isPluginOwnedCommandId("--help")).toBe(false);
   });
 
-  test("renders plugin spec flag tokens for help", () => {
-    // Given
-    const spec = makeDbImportSpec();
-
-    // When
+  test("renders plugin help with namespaced usage, flag metadata, and the shared global footer", () => {
+    const spec: ExecutableCommandSpec = {
+      ...makeDbImportSpec(),
+      id: "db:backup:import",
+      flags: {
+        host: { type: "string", description: "Database host." },
+        port: { type: "number", valueType: "integer", description: "Database port." },
+        mode: { type: "option", options: ["replace", "append"] },
+        yes: { type: "boolean", description: "Skip confirmation prompts." },
+        label: { type: "string", multiple: true, description: "Repeat for each label." },
+      },
+      args: { file: { type: "string", required: true }, schema: { type: "string" } },
+      strict: true,
+    };
     const help = renderPluginOwnedCommandHelp(spec);
 
-    // Then
-    expect(help).toContain("db:import");
-    expect(help).toContain("--host");
-    expect(help).toContain("FILE");
+    expect(help).toContain("Import a database dump.");
+    expect(help).toContain("\n  lando db:backup:import <FILE> [SCHEMA]\n");
+    expect(help).toContain("\n  --host <value> Database host.");
+    expect(help).toContain("\n  --port <integer> Database port.");
+    expect(help).toContain("\n  --mode <value> (replace, append)");
+    expect(help).toContain("\n  --yes, -y Skip confirmation prompts.");
+    expect(help).toContain("\n  --label <value> Repeat for each label.");
+    expect(help).toContain("Global flags (--format (text, json, yaml), --json [fields]");
+    expect(help).not.toContain("\n  --json");
+    expect(help).not.toContain("\n  --format");
+    expect(help).not.toContain("$ lando");
+    expect(help).not.toContain("\nSTATUS\n");
+    expect(renderPluginOwnedCommandHelp(spec, { styled: true })).toContain("\u001b[");
+    expect(renderPluginOwnedCommandHelp(spec, { styled: false })).not.toContain("\u001b[");
+  });
+
+  test("preserves strict-false single-argument usage and repeated flag occurrences", () => {
+    const spec: ExecutableCommandSpec = {
+      ...makeDbImportSpec(),
+      flags: { label: { type: "string", multiple: true } },
+      args: { file: { type: "string", required: true, multiple: true } },
+      strict: false,
+    };
+    const help = renderPluginOwnedCommandHelp(spec);
+    expect(help).toContain("lando db:import <FILE...>");
+    expect(help).toContain("\n  --label <value>\n");
+    expect(help).not.toContain("--label <value...>");
+    expect(
+      pluginOwnedCommandInputFromArgv(spec, ["--label", "one", "--label=two", "a.sql", "b.sql"]),
+    ).toEqual({ flags: { label: ["one", "two"] }, args: { file: "a.sql" }, raw: ["b.sql"] });
   });
 
   test("parses fixture plugin argv and decodes the spec resultSchema", async () => {

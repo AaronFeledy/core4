@@ -7,6 +7,7 @@ import {
   isJsonObject,
 } from "../../../scripts/schema-compatibility/model.ts";
 import { normalizeJsonSchema } from "../../../scripts/schema-compatibility/normalize.ts";
+import { evolveHistoricalIncludeWhen } from "./x-extension-include-when-proof.ts";
 
 export const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 export const FIXTURE_PATH = resolve(import.meta.dirname, "fixtures/x-extension-closed-record.base.json");
@@ -116,6 +117,30 @@ const isBuggyClosedExtension = (schema: JsonSchema): boolean => {
   const keys = Object.keys(patterns);
   const only = keys[0];
   return keys.length === 1 && only === "" && isEmptyExtension(patterns[only]);
+};
+
+/**
+ * Replays intentional Landofile schema changes made after the capture commit, so
+ * the repair proof keeps comparing only the closed x-* fix. Each step names the
+ * exact captured node it changes, preserving all unrelated constraints.
+ */
+export const withIntentionalChangesSinceCapture = (landofile: JsonSchema): JsonSchema => {
+  // IncludeEntry.checksum was removed before release; lockfile pins carry include integrity.
+  const includes = requireObject(requireObject(landofile.properties, "properties").includes, "includes");
+  const items = requireObject(includes.items, "includes.items");
+  if (!Array.isArray(items.anyOf)) throw new Error("includes.items.anyOf must be an array");
+  const entry = requireObject(items.anyOf[0], "includes.items.anyOf[0]");
+  const properties = requireObject(entry.properties, "includes entry properties");
+  if (!("checksum" in properties)) throw new Error("captured include entry no longer has checksum");
+  const { checksum: _checksum, ...kept } = properties;
+  const anyOf = [{ ...entry, properties: kept }, ...items.anyOf.slice(1)];
+  return evolveHistoricalIncludeWhen({
+    ...landofile,
+    properties: {
+      ...requireObject(landofile.properties, "properties"),
+      includes: { ...includes, items: { ...items, anyOf } },
+    },
+  });
 };
 
 export const repairClosedExtension = (value: JsonValue): JsonValue => {

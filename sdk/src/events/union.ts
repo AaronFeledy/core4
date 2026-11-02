@@ -41,9 +41,11 @@ import {
 import { DeprecationUsedEvent } from "./deprecation.ts";
 import { DownloadProgressEvent, PostDownloadEvent, PreDownloadEvent } from "./download.ts";
 import {
+  PostGlobalDestroyEvent,
   PostGlobalRebuildEvent,
   PostGlobalStartEvent,
   PostGlobalStopEvent,
+  PreGlobalDestroyEvent,
   PreGlobalRebuildEvent,
   PreGlobalStartEvent,
   PreGlobalStopEvent,
@@ -83,6 +85,7 @@ import {
 } from "./provider.ts";
 import { PaintBannerEvent } from "./renderer.ts";
 import { CodeSnippetEvent, DiffRenderEvent, MarkdownBlockEvent } from "./rich-render.ts";
+import { PostScratchDestroyEvent, PreScratchDestroyEvent } from "./scratch.ts";
 import {
   PostDatasetApplyEvent,
   PostDatasetCaptureEvent,
@@ -144,10 +147,14 @@ export const LandoEvent = Schema.Union([
   PostRebuildEvent,
   PreDestroyEvent,
   PostDestroyEvent,
+  PreScratchDestroyEvent,
+  PostScratchDestroyEvent,
   PreGlobalStartEvent,
   PostGlobalStartEvent,
   PreGlobalStopEvent,
   PostGlobalStopEvent,
+  PreGlobalDestroyEvent,
+  PostGlobalDestroyEvent,
   PreGlobalRebuildEvent,
   PostGlobalRebuildEvent,
   PreAppStartEvent,

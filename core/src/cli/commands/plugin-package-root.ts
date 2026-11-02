@@ -41,7 +41,8 @@ export const findNearestPluginPackageRoot = async (cwd: string, commandId: strin
     if (parent === current) {
       throw new PluginManifestError({
         message: `No plugin package.json found from ${resolve(cwd)}.`,
-        issues: [`Run ${commandId} from inside a Lando plugin package.`],
+        issues: [{ path: [], message: `Run ${commandId} from inside a Lando plugin package.` }],
+        remediation: `Run ${commandId} from a directory containing the plugin package.json.`,
       });
     }
     current = parent;
@@ -60,7 +61,8 @@ export const resolvePluginPackageRoot = Effect.fnUntraced(function* (
         ? cause
         : new PluginManifestError({
             message: `Unable to locate plugin root from ${resolve(directory)}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: "Run the command inside a readable Lando plugin package directory.",
           }),
   });
 });

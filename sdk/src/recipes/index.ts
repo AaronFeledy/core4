@@ -17,6 +17,13 @@ export {
 } from "./migration-chain.ts";
 export * from "./option-types.ts";
 export * from "./secret-disposition.ts";
+export {
+  compileRecipeSource,
+  RecipeSourceCompileError,
+  RECIPE_SOURCE_VARIANT_BUDGET,
+  type RecipeSourceCompileContext,
+  type CompiledRecipeManifest,
+} from "../schema/recipe-source-compiler.ts";
 
 /**
  * Extend snapshot migratability with full declarative migration-chain validation.

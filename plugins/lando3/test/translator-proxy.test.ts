@@ -3,8 +3,11 @@ import { isPlainRecord, mergeLandofiles, validateConfigTranslateResult } from "@
 import { LandofileAuthoringFragment, LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Result, Schema } from "effect";
-import { defaultLando3Ports, makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import {
+  testPorts as defaultLando3Ports,
+  makeTestTranslator as makeLando3ConfigTranslator,
+} from "./fixtures/test-ports.ts";
 
 const translateFiles = async (files: ReadonlyArray<readonly [string, string]>) => {
   const result = await Effect.runPromise(
@@ -332,7 +335,6 @@ test("declares the HTTP endpoints a route targets on services without catalog en
   });
   expect(result.diagnostics.filter(({ kind }) => kind === "generated").map(({ keyPath }) => keyPath)).toEqual(
     [
-      ["services", "who"],
       ["proxy", "who"],
       ["proxy", "node"],
     ],

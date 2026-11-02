@@ -14,7 +14,9 @@ import type {
 
 import type { EngineHttpApi, ProviderErrorContext } from "./engine-api.ts";
 import { missingApi, missingService } from "./engine-errors.ts";
-import { redactDetails, withApiReason } from "./redact.ts";
+import { redactDetails, redactorFor, withApiReason } from "./redact.ts";
+import { absentShutdown } from "./shutdown-observation.ts";
+import { stopAndRemoveContainer } from "./stop-container.ts";
 
 export type ServiceLifecycleAction = "start" | "stop" | "restart";
 
@@ -61,8 +63,12 @@ const lifecycleRequest = (
         new ProviderUnavailableError({
           providerId: ctx.providerId,
           operation: input.operation,
-          message: withApiReason(`${input.failureAction} failed with HTTP ${response.status}.`, response),
-          details: redactDetails({ ...input.details, body: response.body }),
+          message: withApiReason(
+            `${input.failureAction} failed with HTTP ${response.status}.`,
+            response,
+            redactorFor(ctx),
+          ),
+          details: redactDetails({ ...input.details, body: response.body }, redactorFor(ctx)),
           remediation: ctx.remediation,
         }),
       );
@@ -108,6 +114,8 @@ export const postServiceLifecycle = (
           operation: action,
           service: target.service,
           message: `Service ${target.service} was not found.`,
+          remediation:
+            "Add the missing service to the Landofile or correct the service name, then re-run the command.",
         }),
       ),
     },
@@ -145,6 +153,8 @@ export const postExactServiceLifecycle = (
           operation: action,
           service: target.service,
           message: `The inspected runtime for ${target.service} was not found.`,
+          remediation:
+            "Add the missing service to the Landofile or correct the service name, then re-run the command.",
         }),
       ),
     },
@@ -155,12 +165,12 @@ export const postExactServiceLifecycle = (
  * Stops and removes the one container behind an observation the provider itself reported, without
  * consulting any applied plan. The container id is the whole address: a name could be reused by a
  * recreated container, and an observation carrying no id is a service the provider already found
- * nothing for, which is `false` rather than an error.
+ * nothing for, which is an absent receipt rather than an error.
  */
 export const removeObservedContainer = (
   observed: ServiceRuntimeInfo,
   options: ServiceLifecycleOptions,
-): Effect.Effect<boolean, ProviderError> => {
+): Effect.Effect<ObservedServiceRemoval, ProviderError> => {
   const operation = "removeObservedService";
   if (String(observed.providerId) !== options.ctx.providerId) {
     return Effect.fail(
@@ -174,7 +184,14 @@ export const removeObservedContainer = (
     );
   }
   const containerId = observed.containerId;
-  if (containerId === undefined) return Effect.succeed(false);
+  const identity = {
+    appId: observed.app,
+    providerId: observed.providerId,
+    service: observed.service,
+    ...(containerId === undefined ? {} : { containerId }),
+  };
+  if (containerId === undefined)
+    return Effect.succeed({ kind: "absent", shutdownObservations: [absentShutdown(identity)] });
   const request = options.api?.request;
   if (request === undefined) {
     return Effect.fail(
@@ -185,27 +202,8 @@ export const removeObservedContainer = (
       ),
     );
   }
-  const call = (
-    method: "POST" | "DELETE",
-    path: `/${string}`,
-    accepted: ReadonlyArray<number>,
-    stage: string,
-  ): Effect.Effect<boolean, ProviderError> =>
-    lifecycleRequest(request({ method, path }), options.ctx, {
-      operation,
-      requestAction: `observed container ${stage}`,
-      failureAction: `Observed container ${stage}`,
-      details: { service: observed.service, containerId },
-      accepted,
-      missing: Effect.succeed(false),
-    });
-
-  // A stop that 404s means the container is already gone, so there is nothing left to remove.
-  const id = encodeURIComponent(containerId);
-  return call("POST", `/containers/${id}/stop`, [204, 304], "stop").pipe(
-    Effect.flatMap((present) =>
-      present ? call("DELETE", `/containers/${id}?force=true`, [200, 204], "remove") : Effect.succeed(false),
-    ),
+  return stopAndRemoveContainer(identity, { api: { request }, ctx: options.ctx }).pipe(
+    Effect.map(({ kind, shutdownObservations }) => ({ kind, shutdownObservations })),
   );
 };
 
@@ -214,7 +212,3 @@ export const DESTROYED: DestroyOutcome = { kind: "destroyed" };
 
 /** The `destroy` answer when the provider was handed no plan and holds no applied record. */
 export const DESTROY_NO_OP: DestroyOutcome = { kind: "no-op", reason: "no-applied-plan" };
-
-/** Lifts the helper's removed/not-removed answer into the provider-contract outcome. */
-export const observedRemoval = (removed: boolean): ObservedServiceRemoval =>
-  removed ? { kind: "removed" } : { kind: "absent" };

@@ -64,7 +64,7 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
     const lines =
       this.#sessionCommandId === undefined
         ? this.#selectedModel().treeFrameLines()
-        : styleFrame(renderTreeFrame(this.#aggregateState()));
+        : styleFrame(renderTreeFrame(this.#aggregateState()), this.#viewModelOptions.color);
     this.#sessionCommandId = undefined;
     this.#footerVisible = false;
     return lines;
@@ -111,7 +111,8 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
 
   frameLines(): ReadonlyArray<string> {
     if (!this.#footerVisible) return [];
-    if (this.#sessionCommandId !== undefined) return styleFrame(renderLogicalFrame(this.#aggregateState()));
+    if (this.#sessionCommandId !== undefined)
+      return styleFrame(renderLogicalFrame(this.#aggregateState()), this.#viewModelOptions.color);
     return this.#selectedModel().frameLines();
   }
 

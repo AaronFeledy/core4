@@ -48,6 +48,9 @@ const landofileRuntimeInputs = {
     resolveUserCacheRoot: () => process.env.LANDO_USER_CACHE_ROOT ?? tmpdir(),
     resolveUserIncludesDir: () => tmpdir(),
     npmRecipeSource: {
+      fetchTarball: async () => {
+        throw new Error("Unexpected npm download");
+      },
       resolve: (packageSpec) =>
         Promise.resolve({
           packageName: packageSpec,
@@ -81,6 +84,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -159,6 +163,7 @@ const makeLayer = (
     inspect: () => die("inspect"),
     list: () => Effect.succeed([]),
     snapshotVolume: () => die("snapshotVolume"),
+    removeVolumeSnapshot: () => die("removeVolumeSnapshot"),
     restoreVolume: () => die("restoreVolume"),
     listVolumes: () => Effect.succeed([]),
     removeVolume: () => die("removeVolume"),
@@ -175,6 +180,9 @@ const makeLayer = (
   const registryLive = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
@@ -185,9 +193,15 @@ const makeLayer = (
     ScratchResourceScanner.of({
       listScratchIds: Effect.succeed(labelIds),
       pruneScratch: pruneScratch ?? ((id: string) => Effect.sync(() => pruned.push(id))),
+      prepareScratch: (id) =>
+        Effect.succeed({
+          stop: Effect.succeed(false),
+          destroy: (pruneScratch?.(id) ?? Effect.sync(() => pruned.push(id))).pipe(Effect.as(true)),
+        }),
     }),
   );
   const scratchDeps = Layer.mergeAll(
+    environmentResolverLayer(),
     BunFileSystem.layer,
     landofileServiceLayer,
     plannerLive,
@@ -198,6 +212,7 @@ const makeLayer = (
     scannerLive,
     scratchInitAppPortLive,
     BunDataMover.layer.pipe(
+      Layer.provide(registryLive),
       Layer.provide(
         Layer.mergeAll(
           stateStoreLayer,
@@ -295,7 +310,13 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(cacheRoot, id)));
       const pruned: string[] = [];
       const layer = makeLayer([], pruned, () =>
-        Effect.fail(new ScratchAppError({ operation: "gc", message: "provider prune failed" })),
+        Effect.fail(
+          new ScratchAppError({
+            operation: "gc",
+            message: "provider prune failed",
+            remediation: "Injected provider prune failure for scratch gc fixture.",
+          }),
+        ),
       );
       const result = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
@@ -376,3 +397,4 @@ describe("ScratchAppServiceLayer.layer gc", () => {
     });
   });
 });
+import { environmentResolverLayer } from "../_support/value-contracts.ts";

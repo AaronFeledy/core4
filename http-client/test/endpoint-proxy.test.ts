@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 
-test.each(["http://remote.invalid/status", "http://app.lndo.site/status", "local", "no-proxy"])(
+test.each(["http://remote.invalid/status", "http://app.lndo.site/status", "local", "no-proxy", "pinned"])(
   "routes %s through the real Bun transport with ambient proxy configured",
   async (target) => {
     // Given isolated local origin/proxy servers and a child with ambient proxy settings.
@@ -22,12 +23,13 @@ test.each(["http://remote.invalid/status", "http://app.lndo.site/status", "local
         return new Response(null, { status: 203 });
       },
     });
-    const direct = target === "local" || target === "no-proxy";
-    const url = direct ? origin.url.href : target;
+    const direct = target === "local" || target === "no-proxy" || target === "pinned";
+    const url =
+      target === "pinned" ? `http://pinned.invalid:${origin.port}/` : direct ? origin.url.href : target;
     const script = `
       import { Effect } from "effect";
       import * as HttpClient from "effect/http/HttpClient";
-      import { layer } from "./http-client/src/live.ts";
+      import { layer, RequestPolicy } from "./http-client/src/live.ts";
       import { NetworkTrust } from "./http-client/src/network-trust.ts";
       const program = Effect.gen(function* () {
         const client = yield* HttpClient.HttpClient;
@@ -38,13 +40,17 @@ test.each(["http://remote.invalid/status", "http://app.lndo.site/status", "local
             proxy: { http: ${JSON.stringify(proxy.url.href)}, noProxy: ["127.0.0.1"] },
             caPems: [], trustHost: true,
           })) : program;
-      const response = await Effect.runPromise(trusted.pipe(Effect.provide(layer)));
+      const pinned = ${JSON.stringify(target)} === "pinned"
+        ? trusted.pipe(Effect.provideService(RequestPolicy, {
+            connectionTarget: { address: "127.0.0.1", origin: new URL(${JSON.stringify(url)}).origin },
+          })) : trusted;
+      const response = await Effect.runPromise(pinned.pipe(Effect.provide(layer)));
       if (response.status !== ${direct ? 204 : 203}) process.exit(2);
     `;
     try {
       // When HttpClient opens a header-only response (no shell or external service).
       const child = Bun.spawn([process.execPath, "--eval", script], {
-        cwd: new URL("../../", import.meta.url).pathname,
+        cwd: fileURLToPath(new URL("../../", import.meta.url)),
         env: {
           ...process.env,
           HTTP_PROXY: proxy.url.href,

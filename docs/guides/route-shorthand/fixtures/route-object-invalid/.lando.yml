@@ -1,0 +1,7 @@
+name: route-object-invalid
+services:
+  app:
+    type: "node:22"
+    primary: true
+    routes:
+      - hostname: app.lndo.site:8080/api

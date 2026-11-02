@@ -33,15 +33,15 @@ describe("platform readiness cells", () => {
         provider: "lando",
         bundleKey: "linux-x64",
         bundleMode: "current-commit",
-        cadence: "pr+evidence",
-        runsOn: "ubuntu-24.04",
+        cadence: "evidence",
+        runsOn: "ubuntu-26.04",
       },
       {
         id: "linux-arm64",
         provider: "lando",
         bundleKey: "linux-arm64",
         bundleMode: "current-commit",
-        cadence: "pr+evidence",
+        cadence: "evidence",
         runsOn: "ubuntu-24.04-arm",
       },
       {

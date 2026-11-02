@@ -7,7 +7,12 @@ import { Cause, Effect, Exit } from "effect";
 import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { type GitRecipeCloner, publish, resolveGitRecipeSource } from "../../src/recipes/git-source.ts";
+import {
+  type GitRecipeCloner,
+  defaultGitRecipeCloner,
+  publish,
+  resolveGitRecipeSource,
+} from "../../src/recipes/git-source.ts";
 import * as RecipeManifestServiceLayer from "../../src/recipes/manifest/service.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 
@@ -15,15 +20,8 @@ const VALID_RECIPE = `id: remote-recipe
 title: Remote Recipe
 description: A git sourced recipe.
 version: 0.1.0
-prompts:
-  - name: name
-    type: text
-    message: App name
-    default: git-app
-files:
-  - src: templates/.lando.yml.tmpl
-    dest: .lando.yml
-    template: true
+config:
+  runtime: 4
 `;
 
 const withTempRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -50,7 +48,7 @@ const makeCloner = (
     const recipeRoot = options.subpath === undefined ? stagingDir : join(stagingDir, options.subpath);
     await mkdir(recipeRoot, { recursive: true });
     if (options.manifest !== undefined) await writeFile(join(recipeRoot, "recipe.yml"), options.manifest);
-    return { commitSha: options.commitSha ?? "abc123def456" };
+    return { commitSha: options.commitSha ?? "a".repeat(40) };
   },
 });
 
@@ -64,6 +62,49 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("resolveGitRecipeSource", () => {
+  for (const structuredAuth of [false, true]) {
+    test(`cached recipe ${structuredAuth ? "never hides a structured auth failure" : "cannot fall back without a warning sink"}`, async () => {
+      // Given
+      await withTempRoot(async (dir) => {
+        const url = "https://example.test/recipes.git";
+        const userDataRoot = join(dir, "data");
+        await resolveGitRecipeSource({
+          url,
+          userDataRoot,
+          gitRecipeCloner: makeCloner({ manifest: VALID_RECIPE }),
+        });
+        const warnings: string[] = [];
+        const failure = structuredAuth
+          ? new RecipeSourceError({
+              message: "Access rejected",
+              source: url,
+              kind: "auth",
+              remediation: "Sign in again.",
+            })
+          : new Error("Connection refused");
+        // When
+        const acquisition = resolveGitRecipeSource({
+          url,
+          userDataRoot,
+          gitRecipeCloner: makeCloner({ fail: failure }),
+          ...(structuredAuth
+            ? {
+                onWarn: (warning: string) => {
+                  warnings.push(warning);
+                },
+              }
+            : {}),
+        });
+        // Then
+        await expect(acquisition).rejects.toMatchObject({
+          _tag: "RecipeSourceError",
+          kind: structuredAuth ? "auth" : "clone-failed",
+        });
+        expect(warnings).toEqual([]);
+      });
+    });
+  }
+
   test("clones through the seam and publishes under userDataRoot/recipe-cache/git/<commitSha>", async () => {
     await withTempRoot(async (dir) => {
       const calls: Array<{ readonly url: string; readonly stagingDir: string }> = [];
@@ -71,16 +112,16 @@ describe("resolveGitRecipeSource", () => {
       const result = await resolveGitRecipeSource({
         url: "https://example.test/recipes.git",
         userDataRoot,
-        gitRecipeCloner: makeCloner({ calls, manifest: VALID_RECIPE, commitSha: "feedface" }),
+        gitRecipeCloner: makeCloner({ calls, manifest: VALID_RECIPE, commitSha: "feedface".repeat(5) }),
       });
 
       expect(calls).toHaveLength(1);
       expect(calls[0]?.url).toBe("https://example.test/recipes.git");
       expect(calls[0]?.stagingDir).toContain(join(userDataRoot, "recipe-cache", "git", ".staging-"));
-      expect(result.root).toBe(join(userDataRoot, "recipe-cache", "git", "feedface"));
+      expect(result.root).toBe(join(userDataRoot, "recipe-cache", "git", "feedface".repeat(5)));
       if (result.root === undefined) throw new Error("expected a cached recipe root");
       expect(result.source).toBe(join(result.root, "recipe.yml"));
-      expect(result.commitSha).toBe("feedface");
+      expect(result.commitSha).toBe("feedface".repeat(5));
       expect(await Bun.file(result.source).exists()).toBe(true);
     });
   });
@@ -88,14 +129,14 @@ describe("resolveGitRecipeSource", () => {
   test("cache hit keeps the existing published dir and discards staging", async () => {
     await withTempRoot(async (dir) => {
       const userDataRoot = join(dir, "data");
-      const published = join(userDataRoot, "recipe-cache", "git", "cafebabe");
+      const published = join(userDataRoot, "recipe-cache", "git", "cafebabe".repeat(5));
       const calls: Array<{ readonly url: string; readonly stagingDir: string }> = [];
       await mkdir(published, { recursive: true });
       await writeFile(join(published, "recipe.yml"), VALID_RECIPE.replace("Remote Recipe", "Cached Recipe"));
       const result = await resolveGitRecipeSource({
         url: "https://example.test/recipes.git",
         userDataRoot,
-        gitRecipeCloner: makeCloner({ calls, manifest: VALID_RECIPE, commitSha: "cafebabe" }),
+        gitRecipeCloner: makeCloner({ calls, manifest: VALID_RECIPE, commitSha: "cafebabe".repeat(5) }),
       });
 
       expect(calls).toHaveLength(1);
@@ -158,7 +199,7 @@ describe("resolveGitRecipeSource", () => {
       );
 
       expect(result.root).toBe(
-        join(userDataRoot, "recipe-cache", "git", "abc123def456", "packages", "remote-recipe"),
+        join(userDataRoot, "recipe-cache", "git", "a".repeat(40), "packages", "remote-recipe"),
       );
       expect(manifest.id).toBe("remote-recipe");
     });
@@ -206,12 +247,15 @@ describe("resolveGitRecipeSource", () => {
         }),
       );
       expect(expectFailure(exit)).toBeInstanceOf(RecipeManifestNotFoundError);
-      const manifestPath = join(dir, "data", "recipe-cache", "git", "abc123def456", "recipe.yml");
+      const manifestPath = join(dir, "data", "recipe-cache", "git", "a".repeat(40), "recipe.yml");
       expect(expectFailure(exit)).toMatchObject({
         message: `recipe.yml not found at ${manifestPath}.`,
         source: manifestPath,
       });
-      expect(expectFailure(exit)).not.toHaveProperty("remediation");
+      expect(expectFailure(exit)).toHaveProperty(
+        "remediation",
+        "Point the recipe source at a directory containing recipe.yml or recipe.ts.",
+      );
     });
   });
 
@@ -264,7 +308,7 @@ describe("resolveGitRecipeSource", () => {
 });
 
 describe("initApp git source boundary", () => {
-  test("git recipes reach manifest parsing and prompt defaults before the existing non-bundled render limitation", async () => {
+  test("invalid git config fails before writing and reports the published source path", async () => {
     await withTempRoot(async (dir) => {
       let caught: unknown;
       try {
@@ -274,21 +318,27 @@ describe("initApp git source boundary", () => {
           source: "git",
           url: "https://example.test/recipes.git",
           userDataRoot: join(dir, "data"),
-          gitRecipeCloner: makeCloner({ manifest: VALID_RECIPE }),
+          gitRecipeCloner: makeCloner({
+            manifest: VALID_RECIPE.replace("config:\n  runtime: 4", "config: invalid"),
+          }),
+          destination: join(dir, "app"),
           nonInteractive: true,
         });
       } catch (error) {
         caught = error;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain("Recipe file rendering");
-      expect((caught as Error).message).toContain("https://example.test/recipes.git");
+      expect(caught).toMatchObject({
+        _tag: "RecipeManifestValidationError",
+        source: expect.stringContaining("recipe.yml"),
+      });
+      expect(await Bun.file(join(dir, "app", ".lando.yml")).exists()).toBe(false);
     });
   });
 });
 
 describe("resolveGitRecipeSource — real git clone (file:// source, no network)", () => {
-  const runGit = async (args: ReadonlyArray<string>, cwd: string): Promise<void> => {
+  const runGit = async (args: ReadonlyArray<string>, cwd: string): Promise<string> => {
     const proc = Bun.spawn({
       cmd: ["git", ...args],
       cwd,
@@ -305,8 +355,13 @@ describe("resolveGitRecipeSource — real git clone (file:// source, no network)
       stdout: "pipe",
       stderr: "pipe",
     });
-    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    const [code, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
     if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${stderr}`);
+    return stdout.trim();
   };
 
   test("clones a local bare repo and resolves recipe.yml at a subpath via the default cloner", async () => {
@@ -341,4 +396,60 @@ describe("resolveGitRecipeSource — real git clone (file:// source, no network)
       expect(manifest.id).toBe("remote-recipe");
     });
   });
+
+  for (const selector of [
+    "annotated-tag",
+    "branch",
+    "full-sha",
+    "default",
+    "unknown",
+    "abbreviated-sha",
+  ] as const) {
+    test(`default cloner acquires ${selector} through shallow fetch`, async () => {
+      await withTempRoot(async (dir) => {
+        // Given
+        const worktree = join(dir, "worktree");
+        await mkdir(worktree);
+        await runGit(["init", "-q", "-b", "main"], worktree);
+        await Bun.write(join(worktree, "fragment.yml"), "services: {}\n");
+        await runGit(["add", "."], worktree);
+        await runGit(["commit", "-q", "-m", "first"], worktree);
+        const first = await runGit(["rev-parse", "HEAD"], worktree);
+        await runGit(["tag", "-a", "v1", "-m", "annotated"], worktree);
+        await runGit(["branch", "release"], worktree);
+        await Bun.write(join(worktree, "fragment.yml"), "services: {web: {type: php}}\n");
+        await runGit(["commit", "-q", "-am", "second"], worktree);
+        const tip = await runGit(["rev-parse", "HEAD"], worktree);
+        const bare = join(dir, "remote.git");
+        await runGit(["clone", "-q", "--bare", worktree, bare], dir);
+        const refs = {
+          "annotated-tag": "v1",
+          branch: "release",
+          "full-sha": first,
+          default: undefined,
+          unknown: "absent",
+          "abbreviated-sha": first.slice(0, 8),
+        };
+        const ref = refs[selector];
+        const dest = join(dir, "acquired");
+        // When
+        const acquisition = defaultGitRecipeCloner.clone({
+          url: `file://${bare}`,
+          dest,
+          stagingDir: dest,
+          ...(ref === undefined ? {} : { ref }),
+        });
+        // Then
+        if (selector === "unknown" || selector === "abbreviated-sha") {
+          await expect(acquisition).rejects.toThrow("couldn't find remote ref");
+        } else {
+          expect((await acquisition).commitSha).toBe(selector === "default" ? tip : first);
+          expect(await Bun.file(join(dest, "fragment.yml")).text()).toBe(
+            selector === "default" ? "services: {web: {type: php}}\n" : "services: {}\n",
+          );
+          expect(await runGit(["rev-parse", "--is-shallow-repository"], dest)).toBe("true");
+        }
+      });
+    });
+  }
 });

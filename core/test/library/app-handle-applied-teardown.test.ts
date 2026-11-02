@@ -25,7 +25,6 @@ const appliedPlanAt = (root: string): AppPlan => ({
   provider: providerId,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -66,6 +65,16 @@ const makeHarness = (root: string) => {
     Layer.succeed(
       RuntimeProviderRegistry,
       RuntimeProviderRegistry.of({
+        resolveTeardownEvidence: () =>
+          Effect.sync(() =>
+            appliedPlan === undefined
+              ? { kind: "absent" as const }
+              : { kind: "applied" as const, plan: appliedPlan },
+          ),
+        appliedPlansFor: (root) =>
+          Effect.sync(() =>
+            appliedPlan !== undefined && appliedPlan.identity?.appRoot === root ? [appliedPlan] : [],
+          ),
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(provider.capabilities),
         select: () => Effect.succeed(provider),

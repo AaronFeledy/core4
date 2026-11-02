@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer } from "effect";
 
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Logger } from "@lando/sdk/services";
 import * as LandoLogger from "../../src/logging/service";
@@ -276,7 +276,7 @@ describe("LandoLogger.layer logLevel and stderr", () => {
     const redaction = Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
+        ...makeRedactionService(),
         payloadValues: () => Effect.succeed(() => ["super-secret-value"]),
         forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["super-secret-value"] })),
       }),

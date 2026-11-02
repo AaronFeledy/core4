@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, open, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ProcessRunner } from "@lando/sdk/services";
@@ -31,6 +31,38 @@ test("exports only public material and preserves binary bytes with readable perm
     expect((await stat(destDir)).mode & 0o777).toBe(0o711);
     for (const file of ["pubring.gpg", "otrust.txt"])
       expect((await stat(join(destDir, file))).mode & 0o777).toBe(0o644);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("refreshes an existing keyring atomically on each export", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "gpg-keyring-refresh-"));
+  const destDir = join(root, "keyring");
+  const { exportPublicKeyring } = await import("../../../src/subsystems/gpg-agent/keyring.ts");
+  let bytes = new Uint8Array([1, 2, 3]);
+  const runner: Pick<ProcessRunner["Service"], "streamWithExit"> = {
+    streamWithExit: () => Stream.make({ kind: "stdout" as const, chunk: bytes }, { exitCode: 0 }),
+  };
+  try {
+    await Effect.runPromise(exportPublicKeyring({ runner, destDir }));
+    const old = await open(join(destDir, "pubring.gpg"), "r");
+    try {
+      bytes = new Uint8Array([4, 5]);
+      // When
+      await Effect.runPromise(exportPublicKeyring({ runner, destDir }));
+      // Then: an open reader sees the old inode, while new readers see the refresh.
+      expect(new Uint8Array(await old.readFile())).toEqual(new Uint8Array([1, 2, 3]));
+      for (const file of ["pubring.gpg", "otrust.txt"]) {
+        expect(new Uint8Array(await readFile(join(destDir, file)))).toEqual(bytes);
+        expect((await stat(join(destDir, file))).mode & 0o777).toBe(0o644);
+      }
+      expect((await stat(destDir)).mode & 0o777).toBe(0o711);
+      expect((await readdir(destDir)).sort()).toEqual(["otrust.txt", "pubring.gpg"]);
+    } finally {
+      await old.close();
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

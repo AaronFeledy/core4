@@ -1,6 +1,15 @@
 import { expect, test } from "bun:test";
 import { configWriteOptionsFromInput } from "../../../src/cli/command-specs/config-write-input";
 
+test("leaves type omitted so the schema can select an interpretation", () => {
+  // Given
+  const input = { args: { key: "router.httpPort", value: "8080" }, flags: {} };
+  // When
+  const result = configWriteOptionsFromInput(input, { formats: ["json", "table"] });
+  // Then
+  expect(result).toEqual({ key: "router.httpPort", value: "8080" });
+});
+
 test("retains write inputs when strings and a supported type are provided", () => {
   const input = {
     args: { subcommand: "unknown", key: "", value: "" },

@@ -19,24 +19,28 @@ import {
 } from "effect";
 import { TestClock } from "effect/testing";
 
-import { providerImages } from "@lando/data-mover/provider-images";
-import * as BunDataMover from "@lando/data-mover/service";
+import { libpodPullDialect } from "@lando/container-runtime/dialect";
+import type { EngineHttpApi, EngineHttpRequest } from "@lando/container-runtime/engine-api";
+import { pullImage } from "@lando/container-runtime/image-pull";
+import { providerImages } from "@lando/container-runtime/provider-images";
 import { __testOnlyEncodeTarOctal, __testOnlyUnarchivePayloadWithCap } from "@lando/data-mover/service";
 import { makeTestDataMover } from "@lando/data-mover/testing";
 import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { makeLandoPaths } from "@lando/paths";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   ArchiveFormatError,
   DataChecksumMismatchError,
   DataEndpointUnsupportedError,
   DataSourceOutsideRootError,
   DataTargetExistsError,
+  DataTransferError,
   ProviderUnavailableError,
   SnapshotAmbiguousError,
   SnapshotNotFoundError,
   SnapshotOwnershipError,
   StateStoreError,
+  VolumeOperationError,
 } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -46,8 +50,12 @@ import {
   ProviderId,
   ServiceName,
   type VolumeIdentity,
+  appIdentityKey,
+  encodeUriComponent,
+  snapshotHandle,
 } from "@lando/sdk/schema";
 import {
+  type ArtifactPullSpec,
   DataMover,
   type EventFor,
   EventService,
@@ -63,6 +71,9 @@ import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import * as StateStoreLayer from "@lando/state-store/service";
 import { volumeInitialization } from "@lando/state-store/volume-initialization";
 import { decodeArchiveStream, encodeArchiveStream } from "../src/archive-stream.ts";
+import { makeDataMoverService } from "../src/service.ts";
+import * as BunDataMover from "./support.ts";
+import { fixtureOwnerKey, fixtureVolume } from "./support.ts";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 
 const app = AppId.make("data-app");
@@ -174,6 +185,8 @@ const providerLayer = (
       RuntimeProvider,
       RuntimeProvider.of({
         ...TestRuntimeProvider,
+        listVolumes: (filter) =>
+          Effect.succeed([fixtureVolume({ app: filter.app ?? app, store: filter.store ?? "data" })]),
         pullArtifact: verifyingPullArtifact,
         ...overrides,
         capabilities: overrides.capabilities ?? dataPlaneCapabilities(),
@@ -201,6 +214,7 @@ const captureEvents = () => {
           if (found === undefined) throw new Error(`missing event ${name}`);
           return found;
         }),
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
         Effect.sync(() =>
@@ -214,16 +228,12 @@ const captureEvents = () => {
   return { layer: serviceLayer, events: () => [...captured] };
 };
 
-const redactionLayer = Layer.succeed(
+const redactionLayer = Layer.effect(
   RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => ["secret-token"]),
-    forProfile: () =>
-      Effect.succeed({
-        redactString: (input: string) => input.replaceAll("secret-token", "[redacted]"),
-        redactValue: (input: unknown) => input,
-      }),
+  Effect.gen(function* () {
+    const service = makeRedactionService();
+    yield* service.registerValues(["secret-token"]);
+    return service;
   }),
 );
 
@@ -495,6 +505,8 @@ describe("BunDataMover.layer", () => {
                     providerId: "test",
                     operation: "listVolumes",
                     message: "volume listing unavailable",
+                    remediation:
+                      "Install or start the `test` provider and confirm it can perform `listVolumes`.",
                   }),
                 ),
             }),
@@ -654,18 +666,18 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              exec: (_target, command) =>
-                Effect.promise(async () => {
-                  observedEnv = command.env;
-                  observedCommand = command.command;
-                  observedStdinMode = command.stdin;
-                  for await (const chunk of command.stdinStream ?? []) observedStdin += text(chunk);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+              exec: () => Effect.die("buffered exec must not be used"),
               execStream: (_target, command) => {
                 observedEnv = command.env;
                 observedCommand = command.command;
-                return Stream.fromIterable(execStreamChunks);
+                if (command.stdinStream === undefined) return Stream.fromIterable(execStreamChunks);
+                return Stream.fromEffect(
+                  Effect.promise(async () => {
+                    observedStdinMode = command.stdin;
+                    for await (const chunk of command.stdinStream ?? []) observedStdin += text(chunk);
+                    return { exitCode: 0 };
+                  }),
+                );
               },
             }),
           ),
@@ -682,20 +694,24 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("transfers serviceCmd source into a serviceCmd target", async () => {
+  test("transfers binary serviceCmd payload bytes unchanged into a serviceCmd target", async () => {
     await withTempDir(async (_dir) => {
       // Given: a dump command streams bytes and a restore command consumes stdin.
       let dumpCommand: ReadonlyArray<string> | undefined;
       let restoreCommand: ReadonlyArray<string> | undefined;
-      let restoreStdin = "";
-      const dumpChunks: ExecChunk[] = [{ kind: "stdout", chunk: bytes("pipe-payload") }, { exitCode: 0 }];
+      const restoreChunks: Uint8Array[] = [];
+      const payload = new Uint8Array([0, 255, 195, 169, 0, ...bytes("secret-token password=payload\né界")]);
+      const dumpChunks: ExecChunk[] = [
+        ...Array.from(payload, (byte): ExecChunk => ({ kind: "stdout", chunk: new Uint8Array([byte]) })),
+        { exitCode: 0 },
+      ];
 
       // When: DataMover pipes serviceCmd -> serviceCmd.
-      await Effect.runPromise(
+      const transfer = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
-            yield* dataMover.transfer({
+            return yield* dataMover.transfer({
               from: { _tag: "serviceCmd", app, service, command: ["export-db"] },
               to: { _tag: "serviceCmd", app, service, command: ["import-db"] },
               overwrite: true,
@@ -705,15 +721,19 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              exec: (_target, command) =>
-                Effect.promise(async () => {
-                  restoreCommand = command.command;
-                  for await (const chunk of command.stdinStream ?? []) restoreStdin += text(chunk);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+              exec: () => Effect.die("buffered exec must not be used"),
               execStream: (_target, command) => {
-                dumpCommand = command.command;
-                return Stream.fromIterable(dumpChunks);
+                if (command.stdinStream === undefined) {
+                  dumpCommand = command.command;
+                  return Stream.fromIterable(dumpChunks);
+                }
+                return Stream.fromEffect(
+                  Effect.promise(async () => {
+                    restoreCommand = command.command;
+                    for await (const chunk of command.stdinStream ?? []) restoreChunks.push(chunk);
+                    return { exitCode: 0 };
+                  }),
+                );
               },
             }),
           ),
@@ -724,7 +744,9 @@ describe("BunDataMover.layer", () => {
       // Then: dump streamed and restore received the same payload off argv.
       expect(dumpCommand).toEqual(["export-db"]);
       expect(restoreCommand).toEqual(["import-db"]);
-      expect(restoreStdin).toBe("pipe-payload");
+      expect(new Uint8Array(Buffer.concat(restoreChunks))).toEqual(payload);
+      expect(transfer.digest).toBe(sha256(payload));
+      expect(transfer.sizeBytes).toBe(payload.byteLength);
     });
   });
 
@@ -750,11 +772,13 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              exec: (_target, command) =>
-                Effect.promise(async () => {
-                  for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+              execStream: (_target, command) =>
+                Stream.fromEffect(
+                  Effect.promise(async () => {
+                    for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
+                    return { exitCode: 0 };
+                  }),
+                ),
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -791,11 +815,13 @@ describe("BunDataMover.layer", () => {
           Effect.provide(BunDataMover.layer),
           Effect.provide(
             providerLayer({
-              run: (command) =>
-                Effect.promise(async () => {
-                  for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
-                  return { exitCode: 0, stdout: "", stderr: "" };
-                }),
+              runStream: (command) =>
+                Stream.fromEffect(
+                  Effect.promise(async () => {
+                    for await (const chunk of command.stdinStream ?? []) chunkSizes.push(chunk.byteLength);
+                    return { exitCode: 0 };
+                  }),
+                ),
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -837,7 +863,10 @@ describe("BunDataMover.layer", () => {
               RuntimeProvider.of({
                 ...TestRuntimeProvider,
                 pullArtifact: verifyingPullArtifact,
-                run: () => Deferred.succeed(helperStarted, undefined).pipe(Effect.andThen(Effect.never)),
+                runStream: () =>
+                  Stream.fromEffect(
+                    Deferred.succeed(helperStarted, undefined).pipe(Effect.andThen(Effect.never)),
+                  ),
               }),
             ),
             captureEvents().layer,
@@ -908,11 +937,13 @@ describe("BunDataMover.layer", () => {
             Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
-                run: (spec) =>
-                  Effect.sync(() => {
-                    runCalls += 1;
-                    return TestRuntimeProvider.run(spec);
-                  }).pipe(Effect.flatten),
+                runStream: (spec) =>
+                  Stream.unwrap(
+                    Effect.sync(() => {
+                      runCalls += 1;
+                      return TestRuntimeProvider.runStream(spec);
+                    }),
+                  ),
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -958,11 +989,13 @@ describe("BunDataMover.layer", () => {
             Effect.provide(BunDataMover.layer),
             Effect.provide(
               providerLayer({
-                exec: () =>
-                  Effect.sync(() => {
-                    execCalls += 1;
-                    return { exitCode: 0, stdout: "", stderr: "" };
-                  }),
+                execStream: () =>
+                  Stream.fromEffect(
+                    Effect.sync(() => {
+                      execCalls += 1;
+                      return { exitCode: 0 };
+                    }),
+                  ),
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -1260,7 +1293,6 @@ describe("BunDataMover.layer", () => {
               {
                 volumeSnapshot: "native",
                 metadata: {
-                  sourceRoot: absolute("/app"),
                   volumeInstanceId: "generation",
                   service,
                   family: "mysql",
@@ -1357,6 +1389,8 @@ describe("BunDataMover.layer", () => {
                   providerId: "test",
                   operation: "snapshotVolume",
                   message: "snapshot failed",
+                  remediation:
+                    "Install or start the `test` provider and confirm it can perform `snapshotVolume`.",
                 }),
               );
             },
@@ -1404,7 +1438,7 @@ describe("BunDataMover.layer", () => {
                 to: { _tag: "volume", app, store: "data" },
                 overwrite: true,
               });
-              yield* dataMover.restore(handle.id, { app, store: "data" });
+              yield* dataMover.restore(handle, { app, store: "data" });
               yield* dataMover.transfer({
                 from: { _tag: "volume", app, store: "data" },
                 to: { _tag: "hostPath", path: absolute(restored) },
@@ -1422,20 +1456,28 @@ describe("BunDataMover.layer", () => {
         expect(result.handle.id).not.toBe("snap-one");
         expect(result.listed[0]?.label).toBe("snap-one");
         expect(result.listed).toHaveLength(1);
-        const archivePath = join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.tar`);
+        const archivePath = join(
+          dataRoot,
+          "snapshots",
+          result.handle.ownerKey,
+          "data",
+          `${result.handle.id}.tar`,
+        );
         const archiveBytes = await readFile(archivePath);
         expect(result.listed[0]?.digest).toBe(sha256(archiveBytes));
         expect(result.listed[0]?.sizeBytes).toBe(archiveBytes.byteLength);
         expect(await readFile(restored, "utf8")).toBe("volume-payload");
-        expect(await Bun.file(join(dataRoot, "snapshots", String(app), "index.bin")).exists()).toBe(true);
+        expect(
+          await Bun.file(join(dataRoot, "snapshots", result.handle.ownerKey, "index.bin")).exists(),
+        ).toBe(false);
         expect(
           await Bun.file(
-            join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.tar`),
+            join(dataRoot, "snapshots", result.handle.ownerKey, "data", `${result.handle.id}.tar`),
           ).exists(),
         ).toBe(true);
         expect(
           await Bun.file(
-            join(dataRoot, "snapshots", String(app), "data", `${result.handle.id}.json`),
+            join(dataRoot, "snapshots", result.handle.ownerKey, "data", `${result.handle.id}.json`),
           ).exists(),
         ).toBe(true);
       } finally {
@@ -1471,7 +1513,13 @@ describe("BunDataMover.layer", () => {
                 overwrite: true,
               });
               yield* Effect.promise(async () => {
-                const archivePath = join(dataRoot, "snapshots", String(app), "tamper", `${handle.id}.tar`);
+                const archivePath = join(
+                  dataRoot,
+                  "snapshots",
+                  handle.ownerKey,
+                  "tamper",
+                  `${handle.id}.tar`,
+                );
                 const changed = new Uint8Array(await Bun.file(archivePath).arrayBuffer());
                 const lastIndex = changed.byteLength - 1;
                 changed[lastIndex] = (changed[lastIndex] ?? 0) ^ 0xff;
@@ -1557,7 +1605,7 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("restores copy-mode snapshots from the returned handle and prunes through the index", async () => {
+  test("restores copy-mode snapshots from the returned handle and prunes through sidecars", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const restored = join(dir, "restored-from-handle.txt");
@@ -1697,7 +1745,6 @@ describe("BunDataMover.layer", () => {
                 {
                   format: "tar",
                   metadata: {
-                    sourceRoot: AbsolutePath.make(dir),
                     service: ServiceName.make("database"),
                     volumeInstanceId: "00000000-0000-4000-8000-000000000001",
                     family: "mysql",
@@ -1716,7 +1763,6 @@ describe("BunDataMover.layer", () => {
                     {
                       format: "tar",
                       metadata: {
-                        sourceRoot: AbsolutePath.make(dir),
                         service: ServiceName.make("database"),
                         volumeInstanceId: "00000000-0000-4000-8000-000000000001",
                         family: "mysql",
@@ -1733,7 +1779,6 @@ describe("BunDataMover.layer", () => {
                 {
                   format: "tar",
                   metadata: {
-                    sourceRoot: AbsolutePath.make(dir),
                     service: ServiceName.make("database"),
                     volumeInstanceId: "00000000-0000-4000-8000-000000000001",
                     family: "mysql",
@@ -1821,7 +1866,6 @@ describe("BunDataMover.layer", () => {
                 {
                   volumeSnapshot: "native",
                   metadata: {
-                    sourceRoot: AbsolutePath.make(dir),
                     service,
                     volumeInstanceId: generation,
                     family: "mysql",
@@ -1897,7 +1941,6 @@ describe("BunDataMover.layer", () => {
                 {
                   volumeSnapshot: "native",
                   metadata: {
-                    sourceRoot: AbsolutePath.make(dir),
                     service,
                     volumeInstanceId: generation,
                     family: "mysql",
@@ -1970,14 +2013,7 @@ describe("BunDataMover.layer", () => {
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
-                listVolumes: ({ store }) =>
-                  Effect.succeed([
-                    {
-                      ref: { app, store: store ?? "data" },
-                      instanceId: "00000000-0000-4000-8000-000000000001",
-                      provenance: "known",
-                    },
-                  ]),
+                listVolumes: ({ store }) => Effect.succeed([fixtureVolume({ app, store: store ?? "data" })]),
               }),
             ),
             Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
@@ -1995,10 +2031,12 @@ describe("BunDataMover.layer", () => {
           format: "native",
         });
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", `${info?.id}.tar`)).exists(),
+          await Bun.file(join(dataRoot, "snapshots", info.owner.ownerKey, "data", `${info.id}.tar`)).exists(),
         ).toBe(false);
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", `${info?.id}.json`)).exists(),
+          await Bun.file(
+            join(dataRoot, "snapshots", info.owner.ownerKey, "data", `${info.id}.json`),
+          ).exists(),
         ).toBe(true);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -2055,7 +2093,6 @@ describe("BunDataMover.layer", () => {
                       ? {}
                       : {
                           metadata: {
-                            sourceRoot: absolute(dir),
                             service,
                             volumeInstanceId: sourceIdentity.generation,
                             family: "postgres" as const,
@@ -2148,7 +2185,6 @@ describe("BunDataMover.layer", () => {
                 {
                   volumeSnapshot: "native",
                   metadata: {
-                    sourceRoot: absolute(dir),
                     service,
                     volumeInstanceId: "instance-source",
                     family: "mysql",
@@ -2199,7 +2235,7 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("keeps distinct snapshot index rows when the same label is used on different stores", async () => {
+  test("keeps distinct snapshot sidecars when the same label is used on different stores", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -2234,7 +2270,7 @@ describe("BunDataMover.layer", () => {
         for (const info of listed) {
           expect(
             await Bun.file(
-              join(dataRoot, "snapshots", String(app), info.store.store, `${info.id}.tar`),
+              join(dataRoot, "snapshots", info.owner.ownerKey, info.store.store, `${info.id}.tar`),
             ).exists(),
           ).toBe(true);
         }
@@ -2269,7 +2305,7 @@ describe("BunDataMover.layer", () => {
               const before = yield* dataMover.listSnapshots({ app, label: "dup-id" });
               const selected = before[0];
               if (selected === undefined) return { before, after: before };
-              yield* dataMover.removeSnapshot(selected.id);
+              yield* dataMover.removeSnapshot(snapshotHandle(selected));
               const after = yield* dataMover.listSnapshots({ app, label: "dup-id" });
               return { before, after };
             }),
@@ -2313,7 +2349,7 @@ describe("BunDataMover.layer", () => {
                 handles.push(yield* dataMover.snapshot({ app, store }, { format: "tar", label: "same-id" }));
               }
               const drop = handles.find((handle) => handle.store.store === "drop");
-              if (drop !== undefined) yield* dataMover.removeSnapshot(drop.id, drop.store);
+              if (drop !== undefined) yield* dataMover.removeSnapshot(drop);
               return yield* dataMover.listSnapshots({ app, label: "same-id" });
             }),
           ).pipe(
@@ -2326,7 +2362,9 @@ describe("BunDataMover.layer", () => {
         expect(listed).toHaveLength(1);
         expect(listed[0]?.store.store).toBe("keep");
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "keep", `${listed[0]?.id}.tar`)).exists(),
+          await Bun.file(
+            join(dataRoot, "snapshots", fixtureOwnerKey, "keep", `${listed[0]?.id}.tar`),
+          ).exists(),
         ).toBe(true);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -2363,14 +2401,7 @@ describe("BunDataMover.layer", () => {
             Effect.provide(
               providerLayer({
                 capabilities: dataPlaneCapabilities({ volumeSnapshot: "native" }),
-                listVolumes: ({ store }) =>
-                  Effect.succeed([
-                    {
-                      ref: { app, store: store ?? "data" },
-                      instanceId: "00000000-0000-4000-8000-000000000001",
-                      provenance: "known",
-                    },
-                  ]),
+                listVolumes: ({ store }) => Effect.succeed([fixtureVolume({ app, store: store ?? "data" })]),
                 snapshotVolume: Effect.fn("RuntimeProvider.snapshotVolume")(function* (spec) {
                   const ref = yield* TestRuntimeProvider.snapshotVolume(spec);
                   yield* Effect.addFinalizer(() =>
@@ -2404,7 +2435,7 @@ describe("BunDataMover.layer", () => {
             Effect.gen(function* () {
               const mover = yield* DataMover;
               const handle = yield* mover.snapshot({ app, store: "data" }, { volumeSnapshot: "native" });
-              const removal = yield* mover.removeSnapshot(handle.id, handle.store).pipe(Effect.result);
+              const removal = yield* mover.removeSnapshot(handle).pipe(Effect.result);
               const indexed = yield* mover.listSnapshots({ app });
               return { handle, removal, indexed };
             }),
@@ -2418,10 +2449,9 @@ describe("BunDataMover.layer", () => {
                     Effect.gen(function* () {
                       providerSawPersistence = yield* Effect.promise(
                         async () =>
-                          (await Bun.file(join(paths.appSnapshotsDir(app), "index.bin")).exists()) &&
-                          (await Bun.file(
-                            join(paths.appSnapshotsDir(app), "data", `${snapshot.id}.json`),
-                          ).exists()),
+                          await Bun.file(
+                            join(paths.ownerSnapshotsDir(fixtureOwnerKey), "data", `${snapshot.id}.json`),
+                          ).exists(),
                       );
                       if (fails)
                         return yield* Effect.fail(
@@ -2429,6 +2459,8 @@ describe("BunDataMover.layer", () => {
                             providerId: "test",
                             operation: "removeVolumeSnapshot",
                             message: "provider offline",
+                            remediation:
+                              "Install or start the `test` provider and confirm it can perform `removeVolumeSnapshot`.",
                           }),
                         );
                     }),
@@ -2443,9 +2475,11 @@ describe("BunDataMover.layer", () => {
         expect(result.removal._tag).toBe(fails ? "Failure" : "Success");
         expect(result.indexed.map((info) => info.id)).toEqual(fails ? [result.handle.id] : []);
         expect(
-          await Bun.file(join(paths.appSnapshotsDir(app), "data", `${result.handle.id}.json`)).exists(),
+          await Bun.file(
+            join(paths.ownerSnapshotsDir(result.handle.ownerKey), "data", `${result.handle.id}.json`),
+          ).exists(),
         ).toBe(fails);
-        if (!fails) expect(await readdir(paths.appSnapshotsDir(app))).not.toContain("data");
+        if (!fails) expect(await readdir(paths.snapshotsDir)).not.toContain(result.handle.ownerKey);
       });
     },
   );
@@ -2467,11 +2501,23 @@ describe("BunDataMover.layer", () => {
           Effect.provide(support),
         ),
       );
-      const { removeVolumeSnapshot: _unsupported, ...withoutRemoval } = TestRuntimeProvider;
+      const withoutRemoval = {
+        ...TestRuntimeProvider,
+        removeVolumeSnapshot: () =>
+          Effect.fail(
+            new VolumeOperationError({
+              message: "Snapshot removal is unsupported",
+              providerId: "test",
+              operation: "removeVolumeSnapshot",
+              store: "data",
+              remediation: "Use a snapshot-capable provider.",
+            }),
+          ),
+      };
       const result = await Effect.runPromise(
         DataMover.pipe(
           Effect.flatMap((mover) =>
-            mover.removeSnapshot(handle.id, handle.store).pipe(
+            mover.removeSnapshot(handle).pipe(
               Effect.flip,
               Effect.flatMap((error) =>
                 mover.listSnapshots({ app }).pipe(Effect.map((listed) => ({ error, listed }))),
@@ -2492,9 +2538,9 @@ describe("BunDataMover.layer", () => {
       );
       expect(result.error._tag).toBe("DataTransferError");
       expect(result.listed.map((info) => info.id)).toEqual([handle.id]);
-      expect(await Bun.file(join(paths.appSnapshotsDir(app), "data", `${handle.id}.json`)).exists()).toBe(
-        true,
-      );
+      expect(
+        await Bun.file(join(paths.ownerSnapshotsDir(handle.ownerKey), "data", `${handle.id}.json`)).exists(),
+      ).toBe(true);
     });
   });
 
@@ -2505,7 +2551,7 @@ describe("BunDataMover.layer", () => {
       await writeFile(paths.snapshotsDir, "not a directory");
       const error = await Effect.runPromise(
         DataMover.pipe(
-          Effect.flatMap((mover) => mover.listSnapshots({ sourceRoot: AbsolutePath.make(dir) })),
+          Effect.flatMap((mover) => mover.listSnapshots({ ownerKey: appIdentityKey("owner", dir) })),
           Effect.flip,
         ).pipe(
           Effect.provide(BunDataMover.layer),
@@ -2534,7 +2580,7 @@ describe("BunDataMover.layer", () => {
                 { app, store: "data" },
                 { volumeSnapshot: "native", label: "native-remove" },
               );
-              yield* dataMover.removeSnapshot(handle.id, handle.store);
+              yield* dataMover.removeSnapshot(handle);
               return yield* dataMover.listSnapshots({ app, store: "data" });
             }),
           ).pipe(
@@ -2568,7 +2614,7 @@ describe("BunDataMover.layer", () => {
     });
   });
 
-  test("rolls back native provider snapshots when snapshot index persistence fails", async () => {
+  test("rolls back the native provider snapshot when the sidecar write fails before writing", async () => {
     await withTempDir(async (dir) => {
       const dataRoot = join(dir, "data");
       const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
@@ -2591,10 +2637,10 @@ describe("BunDataMover.layer", () => {
         open: (spec) =>
           testStore.open(spec).pipe(
             Effect.map((bucket) =>
-              spec.key === "index.bin"
+              spec.key.endsWith(".json")
                 ? {
                     ...bucket,
-                    update: () =>
+                    set: () =>
                       Effect.fail(
                         new StateStoreError({
                           reason: "io",
@@ -2646,9 +2692,10 @@ describe("BunDataMover.layer", () => {
         );
 
         expect(exit._tag).toBe("Failure");
+        // Nothing was committed, so the provider image is not left without a catalog entry.
         expect(removeNativeCalls).toBe(1);
         expect(
-          await Bun.file(join(dataRoot, "snapshots", String(app), "data", "leak-test.json")).exists(),
+          await Bun.file(join(dataRoot, "snapshots", fixtureOwnerKey, "data", "leak-test.json")).exists(),
         ).toBe(false);
       } finally {
         if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
@@ -2667,7 +2714,10 @@ describe("BunDataMover.layer", () => {
             Effect.scoped(
               Effect.gen(function* () {
                 const dataMover = yield* DataMover;
-                yield* dataMover.restore("missing", { app, store: "data" });
+                yield* dataMover.restore(
+                  { id: "missing", store: { app, store: "data" }, ownerKey: appIdentityKey("owner", dir) },
+                  { app, store: "data" },
+                );
               }),
             ).pipe(
               Effect.provide(BunDataMover.layer),
@@ -2715,8 +2765,9 @@ describe("BunDataMover.layer", () => {
               );
               yield* dataMover.snapshot({ app, store: "data" }, { format: "tar", label: byId.id });
               const resolved = yield* dataMover.resolveSnapshot(byId.id, {
-                app: AppId.make("other-app"),
-                store: "other-store",
+                ownerKey: byId.ownerKey,
+                app,
+                store: "data",
               });
               return { byId, resolved };
             }),
@@ -2933,6 +2984,7 @@ describe("DataMover helpers", () => {
         new ArchiveFormatError({
           message: "Archive fixture failed.",
           format: "tar",
+          remediation: "Recreate fixture.tar as a valid tar archive.",
           cause,
         }),
     );
@@ -3250,43 +3302,76 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       overwrite: true,
     });
 
-  test("pulls and runs the digest-qualified pinned ref before the helper container runs", async () => {
-    await withTempDir(async (dir) => {
-      const source = join(dir, "seed.txt");
-      await writeFile(source, "pinned-helper-payload");
-      let pulledRef: string | undefined;
-      let ranImage: string | undefined;
-
-      await Effect.runPromise(
-        Effect.scoped(
-          Effect.gen(function* () {
-            const dataMover = yield* DataMover;
-            yield* importToVolume(dataMover, source);
-          }),
-        ).pipe(
-          Effect.provide(BunDataMover.layer),
-          Effect.provide(
-            providerLayer({
-              capabilities: volumeCaps,
-              pullArtifact: (spec) =>
-                Effect.sync(() => {
-                  pulledRef = spec.ref;
-                  return { providerId: ProviderId.make("test"), ref: spec.ref, digest: pinned.digest };
-                }),
-              run: (spec) => {
-                ranImage = spec.image;
-                return TestRuntimeProvider.run(spec);
-              },
+  test.each([false, true])(
+    "transfers to a volume using the observed libpod helper digest (cached: %s)",
+    async (cached) => {
+      await withTempDir(async (dir) => {
+        // Given: the real pull path observes an engine-owned digest, never an echoed pin.
+        const source = join(dir, "seed.txt");
+        await writeFile(source, "pinned-helper-payload");
+        const pinnedRef = `${pinned.image}@${pinned.digest}`;
+        const inspectRequest: EngineHttpRequest = {
+          method: "GET",
+          path: `/libpod/images/${encodeURIComponent(pinnedRef)}/json`,
+        };
+        const pulls: ArtifactPullSpec[] = [];
+        const requests: EngineHttpRequest[] = [];
+        let present = cached;
+        let ranImage: string | undefined;
+        const api: EngineHttpApi = {
+          request: (request) =>
+            Effect.sync(() => {
+              requests.push(request);
+              if (request.method === "POST") {
+                present = true;
+                return { status: 200, body: '{"status":"Pull complete"}\n' };
+              }
+              return {
+                status: present ? 200 : 404,
+                body: JSON.stringify({ RepoDigests: ["other/helper@sha256:other", pinnedRef] }),
+              };
             }),
-          ),
-          Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
-        ),
-      );
+        };
 
-      expect(pulledRef).toBe(`${pinned.image}@${pinned.digest}`);
-      expect(ranImage).toBe(`${pinned.image}@${pinned.digest}`);
-    });
-  });
+        // When
+        await Effect.runPromise(
+          Effect.scoped(
+            Effect.gen(function* () {
+              const dataMover = yield* DataMover;
+              yield* importToVolume(dataMover, source);
+            }),
+          ).pipe(
+            Effect.provide(BunDataMover.layer),
+            Effect.provide(
+              providerLayer({
+                capabilities: volumeCaps,
+                pullArtifact: (spec) => {
+                  pulls.push(spec);
+                  return pullImage(api, spec.ref, {
+                    ctx: { providerId: "test", remediation: "Check the test engine.", env: {} },
+                    dialect: libpodPullDialect,
+                    ...spec,
+                  }).pipe(Effect.map((image) => ({ ...image, providerId: ProviderId.make("test") })));
+                },
+                runStream: (spec) => {
+                  ranImage = spec.image;
+                  return TestRuntimeProvider.runStream(spec);
+                },
+              }),
+            ),
+            Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          ),
+        );
+
+        // Then
+        expect(pulls).toEqual([{ ref: pinnedRef, policy: "missing" }]);
+        expect(requests).toEqual(
+          cached ? [inspectRequest] : [inspectRequest, libpodPullDialect.request(pinnedRef), inspectRequest],
+        );
+        expect(ranImage).toBe(pinnedRef);
+      });
+    },
+  );
 
   test("runs the digest-qualified pinned ref without pullArtifact when artifact pull is unavailable", async () => {
     await withTempDir(async (dir) => {
@@ -3313,11 +3398,13 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                     providerId: "test",
                     operation: "pullArtifact",
                     message: "pullArtifact is unavailable",
+                    remediation:
+                      "Install or start the `test` provider and confirm it can perform `pullArtifact`.",
                   });
                 }).pipe(Effect.flatMap((error) => Effect.fail(error))),
-              run: (spec) => {
+              runStream: (spec) => {
                 ranImage = spec.image;
-                return TestRuntimeProvider.run(spec);
+                return TestRuntimeProvider.runStream(spec);
               },
             }),
           ),
@@ -3336,7 +3423,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       await writeFile(source, "pinned-helper-payload");
       let runCalls = 0;
 
-      const exit = await Effect.runPromiseExit(
+      const failure = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -3353,17 +3440,18 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
                   ref: spec.ref,
                   digest: `sha256:${"f".repeat(64)}`,
                 }),
-              run: (spec) => {
+              runStream: (spec) => {
                 runCalls += 1;
-                return TestRuntimeProvider.run(spec);
+                return TestRuntimeProvider.runStream(spec);
               },
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.flip,
         ),
       );
 
-      expect(exit._tag).toBe("Failure");
+      expect(failure).toMatchObject({ _tag: "DataTransferError", operation: "resolve-helper-image" });
       expect(runCalls).toBe(0);
     });
   });
@@ -3374,7 +3462,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
       await writeFile(source, "pinned-helper-payload");
       let runCalls = 0;
 
-      const exit = await Effect.runPromiseExit(
+      const failure = await Effect.runPromise(
         Effect.scoped(
           Effect.gen(function* () {
             const dataMover = yield* DataMover;
@@ -3386,17 +3474,18 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
             providerLayer({
               capabilities: volumeCaps,
               pullArtifact: (spec) => Effect.succeed({ providerId: ProviderId.make("test"), ref: spec.ref }),
-              run: (spec) => {
+              runStream: (spec) => {
                 runCalls += 1;
-                return TestRuntimeProvider.run(spec);
+                return TestRuntimeProvider.runStream(spec);
               },
             }),
           ),
           Effect.provide(Layer.merge(captureEvents().layer, redactionLayer)),
+          Effect.flip,
         ),
       );
 
-      expect(exit._tag).toBe("Failure");
+      expect(failure).toMatchObject({ _tag: "DataTransferError", operation: "resolve-helper-image" });
       expect(runCalls).toBe(0);
     });
   });
@@ -3412,7 +3501,7 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
         capabilities: volumeCaps,
         pullArtifact: (spec) =>
           Effect.sync(() => {
-            if (!warmCache.has(spec.ref)) {
+            if (spec.policy !== "missing" || !warmCache.has(spec.ref)) {
               networkPulls += 1;
               warmCache.add(spec.ref);
             }
@@ -3436,5 +3525,70 @@ describe("BunDataMover.layer pinned helper image resolution", () => {
 
       expect(networkPulls).toBe(1);
     });
+  });
+});
+
+test.each([
+  ["source", "PGPASSWORD"],
+  ["source", "CUSTOM_VALUE"],
+  ["target", "PGPASSWORD"],
+  ["target", "CUSTOM_VALUE"],
+  ["source", "CUSTOM_URL"],
+  ["target", "CUSTOM_URL"],
+  ["source", "MONGO_URI"],
+  ["target", "MONGO_URI"],
+] as const)("direct non-SQL transfer masks supplied %s command env value for %s", async (side, key) => {
+  await withTempDir(async (dir) => {
+    const url = key === "CUSTOM_URL" || key === "MONGO_URI";
+    const secret = url ? "p:/?#'!\n☃" : "SYNTHETIC_GENERIC_COMMAND_CREDENTIAL";
+    const encoded = encodeUriComponent(secret);
+    const envValue = url ? `arbitrary://user:${encoded}@host/database` : secret;
+    const payload = new Uint8Array([0, 255, 195, 169, 13, 10]);
+    const received: number[] = [];
+    let destinationCalls = 0;
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stateStore = yield* StateStore;
+        const provider = RuntimeProvider.of({
+          ...TestRuntimeProvider,
+          execStream: (_target, command) => {
+            const isSource = command.command[0] === "dump";
+            if (!isSource) destinationCalls += 1;
+            return Stream.unwrap(
+              Effect.promise(async (): Promise<Stream.Stream<ExecChunk>> => {
+                for await (const chunk of command.stdinStream ?? []) received.push(...chunk);
+                if ((side === "source") === isSource)
+                  return Stream.make(
+                    { kind: "stdout" as const, chunk: isSource ? payload : new Uint8Array() },
+                    { kind: "stderr" as const, chunk: bytes(`command refused ${secret} ${encoded}\n`) },
+                    { exitCode: 7 },
+                  );
+                return Stream.make({ kind: "stdout" as const, chunk: payload }, { exitCode: 0 });
+              }),
+            );
+          },
+        });
+        const mover = makeDataMoverService(
+          Effect.succeed(provider),
+          { redactText: (text) => text, publish: () => Effect.void },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+        );
+        return yield* mover
+          .transfer({
+            from: { _tag: "serviceCmd", app, service, command: ["dump"], env: { [key]: envValue } },
+            to: { _tag: "serviceCmd", app, service, command: ["load"], env: { [key]: envValue } },
+            overwrite: true,
+          })
+          .pipe(Effect.result);
+      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected command failure");
+    expect(result.failure._tag).toBe("DataTransferError");
+    expect(JSON.stringify(result.failure).includes(secret)).toBe(false);
+    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
+    expect(result.failure.stderrTail).toBe("command refused [redacted] [redacted]\n");
+    expect(result.failure.exitCode).toBe(7);
+    expect(destinationCalls).toBe(side === "source" ? 0 : 1);
+    expect(received).toEqual(side === "source" ? [] : [...payload]);
   });
 });

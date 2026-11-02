@@ -10,6 +10,10 @@ import { fileURLToPath } from "node:url";
 
 import { Schema } from "effect";
 
+import {
+  type SetupProviderSwitchResult,
+  SetupProviderSwitchResultSchema,
+} from "@lando/engine/operations/setup-provider-switch";
 import { ProviderId } from "@lando/sdk/schema";
 
 import type { SetupNetworkTrustProbe } from "../../commands/setup-network-trust";
@@ -21,9 +25,11 @@ export interface SetupResult {
   readonly installDir: string;
   readonly fileSyncStatus: FileSyncStatus;
   readonly networkCaInjectionConfigured: boolean;
+  readonly providerSwitch?: SetupProviderSwitchResult;
 }
 
 export const SetupResultSchema = Schema.Struct({
+  providerSwitch: Schema.optionalKey(SetupProviderSwitchResultSchema),
   providerId: Schema.String,
   installDir: Schema.String,
   fileSyncStatus: Schema.Literals(["deferred", "installed", "satisfied", "unavailable"]),
@@ -62,17 +68,11 @@ export const inputStringFlag = (input: unknown, name: string): string | undefine
 
 export const inputBooleanFlag = (input: unknown, name: string): boolean => inputFlags(input)?.[name] === true;
 
-const inputHostProxyMode = (input: unknown): "auto" | "none" =>
-  inputFlags(input)?.["host-proxy"] === "none" ? "none" : "auto";
-
 export const inputNetworkProbe = (input: unknown): SetupNetworkTrustProbe | undefined => {
   if (typeof input !== "object" || input === null || !("_networkProbe" in input)) return undefined;
   const probe = input._networkProbe;
   return typeof probe === "function" ? (probe as SetupNetworkTrustProbe) : undefined;
 };
-
-export const shouldDisableHostProxyForSetup = (input: unknown): boolean =>
-  inputHostProxyMode(input) === "none";
 
 export const contributedSetupInputFlags = (input: unknown): Record<string, unknown> | undefined =>
   inputFlags(input);

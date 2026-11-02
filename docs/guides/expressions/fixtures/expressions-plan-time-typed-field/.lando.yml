@@ -1,0 +1,6 @@
+# lando-lint: expect-invalid planner scope at a boolean authoring site
+name: plan-time-typed-field
+services:
+  app:
+    type: "node:22"
+    primary: "{{ app.name }}"

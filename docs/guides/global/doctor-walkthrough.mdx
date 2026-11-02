@@ -8,33 +8,47 @@ tags: [beta, docs, global, doctor, diagnostics]
 
 # Read the global-app doctor check
 
+Run `lando doctor` on the host to check whether the global app is installed and
+read any recorded router watcher failure. You do not need a project app running.
+
 ```sh
 lando doctor
 ```
 
 Doctor includes a `global-app` section without bootstrapping a project app. If the provider section degrades, this disk-backed check can still run.
 
-The default provider is `lando` (managed Podman). After a successful `lando setup --provider=docker`, later `lando doctor` stays on Docker because that explicit flag writes `defaultProviderId`. `LANDO_PROVIDER` does not persist.
+This check reads the local generated files under the global root; it doesn't
+inspect the provider's containers. Use `lando global:status --format=json` for
+runtime observations. See [Where the global app runs](../setup/provider-selection.mdx#where-the-global-app-runs)
+for provider placement.
 
 ## When it is not installed
 
 The check warns and sets `installed` to `false`. Starting an app that needs Traefik, Mailpit, or the SSH sidecar provisions the global app. To materialize it now:
 
 ```sh
-lando global:install
+lando global:reconcile
+lando global:status --format=json
 ```
 
 ## When it is installed
 
 The check passes and reports the generated dist Landofile (`<userDataRoot>/global/.lando.dist.yml`), the overlay (`<userDataRoot>/global/.lando.yml`), the dist file mtime as `lastInstallTimestamp`, materialized service ids, and plugin names that declare `globalServices:`.
 
-If the dist file exists but cannot be read, the check fails and tells you to fix permissions or rerun `lando global:install`.
+If the dist file exists but cannot be read, the check fails and tells you to fix permissions or rerun `lando global:reconcile`. Reconcile preserves saved policy and starts no containers. Use `lando global:status --format=json` to inspect desired policy, observed services, and pending cleanup separately; generated configuration alone isn't proof that a disabled service has stopped.
 
 ## Read the router file-watcher check
 
-The router reads its route configuration from a directory Lando mounts into the Traefik container and watches with inotify. If that watch never starts, Traefik keeps running but loads no routes, so every app URL fails without saying why. Lando reads the router's own log once after starting it and records any watcher failure it finds. The `router-file-watcher` check reports that record even when doctor selected a different app provider, because Traefik always runs on the Lando-managed provider.
+The router reads its route configuration from a directory Lando mounts into the Traefik container and watches with inotify. If that watch never starts, Traefik keeps running but loads no routes, so every app URL fails without saying why. Lando reads the router's own log once after starting it and records any watcher failure it finds. The `router-file-watcher` check reports that record even when doctor selected a different app provider, because Traefik runs on the host provider, not on whatever the app pinned.
 
 It is a record, not a live probe. The check shows what the last router startup observed, and it stays reported until the next `lando global:restart` or `lando global:rebuild` observes a clean start and refreshes it. If the check still fails after you fixed the host, restart the global router and run doctor again.
+
+Restart and rebuild revalidate a router they actually applied. If the router is
+disabled, missing, or cannot be observed running, Lando doesn't probe it or create
+ready evidence. Its previous watcher-failure record remains historical evidence;
+disabling a service doesn't prove that failure was repaired. Check
+`lando global:list --format=json` for policy and
+`lando global:status --format=json` for observed state before deciding to restart it.
 
 The watcher runs on the provider runtime host, which is not always the operating system you typed the command on:
 
@@ -43,8 +57,9 @@ The watcher runs on the provider runtime host, which is not always the operating
 | Linux | the local host |
 | WSL | the WSL distribution |
 | macOS or Windows with the default `lando` provider | the Lando-managed Podman machine |
+| Docker or system Podman as the host provider | that runtime's host or VM |
 
-The check sorts failures into `inotify-limit`, `permission`, `disk`, and `other`. One of those is misleading, courtesy of the kernel: an inotify watch that fails with "no space left on device" usually means the watch budget ran out, not that the disk is full. Doctor reports that as `inotify-limit`. It is a kernel resource, though, and the same error can come from a related limit, so treat it as "watches or a kernel resource", not a verdict on one number. To read the current watch limit on a Linux runtime host:
+The check sorts failures into `inotify-limit`, `permission`, `disk`, and `other`. The error wording can be misleading: an inotify watch that fails with "no space left on device" usually means the watch budget ran out, not that the disk is full. Doctor reports that as `inotify-limit`. It is a kernel resource, though, and the same error can come from a related limit, so treat it as "watches or a kernel resource", not a verdict on one number. To read the current watch limit on a Linux runtime host:
 
 ```sh
 cat /proc/sys/fs/inotify/max_user_watches

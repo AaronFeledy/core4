@@ -1,0 +1,5 @@
+{"op":"stat","path":"protocol.log"}
+{"op":"open","path":"protocol.log"}
+{"op":"fstat"}
+{"op":"read","offset":"7","maxBytes":100}
+{"op":"close"}

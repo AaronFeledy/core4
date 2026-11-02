@@ -5,8 +5,8 @@ import { join, resolve } from "node:path";
 import { Effect, Layer, Schema } from "effect";
 
 import { ConfigResultSchema, config } from "@lando/engine/operations/config";
-import { GlobalConfig } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
+import { GlobalConfigSources } from "@lando/engine/services/config";
+import type { GlobalConfig } from "@lando/sdk/schema";
 
 import { renderConfigResult } from "../../src/cli/commands/config.ts";
 
@@ -18,6 +18,7 @@ const runCli = async (
 ): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
   const proc = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...args],
+    env: { ...process.env },
     cwd,
     stdout: "pipe",
     stderr: "pipe",
@@ -31,19 +32,21 @@ const runCli = async (
 };
 
 const fakeConfigService = (overrides: typeof GlobalConfig.Encoded) => {
-  const loaded = Schema.decodeUnknownSync(GlobalConfig)(overrides);
-  return Layer.succeed(
-    ConfigService,
-    ConfigService.of({
-      get: (key) => Effect.succeed(loaded[key]),
-      load: Effect.succeed(loaded),
-    }),
-  );
+  return Layer.succeed(GlobalConfigSources, {
+    env: { ...process.env },
+    host: overrides,
+    sources: { user: true, env: true },
+  });
 };
 
 const withTempEnv = async <T>(vars: Record<string, string>, run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-meta-config-"));
-  const touched = new Set<string>(["LANDO_USER_CONF_ROOT", ...Object.keys(vars)]);
+  const touched = new Set<string>([
+    "LANDO_USER_CONF_ROOT",
+    "LANDO_USER_DATA_ROOT",
+    "LANDO_USER_CACHE_ROOT",
+    ...Object.keys(vars),
+  ]);
   for (const name of Object.keys(process.env)) {
     if (name.startsWith("LANDO_CONFIG__")) touched.add(name);
   }
@@ -52,6 +55,8 @@ const withTempEnv = async <T>(vars: Record<string, string>, run: (dir: string) =
   try {
     for (const name of touched) delete process.env[name];
     process.env.LANDO_USER_CONF_ROOT = dir;
+    process.env.LANDO_USER_DATA_ROOT = join(dir, "data");
+    process.env.LANDO_USER_CACHE_ROOT = join(dir, "cache");
     for (const [name, value] of Object.entries(vars)) process.env[name] = value;
     return await run(dir);
   } finally {
@@ -64,6 +69,53 @@ const withTempEnv = async <T>(vars: Record<string, string>, run: (dir: string) =
 };
 
 describe("meta:config command", () => {
+  test("CLI repairs invalid config even when notify.commands selects meta:config", async () => {
+    await withTempEnv({}, async (dir) => {
+      await writeFile(
+        join(dir, "config.yml"),
+        'router:\n  httpPort: nonsense\nnotify:\n  commands: ["meta:config"]\n',
+      );
+      const result = await runCli(["config", "unset", "router.httpPort", "--format=json"], dir);
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, result: { changed: true } });
+      expect(await readFile(join(dir, "config.yml"), "utf8")).not.toContain("nonsense");
+    });
+  });
+  test("CLI reports an external env issue as a warning after a successful repair", async () => {
+    await withTempEnv({ LANDO_ROUTER_HTTPS_PORT: "99999" }, async (dir) => {
+      await writeFile(join(dir, "config.yml"), "router:\n  httpPort: nonsense\n");
+      const result = await runCli(["config", "unset", "router.httpPort", "--format=json"], dir);
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ok: true,
+        warnings: [
+          {
+            code: "LANDO_CONFIG_OTHER_SOURCE_INVALID",
+            remediation: expect.stringContaining("LANDO_ROUTER_HTTPS_PORT"),
+          },
+        ],
+      });
+    });
+  });
+  test.each([{ args: [] }, { args: ["get", "router.httpPort"] }])(
+    "CLI preserves config issues for read arguments $args",
+    async ({ args }) => {
+      await withTempEnv({}, async (dir) => {
+        await writeFile(join(dir, "config.yml"), "router:\n  httpPort: 99999\n");
+        const result = await runCli(["config", ...args, "--format=json"], dir);
+        expect(result.exitCode).not.toBe(0);
+        expect(JSON.parse(result.stdout)).toMatchObject({
+          ok: false,
+          error: {
+            _tag: "ConfigError",
+            path: join(dir, "config.yml"),
+            issues: [{ path: ["router", "httpPort"], message: expect.any(String) }],
+            remediation: expect.stringContaining("lando config validate"),
+          },
+        });
+      });
+    },
+  );
   test("encodes the resolved global config result faithfully", async () => {
     const result = await Effect.runPromise(
       config({ format: "json" }).pipe(

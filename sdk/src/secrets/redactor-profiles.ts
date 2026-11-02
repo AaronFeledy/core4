@@ -5,12 +5,15 @@
  * `createRedactor(profile, options)` composes two layers:
  *
  * 1. The **value layer** ({@link createSecretRedactor}): every known secret
- *    value, matched literally and longest-first, is masked first. Applying the
- *    value layer before the pattern layer guarantees a registered secret never
- *    survives by being split across a pattern boundary.
+ *    value is matched literally, and each run of overlapping occurrences is
+ *    masked as one union. Applying the value layer before the pattern layer
+ *    guarantees a registered secret never survives by being split across a
+ *    pattern boundary.
  * 2. The **pattern layer**: a fixed catalog of pattern classes, selected by
  *    profile, that normalizes secrets and PII to deterministic sentinels and
- *    placeholders.
+ *    placeholders. Complete bare npm-style `${IDENT}` / `${IDENT?}` assignment
+ *    and signed-query values are left intact so config examples stay readable;
+ *    suffix, malformed, quoted, escaped, and truncated forms still mask.
  *
  * Three profiles are published:
  *
@@ -30,8 +33,20 @@
  */
 
 import { replacePatternsBounded } from "./bounded-redaction.ts";
+import {
+  ASSIGNMENT_STOP_CLASS,
+  QUERY_STOP_CLASS,
+  keepCompleteEnvPlaceholderOrRedact,
+  unquotedSecretValueSource,
+} from "./env-placeholder.ts";
 import { redactedInspection } from "./inspection.ts";
 import { REDACTED, createSecretRedactor } from "./redactor.ts";
+import {
+  SECRET_FIELD_PATTERN,
+  SECRET_WORD_SOURCE,
+  SIGNED_QUERY_WORD_SOURCE,
+  isSecretFieldName,
+} from "./secret-names.ts";
 import {
   TRANSCRIPT_PATTERN_CLASSES,
   type TranscriptRedactionEnv,
@@ -81,40 +96,48 @@ const EMAIL = "[email]";
 const ID = "[id]";
 const HOST = "[host]";
 
-const SECRET_KEY_PATTERN =
-  /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
+const QUOTED_VALUE_SOURCE = String.raw`\\+"[^"]*\\+"|\\+'[^']*\\+'|"[^"]*"|'[^']*'|`;
+const ASSIGNMENT_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(ASSIGNMENT_STOP_CLASS);
 
-const SECRET_ASSIGNMENT_PATTERN =
-  /(?<![?&])\b([A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Za-z0-9_]*)=(?!\[redacted\])([^\s,;"'\]}]+)/giu;
+const SECRET_ASSIGNMENT_PATTERN = new RegExp(
+  String.raw`(?<![?&A-Za-z0-9_.-])([A-Za-z0-9_.-]*(?:${SECRET_WORD_SOURCE})[A-Za-z0-9_.-]*)=(${ASSIGNMENT_VALUE_SOURCE})`,
+  "giu",
+);
 
-const URL_USERINFO_PATTERN = /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
+const URL_USERINFO_PATTERN =
+  /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)(?:\[redacted\]|[^/\s:@])+:(?:\[redacted\]|[^/\s@])+@/gu;
 
 const ENCODED_URL_USERINFO_PATTERN =
-  /\b([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)[^&\s"'\]}{]*?%3A[^&\s"'\]}{]*?%40/giu;
+  /\b([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)(?:\[redacted\]|[^&\s"'\]}{])*?%3A(?:\[redacted\]|[^&\s"'\]}{])*?%40/giu;
 
-const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+[\w.~+/=-]+/giu;
+const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+(?:\[redacted\]|[\w.~+/=-])+/giu;
 
-const SIGNED_QUERY_PARAM_PATTERN =
-  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)([^&\s"'\]}]+)/giu;
+const QUERY_VALUE_SOURCE = QUOTED_VALUE_SOURCE + unquotedSecretValueSource(QUERY_STOP_CLASS);
 
-const redactSecretsString = (text: string): string =>
-  text
-    .replace(SECRET_ASSIGNMENT_PATTERN, (_m, name: string) => `${name}=${REDACTED}`)
-    .replace(URL_USERINFO_PATTERN, (_m, scheme: string) => `${scheme}${REDACTED}@`)
-    .replace(ENCODED_URL_USERINFO_PATTERN, (_m, scheme: string) => `${scheme}${REDACTED}%40`)
-    .replace(BEARER_TOKEN_PATTERN, (_m, scheme: string) => `${scheme} ${REDACTED}`)
-    .replace(SIGNED_QUERY_PARAM_PATTERN, (_m, prefix: string) => `${prefix}${REDACTED}`);
+const SIGNED_QUERY_PARAM_PATTERN = new RegExp(
+  String.raw`([?&](?:[\w-]*[-_])?(?:${SIGNED_QUERY_WORD_SOURCE})=)(${QUERY_VALUE_SOURCE})`,
+  "giu",
+);
+
+const keepOrRedactAssignment = (match: string, _name: string, value: string): string =>
+  keepCompleteEnvPlaceholderOrRedact(match, `${_name}=${REDACTED}`, value);
+
+const keepOrRedactQuery = (match: string, prefix: string, value: string): string =>
+  keepCompleteEnvPlaceholderOrRedact(match, `${prefix}${REDACTED}`, value);
 
 const SECRETS_REPLACEMENTS = [
-  { pattern: SECRET_ASSIGNMENT_PATTERN, replace: (_m: string, name: string) => `${name}=${REDACTED}` },
   { pattern: URL_USERINFO_PATTERN, replace: (_m: string, scheme: string) => `${scheme}${REDACTED}@` },
   {
     pattern: ENCODED_URL_USERINFO_PATTERN,
     replace: (_m: string, scheme: string) => `${scheme}${REDACTED}%40`,
   },
+  { pattern: SECRET_ASSIGNMENT_PATTERN, replace: keepOrRedactAssignment },
   { pattern: BEARER_TOKEN_PATTERN, replace: (_m: string, scheme: string) => `${scheme} ${REDACTED}` },
-  { pattern: SIGNED_QUERY_PARAM_PATTERN, replace: (_m: string, prefix: string) => `${prefix}${REDACTED}` },
+  { pattern: SIGNED_QUERY_PARAM_PATTERN, replace: keepOrRedactQuery },
 ] as const;
+
+const redactSecretsString = (text: string): string =>
+  SECRETS_REPLACEMENTS.reduce((result, { pattern, replace }) => result.replace(pattern, replace), text);
 
 const TELEMETRY_URL_PATTERN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/giu;
 const UNC_PATH_PATTERN = /\\\\[A-Za-z0-9._$-]+(?:\\[^\s\\'"]+)*/gu;
@@ -149,15 +172,15 @@ const redactTelemetryString = (text: string): string =>
 export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.freeze({
   secretAssignment: {
     pattern: SECRET_ASSIGNMENT_PATTERN,
-    replace: (_m, name: string) => `${name}=${REDACTED}`,
+    replace: keepOrRedactAssignment,
   },
   urlUserinfo: { pattern: URL_USERINFO_PATTERN, replace: (_m, scheme: string) => `${scheme}${REDACTED}@` },
   bearerToken: { pattern: BEARER_TOKEN_PATTERN, replace: (_m, scheme: string) => `${scheme} ${REDACTED}` },
   signedQueryParam: {
     pattern: SIGNED_QUERY_PARAM_PATTERN,
-    replace: (_m, prefix: string) => `${prefix}${REDACTED}`,
+    replace: keepOrRedactQuery,
   },
-  secretKeyedField: { pattern: SECRET_KEY_PATTERN, replace: REDACTED },
+  secretKeyedField: { pattern: SECRET_FIELD_PATTERN, replace: REDACTED },
   url: { pattern: TELEMETRY_URL_PATTERN, replace: URL },
   posixPath: { pattern: POSIX_PATH_PATTERN, replace: PATH },
   windowsPath: { pattern: WINDOWS_PATH_PATTERN, replace: PATH },
@@ -213,6 +236,6 @@ export const createRedactor = (
     ...redactedInspection,
     redactString,
     ...(redactStringBounded === undefined ? {} : { redactStringBounded }),
-    redactValue: (value) => redactValueWith(redactString, (key) => SECRET_KEY_PATTERN.test(key), value),
+    redactValue: (value) => redactValueWith(redactString, isSecretFieldName, value),
   };
 };

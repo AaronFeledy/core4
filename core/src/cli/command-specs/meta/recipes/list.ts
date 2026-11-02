@@ -25,5 +25,5 @@ export const metaRecipesListSpec: LandoCommandSpec<RecipesListResult> = {
     }),
   },
   run: () => recipesList,
-  render: (result) => renderRecipesListResult(result as RecipesListResult),
+  render: (result) => renderRecipesListResult(result),
 };

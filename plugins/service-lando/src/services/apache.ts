@@ -1,6 +1,13 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
-import { AbsolutePath, type LogSource, LogSourceId, PortNumber } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type LogSource,
+  LogSourceId,
+  PortNumber,
+  type ValidationIssuePath,
+  sameImageReference,
+} from "@lando/sdk/schema";
 import type {
   ServiceBuildStepIntent,
   ServiceFeatureContext,
@@ -8,18 +15,29 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 import {
-  commandHealthcheck,
+  ServiceConfigIssue,
+  literalEnvironmentValue,
   rootIdentity,
   serviceFeatureApply,
+  serviceFeatureValidateEffective,
   serviceTypeResolve,
 } from "./_feature-helpers.ts";
+import { tcpProbe } from "./_tcp-probe.ts";
 
-import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { imageAuthority, launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 import { resolveWebroot } from "./_webroot.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
-const DEFAULT_PORT = 80;
+export const APACHE_LISTENER = {
+  port: 80,
+  daemon: "Apache",
+  when: "All Apache services",
+  launcher: { setting: (port: number) => `Listen ${port}` },
+  image: { setting: (port: number) => `Listen ${port}` },
+} as const;
+export const DEFAULT_PORT = APACHE_LISTENER.port;
+export const APP_MOUNT_TARGET = "/app";
 
 const APACHE_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -88,9 +106,13 @@ export const apacheListenBuildStep = (configPath: string): ServiceBuildStepInten
   ],
 });
 
-export const apacheDirectivePath = (webroot: string): string => {
+export const apacheDirectivePath = (webroot: string, path: ValidationIssuePath = ["webroot"]): string => {
   if (/\r|\n/u.test(webroot)) {
-    throw new Error("Apache webroot must not contain line breaks.");
+    throw new ServiceConfigIssue(
+      path,
+      "Apache webroot must not contain line breaks.",
+      "Use a single-line container path.",
+    );
   }
   return webroot.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 };
@@ -118,8 +140,12 @@ const PID_FILE = "/tmp/lando-httpd.pid";
  * An authored `port:` becomes a `Listen` directive in that same stream, paired
  * with the build step that retires the image's own listener.
  */
-const apacheStartCommand = (webroot: string, listenPort: number | undefined): ReadonlyArray<string> => {
-  const path = apacheDirectivePath(webroot);
+const apacheStartCommand = (
+  webroot: string,
+  listenPort: number | undefined,
+  issuePath: ValidationIssuePath,
+): ReadonlyArray<string> => {
+  const path = apacheDirectivePath(webroot, issuePath);
   return [
     "httpd-foreground",
     "-c",
@@ -145,21 +171,31 @@ const apacheStartCommand = (webroot: string, listenPort: number | undefined): Re
 const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const listenPort = authoredListenPort(service.port);
-  const port = listenPort ?? DEFAULT_PORT;
+  const port = plannedPort(service, APACHE_LISTENER);
   const webroot = resolveWebroot("Apache", service.webroot, service.appMount);
   const documentRoot = service.environment?.APACHE_DOCUMENT_ROOT ?? webroot;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   applyAuthoredProcessFields(ctx, ["user"]);
-  addServicePortEndpoints(ctx, { port, protocol: "http" });
-  ctx.setHealthcheck(commandHealthcheck(["sh", "-c", `nc -z 127.0.0.1 ${port}`], 10));
+  ctx.setHealthcheck(tcpProbe(port, 10));
 
   if (service.command === undefined && service.entrypoint === undefined) {
-    const ownedListen =
-      service.image === undefined || service.image === DEFAULT_IMAGE ? listenPort : undefined;
-    ctx.setCommand(apacheStartCommand(documentRoot, ownedListen));
+    const ownsImage = service.image === undefined || sameImageReference(service.image, DEFAULT_IMAGE);
+    const ownedListen = ownsImage ? listenPort : undefined;
+    ctx.setCommand(
+      apacheStartCommand(
+        literalEnvironmentValue(documentRoot, ["environment", "APACHE_DOCUMENT_ROOT"]),
+        ownedListen,
+        service.environment?.APACHE_DOCUMENT_ROOT === undefined
+          ? ["webroot"]
+          : ["environment", "APACHE_DOCUMENT_ROOT"],
+      ),
+    );
     if (ownedListen !== undefined) ctx.addBuildStep(apacheListenBuildStep(HTTPD_CONF_PATH));
+    if (!ownsImage) ctx.setListenerAuthority(imageAuthority(APACHE_LISTENER, port));
+  } else {
+    ctx.setListenerAuthority(launcherAuthority(APACHE_LISTENER, port));
   }
   applyAuthoredProcessFields(ctx, ["command", "entrypoint"]);
 };
@@ -168,6 +204,17 @@ export const apacheServiceFeature: ServiceFeatureDefinition = {
   id: APACHE_FEATURE_ID,
   schema: Schema.Unknown,
   priority: APACHE_FEATURE_PRIORITY,
+  validateEffective: serviceFeatureValidateEffective(APACHE_FEATURE_ID, (ctx) => {
+    resolveWebroot("Apache", ctx.normalizedConfig.webroot, ctx.normalizedConfig.appMount);
+    return { handledServiceFields: ["webroot"] };
+  }),
+  declareEndpoints: (ctx) =>
+    Effect.sync(() =>
+      servicePortEndpoints(ctx, {
+        port: plannedPort(ctx.normalizedConfig, APACHE_LISTENER),
+        protocol: "http",
+      }),
+    ),
   apply: serviceFeatureApply(APACHE_FEATURE_ID, "service-lando.apache failed to apply", applyApacheFeature),
 };
 
@@ -194,7 +241,7 @@ export const apacheServiceType: ServiceType = {
             id: "lando.env",
             config: { webroot },
           },
-          { id: "lando.app-mount", config: { target: "/app" } },
+          { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } },
         ],
       };
     }),

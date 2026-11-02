@@ -10,7 +10,6 @@ import {
   DateTime,
   Effect,
   Exit,
-  Layer,
   Schema,
   type Scope,
   Stream,
@@ -24,21 +23,16 @@ import {
   GuideFixtureSymlinkError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
-import {
-  FileSystem,
-  type FileSystemError,
-  type LandoEvent,
-  RuntimeProviderRegistry,
-} from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/services";
 
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import { CORE_VERSION } from "@lando/engine/version";
+import { createStandaloneRedactor } from "@lando/redaction/service";
 import { redactDetails } from "../cli/redact";
 import { withInteractionServiceOverride } from "../interaction/testing-override";
 import { withRuntimeProviderRegistryOverride } from "../runtime/layer";
 import { makeTestInteractionService } from "./interaction";
+import { makeScenarioProvider } from "./scenario-provider.ts";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime";
 
 /**
@@ -274,7 +268,12 @@ const fixtureNotFoundError = (name: string, candidates: ReadonlyArray<string>): 
     candidates: [...candidates],
   });
 
-const fixtureIoError = (path: string, message: string): FileIoError => new FileIoError({ message, path });
+const fixtureIoError = (path: string, message: string): FileIoError =>
+  new FileIoError({
+    message,
+    path,
+    remediation: `Ensure \`${path}\` exists and is readable/writable by this user, then re-run the command.`,
+  });
 
 const TIMESTAMP_PATTERN = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\b|\b\d{10,13}\b/g;
 
@@ -289,7 +288,7 @@ const stable = (value: unknown): unknown => {
 };
 
 const sanitizeTranscriptValue = (value: unknown, testDir: string): unknown => {
-  const redacted = redactDetails(value);
+  const redacted = redactDetails(value, createStandaloneRedactor("secrets", { sourceEnv: {} }));
   const sanitize = (input: unknown, key?: string): unknown => {
     if (typeof input === "string") {
       const withPath = input.split(testDir).join("<testDir>");
@@ -646,20 +645,13 @@ const runInitDispatchWithSeededAnswers = (
   return withInteractionServiceOverride(interaction.service, runDispatch);
 };
 
-const testRuntimeProviderRegistry = RuntimeProviderRegistry.of({
-  list: Effect.succeed([ProviderId.make(TestRuntimeProvider.id)]),
-  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
-  select: () => Effect.succeed(TestRuntimeProvider),
-});
-
-const testRuntimeProviderRegistryLayer = Layer.succeed(RuntimeProviderRegistry, testRuntimeProviderRegistry);
-
 const invokeRealCli = async (
   args: ReadonlyArray<string>,
   options: ScenarioRunOptions | undefined,
   events: LandoEvent[],
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
+  providerRegistryLayer = makeScenarioProvider().layer,
 ): Promise<ScenarioRunResult> => {
   const previousCwd = process.cwd();
   const previousExitCode = process.exitCode;
@@ -674,7 +666,7 @@ const invokeRealCli = async (
     const cli = await import("../cli/index");
     const runDispatch = () =>
       cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
-    await withRuntimeProviderRegistryOverride(testRuntimeProviderRegistryLayer, () =>
+    await withRuntimeProviderRegistryOverride(providerRegistryLayer, () =>
       runInitDispatchWithSeededAnswers(args, options, runDispatch),
     );
     const stdoutText = stdout.content();
@@ -699,13 +691,13 @@ const invokeRealCli = async (
   }
 };
 
-const createTestOnlyFakeRunCli =
-  (
-    events: LandoEvent[],
-    getWorkingDirectory: () => string,
-    setWorkingDirectory: (path: string) => void,
-  ): ScenarioContext["runCli"] =>
-  (command, options) =>
+const createTestOnlyFakeRunCli = (
+  events: LandoEvent[],
+  getWorkingDirectory: () => string,
+  setWorkingDirectory: (path: string) => void,
+): ScenarioContext["runCli"] => {
+  const provider = makeScenarioProvider();
+  return (command, options) =>
     Effect.tryPromise(async () => {
       const args = appendInitAnswers(parseCommand(command), options?.answers);
       if (isVersionCommand(args)) return versionResult(args, events);
@@ -723,10 +715,17 @@ const createTestOnlyFakeRunCli =
       }
 
       const scenarioLayerResult = await runScenarioLayerCommand(args, getWorkingDirectory(), events);
-      if (scenarioLayerResult !== undefined) return scenarioLayerResult;
+      if (scenarioLayerResult !== undefined) {
+        if (scenarioLayerResult.exitCode === 0 && (args[0] === "start" || args[0] === "app:start")) {
+          await provider.remember(getWorkingDirectory());
+        }
+        if (args[0] === "destroy" || args[0] === "app:destroy") await provider.forget(getWorkingDirectory());
+        return scenarioLayerResult;
+      }
 
-      return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory);
+      return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory, provider.layer);
     });
+};
 
 // The in-process scenario runner is limited to init, whose seeded answers and
 // generated working-directory transition are owned here. Other commands run
@@ -788,6 +787,11 @@ const createE2eRunCli =
       const proc = Bun.spawn({
         cmd: [binary, ...args],
         cwd,
+        env: {
+          ...process.env,
+          BUN_BE_BUN: undefined,
+          LANDO_DISALLOW_BUN_BE_BUN_REENTRY: undefined,
+        },
         stdout: "pipe",
         stderr: "pipe",
       });

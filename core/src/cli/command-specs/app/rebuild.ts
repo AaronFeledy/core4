@@ -1,15 +1,15 @@
 import { Effect } from "effect";
 
-import { type RebuildAppResult, RebuildAppResultSchema, rebuildApp } from "@lando/engine/operations/rebuild";
+import { rebuildApp } from "@lando/engine/operations/rebuild";
+import { withIncompleteStartNotice } from "@lando/engine/operations/start-incomplete-notice";
+import { RebuildAppResult, StreamFrame } from "@lando/sdk/schema";
 import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderRebuildAppResult } from "../../commands/rebuild";
 import { requireConfirmation } from "../../require-confirmation";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
 import { extractSpecFlags } from "../../spec/command-boundary";
-import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
-
-import { StreamFrame } from "@lando/sdk/schema";
 import { yesFlag } from "../../spec/confirmation-flag";
+import { serviceNamesFlag, specFlagsOf } from "../../spec/input-coercion";
 import { Flags } from "../../spec/metadata";
 
 export const rebuildOptionsFromInput = (input: unknown): NonNullable<Parameters<typeof rebuildApp>[0]> => {
@@ -32,12 +32,11 @@ export const runRebuildCommand = Effect.fn("RebuildCommand.run")(function* (inpu
     yes: extractSpecFlags(input).yes === true,
     message: `Rebuild ${target}? This recreates containers and discards anything not in the Landofile or a volume.`,
   });
-  yield* refreshAppCache();
-  return yield* rebuildApp(options);
+  return yield* withIncompleteStartNotice(Effect.andThen(refreshAppCache(), rebuildApp(options)));
 });
 
-export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
-  resultSchema: RebuildAppResultSchema,
+export const rebuildSpec = {
+  resultSchema: RebuildAppResult,
   id: "app:rebuild",
   helpGroup: "common",
   summary: "Rebuild artifacts and restart the current app.",
@@ -55,5 +54,5 @@ export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   },
   streaming: StreamFrame,
   run: runRebuildCommand,
-  render: (result, _input, ctx) => renderRebuildAppResult(result as RebuildAppResult, ctx),
-};
+  render: (result, _input, ctx) => renderRebuildAppResult(result, ctx),
+} satisfies LandoCommandSpec<RebuildAppResult>;

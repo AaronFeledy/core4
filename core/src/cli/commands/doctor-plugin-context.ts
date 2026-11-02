@@ -2,7 +2,6 @@ import { realpath, stat } from "node:fs/promises";
 import { basename, join, posix, win32 } from "node:path";
 import { isLandoExecutableName } from "@lando/engine/install/owned-executable";
 import * as EngineLandofileServiceLayer from "@lando/engine/services/landofile-live";
-import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import * as ManagedFileTransactionGuardLayer from "@lando/managed-file/transaction-guard";
 import type { DoctorExecutableLocator, DoctorResourceInspector } from "@lando/sdk/plugins";
 import {
@@ -28,10 +27,10 @@ export const resolveDoctorAppIdentity = Effect.fnUntraced(
       ? available.value
       : yield* LandofileService.pipe(Effect.provide(DoctorLandofileLayer));
     const landofile = yield* loadUserLandofile(service);
-    const root = getLandofileAppRoot(landofile);
-    if (root === undefined || landofile.name === undefined) return undefined;
+    const root = landofile.context.appRoot;
+    if (landofile.document.name === undefined) return undefined;
     const canonicalRoot = yield* Effect.tryPromise(() => realpath(root));
-    return { name: landofile.name, root: canonicalRoot };
+    return { name: landofile.document.name, root: canonicalRoot };
   },
   Effect.catchCause(() => Effect.succeed(undefined)),
 );

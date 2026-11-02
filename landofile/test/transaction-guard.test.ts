@@ -34,6 +34,26 @@ const blocked = (root: string) =>
     remediation: "Resolve the conflicting target before retrying.",
   });
 
+test("read-only loads refuse a pending transaction without recovering or writing", async () => {
+  await withApp(async (root) => {
+    const failure = blocked(root);
+    const result = await Effect.runPromise(
+      loadLandofileLayers(root, join(root, ".lando.yml"), {
+        readOnly: true,
+        ports: makeTestLandofilePorts(root),
+        templates: { modules: [] },
+        transactionGuard: {
+          ensureConsistent: () => Effect.die("read-only load attempted recovery"),
+          pending: () => Effect.die("guard owns journal inspection"),
+          assertReadable: () => Effect.fail(failure),
+        },
+      }).pipe(Effect.result),
+    );
+    expect(Result.isFailure(result) && result.failure).toBe(failure);
+    expect(await Bun.file(join(root, ".lando.yml")).exists()).toBe(false);
+  });
+});
+
 test("loads repaired layers when the guard changes the file set before enumeration", async () => {
   await withApp(async (root) => {
     // Given: a partial canonical file and a guard that repairs both layers.
@@ -41,6 +61,7 @@ test("loads repaired layers when the guard changes the file set before enumerati
     await writeFile(canonical, "name: [partial\n");
     const roots: string[] = [];
     const transactionGuard = {
+      assertReadable: () => Effect.void,
       ensureConsistent: (appRoot: string) =>
         Effect.promise(async () => {
           roots.push(appRoot);
@@ -60,9 +81,9 @@ test("loads repaired layers when the guard changes the file set before enumerati
     );
 
     // Then: the new local layer participates, and the partial YAML was not parsed.
-    expect(result.name).toBe("repaired-local");
+    expect(result.document.name).toBe("repaired-local");
     expect(roots[0]).toBe(root);
-    expect(new Set(roots)).toEqual(new Set([root]));
+    expect(roots).toEqual([root]);
   });
 });
 
@@ -77,6 +98,7 @@ test("preserves the blocked error before reading a missing file set", async () =
         ports: makeTestLandofilePorts(root),
         templates: { modules: [] },
         transactionGuard: {
+          assertReadable: () => Effect.void,
           ensureConsistent: () => Effect.fail(failure),
           pending: () => Effect.succeed(null),
         },
@@ -105,13 +127,18 @@ test("captures the required guard in Live while discover remains context-free", 
     const live = layer({
       ports: makeTestLandofilePorts(root),
       templates: { modules: [] },
-      transactionGuard: { ensureConsistent: () => Effect.void, pending: () => Effect.succeed(null) },
+      transactionGuard: {
+        assertReadable: () => Effect.void,
+        ensureConsistent: () => Effect.void,
+        pending: () => Effect.succeed(null),
+      },
     }).pipe(
       Layer.provide(
         Layer.merge(
           Layer.succeed(
             ManagedFileTransactionGuard,
             ManagedFileTransactionGuard.of({
+              assertReadable: () => Effect.void,
               ensureConsistent: () => Effect.fail(failure),
               pending: () => Effect.succeed(null),
             }),
@@ -145,7 +172,7 @@ test("allows direct unit callers to omit the guard", async () => {
     const result = await Effect.runPromise(loadLandofileLayers(root, canonical));
 
     // Then
-    expect(result.name).toBe("unit-caller");
+    expect(result.document.name).toBe("unit-caller");
   });
 });
 
@@ -165,6 +192,7 @@ test("consults a context guard when callers omit transactionGuard inputs", async
         Effect.provideService(
           ManagedFileTransactionGuard,
           ManagedFileTransactionGuard.of({
+            assertReadable: () => Effect.void,
             ensureConsistent: () => Effect.fail(failure),
             pending: () => Effect.succeed(null),
           }),
@@ -191,6 +219,7 @@ test("consults a context guard before reading a single Landofile file", async ()
         Effect.provideService(
           ManagedFileTransactionGuard,
           ManagedFileTransactionGuard.of({
+            assertReadable: () => Effect.void,
             ensureConsistent: () => Effect.fail(failure),
             pending: () => Effect.succeed(null),
           }),
@@ -220,6 +249,7 @@ test("recovers the cwd file set before walking to a parent Landofile", async () 
           Layer.succeed(
             ManagedFileTransactionGuard,
             ManagedFileTransactionGuard.of({
+              assertReadable: () => Effect.void,
               ensureConsistent: (appRoot: string) =>
                 Effect.promise(async () => {
                   roots.push(appRoot);
@@ -243,7 +273,7 @@ test("recovers the cwd file set before walking to a parent Landofile", async () 
     const result = await Effect.runPromise(withResolvedCwd(child, service.discover));
 
     // Then: recovery at cwd is consulted first and the parent file is not consumed.
-    expect(result.name).toBe("child");
+    expect(result.document.name).toBe("child");
     expect(roots[0]).toBe(child);
   });
 });

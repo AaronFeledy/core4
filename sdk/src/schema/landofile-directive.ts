@@ -1,4 +1,10 @@
-import { Schema } from "effect";
+import { Schema, type SchemaAST } from "effect";
+
+const MERGE_DIRECTIVE_MEMBER = "lando/merge-directive-member";
+
+/** Identify marked directive wrappers for diagnostics only; this does not validate authored values. */
+export const isMergeDirectiveMemberAst = (ast: SchemaAST.AST): boolean =>
+  ast.annotations?.[MERGE_DIRECTIVE_MEMBER] === true;
 
 /** Shared brand distinguishing native operations from user-authored mappings. */
 export const LANDOFILE_MERGE_DIRECTIVE = Symbol.for("@lando/sdk/landofile/merge-directive");
@@ -6,6 +12,7 @@ export const LANDOFILE_MERGE_DIRECTIVE = Symbol.for("@lando/sdk/landofile/merge-
 /** Describe a native replacement operation whose payload is validated by the supplied schema. */
 export const LandofileOverride = <S extends Schema.Top>(value: S) =>
   Schema.Struct({ [LANDOFILE_MERGE_DIRECTIVE]: Schema.Literal("override"), value }).annotate({
+    [MERGE_DIRECTIVE_MEMBER]: true,
     identifier: "LandofileOverride",
     title: "Native Landofile override",
     description: "Replaces an inherited mapping member with its native authoring payload.",
@@ -15,6 +22,7 @@ export type LandofileOverride<T> = ReturnType<typeof LandofileOverride<Schema.Co
 export const LandofileReset = Schema.Struct({
   [LANDOFILE_MERGE_DIRECTIVE]: Schema.Literal("reset"),
 }).annotate({
+  [MERGE_DIRECTIVE_MEMBER]: true,
   identifier: "LandofileReset",
   title: "Native Landofile reset",
   description: "Removes an inherited mapping member during layer composition.",
@@ -24,11 +32,13 @@ export type LandofileReset = typeof LandofileReset.Type;
 /** Describe the JSON transport envelope for a replacement operation. */
 export const LandofileOverrideWire = <S extends Schema.Top>(value: S) =>
   Schema.Struct({ _tag: Schema.Literal("LandofileOverride"), value }).annotate({
+    [MERGE_DIRECTIVE_MEMBER]: true,
     identifier: "LandofileOverrideWire",
     title: "Landofile override envelope",
     description: "Transports a replacement payload; decode to a native directive before emission.",
   });
 export const LandofileResetWire = Schema.Struct({ _tag: Schema.Literal("LandofileReset") }).annotate({
+  [MERGE_DIRECTIVE_MEMBER]: true,
   identifier: "LandofileResetWire",
   title: "Landofile reset envelope",
   description: "Transports a removal operation; decode to a native directive before emission.",

@@ -22,7 +22,7 @@ import {
   teardownManagedProviderMachine,
 } from "../runtime/managed-provider-machine";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
-import { AgentRelayWorkerRecord } from "../subsystems/ssh-agent/worker-protocol.ts";
+import { TerminableAgentRelayWorkerRecord } from "../subsystems/ssh-agent/worker-protocol.ts";
 import { defaultRemoveRuntimeDir, defaultTerminateRuntimeBinProcesses } from "./uninstall-runtime-dir";
 import {
   UninstallRuntimeDirError,
@@ -334,7 +334,7 @@ const defaultTeardownHostProxySessions = async (
     const directory = join(paths.hostProxyRunRoot, entry.name);
     const text = tryReadText(join(directory, "worker.json"), defaultReadText);
     if (text === undefined) continue;
-    const record = Schema.decodeUnknownOption(Schema.fromJsonString(AgentRelayWorkerRecord))(text);
+    const record = Schema.decodeUnknownOption(Schema.fromJsonString(TerminableAgentRelayWorkerRecord))(text);
     if (Option.isNone(record) || record.value.kind !== kind) continue;
     const app = { id: record.value.appId, root: record.value.appRoot };
     if (paths.agentRelayRunDir(kind, app.id, app.root) !== directory) continue;

@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Option, Schema } from "effect";
 
 import { AppFeatureSelectorMatchedNothingError, PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
-import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import {
+  type Environment,
+  type EnvironmentValue,
+  LandofileShape,
+  ServiceConfig,
+  ServiceName,
+} from "@lando/sdk/schema";
 import { PhpMyAdminServiceConfig } from "@lando/sdk/schema/services/phpmyadmin";
 import type {
   AppFeatureContext,
@@ -11,6 +17,9 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
+import { mariadbServiceType } from "../src/services/mariadb.ts";
+import { mysqlServiceType } from "../src/services/mysql.ts";
 import {
   PHPMYADMIN_FEATURE_ID,
   phpMyAdminWireFeature,
@@ -20,6 +29,9 @@ import {
   phpmyadminServiceType,
 } from "../src/services/phpmyadmin.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({ serviceType: phpmyadminServiceType, variable: "APACHE_PORT", defaultPort: 80 });
 
 const metadata = {
   resolvedAt: "2026-08-19T00:00:00Z",
@@ -66,19 +78,20 @@ const unusedMutators = {
   setAppMount: () => undefined,
   addBuildStep: () => undefined,
   addStorage: () => undefined,
-  addEndpoint: () => undefined,
   addHostAlias: () => undefined,
   setHealthcheck: () => undefined,
+  setReadiness: () => undefined,
   setCerts: () => undefined,
   setEntrypoint: () => undefined,
   setCommand: () => undefined,
+  setInit: () => undefined,
   setArtifact: () => undefined,
   setUser: () => undefined,
   setWorkingDirectory: () => undefined,
 } satisfies Omit<AppFeatureServiceMutators, "service" | "addEnv" | "addDependency">;
 
 type WireCapture = {
-  readonly env: Record<string, string>;
+  readonly env: Record<string, EnvironmentValue>;
   readonly deps: Array<{ readonly service: string; readonly condition: string; readonly required: boolean }>;
 };
 
@@ -86,23 +99,48 @@ const viewOf = (input: {
   readonly serviceName: string;
   readonly serviceType: string;
   readonly hosts?: string | ReadonlyArray<string>;
-  readonly environment?: Readonly<Record<string, string>>;
-  readonly creds?: { readonly user?: string; readonly password?: string; readonly database?: string };
+  readonly environment?: Environment;
+  readonly creds?: {
+    readonly user?: string;
+    readonly password?: EnvironmentValue;
+    readonly database?: string;
+  };
   readonly healthcheck?: ServiceConfig["healthcheck"];
-}): AppFeatureServiceView => ({
-  serviceName: input.serviceName,
-  serviceType: input.serviceType,
-  base: "lando",
-  primary: false,
-  featureIds: [],
-  normalizedConfig: Schema.decodeUnknownSync(ServiceConfig)({
+}): AppFeatureServiceView => {
+  const normalizedConfig = Schema.decodeUnknownSync(ServiceConfig)({
     type: input.serviceType,
     ...(input.hosts === undefined ? {} : { hosts: input.hosts }),
     ...(input.environment === undefined ? {} : { environment: input.environment }),
     ...(input.creds === undefined ? {} : { creds: input.creds }),
     ...(input.healthcheck === undefined ? {} : { healthcheck: input.healthcheck }),
-  }),
-});
+  });
+  const type = input.serviceType.startsWith("mysql")
+    ? mysqlServiceType
+    : input.serviceType === "mariadb"
+      ? mariadbServiceType
+      : undefined;
+  const resolution =
+    type === undefined
+      ? undefined
+      : Effect.runSync(
+          type.resolve({
+            name: input.serviceName,
+            service: normalizedConfig,
+            appRoot: "/srv/apps/myapp",
+            appName: "myapp",
+            metadata,
+          }),
+        );
+  return {
+    serviceName: input.serviceName,
+    serviceType: input.serviceType,
+    base: "lando",
+    primary: false,
+    featureIds: [],
+    normalizedConfig,
+    connection: resolution?.connection,
+  };
+};
 
 const applyWire = (views: ReadonlyArray<AppFeatureServiceView>) => {
   const captures = new Map<string, WireCapture>();
@@ -176,10 +214,13 @@ describe("phpmyadmin ServiceType", () => {
         expect(serviceType.schema).toBe(PhpMyAdminServiceConfig);
         expect(plan.type).toBe("phpmyadmin");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
-        expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "pma" }]);
+        expect(plan.endpoints).toEqual([
+          { _tag: "internal", port: 80, protocol: "http", name: "pma", primary: true },
+        ]);
         expect(plan.healthcheck).toEqual({
           kind: "command",
-          command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80"],
+          command: tcpProbe(80, 20).command,
+          target: { port: 80, transport: "tcp", names: [], primary: false },
           intervalSeconds: 10,
           timeoutSeconds: 5,
           retries: 5,
@@ -220,7 +261,9 @@ describe("phpmyadmin ServiceType", () => {
         });
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "phpmyadmin:custom" });
-        expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "pma" }]);
+        expect(plan.endpoints).toEqual([
+          { _tag: "internal", port: 8080, protocol: "http", name: "pma", primary: true },
+        ]);
         expect(plan.command).toEqual(["apache2-foreground"]);
         expect(plan.user).toBe("1000:1000");
       });
@@ -247,6 +290,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "database",
+      PMA_PORTS: "3306",
       PMA_USER: "lando",
       PMA_PASSWORD: "lando",
     });
@@ -258,21 +302,25 @@ describe("phpMyAdmin AppFeature", () => {
     expect(captures.get("database")?.deps).toEqual([]);
   });
 
-  test("waits for a healthy sibling when that sibling has a healthcheck", async () => {
+  test.each([
+    {
+      healthcheck: { kind: "command", command: ["mysqladmin", "ping"] } as const,
+      condition: "service_healthy",
+    },
+    { healthcheck: false as const, condition: "service_started" },
+  ])("uses $condition when the sibling healthcheck is $healthcheck", async ({ healthcheck, condition }) => {
     const { context, captures } = applyWire([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
       viewOf({
         serviceName: "database",
         serviceType: "mysql",
-        healthcheck: { kind: "command", command: ["mysqladmin", "ping"] },
+        healthcheck,
       }),
     ]);
 
     await Effect.runPromise(phpMyAdminWireFeature.apply(context));
 
-    expect(captures.get("pma")?.deps).toEqual([
-      { service: "database", condition: "service_healthy", required: true },
-    ]);
+    expect(captures.get("pma")?.deps).toEqual([{ service: "database", condition, required: true }]);
   });
 
   test("uses explicit MYSQL_USER and MYSQL_PASSWORD for the single-db case", async () => {
@@ -289,19 +337,20 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "database",
+      PMA_PORTS: "3306",
       PMA_USER: "alice",
       PMA_PASSWORD: "s3cret",
     });
   });
 
-  test("prefers authored creds over MYSQL_* environment for the single-db case", async () => {
+  test("copies agreed authored creds and MYSQL_* environment for the single-db case", async () => {
     const { context, captures } = applyWire([
       viewOf({ serviceName: "pma", serviceType: "phpmyadmin" }),
       viewOf({
         serviceName: "database",
         serviceType: "mysql",
         creds: { user: "dbuser", password: "dbpass", database: "app" },
-        environment: { MYSQL_USER: "alice", MYSQL_PASSWORD: "s3cret" },
+        environment: { MYSQL_USER: "dbuser", MYSQL_PASSWORD: "dbpass" },
       }),
     ]);
 
@@ -309,6 +358,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "database",
+      PMA_PORTS: "3306",
       PMA_USER: "dbuser",
       PMA_PASSWORD: "dbpass",
     });
@@ -328,6 +378,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "database",
+      PMA_PORTS: "3306",
       PMA_USER: "maria",
       PMA_PASSWORD: "maria-secret",
     });
@@ -373,6 +424,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "adb,zdb",
+      PMA_PORTS: "3306,3306",
       PMA_USER: "alice",
       PMA_PASSWORD: "s3cret",
     });
@@ -402,6 +454,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "db-a,db-b",
+      PMA_PORTS: "3306,3306",
       PMA_USER: "pmauser",
       PMA_PASSWORD: "pmapass",
     });
@@ -425,6 +478,7 @@ describe("phpMyAdmin AppFeature", () => {
       PMA_HOSTS: "database",
       PMA_USER: "alice",
       PMA_PASSWORD: "s3cret",
+      PMA_PORTS: "3306",
     });
     expect(captures.get("pma")?.deps).toEqual([
       { service: "database", condition: "service_healthy", required: true },
@@ -484,6 +538,7 @@ describe("phpMyAdmin AppFeature", () => {
 
     expect(captures.get("pma")?.env).toEqual({
       PMA_HOSTS: "remote.example.com",
+      PMA_PORTS: "3306",
       PMA_USER: "pmauser",
       PMA_PASSWORD: "pmapass",
     });

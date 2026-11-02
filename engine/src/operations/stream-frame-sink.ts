@@ -1,18 +1,18 @@
 import { Context, Effect } from "effect";
 
-export interface StreamFrameSinkFrame {
+interface StreamFrameProvenance {
   readonly _tag: "stdout" | "stderr";
-  readonly chunk: string | Uint8Array;
   readonly service?: string;
   readonly source?: string;
-  /** When true, emit the chunk as-is (no extra newline or service prefix). */
-  readonly raw?: boolean;
 }
+export type StreamFrameSinkFrame = StreamFrameProvenance &
+  (
+    | { readonly kind: "bytes"; readonly chunk: string | Uint8Array }
+    | { readonly kind: "record"; readonly chunk: string }
+  );
 
 export interface StreamFrameSinkShape {
   readonly emit: (frame: StreamFrameSinkFrame) => Effect.Effect<void>;
-  /** Finish the logical output stream, including held redaction prefixes. */
-  readonly flush?: () => Effect.Effect<void>;
 }
 
 export class StreamFrameSink extends Context.Service<StreamFrameSink, StreamFrameSinkShape>()(
@@ -25,19 +25,24 @@ export const createCollectingStreamFrameSink = () => {
     stderr: new TextDecoder("utf-8", { ignoreBOM: true }),
   };
   const channels = { stdout: "", stderr: "" };
+  let finished = false;
   const sink: StreamFrameSinkShape = {
     emit: (frame) =>
       Effect.sync(() => {
+        if (finished) throw new Error("Command output is already finished.");
         channels[frame._tag] +=
           typeof frame.chunk === "string"
             ? decoders[frame._tag].decode() + frame.chunk
             : decoders[frame._tag].decode(frame.chunk, { stream: true });
-      }),
-    flush: () =>
-      Effect.sync(() => {
-        channels.stdout += decoders.stdout.decode();
-        channels.stderr += decoders.stderr.decode();
+        if (frame.kind === "record") channels[frame._tag] += "\n";
       }),
   };
-  return { sink, result: () => ({ ...channels }) };
+  const finish = () =>
+    Effect.sync(() => {
+      if (finished) return;
+      finished = true;
+      channels.stdout += decoders.stdout.decode();
+      channels.stderr += decoders.stderr.decode();
+    });
+  return { sink, finish, result: () => ({ ...channels }) };
 };

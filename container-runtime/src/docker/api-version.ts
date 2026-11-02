@@ -172,6 +172,13 @@ export const parseDockerApiVersionOverride = (value: string): DockerApiNegotiati
   if (version === undefined) {
     return negotiationFailure(`DOCKER_API_VERSION "${value}" is not a Docker Engine API version.`, {});
   }
+  const vsMin = compareDockerApiVersion(version, DOCKER_API_PREFERRED_VERSION);
+  if (vsMin !== undefined && vsMin < 0) {
+    return negotiationFailure(
+      `DOCKER_API_VERSION ${version} is below Lando's supported Docker Engine API range ${landoDockerApiRangeLabel()}.`,
+      { apiVersion: version },
+    );
+  }
   const vsMaxTested = compareDockerApiVersion(version, DOCKER_API_MAX_TESTED_VERSION);
   if (vsMaxTested !== undefined && vsMaxTested > 0) {
     return negotiationFailure(

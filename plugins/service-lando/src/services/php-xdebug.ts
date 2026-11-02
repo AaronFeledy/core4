@@ -1,6 +1,8 @@
 import type { ToolingTaskShape } from "@lando/sdk/schema";
+import { DEBUGGER_HOST_ALIAS } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
+import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import type { PhpVia } from "./php-via.ts";
 
 export const PHP_XDEBUG_RELEASE = {
@@ -10,7 +12,7 @@ export const PHP_XDEBUG_RELEASE = {
 } as const;
 
 export const PHP_XDEBUG_PORT = 9003;
-export const PHP_XDEBUG_CLIENT_HOST = "host.lando.internal";
+export const PHP_XDEBUG_CLIENT_HOST = DEBUGGER_HOST_ALIAS;
 export const PHP_XDEBUG_INI = "/usr/local/etc/php/conf.d/zz-lando-xdebug.ini";
 export const PHP_XDEBUG_SOURCE_DIR = `xdebug-${PHP_XDEBUG_RELEASE.version}`;
 
@@ -44,12 +46,18 @@ const parseModeString = (value: string): string => {
     .map((token) => token.trim())
     .filter((token) => token.length > 0);
   if (tokens.includes("off")) {
-    throw new Error(
-      `xdebug: ${JSON.stringify(value)} installs nothing useful; "off" is the runtime toggle, not an install mode. ${XDEBUG_REMEDIATION}`,
+    throw new ServiceConfigIssue(
+      ["xdebug"],
+      `Xdebug mode ${JSON.stringify(value)} installs nothing useful; "off" is the runtime toggle, not an install mode.`,
+      XDEBUG_REMEDIATION,
     );
   }
   if (tokens.length === 0 || tokens.some((token) => !isXdebugMode(token))) {
-    throw new Error(`Unsupported Xdebug mode ${JSON.stringify(value)}. ${XDEBUG_REMEDIATION}`);
+    throw new ServiceConfigIssue(
+      ["xdebug"],
+      `Unsupported Xdebug mode ${JSON.stringify(value)}.`,
+      XDEBUG_REMEDIATION,
+    );
   }
   return tokens.join(",");
 };
@@ -58,14 +66,20 @@ export const resolvePhpXdebug = (value: unknown): PhpXdebug => {
   if (value === undefined || value === false) return false;
   if (value === true) return { mode: "debug", release: PHP_XDEBUG_RELEASE };
   if (typeof value === "string") return { mode: parseModeString(value), release: PHP_XDEBUG_RELEASE };
-  throw new Error(`Unsupported Xdebug mode ${JSON.stringify(value)}. ${XDEBUG_REMEDIATION}`);
+  throw new ServiceConfigIssue(
+    ["xdebug"],
+    `Unsupported Xdebug mode ${JSON.stringify(value)}.`,
+    XDEBUG_REMEDIATION,
+  );
 };
 
 export const assertPhpXdebugSupported = (phpVersion: string, xdebug: PhpXdebug): void => {
   if (xdebug === false) return;
   if (phpVersion !== "8.6") return;
-  throw new Error(
-    `Xdebug is not available on PHP 8.6. The shipped pin is ${PHP_XDEBUG_RELEASE.version} and supports PHP 8.0 through 8.5. Remove xdebug: or set type to php:8.5.`,
+  throw new ServiceConfigIssue(
+    ["xdebug"],
+    `Xdebug is not available on PHP 8.6. The shipped pin is ${PHP_XDEBUG_RELEASE.version} and supports PHP 8.0 through 8.5.`,
+    "Remove xdebug: or set type to php:8.5.",
   );
 };
 
@@ -136,11 +150,27 @@ export const phpXdebugTooling = (
     `reload() { ${reload}; }`,
     "status() {",
     `  php -r '$m = function_exists("xdebug_info") ? xdebug_info("mode") : []; if (!is_array($m) || count($m) === 0) { echo "Xdebug disabled\\n"; } else { echo "Xdebug enabled (" . implode(",", $m) . ")\\n"; }'`,
+    `  host=$(php -r 'echo ini_get("xdebug.client_host");')`,
+    `  port=$(php -r 'echo ini_get("xdebug.client_port");')`,
+    '  resolved=$(getent -s files hosts -- "$host" 2>/dev/null | awk \'!seen[$1]++ { print $1 }\' | paste -sd" " - || true)',
+    '  printf "Client: %s:%s%s\\n" "$host" "$port" "${resolved:+ ($resolved)}"',
+    "}",
+    "listener() {",
+    '  if [ -z "$resolved" ]; then resolved=$(timeout 1 getent hosts -- "$host" 2>/dev/null | awk \'NR == 1 { print $1 }\' || true); fi',
+    `  if php -r '$host = trim($argv[1], "[]"); $port = $argv[2]; if (filter_var($host, FILTER_VALIDATE_IP) === false) { $host = $argv[3]; } if (filter_var($host, FILTER_VALIDATE_IP) === false) { echo "Listener: TCP connection failed (host unresolved within one second)\\n"; exit(1); } if (filter_var($port, FILTER_VALIDATE_INT, ["options" => ["min_range" => 1, "max_range" => 65535]]) === false) { echo "Listener: TCP connection failed (invalid port)\\n"; exit(1); } $target = str_contains($host, ":") ? "[" . $host . "]" : $host; $socket = @stream_socket_client("tcp://" . $target . ":" . $port, $errno, $error, 1); if ($socket === false) { echo "Listener: TCP connection failed (" . ($error ?: "connection error " . $errno) . ")\\n"; exit(1); } fclose($socket); echo "Listener: TCP listener reachable\\n";' -- "$host" "$port" "\${resolved%% *}"; then return; fi`,
+    `  gateway=$(getent -s files hosts -- host.lando.internal 2>/dev/null | awk 'NR == 1 { print $1 }' || true)`,
+    `  if [ "$host" = "${PHP_XDEBUG_CLIENT_HOST}" ] && [ -n "$gateway" ] && [ "\${resolved%% *}" = "$gateway" ] && uname -r | grep -qi microsoft; then`,
+    '    printf "%s\\n" "If your IDE runs on Windows, run lando config set debugger.host windows, then lando start."',
+    `  elif [ -n "$host" ] && { [ "$host" != "${PHP_XDEBUG_CLIENT_HOST}" ] || { [ -n "$resolved" ] && [ -n "$gateway" ] && [ "\${resolved%% *}" != "$gateway" ]; }; }; then`,
+    '    printf "%s\\n" "If this is your IDE address, check that the IDE is listening on this port and its firewall permits connections from the service."',
+    "  else",
+    '    printf "%s\\n" "Check that your IDE is listening on the client address and port shown above."',
+    "  fi",
     "}",
     'case "$cmd" in',
     '  on) write_ini "$mode"; reload; status ;;',
     "  off) write_ini off; reload; status ;;",
-    "  status) status ;;",
+    '  status) status; if [ "$#" -gt 0 ]; then listener; fi ;;',
     '  *) echo "Use lando xdebug on, lando xdebug off, or lando xdebug status."; exit 1 ;;',
     "esac",
   ].join("\n");

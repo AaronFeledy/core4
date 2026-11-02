@@ -13,7 +13,7 @@ import {
   volumeMatchesFilters,
 } from "../src/podman/volume-prune.ts";
 
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 
 const decodeFilters = (path: string): Record<string, ReadonlyArray<string>> => {
   const match = path.match(/[?&]filters=([^&]+)/);

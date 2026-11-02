@@ -22,15 +22,8 @@ const VALID_RECIPE = `id: npm-recipe
 title: Npm Recipe
 description: An npm sourced recipe.
 version: 0.1.0
-prompts:
-  - name: name
-    type: text
-    message: App name
-    default: npm-app
-files:
-  - src: templates/.lando.yml.tmpl
-    dest: .lando.yml
-    template: true
+config:
+  runtime: 4
 `;
 
 const withTempRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -400,9 +393,11 @@ describe("resolveNpmRecipeSource", () => {
 });
 
 describe("initApp npm source boundary", () => {
-  test("npm recipes reach manifest parsing before the existing non-bundled render limitation", async () => {
+  test("invalid npm config fails before writing and reports the published package source path", async () => {
     await withTempRoot(async (dir) => {
-      const bytes = await makeNpmTarball({ "recipe.yml": VALID_RECIPE });
+      const bytes = await makeNpmTarball({
+        "recipe.yml": VALID_RECIPE.replace("config:\n  runtime: 4", "config: invalid"),
+      });
       let caught: unknown;
       try {
         await initApp({
@@ -413,14 +408,18 @@ describe("initApp npm source boundary", () => {
           userDataRoot: join(dir, "data"),
           npmRegistryClient: clientFor(packumentFor(bytes)),
           tarballRecipeFetcher: fetcherFor(bytes),
+          destination: join(dir, "app"),
           nonInteractive: true,
         });
       } catch (error) {
         caught = error;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain("Recipe file rendering");
-      expect((caught as Error).message).toContain("@lando/recipe-foo");
+      expect(caught).toMatchObject({
+        _tag: "RecipeManifestValidationError",
+        source: expect.stringContaining("package/recipe.yml"),
+      });
+      expect(await Bun.file(join(dir, "app", ".lando.yml")).exists()).toBe(false);
     });
   });
 });

@@ -1,0 +1,5 @@
+name: config-views
+services:
+  web:
+    image: node:22
+    primary: false

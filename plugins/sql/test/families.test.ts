@@ -9,17 +9,17 @@ import {
   familyFromServiceType,
   isSqlServiceType,
   loadCommand,
-  mssqlBackupCommand,
-  mssqlBackupServicePath,
-  mssqlPrepareBackupCommand,
   resetCommand,
+  versionCommand,
 } from "../src/families.ts";
+import { mssqlBackupCommand, mssqlBackupServicePath, mssqlPrepareBackupCommand } from "../src/mssql.ts";
 
 const SECRET = "s3cret-pass";
 const creds: SqlCreds = {
   user: "alice",
   password: SECRET,
   database: "appdb",
+  port: 43210,
   rootPassword: "root-s3cret",
 };
 
@@ -53,6 +53,15 @@ describe("isSqlServiceType", () => {
 });
 
 describe("family command builders", () => {
+  test.each(["mysql", "mariadb", "postgres", "mssql"] as const)(
+    "uses the planned port for every %s client operation",
+    (family) => {
+      const expected = family === "mssql" ? "localhost,43210" : "43210";
+      for (const build of [loadCommand, countCommand, resetCommand, versionCommand]) {
+        expect(build(family, creds)).toContain(expected);
+      }
+    },
+  );
   const families = [
     "mysql",
     "mariadb",
@@ -101,6 +110,8 @@ describe("family command builders", () => {
       "mysqldump",
       "-h",
       "127.0.0.1",
+      "-P",
+      "43210",
       "-u",
       "alice",
       "--single-transaction",
@@ -116,6 +127,8 @@ describe("family command builders", () => {
       "mariadb-dump",
       "-h",
       "127.0.0.1",
+      "-P",
+      "43210",
       "-u",
       "alice",
       "--single-transaction",
@@ -125,50 +138,93 @@ describe("family command builders", () => {
     ]);
   });
 
-  test("postgres dump uses pg_dump -U and -d", () => {
-    expect(dumpCommand("postgres", creds)).toEqual(["pg_dump", "-U", "alice", "-d", "appdb"]);
+  test("postgres dump recreates included objects without source ownership or ACLs", () => {
+    expect(dumpCommand("postgres", creds)).toEqual([
+      "pg_dump",
+      "--clean",
+      "--if-exists",
+      "--no-owner",
+      "--no-acl",
+      "-p",
+      "43210",
+      "-U",
+      "alice",
+      "-d",
+      "appdb",
+    ]);
   });
 
   test("mongodb dump uses MONGO_URI from the environment", () => {
     const argv = dumpCommand("mongodb", creds);
-    expect(argv[0]).toBe("sh");
+    expect(argv[0]).toBe("bash");
     expect(argv[1]).toBe("-c");
-    expect(argv[2]).toContain('mongodump --archive --uri="$MONGO_URI"');
+    expect(argv[2]).toContain("mongodump --archive --config=/dev/fd/3");
     expect(argv[2]).toContain("--db='appdb'");
     expect(argvHasSecret(argv)).toBe(false);
   });
 
   test("mysql load uses mysql -u without -p", () => {
-    expect(loadCommand("mysql", creds)).toEqual(["mysql", "-h", "127.0.0.1", "-u", "alice", "appdb"]);
+    expect(loadCommand("mysql", creds)).toEqual([
+      "mysql",
+      "-h",
+      "127.0.0.1",
+      "-P",
+      "43210",
+      "-u",
+      "alice",
+      "appdb",
+    ]);
   });
 
-  test("postgres load uses psql -U and -d", () => {
-    expect(loadCommand("postgres", creds)).toEqual(["psql", "-U", "alice", "-d", "appdb"]);
+  test("postgres load ignores startup files and stops on the first SQL error", () => {
+    expect(loadCommand("postgres", creds)).toEqual([
+      "psql",
+      "-X",
+      "-v",
+      "ON_ERROR_STOP=on",
+      "-p",
+      "43210",
+      "-U",
+      "alice",
+      "-d",
+      "appdb",
+    ]);
   });
 
   test("mongodb load uses MONGO_URI from the environment", () => {
     const argv = loadCommand("mongodb", creds);
-    expect(argv[0]).toBe("sh");
-    expect(argv[2]).toContain('mongorestore --archive --uri="$MONGO_URI"');
+    expect(argv[0]).toBe("bash");
+    expect(argv[2]).toContain("mongorestore --archive --config=/dev/fd/3");
     expect(argv[2]).toContain("--nsInclude='appdb.*'");
     expect(argvHasSecret(argv)).toBe(false);
   });
 
   test("mssql load is sqlcmd without -P", () => {
     const argv = loadCommand("mssql", creds);
-    expect(argv.slice(0, 6)).toEqual(["/opt/mssql-tools18/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-C"]);
+    expect(argv.slice(0, 6)).toEqual([
+      "/opt/mssql-tools18/bin/sqlcmd",
+      "-S",
+      "localhost,43210",
+      "-U",
+      "sa",
+      "-C",
+    ]);
     expect(argv).not.toContain("-P");
     expect(argv.some((part) => part.includes("WITH REPLACE"))).toBe(true);
   });
 
   test("mssql backup overwrites an existing bak file", () => {
-    const argv = mssqlBackupCommand("appdb");
+    const argv = mssqlBackupCommand("appdb", 43210);
+    expect(argv).toContain("localhost,43210");
     expect(argv[0]).toBe("/opt/mssql-tools18/bin/sqlcmd");
     expect(argv.some((part) => part.includes("WITH INIT"))).toBe(true);
   });
 
   test("mssql prepares the server-owned backup directory", () => {
-    expect(mssqlPrepareBackupCommand()).toEqual(["mkdir", "-p", "/var/opt/mssql/backup"]);
+    expect(mssqlPrepareBackupCommand("appdb").slice(-2)).toEqual([
+      "/var/opt/mssql/backup",
+      "/var/opt/mssql/backup/appdb.bak",
+    ]);
   });
 
   test("countCommand uses family-specific emptiness probes", () => {
@@ -176,6 +232,8 @@ describe("family command builders", () => {
       "mysql",
       "-h",
       "127.0.0.1",
+      "-P",
+      "43210",
       "-u",
       "alice",
       "-D",
@@ -186,6 +244,11 @@ describe("family command builders", () => {
     ]);
     expect(countCommand("postgres", creds)).toEqual([
       "psql",
+      "-X",
+      "-v",
+      "ON_ERROR_STOP=on",
+      "-p",
+      "43210",
       "-U",
       "alice",
       "-d",
@@ -194,17 +257,24 @@ describe("family command builders", () => {
       "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'",
     ]);
     const mongoCount = countCommand("mongodb", creds);
-    expect(mongoCount[0]).toBe("sh");
-    expect(mongoCount[2]).toContain('mongosh "$MONGO_URI" --quiet');
-    expect(mongoCount[2]).not.toContain("--uri");
-    expect(mongoCount[2]).toContain("db.getCollectionNames().length");
+    expect(mongoCount).toEqual([
+      "mongosh",
+      "--nodb",
+      "--quiet",
+      "--eval",
+      "db=connect(process.env.MONGO_URI)",
+      "--eval",
+      "db.getCollectionNames().length",
+    ]);
     expect(countCommand("mssql", creds)).toEqual([
       "/opt/mssql-tools18/bin/sqlcmd",
       "-S",
-      "localhost",
+      "localhost,43210",
       "-U",
       "sa",
       "-C",
+      "-b",
+      "-r1",
       "-d",
       "appdb",
       "-Q",
@@ -219,6 +289,8 @@ describe("family command builders", () => {
       "mysql",
       "-h",
       "127.0.0.1",
+      "-P",
+      "43210",
       "-u",
       "alice",
       "-e",
@@ -226,6 +298,11 @@ describe("family command builders", () => {
     ]);
     expect(resetCommand("postgres", creds)).toEqual([
       "psql",
+      "-X",
+      "-v",
+      "ON_ERROR_STOP=on",
+      "-p",
+      "43210",
       "-U",
       "alice",
       "-d",
@@ -234,10 +311,15 @@ describe("family command builders", () => {
       "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO alice;",
     ]);
     const mongoReset = resetCommand("mongodb", creds);
-    expect(mongoReset[0]).toBe("sh");
-    expect(mongoReset[2]).toContain('mongosh "$MONGO_URI" --quiet');
-    expect(mongoReset[2]).not.toContain("--uri");
-    expect(mongoReset[2]).toContain("db.dropDatabase()");
+    expect(mongoReset).toEqual([
+      "mongosh",
+      "--nodb",
+      "--quiet",
+      "--eval",
+      "db=connect(process.env.MONGO_URI)",
+      "--eval",
+      "db.dropDatabase()",
+    ]);
     const mssql = resetCommand("mssql", creds);
     expect(mssql[0]).toBe("/opt/mssql-tools18/bin/sqlcmd");
     expect(mssql).toContain(

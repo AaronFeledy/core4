@@ -10,6 +10,15 @@ import {
   mysqlServiceType,
 } from "../src/services/mysql.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({
+  serviceType: mysqlServiceType,
+  variable: "MYSQL_TCP_PORT",
+  defaultPort: 3306,
+  serverCommand: "mysqld",
+  reservedPorts: [33060],
+});
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -63,10 +72,13 @@ describe("mysql ServiceType", () => {
       MYSQL_DATABASE: "myapp",
     });
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
-    expect(plan.storage).toHaveLength(1);
-    expect(plan.storage[0]?.store).toBe("myapp-db-mysql-data");
-    expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3306, protocol: "tcp", name: "db" }]);
+    const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+    expect(volumes).toHaveLength(1);
+    expect(volumes[0]?.store).toBe("myapp-db-mysql-data");
+    expect(String(volumes[0]?.target)).toBe("/var/lib/mysql");
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },
+    ]);
   });
 
   test("propagates MySQL overrides (image, creds, port, env) and keeps user as plan.user", async () => {
@@ -87,7 +99,9 @@ describe("mysql ServiceType", () => {
       MYSQL_DATABASE: "appdb",
     });
     expect(plan.environment.MYSQL_USER).not.toBe("uid");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 13306, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 13306, protocol: "tcp", name: "db", primary: true },
+    ]);
   });
 
   test("S1 authored creds win for MYSQL_* and LANDO_DB_* without putting LANDO_DB_* on resolve env", async () => {
@@ -141,7 +155,7 @@ describe("mysql ServiceType", () => {
       description: "Open the MySQL client for this service.",
       dir: PortablePath.make("/"),
       service: "db",
-      cmd: ["mysql", "-h", "127.0.0.1", "-u", "alice", "appdb"],
+      cmd: ["mysql", "-h", "127.0.0.1", "-P", "3306", "-u", "alice", "appdb"],
       env: { MYSQL_PWD: "s3cret" },
     });
     expect(resolution.tooling?.mysql?.cmd).not.toContain("s3cret");
@@ -152,7 +166,13 @@ describe("mysql ServiceType", () => {
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["sh", "-c", 'mysqladmin ping -h 127.0.0.1 -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" --silent'],
+      command: [
+        "sh",
+        "-c",
+        'MYSQL_PWD="$MYSQL_PASSWORD" exec mysqladmin ping -h 127.0.0.1 -P "$1" -u "$MYSQL_USER" --silent',
+        "mysql-healthcheck",
+        "3306",
+      ],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -160,31 +180,33 @@ describe("mysql ServiceType", () => {
     });
   });
 
-  test("mounts config.server read-only at MYSQL_CONFIG_TARGET without changing command or entrypoint", async () => {
+  test("mounts config.server read-only and pins the default port without changing entrypoint", async () => {
     const baseline = await planMysqlService({ type: "mysql" });
     const plan = await planMysqlService({
       type: "mysql",
       config: { server: "config/my.cnf" },
     });
 
-    expect(plan.mounts).toEqual([
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/srv/apps/myapp/config/my.cnf",
+        relativeTo: "app",
         target: MYSQL_CONFIG_TARGET,
         readOnly: true,
         realization: "passthrough",
       },
     ]);
     expect(String(MYSQL_CONFIG_TARGET)).toBe("/etc/mysql/my.cnf");
-    expect(plan.command).toEqual(baseline.command);
+    expect(plan.command).toEqual(["mysqld", "--port=3306"]);
     expect(plan.entrypoint).toEqual(baseline.entrypoint);
   });
 
   test("omits the server config mount when config.server is absent", async () => {
     const plan = await planMysqlService({ type: "mysql" });
 
-    expect(plan.mounts).toEqual([]);
+    expect(plan.mounts.filter((mount) => mount.type !== "volume")).toEqual([]);
     expect(plan.command).toBeUndefined();
     expect(plan.entrypoint).toBeUndefined();
   });

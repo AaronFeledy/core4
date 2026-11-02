@@ -39,6 +39,7 @@ const makeFixture = async (readyError?: Error) => {
     start: (command, args) => {
       calls.push({ command, args });
       return {
+        exited: Promise.resolve(0),
         waitReady: () => (readyError === undefined ? Promise.resolve() : Promise.reject(readyError)),
         close: async () => {
           closes += 1;
@@ -78,6 +79,9 @@ describe("managed Windows host-proxy guest bridge", () => {
     );
     expect(first.socketPath).not.toBe(second.socketPath);
     expect(first.socketPath).toStartWith("/home/user/.local/share/lando/host-proxy/");
+    // Scope already released the bridges; exited still settles from the fake child.
+    expect(await first.exited).toBe(0);
+    expect(await second.exited).toBe(0);
     const forwards = fixture.calls.filter((call) => call.args.includes("-R"));
     expect(forwards).toHaveLength(2);
     expect(forwards[0]?.args.find((arg) => arg.includes(":127.0.0.1:49160"))).toBe(

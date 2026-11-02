@@ -16,7 +16,7 @@ export interface TerminalQrDecision {
 export const isLocalQrUrl = (value: string, proxyDefaultDomain = DEFAULT_LOCAL_QR_DOMAIN): boolean => {
   try {
     const hostname = new URL(value).hostname.toLowerCase().replace(/\.$/u, "");
-    const domain = proxyDefaultDomain.trim().toLowerCase().replace(/\.+$/u, "");
+    const domain = proxyDefaultDomain.toLowerCase();
     return (
       LOCAL_QR_HOSTS.has(hostname) ||
       [DEFAULT_LOCAL_QR_DOMAIN, domain].some(

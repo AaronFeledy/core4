@@ -23,7 +23,6 @@ import { Effect, Layer } from "effect";
 import { RecipeSourceError, causeMessage } from "@lando/sdk/errors";
 import { Downloader } from "@lando/sdk/services";
 
-import * as LandoConfigService from "@lando/engine/services/config";
 import * as LandoEventService from "@lando/engine/services/event-service";
 import { layer as downloaderLayer } from "@lando/http-client/downloader";
 import { layer as httpClientLayer } from "@lando/http-client/live";
@@ -38,7 +37,10 @@ import {
 } from "./source-support";
 
 export interface TarballRecipeFetcher {
-  readonly fetch: (url: string) => Promise<Uint8Array>;
+  readonly fetch: (
+    url: string,
+    options?: { readonly authorization?: string; readonly redactionTokens?: ReadonlyArray<string> },
+  ) => Promise<Uint8Array>;
 }
 
 export interface TarballRecipeExtractor {
@@ -79,8 +81,10 @@ const sourceError = (input: {
 
 const SHA256_RE = /^[0-9a-f]{64}$/u;
 
-export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
-  fetch: (url) =>
+export const makeTarballRecipeFetcher = (
+  retainedDownloader?: typeof Downloader.Service,
+): TarballRecipeFetcher => ({
+  fetch: (url, options) =>
     Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
@@ -91,23 +95,27 @@ export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
           const downloader = yield* Downloader;
           const result = yield* downloader.download({
             url,
+            ...(options?.authorization === undefined
+              ? {}
+              : { headers: [{ name: "authorization", value: options.authorization }] }),
+            ...(options?.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
             destination: { kind: "file", directory, filename: "archive" },
           });
           const bytes = yield* Effect.promise(() => readFile(result.path ?? join(directory, "archive")));
           return new Uint8Array(bytes);
         }).pipe(
           Effect.provide(
-            Layer.mergeAll(
-              downloaderLayer.pipe(
-                Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer))),
-              ),
-              LandoConfigService.layer,
-            ),
+            retainedDownloader === undefined
+              ? downloaderLayer.pipe(
+                  Layer.provide(httpClientLayer.pipe(Layer.provide(LandoEventService.layer))),
+                )
+              : Layer.succeed(Downloader, retainedDownloader),
           ),
         ),
       ),
     ),
-};
+});
+export const defaultTarballRecipeFetcher = makeTarballRecipeFetcher();
 
 const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 
@@ -351,6 +359,7 @@ export const resolveTarballRecipeSource = async (
     source: manifestPath,
     manifestYaml,
     root: recipeRoot,
+    acquisitionRoot: publishedDir,
     sha256,
   };
 };

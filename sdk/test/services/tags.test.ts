@@ -199,6 +199,7 @@ describe("Effect service tags", () => {
       subscribe: (_name: string) => Stream.empty,
       subscribeQueue: Effect.never as Context.Service.Shape<typeof EventService>["subscribeQueue"],
       waitFor: () => Effect.never,
+      subscribeWithHistory: () => Effect.never,
       waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     };
@@ -252,7 +253,6 @@ describe("Effect service tags", () => {
       provider: ProviderId.make("test"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {
@@ -290,9 +290,9 @@ describe("Effect service tags", () => {
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Service.Shape<typeof RuntimeProviderRegistry>["select"]>>>
       >(true),
-      assertTaggedFailure<TaggedFailure<FailureOf<Context.Service.Shape<typeof ConfigService>["load"]>>>(
-        true,
-      ),
+      assertTaggedFailure<
+        [FailureOf<Context.Service.Shape<typeof ConfigService>["load"]>] extends [never] ? true : false
+      >(true),
       assertTaggedFailure<
         TaggedFailure<FailureOf<Context.Service.Shape<typeof LandofileService>["discover"]>>
       >(true),

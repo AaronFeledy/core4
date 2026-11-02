@@ -1,0 +1,7 @@
+name: solr-explicit-stop
+services:
+  search:
+    type: solr
+    port: 1000
+    environment:
+      STOP_PORT: "18000"

@@ -2,13 +2,7 @@ import { Effect, Option } from "effect";
 
 import { LandofileParseError, LandofileVersionConstraintError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
-import {
-  AppPlanner,
-  LandofileService,
-  Renderer,
-  RuntimeProviderRegistry,
-  StateStore,
-} from "@lando/sdk/services";
+import { AppPlanner, LandofileService, Renderer, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import {
   type ResolvedAppTarget,
@@ -24,7 +18,7 @@ import {
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
-import { landofileRuntimeInputs } from "../composition.ts";
+import { scopedLandofileRuntimeInputs } from "../services/landofile-live.ts";
 import { CORE_VERSION } from "../version.ts";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "./command-warnings.ts";
 
@@ -94,6 +88,7 @@ export const assertLandoVersionConstraint = (
         filePath: bad.source,
         line: undefined,
         column: undefined,
+        remediation: `Edit the lando: field in ${bad.source}: ${RANGE_SYNTAX_REMEDIATION}`,
       }),
     );
   }
@@ -123,20 +118,15 @@ export const makeEngineUserAppResolution = (inputs: LandofileRuntimeInputs): Use
   });
 
 const userAppResolution = (): Effect.Effect<UserAppResolution> =>
-  Effect.map(Effect.serviceOption(StateStore), (stateStore) =>
-    makeEngineUserAppResolution({
-      ...landofileRuntimeInputs(),
-      ...(Option.isSome(stateStore) ? { stateStore: stateStore.value } : {}),
-    }),
-  );
+  Effect.map(scopedLandofileRuntimeInputs, makeEngineUserAppResolution);
 
 export const loadUserLandofile: UserAppResolution["loadUserLandofile"] = (...args) =>
   Effect.flatMap(userAppResolution(), (resolution) => resolution.loadUserLandofile(...args));
 export const loadUserLandofileAt: UserAppResolution["loadUserLandofileAt"] = (...args) =>
   Effect.flatMap(userAppResolution(), (resolution) => resolution.loadUserLandofileAt(...args));
 export const loadUserLandofileFile = (filePath: string) =>
-  Effect.flatMap(StateStore, (stateStore) =>
-    makeEngineUserAppResolution({ ...landofileRuntimeInputs(), stateStore }).loadUserLandofileFile(filePath),
+  Effect.flatMap(scopedLandofileRuntimeInputs, (inputs) =>
+    makeEngineUserAppResolution(inputs).loadUserLandofileFile(filePath),
   );
 
 export const planDesiredApp = Effect.gen(function* () {

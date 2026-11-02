@@ -7,7 +7,7 @@ tags: [beta, docs, solr, service]
 
 # Add Solr
 
-Put `type: solr` in your services block. That resolves to `solr:9`. Lando pulls it and listens on `8983`:
+Add `type: solr` under `services` in `.lando.yml`. That resolves to `solr:9`. Lando pulls it and listens on `8983`:
 
 ```yaml
 name: solr-demo
@@ -52,10 +52,10 @@ services:
 
 `precreate-core` runs for each declared core before `solr-foreground`, so every core exists before the server accepts queries. When you declare cores, Lando selects user-managed (standalone) mode on Solr versions that offer it, including Solr 10. Older images keep their standalone default.
 
-A core name has to name exactly one directory under `/var/solr/data`. Use letters, numbers, dots, underscores, and dashes. `.` and `..` are reserved, and `/` and `\` are rejected, so no core can precreate or overlay config outside its own directory. Dots inside a name are fine: `a.b` and `a...b` both work. Lando refuses a bad name while it plans the app, before it builds the startup command and before it starts a provider, and the error names the offending entry:
+A core name has to name exactly one directory under `/var/solr/data`. Use letters, numbers, dots, underscores, and dashes. `.` and `..` are reserved, and `/` and `\` are rejected, so no core can precreate or overlay config outside its own directory. Dots inside a name are fine: `a.b` and `a...b` both work. `lando app:config:lint` reports a bad name at `["services", "search", "cores", 0]`, and `lando start` refuses it while it plans the app, before it builds the startup command and before it starts a provider. The error names the offending entry:
 
 ```
-services.search.cores[0] "../escape" is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\" are not allowed. Rename the core to a plain directory name.
+services.search.cores[0]: "../escape" is not a usable Solr core directory name. Use letters, numbers, dots, underscores, and dashes. "." and ".." are reserved, and "/" and "\" are not allowed. Rename the core to a plain directory name.
 ```
 
 ### Run Solr as another user
@@ -76,7 +76,7 @@ services:
 
 Two things to know:
 
-- It only applies to a **new** volume. A volume created by an earlier start keeps the ownership it already has. Remove the volume (`lando destroy` with volume purge) to get a fresh one that is seeded again.
+- It only applies to a **new** volume. A volume created by an earlier start keeps the ownership it already has. Purging that volume deletes its Solr data. Back up anything you need before using `lando destroy` with volume purge to create a fresh volume with the new ownership.
 - Lando has to know your user exists in the image. A numeric uid always works, because a uid can always be given ownership, even when you supply your own `image:` or `build:`. A name the `solr` type doesn't declare (`solr` and `root` are the only two) is refused. A named `user:` on a service that supplies its own `image:` or `build:` is refused too, because that image is no longer the one the type described. The refusal is a `DataTreeOwnershipCapabilityError` that names the service, the data tree (`/var/solr`), and the Landofile option to change. Fix it with a numeric uid, or use `root`.
 
 ## Hit the admin API
@@ -112,21 +112,108 @@ Lando identifies that directory by its contents, not by where it sits. Move the 
 
 The copy runs as the planned `user:`, so the same ownership rule as [precreating cores](#run-solr-as-another-user) applies: your user has to own `/var/solr`, and Lando arranges that for a numeric uid on a fresh volume. The overlay side has its own requirement. The host directory is bind-mounted read-only, and a non-root user still has to be able to read it. A `0700` directory on the host is not readable by uid `10001` inside the container, and the copy fails. `0755` works.
 
-If you also set `command:` on the service, yours wins. Your command owns core creation, config copying, and Solr's startup mode.
+If you also set `command:` on the service, yours wins. Your command owns core
+creation, config copying, Solr's listen port, and startup mode. Lando never
+appends `-p` or other flags to a command you wrote. An authored `entrypoint:`
+still receives Lando's Solr command, port included.
+
+## Change the port
+
+Set `port:` to move the HTTP listener, healthcheck, and endpoint together:
+
+```yaml
+services:
+  search:
+    type: solr
+    port: 8984
+```
+
+Lando starts Solr with `-p 8984`, including when it precreates cores. Other
+services connect to `search:8984`. If you author `command:`, pass `-p 8984`
+yourself.
+If startup fails with an authored command, Lando includes a hint naming
+`-p 8984`.
+
+Apply the change with `lando rebuild`, then check the admin API on the planned
+port:
+
+```sh
+lando exec search -- curl -sf http://localhost:8984/solr/admin/info/system
+```
+
+  <Scenario id="custom-port" render={false} reason="Plan a non-default Solr listen port">
+    <Step name="plan-port">
+      <UseFixture name="solr-port" />
+      <Run command="lando app:cache:refresh --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"port\":\\s*8984" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+## Keep the stop listener valid
+
+Solr also opens a loopback-only Jetty stop listener. Its default port is
+`7983`, derived from the HTTP port minus `1000`. Moving `port:` also moves
+that listener, so `7983` is not a fixed reservation for HTTP.
+
+With Lando's launcher, `port:` must be above `1000` unless you set a valid
+`STOP_PORT`. A primary port below `1000` disables Jetty's stop monitor; at
+exactly `1000`, Jetty chooses an ephemeral stop port. HTTP can still start in
+both cases, but Solr's stop client rejects the nonpositive configured port,
+so graceful shutdown is unreliable. Lando rejects this configuration during
+planning at `services.<name>.port` rather than selecting a stop port for you.
+
+If you need a low HTTP port, set `STOP_PORT` to a distinct integer from `1`
+to `65535`:
+
+```yaml
+services:
+  search:
+    type: solr
+    port: 1000
+    environment:
+      STOP_PORT: "18000"
+```
+
+This fixes the stop-port derivation; it does not grant permission to bind a
+privileged HTTP port. The stop listener cannot share the HTTP port. An authored
+`command:` owns its own stop-listener configuration, so these launcher checks
+do not apply to it.
+
+Validate with `lando app:cache:refresh --format=json` before start.
+
+  <Scenario id="reject-invalid-derived-stop" render={false} reason="Reject a nonpositive derived Solr stop port">
+    <Step name="reject-stop">
+      <UseFixture name="solr-invalid-stop" />
+      <Run command="lando app:cache:refresh --format=json" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" />
+      <Verify command="lando app:cache:refresh --format=json" expectExit={1} expect={{ stdout: { regex: "STOP_PORT" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="explicit-stop-port" render={false} reason="Allow a low HTTP port with an explicit valid stop listener">
+    <Step name="plan-stop">
+      <UseFixture name="solr-explicit-stop" />
+      <Run command="lando app:cache:refresh --format=json" />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+See [Inspect a failed start](./wait-for-your-app.mdx#inspect-a-failed-start) for observed ports and listener troubleshooting.
 
 ## Pin a version
 
-Set `image:` when the default `solr:9` line is not the tag you want. Landofile-supplied images need `home: false` or `home.path`, or start refuses with `HomePathCapabilityError`:
+Set `image:` when the default `solr:9` line is not the tag you want:
 
 ```yaml
 services:
   search:
     type: solr
     image: solr:9.6
-    home: false
 ```
 
-See [home and host mounts](../home-and-host/) for persistent home configuration.
+Because you supply the image, Lando plans no home store for the service. See [home and host mounts](../home-and-host/) if you want to keep one with `home.path`.
 
 For Solr 10 with standalone cores, declare the cores directly:
 
@@ -135,7 +222,6 @@ services:
   search:
     type: solr
     image: solr:10
-    home: false
     cores: [default, products]
 ```
 

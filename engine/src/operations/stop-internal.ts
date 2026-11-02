@@ -1,4 +1,4 @@
-import { DateTime, Effect, Option, Schema } from "effect";
+import { DateTime, Effect, Option } from "effect";
 
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
 import {
@@ -14,7 +14,7 @@ import {
   PreServiceStopEvent,
   PreStopEvent,
 } from "@lando/sdk/events";
-import type { AppPlan, FileSyncSessionInfo } from "@lando/sdk/schema";
+import type { AppPlan, FileSyncSessionInfo, ServiceShutdownObservation } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type AppliedFileSyncInspection,
@@ -32,19 +32,20 @@ import type { PrivateFileAccessService } from "@lando/state-store/private-file-a
 
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 
+import { mapFailureErrors } from "../lifecycle/failure-compensation.ts";
 import { cleanupHostProxyRunLandoState } from "../subsystems/host-proxy/transport.ts";
 import { cleanupAgentRelayState } from "../subsystems/ssh-agent/cleanup.ts";
-import { requireNoPendingAcceleratedStop } from "./accelerated-start-journal.ts";
+import { acceleratedStartStopError } from "./accelerated-start-disposal.ts";
+import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
+import { recordedSessionInventory } from "./accelerated-start-resume.ts";
 import { publishAndRunAppEvent, publishAndRunPostAppEvent, runAppInitEvents } from "./events.ts";
+import { acquireFileSyncEngine } from "./file-sync-acquire.ts";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { hasExactFileSyncSessionCoverage, terminateFileSyncSessions } from "./file-sync.ts";
+import { resolveLandofileEventPlan } from "./landofile-events.ts";
 
 export type StopAppError = SdkStopAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
-
-export const StopAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStopped: Schema.Array(Schema.String),
-});
 
 type StopAppServices =
   | AppPlanner
@@ -54,7 +55,6 @@ type StopAppServices =
   | PrivateFileAccessService
   | RuntimeProviderRegistry
   | StateStore;
-type BoundStopAppServices = Exclude<StopAppServices, AppPlanner | LandofileService>;
 
 const now = () => DateTime.nowUnsafe();
 
@@ -70,21 +70,54 @@ export interface StopAppPreflight {
 export const preflightStopApp = Effect.fnUntraced(function* (
   target: ResolvedAppTarget,
 ): Effect.fn.Return<StopAppPreflight, SdkStopAppError, RuntimeProviderRegistry | StateStore> {
-  yield* requireNoPendingAcceleratedStop(target.app, target.plan);
+  const pending = yield* readPendingAcceleratedStart(target.app, target.plan).pipe(
+    mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
+  );
   const registry = yield* RuntimeProviderRegistry;
   const plan = target.plan;
   const provider = yield* registry.select(plan);
+  if (pending !== null) {
+    const bundle = yield* fileSyncBundle(plan).pipe(
+      mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
+    );
+    const { engine, sessions } = yield* recordedSessionInventory(target.app, pending, plan).pipe(
+      mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
+    );
+    return {
+      provider,
+      appliedFileSync: {
+        status: "accelerated",
+        engineId: pending.engineId,
+        sessions: bundle.sessions,
+      },
+      maybeFileSync: Option.some(engine),
+      fileSyncAvailable: true,
+      sessions,
+    };
+  }
   const ref = target.app;
+  const bundle =
+    provider.inspectAppliedFileSync === undefined
+      ? yield* fileSyncBundle(plan).pipe(
+          mapFailureErrors((cause) => acceleratedStartStopError(target.app, cause)),
+        )
+      : undefined;
   const appliedFileSync =
     provider.inspectAppliedFileSync === undefined
       ? {
           status:
-            plan.fileSync.length > 0 && provider.prepareFileSyncTargets !== undefined
+            bundle?.kind === "accelerated" && provider.prepareFileSyncTargets !== undefined
               ? ("unknown" as const)
               : ("ordinary" as const),
         }
       : yield* provider.inspectAppliedFileSync(plan);
-  const maybeFileSync = yield* Effect.serviceOption(FileSyncEngine);
+  const maybeFileSync =
+    appliedFileSync.status === "accelerated"
+      ? yield* acquireFileSyncEngine(appliedFileSync.engineId).pipe(
+          Effect.map(Option.some),
+          Effect.catch(() => Effect.succeed(Option.none())),
+        )
+      : Option.none();
   const fileSyncAvailable =
     appliedFileSync.status === "accelerated" &&
     Option.isSome(maybeFileSync) &&
@@ -96,12 +129,18 @@ export const preflightStopApp = Effect.fnUntraced(function* (
   if (
     appliedFileSync.status === "unknown" ||
     (appliedFileSync.status === "accelerated" &&
-      (appliedFileSync.engineId !== (Option.isSome(maybeFileSync) ? maybeFileSync.value.id : undefined) ||
+      (Option.isNone(maybeFileSync) ||
+        maybeFileSync.value.id !== appliedFileSync.engineId ||
         !hasExactFileSyncSessionCoverage(appliedFileSync.sessions, sessions)))
   ) {
     return yield* Effect.fail(
       new FileSyncStopError({
-        engineId: Option.isSome(maybeFileSync) ? maybeFileSync.value.id : "unavailable",
+        engineId:
+          appliedFileSync.status === "accelerated"
+            ? appliedFileSync.engineId
+            : Option.isSome(maybeFileSync)
+              ? maybeFileSync.value.id
+              : "unavailable",
         sessionRef: String(sessions[0]?.ref ?? plan.id),
         message:
           appliedFileSync.status === "unknown"
@@ -123,7 +162,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
 ): Effect.fn.Return<
   { readonly result: StopAppResult; readonly plan: AppPlan },
   SdkStopAppError,
-  BoundStopAppServices
+  StopAppServices
 > {
   const events = yield* EventService;
   const paths = yield* PathsService;
@@ -131,8 +170,9 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
   const ref = target.app;
   const { provider, appliedFileSync, maybeFileSync, fileSyncAvailable, sessions } =
     prepared ?? (yield* preflightStopApp(target));
+  const { plan: eventPlan, outcome: landofileEvents } = yield* resolveLandofileEventPlan(target);
 
-  if (runInitEvents) yield* runAppInitEvents(plan);
+  if (runInitEvents) yield* runAppInitEvents(eventPlan);
 
   yield* events.publish(
     PreAppStopEvent.make({
@@ -143,7 +183,7 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     }),
   );
   const preStop = PreStopEvent.make({ _tag: "pre-stop", scope: "app", app: ref, timestamp: now() });
-  yield* publishAndRunAppEvent(plan, "pre-stop", preStop);
+  yield* publishAndRunAppEvent(eventPlan, "pre-stop", preStop);
 
   const services = Object.values(plan.services).reverse();
   for (const service of services) {
@@ -158,22 +198,28 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     );
   }
 
-  yield* provider
+  const destroyOutcome = yield* provider
     .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
     .pipe(
       Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
       Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "ssh")),
       Effect.ensuring(cleanupAgentRelayState(ref, { ...paths.roots, platform: paths.platform }, "gpg")),
     );
+  const shutdownObservations: readonly ServiceShutdownObservation[] | undefined =
+    destroyOutcome.shutdownObservations;
 
   if (
     appliedFileSync.status === "accelerated" &&
     Option.isSome(maybeFileSync) &&
     maybeFileSync.value.appLifecycle !== undefined
   ) {
-    yield* maybeFileSync.value.appLifecycle.drain(ref);
+    // An unfinished attempt may not have created any session yet; there is nothing to drain.
+    if (sessions.length > 0) yield* maybeFileSync.value.appLifecycle.drain(ref);
   } else if (appliedFileSync.status === "accelerated") {
-    yield* terminateFileSyncSessions(ref, fileSyncAvailable ? sessions : undefined);
+    const terminate = terminateFileSyncSessions(ref, fileSyncAvailable ? sessions : undefined);
+    yield* Option.isSome(maybeFileSync)
+      ? terminate.pipe(Effect.provideService(FileSyncEngine, maybeFileSync.value))
+      : terminate;
   }
 
   for (const service of services) {
@@ -197,10 +243,15 @@ const stopAppWithResolvedPlan = Effect.fnUntraced(function* (
     }),
   );
   const postStop = PostStopEvent.make({ _tag: "post-stop", scope: "app", app: ref, timestamp: now() });
-  yield* publishAndRunPostAppEvent(plan, "post-stop", postStop);
+  yield* publishAndRunPostAppEvent(eventPlan, "post-stop", postStop);
 
   return {
-    result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },
+    result: {
+      app: plan.name,
+      servicesStopped: services.map((service) => String(service.name)),
+      landofileEvents,
+      ...(shutdownObservations === undefined ? {} : { shutdownObservations }),
+    },
     plan,
   };
 });

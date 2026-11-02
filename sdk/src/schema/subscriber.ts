@@ -5,8 +5,8 @@ import { Schema } from "effect";
 // Subscriber manifest / selector contracts for plugin event handlers.
 
 /**
- * Bounded subscriber selector: exact event name, or the one closed family
- * cli-command-terminal (expands to every canonical command's run/error pair).
+ * Bounded subscriber selector: exact event name, or the named terminal family
+ * cli-command-terminal (matches canonical command run/error events at dispatch).
  * No regex, wildcard, or partial match.
  */
 export const SubscriberSelector = Schema.Union([
@@ -18,7 +18,7 @@ export const SubscriberSelector = Schema.Union([
   Schema.Struct({
     family: Schema.Literal("cli-command-terminal").annotate({
       description:
-        "Precomputed family: cli-<canonical-id>-run and cli-<canonical-id>-error for every command.",
+        "Terminal family: cli-<canonical-id>-run and cli-<canonical-id>-error, matched at dispatch.",
     }),
   }),
 ]);
@@ -33,7 +33,8 @@ export type PublishedGlobalConfigKey = typeof PublishedGlobalConfigKey.Type;
 
 /**
  * Plugin subscribers entry. Shape/syntax validated at manifest read;
- * selector semantics (event membership / family expansion) run after registration.
+ * static selector membership is validated at registration; deferred app targets
+ * are checked when an authoritative app-command catalog is supplied.
  * Plugin priority is restricted to the default band (100..999); omitted → 500.
  */
 export const SubscriberManifestEntry = Schema.Struct({

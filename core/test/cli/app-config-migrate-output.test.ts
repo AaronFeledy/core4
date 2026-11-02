@@ -69,7 +69,7 @@ describe("AppConfigMigrateResultSchema", () => {
           ],
         },
       ],
-      next: "run `lando rebuild`",
+      next: "run `lando start`",
     });
 
     const encoded = Schema.encodeSync(AppConfigMigrateResultSchema)(result);
@@ -83,7 +83,7 @@ describe("AppConfigMigrateResultSchema", () => {
 });
 
 describe("renderAppConfigMigrateResult", () => {
-  it("renders a committed write with rebuild instruction", () => {
+  it("renders a committed write with start instruction", () => {
     const text = renderAppConfigMigrateResult(
       base({
         mode: "write",
@@ -114,7 +114,7 @@ describe("renderAppConfigMigrateResult", () => {
             ],
           },
         ],
-        next: "run `lando rebuild`",
+        next: "run `lando start`",
       }),
     );
 
@@ -124,11 +124,11 @@ describe("renderAppConfigMigrateResult", () => {
     expect(text).toContain("Status: committed");
     expect(text).toContain("1.0.0 -> 2.0.0: option-default recipe.options.php [already-satisfied]");
     expect(text).toContain("1.0.0 -> 2.0.0: add services.appserver.ssl [selected]");
-    expect(text.endsWith("run `lando rebuild`")).toBe(true);
+    expect(text.endsWith("run `lando start`")).toBe(true);
     expect(text).not.toContain("Dry-run");
   });
 
-  it("renders a partial result with every hunk and rebuild", () => {
+  it("renders a partial result with every hunk and start", () => {
     const text = renderAppConfigMigrateResult(
       base({
         mode: "write",
@@ -169,7 +169,7 @@ describe("renderAppConfigMigrateResult", () => {
             ],
           },
         ],
-        next: "run `lando rebuild`",
+        next: "run `lando start`",
       }),
     );
 
@@ -181,7 +181,7 @@ describe("renderAppConfigMigrateResult", () => {
     expect(text).toContain("Edge: 1.1.0 -> 2.0.0 (blocked)");
     expect(text).toContain("1.1.0 -> 2.0.0: replace services.appserver.type [blocking] (value-conflict)");
     expect(text).toContain("Align the site value with the generated snapshot.");
-    expect(text.endsWith("run `lando rebuild`")).toBe(true);
+    expect(text.endsWith("run `lando start`")).toBe(true);
   });
 
   it("renders a blocked input with reason and remediation", () => {
@@ -202,10 +202,10 @@ describe("renderAppConfigMigrateResult", () => {
     expect(text).toContain("Blocked (bare-provenance): Recipe provenance is a bare id string.");
     expect(text).toContain("Re-init or upgrade provenance to an object with a producer.");
     expect(text).toContain("Fix provenance, then re-run migrate.");
-    expect(text).not.toContain("run `lando rebuild`");
+    expect(text).not.toContain("run `lando start`");
   });
 
-  it("renders no-op already-current without rebuild", () => {
+  it("renders no-op already-current without start", () => {
     const text = renderAppConfigMigrateResult(
       base({
         mode: "write",
@@ -217,7 +217,7 @@ describe("renderAppConfigMigrateResult", () => {
 
     expect(text).toContain("Status: no-op");
     expect(text).toContain("Nothing changed: already current.");
-    expect(text).not.toContain("run `lando rebuild`");
+    expect(text).not.toContain("run `lando start`");
   });
 
   it("renders no-op missing-old-snapshot", () => {
@@ -264,14 +264,14 @@ describe("renderAppConfigMigrateResult", () => {
             ],
           },
         ],
-        next: "run `lando rebuild`",
+        next: "run `lando start`",
       }),
     );
 
     expect(text).toContain("Dry-run: nothing was written.");
     expect(text).toContain("1.0.0 -> 2.0.0: remove services.legacy [selected]");
     expect(text).toContain("1.0.0 -> 2.0.0: add services.cache [retained-option]");
-    expect(text.endsWith("run `lando rebuild`")).toBe(true);
+    expect(text.endsWith("run `lando start`")).toBe(true);
   });
 
   it("renders a blocked hunk with reason and remediation", () => {
@@ -304,6 +304,6 @@ describe("renderAppConfigMigrateResult", () => {
 
     expect(text).toContain("1.0.0 -> 2.0.0: replace services.appserver.env.FOO [blocking] (layer-not-owned)");
     expect(text).toContain("Move the edit to a layer the recipe owns.");
-    expect(text).not.toContain("run `lando rebuild`");
+    expect(text).not.toContain("run `lando start`");
   });
 });

@@ -8,7 +8,7 @@ import {
   hostProxyContainerTargets,
 } from "@lando/container-runtime/capabilities";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
-import { podmanComposeKnobs } from "@lando/container-runtime/podman/compose-knobs";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { Effect } from "effect";
 
 import {
@@ -51,14 +51,6 @@ export const decodeProviderCapabilities = decodeProviderCapabilitiesFor(PROVIDER
  * Service-level Compose fields that stay undeclared so the planner's
  * fail-closed capability gate rejects them before provider execution:
  *
- * - `networks` — Compose attaches a service only to its listed networks, with
- *   an implicit `default` when absent. provider-lando instead attaches every
- *   service to every planned network: `bring-up.ts`'s `createContainerRequest`
- *   builds `NetworkingConfig.EndpointsConfig` from `networkNames(plan)`, and
- *   `compose.ts` does the same. The planner hardcodes `AppPlan.networks` to one
- *   app bridge, while aliases, static IPv4/IPv6, `link_local_ips`,
- *   `mac_address`, `priority`, `gw_priority`, and `interface_name` are
- *   unrealized.
  * - `secrets` — content comes from top-level entries (`file`,
  *   `content`, `environment`, or `external`). Those entries survive only in
  *   `AppPlan.extensions.compose`; they are never normalized into provider
@@ -69,6 +61,8 @@ export const decodeProviderCapabilities = decodeProviderCapabilitiesFor(PROVIDER
  *
  * `configs` is declared: file-backed top-level entries plus service grants are
  * realized as read-only bind mounts. `external: true` fails closed at plan time.
+ * Normalized `networks` uses authoredNetworks to add attachments and aliases
+ * without removing app/shared membership. Other attachment settings are rejected.
  *
  * Service-level `x-*` fields are outside the capability surface and remain
  * inert metadata preserved by core. `labels` is declared because both direct
@@ -94,8 +88,9 @@ export const providerLandoCapabilitiesForPlatform = (
     tlsCertificates: "lando",
     rootless,
     composeSpec: "native",
-    composeKnobs: { supported: podmanComposeKnobs() },
+    composeKnobs: { supported: composeKnobsForDialect("libpod") },
     composeServiceFields: { supported: ["labels", "configs"] },
+    authoredNetworks: true,
     composeProjectFields: { supported: ["configs"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(family, containerTargets, "host.containers.internal"),
@@ -124,6 +119,8 @@ export const introspectProviderCapabilities = (
             requiredValue: "valid Podman API info response",
             actualValue: cause.details,
             cause,
+            remediation:
+              "Choose a provider that supports `podman-info`, or remove that requirement from the app.",
           })
         : cause,
     ),

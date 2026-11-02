@@ -31,6 +31,8 @@ const validateDockerfileToken = (value: string, field: string, providerId: strin
           providerId,
           operation: "buildArtifact",
           message: `${field} cannot contain CR, LF, or control characters.`,
+          remediation:
+            "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
         }),
       )
     : Effect.void;
@@ -49,6 +51,8 @@ const runInstruction = (command: string | ReadonlyArray<string>, providerId: str
                   providerId,
                   operation: "buildArtifact",
                   message: "Build step argv token cannot contain NUL.",
+                  remediation:
+                    "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
                 }),
               )
             : Effect.void,
@@ -130,6 +134,8 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         providerId: options.providerId,
         operation: "buildArtifact",
         message: `${options.providerId} buildArtifact requires a container API request client.`,
+        remediation:
+          "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
       }),
     );
   }
@@ -140,6 +146,8 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         providerId: options.providerId,
         operation: "buildArtifact",
         message: `Service ${input.service} is not present in the app plan.`,
+        remediation:
+          "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
       }),
     );
   }
@@ -162,6 +170,8 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
           operation: "buildArtifact",
           message: "Unable to read artifact build context.",
           cause,
+          remediation:
+            "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
         }),
     });
     const stdin =
@@ -259,6 +269,8 @@ export const buildContainerArtifact = Effect.fn("RuntimeProvider.build")(functio
         providerId: options.providerId,
         operation: "buildArtifact",
         message: `Service ${input.service} has no artifact build inputs.`,
+        remediation:
+          "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
       }),
     );
   }

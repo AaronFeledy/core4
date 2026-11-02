@@ -2,32 +2,19 @@
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
 import { isAbsolute, relative, resolve } from "node:path";
-import {
-  Cause,
-  Clock,
-  type Context,
-  DateTime,
-  type Duration,
-  Effect,
-  Layer,
-  Option,
-  PubSub,
-  Queue,
-  Schema,
-  Stream,
-} from "effect";
+import * as EnvironmentValueResolverLayer from "@lando/engine/services/environment-value-resolver";
+import { outputRegisteredTestProvider } from "@lando/engine/testing/output-provider";
+import { makeLandoPaths } from "@lando/paths";
+import { RedactionService } from "@lando/redaction/service";
+import { CurrentExecutableAppPlan, LoadScopedLandofile } from "@lando/sdk/schema";
+import { Clock, type Context, DateTime, Effect, Layer, Option, Schema, Stream } from "effect";
+import * as ContainerHelperAssetsLayer from "../container-helper/assets.ts";
 
-import {
-  CacheError,
-  EventError,
-  PluginLoadError,
-  ScratchAppNotFoundError,
-  SecretNotFoundError,
-} from "@lando/sdk/errors";
+import { CacheError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
-  AppPlan,
+  type AppPlan,
   type FileSyncSessionInfo,
   FileSyncSessionRef,
   GlobalConfig,
@@ -38,22 +25,21 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/sdk/schema";
-import { createRedactor } from "@lando/sdk/secrets";
 import {
   AppPlanner,
   CacheService,
   CommandRegistry,
   ConfigService,
   DeprecationService,
-  type EventFor,
+  type EnvironmentValueResolver,
   EventService,
-  type EventWaitSpec,
   FileSyncEngine,
   FileSystem,
   GlobalAppService,
   type LandoEvent,
   LandofileService,
   Logger,
+  PathsService,
   PluginRegistry,
   type PluginTrustState,
   PluginTrustStore,
@@ -72,6 +58,7 @@ import {
   Telemetry,
   ToolingEngine,
 } from "@lando/sdk/services";
+import { makeTestEventService } from "./test-runtime-events.ts";
 /**
  * Re-export of the SDK's contract-valid deterministic runtime provider fixture.
  */
@@ -166,9 +153,11 @@ type MinimalTestRuntimeServices =
   | FileSystem
   | PrivilegeService
   | SecretStore
+  | EnvironmentValueResolver
   | ProcessRunner
   | PrivateFileAccessService;
 type ProviderTestRuntimeServices =
+  | import("@lando/sdk/services").ContainerHelperAssets
   | MinimalTestRuntimeServices
   | PluginRegistry
   | RuntimeProviderRegistry
@@ -259,7 +248,11 @@ const recordLoggerCall = (
 };
 
 const serviceNotRegistered = (id: string): PluginLoadError =>
-  new PluginLoadError({ message: `Plugin service ${id} is not registered in TestRuntime.`, pluginName: id });
+  new PluginLoadError({
+    message: `Plugin service ${id} is not registered in TestRuntime.`,
+    pluginName: id,
+    remediation: `Register service ${id} in the TestRuntime plugin registry before loading it.`,
+  });
 
 const scratchNotFound = (id: string): ScratchAppNotFoundError =>
   new ScratchAppNotFoundError({
@@ -277,7 +270,6 @@ const makeServicePlan = (providerId: ProviderId): ServicePlan =>
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -290,9 +282,10 @@ const makeAppPlan = (input: {
   readonly name: string;
   readonly root: string;
   readonly providerId: ProviderId;
-}): AppPlan => {
+}): CurrentExecutableAppPlan => {
   const service = makeServicePlan(input.providerId);
-  return Schema.decodeUnknownSync(AppPlan)({
+  return Schema.decodeUnknownSync(CurrentExecutableAppPlan)({
+    valueModel: 1,
     id: AppId.make(slugFromName(input.name)),
     name: input.name,
     slug: slugFromName(input.name),
@@ -300,7 +293,6 @@ const makeAppPlan = (input: {
     provider: input.providerId,
     services: { [service.name]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata: fixedMetadata,
@@ -358,9 +350,6 @@ interface TestCacheEntry {
 const isExpiredCacheEntry = (entry: TestCacheEntry, nowMs: number): boolean =>
   entry.expiresAtMs !== undefined && entry.expiresAtMs <= nowMs;
 
-const eventError = (event: string, message: string, cause?: unknown): EventError =>
-  new EventError({ message, event, ...(cause === undefined ? {} : { cause }) });
-
 const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A, I>) => {
   if (schema === undefined) {
     return Effect.succeed(value as A);
@@ -373,6 +362,7 @@ const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Cod
           message: `Cached value for ${key} failed schema decode.`,
           key,
           decodeError,
+          remediation: `Delete the Lando cache entry \`${key}\` and re-run the command.`,
         }),
     ),
   );
@@ -454,98 +444,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     record: () => Effect.void,
   });
 
-  const eventPubSub = Effect.runSync(PubSub.unbounded<LandoEvent>());
-  const eventQueues = new Set<Queue.Queue<LandoEvent>>();
-  const eventHistoryRedactor = createRedactor("secrets");
-  const matchesEventName = (name: string, event: LandoEvent): boolean => name === "*" || event._tag === name;
-  const waitForEventMatch = Effect.fnUntraced(function* <A>(
-    label: string,
-    predicate: (event: LandoEvent) => boolean,
-    timeout: Duration.Input | undefined,
-  ): Effect.fn.Return<A, EventError, import("effect").Scope.Scope> {
-    const queue = yield* PubSub.subscribe(eventPubSub);
-    const awaited = Stream.fromSubscription(queue).pipe(
-      Stream.filter(predicate),
-      Stream.runHead,
-      Effect.flatMap(
-        Option.match({
-          onNone: () => Effect.fail(eventError(label, `Event stream ended before receiving event: ${label}`)),
-          onSome: (event) => Effect.succeed(event as A),
-        }),
-      ),
-    );
-    return yield* timeout === undefined
-      ? awaited
-      : awaited.pipe(
-          Effect.timeoutOrElse({
-            duration: timeout,
-            orElse: () =>
-              Effect.fail(
-                (() =>
-                  new EventError({
-                    message: `Timed out waiting for event: ${label}`,
-                    event: label,
-                    reason: "timeout",
-                  }))(),
-              ),
-          }),
-        );
-  }, Effect.scoped);
-  const eventService = EventService.of({
-    publish: (event) =>
-      Effect.sync(() => {
-        calls.events.push(event);
-        for (const queue of eventQueues) Queue.offerUnsafe(queue, event);
-      }).pipe(
-        Effect.andThen(PubSub.publish(eventPubSub, event)),
-        Effect.asVoid,
-        Effect.catchCauseIf(Cause.hasDies, (cause) =>
-          Effect.fail(eventError(event._tag, `Failed to publish event: ${event._tag}`, cause)),
-        ),
-      ),
-    subscribe: <Name extends string>(name: Name) =>
-      Stream.fromPubSub(eventPubSub).pipe(
-        Stream.filter((event): event is EventFor<Name> => matchesEventName(name, event)),
-      ),
-    subscribeQueue: Effect.acquireRelease(
-      Queue.unbounded<LandoEvent>().pipe(
-        Effect.tap((queue) =>
-          Effect.sync(() => {
-            eventQueues.add(queue);
-          }),
-        ),
-      ),
-      (queue) =>
-        Effect.sync(() => {
-          eventQueues.delete(queue);
-        }).pipe(Effect.andThen(Queue.shutdown(queue)), Effect.asVoid),
-    ),
-    waitFor: (name, options) =>
-      waitForEventMatch<EventFor<typeof name>>(
-        name,
-        (event) => matchesEventName(name, event) && (options?.filter?.(event as never) ?? true),
-        options?.timeout,
-      ),
-    waitForAny: (specs, options) =>
-      waitForEventMatch(
-        "*",
-        (event) =>
-          specs.some(
-            (spec: EventWaitSpec) =>
-              matchesEventName(spec.name, event) && (spec.filter?.(event as never) ?? true),
-          ),
-        options?.timeout,
-      ),
-    query: <Name extends string>(name: Name, filter?: (event: EventFor<Name>) => boolean) =>
-      Effect.sync(() =>
-        calls.events
-          .filter(
-            (event): event is EventFor<Name> =>
-              matchesEventName(name, event) && (filter?.(event as EventFor<Name>) ?? true),
-          )
-          .map((event) => eventHistoryRedactor.redactValue(event) as EventFor<Name>),
-      ),
-  });
+  const eventService = makeTestEventService(calls.events, config.events?.deliveryQueueCapacity);
 
   const deprecationService = DeprecationService.of({
     use: () => Effect.void,
@@ -772,10 +671,15 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   });
 
   const runtimeProviderRegistryService = RuntimeProviderRegistry.of({
+    appliedPlansFor: () => Effect.succeed([]),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(runtimeProvider.capabilities),
-    select: () => Effect.succeed(runtimeProvider),
+    select: (target) =>
+      Effect.succeed(
+        outputRegisteredTestProvider(runtimeProvider, typeof target === "object" ? target : undefined),
+      ),
     resolveAppliedPlan: () => Effect.succeed(undefined),
+    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
   });
 
   const globalPaths = {
@@ -785,6 +689,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
   const globalAppService = GlobalAppService.of({
     id: "global",
+    providerId: Effect.succeed(providerId),
     root: Effect.succeed(globalPaths.root),
     ensureRoot: Effect.void,
     paths: Effect.succeed(globalPaths),
@@ -802,15 +707,22 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     plan: (landofile) =>
       Effect.succeed(
         makeAppPlan({
-          name: landofile.name ?? "test-runtime-app",
+          name: landofile.document.name ?? "test-runtime-app",
           root: "/test-runtime/app",
-          providerId: landofile.provider ?? providerId,
+          providerId: landofile.document.provider ?? providerId,
         }),
       ),
   });
 
   const landofileService = LandofileService.of({
-    discover: Effect.succeed(makeLandofile(providerId)),
+    discover: Effect.succeed(
+      LoadScopedLandofile.make({
+        stage: "load-scoped",
+        document: makeLandofile(providerId),
+        pendingSites: [],
+        context: { appRoot: AbsolutePath.make("/test-runtime/app"), env: {} },
+      }),
+    ),
   });
 
   const scratchPaths = (id: string) => {
@@ -916,6 +828,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const scratchResourceScannerService = ScratchResourceScanner.of({
     listScratchIds: Effect.succeed([]),
     pruneScratch: () => Effect.void,
+    prepareScratch: () => Effect.succeed({ stop: Effect.succeed(false), destroy: Effect.succeed(false) }),
   });
 
   const toolingEngineService = ToolingEngine.of({
@@ -989,6 +902,8 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     streamEvents: () => Stream.empty,
   });
 
+  const secretStoreLayer = Layer.succeed(SecretStore, secretStoreService);
+  const redactionLayer = RedactionService.layer;
   const minimalLayer: Layer.Layer<MinimalTestRuntimeServices> = Layer.mergeAll(
     Layer.succeed(Logger, loggerService),
     Layer.succeed(Renderer, rendererService),
@@ -1001,11 +916,14 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     Layer.succeed(FileSystem, fileSystemService),
     Layer.succeed(PrivilegeService, privilegeService),
     Layer.succeed(SecretStore, secretStoreService),
+    redactionLayer,
+    EnvironmentValueResolverLayer.layer.pipe(Layer.provide(Layer.mergeAll(secretStoreLayer, redactionLayer))),
     Layer.succeed(ProcessRunner, processRunnerService),
     PrivateFileAccessService.layer,
   );
 
   const providerLayer: Layer.Layer<ProviderTestRuntimeServices> = Layer.mergeAll(
+    ContainerHelperAssetsLayer.layer.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths()))),
     minimalLayer,
     Layer.succeed(PluginRegistry, pluginRegistryService),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),

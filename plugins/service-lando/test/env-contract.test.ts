@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName, serviceAppMount } from "@lando/sdk/schema";
 import type { ServiceType, ServiceTypeHostFacts } from "@lando/sdk/services";
 
 import { appMountTarget } from "../src/services/_volume-helpers.ts";
@@ -16,7 +16,12 @@ import { meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
-import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
+import {
+  node22ServiceType,
+  node24ServiceType,
+  node26ServiceType,
+  nodeLtsServiceType,
+} from "../src/services/node.ts";
 import { opensearchServiceType } from "../src/services/opensearch.ts";
 import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
 import { postgresServiceType } from "../src/services/postgres.ts";
@@ -111,10 +116,12 @@ describe("effective app mount paths", () => {
       // When: the service is composed through the real service features and authored wrapper.
       const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
       // Then: app-source intent has no mirror bind, with matching env and default cwd.
-      expect(String(plan.appMount?.target)).toBe("/site");
-      expect(plan.mounts.some((mount) => mount.type === "bind" && mount.source === "/srv/apps/myapp")).toBe(
-        false,
-      );
+      expect(String(serviceAppMount(plan)?.target)).toBe("/site");
+      expect(
+        plan.mounts.some(
+          (mount) => mount.type === "bind" && mount.role !== "app" && mount.source === "/srv/apps/myapp",
+        ),
+      ).toBe(false);
       expect(plan.workingDirectory === undefined ? undefined : String(plan.workingDirectory)).toBe(
         "cwd" in entry ? entry.cwd : "/site",
       );
@@ -194,8 +201,10 @@ describe("effective app mount paths", () => {
       metadata,
     });
     // Then: the app bind wins over the Compose volume.
-    expect(String(plan.appMount?.target)).toBe("/site");
-    expect(plan.mounts).toEqual([]);
+    expect(serviceAppMount(plan)).toBeUndefined();
+    expect(plan.mounts).toMatchObject([
+      { type: "bind", source: "/srv/apps/myapp/alternate", target: "/site" },
+    ]);
   });
 });
 
@@ -262,6 +271,22 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: node22ServiceType,
     landofileService: { type: "node:22" },
     expectedType: "node:22",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "node:24",
+    serviceType: node24ServiceType,
+    landofileService: { type: "node:24" },
+    expectedType: "node:24",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "node:26",
+    serviceType: node26ServiceType,
+    landofileService: { type: "node:26" },
+    expectedType: "node:26",
     expectsAppPaths: true,
     expectsWebroot: null,
   },
@@ -403,7 +428,7 @@ const cases: ReadonlyArray<CatalogCase> = [
   },
 ];
 
-const landoEnvKeys = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
+const landoEnvKeys = (environment: import("@lando/sdk/schema").Environment): ReadonlyArray<string> =>
   Object.keys(environment).filter((key) => key === "LANDO" || key.startsWith("LANDO_"));
 
 const planFor = async (item: CatalogCase, serviceName: string, appName: string) => {

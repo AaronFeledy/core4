@@ -5,10 +5,25 @@ import { makeTraefikRouterService } from "@lando/proxy-traefik";
 import { AppId, RoutePlan, ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 import { prioritizeRoutes } from "../../../src/planner/route-identity.ts";
+import { makeTraefikApiFixture } from "./traefik-api-fixture.ts";
 
 const makeHarness = () => {
   const files = new Map<string, string>();
+  const runtime = makeTraefikApiFixture(
+    {
+      readDir: (path) =>
+        Effect.sync(() =>
+          [...files.keys()]
+            .filter((file) => file.startsWith(`${path}/`))
+            .map((file) => file.slice(path.length + 1)),
+        ),
+      readText: (path) => Effect.sync(() => files.get(path) ?? ""),
+    },
+    "/lando/global/proxy-traefik/dynamic",
+  );
   const service = makeTraefikRouterService({
+    httpClient: runtime.httpClient,
+    probeBind: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,
@@ -27,6 +42,7 @@ const makeHarness = () => {
     },
     paths: { platform: "linux", globalAppRoot: "/lando/global" },
     globalApp: {
+      ownedPublishPorts: runtime.ownedPublishPorts,
       ensureRunning: () =>
         Effect.succeed([
           {
@@ -37,7 +53,7 @@ const makeHarness = () => {
         ]),
     },
   });
-  return { files, service };
+  return { files, service, runtime };
 };
 
 const route = (hostname: string, pathPrefix?: string): RoutePlan =>
@@ -77,13 +93,14 @@ const priorityForRule = (
 
 test("an exact host in a one-route app outranks a wildcard in a many-route app", async () => {
   // Given
-  const { files, service } = makeHarness();
+  const { files, service, runtime } = makeHarness();
   const many = prioritizeRoutes([route("*.shared.test"), route("*.y.test"), route("*.z.test")]);
   const one = prioritizeRoutes([route("www.shared.test")]);
 
   // When
   await Effect.runPromise(
     Effect.gen(function* () {
+      yield* service.prepare?.({ defaultDomain: "lndo.site" }) ?? Effect.void;
       yield* service.applyRoutes(many, AppId.make("many"));
       yield* service.applyRoutes(one, AppId.make("one"));
     }),
@@ -91,20 +108,22 @@ test("an exact host in a one-route app outranks a wildcard in a many-route app",
 
   // Then
   const routers = readRouters(files);
-  const wildcardPriority = priorityForRule(routers, "HostRegexp(`^[a-z0-9-]+\\.shared\\.test$`)");
-  const exactPriority = priorityForRule(routers, "Host(`www.shared.test`)");
+  expect(runtime.snapshots.at(-1)?.routers).toHaveLength(4);
+  const wildcardPriority = priorityForRule(routers, 'HostRegexp("^[a-z0-9-]+\\\\.shared\\\\.test$")');
+  const exactPriority = priorityForRule(routers, 'Host("www.shared.test")');
   expect(exactPriority).toBeGreaterThan(wildcardPriority);
 });
 
 test("a longer path prefix outranks a shorter one across apps", async () => {
   // Given
-  const { files, service } = makeHarness();
+  const { files, service, runtime } = makeHarness();
   const bare = prioritizeRoutes([route("www.shared.test")]);
   const deep = prioritizeRoutes([route("www.shared.test", "/api")]);
 
   // When
   await Effect.runPromise(
     Effect.gen(function* () {
+      yield* service.prepare?.({ defaultDomain: "lndo.site" }) ?? Effect.void;
       yield* service.applyRoutes(bare, AppId.make("bare"));
       yield* service.applyRoutes(deep, AppId.make("deep"));
     }),
@@ -112,7 +131,8 @@ test("a longer path prefix outranks a shorter one across apps", async () => {
 
   // Then
   const routers = readRouters(files);
-  const barePriority = priorityForRule(routers, "Host(`www.shared.test`)");
-  const deepPriority = priorityForRule(routers, "Host(`www.shared.test`) && PathPrefix(`/api`)");
+  expect(runtime.snapshots.at(-1)?.routers).toHaveLength(2);
+  const barePriority = priorityForRule(routers, 'Host("www.shared.test")');
+  const deepPriority = priorityForRule(routers, 'Host("www.shared.test") && PathPrefix("/api")');
   expect(deepPriority).toBeGreaterThan(barePriority);
 });

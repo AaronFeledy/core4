@@ -1,79 +1,74 @@
 import { describe, expect, test } from "bun:test";
-import type { EndpointPlan } from "@lando/sdk/schema";
-import { publishedEndpointsFromInspect } from "../src/podman/inspect.ts";
+import { publicationObservationFromInspect } from "../src/podman/inspect.ts";
 
-describe("publishedEndpointsFromInspect", () => {
-  test.each([
-    ["tcp", "tcp"],
-    ["https", "tcp"],
-    ["http", "tcp"],
-    ["udp", "udp"],
-  ] as const)(
-    "preserves planned %s metadata when materializing a published binding",
-    (protocol, transport) => {
-      // Given
-      const planned = {
-        _tag: "published",
-        protocol,
-        port: 443,
-        name: "listener",
-        appProtocol: "custom",
-        publication: {},
-      } as const;
-      const inspected = {
-        NetworkSettings: { Ports: { [`443/${transport}`]: [{ HostIp: "127.0.0.1", HostPort: "8443" }] } },
-      };
-
-      // When
-      const endpoints = publishedEndpointsFromInspect(inspected, [planned]);
-
-      // Then
-      expect(endpoints).toEqual([
-        { ...planned, materialization: { bindAddress: "127.0.0.1", hostPort: 8443 } },
-      ]);
-      expect(planned.publication).toEqual({});
-    },
-  );
-
-  test("matches published endpoints by container port and transport", () => {
-    // Given
-    const planned = [
-      { _tag: "internal", protocol: "http", port: 443, name: "internal" },
-      { _tag: "published", protocol: "http", port: 80, publication: {}, name: "web" },
-      { _tag: "published", protocol: "udp", port: 443, publication: {}, name: "datagram" },
-      { _tag: "published", protocol: "https", port: 443, publication: {}, name: "websecure" },
-    ] as const satisfies readonly EndpointPlan[];
+describe("publicationObservationFromInspect", () => {
+  test("retains daemon all-interface bindings alongside specific addresses", () => {
     const inspected = {
-      NetworkSettings: { Ports: { "443/tcp": [{ HostIp: "0.0.0.0", HostPort: "8443" }] } },
+      NetworkSettings: {
+        Ports: {
+          "80/tcp": [
+            { HostIp: "", HostPort: "8080" },
+            { HostIp: "127.0.0.1", HostPort: "8081" },
+          ],
+        },
+      },
     };
-
-    // When
-    const endpoints = publishedEndpointsFromInspect(inspected, planned);
-
-    // Then
-    expect(endpoints).toEqual([
-      { ...planned[3], materialization: { bindAddress: "0.0.0.0", hostPort: 8443 } },
-    ]);
+    expect(publicationObservationFromInspect(inspected)).toEqual({
+      status: "present",
+      bindings: [
+        { port: 80, transport: "tcp", bindAddress: "0.0.0.0", hostPort: 8080 },
+        { port: 80, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 8081 },
+      ],
+    });
   });
 
-  test.each(["tcp", "udp"] as const)("keeps unplanned %s bindings as raw transport", (protocol) => {
-    // Given
+  test.each([
+    undefined,
+    null,
+    {},
+    { NetworkSettings: {} },
+    { NetworkSettings: { Ports: null } },
+    { NetworkSettings: { Ports: [] } },
+    { NetworkSettings: { Ports: { "80/tcp": [{ HostIp: "127.0.0.1", HostPort: "12junk" }] } } },
+    { NetworkSettings: { Ports: { "80/tcp": [{ HostPort: "8080" }] } } },
+    { NetworkSettings: { Ports: { "80/invalid": [] } } },
+  ])("keeps unreadable or malformed evidence unknown: %j", (inspected) => {
+    // Given unreadable binding evidence. When parsed. Then absence is not invented.
+    expect(publicationObservationFromInspect(inspected)).toEqual({ status: "unknown" });
+  });
+
+  test.each([{}, { "80/tcp": null }, { "80/tcp": [] }])("reports valid empty evidence: %j", (Ports) => {
+    // Given a readable port table. When parsed. Then empty is known.
+    expect(publicationObservationFromInspect({ NetworkSettings: { Ports } })).toEqual({
+      status: "present",
+      bindings: [],
+    });
+  });
+
+  test("preserves actual dynamic, IPv4, IPv6 and UDP bindings without plan metadata", () => {
+    // Given distinct actual bindings and unrelated sensitive metadata.
     const inspected = {
-      NetworkSettings: { Ports: { [`6379/${protocol}`]: [{ HostIp: "127.0.0.1", HostPort: "16379" }] } },
-    };
-
-    // When
-    const endpoints = publishedEndpointsFromInspect(inspected);
-
-    // Then
-    expect(endpoints).toEqual([
-      {
-        _tag: "published",
-        protocol,
-        port: 6379,
-        name: `6379/${protocol}`,
-        publication: { bindAddress: "127.0.0.1", hostPort: 16379 },
+      Config: { Env: ["PASSWORD=secret"] },
+      NetworkSettings: {
+        Ports: {
+          "443/tcp": [
+            { HostIp: "127.0.0.1", HostPort: "32768" },
+            { HostIp: "::", HostPort: "8443" },
+          ],
+          "443/udp": [{ HostIp: "0.0.0.0", HostPort: "8443" }],
+        },
       },
-    ]);
+    };
+    // When
+    const result = publicationObservationFromInspect(inspected);
+    // Then
+    expect(result).toEqual({
+      status: "present",
+      bindings: [
+        { port: 443, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 32768 },
+        { port: 443, transport: "tcp", bindAddress: "::", hostPort: 8443 },
+        { port: 443, transport: "udp", bindAddress: "0.0.0.0", hostPort: 8443 },
+      ],
+    });
   });
 });

@@ -505,7 +505,7 @@ describe("scripts/install.ps1", () => {
     const { cosignPath, logPath } = await createFakeCosign(root);
     const trustRootPath = await writeCosignTrustRoot(root, {
       certificateIdentityRegexp:
-        "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/v4\\..+$",
+        "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/v4\\..+$",
       certificateOidcIssuer: "https://token.actions.githubusercontent.com",
     });
 
@@ -522,7 +522,7 @@ describe("scripts/install.ps1", () => {
     expect(result.exitCode).toBe(0);
     const cosignLog = await Bun.file(logPath).text();
     expect(cosignLog).toContain(
-      "^https://github.com/lando-community/core4/.github/workflows/release.yml@refs/tags/v4\\..+$",
+      "^https://github.com/AaronFeledy/core4/.github/workflows/release.yml@refs/tags/v4\\..+$",
     );
     expect(cosignLog).toContain("https://token.actions.githubusercontent.com");
   });

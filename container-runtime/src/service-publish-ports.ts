@@ -9,13 +9,15 @@ import {
   DEFAULT_ROUTER_HTTP_PORTS,
   type EndpointPlan,
   type HostPlatform,
+  type ObservedPublication,
   PortNumber,
   type PublishedEndpoint,
   hostPlatformFamily,
 } from "@lando/sdk/schema";
 
 import type { EngineHttpResponse } from "./engine-api.ts";
-import { publishedEndpointsFromInspect } from "./podman/inspect.ts";
+import { matchPublicationBindings, physicalPublicationIdentity } from "./physical-publications.ts";
+import { publicationObservationFromInspect } from "./podman/inspect.ts";
 
 /**
  * Host ports for unpinned service publication. Stays off the router try-lists
@@ -139,36 +141,26 @@ export const shouldProbeServicePublishPort = (host: ServicePublishHost): boolean
 const publishTransport = (endpoint: PublishedEndpoint): "tcp" | "udp" =>
   endpoint.protocol === "udp" ? "udp" : "tcp";
 
-const hostConfigBindingPort = (inspect: unknown, endpoint: PublishedEndpoint): number | undefined => {
-  if (typeof inspect !== "object" || inspect === null || !("HostConfig" in inspect)) return undefined;
+const inspectPublicationBindings = (inspect: unknown): readonly ObservedPublication[] => {
+  const observation = publicationObservationFromInspect(inspect);
+  const network = observation.status === "present" ? observation.bindings : [];
+  if (typeof inspect !== "object" || inspect === null || !("HostConfig" in inspect)) return network;
   const hostConfig = inspect.HostConfig;
-  if (typeof hostConfig !== "object" || hostConfig === null || !("PortBindings" in hostConfig)) {
-    return undefined;
-  }
-  const bindings = hostConfig.PortBindings;
-  if (typeof bindings !== "object" || bindings === null) return undefined;
-  const key = `${endpoint.port}/${publishTransport(endpoint)}`;
-  const list = Reflect.get(bindings, key);
-  if (!Array.isArray(list)) return undefined;
-  for (const item of list) {
-    if (typeof item !== "object" || item === null) continue;
-    const hostPort = "HostPort" in item && typeof item.HostPort === "string" ? item.HostPort : "";
-    const parsed = Number.parseInt(hostPort, 10);
-    if (parsed > 0) return parsed;
-  }
-  return undefined;
+  if (typeof hostConfig !== "object" || hostConfig === null || !("PortBindings" in hostConfig))
+    return network;
+  const configured = publicationObservationFromInspect({
+    NetworkSettings: { Ports: hostConfig.PortBindings },
+  });
+  return configured.status === "present" ? [...network, ...configured.bindings] : network;
 };
 
 export const inspectHostPortForEndpoint = (
   inspect: unknown,
   endpoint: PublishedEndpoint,
-): number | undefined => {
-  const materialized = publishedEndpointsFromInspect(inspect, [endpoint]);
-  const first = materialized[0];
-  const fromNetwork = first?._tag === "published" ? first.materialization?.hostPort : undefined;
-  if (fromNetwork !== undefined && fromNetwork > 0) return fromNetwork;
-  return hostConfigBindingPort(inspect, endpoint);
-};
+): number | undefined =>
+  matchPublicationBindings([endpoint], inspectPublicationBindings(inspect)).get(
+    physicalPublicationIdentity(endpoint),
+  )?.[0]?.hostPort;
 
 const withHostPort = (endpoint: PublishedEndpoint, hostPort: number): PublishedEndpoint => ({
   ...endpoint,
@@ -178,12 +170,14 @@ const withHostPort = (endpoint: PublishedEndpoint, hostPort: number): PublishedE
 export const copyInspectHostPorts = (
   endpoints: ReadonlyArray<EndpointPlan>,
   inspect: unknown,
-): ReadonlyArray<EndpointPlan> =>
-  endpoints.map((endpoint) => {
+): ReadonlyArray<EndpointPlan> => {
+  const matches = matchPublicationBindings(endpoints, inspectPublicationBindings(inspect));
+  return endpoints.map((endpoint) => {
     if (endpoint._tag !== "published" || endpoint.publication.hostPort !== undefined) return endpoint;
-    const hostPort = inspectHostPortForEndpoint(inspect, endpoint);
+    const hostPort = matches.get(physicalPublicationIdentity(endpoint))?.[0]?.hostPort;
     return hostPort === undefined ? endpoint : withHostPort(endpoint, hostPort);
   });
+};
 
 const assignedHostPorts = (endpoints: ReadonlyArray<EndpointPlan>): ReadonlySet<number> => {
   const ports = new Set<number>();
@@ -220,18 +214,26 @@ export const probeUnpinnedServicePublishPorts = Effect.fnUntraced(function* (
   const probe = options.probeBind ?? probeServicePublishBind;
   const reserved = new Set<number>([...(options.exclude ?? []), ...assignedHostPorts(endpoints)]);
   const assigned: EndpointPlan[] = [];
+  const allocations = new Map<string, number>();
   for (const endpoint of endpoints) {
     if (endpoint._tag !== "published" || endpoint.publication.hostPort !== undefined) {
       assigned.push(endpoint);
       continue;
     }
     const bindAddress = endpoint.publication.bindAddress ?? "127.0.0.1";
+    const identity = physicalPublicationIdentity(endpoint);
+    const allocation = allocations.get(identity);
+    if (allocation !== undefined) {
+      assigned.push(withHostPort(endpoint, allocation));
+      continue;
+    }
     const port = yield* walkServicePublishBand(bindAddress, publishTransport(endpoint), reserved, probe);
     if (port === undefined) {
       assigned.push(endpoint);
       continue;
     }
     reserved.add(port);
+    allocations.set(identity, port);
     assigned.push(withHostPort(endpoint, port));
   }
   return assigned;

@@ -20,11 +20,26 @@ const scratchIdFromLabels = (
 };
 
 const scannerError = (operation: string, message: string, cause: unknown): ScratchAppError =>
-  new ScratchAppError({ operation, message, cause });
+  new ScratchAppError({
+    operation,
+    message,
+    cause,
+    remediation: "Run `lando doctor`, fix the provider runtime, then retry scratch resource cleanup.",
+  });
 
 export interface ScratchResourceScannerService {
   readonly listScratchIds: Effect.Effect<ReadonlyArray<string>, ScratchAppError>;
   readonly pruneScratch: (id: string) => Effect.Effect<void, ScratchAppError>;
+  readonly prepareScratch: (
+    id: string,
+    keepVolumes: boolean,
+  ) => Effect.Effect<
+    {
+      readonly stop: Effect.Effect<boolean, ScratchAppError>;
+      readonly destroy: Effect.Effect<boolean, ScratchAppError>;
+    },
+    ScratchAppError
+  >;
 }
 
 export class ScratchResourceScanner extends Context.Service<
@@ -39,6 +54,8 @@ export class ScratchResourceScanner extends Context.Service<
         return ScratchResourceScanner.of({
           listScratchIds: Effect.succeed([]),
           pruneScratch: () => Effect.void,
+          prepareScratch: () =>
+            Effect.succeed({ stop: Effect.succeed(false), destroy: Effect.succeed(false) }),
         });
       }
       const registry = registryOption.value;
@@ -77,7 +94,78 @@ export class ScratchResourceScanner extends Context.Service<
         ),
       );
 
+      const prepareScratch = Effect.fn("ScratchResourceScanner.prepareScratch")(function* (
+        id: string,
+        keepVolumes: boolean,
+      ) {
+        if (!isCanonicalScratchId(id)) return { stop: Effect.succeed(false), destroy: Effect.succeed(false) };
+        const observations = yield* loadResources();
+        const matches = yield* Effect.forEach(observations, ({ provider, services, volumes }) =>
+          Effect.forEach(
+            volumes.filter((volume) => !keepVolumes && scratchIdFromLabels(volume.labels) === id),
+            (volume) => {
+              const identity = volume.identity;
+              return identity === undefined
+                ? Effect.fail(
+                    scannerError(
+                      "gc",
+                      `Scratch volume for ${id} is missing generation identity, so it cannot be pruned safely.`,
+                      undefined,
+                    ),
+                  )
+                : Effect.succeed({ ref: volume.ref, identity });
+            },
+          ).pipe(
+            Effect.map((validatedVolumes) => ({
+              provider,
+              services: services.filter(
+                (service) => scratchIdFromLabels(service.labels, String(service.app)) === id,
+              ),
+              volumes: validatedVolumes,
+            })),
+          ),
+        );
+        const seenVolumes = new Set<string>();
+        const uniqueVolumes = matches.flatMap(({ provider, volumes }) =>
+          volumes.flatMap((volume) => {
+            const key = JSON.stringify([volume.identity.coordinationKey, volume.identity.generation]);
+            if (seenVolumes.has(key)) return [];
+            seenVolumes.add(key);
+            return [{ provider, ...volume }];
+          }),
+        );
+        const stop = Effect.forEach(
+          matches,
+          ({ provider, services }) =>
+            Effect.forEach(services, (service) => provider.removeObservedService(service), {
+              concurrency: "unbounded",
+            }),
+          { concurrency: "unbounded" },
+        ).pipe(
+          Effect.map((results) => results.flat().some((result) => result.kind === "removed")),
+          Effect.mapError((cause) =>
+            scannerError("gc", `Unable to prune provider resources for scratch app ${id}.`, cause),
+          ),
+        );
+        const destroy = Effect.forEach(
+          uniqueVolumes,
+          ({ provider, ref, identity }) => provider.removeVolume(ref, identity.generation),
+          { concurrency: "unbounded", discard: true },
+        ).pipe(
+          Effect.as(uniqueVolumes.length > 0),
+          Effect.mapError((cause) =>
+            scannerError("gc", `Unable to prune volumes for scratch app ${id}.`, cause),
+          ),
+        );
+        return { stop, destroy };
+      });
       return ScratchResourceScanner.of({
+        prepareScratch,
+        pruneScratch: Effect.fn("ScratchResourceScanner.pruneScratch")(function* (id) {
+          const prepared = yield* prepareScratch(id, false);
+          yield* prepared.stop;
+          yield* prepared.destroy;
+        }),
         listScratchIds: loadResources().pipe(
           Effect.map((observations) => {
             const ids = new Set<string>();
@@ -94,64 +182,6 @@ export class ScratchResourceScanner extends Context.Service<
             return [...ids].sort();
           }),
         ),
-        pruneScratch: Effect.fn("ScratchResourceScanner.pruneScratch")(function* (id) {
-          if (!isCanonicalScratchId(id)) return;
-          const observations = yield* loadResources();
-          const matches = yield* Effect.forEach(observations, ({ provider, services, volumes }) =>
-            Effect.forEach(
-              volumes.filter((volume) => scratchIdFromLabels(volume.labels) === id),
-              (volume) => {
-                const identity = volume.identity;
-                return identity === undefined
-                  ? Effect.fail(
-                      scannerError(
-                        "gc",
-                        `Scratch volume for ${id} is missing generation identity, so it cannot be pruned safely.`,
-                        undefined,
-                      ),
-                    )
-                  : Effect.succeed({ ref: volume.ref, identity });
-              },
-            ).pipe(
-              Effect.map((validatedVolumes) => ({
-                provider,
-                services: services.filter(
-                  (service) => scratchIdFromLabels(service.labels, String(service.app)) === id,
-                ),
-                volumes: validatedVolumes,
-              })),
-            ),
-          );
-          const seenVolumes = new Set<string>();
-          const uniqueVolumes = matches.flatMap(({ provider, volumes }) =>
-            volumes.flatMap((volume) => {
-              const key = JSON.stringify([volume.identity.coordinationKey, volume.identity.generation]);
-              if (seenVolumes.has(key)) return [];
-              seenVolumes.add(key);
-              return [{ provider, ...volume }];
-            }),
-          );
-          yield* Effect.forEach(
-            matches,
-            ({ provider, services }) =>
-              Effect.forEach(services, (service) => provider.removeObservedService(service), {
-                concurrency: "unbounded",
-                discard: true,
-              }),
-            { concurrency: "unbounded", discard: true },
-          ).pipe(
-            Effect.andThen(
-              Effect.forEach(
-                uniqueVolumes,
-                ({ provider, ref, identity }) => provider.removeVolume(ref, identity.generation),
-                { concurrency: "unbounded", discard: true },
-              ),
-            ),
-            Effect.mapError((cause) =>
-              scannerError("gc", `Unable to prune provider resources for scratch app ${id}.`, cause),
-            ),
-          );
-        }),
       });
     }),
   );

@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { LandofileParseError, SshError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
@@ -8,17 +12,23 @@ import {
   ProviderId,
   ServiceName,
 } from "@lando/sdk/schema";
-import { ConfigService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  ConfigService,
+  GlobalAppService,
+  LandofileService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestSshService } from "@lando/sdk/test";
 import { Effect, Fiber, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { DoctorReportSchema } from "../../src/cli/commands/doctor-report-contract.ts";
 import { sshAgentPostureCheck } from "../../src/cli/commands/doctor-ssh-agent.ts";
 import {
-  DefaultSubsystemDoctorLayer,
   renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
 } from "../../src/cli/commands/doctor-subsystems.ts";
+import { globalAppForProvider } from "../_support/global-provider.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const inputs = () => ({
   globalConfig: {},
@@ -33,6 +43,26 @@ const inputs = () => ({
       Effect.succeed({ appId, socketPath: AbsolutePath.make("/test/agent.sock") }),
   },
   probe: async () => ({ identities: 0 }),
+});
+
+const runningSidecar = {
+  ...TestRuntimeProvider,
+  inspect: () =>
+    Effect.succeed({
+      app: AppId.make("global"),
+      service: ServiceName.make("ssh-agent"),
+      providerId: ProviderId.make("lando"),
+      status: "running",
+      publications: { status: "unknown" as const },
+    }),
+};
+const sidecarRegistry = RuntimeProviderRegistry.of({
+  appliedPlansFor: () => Effect.succeed([]),
+  resolveAppliedPlan: () => Effect.succeed(undefined),
+  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+  list: Effect.succeed([ProviderId.make("lando")]),
+  capabilities: Effect.succeed(runningSidecar.capabilities),
+  select: () => Effect.succeed(runningSidecar),
 });
 
 describe("SSH agent doctor posture", () => {
@@ -55,7 +85,10 @@ describe("SSH agent doctor posture", () => {
           return { identities: 0 };
         },
       }).pipe(
-        Effect.provideService(LandofileService, LandofileService.of({ discover: Effect.succeed(landofile) })),
+        Effect.provideService(
+          LandofileService,
+          LandofileService.of({ discover: Effect.succeed(literalLandofile(landofile, "/app")) }),
+        ),
       ),
     );
     // Then
@@ -73,6 +106,7 @@ describe("SSH agent doctor posture", () => {
       filePath: "/app/.lando.yml",
       line: undefined,
       column: undefined,
+      remediation: "Correct the YAML syntax in /app/.lando.yml.",
     });
     // When
     const check = await Effect.runPromise(
@@ -133,6 +167,102 @@ describe("SSH agent doctor posture", () => {
       details: { mode: "host", upstream: { source: "env", reachable: true } },
     });
     expect(JSON.stringify(check)).not.toContain("private-value");
+  });
+
+  test("host doctor surfaces unavailable reason and socket path", async () => {
+    // Given an explicit host socket that does not exist.
+    const input = {
+      ...inputs(),
+      globalConfig: { sshAgent: { sidecar: false, socket: "/missing-agent.sock" } },
+    };
+    // When
+    const check = await Effect.runPromise(sshAgentPostureCheck(input));
+    // Then reason and path survive the doctor catch.
+    expect(check).toMatchObject({
+      status: "warn",
+      context: { reason: "socket-missing", socketPath: "/missing-agent.sock" },
+      details: {
+        mode: "host",
+        upstream: {
+          source: "none",
+          reachable: false,
+          reason: "socket-missing",
+          socketPath: "/missing-agent.sock",
+        },
+      },
+    });
+  });
+
+  test("host doctor mentions a dangling SSH_AUTH_SOCK when another agent is picked", async () => {
+    // Given a dangling env socket and a live 1Password agent.
+    const root = await mkdtemp(join(tmpdir(), "doctor-ssh-dangling-"));
+    const dangling = join(root, "gone.sock");
+    const password = join(root, ".1password", "agent.sock");
+    await mkdir(join(root, ".1password"));
+    await symlink(join(root, "absent"), dangling);
+    const server = createServer((socket) =>
+      socket.once("data", () => socket.end(Buffer.from([0, 0, 0, 5, 12, 0, 0, 0, 0]))),
+    );
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(password, resolve);
+    });
+    try {
+      // When doctor inspects host mode.
+      const check = await Effect.runPromise(
+        sshAgentPostureCheck({
+          ...inputs(),
+          globalConfig: { sshAgent: { sidecar: false } },
+          env: { SSH_AUTH_SOCK: dangling },
+          discovery: { home: root },
+        }),
+      );
+      // Then the selected agent is reported with a note about the dangling env socket.
+      expect(check).toMatchObject({
+        status: "pass",
+        severity: "info",
+        context: { danglingEnvSocket: dangling },
+        details: {
+          mode: "host",
+          upstream: { source: "1password", reachable: true, danglingEnvSocket: dangling },
+        },
+      });
+      expect(check.context.note).toContain("no longer exists");
+      expect(check.context.note).toContain("1Password");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("host doctor dangling env without another agent names the reconnect fix", async () => {
+    // Given a dangling SSH_AUTH_SOCK and no other host agent.
+    const root = await mkdtemp(join(tmpdir(), "doctor-ssh-dangling-fix-"));
+    const dangling = join(root, "gone.sock");
+    await symlink(join(root, "absent"), dangling);
+    try {
+      // When doctor inspects host mode.
+      const check = await Effect.runPromise(
+        sshAgentPostureCheck({
+          ...inputs(),
+          globalConfig: { sshAgent: { sidecar: false } },
+          env: { SSH_AUTH_SOCK: dangling },
+          discovery: { home: root },
+        }),
+      );
+      // Then the reconnect remediation is the host fix.
+      expect(check).toMatchObject({
+        status: "warn",
+        details: {
+          mode: "host",
+          upstream: { reachable: false, reason: "env-socket-dangling", socketPath: dangling },
+        },
+      });
+      expect(check.solutions[0]?.description).toContain("Open a new terminal");
+      expect(check.solutions[0]?.description).toContain("no longer exists");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("host mode without an agent is degraded with remediation naming sshAgent.socket", async () => {
@@ -220,9 +350,19 @@ describe("SSH agent doctor posture", () => {
           getAgentSocket: () =>
             ready
               ? input.sshService.getAgentSocket(AppId.make("global"))
-              : Effect.fail(new SshError({ sshId: "sidecar", message: "stopped" })),
+              : Effect.fail(
+                  new SshError({
+                    sshId: "sidecar",
+                    message: "stopped",
+                    remediation:
+                      "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+                  }),
+                ),
         },
-      }),
+      }).pipe(
+        Effect.provideService(RuntimeProviderRegistry, sidecarRegistry),
+        Effect.provideService(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
+      ),
     );
     // Then
     expect(check).toMatchObject({
@@ -247,67 +387,86 @@ describe("SSH agent doctor posture", () => {
         const fiber = yield* Effect.forkChild(sshAgentPostureCheck(input));
         yield* TestClock.adjust("30 seconds");
         return yield* Fiber.join(fiber);
-      }).pipe(Effect.provide(TestClock.layer())),
+      }).pipe(
+        Effect.provide(TestClock.layer()),
+        Effect.provideService(RuntimeProviderRegistry, sidecarRegistry),
+        Effect.provideService(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
+      ),
     );
     // Then
     expect(check.status).toBe("warn");
     expect(check.context.fixOutcome).toBe("failed");
-    expect(check.context.fixError).toBe("SSH agent forwarding remains degraded after setup.");
+    expect(check.context.fixError).toBe(
+      "SSH agent forwarding remains degraded after setup. Last probe failure: offline",
+    );
   });
 
-  test("runtime-volume fix waits for the agent after setup before reporting recovered", async () => {
-    // Given
-    let started = false;
-    let probes = 0;
-    const input = inputs();
-    const provider = {
-      ...TestRuntimeProvider,
-      id: ProviderId.make("lando"),
-      inspect: () =>
-        Effect.sync(() => ({
-          app: AppId.make("global"),
-          service: ServiceName.make("ssh-agent"),
-          providerId: ProviderId.make("lando"),
-          status: started ? "running" : "exited",
-        })),
-      exec: () => Effect.sync(() => ({ exitCode: ++probes < 3 ? 2 : 0, stdout: "", stderr: "" })),
-    };
-    // When
-    const check = await Effect.runPromise(
-      Effect.gen(function* () {
-        const fiber = yield* Effect.forkChild(
-          sshAgentPostureCheck({
-            ...input,
-            fix: true,
-            sshService: {
-              ...input.sshService,
-              setup: () =>
-                Effect.sync(() => {
-                  started = true;
-                }),
-              getAgentSocket: (appId) =>
-                Effect.succeed({ appId, socketPath: "/missing.sock", runtimeVolume: "agent-volume" }),
-            },
+  test.each([false, true])(
+    "runtime-volume fix reports readiness detail when agent answers=%s",
+    async (answers) => {
+      // Given
+      let started = false;
+      let probes = 0;
+      const input = inputs();
+      const provider = {
+        ...TestRuntimeProvider,
+        id: ProviderId.make("lando"),
+        inspect: () =>
+          Effect.sync(() => ({
+            app: AppId.make("global"),
+            service: ServiceName.make("ssh-agent"),
+            providerId: ProviderId.make("lando"),
+            status: started ? "running" : "exited",
+            publications: { status: "present" as const, bindings: [] },
+          })),
+        exec: () =>
+          Effect.sync(() => ({ exitCode: ++probes < 3 || !answers ? 2 : 0, stdout: "", stderr: "" })),
+      };
+      // When
+      const check = await Effect.runPromise(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(
+            sshAgentPostureCheck({
+              ...input,
+              fix: true,
+              sshService: {
+                ...input.sshService,
+                setup: () =>
+                  Effect.sync(() => {
+                    started = true;
+                  }),
+                getAgentSocket: (appId) =>
+                  Effect.succeed({ appId, socketPath: "/missing.sock", runtimeVolume: "agent-volume" }),
+              },
+            }),
+          );
+          yield* TestClock.adjust("30 seconds");
+          return yield* Fiber.join(fiber);
+        }).pipe(
+          Effect.provideService(RuntimeProviderRegistry, {
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
+            list: Effect.succeed([provider.id]),
+            capabilities: Effect.succeed(provider.capabilities),
+            select: () => Effect.succeed(provider),
           }),
+          Effect.provideService(GlobalAppService, globalAppForProvider(ProviderId.make("lando"))),
+          Effect.provide(TestClock.layer()),
+        ),
+      );
+      // Then
+      expect(check).toMatchObject({
+        status: answers ? "pass" : "warn",
+        context: { fixOutcome: answers ? "recovered" : "failed" },
+        details: { delivery: "runtime-volume", upstream: { reachable: answers } },
+      });
+      if (!answers)
+        expect(check.context.fixError).toContain(
+          "Last probe failure: SSH readiness shell probe exited with code 2",
         );
-        yield* TestClock.adjust("2 seconds");
-        return yield* Fiber.join(fiber);
-      }).pipe(
-        Effect.provideService(RuntimeProviderRegistry, {
-          list: Effect.succeed([provider.id]),
-          capabilities: Effect.succeed(provider.capabilities),
-          select: () => Effect.succeed(provider),
-        }),
-        Effect.provide(TestClock.layer()),
-      ),
-    );
-    // Then
-    expect(check).toMatchObject({
-      status: "pass",
-      context: { fixOutcome: "recovered" },
-      details: { delivery: "runtime-volume", upstream: { reachable: true } },
-    });
-  });
+    },
+  );
 
   test("sidecar fix reports the redacted setup failure cause", async () => {
     // Given an unreachable sidecar whose setup fails with a specific cause and secret.
@@ -328,6 +487,8 @@ describe("SSH agent doctor posture", () => {
               new SshError({
                 sshId: "sidecar",
                 message: `${message} HTTP_PROXY_PASSWORD=super-secret`,
+                remediation:
+                  "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
               }),
             ),
         },
@@ -339,6 +500,59 @@ describe("SSH agent doctor posture", () => {
     expect(check.context.fixError).toContain(message);
     expect(check.context.fixError).toContain("[redacted]");
     expect(check.context.fixError).not.toContain("super-secret");
+  });
+
+  test("sidecar fix masks a bare environment secret value in the setup failure", async () => {
+    // Given a setup failure that echoes the value of a secret-named environment variable.
+    const input = inputs();
+    const secret = "env-only-sidecar-token-7f3a";
+    // When doctor attempts automatic repair with that environment.
+    const check = await Effect.runPromise(
+      sshAgentPostureCheck({
+        ...input,
+        fix: true,
+        env: { LANDO_TEST_API_TOKEN: secret },
+        probe: async () => {
+          throw new Error("offline");
+        },
+        sshService: {
+          ...input.sshService,
+          setup: () =>
+            Effect.fail(
+              new SshError({
+                sshId: "sidecar",
+                message: `sidecar rejected credential ${secret}`,
+                remediation:
+                  "Repair the `sidecar` SSH service (agent socket, plugin install, or sidecar), then re-run.",
+              }),
+            ),
+        },
+      }),
+    );
+    // Then the reported repair error never carries the raw value.
+    expect(check.context.fixError).toContain("sidecar rejected credential");
+    expect(check.context.fixError).not.toContain(secret);
+  });
+
+  test("sidecar fix reports the final socket probe failure after setup succeeds", async () => {
+    // Given a sidecar whose setup succeeds but whose agent socket still refuses connections.
+    const input = inputs();
+    const secret = "probe-socket-token-91c2";
+    // When doctor attempts automatic repair.
+    const check = await Effect.runPromise(
+      sshAgentPostureCheck({
+        ...input,
+        fix: true,
+        env: { LANDO_TEST_API_TOKEN: secret },
+        probe: async () => {
+          throw new Error(`connect ECONNREFUSED /test/agent.sock (${secret})`);
+        },
+      }),
+    );
+    // Then the repair failure names the probe's reason without the secret value.
+    expect(check.context).toMatchObject({ fixOutcome: "failed", fixExitCode: "1" });
+    expect(check.context.fixError).toContain("Last probe failure: connect ECONNREFUSED /test/agent.sock");
+    expect(check.context.fixError).not.toContain(secret);
   });
 
   test("subsystem doctor reads global SSH config without requiring an app", async () => {
@@ -366,7 +580,16 @@ describe("SSH agent doctor posture", () => {
 
   test("typed SSH details survive report encoding and NDJSON", async () => {
     // Given
-    const check = await Effect.runPromise(sshAgentPostureCheck(inputs()));
+    const check = await Effect.runPromise(
+      sshAgentPostureCheck({
+        ...inputs(),
+        globalConfig: { sshAgent: { sidecar: false, socket: "/missing-agent.sock" } },
+      }),
+    );
+    expect(check.details?.upstream).toMatchObject({
+      reason: "socket-missing",
+      socketPath: "/missing-agent.sock",
+    });
     const report = {
       version: "test",
       provider: { checks: [] },
@@ -423,3 +646,4 @@ describe("SSH agent doctor posture", () => {
     expect(check.context.securityPosture).toBe("host-win32-loopback");
   });
 });
+import { literalLandofile } from "../_support/value-contracts.ts";

@@ -116,7 +116,7 @@ describe("compose coverage gate", () => {
       restart: "preserved",
       "devices.permissions": "preserved",
       "deploy.resources.limits.memory": "preserved",
-      "configs.target": "preserved",
+      "configs.target": "normalized",
       extends: "rejected",
       container_name: "rejected",
       network_mode: "rejected",

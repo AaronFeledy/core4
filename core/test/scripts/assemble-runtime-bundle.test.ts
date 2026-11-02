@@ -12,6 +12,7 @@ import {
 } from "../../../scripts/assemble-runtime-bundle.ts";
 import { RUNTIME_BUNDLE_PUBLISH_TARGET_KEYS } from "../../../scripts/build-runtime-bundle-workflow.ts";
 import { RUNTIME_BUNDLE_FETCH_ATTEMPTS, fetchOverHttps } from "../../../scripts/runtime-bundle-fetch.ts";
+import { fixtureLicense, licenseBytes } from "./runtime-bundle-license-fixture.ts";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
@@ -26,6 +27,7 @@ const fixtureSources = () => ({
       components: [
         {
           name: "fixture-engine",
+          license: fixtureLicense("6.0.0"),
           version: "6.0.0",
           url: "https://example.test/podman-linux-amd64",
           sha256: sha256(podmanBytes),
@@ -35,6 +37,7 @@ const fixtureSources = () => ({
         },
         {
           name: "crun",
+          license: fixtureLicense("1.20"),
           version: "1.20",
           url: "https://example.test/crun-linux-amd64",
           sha256: sha256(crunBytes),
@@ -48,6 +51,7 @@ const fixtureSources = () => ({
 });
 
 const fetchFixture = async (url: string): Promise<Uint8Array> => {
+  if (url.endsWith("/LICENSE")) return licenseBytes;
   if (url.endsWith("podman-linux-amd64")) return podmanBytes;
   if (url.endsWith("crun-linux-amd64")) return crunBytes;
   throw new Error(`unexpected fixture url ${url}`);
@@ -112,6 +116,7 @@ describe("parseRuntimeBundleSources", () => {
             components: [
               {
                 name: "passt",
+                license: fixtureLicense("2026_06_11.a9c61ff"),
                 version: "2026_06_11.a9c61ff",
                 sourceBuild: "passt-linux-native",
                 inputs: [
@@ -140,6 +145,7 @@ describe("parseRuntimeBundleSources", () => {
           components: [
             {
               name: "podman",
+              license: fixtureLicense("6.0.1"),
               version: "6.0.1",
               url: "https://github.com/containers/podman/releases/download/v6.0.1/podman-remote-release-darwin_arm64.zip",
               sha256: sha256(podmanBytes),
@@ -167,6 +173,7 @@ describe("assembleBundle", () => {
     try {
       const sources = parseRuntimeBundleSources(fixtureSources());
       const first = await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "linux-x64",
         sources,
         outDir: dirA,
@@ -175,6 +182,7 @@ describe("assembleBundle", () => {
         verifyCommand: acceptVerification,
       });
       const second = await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "linux-x64",
         sources,
         outDir: dirB,
@@ -199,10 +207,12 @@ describe("assembleBundle", () => {
     const dir = await mkdtemp(join(tmpdir(), "rb-asm-bad-"));
     try {
       const sources = parseRuntimeBundleSources(fixtureSources());
-      const badFetch = async (): Promise<Uint8Array> => new TextEncoder().encode("tampered");
+      const badFetch = async (url: string): Promise<Uint8Array> =>
+        url.endsWith("/LICENSE") ? licenseBytes : new TextEncoder().encode("tampered");
       let failure: unknown;
       try {
         await assembleBundle({
+          repository: "AaronFeledy/core4",
           hostKey: "linux-x64",
           sources,
           outDir: dir,
@@ -233,6 +243,7 @@ describe("assembleBundle", () => {
             components: [
               {
                 name: "single-gzip-helper",
+                license: fixtureLicense("2.0.0", gz),
                 version: "2.0.0",
                 url: "https://example.test/single-gzip-helper.gz",
                 sha256: sha256(gz),
@@ -246,6 +257,7 @@ describe("assembleBundle", () => {
       });
       const fetchGz = async (): Promise<Uint8Array> => gz;
       const first = await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "linux-x64",
         sources,
         outDir: dirA,
@@ -254,6 +266,7 @@ describe("assembleBundle", () => {
         verifyCommand: acceptVerification,
       });
       const second = await assembleBundle({
+        repository: "AaronFeledy/core4",
         hostKey: "linux-x64",
         sources,
         outDir: dirB,
@@ -274,7 +287,13 @@ describe("assembleBundle", () => {
       const sources = parseRuntimeBundleSources(fixtureSources());
       let failure: unknown;
       try {
-        await assembleBundle({ hostKey: "darwin-arm64", sources, outDir: dir, fetchArtifact: fetchFixture });
+        await assembleBundle({
+          repository: "AaronFeledy/core4",
+          hostKey: "darwin-arm64",
+          sources,
+          outDir: dir,
+          fetchArtifact: fetchFixture,
+        });
       } catch (cause) {
         failure = cause;
       }
@@ -308,6 +327,53 @@ describe("committed runtime-bundle-sources.json", () => {
   test("declares a version suitable for an immutable runtime release tag", async () => {
     const sources = await readCommitted();
     expect(sources.runtimeVersion).toMatch(/^\d+\.\d+\.\d+$/u);
+  });
+
+  test("recipe runtimeVersion is 0.1.8 while published pins stay independently versioned", async () => {
+    const sources = await readCommitted();
+    expect(sources.runtimeVersion).toBe("0.1.8");
+  });
+
+  test("pins typed Debian catatonit components for both Linux architectures", async () => {
+    const sources = await readCommitted();
+    for (const [hostKey, machine] of [
+      ["linux-x64", 62],
+      ["linux-arm64", 183],
+    ] as const) {
+      const catatonit = sources.bundles[hostKey]?.components.find(
+        (component) => component.name === "catatonit",
+      );
+      expect(catatonit).toBeDefined();
+      if (catatonit === undefined || !("archive" in catatonit) || catatonit.archive !== "deb") {
+        throw new Error(`expected Debian catatonit on ${hostKey}`);
+      }
+      expect(catatonit.version).toBe("0.2.1-2+b14");
+      expect(catatonit.member).toBe("usr/bin/catatonit");
+      expect(catatonit.installName).toBe("bin/catatonit");
+      expect(catatonit.elfMachine).toBe(machine);
+      expect(catatonit.binarySha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(catatonit.sha256).toMatch(/^[0-9a-f]{64}$/u);
+      expect(catatonit.sizeBytes).toBeGreaterThan(0);
+      expect(catatonit.binarySizeBytes).toBeGreaterThan(0);
+      expect(catatonit.source).toEqual({
+        url: "https://github.com/openSUSE/catatonit/archive/refs/tags/v0.2.1.tar.gz",
+        sha256: "771385049516fdd561fbb9164eddf376075c4c7de3900a8b18654660172748f1",
+        sizeBytes: 18479,
+      });
+      expect(catatonit.license.spdx).toBe("GPL-2.0-or-later AND LGPL-2.1-or-later");
+      expect(catatonit.license.source).toBe(catatonit.source.url);
+      expect(catatonit.license.source).not.toBe(catatonit.url);
+      expect(catatonit.license.texts.map((text) => text.file).sort()).toEqual([
+        "COPYING",
+        "COPYING.LIB",
+        "copyright",
+        "glibc-copyright",
+      ]);
+      expect(catatonit.license.texts.find((text) => text.file === "copyright")?.sha256).toBe(
+        "91b658413f8fa63a40060bb18aac958d407d454c0827c6fe78c003ea10d2018b",
+      );
+      expect(catatonit.url).toContain("catatonit_0.2.1-2+b14_");
+    }
   });
 
   test("every component pins a real HTTPS url and non-placeholder sha256", async () => {

@@ -9,6 +9,7 @@ import { Effect } from "effect";
 import type { PodmanApiClient } from "@lando/container-runtime/engine-api";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { AppId } from "@lando/sdk/schema";
 import type { PodmanServiceRunner, PodmanServiceSpec } from "../src/podman-service-runner.ts";
 import { probeRuntimeServiceStatus } from "../src/runtime-status.ts";
 
@@ -177,6 +178,32 @@ describe("probeRuntimeServiceStatus", () => {
 });
 
 describe("provider-lando runtime status", () => {
+  test("secret read-back fails closed without launching an unreachable runtime", async () => {
+    let starts = 0;
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
+        platform: "linux",
+        podmanApi: { ...reachableApi(), request: () => Effect.fail(unavailable()) },
+        podmanService: {
+          ...serviceRunner({}),
+          launch: () =>
+            Effect.sync(() => {
+              starts += 1;
+              return 9999;
+            }),
+        },
+      }),
+    );
+    const result = await Effect.runPromise(
+      Effect.result(provider.readAppEnvironment({ app: AppId.make("stopped-app") }, {})),
+    );
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ProviderUnavailableError", operation: "readAppEnvironment" },
+    });
+    expect(starts).toBe(0);
+  });
   test("getStatus returns narrow {running, message} shape matching reachability", async () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({

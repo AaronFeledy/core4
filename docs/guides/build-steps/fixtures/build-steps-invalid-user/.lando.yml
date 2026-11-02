@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid deliberate invalid build user for build-steps guide
 name: build-steps-invalid-user
 services:
   app:

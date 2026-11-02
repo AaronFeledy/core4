@@ -48,7 +48,9 @@ const nonMatchingDetectInput = Schema.decodeUnknownSync(ConfigTranslateDetectInp
 
 /** Resolve the translator exactly as the plugin graph does, through the lazy loader. */
 const loadBundledTranslator = async (): Promise<ConfigTranslatorShape> => {
-  const loader = lando3.plugin.configTranslators?.get(lando3.LANDO3_TRANSLATOR_ID);
+  const loader = lando3
+    .makeLando3Plugin(() => loadLando3TranslatorPorts(serviceTypeFacts))
+    .configTranslators?.get(lando3.LANDO3_TRANSLATOR_ID);
   if (loader === undefined) throw new Error("@lando/lando3 must contribute the lando3 translator.");
   return await loader();
 };
@@ -87,6 +89,7 @@ describe("ConfigTranslator contract — bundled lando3", () => {
   test("an injected port set reaches the translator the loader builds", async () => {
     let redacted = 0;
     const injected = lando3.makeLando3Plugin({
+      serviceFacts: serviceTypeFacts(),
       decomposers: new Map(),
       redactor: {
         redactString: (text: string) => {
@@ -98,8 +101,9 @@ describe("ConfigTranslator contract — bundled lando3", () => {
     });
     const loader = injected.configTranslators?.get(lando3.LANDO3_TRANSLATOR_ID);
     expect(loader).toBeDefined();
-    const translator = await loader?.();
-    expect(translator?.id).toBe("lando3");
+    if (loader === undefined) throw new Error("Missing bundled Lando 3 translator loader");
+    const translator = await loader();
+    expect(translator.id).toBe("lando3");
 
     const broken = Schema.decodeUnknownSync(ConfigTranslateInput)({
       _tag: "landofile-document-set",
@@ -109,7 +113,7 @@ describe("ConfigTranslator contract — bundled lando3", () => {
       currentLowerV4Fragments: [],
       writableLayerIds: ["canonical"],
     });
-    const exit = await Effect.runPromiseExit(translator?.translate(broken) ?? Effect.void);
+    const exit = await Effect.runPromiseExit(translator.translate(broken));
     expect(exit._tag).toBe("Failure");
     expect(redacted).toBeGreaterThan(0);
   });
@@ -149,3 +153,5 @@ describe("ConfigTranslator contract — bundled lando3", () => {
     expect(index._tag).toBe("Success");
   });
 });
+import { serviceTypeFacts } from "@lando/service-lando";
+import { loadLando3TranslatorPorts } from "../../src/recipes/lando3-ports.ts";

@@ -1,13 +1,27 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
+import {
+  CONTAINER_HELPER_JOB_ID,
+  containerHelperDownloadStep,
+  renderContainerHelperJob,
+} from "./_container-helper-workflow.ts";
+import { isolateLandoRootsStep } from "./_lando-roots-workflow.ts";
+import { serviceListenerMatrixNightlyJob } from "./_service-listener-matrix-nightly.ts";
+import { serviceListenerNightlyJob } from "./_service-listener-nightly.ts";
 
 import {
   landoManagedPodmanTeardownCommands,
   landoRootlessPrereqSteps,
   landoRuntimeSocketPath,
+  linuxGuideE2eProviderSetupSteps,
+  linuxRuntimeBundleJob,
 } from "./build-ci-workflow.ts";
-import { CI_PLATFORMS, type CiPlatform, LINUX_X64_CI_RUNNERS } from "./ci-platforms.ts";
-import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
+import {
+  CI_PLATFORMS,
+  type CiPlatform,
+  LINUX_X64_CI_RUNNERS,
+  LINUX_X64_TEST_RUNNER,
+} from "./ci-platforms.ts";
 import * as supplyChain from "./runtime-bundle-supply-chain.ts";
 import { NIGHTLY_TIER_TESTS, TEST_TIMINGS_FILE } from "./test-shards.ts";
 
@@ -30,6 +44,9 @@ const bunSetupStep = `
       - name: Install dependencies
         run: bun install --frozen-lockfile`;
 
+const regenerateDerivedSourcesStep = `      - name: Regenerate derived sources
+        run: bun run codegen`;
+
 const contractTestStep = (platform: string): string => `
       - name: Run file-sync contract matrix (${platform})
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
@@ -38,67 +55,56 @@ const contractTestStep = (platform: string): string => `
 
 const providerLandoE2eJob = `
   provider-lando-e2e-linux-x64:
-    runs-on: ubuntu-24.04
+    needs: [${CONTAINER_HELPER_JOB_ID}, runtime-bundle-linux-x64]
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+${isolateLandoRootsStep}
 ${bunSetupStep}
 
-      - name: Regenerate derived sources
-        run: bun run codegen
+${containerHelperDownloadStep}
 
-${renderInstallPodman6Step()}
-
-${renderAssertPodman6Step()}
-
-      - name: Enable unprivileged port binding
-        run: sudo sysctl net.ipv4.ip_unprivileged_port_start=0
-
-      - name: Start Podman socket
-        run: |
-          podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
-          echo "$!" > /tmp/podman-service.pid
-          for i in {1..30}; do test -S /tmp/podman.sock && exit 0; sleep 1; done
-          cat /tmp/podman-service.log
-          exit 1
+${regenerateDerivedSourcesStep}
 
       - name: Build Linux x64 binary
         run: |
+          mkdir -p dist
           bun run --filter='@lando/core' build:manifest
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
-          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./core/dist/lando --version "$VERSION" --minify --sourcemap=external
-          bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
-          ./core/dist/lando --version
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --version "$VERSION" --minify --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/lando
+          ./dist/lando --version
+
+${linuxGuideE2eProviderSetupSteps}
 
       - name: Run e2e guide scenarios
         run: |
-          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\\[e2e\\]"
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="\\[e2e\\]"
         env:
           LANDO_GUIDE_E2E: "1"
           LANDO_GUIDE_SCENARIO_LIVE_OUTPUT: "1"
-          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
       - name: Run live integration suites
         run: |
-          bun test core/test/live
+          LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test core/test/live plugins/service-lando/test/service-identity.live.integration.test.ts
         env:
-          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
           LANDO_CONFIG__default_provider_id: lando
 
-      - name: Teardown Podman
+      - name: Teardown Lando runtime
         if: always()
         run: |
-          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
-          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
-          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
-          rm -f /tmp/podman.sock /tmp/podman-service.pid
+          dist/lando poweroff || true
+${landoManagedPodmanTeardownCommands}
 
       - name: Collect provider-lando e2e diagnostics
         if: failure()
         run: |
           mkdir -p provider-lando-e2e-diagnostics
-          cp /tmp/podman-service.log provider-lando-e2e-diagnostics/podman-service.log || true
+          dist/lando doctor --format json > provider-lando-e2e-diagnostics/doctor.json 2>&1 || true
+          cp "$LANDO_USER_DATA_ROOT/runtime/run/service.log" provider-lando-e2e-diagnostics/podman-service.log || true
+          cp -r "$LANDO_USER_CACHE_ROOT/logs" provider-lando-e2e-diagnostics/lando-logs || true
           cp -r dist/transcripts/guides provider-lando-e2e-diagnostics/guide-transcripts || true
           journalctl --no-pager --since "-30 minutes" > provider-lando-e2e-diagnostics/journalctl.log 2>&1 || true
 
@@ -113,6 +119,7 @@ ${renderAssertPodman6Step()}
 
 const publishedManifestSetupJob = `
   published-manifest-setup-linux-x64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     strategy:
       fail-fast: false
       matrix:
@@ -120,8 +127,13 @@ const publishedManifestSetupJob = `
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+${isolateLandoRootsStep}
 ${bunSetupStep}
+
+${regenerateDerivedSourcesStep}
+
+${containerHelperDownloadStep}
 
 ${landoRootlessPrereqSteps}
 
@@ -141,7 +153,7 @@ ${landoRootlessPrereqSteps}
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$HOME/.local/share/lando/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
@@ -169,10 +181,10 @@ ${landoRootlessPrereqSteps}
             sleep 1
           done
           test -S ${landoRuntimeSocketPath}
-          test -x "$HOME/.local/share/lando/runtime/bin/podman"
-          if ldd "$HOME/.local/share/lando/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
+          test -x "$LANDO_USER_DATA_ROOT/runtime/bin/podman"
+          if ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
             echo "::error title=runtime-bundle-portability::managed podman has non-portable or missing shared libraries"
-            ldd "$HOME/.local/share/lando/runtime/bin/podman" || true
+            ldd "$LANDO_USER_DATA_ROOT/runtime/bin/podman" || true
             exit 1
           fi
 
@@ -194,17 +206,22 @@ const distributionSanitizeLines = CI_PLATFORMS.map(
   (platform) => `          bun run scripts/sanitize-compiled-binary.ts ${distributionBundlePath(platform)}`,
 ).join("\n");
 
-const distributionLinuxSmokePath = distributionBundlePath(
-  CI_PLATFORMS.find((platform) => platform.id === "linux-x64") ?? CI_PLATFORMS[0],
-);
+const linuxX64Platform = CI_PLATFORMS.find((platform) => platform.id === "linux-x64");
+if (linuxX64Platform === undefined) throw new Error("CI_PLATFORMS must include linux-x64.");
+const distributionLinuxSmokePath = distributionBundlePath(linuxX64Platform);
 
 const distributionRehearsalJob = `
   distribution-rehearsal-linux-x64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
+
+${regenerateDerivedSourcesStep}
+
+${containerHelperDownloadStep}
 
       - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -212,8 +229,6 @@ ${bunSetupStep}
       - name: Compile all platform binaries
         run: |
           mkdir -p dist/bundle
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/bundle/log-file-access', { recursive: true });"
           bun install --frozen-lockfile --os="*" --cpu="*"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 ${distributionCompileLines}
@@ -241,7 +256,7 @@ interface NightlyJob {
 }
 
 const JOBS: ReadonlyArray<NightlyJob> = [
-  { id: "file-sync-contract-linux-x64", runsOn: "ubuntu-24.04", platform: "linux-x64" },
+  { id: "file-sync-contract-linux-x64", runsOn: LINUX_X64_TEST_RUNNER, platform: "linux-x64" },
   { id: "file-sync-contract-darwin-arm64", runsOn: "macos-15", platform: "darwin-arm64" },
   { id: "file-sync-contract-darwin-x64", runsOn: "macos-15-intel", platform: "darwin-x64" },
   { id: "file-sync-contract-windows-x64", runsOn: "windows-2022", platform: "windows-x64" },
@@ -252,67 +267,84 @@ const renderJob = (job: NightlyJob): string => `
     runs-on: ${job.runsOn}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+${isolateLandoRootsStep}
 ${bunSetupStep}
+${regenerateDerivedSourcesStep}
 ${contractTestStep(job.platform)}`;
 
 const nightlyTierUnitTestsJob = `
   nightly-tier-unit-tests-linux-x64:
-    runs-on: ubuntu-24.04
+    needs: [${CONTAINER_HELPER_JOB_ID}]
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
+
+${regenerateDerivedSourcesStep}
+
+${containerHelperDownloadStep}
 
       - name: Run nightly-tier unit tests
         run: bun test ${NIGHTLY_TIER_TESTS.join(" ")}`;
 
 const refreshTestTimingsJob = `
   refresh-test-timings-linux-x64:
-    runs-on: ubuntu-24.04
+    needs: [${CONTAINER_HELPER_JOB_ID}]
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
-      - name: Regenerate derived sources
-        run: bun run codegen
+${regenerateDerivedSourcesStep}
+
+${containerHelperDownloadStep}
 
       - name: Refresh unit-test timings
         run: bun run scripts/update-test-timings.ts
 
       - name: Upload refreshed timings
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v6
         with:
           name: bun-test-timings
           path: ${TEST_TIMINGS_FILE}
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14`;
 
 const runtimeBundleManifestLiveJob = `
   runtime-bundle-manifest-live:
-    runs-on: ubuntu-24.04
+    runs-on: ${LINUX_X64_TEST_RUNNER}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 ${bunSetupStep}
 
       - name: Verify committed runtime-bundle manifest resolves live
-        run: bun run check:runtime-bundle-manifest --live`;
+        run: bun run check:runtime-bundle-manifest --live
+
+      - name: Verify runtime bundle licenses and source links live
+        run: bun run check:runtime-bundle-licenses --live`;
 
 const mysqlArmClientLinuxArm64Job = `
   mysql-arm-client-linux-arm64:
+    needs: [${CONTAINER_HELPER_JOB_ID}]
     runs-on: ${linuxArm64.runsOn}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+${isolateLandoRootsStep}
 ${bunSetupStep}
+
+${containerHelperDownloadStep}
 
 ${landoRootlessPrereqSteps}
 
       - name: Setup Go for Linux Podman source build
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo}
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.setupGo} # v7.0.0
         with:
           go-version: 1.25.6
 
@@ -352,26 +384,17 @@ ${landoRootlessPrereqSteps}
           echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
           echo "::notice title=runtime-bundle-candidate-manifest::$MANIFEST"
 
-      - name: Regenerate derived sources
-        run: bun run codegen
+${regenerateDerivedSourcesStep}
 
       - name: Build Linux arm64 binary
         run: |
           mkdir -p dist
           bun run --filter='@lando/core' build:manifest
-          bun run --filter='@lando/core' build:log-file-helper
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
           bun run scripts/build-compiled-binary.ts --target ${linuxArm64.bunTarget} --outfile ./dist/${linuxArm64.binaryName} --version "$VERSION" --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${linuxArm64.binaryName}
           ./dist/${linuxArm64.binaryName} --version
           test "$(uname -m)" = aarch64
-
-      - name: Isolate Lando roots
-        run: |
-          echo "LANDO_USER_CONF_ROOT=$RUNNER_TEMP/lando-conf" >> "$GITHUB_ENV"
-          echo "LANDO_USER_DATA_ROOT=$RUNNER_TEMP/lando-data" >> "$GITHUB_ENV"
-          echo "LANDO_USER_CACHE_ROOT=$RUNNER_TEMP/lando-cache" >> "$GITHUB_ENV"
 
       - name: Configure rootless overlay storage
         run: |
@@ -380,7 +403,7 @@ ${landoRootlessPrereqSteps}
           driver = "overlay"
 
           [storage.options.overlay]
-          mount_program = "$RUNNER_TEMP/lando-data/runtime/bin/fuse-overlayfs"
+          mount_program = "$LANDO_USER_DATA_ROOT/runtime/bin/fuse-overlayfs"
           EOF
           echo "CONTAINERS_STORAGE_CONF=$RUNNER_TEMP/lando-storage.conf" >> "$GITHUB_ENV"
 
@@ -469,8 +492,12 @@ ${landoRootlessPrereqSteps}
 
 export const renderNightlyWorkflow = (): string => {
   const jobsYaml = [
+    renderContainerHelperJob(),
+    linuxRuntimeBundleJob,
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
+    serviceListenerNightlyJob,
+    serviceListenerMatrixNightlyJob,
     publishedManifestSetupJob,
     mysqlArmClientLinuxArm64Job,
     nightlyTierUnitTestsJob,

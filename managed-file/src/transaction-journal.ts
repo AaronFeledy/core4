@@ -1,8 +1,9 @@
-import { basename, dirname } from "node:path";
-import { makeLandoPaths } from "@lando/paths";
+import { basename, dirname, sep } from "node:path";
+import { managedFileLedgerPath } from "@lando/paths";
 import { sha256Hex } from "@lando/sdk/digest";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { syncDirectory } from "@lando/state-store/atomic";
+import { realpathOrDeepestExisting } from "@lando/state-store/paths";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
@@ -35,11 +36,17 @@ const Before = Schema.Union([
 ]);
 export const Stage = Schema.Struct({ path: Schema.String, dev: Schema.String, ino: Schema.String });
 export type Stage = typeof Stage.Type;
+export const DirectoryPolicy = Schema.Struct({
+  path: Schema.String,
+  action: Schema.Literal("create-if-absent"),
+});
+export type DirectoryPolicy = typeof DirectoryPolicy.Type;
 export const Entry = Schema.Struct({
   path: Schema.String,
   before: Before,
   after: FileState,
   stage: Schema.optionalKey(Stage),
+  publication: Schema.optionalKey(Schema.Literals(["replace", "create"])),
 });
 export type Entry = typeof Entry.Type;
 export const Journal = Schema.Struct({
@@ -47,6 +54,7 @@ export const Journal = Schema.Struct({
   root: Schema.String,
   state: Schema.Literals(["prepared", "committing", "committed", "blocked"]),
   entries: Schema.Array(Entry),
+  directoryPolicy: Schema.optionalKey(Schema.Array(DirectoryPolicy)),
 });
 export type Journal = typeof Journal.Type;
 const transitions = {
@@ -59,32 +67,37 @@ const blockable = new Set<Journal["state"]>(["prepared", "committing"]);
 
 export const journalDirectory = (root: string, userDataRoot: string): string =>
   dirname(
-    makeLandoPaths({ userDataRoot }).managedFileLedger(
+    managedFileLedgerPath(
+      userDataRoot,
       `${basename(root).replace(/[^A-Za-z0-9._-]/gu, "-")}-${sha256Hex(root)}`,
+      sep === "\\" ? "win32" : "linux",
     ),
   );
 
 export const openJournal = Effect.fnUntraced(function* (
   root: string,
-  dir: string,
+  userDataRoot: string,
   options: {
     readonly createDirectory?: boolean;
     readonly privateFileAccess: PrivateFileAccess;
   },
 ) {
   const privateFileAccess = options.privateFileAccess;
-  if (options.createDirectory !== false) yield* transactionIO("inspect", () => ensureDirectory(dir));
+  const boundary = yield* transactionIO("inspect", () => realpathOrDeepestExisting(userDataRoot));
+  const dir = journalDirectory(root, boundary);
+  yield* transactionIO("inspect", () => ensureDirectory(dir, boundary, options.createDirectory));
   const bucket = yield* makeStateStore({ privateFileAccess })
     .open({
       root: { path: Schema.decodeUnknownSync(AbsolutePath)(dir) },
       key: "transaction.json",
-      version: 1,
+      version: 2,
       schema: Journal,
       mode: 0o600,
       lock: "none",
       onCorrupt: "fail",
-      onVersionMismatch: () => {
-        throw transactionError("journal", "inspect");
+      onVersionMismatch: (payload, fromVersion) => {
+        if (fromVersion !== 1) throw transactionError("journal", "inspect");
+        return Schema.decodeUnknownSync(Journal)(payload);
       },
     })
     .pipe(Effect.mapError(() => transactionError("journal", "inspect")));
@@ -135,5 +148,5 @@ export const openJournal = Effect.fnUntraced(function* (
     yield* bucket.remove.pipe(Effect.mapError(() => transactionError("journal", "cleanup")));
     yield* transactionIO("cleanup", () => syncDirectory(dir));
   }).pipe(Effect.uninterruptible, Effect.withSpan("ManagedFileJournal.removeCommitted"));
-  return { path: bucket.path, read, write, block, removeCommitted };
+  return { directory: dir, path: bucket.path, read, write, block, removeCommitted };
 });

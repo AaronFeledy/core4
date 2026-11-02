@@ -8,7 +8,6 @@ import { Effect, Layer } from "effect";
 import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { ConfigService } from "@lando/sdk/services";
 
-import { writeCwdAppMapEntry } from "@lando/engine/cache/cwd-app-map";
 import { HostMaintenanceRegistry } from "@lando/engine/runtime/host-maintenance";
 import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff.ts";
 
@@ -57,19 +56,6 @@ beforeAll(async () => {
       plan: { ...scratch.plan, extensions: { "@lando/core/scratch": {} } },
     }),
   );
-  await Effect.runPromise(
-    writeCwdAppMapEntry({
-      cacheRoot: userCacheRoot,
-      entry: {
-        cwd: "/srv/cached-only/web",
-        appRoot: "/srv/cached-only",
-        primaryLandofilePath: "/srv/cached-only/.lando.yml",
-        mtimeNs: 1,
-        sizeBytes: 2,
-        lastUsedAt: 3,
-      },
-    }),
-  );
 });
 
 afterAll(async () => {
@@ -92,8 +78,6 @@ describe("apps:poweroff command", () => {
     );
     expect([...stopped].sort()).toEqual(["global", "scratch-1", "user-app"]);
     expect([...result.appsPoweredOff].sort()).toEqual(["global", "scratch-1", "user-app"]);
-    expect(stopped).not.toContain("cached-only");
-    expect(result.appsPoweredOff).not.toContain("cached-only");
   });
 
   test("stops runtime service once after the app loop", async () => {

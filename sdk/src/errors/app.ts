@@ -1,4 +1,21 @@
 import { Schema } from "effect";
+import { AppRef } from "../schema/networking.ts";
+
+/** Creation never relocates an app that has applied state on another provider. */
+export class AppPlacementError extends Schema.TaggedError<AppPlacementError>()("AppPlacementError", {
+  app: AppRef.annotate({ description: "App whose canonical root already has an applied realization." }),
+  desiredProviderId: Schema.String.annotate({ description: "Provider selected for creation." }),
+  realizedProviderId: Schema.String.annotate({ description: "Provider holding the applied plan." }),
+  runningApps: Schema.optional(
+    Schema.Array(AppRef).annotate({
+      description: "Running dependent apps that block an explicit setup provider switch.",
+    }),
+  ),
+  message: Schema.String.annotate({ description: "Human-readable placement mismatch." }),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)).annotate({
+    description: "Commands to retire or retain the existing realization.",
+  }),
+}) {}
 
 /**
  * Resolution failure raised by the App-handle resolver (`resolveApp` /
@@ -24,7 +41,7 @@ export class AppLockTimeoutError extends Schema.TaggedError<AppLockTimeoutError>
   message: Schema.String,
   app: Schema.String,
   timeoutMs: Schema.Number,
-  remediation: Schema.String,
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -33,6 +50,6 @@ export class AppResolveError extends Schema.TaggedError<AppResolveError>()("AppR
   reason: Schema.Literals(["ambiguous", "mismatch", "missing-root", "unknown-id", "not-found"]),
   /** The selector field(s) involved in the failure, for diagnostics. */
   detail: Schema.optional(Schema.String),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

@@ -14,7 +14,8 @@ tags: [beta, docs, scratch, list, info]
 lando scratch:list
 ```
 
-Need more than a roster? `lando scratch:info <id>` adds mounts, networks, and endpoints.
+To see mounts, networks, and endpoints, run `lando scratch:info <id>`, replacing
+`<id>` with an id from this list.
 
 ## List
 
@@ -38,7 +39,8 @@ Source is `fork` or `recipe:<ref>`. Mode is `full`, `baked`, or `cwd`.
 
 ## Read status
 
-Status comes from the local registry. No provider call.
+Status comes from the local registry without calling the provider. It describes
+the scratch's ownership and attachment state, not a live container health check.
 
 | Status | Meaning |
 | --- | --- |

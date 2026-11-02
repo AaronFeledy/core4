@@ -61,6 +61,20 @@ const runFinite = (
   );
 
 describe("makeLineFramer (framing + bounds)", () => {
+  test.each(["é", "€", "😀"])("trims a truncated UTF-8 codepoint: %s", (codepoint) => {
+    const bytes = new TextEncoder().encode(`ok${codepoint}end\n`);
+    for (let kept = 1; kept < new TextEncoder().encode(codepoint).length; kept += 1) {
+      const framer = makeLineFramer(2 + kept);
+      expect(framer.feed(bytes)).toEqual([{ text: "ok …[truncated]", truncated: true }]);
+    }
+  });
+
+  test("keeps a complete codepoint at the truncation boundary on flush", () => {
+    const framer = makeLineFramer(4);
+    framer.feed(new TextEncoder().encode("okérest"));
+    expect(framer.flush()).toEqual([{ text: "oké …[truncated]", truncated: true }]);
+  });
+
   test("S6 splits multi-byte UTF-8 across reads without corruption", () => {
     const framer = makeLineFramer();
     // "héllo\n" — é is 0xC3 0xA9; split it across two feeds.
@@ -69,6 +83,16 @@ describe("makeLineFramer (framing + bounds)", () => {
     const rest = framer.feed(bytes.slice(2));
     expect(first).toHaveLength(0);
     expect(rest.map((line) => line.text)).toEqual(["héllo"]);
+  });
+
+  test("drops carriage returns at both ends of a line, including LF-CR terminators", () => {
+    const framer = makeLineFramer();
+    expect(
+      framer.feed(new TextEncoder().encode("one\n\rtwo\r\r\n\r\rthree\n")).map(({ text }) => text),
+    ).toEqual(["one", "two", "three"]);
+    expect(framer.feed(new TextEncoder().encode("mid\rline\n")).map(({ text }) => text)).toEqual([
+      "mid\rline",
+    ]);
   });
 
   test("S6 handles CRLF and flushes a final partial line at EOF", () => {
@@ -246,6 +270,29 @@ describe("followLogSource follow", () => {
     expect(handles).toBe(0);
   });
 
+  test("S2 holds a backfill partial line that ends mid-character until the writer completes it", async () => {
+    const { events } = await collectFollow(
+      (fs) => {
+        fs.writeFile("/var/log/mysql/slow.log", Uint8Array.from([0x62, 0x31, 0x0a, 0xe2]));
+        return followLogSource({
+          service: SERVICE,
+          source: source(),
+          follow: true,
+          access: fs.access,
+          pollIntervalMillis: 100,
+        });
+      },
+      (fs, adjust, read) =>
+        Effect.gen(function* () {
+          fs.appendFile("/var/log/mysql/slow.log", Uint8Array.from([0x98, 0x83, 0x0a]));
+          yield* adjust(100);
+          return yield* read;
+        }),
+    );
+
+    expect(lines(events)).toEqual(["b1", "\u2603"]);
+  });
+
   test("S3 missing follow file emits pending then follows once it appears", async () => {
     const { events } = await collectFollow(
       (fs) =>
@@ -369,6 +416,49 @@ describe("followLogSource follow", () => {
 });
 
 describe("followLogSources merge + lifecycle", () => {
+  test("acquires scoped access once per selected source and releases it when that stream ends", async () => {
+    // Given
+    const fs = makeMemoryLogFileAccess();
+    fs.writeFile("/a.log", "alpha\n");
+    fs.writeFile("/b.log", "beta\n");
+    const sources = [
+      source({ id: "a", path: "/a.log" }),
+      source({ id: "b", path: "/b.log" }),
+      source({ id: "redirect", path: "/redirect.log", strategy: "redirect" }),
+    ];
+    let acquired = 0;
+    const released: number[] = [];
+    const access = Effect.acquireRelease(
+      Effect.sync(() => ({ id: ++acquired, access: fs.access })),
+      (resource) =>
+        Effect.sync(() => {
+          released.push(resource.id);
+        }),
+    ).pipe(Effect.map((resource) => resource.access));
+    // When
+    const events = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* Stream.runCollect(
+            followLogSources({
+              service: SERVICE,
+              sources,
+              follow: false,
+              maxReadBytes: 1,
+              access,
+            }),
+          );
+          // Then: child streams release without waiting for this outer scope to close.
+          expect(acquired).toBe(2);
+          expect([...released].sort()).toEqual([1, 2]);
+          expect(fs.openHandleCount()).toBe(0);
+          return events;
+        }),
+      ),
+    );
+    expect([...lines(events)].sort()).toEqual(["alpha", "beta"]);
+  });
+
   test("S8 merges only follow sources and honors the source filter", async () => {
     const fs = makeMemoryLogFileAccess();
     fs.writeFile("/a.log", "a\n");

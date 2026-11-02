@@ -13,6 +13,7 @@ const canonicalPath = (path: string): Effect.Effect<string, LandofileValidationE
     catch: () =>
       new LandofileValidationError({
         message: "Cannot establish canonical app ownership.",
+        remediation: "Ensure the root exists and is accessible before planning the app.",
         file: path,
         issues: [validationIssue([], "Ensure the root exists and is accessible before planning the app.")],
       }),

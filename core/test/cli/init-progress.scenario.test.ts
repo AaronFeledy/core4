@@ -200,7 +200,7 @@ describe("lando init: task tree progress", () => {
     });
   });
 
-  test("publishes task.fail on the render task when the Landofile dest already exists", async () => {
+  test("rejects an occupied Landofile before starting publication progress", async () => {
     await withTempCwd(async (dir) => {
       await mkdir(join(dir, "occupied"), { recursive: true });
       await Bun.write(join(dir, "occupied", ".lando.yml"), "name: occupied\n");
@@ -220,26 +220,11 @@ describe("lando init: task tree progress", () => {
       }
       expect(caught).toBeDefined();
 
-      const tags = sink.events.map((event) => event._tag);
-      expect(tags[0]).toBe("task.tree.start");
-      expect(tags).toContain("task.start");
-      expect(tags).toContain("task.fail");
-      expect(tags[tags.length - 1]).toBe("task.tree.complete");
-
-      const renderStartIdx = sink.events.findIndex(
-        (event) => event._tag === "task.start" && event.taskId === "render",
-      );
-      const renderFailIdx = sink.events.findIndex(
-        (event) => event._tag === "task.fail" && event.taskId === "render",
-      );
-      expect(renderStartIdx).toBeGreaterThan(0);
-      expect(renderFailIdx).toBeGreaterThan(renderStartIdx);
-
-      const treeComplete = sink.events[sink.events.length - 1];
-      if (treeComplete?._tag === "task.tree.complete") {
-        expect(treeComplete.failed).toBe(1);
-        expect(treeComplete.succeeded).toBe(0);
-      }
+      expect(caught).toMatchObject({
+        _tag: "InitTargetExistsError",
+        path: join(dir, "occupied", ".lando.yml"),
+      });
+      expect(sink.events).toEqual([]);
     });
   });
 });

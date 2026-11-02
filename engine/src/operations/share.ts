@@ -1,15 +1,17 @@
+import { discoveryCwd } from "@lando/landofile/operation-discovery";
 import { Effect, Schema, type Scope } from "effect";
 
 import type { AppPlanResolutionError, ShareAppError } from "@lando/sdk/app";
 import { type StateStoreError, TunnelProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  type ShareStopAppResult,
   TunnelSession,
   type TunnelSession as TunnelSessionType,
-  TunnelStatus,
   TunnelStopRequest,
   TunnelTarget,
   type TunnelTarget as TunnelTargetType,
+  selectHttpEndpoint,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -23,13 +25,6 @@ import {
 import { routerEnabled } from "../config/router-config.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
 import { reconcileTunnelRegistry, recordTunnelSession, removeTunnelSession } from "../tunnel/registry.ts";
-
-export const ShareStopResultSchema = Schema.Struct({
-  sessionId: Schema.String,
-  provider: Schema.optionalKey(Schema.String),
-  status: TunnelStatus,
-});
-export type ShareStopResult = typeof ShareStopResultSchema.Type;
 
 export const ShareListResultSchema = Schema.Array(TunnelSession);
 
@@ -108,7 +103,7 @@ const resolvePlan = Effect.fnUntraced(function* (
   const landofileService = yield* LandofileService;
   const registry = yield* RuntimeProviderRegistry;
   const planner = yield* AppPlanner;
-  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
+  const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? (yield* discoveryCwd()));
   const capabilities = yield* registry.capabilities;
   return yield* planner.plan(landofile, capabilities);
 });
@@ -118,9 +113,21 @@ const resolvePlan = Effect.fnUntraced(function* (
  * router publishes it, so a disabled router shares the app itself instead.
  */
 export const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
-  const firstRoute = routerEnabled(plan) ? plan.routes[0] : undefined;
-  if (firstRoute !== undefined)
-    return { _tag: "route", routeId: firstRoute.hostname, hostname: firstRoute.hostname };
+  const routes = routerEnabled(plan) ? plan.routes : [];
+  const primary = Object.values(plan.services).find((service) => service.primary);
+  const endpoint = primary === undefined ? undefined : selectHttpEndpoint(primary.endpoints);
+  const preferred =
+    endpoint?.status === "selected" && primary !== undefined
+      ? routes.filter(
+          (route) =>
+            route.service === primary.name &&
+            route.backend.port === endpoint.endpoint.port &&
+            route.backend.protocol === endpoint.endpoint.protocol,
+        )
+      : [];
+  const candidates = preferred.length > 0 ? preferred : routes;
+  const route = candidates.length === 1 ? candidates[0] : undefined;
+  if (route !== undefined) return { _tag: "route", routeId: route.hostname, hostname: route.hostname };
   return { _tag: "route", routeId: plan.id };
 };
 
@@ -203,7 +210,7 @@ export const appShareList = Effect.fn("AppOperation.shareList")(function* (
 
 export const appShareStop = Effect.fn("AppOperation.shareStop")(function* (
   options: ShareStopOptions,
-): Effect.fn.Return<ShareStopResult, ShareStopCommandError, StateStore> {
+): Effect.fn.Return<ShareStopAppResult, ShareStopCommandError, StateStore> {
   const stopRequest = yield* Schema.decodeUnknownEffect(TunnelStopRequest)({
     sessionId: options.sessionId,
     ...(options.provider === undefined ? {} : { provider: options.provider }),
@@ -212,5 +219,5 @@ export const appShareStop = Effect.fn("AppOperation.shareStop")(function* (
   const service = yield* resolveTunnelService(stopRequest.provider);
   yield* service.stop(stopRequest);
   yield* removeTunnelSession(stopRequest.sessionId);
-  return { sessionId: stopRequest.sessionId, provider: service.id, status: "stopped" };
+  return { sessionId: stopRequest.sessionId, provider: service.id };
 });

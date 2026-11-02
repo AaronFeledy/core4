@@ -1,4 +1,5 @@
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
+import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 /**
  * Where a generated nginx launcher writes its configuration.
@@ -60,7 +61,11 @@ const runsAsRoot = (user: string | undefined): boolean => {
 
 const rejectUnquotableLine = (line: string): void => {
   if (/[\r\n]/u.test(line)) {
-    throw new Error("nginx configuration lines cannot contain a line break.");
+    throw new ServiceConfigIssue(
+      ["backend"],
+      "nginx configuration lines cannot contain a line break.",
+      "Set backend to a single service name.",
+    );
   }
   if (line.trim() === NGINX_CONFIG_HEREDOC) {
     throw new Error(`nginx configuration lines cannot be the literal ${NGINX_CONFIG_HEREDOC}.`);

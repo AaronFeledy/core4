@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
@@ -28,14 +28,27 @@ import {
   evaluateHostVar as evaluateHostVarEffect,
   resolveScriptPath,
   runHostScript as runHostScriptEffect,
-  runHostToolingWith,
+  runHostToolingWith as runHostToolingWithEffect,
 } from "../../src/services/host-tooling-engine";
+import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
-const hostToolingEngineLayer = HostToolingEngine.layer.pipe(Layer.provide(PrivateFileAccessService.layer));
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
+
+const runHostToolingWith = (...args: Parameters<typeof runHostToolingWithEffect>) =>
+  runHostToolingWithEffect(...args).pipe(Effect.provide(testEnvironmentResolverLayer));
+const hostToolingEngineLayer = HostToolingEngine.layer.pipe(
+  Layer.provide(
+    Layer.mergeAll(BunProcessRunner.layer, PrivateFileAccessService.layer, testEnvironmentResolverLayer),
+  ),
+);
 const runHostScript = (...args: Parameters<typeof runHostScriptEffect>) =>
-  runHostScriptEffect(...args).pipe(Effect.provide(PrivateFileAccessService.layer));
+  runHostScriptEffect(...args).pipe(
+    Effect.provide(Layer.merge(BunProcessRunner.layer, PrivateFileAccessService.layer)),
+  );
 const evaluateHostVar = (...args: Parameters<typeof evaluateHostVarEffect>) =>
-  evaluateHostVarEffect(...args).pipe(Effect.provide(PrivateFileAccessService.layer));
+  evaluateHostVarEffect(...args).pipe(
+    Effect.provide(Layer.merge(BunProcessRunner.layer, PrivateFileAccessService.layer)),
+  );
 
 const providerId = ProviderId.make("lando");
 
@@ -84,7 +97,6 @@ const baseServicePlan = (name: string, primary = false): ServicePlan => ({
   primary,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -104,7 +116,6 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => {
     provider: providerId,
     services: map as AppPlan["services"],
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -233,14 +244,14 @@ describe("HostToolingEngine.layer", () => {
       const invocation: ToolingInvocation = {
         tool: "read-marker",
         cwd,
-        commands: [["sh", "-c", "cat marker.txt"]],
-        hostSteps: [{ kind: "shell", source: "cat marker.txt", argv: [] }],
+        commands: [["sh", "-c", 'cat marker.txt; printf "\\n%s\\n" "$PWD"']],
+        hostSteps: [{ kind: "shell", source: 'cat marker.txt; printf "\\n%s\\n" "$PWD"', argv: [] }],
       };
 
       const result = await Effect.runPromise(runEngine(invocation, plan));
 
       expect(result.exitCode).toBe(0);
-      expect(result.stdout).toBe("marker-content");
+      expect(result.stdout).toBe(`marker-content\n${await realpath(cwd)}\n`);
     } finally {
       await rm(cwd, { recursive: true, force: true });
     }

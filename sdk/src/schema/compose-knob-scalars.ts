@@ -118,6 +118,7 @@ const TIMED_PULL_POLICY_PATTERN = /^every_(?:[0-9]+[wdhms])+$/;
 const TimedPullPolicy = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(TIMED_PULL_POLICY_PATTERN, {
+      expected: "every_<interval> such as every_12h",
       toJsonSchema: () => ({ pattern: TIMED_PULL_POLICY_PATTERN.source }),
     }),
   ),
@@ -126,6 +127,32 @@ const TimedPullPolicy = Schema.String.pipe(
 export const ComposePullPolicyField = Schema.Union([
   Schema.Literals(["always", "never", "build", "if_not_present", "missing", "refresh", "daily", "weekly"]),
   TimedPullPolicy,
-]);
+]).annotate({
+  message:
+    "Expected always, never, build, if_not_present, missing, refresh, daily, weekly, or every_<interval> such as every_12h",
+});
 
 export const ComposeBooleanOrStringField = Schema.Union([Schema.Boolean, Schema.String]);
+
+// JSON Schema has no regex flags; the end assertion also rejects trailing line breaks.
+const INIT_SPELLING_PATTERN =
+  /^(?:[Tt][Rr][Uu][Ee]|[Ff][Aa][Ll][Ss][Ee]|[Oo][Nn]|[Oo][Ff][Ff]|[Yy][Ee][Ss]|[Nn][Oo]|[01])(?![\s\S])/;
+
+export const ComposeInitField = Schema.Union([
+  Schema.Boolean,
+  Schema.String.check(
+    Schema.isPattern(INIT_SPELLING_PATTERN, {
+      expected: "true, false, on, off, yes, no, 1, or 0 (ASCII case-insensitive)",
+      toJsonSchema: () => ({ pattern: INIT_SPELLING_PATTERN.source }),
+    }),
+  ),
+]).pipe(
+  Schema.decodeTo(
+    Schema.Boolean,
+    SchemaTransformation.transform({
+      decode: (input) =>
+        typeof input === "boolean" ? input : ["true", "on", "1", "yes"].includes(input.toLowerCase()),
+      encode: (input) => input,
+    }),
+  ),
+);

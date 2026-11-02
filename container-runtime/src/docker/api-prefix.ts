@@ -24,14 +24,18 @@ export interface DockerApiPrefixLearnResult {
 }
 
 const prefixCache = new Map<string, ResolvedDockerApiPrefix>();
+const daemonApiVersionCache = new Map<string, string>();
 const prefixFlights = new Map<string, Promise<void>>();
 
 export const resetDockerApiPrefixCache = (): void => {
   prefixCache.clear();
+  daemonApiVersionCache.clear();
   prefixFlights.clear();
 };
 
 export const peekDockerApiPrefix = (key: string): ResolvedDockerApiPrefix | undefined => prefixCache.get(key);
+
+export const peekDockerDaemonApiVersion = (key: string): string | undefined => daemonApiVersionCache.get(key);
 
 export const rememberDockerApiPrefix = (key: string, resolved: ResolvedDockerApiPrefix): void => {
   prefixCache.set(key, resolved);
@@ -39,6 +43,7 @@ export const rememberDockerApiPrefix = (key: string, resolved: ResolvedDockerApi
 
 export const forgetDockerApiPrefix = (key: string): void => {
   prefixCache.delete(key);
+  daemonApiVersionCache.delete(key);
 };
 
 export const resolvedPrefix = (prefix: string, source: DockerApiPrefixSource): ResolvedDockerApiPrefix => {
@@ -146,6 +151,10 @@ export const resolveInitialDockerApiPrefix = (input: {
   if (cached !== undefined) return cached;
   if (input.explicitPrefix !== undefined && input.explicitPrefix !== "") {
     const resolved = resolvedPrefix(input.explicitPrefix, "explicit");
+    if (resolved.version !== undefined) {
+      const parsed = parseDockerApiVersionOverride(resolved.version);
+      if (!parsed.ok) return parsed;
+    }
     rememberDockerApiPrefix(input.endpointKey, resolved);
     return resolved;
   }
@@ -166,6 +175,8 @@ export const learnDockerApiPrefix = (input: {
   readonly headers?: Readonly<Record<string, string>>;
   readonly body: string;
 }): DockerApiPrefixLearnResult => {
+  const advertised = extractDockerDaemonApiRange({ headers: input.headers ?? {} }).apiVersion;
+  if (advertised !== undefined) daemonApiVersionCache.set(input.endpointKey, advertised);
   if (input.usedSource === "explicit" || input.usedSource === "env") {
     return { prefix: input.usedPrefix, retry: false };
   }
@@ -183,6 +194,7 @@ export const learnDockerApiPrefix = (input: {
   }
 
   forgetDockerApiPrefix(input.endpointKey);
+  if (advertised !== undefined) daemonApiVersionCache.set(input.endpointKey, advertised);
   const range = extractDockerDaemonApiRange({
     ...(input.headers === undefined ? {} : { headers: input.headers }),
     body: input.body,

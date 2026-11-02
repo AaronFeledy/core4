@@ -6,7 +6,7 @@ import type { ServiceFeatureContext } from "@lando/sdk/services";
 import { landoEnvFeature } from "../src/features/env.ts";
 
 const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
-  const env: Record<string, string> = {};
+  const env: Record<string, import("@lando/sdk/schema").EnvironmentValue> = {};
   const ctx: ServiceFeatureContext = {
     serviceName: "web",
     serviceType: "php",
@@ -24,13 +24,15 @@ const featureContext = (config: Readonly<Record<string, unknown>> = {}) => {
     addBuildStep() {},
     addExtension() {},
     addStorage() {},
-    addEndpoint() {},
     addDependency() {},
     addHostAlias() {},
     setHealthcheck() {},
+    setReadiness() {},
+    setListenerAuthority() {},
     setCerts() {},
     setEntrypoint() {},
     setCommand() {},
+    setInit() {},
     setArtifact() {},
     setUser() {},
     setWorkingDirectory() {},

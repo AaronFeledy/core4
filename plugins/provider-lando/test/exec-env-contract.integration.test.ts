@@ -6,6 +6,7 @@ import type {
   EngineHttpResponse,
   PodmanApiClient,
 } from "@lando/container-runtime/engine-api";
+import { installNonCompensatingExecUmask } from "@lando/container-runtime/testing/exec-umask";
 import { bringUp, exec } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -18,6 +19,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceTypeHostFacts } from "@lando/sdk/services";
 import { nodeLtsServiceType, serviceFeatures } from "@lando/service-lando";
+import { decodeNetworkCreate } from "./network-fixture.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 
 const metadata = {
@@ -55,6 +57,7 @@ const planNodeService = (): Promise<ServicePlan> => {
 };
 
 const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
+  valueModel: 1,
   id: AppId.make("envapp"),
   name: "envapp",
   slug: "envapp",
@@ -62,7 +65,6 @@ const buildPlan = (servicePlan: ServicePlan): AppPlan => ({
   provider: ProviderId.make("lando"),
   services: { [servicePlan.name]: servicePlan },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -79,7 +81,7 @@ const containerName = (slug: string, service: string) =>
 const makeFakeApi = () => {
   const calls: EngineHttpRequest[] = [];
   const created = new Set<string>();
-  const networks = new Set<string>();
+  const networks = new Map<string, { readonly Id: string }>();
 
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -88,11 +90,21 @@ const makeFakeApi = () => {
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
 
-        if (request.path === "/networks/create") {
-          networks.add((request.body as { Name?: string }).Name ?? "");
+        const networkCreate = decodeNetworkCreate(request);
+        if (networkCreate !== undefined) {
+          networks.set(networkCreate.Name, { Id: `${networkCreate.Name}-id`, ...networkCreate });
           return { status: 201, body: "{}" };
         }
+        if (request.method === "GET" && request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const name = [...networks].find(([, network]) => network.Id === reference)?.[0] ?? reference;
+          const network = networks.get(name);
+          return { status: network === undefined ? 404 : 200, body: JSON.stringify(network ?? {}) };
+        }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+          const reference = decodeURIComponent(request.path.slice("/networks/".length));
+          const name = [...networks].find(([, network]) => network.Id === reference)?.[0] ?? reference;
+          networks.delete(name);
           return { status: 204, body: "" };
         }
         if (request.method === "GET" && request.path === "/exec/exec-1/json") {
@@ -139,6 +151,7 @@ const makeFakeApi = () => {
     },
   };
 
+  installNonCompensatingExecUmask(api);
   return { api, calls };
 };
 
@@ -186,7 +199,7 @@ describe("provider-lando exec env contract", () => {
 
     const commandEnv: Record<string, string> = {
       LANDO_PLUGIN_TOOLING_VAR: "ok",
-      LANDO_APP_NAME: servicePlan.environment.LANDO_APP_NAME ?? "envapp",
+      LANDO_APP_NAME: "envapp",
     };
 
     await Effect.runPromise(

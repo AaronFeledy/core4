@@ -1,8 +1,8 @@
-import { type Context, Effect, Exit, Option, Ref, Scope } from "effect";
+import { Effect, Option, Scope } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError } from "@lando/sdk/errors";
 import type { AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
-import { FileSyncEngine, type FileSyncEngineShape, type FileSyncError } from "@lando/sdk/services";
+import type { FileSyncEngineShape, FileSyncError } from "@lando/sdk/services";
 
 import {
   type ProgressEmitter,
@@ -12,25 +12,16 @@ import {
 } from "@lando/sdk/task-progress";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
-import { mergeFailure, runAllAndMergeFailures } from "../lifecycle/failure-compensation.ts";
 
+import { acquireFileSyncEngine, requireFileSyncPlanCapabilities } from "./file-sync-acquire.ts";
+import { fileSyncBundle } from "./file-sync-bundle.ts";
 import { sameFileSyncSessionSpec } from "./file-sync-paths.ts";
 import { startFileSyncTreeId } from "./start-progress.ts";
 
 export interface StartManagedScope {
   readonly scope: Scope.Closeable;
   readonly onStopped?: Effect.Effect<void>;
-  readonly onFailedStart?: Effect.Effect<void>;
-  readonly onScopeClosedByStartApp?: Effect.Effect<void>;
-}
-
-/** Reverses only persistent session mutations made by one successful start attempt. */
-export interface PreparedFileSyncSessions {
-  readonly rollback: Effect.Effect<void, FileSyncError>;
-  /** A target may be removed only when this attempt created every session using it. */
-  readonly rollbackTargets: boolean;
-  /** Writer teardown must be followed by a durable drain rather than termination. */
-  readonly preserveOnFailure?: boolean;
+  readonly resume?: { readonly scope: Scope.Closeable; readonly beforeStart: Effect.Effect<void> };
 }
 
 const managedFileSyncRefs = new WeakMap<Scope.Closeable, Set<FileSyncSessionRef>>();
@@ -63,10 +54,7 @@ const setupFailureDetail = (error: FileSyncError, redact: (value: string) => str
   );
 };
 
-const runFileSyncSetup = Effect.fnUntraced(function* (
-  engine: Context.Service.Shape<typeof FileSyncEngine>,
-  tree: TaskTreeController,
-) {
+const runFileSyncSetup = Effect.fnUntraced(function* (engine: FileSyncEngineShape, tree: TaskTreeController) {
   yield* tree.startTask("setup");
   yield* tree.detail("setup", "stdout", "Completing deferred file-sync setup for accelerated mounts.");
   const redaction = yield* Effect.serviceOption(RedactionService);
@@ -114,45 +102,31 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
   plan: AppPlan,
   events: ProgressEmitter,
   managed?: StartManagedScope,
-  safeToRollbackTargets?: Ref.Ref<boolean>,
   boundEngine?: FileSyncEngineShape,
+  resumedAfterApply = false,
 ) {
-  if (plan.fileSync.length === 0) return;
-  const plannedEngineIds = [...new Set(plan.fileSync.map((entry) => entry.engineId))];
-  const engineOption =
-    boundEngine === undefined ? yield* Effect.serviceOption(FileSyncEngine) : Option.some(boundEngine);
-  if (engineOption._tag === "None") {
+  const bundle = yield* fileSyncBundle(plan);
+  if (bundle.kind === "ordinary") return;
+  // Desired plan id: bound app-local engines stay uncached; otherwise acquire unbound by id.
+  const engine = boundEngine !== undefined ? boundEngine : yield* acquireFileSyncEngine(bundle.id);
+  if (bundle.id !== engine.id) {
     return yield* Effect.fail(
       new FileSyncStartError({
-        engineId: plannedEngineIds[0] ?? "unknown",
-        message: `No file-sync engine is selected for planned sessions (${plannedEngineIds.join(", ")})`,
+        engineId: bundle.id,
+        message: `Selected file-sync engine "${engine.id}" does not match planned engine ${bundle.id}`,
         remediation: "Select the planned file-sync engine or use ordinary bind mounts before retrying start.",
       }),
     );
   }
-
-  const engine = engineOption.value;
+  yield* requireFileSyncPlanCapabilities(engine, plan);
   const preservesDurableHistory =
     engine.sessionsPersistAcrossProcesses === true && engine.appLifecycle !== undefined;
-  if (plan.fileSync.some((entry) => entry.engineId !== engine.id)) {
-    return yield* Effect.fail(
-      new FileSyncStartError({
-        engineId: plannedEngineIds[0] ?? "unknown",
-        message: `Selected file-sync engine "${engine.id}" does not match planned sessions (${plannedEngineIds.join(", ")})`,
-        remediation: "Select the planned file-sync engine or use ordinary bind mounts before retrying start.",
-      }),
-    );
-  }
   const needsSetup = !(yield* engine.isAvailable.pipe(Effect.catch(() => Effect.succeed(false))));
   const taskIdFor = (service: string, mountKey: string): string => `${service}/${mountKey}`;
-  const sessionChildren = plan.fileSync.map((entry) => ({
-    id: taskIdFor(entry.session.service, entry.session.mountKey),
-    label: `Sync ${entry.session.service}/${entry.session.mountKey}`,
+  const sessionChildren = bundle.sessions.map((session) => ({
+    id: taskIdFor(session.service, session.mountKey),
+    label: `Sync ${session.service}/${session.mountKey}`,
   }));
-  const createdRefs: Array<FileSyncSessionRef> = [];
-  const resumedPausedRefs: Array<FileSyncSessionRef> = [];
-  let hadExistingSession = false;
-  let uncertainMutation = false;
   return yield* runWithTaskTree(
     makeTaskTree(events, {
       parentId: startFileSyncTreeId(String(plan.id)),
@@ -162,27 +136,27 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
         : sessionChildren,
       prefixChildIds: true,
     }),
-    (tree) => {
-      const reconcile = Effect.gen(function* () {
+    (tree) =>
+      Effect.gen(function* () {
         if (needsSetup) yield* runFileSyncSetup(engine, tree);
 
         yield* Effect.forEach(
-          plan.fileSync,
-          (entry) =>
+          bundle.sessions,
+          (session) =>
             Effect.gen(function* () {
-              const taskId = taskIdFor(entry.session.service, entry.session.mountKey);
+              const taskId = taskIdFor(session.service, session.mountKey);
               yield* tree.startTask(taskId);
               const existingSessions = yield* engine.listSessions({
-                app: entry.session.app,
-                service: entry.session.service,
-                mountKey: entry.session.mountKey,
+                app: session.app,
+                service: session.service,
+                mountKey: session.mountKey,
               });
               if (existingSessions.length > 1) {
                 return yield* Effect.fail(
                   new FileSyncStartError({
                     engineId: engine.id,
-                    sessionSpec: entry.session,
-                    message: `Multiple file-sync sessions exist for ${entry.session.service}/${entry.session.mountKey}`,
+                    sessionSpec: session,
+                    message: `Multiple file-sync sessions exist for ${session.service}/${session.mountKey}`,
                     remediation:
                       "Resolve the duplicate sessions before retrying start. Lando has left them untouched.",
                   }),
@@ -190,15 +164,13 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
               }
               const existingSession = existingSessions[0];
               if (existingSession !== undefined) {
-                hadExistingSession = true;
-                if (safeToRollbackTargets !== undefined) yield* Ref.set(safeToRollbackTargets, false);
-                if (!sameFileSyncSessionSpec(entry.session, existingSession.spec)) {
+                if (!sameFileSyncSessionSpec(session, existingSession.spec)) {
                   return yield* Effect.fail(
                     new FileSyncDriftError({
                       engineId: engine.id,
                       sessionRef: existingSession.ref,
                       conflictedPaths: [],
-                      message: `Existing file-sync session for ${entry.session.service}/${entry.session.mountKey} differs from the current plan`,
+                      message: `Existing file-sync session for ${session.service}/${session.mountKey} differs from the current plan`,
                       remediation:
                         "Inspect or remove the existing session before retrying start. Lando has left it untouched.",
                     }),
@@ -212,7 +184,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                         engineId: engine.id,
                         sessionRef: existingSession.ref,
                         conflictedPaths: existingSession.conflictedPaths,
-                        message: `Existing file-sync session for ${entry.session.service}/${entry.session.mountKey} has unresolved synchronization conflicts${existingSession.conflictedPaths.length > 0 ? `: ${existingSession.conflictedPaths.join(", ")}` : ""}`,
+                        message: `Existing file-sync session for ${session.service}/${session.mountKey} has unresolved synchronization conflicts${existingSession.conflictedPaths.length > 0 ? `: ${existingSession.conflictedPaths.join(", ")}` : ""}`,
                         remediation:
                           detail === undefined || detail.length === 0
                             ? `Preserve both file versions and inspect session ${existingSession.ref} before resolving these conflicts. Retry start after the session is healthy.`
@@ -223,8 +195,8 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                   return yield* Effect.fail(
                     new FileSyncStartError({
                       engineId: engine.id,
-                      sessionSpec: entry.session,
-                      message: `Existing file-sync session for ${entry.session.service}/${entry.session.mountKey} is ${existingSession.status}`,
+                      sessionSpec: session,
+                      message: `Existing file-sync session for ${session.service}/${session.mountKey} is ${existingSession.status}`,
                       remediation:
                         "Resolve the unhealthy session before retrying start. Lando has left it untouched.",
                     }),
@@ -233,11 +205,7 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                 if (existingSession.status === "paused") {
                   yield* Effect.uninterruptibleMask(() =>
                     Effect.gen(function* () {
-                      uncertainMutation = true;
-                      if (safeToRollbackTargets !== undefined) yield* Ref.set(safeToRollbackTargets, false);
                       yield* engine.resumeSession(existingSession.ref);
-                      resumedPausedRefs.push(existingSession.ref);
-                      uncertainMutation = false;
                       if (managed !== undefined && engine.sessionsPersistAcrossProcesses !== true) {
                         yield* Effect.addFinalizer(() =>
                           engine.pauseSession(existingSession.ref).pipe(Effect.orDie),
@@ -263,107 +231,48 @@ export const startFileSyncSessions = Effect.fnUntraced(function* (
                   );
                 }
                 yield* engine.flushSession(existingSession.ref);
-                yield* tree.completeTask(taskId, `${entry.session.service}/${entry.session.mountKey} ready`);
+                yield* tree.completeTask(taskId, `${session.service}/${session.mountKey} ready`);
                 return;
               }
 
               const sessionScope = managed?.scope ?? (yield* Scope.make());
+              if (resumedAfterApply && engine.sessionsPersistAcrossProcesses === true) {
+                const recovered =
+                  engine.recoverSession === undefined
+                    ? Option.none()
+                    : yield* engine
+                        .recoverSession(session)
+                        .pipe(Effect.provideService(Scope.Scope, sessionScope));
+                if (Option.isNone(recovered))
+                  return yield* Effect.fail(
+                    new FileSyncStartError({
+                      engineId: engine.id,
+                      sessionSpec: session,
+                      message: `Session ${session.service}/${session.mountKey} is missing after app writers may have used its target and its synchronization history cannot be recovered.`,
+                      remediation:
+                        "Restore the session's synchronization history in the file-sync engine, then run `lando start`. Lando left the target untouched. `lando stop` still stops app writers; `lando destroy` refuses until the history is restored because the target may hold the only copy of app writes.",
+                    }),
+                  );
+                yield* engine.flushSession(recovered.value);
+                yield* tree.completeTask(taskId, `${session.service}/${session.mountKey} ready`);
+                return;
+              }
               const ref = yield* Effect.uninterruptibleMask((restore) =>
                 Effect.gen(function* () {
-                  uncertainMutation = true;
-                  if (safeToRollbackTargets !== undefined) yield* Ref.set(safeToRollbackTargets, false);
                   const create = engine
-                    .createSession(entry.session)
+                    .createSession(session)
                     .pipe(Effect.provideService(Scope.Scope, sessionScope));
                   const created = yield* preservesDurableHistory ? restore(create) : create;
                   if (managed !== undefined) markManagedFileSyncRef(managed, created);
-                  createdRefs.push(created);
-                  uncertainMutation = false;
                   return created;
                 }),
               );
               yield* engine.flushSession(ref);
-              yield* tree.completeTask(taskId, `${entry.session.service}/${entry.session.mountKey} ready`);
+              yield* tree.completeTask(taskId, `${session.service}/${session.mountKey} ready`);
             }),
           { discard: true },
         );
-      });
-      return Effect.uninterruptibleMask((restore) =>
-        Effect.gen(function* () {
-          const exit = yield* Effect.exit(restore(reconcile));
-          if (Exit.isSuccess(exit)) {
-            if (engine.sessionsPersistAcrossProcesses !== true) return;
-            const durableDrain = engine.appLifecycle?.drain;
-            if (durableDrain !== undefined) {
-              const app = plan.fileSync[0]?.session.app;
-              if (app === undefined)
-                return yield* Effect.fail(
-                  new FileSyncStartError({
-                    engineId: engine.id,
-                    message: "Durable sync start lost its app identity.",
-                    remediation: "Retry after checking the saved app plan.",
-                  }),
-                );
-              return {
-                rollbackTargets: false,
-                preserveOnFailure: true,
-                rollback: Effect.uninterruptible(durableDrain(app)),
-              } satisfies PreparedFileSyncSessions;
-            }
-            return {
-              rollbackTargets: createdRefs.length === plan.fileSync.length,
-              rollback: Effect.uninterruptible(
-                runAllAndMergeFailures<FileSyncError, never>([
-                  ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
-                  ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                ]),
-              ),
-            } satisfies PreparedFileSyncSessions;
-          }
-          // A durable provider-bound session can contain writes even before all mounts
-          // are ready. Keep its ledger and receipts for the retained-start retry.
-          const cleanupActions: Array<Effect.Effect<void, FileSyncError>> =
-            managed === undefined
-              ? preservesDurableHistory
-                ? []
-                : [
-                    ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
-                    ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                  ]
-              : [
-                  Scope.close(managed.scope, Exit.void),
-                  ...(preservesDurableHistory
-                    ? []
-                    : engine.sessionsPersistAcrossProcesses === true
-                      ? [
-                          ...[...resumedPausedRefs].reverse().map((ref) => engine.pauseSession(ref)),
-                          ...[...createdRefs].reverse().map((ref) => engine.terminateSession(ref)),
-                        ]
-                      : []),
-                  managed.onScopeClosedByStartApp ?? Effect.void,
-                ];
-          const cleanupExit = yield* Effect.exit(runAllAndMergeFailures(cleanupActions));
-          if (Exit.isFailure(cleanupExit)) {
-            return yield* Effect.failCause(mergeFailure(exit.cause, cleanupExit.cause, "cleanup"));
-          }
-          const app = plan.fileSync[0]?.session.app;
-          if (
-            safeToRollbackTargets !== undefined &&
-            !hadExistingSession &&
-            !uncertainMutation &&
-            !(preservesDurableHistory && createdRefs.length > 0) &&
-            app !== undefined
-          ) {
-            const remaining = yield* engine.listSessions({ app }).pipe(
-              Effect.map((sessions) => sessions.length),
-              Effect.catch(() => Effect.succeed(-1)),
-            );
-            if (remaining === 0) yield* Ref.set(safeToRollbackTargets, true);
-          }
-          return yield* Effect.failCause(exit.cause);
-        }),
-      );
-    },
+      }),
     {
       success: `${plan.name} file-sync ready`,
       failure: `${plan.name} file-sync failed`,

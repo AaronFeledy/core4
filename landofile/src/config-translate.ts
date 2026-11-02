@@ -85,7 +85,13 @@ export const runConfigTranslator: (
   (effect, translator) =>
     effect.pipe(
       Effect.mapError(
-        (error) => new ConfigTranslateError({ ...error, message: error.message, translator: translator.id }),
+        (error) =>
+          new ConfigTranslateError({
+            message: error.message,
+            translator: translator.id,
+            remediation: error.remediation,
+            ...(error.cause === undefined ? {} : { cause: error.cause }),
+          }),
       ),
     ),
 );

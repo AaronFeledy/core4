@@ -6,7 +6,7 @@ import type { AppPlan } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
-import { redactDetails } from "../redact.ts";
+import { redactDetails, redactorFor } from "../redact.ts";
 import { inspect } from "./inspect.ts";
 
 const defaultServiceHealthPolicy: RetryPolicy = {
@@ -46,6 +46,8 @@ const missingSuccessfulInspect = (ctx: ProviderErrorContext, service: string) =>
     providerId: ctx.providerId,
     operation: "inspect",
     message: `Service ${service} health probe completed without a captured inspect result.`,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 const unavailableFromProbe = (
@@ -69,7 +71,9 @@ const unavailableFromProbe = (
       attempts: input.attempts,
       elapsedMs: input.elapsedMs,
       ...(input.lastHealth === undefined ? {} : { lastHealth: input.lastHealth }),
-      ...(input.lastError === undefined ? {} : { lastError: redactDetails(input.lastError) }),
+      ...(input.lastError === undefined
+        ? {}
+        : { lastError: redactDetails(input.lastError, redactorFor(ctx)) }),
     },
   });
 

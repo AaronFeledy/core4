@@ -10,7 +10,7 @@ import { CI_PLATFORMS, releaseBinaryFileName } from "./ci-platforms.ts";
 type UpdateManifest = typeof UpdateManifestSchema.Encoded;
 
 const zeroSha256 = "0".repeat(64);
-const defaultRepository = "lando-community/core4";
+const defaultRepository = "AaronFeledy/core4";
 const defaultMinimumVersion = "4.0.0";
 
 export interface BuildUpdateManifestInput {

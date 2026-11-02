@@ -4,14 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 
-import type { LandofileShape } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
+import type { LoadScopedLandofile } from "@lando/sdk/schema";
 
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
 import * as AppPlannerLayer from "@lando/engine/services/planner";
 import { BUILTIN_RECIPE_DECOMPOSERS } from "../../src/recipes/builtin/decomposers.ts";
 import { BUNDLED_RECIPES } from "../../src/recipes/bundled.ts";
-import { parseRecipe } from "../../src/recipes/manifest/service.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { initAppWithOwnerOnlyFileAccess as initApp } from "../_support/private-file-access.ts";
 import { previewBuiltinRecipe } from "../_support/recipe-output.ts";
@@ -99,6 +98,7 @@ const providerCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native" as const,
@@ -140,7 +140,7 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   }
 };
 
-const discoverFrom = async (cwd: string): Promise<LandofileShape> => {
+const discoverFrom = async (cwd: string): Promise<LoadScopedLandofile> => {
   const previousCwd = process.cwd();
   try {
     process.chdir(cwd);
@@ -154,7 +154,7 @@ const discoverFrom = async (cwd: string): Promise<LandofileShape> => {
   }
 };
 
-const planLandofile = (landofile: LandofileShape) =>
+const planLandofile = (landofile: LoadScopedLandofile) =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLayer.layer),
@@ -201,10 +201,10 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
     test(`bundled recipe ${recipeId}: parse + render + discover + plan`, async () => {
       const answers = buildAnswers(answersEntry);
 
-      const manifest = await Effect.runPromise(parseRecipe(recipe.source, recipe.manifestYaml));
+      const manifest = recipe.manifest;
       expect(manifest.id, `[${recipeId}] manifest.id mismatch`).toBe(recipeId);
       const manifestFiles = manifest.files ?? [];
-      expect(manifestFiles.length, `[${recipeId}] manifest.files must be non-empty`).toBeGreaterThan(0);
+      expect(manifestFiles.some(({ dest }) => dest === ".lando.yml")).toBe(false);
 
       expect(BUILTIN_RECIPE_DECOMPOSERS.has(recipeId), `[${recipeId}] missing registered decomposer`).toBe(
         true,
@@ -241,8 +241,8 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
 
         await withScrubbedRecipeEnv(async () => {
           const landofile = await discoverFrom(result.directory);
-          expect(landofile.name, `[${recipeId}] discovered landofile.name`).toBe(answersEntry.name);
-          expect(landofile.recipe, `[${recipeId}] discovered landofile.recipe`).toMatchObject({
+          expect(landofile.document.name, `[${recipeId}] discovered landofile.name`).toBe(answersEntry.name);
+          expect(landofile.document.recipe, `[${recipeId}] discovered landofile.recipe`).toMatchObject({
             id: recipeId,
             version: manifest.version,
             producer: manifest.snapshot?.identity,

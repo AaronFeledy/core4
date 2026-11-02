@@ -7,16 +7,17 @@ tags: [alpha2, docs, node, postgres]
 
 # Scaffold a Node and Postgres app
 
-Init the bundled `node-postgres` walking skeleton, start it, then tear it down.
+After [installing Lando and completing setup](./install/path-and-setup.mdx), initialize the bundled `node-postgres` example in a separate directory. It creates a small Node server and a Postgres service. Run `lando start` from the directory containing the generated `.lando.yml`:
 
 ```sh
 lando init --recipe node-postgres --name=node-postgres --yes
+cd node-postgres
 lando start
 ```
 
 `--yes` is consent. It skips prompts. It does not pick a provider.
 
-The default provider is `lando` (managed Podman). If default setup fails and you have working system Docker, run `lando setup --provider=docker`. `LANDO_PROVIDER` does not persist. An explicit setup --provider flag writes defaultProviderId when it differs from config.
+The default provider is `lando` (managed Podman). If default setup fails and you have working system Docker, run `lando setup --provider=docker`. See [Pick a container provider](./setup/provider-selection.mdx).
 
 ## Init and start
 
@@ -50,11 +51,11 @@ The default provider is `lando` (managed Podman). If default setup fails and you
 The recipe writes three files.
 It does not run a package manager after init.
 
-web is node:lts on 3000:3000 with the app root bind-mounted to /app. database is postgres. The server replies Hello from Lando. That is the whole walking skeleton. If you wanted a CMS, you picked the wrong recipe.
+The `web` service uses `node:lts`, publishes container port 3000 on host port 3000, and mounts the app root at `/app`. The `database` service uses Postgres. The example server replies `Hello from Lando`; replace it with your own application code.
 
 ## Use another recipe
 
-For a public stack recipe, init drupal, drupal-cms, lamp, lemp, toolbox, or wordpress.
+For another starting stack, use a bundled recipe such as `drupal`, `drupal-cms`, `lamp`, `lemp`, `toolbox`, or `wordpress`.
 
 ## Verify
 

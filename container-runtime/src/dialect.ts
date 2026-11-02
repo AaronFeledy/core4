@@ -20,11 +20,14 @@ export interface PullDialect {
   readonly frameError: (frame: unknown) => string | undefined;
   readonly inspect?: {
     readonly request: (reference: string) => EngineHttpRequest;
-    readonly decodeDigest: (json: unknown) => string | undefined;
+    readonly decodeDigest: (json: unknown, reference: string) => string | undefined;
   };
 }
 
+export type EngineDialect = "libpod" | "docker";
+
 export interface LifecycleDialect {
+  readonly engine: EngineDialect;
   readonly wait: WaitDialect;
   /**
    * How service containers join the shared Lando network.
@@ -101,6 +104,48 @@ const objectString = (value: unknown, key: "error" | "message"): string | undefi
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined;
 };
 
+const registryDigest = (value: unknown): string | undefined =>
+  typeof value === "string" && /^[a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+$/.test(value) ? value : undefined;
+
+const normalizeImageRepo = (repo: string): string => {
+  const slash = repo.indexOf("/");
+  if (slash === -1) return `docker.io/library/${repo}`;
+  const first = repo.slice(0, slash);
+  if (first === "docker.io" || first === "index.docker.io") {
+    const name = repo.slice(slash + 1);
+    return `docker.io/${name.includes("/") ? name : `library/${name}`}`;
+  }
+  if (first.includes(".") || first.includes(":") || first === "localhost") return repo;
+  return `docker.io/${repo}`;
+};
+
+const reposMatch = (requested: string, candidate: string): boolean =>
+  normalizeImageRepo(requested) === normalizeImageRepo(candidate);
+
+const digestForRequestedRepo = (entries: readonly unknown[], reference: string): string | undefined => {
+  const requested = parseImageReference(reference).fromImage;
+  const digests = entries.flatMap((entry) => {
+    if (typeof entry !== "string") return [];
+    const match = /^([^@\s]+)@([a-zA-Z][a-zA-Z0-9_+.-]*:[a-zA-Z0-9=_-]+)$/.exec(entry);
+    if (match?.[1] === undefined || match[2] === undefined) return [];
+    const candidate = parseImageReference(match[1]).fromImage;
+    return reposMatch(requested, candidate) ? [match[2]] : [];
+  });
+  const pinned = reference.includes("@") ? reference.slice(reference.lastIndexOf("@") + 1) : undefined;
+  return pinned !== undefined && digests.includes(pinned) ? pinned : digests[0];
+};
+
+/** Registry digest for the requested repo. Local image ids are not registry digests. */
+export const decodeImageInspectDigest = (json: unknown, reference: string): string | undefined => {
+  if (typeof json !== "object" || json === null) return undefined;
+  if ("RepoDigests" in json && Array.isArray(json.RepoDigests)) {
+    const fromRepo = digestForRequestedRepo(json.RepoDigests, reference);
+    if (fromRepo !== undefined) return fromRepo;
+    if (json.RepoDigests.length > 0 && "Digest" in json) return registryDigest(json.Digest);
+  }
+  return undefined;
+};
+
 export const dockerWaitDialect: WaitDialect = {
   request: (containerName, signal) => ({
     method: "POST",
@@ -123,12 +168,14 @@ export const libpodWaitDialect: WaitDialect = {
 };
 
 export const libpodLifecycleDialect: LifecycleDialect = {
+  engine: "libpod",
   wait: libpodWaitDialect,
   sharedNetworkAttachment: "create-body",
   volumePrune: { enabled: true },
 };
 
 export const dockerLifecycleDialect: LifecycleDialect = {
+  engine: "docker",
   wait: dockerWaitDialect,
   sharedNetworkAttachment: "connect-after-create",
 };
@@ -155,14 +202,7 @@ export const dockerPullDialect: PullDialect = {
       method: "GET",
       path: `/images/${encodeURIComponent(reference)}/json`,
     }),
-    decodeDigest: (json) => {
-      if (typeof json !== "object" || json === null || !("RepoDigests" in json)) return undefined;
-      if (!Array.isArray(json.RepoDigests)) return undefined;
-      const first = json.RepoDigests[0];
-      if (typeof first !== "string") return undefined;
-      const separator = first.indexOf("@");
-      return separator === -1 ? undefined : first.slice(separator + 1);
-    },
+    decodeDigest: decodeImageInspectDigest,
   },
 };
 
@@ -175,4 +215,11 @@ export const libpodPullDialect: PullDialect = {
     ),
   }),
   frameError: (frame) => objectString(frame, "error"),
+  inspect: {
+    request: (reference) => ({
+      method: "GET",
+      path: `/libpod/images/${encodeURIComponent(reference)}/json`,
+    }),
+    decodeDigest: decodeImageInspectDigest,
+  },
 };

@@ -1,3 +1,4 @@
+import { ConfigError } from "@lando/sdk/errors";
 import { Schema } from "effect";
 
 import {
@@ -19,7 +20,10 @@ import { AppVersionConstraintDoctorResultSchema } from "./doctor-version-constra
 
 export interface DoctorReport {
   readonly version: string;
+  readonly globalConfig?: typeof GlobalConfigDoctorSchema.Type;
+  readonly skipped?: ReadonlyArray<typeof SkippedDoctorSectionSchema.Type>;
   readonly provider: DoctorResult;
+  readonly appListeners?: DoctorResult;
   readonly subsystems: SubsystemDoctorResult;
   readonly globalApp: GlobalAppDoctorResult;
   readonly mcp: McpDoctorResult;
@@ -141,9 +145,22 @@ const DoctorDeprecationReportSchema = Schema.Struct({
   entries: Schema.Array(DoctorDeprecationEntrySchema),
 });
 
+const GlobalConfigDoctorSchema = Schema.Struct({
+  status: Schema.Literals(["pass", "fail"]),
+  error: Schema.optionalKey(ConfigError),
+});
+const SkippedDoctorSectionSchema = Schema.Struct({
+  section: Schema.String,
+  status: Schema.Literal("skipped"),
+  reason: Schema.String,
+});
+
 export const DoctorReportSchema = Schema.Struct({
   version: Schema.String,
+  globalConfig: Schema.optionalKey(GlobalConfigDoctorSchema),
+  skipped: Schema.optionalKey(Schema.Array(SkippedDoctorSectionSchema)),
   provider: DoctorResultSchema,
+  appListeners: Schema.optionalKey(DoctorResultSchema),
   subsystems: SubsystemDoctorResultSchema,
   globalApp: GlobalAppDoctorResultSchema,
   mcp: McpDoctorResultSchema,

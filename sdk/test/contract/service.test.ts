@@ -115,7 +115,6 @@ describe("runServiceCompositionContract", () => {
             artifact: { kind: "ref", ref: "alpine:3.20" },
             environment: {},
             mounts: [],
-            storage: [],
             endpoints: [{ _tag: "internal", port: 8080, protocol: "tcp", name: input.name }],
             routes: [],
             dependsOn: [],
@@ -199,7 +198,15 @@ describe("runServiceCompositionContract", () => {
   test("fails with ContractFailure when resolve fails", async () => {
     const failing: ServiceType = {
       ...TestServiceType,
-      resolve: () => Effect.fail(new ServiceTypeError({ message: "boom", serviceType: "test" })),
+      resolve: () =>
+        Effect.fail(
+          new ServiceTypeError({
+            message: "boom",
+            serviceType: "test",
+            remediation:
+              "Correct the `test` service configuration in the Landofile (see the reported field path), then re-run.",
+          }),
+        ),
     };
     await expectCompositionFailure(failing, "service type resolve succeeds");
   });

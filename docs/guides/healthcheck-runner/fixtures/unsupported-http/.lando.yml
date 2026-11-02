@@ -1,0 +1,7 @@
+name: unsupported-http
+services:
+  web:
+    type: node:lts
+    healthcheck:
+      kind: http
+      url: http://localhost/health

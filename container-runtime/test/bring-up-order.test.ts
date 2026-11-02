@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Schema, Stream } from "effect";
 
+import { ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -10,10 +11,34 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import type { EngineHttpRequest, PodmanApiClient } from "../src/engine-api.ts";
-import { bringUp } from "../src/podman/bring-up.ts";
+import { commonContainerLabels } from "../src/plan.ts";
+import { bringUp, withServiceStartLogTail } from "../src/podman/bring-up.ts";
+import { ownedNetworkInspection } from "./network-inspection-fixture.ts";
 
 const providerId = ProviderId.make("lando");
-const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry." } as const;
+
+test("log-tail enrichment preserves listener evidence", () => {
+  const listener = {
+    service: "db",
+    port: 6380,
+    transport: "tcp",
+    basis: "probe-target",
+    state: "loopback-only",
+    listening: [{ address: "127.0.0.1", port: 6380 }],
+  } as const;
+  const error = new ServiceStartError({
+    providerId: "lando",
+    operation: "bringUp",
+    service: "web",
+    message: "Failed",
+    remediation: "Fix db.",
+    listener,
+  });
+  expect(
+    withServiceStartLogTail(error, { service: "db", lines: ["failure"], truncated: false }).listener,
+  ).toEqual(listener);
+});
+const ctx = { providerId: "podman", remediation: "Run `lando setup` and retry.", env: {} } as const;
 const appId = AppId.make("bring-up-order-app");
 const dbName = ServiceName.make("db");
 const dependentNames = {
@@ -34,7 +59,6 @@ const servicePlan = (name: ServicePlan["name"], primary: boolean): ServicePlan =
   artifact: { kind: "ref", ref: "debian:12.11-slim" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -61,13 +85,13 @@ const planWithDependency = (dependentName: ServicePlan["name"], required: boolea
 
   return {
     id: appId,
+    valueModel: 1,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
     root: AbsolutePath.make("/tmp/bring-up-order-app"),
     provider: providerId,
     services: { [dependentName]: dependent, [dbName]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -75,35 +99,131 @@ const planWithDependency = (dependentName: ServicePlan["name"], required: boolea
   };
 };
 
+test("failed dependency observes its own TCP namespace alongside its logs", async () => {
+  const original = planWithDependency(dependentNames.web, true);
+  const db = original.services[dbName];
+  if (db === undefined) throw new TypeError("Missing db");
+  const plan = {
+    ...original,
+    services: {
+      ...original.services,
+      [dbName]: {
+        ...db,
+        endpoints: [{ _tag: "internal", protocol: "tcp", port: 6380, primary: true }],
+        listenerAuthority: { owner: "launcher", daemon: "Redis", port: 6380, setting: "--port 6380" },
+      },
+    },
+  } satisfies AppPlan;
+  const fake = makePodmanApi(1);
+  const observed: string[] = [];
+  const api: PodmanApiClient = {
+    ...fake.api,
+    request: (request) => {
+      const body = request.body;
+      if (
+        request.path.endsWith("/exec") &&
+        typeof body === "object" &&
+        body !== null &&
+        "Cmd" in body &&
+        Array.isArray(body.Cmd) &&
+        body.Cmd[0] === "cat"
+      ) {
+        observed.push(request.path);
+        return Effect.succeed({ status: 201, body: '{"Id":"listener"}' });
+      }
+      if (request.path === "/exec/listener/json")
+        return Effect.succeed({ status: 200, body: '{"ExitCode":1}' });
+      if (fake.api.request === undefined) throw new TypeError("Missing request");
+      return fake.api.request(request);
+    },
+    stream: (request) => {
+      if (request.path !== "/exec/listener/start") return Stream.empty;
+      const payload = new TextEncoder().encode(
+        "sl local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode\n0: 00000000:18EB 00000000:0000 0A 0:0 0:0 0 0 0 1\n",
+      );
+      const frame = new Uint8Array(8 + payload.length);
+      frame[0] = 1;
+      new DataView(frame.buffer).setUint32(4, payload.length);
+      frame.set(payload, 8);
+      return Stream.make(frame);
+    },
+  };
+  const error = await Effect.runPromise(Effect.flip(bringUp(plan, { api, ctx })));
+  expect(error).toMatchObject({
+    _tag: "ServiceStartError",
+    service: "web",
+    listener: { service: "db", port: 6380, state: "not-listening" },
+  });
+  expect(observed).toEqual(["/containers/lando-bring-up-order-app-db/exec"]);
+  if (error._tag !== "ServiceStartError") throw error;
+  expect(error.remediation.split("\n").slice(0, 2)).toEqual([
+    "Make db listen on 6380, or set `port: 6379` if that is the port it uses.",
+    "Pass `--port 6380` to Redis in your command or entrypoint; Lando sets the listener from port: only in its own launcher.",
+  ]);
+});
+
 const makePodmanApi = (
   healthExitCode: number,
   existing: ReadonlyArray<string> = [],
   failedStarts: ReadonlyArray<string> = [],
   alreadyRunning: ReadonlyArray<string> = [],
+  networkOwner: AppPlan = planWithDependency(dependentNames.web, true),
 ) => {
+  const labelFor = (name: string): Readonly<Record<string, string>> =>
+    commonContainerLabels(
+      planWithDependency(dependentNames.web, true),
+      name.endsWith("-db")
+        ? (planWithDependency(dependentNames.web, true).services[dbName] ?? servicePlan(dbName, false))
+        : name.endsWith("-api")
+          ? servicePlan(ServiceName.make("api"), false)
+          : name.endsWith("-cache")
+            ? servicePlan(dependentNames.cache, true)
+            : servicePlan(dependentNames.web, true),
+    );
   const requests: string[] = [];
   const containers = new Set(existing);
   const running = new Set(alreadyRunning);
   const failedStartNames = new Set(failedStarts);
   const ids = new Map<string, string>(existing.map((name) => [name, `id-${name}-original`]));
+  const inspectLabels = new Map<string, Readonly<Record<string, string>>>(
+    existing.map((name) => [name, labelFor(name)]),
+  );
   let createdSeq = 0;
   const record = (request: EngineHttpRequest) => requests.push(`${request.method} ${request.path}`);
+  const resolveName = (ref: string | undefined): string | undefined => {
+    if (ref === undefined) return undefined;
+    if (containers.has(ref) || ids.has(ref)) return ref;
+    for (const [name, id] of ids) {
+      if (id === ref) return name;
+    }
+    return ref;
+  };
   const api: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync(() => {
         record(request);
-        const containerMatch = request.path.match(/^\/containers\/([^/?]+)(?:\/json|\/start|\/stop)?/u);
-        const name = containerMatch?.[1];
+        const containerMatch = request.path.match(/^\/containers\/([^/?]+)/u);
+        const name = resolveName(containerMatch?.[1]);
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
-          return { status: 200, body: "{}" };
+          const networkName = decodeURIComponent(request.path.slice("/networks/".length));
+          return {
+            status: 200,
+            body: JSON.stringify(ownedNetworkInspection(networkOwner, networkName)),
+          };
         }
         if (request.method === "GET" && request.path.endsWith("/json") && name !== undefined) {
           return containers.has(name)
             ? {
                 status: 200,
-                body: JSON.stringify({ Id: ids.get(name), State: { Running: running.has(name) } }),
+                body: JSON.stringify({
+                  Id: ids.get(name),
+                  Config: {
+                    Labels: inspectLabels.get(name) ?? labelFor(name),
+                  },
+                  State: { Running: running.has(name) },
+                }),
               }
             : { status: 404, body: "{}" };
         }
@@ -112,6 +232,15 @@ const makePodmanApi = (
           containers.add(created);
           createdSeq += 1;
           ids.set(created, `id-${created}-created-${createdSeq}`);
+          // New creates carry the live planned labels from the create body when present.
+          const decodedBody = Schema.decodeUnknownOption(
+            Schema.Struct({ Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)) }),
+          )(request.body);
+          const bodyLabels =
+            Option.isSome(decodedBody) && decodedBody.value.Labels !== undefined
+              ? decodedBody.value.Labels
+              : labelFor(created);
+          inspectLabels.set(created, bodyLabels);
           return { status: 201, body: "{}" };
         }
         if (request.method === "POST" && request.path.endsWith("/start") && name !== undefined) {
@@ -127,10 +256,16 @@ const makePodmanApi = (
         if (request.method === "GET" && request.path === "/exec/health-exec/json") {
           return { status: 200, body: JSON.stringify({ ExitCode: healthExitCode }) };
         }
+        if (request.method === "POST" && request.path.endsWith("/stop") && name !== undefined) {
+          running.delete(name);
+          return { status: 204, body: "" };
+        }
         if (request.method === "DELETE" && name !== undefined) {
           containers.delete(name);
           running.delete(name);
           ids.delete(name);
+          inspectLabels.delete(name);
+          return { status: 204, body: "" };
         }
         return { status: 204, body: "" };
       }),
@@ -139,7 +274,7 @@ const makePodmanApi = (
       return Stream.empty;
     },
   };
-  return { api, requests, ids };
+  return { api, requests, ids, failedStartNames };
 };
 
 test("starts a service_healthy dependency and probes it before starting the dependent", async () => {
@@ -234,21 +369,47 @@ test("apply retains a supervised worker that exits before the immediate running 
   expect(fake.requests.some((path) => path.endsWith("/stop"))).toBe(false);
 });
 
-test("does not delete a pre-existing stopped container during rollback", async () => {
+test("retains a pre-existing stopped container when a required gate fails", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);
   const db = "lando-bring-up-order-app-db";
-  const { api, requests } = makePodmanApi(1, [db]);
+  const { api, requests, ids } = makePodmanApi(1, [db]);
+  const dbId = ids.get(db);
 
   // When
   await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
 
-  // Then
-  expect(requests).toContain(`POST /containers/${db}/stop`);
-  expect(requests).not.toContain(`DELETE /containers/${db}?force=true`);
+  // Then: no compensation stop/delete; native identity stays put for retry.
+  expect(ids.get(db)).toBe(dbId);
+  expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
+  expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
 });
 
-test("fails with ServiceStartError naming the unmet gate and rolls back when a required gate fails", async () => {
+test.each([
+  { kind: "user", logs: "lando logs -s db", retry: "lando start" },
+  { kind: "global", logs: "lando global:logs -s db", retry: "lando global:start" },
+  { kind: "scratch", logs: "lando scratch logs bring-up-order-app", retry: "retry the scratch command" },
+] as const)("healthy-gate remediation names the dependency for $kind apps", async ({ kind, logs, retry }) => {
+  // Given: a required healthy gate whose dependency never becomes healthy.
+  const base = planWithDependency(dependentNames.web, true);
+  const plan: AppPlan = {
+    ...base,
+    ...(kind === "global" ? { id: AppId.make("global") } : {}),
+    ...(kind === "scratch" ? { extensions: { "@lando/core/scratch": { id: "bring-up-order-app" } } } : {}),
+  };
+  const { api } = makePodmanApi(1, [], [], [], plan);
+
+  // When
+  const error = await Effect.runPromise(bringUp(plan, { api, ctx }).pipe(Effect.flip));
+
+  // Then: the remediation points at the failing dependency and the app kind's retry.
+  expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
+  expect(error.remediation).toStartWith(`Run \`${logs}\` to diagnose dependency db`);
+  expect(error.remediation).toContain(retry);
+  if (kind !== "user") expect(error.remediation).not.toContain("`lando start`");
+});
+
+test("fails with ServiceStartError naming the unmet gate and retains started containers", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);
   const { api, requests } = makePodmanApi(1);
@@ -260,8 +421,9 @@ test("fails with ServiceStartError naming the unmet gate and rolls back when a r
   expect(error).toMatchObject({ _tag: "ServiceStartError", service: "web" });
   expect(error.message).toContain("db:healthy");
   expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-web/start");
-  expect(requests.some((request) => request.endsWith("/stop"))).toBe(true);
-  expect(requests.some((request) => request.startsWith("DELETE /containers/"))).toBe(true);
+  expect(requests).toContain("POST /containers/lando-bring-up-order-app-db/start");
+  expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
+  expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
 });
 
 test("succeeds without rolling back when only an optional gate fails", async () => {
@@ -279,24 +441,24 @@ test("succeeds without rolling back when only an optional gate fails", async () 
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toHaveLength(0);
 });
 
-test("cleans only a failed optional dependency and preserves an unrelated started service", async () => {
+test("optional start failure retains the failed dependency and preserves unrelated started services", async () => {
   // Given
   const base = planWithDependency(dependentNames.cache, false);
   const apiService = servicePlan(ServiceName.make("api"), false);
   const plan = { ...base, services: { api: apiService, ...base.services } };
   const apiName = "lando-bring-up-order-app-api";
   const db = "lando-bring-up-order-app-db";
-  const { api, requests } = makePodmanApi(0, [], [db]);
+  const { api, requests, ids } = makePodmanApi(0, [], [db]);
 
   // When
   await Effect.runPromise(bringUp(plan, { api, ctx }));
 
-  // Then
+  // Then: optional failure is tolerated; nothing is compensated away.
   expect(requests).toContain(`POST /containers/${apiName}/start`);
-  expect(requests).toContain(`POST /containers/${db}/stop`);
-  expect(requests).toContain(`DELETE /containers/${db}?force=true`);
-  expect(requests).not.toContain(`POST /containers/${apiName}/stop`);
-  expect(requests).not.toContain(`DELETE /containers/${apiName}?force=true`);
+  expect(requests).toContain(`POST /containers/${db}/start`);
+  expect(ids.has(db)).toBe(true);
+  expect(requests.filter((request) => request.endsWith("/stop"))).toEqual([]);
+  expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
   expect(requests).toContain("POST /containers/lando-bring-up-order-app-cache/start");
   expect(requests.some((request) => request.startsWith("DELETE /networks/"))).toBe(false);
 });
@@ -318,10 +480,113 @@ test("interrupts an aborted optional dependency instead of starting its dependen
   expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-cache/start");
 });
 
+test("unchanged container ID across failed B then retry", async () => {
+  // Given two independent services; B fails on the first attempt on the same fake daemon.
+  const apiSvc = servicePlan(ServiceName.make("api"), false);
+  const webSvc = servicePlan(dependentNames.web, true);
+  const plan: AppPlan = {
+    id: appId,
+    valueModel: 1,
+    name: "Bring Up Order App",
+    slug: "bring-up-order-app",
+    root: AbsolutePath.make("/tmp/bring-up-order-app"),
+    provider: providerId,
+    services: { [apiSvc.name]: apiSvc, [webSvc.name]: webSvc },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  };
+  const apiName = "lando-bring-up-order-app-api";
+  const webName = "lando-bring-up-order-app-web";
+  const fake = makePodmanApi(0, [], [webName]);
+  await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.flip));
+  const apiIdAfterFail = fake.ids.get(apiName);
+  const webIdAfterFail = fake.ids.get(webName);
+  if (apiIdAfterFail === undefined || webIdAfterFail === undefined) {
+    throw new TypeError("expected generation-unique A/B ids after failed attempt");
+  }
+  expect(apiIdAfterFail).not.toBe(webIdAfterFail);
+  expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
+
+  // When: clear the injected start fault and retry on the same daemon state.
+  fake.failedStartNames.delete(webName);
+  const requestsBeforeRetry = fake.requests.length;
+  await Effect.runPromise(bringUp(plan, { api: fake.api, ctx, reconcile: false }));
+  const retryRequests = fake.requests.slice(requestsBeforeRetry);
+
+  // Then: A and B keep their generation-unique identities; neither is recreated.
+  expect(fake.ids.get(apiName)).toBe(apiIdAfterFail);
+  expect(fake.ids.get(webName)).toBe(webIdAfterFail);
+  expect(retryRequests.some((request) => request.includes("/containers/create"))).toBe(false);
+  expect(retryRequests.filter((request) => request.startsWith("DELETE /containers/"))).toEqual([]);
+  expect(retryRequests).toContain(`POST /containers/${webName}/start`);
+});
+
+test("corrected config recreates ONLY B", async () => {
+  // Given A starts and B fails start under the original create-config on one fake daemon.
+  const apiSvc = servicePlan(ServiceName.make("api"), false);
+  const webSvc = servicePlan(dependentNames.web, true);
+  const plan: AppPlan = {
+    id: appId,
+    valueModel: 1,
+    name: "Bring Up Order App",
+    slug: "bring-up-order-app",
+    root: AbsolutePath.make("/tmp/bring-up-order-app"),
+    provider: providerId,
+    services: { [apiSvc.name]: apiSvc, [webSvc.name]: webSvc },
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata,
+    extensions: {},
+  };
+  const apiName = "lando-bring-up-order-app-api";
+  const webName = "lando-bring-up-order-app-web";
+  const fake = makePodmanApi(0, [], [webName]);
+  await Effect.runPromise(bringUp(plan, { api: fake.api, ctx }).pipe(Effect.flip));
+  const apiId = fake.ids.get(apiName);
+  const webId = fake.ids.get(webName);
+  if (apiId === undefined || webId === undefined) {
+    throw new TypeError("expected generation-unique A/B ids after failed B start");
+  }
+
+  // When: correct B environment/command, clear the injected start fault, retry same fake.
+  const correctedWeb = { ...webSvc, environment: { FIXED: "yes" }, command: ["sleep", "infinity"] };
+  const corrected: AppPlan = {
+    ...plan,
+    services: { [apiSvc.name]: apiSvc, [correctedWeb.name]: correctedWeb },
+  };
+  fake.failedStartNames.delete(webName);
+  const requestsBeforeRetry = fake.requests.length;
+  await Effect.runPromise(bringUp(corrected, { api: fake.api, ctx, reconcile: false }));
+  const retryRequests = fake.requests.slice(requestsBeforeRetry);
+
+  // Then: only B is stopped/removed/recreated; A identity is unchanged.
+  const webIdAfter = fake.ids.get(webName);
+  if (webIdAfter === undefined) throw new TypeError("expected recreated B id");
+  expect(fake.ids.get(apiName)).toBe(apiId);
+  expect(webIdAfter).not.toBe(webId);
+  expect(
+    retryRequests.some((request) => request.startsWith("DELETE /containers/") && request.includes(webId)),
+  ).toBe(true);
+  expect(
+    retryRequests.some((request) => request.includes("/containers/create") && request.includes(webName)),
+  ).toBe(true);
+  expect(
+    retryRequests.some((request) => request.includes("/containers/create") && request.includes(apiName)),
+  ).toBe(false);
+  expect(
+    retryRequests.filter((request) => request.startsWith("DELETE /containers/") && request.includes(apiId)),
+  ).toEqual([]);
+});
+
 test("a filtered apply leaves an unselected container's real ID untouched", async () => {
   const web = servicePlan(dependentNames.web, true);
   const db = servicePlan(dbName, false);
   const fullPlan: AppPlan = {
+    valueModel: 1,
     id: appId,
     name: "Bring Up Order App",
     slug: "bring-up-order-app",
@@ -329,7 +594,6 @@ test("a filtered apply leaves an unselected container's real ID untouched", asyn
     provider: providerId,
     services: { [web.name]: web, [db.name]: db },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,

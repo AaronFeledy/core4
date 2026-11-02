@@ -8,6 +8,7 @@ import type {
   AppFeatureServiceView,
 } from "@lando/sdk/services";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
 import { nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
 import {
@@ -149,8 +150,10 @@ describe("nginx ServiceType", () => {
     const command = planCommandText(plan.command);
     expect(command).toContain("listen 8080;");
     expect(command).not.toContain("listen 80;");
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
   });
 
   test("omits the worker user directive when standalone runs as non-root", async () => {
@@ -205,20 +208,28 @@ describe("nginx ServiceType", () => {
       LANDO_WEBROOT: "/app",
     });
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBeUndefined();
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.mounts).toEqual([]);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(80, 10));
   });
 
   test("uses the authored service name in endpoint and lando env", async () => {
     const plan = await composeNginxPlan({ type: "nginx" }, "proxy");
 
     expect(plan.primary).toBe(false);
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "proxy" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "proxy", primary: true },
+    ]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "proxy",
       LANDO_SERVICE_TYPE: "nginx",
@@ -308,13 +319,14 @@ describe("nginx PHP FPM app-feature wire", () => {
     setAppMount: () => undefined,
     addBuildStep: () => undefined,
     addStorage: () => undefined,
-    addEndpoint: () => undefined,
     addDependency: () => undefined,
     addHostAlias: () => undefined,
     setHealthcheck: () => undefined,
+    setReadiness: () => undefined,
     setCerts: () => undefined,
     setEntrypoint: () => undefined,
     setArtifact: () => undefined,
+    setInit: () => undefined,
     setUser: () => undefined,
     setWorkingDirectory: () => undefined,
   } satisfies Omit<AppFeatureServiceMutators, "service" | "setCommand">;
@@ -532,3 +544,4 @@ describe("nginx noScripts glob translation", () => {
     expect(() => nginxNoScriptRegex(path)).toThrow(/nginx noScripts path is not a safe webroot-relative URI/);
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

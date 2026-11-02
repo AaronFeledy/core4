@@ -8,7 +8,11 @@ tags: [beta, docs, library, embedding, tracing]
 
 # Observe an embedded runtime
 
-Provide your own `Tracer`, loggers, or `ErrorReporter` in the Effect context and Lando's spans, logs, and defects flow into them. Provide nothing and the library stays silent.
+Provide your own `Tracer`, loggers, or `ErrorReporter` in the Effect context to
+receive Lando's spans, logs, and defects. Without these, the library stays silent.
+
+In the host program below, replace `myTracer` with your Effect tracer. Run it from
+an app directory; it reads app information inside your `host.request` span.
 
 ```ts
 import { Effect } from "effect";

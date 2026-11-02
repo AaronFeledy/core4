@@ -1,4 +1,4 @@
-import { Context, type Effect, type Scope, type Stream } from "effect";
+import { Context, type Effect, type Option, type Scope, type Stream } from "effect";
 
 import type { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "../errors/index.ts";
 import type {
@@ -23,7 +23,8 @@ export type FileSyncError = FileSyncStartError | FileSyncDriftError | FileSyncSt
  * Engines are session-stateful: one session per accelerated `MountPlan`
  * per started app. Ephemeral `createSession` acquisitions finalize with
  * their scope. Engines with process-persistent sessions keep successful
- * sessions across handle closure; startup failure compensates new sessions.
+ * sessions across handle closure. Durable lifecycle engines retain history on
+ * failed starts; other persistent engines pause their post-apply leases.
  */
 export interface FileSyncEngineShape {
   readonly id: string;
@@ -50,8 +51,8 @@ export interface FileSyncEngineShape {
   /**
    * Optional app-scoped handoff after the provider's complete prepared target
    * set has been validated. Binding may inspect the host but must not mutate
-   * external or durable resources; failure or interruption can only release
-   * provider-prepared targets. Return a separate engine without mutating this
+   * external or durable resources; prepared targets survive failure or interruption
+   * for the next start to resume. Return a separate engine without mutating this
    * shared service; only the returned engine may create this app's sessions.
    * Its boundApp must identify the requested app, including its canonical root.
    */
@@ -66,6 +67,10 @@ export interface FileSyncEngineShape {
   readonly createSession: (
     spec: FileSyncSessionSpec,
   ) => Effect.Effect<FileSyncSessionRef, FileSyncError, Scope.Scope>;
+  /** Re-establish a missing session from retained synchronization history; never create without history. Returns None when no history survives. */
+  readonly recoverSession?: (
+    spec: FileSyncSessionSpec,
+  ) => Effect.Effect<Option.Option<FileSyncSessionRef>, FileSyncError, Scope.Scope>;
   readonly pauseSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
   readonly resumeSession: (ref: FileSyncSessionRef) => Effect.Effect<void, FileSyncError>;
   /** Block until all pending changes reach the session target or fail. */
@@ -79,9 +84,9 @@ export interface FileSyncEngineShape {
 }
 
 /**
- * FileSyncEngine — pluggable accelerated bind-mount engine. Default
- * implementation is the no-op `passthrough`; the bundled default for
- * `bindMountPerformance: "slow"` providers is `@lando/file-sync-mutagen`.
+ * FileSyncEngine — pluggable accelerated bind-mount engine. Ordinary binds
+ * and the reserved passthrough policy create no engine sessions. Engines are
+ * selected by contribution metadata or the global engine override.
  */
 // The recursive bound-engine result makes the inline form fail with TS2310/TS2506.
 export class FileSyncEngine extends Context.Service<FileSyncEngine, FileSyncEngineShape>()(

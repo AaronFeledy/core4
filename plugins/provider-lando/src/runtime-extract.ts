@@ -6,6 +6,16 @@ import { Clock, Effect } from "effect";
 import { ProviderUnavailableError, isErrnoCode } from "@lando/sdk/errors";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
 
+import {
+  type CatatonitPackage,
+  catatonitPackageForArch,
+  isUsableManagedCatatonit,
+  managedCatatonitPath,
+  runtimeRecipeIncludesNativeInitHelper,
+  verifyManagedCatatonitNotices,
+  verifyStaticCatatonit,
+} from "./catatonit-provision.ts";
+
 const PROVIDER_ID = "lando";
 const OPERATION = "setup";
 const REMEDIATION =
@@ -55,6 +65,10 @@ export interface InstallRuntimeBundleOptions {
   readonly platform: HostPlatform;
   readonly extractImpl?: ExtractEntries;
   readonly maxDecompressedBytes?: number | undefined;
+  /** Host arch used to select the catatonit pin for helper-bearing Linux payloads. */
+  readonly arch?: string | undefined;
+  /** Test override for the native-init helper pin. */
+  readonly nativeInitHelper?: CatatonitPackage | undefined;
 }
 
 export interface InstallRuntimeBundleResult {
@@ -68,7 +82,7 @@ const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 const ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ZIP_DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
-const MARKER_FILE = ".runtime-installed-version";
+export const MARKER_FILE = ".runtime-installed-version";
 
 const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 const isZip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
@@ -394,17 +408,82 @@ const stripRuntimeBinPrefix = (safePath: string, stripTopLevelBin: boolean): str
   return safePath.startsWith("bin/") ? safePath.slice("bin/".length) : safePath;
 };
 
+const resolveNativeInitHelperPackage = (
+  platform: HostPlatform,
+  arch: string | undefined,
+  override: CatatonitPackage | undefined,
+): CatatonitPackage | undefined => {
+  if (hostPlatformFamily(platform) !== "linux") return undefined;
+  if (override !== undefined) return override;
+  return catatonitPackageForArch(arch ?? process.arch);
+};
+
+const verifyHelperEntryBytes = (bytes: Uint8Array, pkg: CatatonitPackage): void => {
+  try {
+    verifyStaticCatatonit(bytes, pkg);
+  } catch (cause) {
+    throw new ProviderRuntimeExtractError(
+      "Runtime bundle native init helper failed verification.",
+      cause,
+      "The Lando runtime bundle appears corrupt or unsafe. Retry `lando setup`; if it fails again, report the runtime bundle artifact.",
+    );
+  }
+};
+
+/** Notice/license texts keep archive modes; other runtime members stay executable. */
+const extractedFileMode = (safePath: string, mode: number): number => {
+  const underLicenses = safePath === "licenses" || safePath.startsWith("licenses/");
+  if (!underLicenses) return 0o755;
+  const bits = mode & 0o777;
+  if (bits === 0) return 0o644;
+  // Drop execute bits on notice payloads while preserving owner/group/other read/write.
+  return bits & 0o666 || 0o644;
+};
+
+const helperReadyOnDisk = async (
+  runtimeBinDir: string,
+  pkg: CatatonitPackage | undefined,
+  requireHelper: boolean,
+): Promise<boolean> => {
+  if (pkg === undefined) return !requireHelper;
+  const path = managedCatatonitPath(runtimeBinDir);
+  const usable = await isUsableManagedCatatonit(path, pkg);
+  if (usable) return true;
+  return !requireHelper;
+};
+
+const noticesReadyOnDisk = async (
+  runtimeBinDir: string,
+  pkg: CatatonitPackage | undefined,
+  requireHelper: boolean,
+): Promise<boolean> => {
+  if (!requireHelper || pkg === undefined) return true;
+  return verifyManagedCatatonitNotices(runtimeBinDir, pkg);
+};
+
 export const installRuntimeBundle = Effect.fn("ProviderLando.installRuntimeBundle")(function* (
   options: InstallRuntimeBundleOptions,
 ): Effect.fn.Return<InstallRuntimeBundleResult, ProviderRuntimeExtractError> {
   const family = hostPlatformFamily(options.platform);
+  const helperPkg = resolveNativeInitHelperPackage(options.platform, options.arch, options.nativeInitHelper);
+  const requireHelper = family === "linux" && runtimeRecipeIncludesNativeInitHelper(options.version);
+  if (requireHelper && helperPkg === undefined) {
+    return yield* Effect.fail(
+      new ProviderRuntimeExtractError(
+        `No pinned native init helper is available for ${options.platform}/${options.arch ?? process.arch}.`,
+      ),
+    );
+  }
   const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
-  const entrypointReady =
-    installedVersion === options.version
-      ? yield* Effect.promise(() => hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform))
-      : false;
-  if (entrypointReady) {
-    return { installed: false, runtimeBinDir: options.runtimeBinDir, version: options.version };
+  if (installedVersion === options.version) {
+    const ready = yield* Effect.tryPromise({
+      try: async () =>
+        (await hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform)) &&
+        (await helperReadyOnDisk(options.runtimeBinDir, helperPkg, requireHelper)) &&
+        (await noticesReadyOnDisk(options.runtimeBinDir, helperPkg, requireHelper)),
+      catch: (cause) => toExtractError("Cannot verify the installed runtime helper and notices.", cause),
+    });
+    if (ready) return { installed: false, runtimeBinDir: options.runtimeBinDir, version: options.version };
   }
 
   const clock = yield* Clock.Clock;
@@ -434,7 +513,7 @@ export const installRuntimeBundle = Effect.fn("ProviderLando.installRuntimeBundl
           await mkdir(stringParentDir(target), { recursive: true });
           await writeFile(target, entry.bytes);
           if (family !== "win32") {
-            await chmod(target, 0o755);
+            await chmod(target, extractedFileMode(safePath, entry.mode));
           }
           fileCount += 1;
         }
@@ -445,6 +524,42 @@ export const installRuntimeBundle = Effect.fn("ProviderLando.installRuntimeBundl
           throw new ProviderRuntimeExtractError(
             `Runtime bundle archive is missing required ${options.platform} entrypoints: ${runtimeEntrypointNames(options.platform).join(", ")}.`,
           );
+        }
+        if (family === "linux" && helperPkg !== undefined) {
+          const helperEntries = normalizedEntries
+            .map((entry) => ({
+              ...entry,
+              safePath: stripRuntimeBinPrefix(entry.safePath, stripTopLevelBin),
+            }))
+            .filter((entry) => entry.safePath === "catatonit");
+          if (helperEntries.length > 1) {
+            throw new ProviderRuntimeExtractError(
+              "Runtime bundle archive contains multiple native init helper payloads.",
+            );
+          }
+          const helperEntry = helperEntries[0];
+          if (requireHelper && helperEntry === undefined) {
+            throw new ProviderRuntimeExtractError(
+              `Helper-bearing runtime bundle ${options.version} is missing the required catatonit helper.`,
+            );
+          }
+          if (helperEntry !== undefined) {
+            verifyHelperEntryBytes(helperEntry.bytes, helperPkg);
+          }
+          if (requireHelper || helperEntry !== undefined) {
+            if (!(await isUsableManagedCatatonit(managedCatatonitPath(tempDir), helperPkg))) {
+              throw new ProviderRuntimeExtractError(
+                "Runtime bundle native init helper is missing or failed verification after extraction.",
+              );
+            }
+          }
+          if (requireHelper) {
+            if (!(await verifyManagedCatatonitNotices(tempDir, helperPkg))) {
+              throw new ProviderRuntimeExtractError(
+                "Helper-bearing runtime bundle is missing verified native init license notices at licenses/catatonit.",
+              );
+            }
+          }
         }
         await writeFile(markerPath(tempDir), options.version);
         await mkdir(stringParentDir(options.runtimeBinDir), { recursive: true });

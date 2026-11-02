@@ -3,7 +3,7 @@ import { Deferred, Effect, Fiber, Semaphore } from "effect";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
 import type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
-import { AbsolutePath, AppId, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, AppId, ServiceName, type StartedService } from "@lando/sdk/schema";
 import type { StateBucket } from "@lando/sdk/services";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
@@ -11,6 +11,7 @@ import type { SchemeProbe } from "../src/port-acquisition.ts";
 import { defaultDomainFile, routeFile } from "../src/proxy-paths.ts";
 import { makeTraefikRouterService } from "../src/proxy.ts";
 import { routeReloadLockKey } from "../src/route-reload-state.ts";
+import { makeApplyRuntime } from "./apply-runtime-fixture.ts";
 
 const app = AppId.make("race");
 const paths = { platform: "win32", globalAppRoot: "/lando/global" } as const;
@@ -77,6 +78,7 @@ const makeSharedStateStore = (onAttempt: (count: number) => Effect.Effect<void>)
 
 const makeHarness = () => {
   const files = new Map<string, string>();
+  const runtime = makeApplyRuntime(files);
   const setupEntered = Deferred.makeUnsafe<void>();
   const releaseSetup = Deferred.makeUnsafe<void>();
   const reloadEntered = Deferred.makeUnsafe<void>();
@@ -113,8 +115,11 @@ const makeHarness = () => {
           : Effect.fail(new FileNotFoundError({ message: "removed", path })),
   };
   const globalApp = {
+    ownedPublishPorts: runtime.ownedPublishPorts,
     ensureRunning: () =>
-      Effect.gen(function* () {
+      Effect.gen(function* (): Effect.fn.Return<
+        ReadonlyArray<StartedService & { readonly endpoints: readonly string[] }>
+      > {
         if (pauseSetup) {
           yield* Deferred.succeed(setupEntered, undefined);
           yield* Deferred.await(releaseSetup);
@@ -124,6 +129,7 @@ const makeHarness = () => {
           {
             name: "traefik",
             state: "running",
+            connections: [],
             endpoints: ["http://127.0.0.1:38080", "https://127.0.0.1:38443"],
           },
         ];
@@ -157,6 +163,7 @@ const makeHarness = () => {
   };
   const makeRouter = () =>
     makeTraefikRouterService({
+      httpClient: runtime.httpClient,
       certificateAuthority: makeTestCertificateAuthority(),
       fileSystem,
       paths,

@@ -8,6 +8,21 @@ import {
 } from "../../src/cli/exec-host-io.ts";
 
 describe("attachedHostTerminal", () => {
+  test.each([
+    [{ NO_COLOR: "1" }, true],
+    [{ NO_COLOR: "0" }, true],
+    [{ NO_COLOR: "" }, undefined],
+    [{ TERM: "dumb" }, true],
+    [{ TERM: "xterm-256color" }, undefined],
+  ] as const)("captures color opt-out for %j", (env, expected) => {
+    // Given
+    const output = { isTTY: true };
+    // When
+    const terminal = attachedHostTerminal(output, env);
+    // Then
+    expect(terminal?.noColor).toBe(expected);
+  });
+
   test("returns terminal facts only for an attached output TTY", () => {
     // Given
     const output = { isTTY: true, columns: 132, rows: 43 };
@@ -16,7 +31,7 @@ describe("attachedHostTerminal", () => {
     const terminal = attachedHostTerminal(output, { TERM: "dumb", COLORTERM: "truecolor" });
 
     // Then
-    expect(terminal).toEqual({ term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 });
+    expect(terminal).toEqual({ noColor: true, term: "dumb", colorterm: "truecolor", columns: 132, rows: 43 });
   });
 
   test("returns no descriptor for a pipe even when terminal env is present", () => {

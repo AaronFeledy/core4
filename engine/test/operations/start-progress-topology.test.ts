@@ -1,10 +1,22 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Effect, Fiber, Stream } from "effect";
 
-import { type AppPlan, FileSyncSessionRef, type FileSyncSessionSpec, PortablePath } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  FileSyncSessionRef,
+  type FileSyncSessionSpec,
+  PortablePath,
+  ServiceName,
+} from "@lando/sdk/schema";
+import { AppPlanner, ConfigService, FileSystem, GlobalAppService } from "@lando/sdk/services";
 import { startChildTaskId } from "@lando/sdk/task-progress";
 import { TestFileSyncEngine } from "@lando/sdk/test";
 
+import { makeGlobalAppService } from "../../src/global-app/service.ts";
 import {
   applyTreeId,
   startFileSyncTreeId,
@@ -26,14 +38,19 @@ const planWithFileSync: AppPlan = {
   services: {
     [web.name]: {
       ...web,
-      appMount: {
-        source: plan.root,
-        target: PortablePath.make("/app"),
-        readOnly: false,
-        realization: "accelerated",
-        excludes: [],
-        includes: [],
-      },
+      mounts: [
+        {
+          type: "bind",
+          role: "app",
+          source: plan.root,
+          target: PortablePath.make("/app"),
+          readOnly: false,
+          realization: "accelerated",
+          excludes: [],
+          includes: [],
+          mountKey: "app-mount",
+        },
+      ],
     },
   },
   fileSync: [
@@ -58,7 +75,10 @@ describe("start progress topology", () => {
     const secretPlan: AppPlan = {
       ...plan,
       services: {
-        [web.name]: { ...web, environment: { PLAIN: "visible", TOKEN: "${secret:API_TOKEN}" } },
+        [web.name]: {
+          ...web,
+          environment: { PLAIN: "visible", TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" } },
+        },
       },
     };
     let applied: { readonly plan: AppPlan; readonly environment: unknown } | undefined;
@@ -70,19 +90,25 @@ describe("start progress topology", () => {
         has: () => Effect.succeed(true),
         list: Effect.succeed(["API_TOKEN"]),
       },
-      onApply: (appliedPlan, options) => {
-        applied = { plan: appliedPlan, environment: options?.serviceEnvironment };
-      },
+      onApply: (appliedPlan, options) =>
+        Effect.gen(function* () {
+          const resolve = options?.resolveServiceEnvironment;
+          if (resolve === undefined) throw new Error("creation resolver missing");
+          const entries = yield* Effect.forEach(Object.values(appliedPlan.services), (service) =>
+            resolve(service).pipe(Effect.map((env) => [service.name, env] as const)),
+          );
+          applied = { plan: appliedPlan, environment: Object.fromEntries(entries) };
+        }),
     });
 
     // When
     await runStart(harness, secretPlan);
 
     // Then
-    expect(applied?.environment).toEqual({ web: { TOKEN: "resolved-canary" } });
+    expect(applied?.environment).toMatchObject({ web: { PLAIN: "visible", TOKEN: "resolved-canary" } });
     expect(applied?.plan.services[web.name]?.environment).toEqual({
       PLAIN: "visible",
-      TOKEN: "${secret:API_TOKEN}",
+      TOKEN: { _tag: "SecretRef", reference: "API_TOKEN" },
     });
     expect(JSON.stringify(applied?.plan)).not.toContain("resolved-canary");
   });
@@ -114,11 +140,80 @@ describe("start progress topology", () => {
         },
       ],
     };
-    const harness = makeHarness({ plannedApp: routedPlan });
-    await runStart(harness, routedPlan);
+    const owned: import("@lando/sdk/services").ServiceRuntimeInfo[] = [];
+    const harness = makeHarness({
+      plannedApp: routedPlan,
+      providerOverrides: { list: (filter) => Effect.succeed(filter.app === "global" ? owned : []) },
+      inspect: (target) =>
+        Effect.succeed({
+          app: target.app,
+          service: target.service,
+          providerId: routedPlan.provider,
+          status: "running",
+          publications: { status: "unknown" },
+        }),
+      onApply: (applied) => {
+        if (applied.id === "global")
+          owned.push(
+            ...Object.values(applied.services).map((service) => ({
+              app: applied.id,
+              appRoot: applied.root,
+              service: service.name,
+              providerId: applied.provider,
+              containerId: `owned-${service.name}`,
+              status: "running",
+              publications: { status: "unknown" as const },
+            })),
+          );
+      },
+    });
+    const dependencies = await Effect.runPromise(
+      Effect.all({ config: ConfigService, fileSystem: FileSystem }).pipe(Effect.provide(harness.layer)),
+    );
+    const globalRoot = AbsolutePath.make(join(harness.userDataRoot, "global"));
+    await mkdir(globalRoot);
+    await writeFile(join(globalRoot, ".lando.yml"), "services:\n  test:\n    type: node\n");
+    const config: typeof ConfigService.Service = {
+      ...dependencies.config,
+      load: dependencies.config.load.pipe(
+        Effect.map((value) => ({ ...value, userDataRoot: AbsolutePath.make(harness.userDataRoot) })),
+      ),
+      get: (key) => config.load.pipe(Effect.map((value) => value[key])),
+    };
+    const global = makeGlobalAppService(config, dependencies.fileSystem);
+    const globalPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("global"),
+      name: "global",
+      root: globalRoot,
+      services: { [ServiceName.make("test")]: { ...web, name: ServiceName.make("test") } },
+      routes: [],
+    };
+    await Effect.runPromise(
+      startApp(
+        {},
+        {
+          plan: routedPlan,
+          root: routedPlan.root,
+          app: { kind: "user", id: routedPlan.id, root: routedPlan.root },
+        },
+      ).pipe(
+        Effect.provideService(GlobalAppService, global),
+        Effect.provideService(AppPlanner, {
+          plan: (landofile) =>
+            Effect.succeed({
+              ...(landofile.document.name === "global" ? globalPlan : routedPlan),
+              valueModel: 1 as const,
+            }),
+        }),
+        Effect.provide(harness.layer),
+      ),
+    );
 
     const parentId = startRoutesTreeId(String(plan.id));
-    const treeStarts = byTag(harness.events, "task.tree.start");
+    const treeStarts = byTag(harness.events, "task.tree.start").filter((event) =>
+      [applyTreeId(String(plan.id)), parentId].includes(event.parentId),
+    );
     expect(treeStarts.map((event) => event.parentId)).toEqual([applyTreeId(String(plan.id)), parentId]);
     expect(treeStarts[1]).toMatchObject({
       parentId,
@@ -132,10 +227,11 @@ describe("start progress topology", () => {
     );
     expect(applyCompleteIndex).toBeGreaterThan(-1);
     expect(routesStartIndex).toBeGreaterThan(applyCompleteIndex);
-    expect(byTag(harness.events, "task.tree.complete").map((event) => event.parentId)).toEqual([
-      applyTreeId(String(plan.id)),
-      parentId,
-    ]);
+    expect(
+      byTag(harness.events, "task.tree.complete")
+        .map((event) => event.parentId)
+        .filter((id) => [applyTreeId(String(plan.id)), parentId].includes(id)),
+    ).toEqual([applyTreeId(String(plan.id)), parentId]);
   });
 
   test("owns file-sync detail with matching tree and task ids", async () => {

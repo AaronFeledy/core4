@@ -18,6 +18,7 @@ export const decodeLandofileAuthoringLayer = (file: string, input: unknown) =>
           new LandofileValidationError({
             file,
             message: "Invalid Landofile authoring layer.",
+            remediation: "Fix each listed authored value.",
             issues: validationIssuesFromCause(cause),
           }),
       ),

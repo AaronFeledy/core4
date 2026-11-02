@@ -108,6 +108,9 @@ describe("SqlCommandFailedError", () => {
       message: "Database command failed in database.",
       service: "database",
       command: ["mysql", "-e", "DROP DATABASE app"],
+      exitCode: 7,
+      stderrTail: "Access denied",
+      recoverySnapshotId: "recovery-1",
       remediation: "Inspect the service logs, then retry the import, export, or reset.",
     });
 
@@ -120,6 +123,9 @@ describe("SqlCommandFailedError", () => {
     expect(decoded._tag).toBe("SqlCommandFailedError");
     expect(decoded.service).toBe("database");
     expect(decoded.command).toEqual(["mysql", "-e", "DROP DATABASE app"]);
+    expect(decoded.exitCode).toBe(7);
+    expect(decoded.stderrTail).toBe("Access denied");
+    expect(decoded.recoverySnapshotId).toBe("recovery-1");
   });
 });
 

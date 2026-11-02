@@ -44,7 +44,6 @@ export class PathsService extends Context.Service<
     readonly systemPluginsDir: string;
     readonly pluginStateDir: (pluginId: string) => string;
     readonly appPluginsDir: (appId: string) => string;
-    readonly pluginAuthFile: string;
     readonly binDir: string;
     readonly installRecordFile: string;
     readonly keysDir: string;
@@ -61,7 +60,7 @@ export class PathsService extends Context.Service<
     readonly providerPidPath: string;
     readonly globalAppRoot: string;
     readonly snapshotsDir: string;
-    readonly appSnapshotsDir: (appId: string) => string;
+    readonly ownerSnapshotsDir: (ownerKey: string) => string;
     readonly managedFileLedger: (appId: string) => string;
     readonly toolDownloadsDir: (toolId: string) => string;
     // userCache-scoped

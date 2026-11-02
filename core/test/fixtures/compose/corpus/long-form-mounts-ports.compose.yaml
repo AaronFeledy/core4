@@ -24,6 +24,6 @@ services:
         target: /run/app
         tmpfs:
           size: 67108864
-          mode: 1770
+          mode: 1016 # 0o1770
 volumes:
   cache: {}

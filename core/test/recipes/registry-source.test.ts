@@ -20,15 +20,8 @@ const VALID_RECIPE = `id: registry-recipe
 title: Registry Recipe
 description: A registry sourced recipe.
 version: 0.1.0
-prompts:
-  - name: name
-    type: text
-    message: App name
-    default: registry-app
-files:
-  - src: templates/.lando.yml.tmpl
-    dest: .lando.yml
-    template: true
+config:
+  runtime: 4
 `;
 
 const withTempRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -256,7 +249,9 @@ describe("initApp registry source boundary", () => {
   test("registry init forwards --path to the registry resolver", async () => {
     await withTempRoot(async (dir) => {
       const registryId = "registry-init-subpath";
-      const bare = await makeGitRepo(dir, { "recipes/registry/recipe.yml": VALID_RECIPE });
+      const bare = await makeGitRepo(dir, {
+        "recipes/registry/recipe.yml": VALID_RECIPE.replace("config:\n  runtime: 4", "config: invalid"),
+      });
       let caught: unknown;
       try {
         await initApp({
@@ -273,15 +268,19 @@ describe("initApp registry source boundary", () => {
         caught = error;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain("Recipe file rendering");
-      expect((caught as Error).message).toContain(registryId);
+      expect(caught).toMatchObject({
+        _tag: "RecipeManifestValidationError",
+        source: expect.stringContaining("recipes/registry/recipe.yml"),
+      });
     });
   });
 
-  test("registry git recipes reach manifest parsing before the existing non-bundled render limitation", async () => {
+  test("invalid registry git config fails before writing and reports its published source path", async () => {
     await withTempRoot(async (dir) => {
       const registryId = "registry-init-git";
-      const bare = await makeGitRepo(dir);
+      const bare = await makeGitRepo(dir, {
+        "recipe.yml": VALID_RECIPE.replace("config:\n  runtime: 4", "config: invalid"),
+      });
       let caught: unknown;
       try {
         await initApp({
@@ -291,14 +290,18 @@ describe("initApp registry source boundary", () => {
           id: registryId,
           registryClient: clientFor({ id: registryId, resolution: { kind: "git", url: `file://${bare}` } }),
           userDataRoot: join(dir, "data"),
+          destination: join(dir, "app"),
           nonInteractive: true,
         });
       } catch (error) {
         caught = error;
       }
       expect(caught).toBeInstanceOf(Error);
-      expect((caught as Error).message).toContain("Recipe file rendering");
-      expect((caught as Error).message).toContain(registryId);
+      expect(caught).toMatchObject({
+        _tag: "RecipeManifestValidationError",
+        source: expect.stringContaining("recipe.yml"),
+      });
+      expect(await Bun.file(join(dir, "app", ".lando.yml")).exists()).toBe(false);
     });
   });
 });

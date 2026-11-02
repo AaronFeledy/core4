@@ -27,11 +27,8 @@ describe("Compose disposition matrix", () => {
     }
     expect(composeServiceDispositions["build.args"]?.planTarget).toEqual(["artifact"]);
     expect(composeServiceDispositions["depends_on.*.condition"]?.planTarget).toEqual(["dependsOn"]);
-    expect(composeServiceDispositions["volumes.target"]?.planTarget).toEqual([
-      "mounts",
-      "storage",
-      "extensions.compose.tmpfs",
-    ]);
+    expect(composeServiceDispositions["volumes.target"]?.planTarget).toEqual(["mounts"]);
+    expect(composeServiceDispositions.tmpfs?.planTarget).toEqual(["mounts"]);
   });
 
   test("documents service-level x-* as inert rather than capability-gated", () => {
@@ -43,7 +40,7 @@ describe("Compose disposition matrix", () => {
     expect(serviceExtension?.disposition).toBe("preserved");
     expect(serviceExtension?.rationale).not.toContain("capability-checked");
     expect(serviceExtension?.rationale).toContain("inert");
-    expect(gatedExtension?.rationale).toContain("capability-checked");
+    expect(gatedExtension?.disposition).toBe("normalized");
   });
 
   test("documents every exact preserved path with its fail-closed capability gate", () => {
@@ -55,23 +52,24 @@ describe("Compose disposition matrix", () => {
     }
   });
 
-  test("narrows type-specific volume options to the destination they actually reach", () => {
+  test("normalizes every volume form into the one service mount list", () => {
     // Given
-    const bindOnly = ["volumes.bind", "volumes.bind.create_host_path"] as const;
-    const storageOnly = ["volumes.volume", "volumes.volume.subpath"] as const;
+    const typed = [
+      "volumes.bind",
+      "volumes.bind.create_host_path",
+      "volumes.volume",
+      "volumes.volume.subpath",
+      "volumes.tmpfs",
+      "volumes.tmpfs.mode",
+      "volumes.tmpfs.size",
+    ] as const;
 
     // When / Then
-    for (const path of bindOnly) {
+    for (const path of typed) {
+      expect(composeServiceDispositions[path]?.disposition, path).toBe("normalized");
       expect(composeServiceDispositions[path]?.planTarget, path).toEqual(["mounts"]);
     }
-    for (const path of storageOnly) {
-      expect(composeServiceDispositions[path]?.planTarget, path).toEqual(["storage"]);
-    }
-    expect(composeServiceDispositions["volumes.read_only"]?.planTarget).toEqual([
-      "mounts",
-      "storage",
-      "extensions.compose.tmpfs",
-    ]);
+    expect(composeServiceDispositions["volumes.read_only"]?.planTarget).toEqual(["mounts"]);
   });
 
   test("normalizes Compose layer override tags through native layer merging", () => {

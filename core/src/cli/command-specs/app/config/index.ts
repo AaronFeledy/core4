@@ -1,4 +1,6 @@
-import { Args } from "../../../spec/metadata";
+import type { Effect } from "effect";
+import { specFlagsOf, stringFlag } from "../../../spec/input-coercion";
+import { Args, Flags } from "../../../spec/metadata";
 
 import {
   type AppConfigOptions,
@@ -8,14 +10,24 @@ import {
   appConfigRedactionTokens,
   renderAppConfigResult,
 } from "../../../commands/app-config";
+import { runAppConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { dryRunFlag, editorFlag, formatFlag, pathFlag, typeFlag } from "../../config-flags";
 import { configWriteOptionsFromInput } from "../../config-write-input";
 
 export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
   const opts = configWriteOptionsFromInput(input, { formats: ["json", "yaml", "table"] });
-  return opts as AppConfigOptions;
+  const source = stringFlag(specFlagsOf(input), "source");
+  return {
+    ...opts,
+    ...(["raw", "merged", "resolved"].includes(source ?? "") ? { source } : {}),
+  } as AppConfigOptions;
 };
+
+const sourceFlag = Flags.string({
+  description: "Inspect raw layers, authored composition, or resolved config.",
+  options: ["raw", "merged", "resolved"],
+});
 
 export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   resultSchema: AppConfigResultSchema,
@@ -24,7 +36,7 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   summary: "Read or write the current app's Landofile.",
   namespace: "app",
   topLevelAlias: false,
-  bootstrap: "app",
+  bootstrap: "plugins",
   strict: false,
   args: {
     subcommand: Args.string({
@@ -38,24 +50,38 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
     format: formatFlag,
     type: typeFlag,
     path: pathFlag,
+    source: sourceFlag,
     editor: editorFlag,
     "dry-run": dryRunFlag,
   },
-  run: (input) => appConfig(appConfigOptionsFromInput(input)),
+  run: (input) => runAppConfig(appConfigOptionsFromInput(input)),
   documentOutput: {
     format: "yaml",
     reason:
-      "view emits a canonical bare Landofile that round-trips back into `.lando.yml`, so it is a product document rather than the result envelope in another shape. The get and write verbs carry no Landofile and use the envelope.",
-    when: (input) => (appConfigOptionsFromInput(input).subcommand ?? "view") === "view",
+      "Only a full resolved view emits a canonical bare Landofile. Authored views, projections, get and writes use the normal result envelope.",
+    when: (input) => {
+      const options = appConfigOptionsFromInput(input);
+      return (
+        (options.subcommand ?? "view") === "view" &&
+        (options.source ?? "resolved") === "resolved" &&
+        options.path === undefined
+      );
+    },
   },
   redactionTokens: appConfigRedactionTokens,
   render: (result, input) => {
     const format = appConfigOptionsFromInput(input).format ?? "table";
-    return renderAppConfigResult(result as AppConfigResult, format);
+    return renderAppConfigResult(result, format);
   },
 };
 
-export const appConfigMcpSpecs: ReadonlyArray<LandoCommandSpec<AppConfigResult>> = [
+export const appConfigMcpSpecs: ReadonlyArray<
+  LandoCommandSpec<
+    AppConfigResult,
+    Effect.Error<ReturnType<typeof appConfig>>,
+    Effect.Services<ReturnType<typeof appConfig>>
+  >
+> = [
   {
     resultSchema: AppConfigResultSchema,
     id: "app:config:get",
@@ -64,13 +90,14 @@ export const appConfigMcpSpecs: ReadonlyArray<LandoCommandSpec<AppConfigResult>>
     bootstrap: "app",
     mcpAllowed: true,
     args: {
-      key: { type: "string", required: true, description: "Dot-path key selector." },
+      key: { type: "string", required: false, description: "Dot-path key selector; defaults to path." },
     },
+    flags: { source: sourceFlag, path: pathFlag },
     run: (input) => appConfig({ ...appConfigOptionsFromInput(input), subcommand: "get" }),
     redactionTokens: appConfigRedactionTokens,
     render: (result, input) => {
       const format = appConfigOptionsFromInput(input).format ?? "table";
-      return renderAppConfigResult(result as AppConfigResult, format);
+      return renderAppConfigResult(result, format);
     },
   },
   {
@@ -80,11 +107,12 @@ export const appConfigMcpSpecs: ReadonlyArray<LandoCommandSpec<AppConfigResult>>
     namespace: "app",
     bootstrap: "app",
     mcpAllowed: true,
-    run: () => appConfig({ subcommand: "view" }),
+    flags: { source: sourceFlag, path: pathFlag },
+    run: (input) => appConfig({ ...appConfigOptionsFromInput(input), subcommand: "view" }),
     redactionTokens: appConfigRedactionTokens,
     render: (result, input) => {
       const format = appConfigOptionsFromInput(input).format ?? "table";
-      return renderAppConfigResult(result as AppConfigResult, format);
+      return renderAppConfigResult(result, format);
     },
   },
 ];

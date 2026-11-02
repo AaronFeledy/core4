@@ -1,6 +1,7 @@
 services:
   database:
     image: postgres:17
+    init: true
     extra_hosts:
       - host.internal=host-gateway
     cap_add:
@@ -22,3 +23,6 @@ services:
         reservations:
           cpus: "0.5"
           memory: 256m
+  opted_out:
+    image: postgres:17
+    init: false

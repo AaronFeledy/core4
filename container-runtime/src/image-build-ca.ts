@@ -28,6 +28,8 @@ const internalError = (providerId: string, message: string, cause?: unknown): Pr
     operation: "buildArtifact",
     message,
     ...(cause === undefined ? {} : { cause }),
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 const parseCaFiles = (

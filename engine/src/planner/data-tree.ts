@@ -113,7 +113,7 @@ export const resolveDataTreeOwnership = (input: {
         reason: `service type ${input.serviceType} declares no image identities, so Lando does not know whether user ${principal} exists inside it.`,
       });
     }
-    if (input.identity.homes[principal] === undefined) {
+    if (!Object.hasOwn(input.identity.homes, principal)) {
       return refusal({
         serviceName: input.serviceName,
         serviceType: input.serviceType,

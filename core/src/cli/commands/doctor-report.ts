@@ -6,7 +6,7 @@
  */
 import { join } from "node:path";
 
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect, Layer, Option } from "effect";
 
 import { type ConfigLintResult, MAILHOG_DEPRECATION_NOTICE } from "@lando/sdk/schema";
 import {
@@ -15,7 +15,9 @@ import {
   FileSystem,
   type PathsService,
   type PluginRegistry,
+  RouterService,
   type RuntimeProviderRegistry,
+  SshService,
 } from "@lando/sdk/services";
 
 import { appConfigLint } from "@lando/engine/operations/app-config-lint";
@@ -27,8 +29,12 @@ import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
 import { interruptOnAbort } from "./doctor-abort";
 import { acceleratedStartsDoctor } from "./doctor-accelerated-starts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
+import { debuggerHostDoctor } from "./doctor-debugger";
 import { filesystemWatchDoctor } from "./doctor-filesystem-watch";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
+import { HostDnsResolver } from "./doctor-host-dns";
+import { legacySnapshotCatalogsDoctor } from "./doctor-legacy-snapshot-catalogs";
+import { listenerDoctorChecks } from "./doctor-listeners";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
 import { missingAppRootsDoctor } from "./doctor-missing-app-roots";
 import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
@@ -40,6 +46,7 @@ import {
   certsOutcome,
   checksOutcome,
   deprecationsOutcome,
+  doctorSections,
   doctorTreeSummary,
   makeDoctorTree,
   selfCheckOutcome,
@@ -49,7 +56,6 @@ import type { DoctorDeprecationEntry, DoctorDeprecationReport, DoctorReport } fr
 import { countDoctorChecks } from "./doctor-report-render";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
 import {
-  DefaultSubsystemDoctorLayer,
   type SubsystemDoctorOptions,
   type SubsystemDoctorResult,
   subsystemDoctor,
@@ -77,7 +83,15 @@ export const appConfigForReport = () =>
         app: "",
         file: "(none)",
         valid: false,
-        violations: [{ path: [], message: error.message }],
+        violations: [
+          {
+            rule: "landofile.discovery",
+            severity: "error",
+            path: [],
+            scopes: ["fragment"],
+            message: error.message,
+          },
+        ],
       } satisfies ConfigLintResult),
     ),
     Effect.catchTag("LandofileFormConflictError", (error) =>
@@ -85,16 +99,14 @@ export const appConfigForReport = () =>
         app: "",
         file: error.yamlPath,
         valid: false,
-        violations: [{ path: [], message: error.message }],
-      } satisfies ConfigLintResult),
-    ),
-    Effect.catchTag("LandofileUnknownEventError", (error) =>
-      Effect.succeed({
-        app: "",
-        file: error.file,
-        valid: false,
         violations: [
-          { path: ["events", error.event], message: error.message, suggestion: error.remediation },
+          {
+            rule: "landofile.discovery",
+            severity: "error",
+            path: [],
+            scopes: ["fragment"],
+            message: error.message,
+          },
         ],
       } satisfies ConfigLintResult),
     ),
@@ -115,7 +127,7 @@ const recordAuthoredMailhogUse = Effect.gen(function* () {
   const maybeDeprecations = yield* Effect.serviceOption(DeprecationService);
   const maybeFs = yield* Effect.serviceOption(FileSystem);
   if (Option.isNone(maybeDeprecations) || Option.isNone(maybeFs)) return;
-  const appRoot = yield* Effect.promise(() => findAppRoot(process.cwd()));
+  const appRoot = yield* findAppRoot();
   if (appRoot === undefined) return;
   for (const name of [".lando.yml", ".lando.yaml"] as const) {
     const path = join(appRoot, name);
@@ -179,6 +191,9 @@ const EMPTY_CHECKS = { checks: [] } as const;
 export interface CollectDoctorReportInput<R> {
   readonly options: DoctorOptions;
   readonly provider: Effect.Effect<DoctorResult, never, R>;
+  readonly listeners?: (
+    input: Parameters<typeof listenerDoctorChecks>[0],
+  ) => Effect.Effect<DoctorResult, never, R>;
   readonly deprecations: Effect.Effect<DoctorDeprecationReport, never, R>;
   readonly certs?: Effect.Effect<CertsDoctorStatus, never, R>;
   readonly appConfig?: Effect.Effect<
@@ -188,13 +203,12 @@ export interface CollectDoctorReportInput<R> {
   >;
   /**
    * Injected subsystem doctor. Callers that already built a provider runtime
-   * should provide that runtime first so selected RouterService/SshService win
-   * over `DefaultSubsystemDoctorLayer`. `doctorReport()` omits this and keeps
-   * the stub-backed default layer.
+   * provide the selected runtime services. Without them, the section is skipped.
    */
   readonly subsystems?: (options: SubsystemDoctorOptions) => Effect.Effect<SubsystemDoctorResult, never, R>;
   /** Self checks recorded before collection started (e.g. bootstrap failure). */
   readonly initialSelfChecks?: ReadonlyArray<DoctorSelfCheck>;
+  readonly skipped?: DoctorReport["skipped"];
 }
 
 export const collectDoctorReport = Effect.fn("Doctor.collectReport")(
@@ -218,7 +232,20 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   const { redact } = yield* resolveSecretsRedactor({ sourceEnv });
   const budgetMs = doctorSectionBudgetMs(sourceEnv);
   const selfChecks: DoctorSelfCheck[] = [...(input.initialSelfChecks ?? [])];
+  const skipped: NonNullable<DoctorReport["skipped"]>[number][] = [...(input.skipped ?? [])];
+  if (input.subsystems === undefined && !skipped.some((entry) => entry.section === "subsystems")) {
+    skipped.push({
+      section: "subsystems",
+      status: "skipped",
+      reason: "Runtime subsystem services were not provided; no subsystem inspection was performed.",
+    });
+  }
   yield* tree.start;
+  for (const entry of skipped) {
+    if (!doctorSections(options).some(({ id }) => id === entry.section)) continue;
+    yield* tree.startTask(entry.section);
+    yield* tree.infoTask(entry.section, `${entry.section} · skipped · ${entry.reason}`);
+  }
 
   // Each section is one task in the live tree: it spins while the section
   // probes and settles as ✓ or ✗ from the section value, or as ✗ from the
@@ -228,8 +255,9 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     effect: Effect.Effect<A, E, SR>,
     fallback: A,
     outcome: (value: A) => DoctorSectionOutcome,
-  ): Effect.Effect<A, never, SR> =>
-    tree.startTask(name).pipe(
+  ): Effect.Effect<A, never, SR> => {
+    if (skipped.some((entry) => entry.section === name)) return Effect.succeed(fallback);
+    return tree.startTask(name).pipe(
       Effect.andThen(isolateDoctorSection({ section: name, effect, fallback, budgetMs, redact })),
       Effect.flatMap((isolated) => {
         if (isolated.self !== undefined) selfChecks.push(isolated.self);
@@ -238,6 +266,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
         return settleDoctorSection(tree, name, settled).pipe(Effect.as(isolated.value));
       }),
     );
+  };
 
   // A provider sub-probe doctor could not run (e.g. a status timeout) fails
   // the row the same way a whole-section self check does.
@@ -247,6 +276,30 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   });
   // Provider-section self checks are lifted here so the report has one home for them.
   selfChecks.push(...(provider.selfChecks ?? []));
+  skipped.push(...(provider.skipped ?? []));
+  let appListeners: DoctorResult | undefined;
+  if (options.app === true && !skipped.some((entry) => entry.section === "app-listeners")) {
+    yield* tree.startTask("app-listeners");
+    // The listener collector owns its isolation; another deadline could race its non-fatal skip.
+    appListeners =
+      input.listeners === undefined
+        ? {
+            checks: [],
+            skipped: [
+              {
+                section: "app-listeners",
+                status: "skipped",
+                reason: "Runtime listener inspection was not provided.",
+              },
+            ],
+          }
+        : yield* input.listeners({ budgetMs, redact });
+    skipped.push(...(appListeners.skipped ?? []));
+    if (appListeners.checks.length === 0 && (appListeners.skipped?.length ?? 0) > 0)
+      yield* tree.infoTask("app-listeners", "app-listeners · skipped");
+    else
+      yield* settleDoctorSection(tree, "app-listeners", checksOutcome("app-listeners", appListeners.checks));
+  }
   const certs = yield* section(
     "certificate-authority",
     input.certs ?? certsDoctorStatus(redact),
@@ -262,16 +315,14 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   const subsystemOptions: SubsystemDoctorOptions = {
     fix: options.fix === true,
     certs,
-    ...(networkTrust === undefined ? {} : { networkTrust }),
   };
-  const subsystems = yield* section(
+  const subsystems = yield* section<SubsystemDoctorResult, never, R>(
     "subsystems",
-    input.subsystems !== undefined
-      ? input.subsystems(subsystemOptions)
-      : subsystemDoctor(subsystemOptions).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+    input.subsystems !== undefined ? input.subsystems(subsystemOptions) : Effect.succeed(EMPTY_CHECKS),
     EMPTY_CHECKS,
     (result) => checksOutcome("subsystems", result.checks),
   );
+  skipped.push(...(subsystems.skipped ?? []));
   const globalApp = yield* section(
     "global-app",
     globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer)),
@@ -291,7 +342,7 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
         )
       : undefined;
   const deprecations =
-    options.deprecations === true
+    options.deprecations === true && !input.skipped?.some((entry) => entry.section === "deprecations")
       ? yield* section("deprecations", input.deprecations, { entries: [] }, deprecationsOutcome)
       : undefined;
   const appConfig =
@@ -308,7 +359,9 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   if (accelerated.self !== undefined) selfChecks.push(accelerated.self);
   const missingRoots = yield* isolateDoctorSection({
     section: "missing-app-roots",
-    effect: missingAppRootsDoctor(redact),
+    effect: input.skipped?.some((entry) => entry.section === "missing-app-roots")
+      ? Effect.succeed([])
+      : missingAppRootsDoctor(redact),
     fallback: [],
     budgetMs,
     redact,
@@ -316,12 +369,22 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
   if (missingRoots.self !== undefined) selfChecks.push(missingRoots.self);
   const orphanedSnapshots = yield* isolateDoctorSection({
     section: "orphaned-volume-snapshots",
-    effect: orphanedSnapshotsDoctor(redact),
+    effect: input.skipped?.some((entry) => entry.section === "orphaned-volume-snapshots")
+      ? Effect.succeed([])
+      : orphanedSnapshotsDoctor(redact),
     fallback: [],
     budgetMs,
     redact,
   });
   if (orphanedSnapshots.self !== undefined) selfChecks.push(orphanedSnapshots.self);
+  const legacyCatalogs = yield* isolateDoctorSection({
+    section: "legacy-snapshot-catalogs",
+    effect: legacySnapshotCatalogsDoctor(redact),
+    fallback: [],
+    budgetMs,
+    redact,
+  });
+  if (legacyCatalogs.self !== undefined) selfChecks.push(legacyCatalogs.self);
   const filesystemWatch = yield* isolateDoctorSection({
     section: "filesystem-watch",
     effect: filesystemWatchDoctor(redact, options.platform),
@@ -330,16 +393,30 @@ const collectWithTree = Effect.fnUntraced(function* <R>(
     redact,
   });
   if (filesystemWatch.self !== undefined) selfChecks.push(filesystemWatch.self);
+  const debuggerHost = yield* isolateDoctorSection({
+    section: "debugger-host",
+    effect: debuggerHostDoctor(redact, budgetMs, options.platform),
+    fallback: { checks: [] },
+    budgetMs,
+    redact,
+  });
+  if (debuggerHost.self !== undefined) selfChecks.push(debuggerHost.self);
+  skipped.push(...(debuggerHost.value.skipped ?? []));
   const report: DoctorReport = {
     version: CORE_VERSION,
+    ...(skipped.length === 0 ? {} : { skipped }),
     provider: { checks: provider.checks },
+    ...(appListeners === undefined ? {} : { appListeners: { checks: appListeners.checks } }),
     subsystems: {
       checks: [
         ...subsystems.checks,
+        ...(networkTrust === undefined ? [] : [networkTrust]),
         ...accelerated.value,
         ...missingRoots.value,
         ...orphanedSnapshots.value,
+        ...legacyCatalogs.value,
         ...filesystemWatch.value,
+        ...debuggerHost.value.checks,
       ],
     },
     globalApp,
@@ -369,10 +446,31 @@ export const doctorReport = Effect.fn("Doctor.report")(
     never,
     ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
   > =>
-    collectDoctorReport<ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry>({
-      options,
-      provider: doctor(options),
-      deprecations: doctorDeprecations(),
-      appConfig: appConfigForReport(),
+    Effect.gen(function* () {
+      const router = yield* Effect.serviceOption(RouterService);
+      const ssh = yield* Effect.serviceOption(SshService);
+      const resolver = yield* Effect.serviceOption(HostDnsResolver);
+      const hasRuntimeSubsystems = Option.isSome(router) || Option.isSome(ssh);
+      return yield* collectDoctorReport<
+        ConfigService | PathsService | RuntimeProviderRegistry | PluginRegistry
+      >({
+        options,
+        provider: doctor(options),
+        listeners: listenerDoctorChecks,
+        deprecations: doctorDeprecations(),
+        appConfig: appConfigForReport(),
+        ...(hasRuntimeSubsystems || Option.isSome(resolver)
+          ? {
+              subsystems: (subsystemOptions: SubsystemDoctorOptions) =>
+                subsystemDoctor(subsystemOptions).pipe(
+                  Effect.provide(
+                    Option.isSome(resolver)
+                      ? Layer.succeed(HostDnsResolver, resolver.value)
+                      : HostDnsResolver.layer,
+                  ),
+                ),
+            }
+          : {}),
+      });
     }),
 );

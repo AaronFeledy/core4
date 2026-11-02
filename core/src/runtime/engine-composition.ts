@@ -1,15 +1,37 @@
 import { resolveUserCacheRoot, resolveUserIncludesDir } from "@lando/engine/cache/paths";
 import { type EngineCompositionInputs, installEngineCompositionIfAbsent } from "@lando/engine/composition";
 
+import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
-import { prepareHostProxyShimArtifact } from "../cli/host-proxy/prepare-shim-artifact";
+import { resolveContainerHelper } from "../container-helper/assets";
 import { defaultGitRecipeCloner, publish } from "../recipes/git-source";
-import { makeNpmRecipeSourcePort } from "../recipes/npm-source";
-import { defaultTarballRecipeExtractor, defaultTarballRecipeFetcher } from "../recipes/tarball-source";
+import { npmRegistryConfigSnapshot } from "../recipes/npm-registry-config";
+import { defaultNpmRegistryClient, makeNpmRecipeSourcePort } from "../recipes/npm-source";
+import {
+  defaultTarballRecipeExtractor,
+  defaultTarballRecipeFetcher,
+  makeTarballRecipeFetcher,
+} from "../recipes/tarball-source";
 
 export const baseEngineCompositionInputs: EngineCompositionInputs = {
   bundledPluginModules: [],
   builtInCommandIds: BUILT_IN_COMMAND_IDS,
+  landofileSourcePorts: (client, downloader, runtime) => ({
+    npmRecipeSource: makeNpmRecipeSourcePort(
+      () =>
+        defaultNpmRegistryClient(
+          undefined,
+          (url, options) => httpJsonFetch(url, options, client),
+          npmRegistryConfigSnapshot(runtime?.registerSecrets, runtime?.readPolicy),
+        ),
+      undefined,
+      makeTarballRecipeFetcher(downloader),
+    ),
+    tarball: {
+      fetch: makeTarballRecipeFetcher(downloader).fetch,
+      extract: defaultTarballRecipeExtractor.extract,
+    },
+  }),
   landofileRuntimeInputs: {
     ports: {
       resolveUserCacheRoot,
@@ -29,8 +51,7 @@ export const baseEngineCompositionInputs: EngineCompositionInputs = {
     entryPath: process.argv[1],
     bunSourceEntryPath: new URL("../../bin/lando.ts", import.meta.url).pathname,
   }),
-  bunDevDistRoot: () => new URL("../../dist", import.meta.url).pathname,
-  prepareHostProxyShimArtifact: (target) => prepareHostProxyShimArtifact({ target }),
+  resolveContainerHelper,
 };
 
 installEngineCompositionIfAbsent(baseEngineCompositionInputs);

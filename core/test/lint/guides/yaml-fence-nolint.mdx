@@ -1,0 +1,20 @@
+---
+id: yaml-fence-nolint
+provider: test
+diataxis: tutorial
+---
+
+Deliberately invalid Landofile shown as a counterexample; skipped via fence meta.
+
+```yaml nolint
+name: demo
+thisKeyIsNotReal: true
+```
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>

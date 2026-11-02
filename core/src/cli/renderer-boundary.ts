@@ -1,16 +1,36 @@
-import { Cause, Clock, Effect, ErrorReporter, Exit, Layer, References, Schema, Scope, Tracer } from "effect";
+import {
+  Cause,
+  Clock,
+  DateTime,
+  Effect,
+  ErrorReporter,
+  Exit,
+  Layer,
+  Option,
+  References,
+  Schema,
+  Scope,
+  Tracer,
+} from "effect";
 
-import { failureOutcomeFromCause } from "@lando/sdk/command-result";
-import { JqExpressionError } from "@lando/sdk/errors";
+import { GlobalConfigSnapshot } from "@lando/engine/services/config";
+import {
+  type CompletedCommandResult,
+  failureOutcomeFromCause,
+  normalizeDefect,
+  primaryFailureReason,
+  resolveCommandCompletion,
+} from "@lando/sdk/command-result";
+import { CommandInputValidationError, JqExpressionError } from "@lando/sdk/errors";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import type { StreamFrameSchema } from "@lando/sdk/schema";
-import type { EventService, Renderer } from "@lando/sdk/services";
+import type { CommandCompletion, StreamFrameSchema } from "@lando/sdk/schema";
+import { EventService, Renderer } from "@lando/sdk/services";
+import { commandFailureOutcome, commandInterruptionExitCode } from "./command-interruption";
 
 import { resolveProxyDefaultDomain } from "@lando/engine/config/proxy-default-domain";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { EventPublicationObserver } from "@lando/engine/services/event-service";
-import * as EnvSecretStore from "@lando/engine/services/secret-store";
-import { RedactionService } from "@lando/redaction/service";
-import { shouldEmitHyperlinks } from "@lando/renderer/console-layout";
+import { RedactionService, makeRedactionOwner } from "@lando/redaction/service";
 import {
   type RendererIO,
   createStdioRendererIO,
@@ -20,6 +40,7 @@ import {
 import * as RendererOutput from "@lando/renderer/output";
 import { writeDiagnosticLine, writeResultLine } from "@lando/renderer/output";
 import type { FormatSummaryOptions } from "@lando/renderer/summary";
+import { ChildOutput, makeChildOutputPolicy } from "./child-output.ts";
 import {
   type CliInvocationSnapshot,
   newInvocationId,
@@ -33,10 +54,14 @@ import { CommandWarnings, makeCommandWarnings } from "./command-warnings";
 import { dimBugReportDetails } from "./diagnostic-text";
 import { renderFailureEvidence } from "./failure-evidence";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat, isEnvelopeResultFormat } from "./format-flags";
+import { interruptOnAbort } from "./interrupt-on-abort";
+import { resolveOutputRouting } from "./output-routing";
 import { renderDeprecationDiagnostics } from "./renderer-deprecations";
+import { startMachineEventConsumer } from "./renderer-machine-events";
 import { type StreamOutputFrame, makeMachineResultEmitters } from "./renderer-machine-output";
 import type { RendererMode } from "./renderer-selection";
 import { ResultTerminal } from "./result-terminal";
+import { recordCliDefect, renderTerminalFailure } from "./terminal-failure";
 import { type TraceSelection, activeTrace } from "./trace-selection";
 
 export {
@@ -58,8 +83,7 @@ export interface RenderContext {
   readonly columns: number | undefined;
   readonly isTTY: boolean;
   readonly proxyDefaultDomain?: string;
-  /** Host env snapshot used for OSC 8 capability (TERM, NO_COLOR). */
-  readonly env?: Readonly<Record<string, string | undefined>>;
+  readonly noColor: boolean;
   /** Exact-value redactor for summary fields; apply before paint, never after. */
   readonly redact?: (text: string) => string;
 }
@@ -74,15 +98,12 @@ export const isDecoratedContext = (ctx?: RenderContext): boolean =>
  * `--renderer=plain` advertises `color: false`, so it stays escape-free.
  */
 export const contextAllowsHyperlinks = (ctx?: RenderContext): boolean =>
-  ctx !== undefined &&
-  isDecoratedContext(ctx) &&
-  shouldEmitHyperlinks({
-    isTTY: ctx.isTTY,
-    ...(ctx.env === undefined ? {} : { env: ctx.env }),
-  });
+  ctx !== undefined && isDecoratedContext(ctx) && !ctx.noColor;
 
 /** Columns + before-paint redactor for {@link formatSummary}. */
 export const summaryPaintOptions = (ctx?: RenderContext): FormatSummaryOptions => ({
+  color: ctx?.noColor !== true,
+  hyperlinks: contextAllowsHyperlinks(ctx),
   ...(ctx?.columns === undefined ? {} : { columns: ctx.columns }),
   ...(ctx?.redact === undefined ? {} : { redact: ctx.redact }),
 });
@@ -106,10 +127,15 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
   readonly suppressInterruptionDiagnostics?: boolean;
+  readonly signal?: AbortSignal;
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
-  readonly successExitCode?: (value: A) => number | undefined;
+  readonly renderEffect?: (completed: CompletedCommandResult<A>) => Effect.Effect<void, unknown, R>;
+  readonly completion?: (value: A) => CommandCompletion;
   readonly failureExitCode?: (error: unknown) => number | undefined;
-  readonly formatError: (failure: import("@lando/sdk/command-result").ProjectedFailure) => string;
+  readonly formatError: (
+    failure: import("@lando/sdk/command-result").ProjectedFailure,
+    redactor: import("@lando/sdk/secrets").Redactor,
+  ) => string;
   readonly setExitCode?: (code: number) => void;
   /**
    * Records the command's spans with this tracer. Without one, the CLI keeps
@@ -164,46 +190,78 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   effect: Effect.Effect<A, E, R>,
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
+  const owner = makeRedactionOwner();
+  const sourceEnv = { ...(options.sourceEnv ?? process.env) };
+  try {
+    await runWithInvocationRedaction(effect, { ...options, sourceEnv }, owner.service);
+  } catch (cause) {
+    const redactor = await Effect.runPromise(owner.service.forProfile("secrets", { sourceEnv }));
+    await renderTerminalFailure(Cause.isCause(cause) ? cause : Cause.die(cause), options, redactor);
+  } finally {
+    owner.dispose();
+  }
+};
+
+const runWithInvocationRedaction = async <A, E, R, RE>(
+  effect: Effect.Effect<A, E, R>,
+  options: RunWithRendererHandlingOptions<A, R, RE>,
+  redaction: RedactionService["Service"],
+): Promise<void> => {
   const selection = options.trace ?? activeTrace();
   if (options.tracer === undefined && selection?.enabled === true) {
     return withCommandTracing(
       selection,
       (capture, redactionTokens) =>
-        runWithRendererHandling(effect, {
-          ...options,
-          tracer: capture.tracer,
-          traceCapture: capture,
-          traceDisplay: selection.display,
-          sourceEnv: selection.env,
-          extraRedactionTokens: redactionTokens,
-        }),
+        runWithInvocationRedaction(
+          effect,
+          {
+            ...options,
+            tracer: capture.tracer,
+            traceCapture: capture,
+            traceDisplay: selection.display,
+            sourceEnv: selection.env,
+            extraRedactionTokens: redactionTokens,
+          },
+          redaction,
+        ),
       options.invocation?.flags,
+      redaction,
     );
   }
   const sourceEnv = options.sourceEnv ?? process.env;
+  const redactionLayer = Layer.succeed(RedactionService, redaction);
   const extraTokens = options.extraRedactionTokens ?? [];
   // Installed so command defects reach ErrorReporter. Display stays on formatError,
   // which is the bug-report renderer for pre-command failures.
   const reporter = ErrorReporter.make(() => undefined);
   const { landoRenderer } = await import("./renderer/bundled-renderers");
   const io = withStdioTerminalNewlines(
-    options.io ?? createStdioRendererIO(),
+    options.io ?? createStdioRendererIO(undefined, undefined, undefined, { env: sourceEnv }),
     options.rendererMode !== "json" &&
       options.resultFormat !== "ndjson" &&
       !isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT),
   );
   let brokenPipe = false;
   const brokenPipeSignal = Effect.callback<never>((resume) => {
-    const unsubscribe = onStdioBrokenPipe((destination) => {
-      if (destination !== "stdout") return;
+    const unsubscribe = onStdioBrokenPipe(() => {
       brokenPipe = true;
       unsubscribe();
       resume(Effect.interrupt);
     });
     return Effect.sync(unsubscribe);
   });
-  // Subscribe before command writes; raceFirst waits for interrupted scope finalizers.
-  const commandEffect = Effect.raceFirst(brokenPipeSignal, effect).pipe(
+  const childOutput = makeChildOutputPolicy({
+    native:
+      !isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT) &&
+      options.rendererMode !== "json",
+    stdin: true,
+    stream:
+      isEnvelopeResultFormat(options.resultFormat ?? DEFAULT_RESULT_FORMAT) || options.rendererMode === "json"
+        ? undefined
+        : () => RendererOutput.makeStreamFrameSink("text"),
+  });
+  const commandEffect = interruptOnAbort(effect, options.signal).pipe(
+    Effect.provideService(ChildOutput, childOutput),
     Effect.withErrorReporting({ defectsOnly: true }),
   );
   const renderContext: RenderContext = {
@@ -211,25 +269,25 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     format: options.resultFormat ?? DEFAULT_RESULT_FORMAT,
     columns: io.stdoutColumns,
     isTTY: io.stdoutIsTTY === true,
-    env: sourceEnv,
+    noColor: io.noColor === true,
   };
   const rendererLayer = RendererOutput.layerServiceForMode(options.rendererMode, landoRenderer, io);
-  const envelopeFormat = isEnvelopeResultFormat(renderContext.format);
+  const routing = resolveOutputRouting({
+    rendererMode: options.rendererMode,
+    format: renderContext.format,
+    declaresStreaming: options.streaming !== undefined,
+    live: options.streamingMode === "live",
+  });
+  const envelopeFormat = routing.stdout !== "human";
   const commandWarnings = makeCommandWarnings(envelopeFormat);
   const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
-  const failureDiagnosticsLayer = Layer.mergeAll(
+  const failureDiagnosticsLayer = Layer.mergeAll(rendererLayer, redactionLayer);
+  const commandLayer = Layer.mergeAll(
+    options.runtime.pipe(Layer.provide(redactionLayer)),
     rendererLayer,
-    RedactionService.layer.pipe(Layer.provide(EnvSecretStore.layer)),
-  );
-  // Frame transport is JSON only. A YAML run emits the terminal envelope alone.
-  const framedJson = options.streaming !== undefined && renderContext.format === "json";
-  const liveStreaming = options.streamingMode === "live";
-  // Live sinks are for human formats and JSON data frames only. YAML collects into one envelope.
-  const attachLiveSink = liveStreaming && renderContext.format !== "yaml";
-  const commandLayer = Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer) as Layer.Layer<
-    R,
-    RE
-  >;
+    commandWarningsLayer,
+    redactionLayer,
+  ) as Layer.Layer<R, RE>;
   const command = options.command ?? "cli:unknown";
   // Resolve the invocation id once so the root span and lifecycle events agree.
   const invocation =
@@ -239,6 +297,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const initStage = makeStage("init");
   const renderStage = makeStage("render", true);
   let resultExit: Exit.Exit<unknown, unknown> = Exit.void;
+  let completedExitCode: number | undefined;
   const capture = options.traceCapture;
   const finishTrace =
     capture === undefined
@@ -247,17 +306,25 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           yield* renderStage.end(resultExit);
           return yield* capture.finish(resultExit);
         });
-  const runCommand = Effect.useSpan("CommandLifecycle.run", (span) => withStageParent(commandEffect, span));
+  let finishStream: Effect.Effect<void> = Effect.void;
+  const runCommand = Effect.useSpan("CommandLifecycle.run", (span) =>
+    withStageParent(
+      commandEffect.pipe(Effect.scoped, Effect.ensuring(Effect.suspend(() => finishStream))),
+      span,
+    ),
+  );
   const program = Effect.gen(function* () {
     const initSpan = yield* initStage.start;
     const resultSchema = options.resultSchema ?? EmptyCommandResultSchema;
-    const { emitJsonResult, emitStreamResult, replayBufferedEvents, emitStreamingSuccess } =
+    const { jsonRedactor, encodeEventFrame, emitJsonResult, emitStreamResult, emitStreamingSuccess } =
       makeMachineResultEmitters<A>({
         command,
         resultSchema,
+        output: childOutput.output,
         commandWarnings,
         sourceEnv,
         extraRedactionTokens: extraTokens,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
         ...(capture === undefined ? {} : { onRedactor: capture.setRedactor }),
         ...(finishTrace === undefined ? {} : { trace: finishTrace }),
         ...(options.streamFrames === undefined ? {} : { streamFrames: options.streamFrames }),
@@ -276,8 +343,20 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     };
     const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
       Effect.sync(() => {
-        const failure = failureOutcomeFromCause(cause);
-        if (failure.error instanceof JqExpressionError) {
+        if (Cause.hasInterruptsOnly(cause)) {
+          setExitCode(commandInterruptionExitCode(options.signal));
+          return;
+        }
+        const primary = primaryFailureReason(cause);
+        if (primary !== undefined && Cause.isDieReason(primary)) {
+          setExitCode(1);
+          return;
+        }
+        const failure = failureOutcomeFromCause(cause, normalizeDefect);
+        if (
+          failure.error instanceof JqExpressionError ||
+          failure.error instanceof CommandInputValidationError
+        ) {
           setExitCode(2);
           return;
         }
@@ -285,18 +364,20 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       });
     const renderFailure = Effect.fnUntraced(function* (cause: Cause.Cause<unknown>) {
       resultExit = Exit.failCause(cause);
-      const { error: primaryError, additionalErrors } = failureOutcomeFromCause(cause);
-      const error = yield* renderFailureEvidence(
-        Cause.hasInterruptsOnly(cause) ? "All fibers interrupted without errors." : primaryError,
-      );
+      const defectRedactor = yield* redaction.forProfile("secrets", {
+        sourceEnv,
+        redactionTokens: extraTokens,
+      });
+      yield* recordCliDefect(cause, defectRedactor, io);
+      const { error: primaryError, additionalErrors } = commandFailureOutcome(cause, options.signal);
+      const error = yield* renderFailureEvidence(primaryError);
       if (envelopeFormat) {
         const outcome = {
           _tag: "failure",
           error,
           additionalErrors,
         } as const;
-        const emit = (next: typeof outcome) => (framedJson ? emitStreamResult(next) : emitJsonResult(next));
-        if (framedJson && !attachLiveSink) yield* replayBufferedEvents();
+        const emit = routing.stdout === "frames" ? emitStreamResult : emitJsonResult;
         const emitted = yield* emit(outcome).pipe(Effect.result);
         if (emitted._tag === "Failure") {
           if (!(emitted.failure instanceof JqExpressionError)) {
@@ -309,37 +390,45 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         yield* setFailureExitCode(cause);
         return;
       }
-      let message = options.formatError({ error, additionalErrors });
-      const redaction = yield* Effect.serviceOption(RedactionService);
-      if (redaction._tag === "Some") {
-        const redactor = yield* redaction.value.forProfile("secrets", {
-          sourceEnv,
-          redactionTokens: extraTokens,
-        });
-        message = redactor.redactString(message);
-      }
+      const redactor = yield* redaction.forProfile("secrets", { sourceEnv, redactionTokens: extraTokens });
+      let message = redactor.redactString(options.formatError({ error, additionalErrors }, redactor));
+      // Failure notices (for example what an incomplete start left in place) follow the error.
+      const notices = (yield* commandWarnings.failureNotices).map((notice) => redactor.redactString(notice));
       if (options.rendererMode === "lando" && io.isTTY === true) message = dimBugReportDetails(message);
       yield* writeDiagnosticLine(message);
+      const renderer = yield* Renderer;
+      for (const notice of notices) yield* renderer.message.warn(notice);
       yield* setFailureExitCode(cause);
     });
+    let finishMachineEvents: Effect.Effect<void> = Effect.void;
     const executeCommand = Effect.gen(function* () {
       if (invocation === undefined) yield* initStage.end(Exit.void);
       const commandExit =
         invocation === undefined
-          ? yield* Effect.exit(runCommand)
+          ? yield* Effect.exit(
+              runCommand.pipe(
+                Effect.map((value) => resolveCommandCompletion(command, value, options.completion)),
+              ),
+            )
           : yield* runCommandLifecycle(runCommand, {
               invocation,
               onInitialized: initStage.end(Exit.void),
-              ...(options.successExitCode === undefined ? {} : { successExitCode: options.successExitCode }),
+              ...(options.completion === undefined ? {} : { completion: options.completion }),
               ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
-              ...(options.suppressInterruptionDiagnostics === true ? { interruptionExitCode: 0 } : {}),
+              interruptionExitCode: () =>
+                options.suppressInterruptionDiagnostics === true
+                  ? 0
+                  : commandInterruptionExitCode(options.signal),
             });
+      yield* finishMachineEvents;
       yield* finishCommandProgress();
       resultExit = commandExit;
       const renderSpan = yield* renderStage.start;
       return yield* withStageParent(renderCommandExit(commandExit), renderSpan);
     });
-    const renderCommandExit = Effect.fnUntraced(function* (commandExit: Exit.Exit<A, unknown>) {
+    const renderCommandExit = Effect.fnUntraced(function* (
+      commandExit: Exit.Exit<CompletedCommandResult<A>, unknown>,
+    ) {
       if (brokenPipe && Exit.isFailure(commandExit) && Cause.hasInterruptsOnly(commandExit.cause)) {
         return { _tag: "handled-failure" } as const;
       }
@@ -357,56 +446,93 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         yield* renderFailure(commandExit.cause);
         return { _tag: "handled-failure" } as const;
       }
-      yield* applySuccessExitCode(commandExit.value);
-      if (attachLiveSink) {
-        if (envelopeFormat) {
-          const tokens = options.redactionTokens?.(commandExit.value) ?? [];
-          // A live run already wrote frames, so its terminal result stays a frame
-          // under JSON even when the command declares no frame schema. YAML has no
-          // frame transport and emits the envelope document alone.
-          const emitTerminal =
-            renderContext.format === "json"
-              ? emitStreamResult({ _tag: "success", value: commandExit.value }, tokens)
-              : emitJsonResult({ _tag: "success", value: commandExit.value }, tokens);
-          yield* emitTerminal.pipe(Effect.catchCause((cause) => renderFailure(cause)));
+      const completed = commandExit.value;
+      const value = completed.value;
+      completedExitCode = completed.exitCode;
+      if (!envelopeFormat && options.renderEffect !== undefined) yield* options.renderEffect(completed);
+      if (routing.sink === "live") {
+        if (routing.stdout === "frames") {
+          yield* emitStreamResult(completed, options.redactionTokens?.(value) ?? []).pipe(
+            Effect.catchCause((cause) => renderFailure(cause)),
+          );
         }
         return { _tag: "handled-success" } as const;
       }
-      if (framedJson) {
-        yield* emitStreamingSuccess(commandExit.value).pipe(
+      if (routing.stdout === "frames") {
+        yield* emitStreamingSuccess(value, completed).pipe(
           Effect.catchCause((cause) => renderFailure(cause)),
         );
         return { _tag: "handled-success" } as const;
       }
       const proxyDefaultDomain = yield* resolveProxyDefaultDomain;
-      return { _tag: "success", value: commandExit.value, proxyDefaultDomain } as const;
+      return { _tag: "success", value, completed, proxyDefaultDomain } as const;
     });
-    const applySuccessExitCode = (value: A) =>
-      Effect.sync(() => {
-        const code = options.successExitCode?.(value);
-        if (code !== undefined && code !== 0) setExitCode(code);
-      });
     let eventConsumerLayer: Layer.Layer<never, never, EventService> | undefined;
-    if (!(framedJson && !attachLiveSink)) {
-      if (!envelopeFormat) {
+    switch (routing.events) {
+      case "mode-narration":
+      case "json-event-dump":
+      case "verbose-dump":
         eventConsumerLayer = RendererOutput.layerEventConsumerForMode(options.rendererMode, io, {
           landoRenderer,
         });
-      } else {
+        break;
+      case "notifications-only":
+      case "silent-lando-consumer":
         eventConsumerLayer = RendererOutput.layerNotificationConsumerForMode(
           options.rendererMode,
           landoRenderer,
           io,
         );
+        break;
+      case "frames":
+      case "none":
+        break;
+      default: {
+        const exhaustive: never = routing;
+        return exhaustive;
       }
     }
-    // Construct the sink inside the command runtime so it captures that runtime's
-    // SecretStore-backed redaction service, not the diagnostic fallback.
-    const executeWithLiveSink = attachLiveSink
-      ? Effect.provide(executeCommand, RendererOutput.layerStreamFrameSink(renderContext.format))
-      : executeCommand;
+    const flushConfigWarnings = Effect.gen(function* () {
+      const snapshot = yield* Effect.serviceOption(GlobalConfigSnapshot);
+      const events = yield* Effect.serviceOption(EventService);
+      if (Option.isNone(snapshot) || Option.isNone(events)) return;
+      for (const body of yield* snapshot.value.takeWarnings) {
+        yield* events.value
+          .publish(MessageWarnEvent.make({ body, timestamp: DateTime.nowUnsafe() }))
+          .pipe(Effect.ignore);
+      }
+    });
+    const executeWithLiveSink = Effect.andThen(
+      flushConfigWarnings,
+      routing.sink === "live"
+        ? Effect.gen(function* () {
+            const owner = yield* RendererOutput.makeStreamFrameSink(renderContext.format);
+            finishStream = owner.finish();
+            return yield* executeCommand.pipe(Effect.provideService(StreamFrameSink, owner.sink));
+          })
+        : executeCommand,
+    );
     const executeWithEventConsumer = Effect.scoped(
       Effect.gen(function* () {
+        if (routing.events === "frames") {
+          const redactor = yield* jsonRedactor();
+          const finish = yield* interruptOnAbort(
+            startMachineEventConsumer(encodeEventFrame, redactor),
+            options.signal,
+          );
+          finishMachineEvents = interruptOnAbort(
+            Effect.gen(function* () {
+              const dropped = yield* finish;
+              if (dropped > 0)
+                yield* commandWarnings.add({
+                  code: "LANDO_EVENT_FRAMES_DROPPED",
+                  message: `${dropped} events were dropped because the output reader fell behind.`,
+                });
+            }),
+            options.signal,
+          );
+          return yield* executeWithLiveSink;
+        }
         if (eventConsumerLayer === undefined) return yield* executeWithLiveSink;
         const consumerScope = yield* Scope.fork(yield* Effect.scope, "sequential");
         const consumerContext = yield* Layer.buildWithScope(eventConsumerLayer, consumerScope);
@@ -417,14 +543,23 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         );
       }),
     );
-    // Build the command runtime in its own memo map. Effect 4 otherwise reuses the
-    // diagnostic fallback's `RedactionService.layer`, bound to the env-only secret
-    // store, and secrets from the runtime's own store would render unredacted.
     const commandOutcome = yield* Effect.exit(
-      withCommandEventService(executeWithEventConsumer).pipe(
-        Effect.provide(Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)), {
-          local: true,
+      Effect.scoped(
+        Effect.gen(function* () {
+          const memoMap = yield* Layer.makeMemoMap;
+          const runtimeContext = yield* interruptOnAbort(
+            Layer.buildWithMemoMap(
+              Layer.provide(commandLayer, Layer.succeed(Tracer.ParentSpan, initSpan)),
+              memoMap,
+              yield* Effect.scope,
+            ),
+            options.signal,
+          );
+          return yield* withCommandEventService(executeWithEventConsumer).pipe(
+            Effect.provide(runtimeContext),
+          );
         }),
+      ).pipe(
         Effect.provideService(EventPublicationObserver, (event) =>
           envelopeFormat && isMessageWarnEvent(event)
             ? commandWarnings.add({ code: "LANDO_MESSAGE_WARN", message: event.body })
@@ -449,7 +584,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         }
         if (envelopeFormat && options.documentOutput !== true) {
           yield* emitJsonResult(
-            { _tag: "success", value: commandOutcome.value.value },
+            commandOutcome.value.completed,
             options.redactionTokens?.(commandOutcome.value.value) ?? [],
           ).pipe(Effect.catchCause((cause) => renderFailure(cause)));
           return;
@@ -505,8 +640,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         span,
       ),
   );
-  const diagnosedProgram = tracedProgram.pipe(
-    Effect.provideService(ResultTerminal, { isTTY: renderContext.isTTY, columns: renderContext.columns }),
+  const diagnosedProgram = Effect.raceFirst(brokenPipeSignal, tracedProgram).pipe(
+    Effect.provideService(ResultTerminal, {
+      isTTY: renderContext.isTTY,
+      columns: renderContext.columns,
+      noColor: renderContext.noColor,
+    }),
     Effect.withErrorReporting({ defectsOnly: true }),
     Effect.provide(Layer.merge(failureDiagnosticsLayer, ErrorReporter.layer([reporter]))),
   );
@@ -518,12 +657,24 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           Effect.provideService(References.TracerEnabled, true),
         ),
   );
-  if (Exit.isFailure(exit)) throw new Error(Cause.pretty(exit.cause), { cause: exit.cause });
+  if (Exit.isFailure(exit) && !brokenPipe) {
+    const redactor = await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv }));
+    await renderTerminalFailure(exit.cause, options, redactor);
+  } else if (!brokenPipe && Exit.isSuccess(resultExit) && completedExitCode !== undefined) {
+    (
+      options.setExitCode ??
+      ((code) => {
+        process.exitCode = code;
+      })
+    )(completedExitCode);
+  }
   if (options.traceCapture !== undefined && options.traceDisplay === true && !envelopeFormat && !brokenPipe) {
     await Effect.runPromise(
-      writeDiagnosticLine(formatCommandTrace(options.traceCapture.snapshot())).pipe(
-        Effect.provide(rendererLayer),
-      ),
+      writeDiagnosticLine(
+        (await Effect.runPromise(redaction.forProfile("secrets", { sourceEnv }))).redactString(
+          formatCommandTrace(options.traceCapture.snapshot()),
+        ),
+      ).pipe(Effect.provide(rendererLayer)),
     );
   }
 };

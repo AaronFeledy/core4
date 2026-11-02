@@ -1,0 +1,11 @@
+name: lando-mariadb-105
+services:
+  defaults:
+    type: mariadb:10.5
+  patch:
+    type: mariadb:10.5.13
+
+# This is important because it lets lando know to test against the plugin in this repo
+# DO NOT REMOVE THIS!
+plugins:
+  "@lando/mariadb": ../..

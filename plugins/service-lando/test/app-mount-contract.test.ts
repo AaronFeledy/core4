@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { serviceAppMount } from "@lando/sdk/schema";
 import { Effect } from "effect";
 
 import { type ServiceFeatureContractHarness, runServiceFeatureContract } from "@lando/sdk/test";
@@ -48,6 +49,6 @@ describe("lando.app-mount service-feature contract", () => {
       metadata: { resolvedAt: "2026-01-01T00:00:00Z", source: "/srv/project/.lando.yml", runtime: 4 },
     });
     // Then
-    expect(plan.appMount?.realization).toBe("passthrough");
+    expect(serviceAppMount(plan)?.realization).toBe("passthrough");
   });
 });

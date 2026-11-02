@@ -6,18 +6,21 @@ import { join } from "node:path";
 
 import { Effect, Layer } from "effect";
 
-import { getLandofileAppRoot, rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { AbsolutePath, type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, RuntimeProviderRegistry } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestFileSyncEngine, TestRuntimeProvider } from "@lando/sdk/test";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 
 import { validateResolvedAppTarget } from "../../src/operations/applied-state-target.ts";
+import { FileSyncResolver } from "../../src/plugins/file-sync-resolver.ts";
 import * as PluginRegistryLayer from "../../src/plugins/registry.ts";
+import { HostProviderOverride } from "../../src/providers/host-provider.ts";
 import * as AppPlannerLayer from "../../src/services/planner.ts";
 
 const slowBindCapabilities = {
   ...TestRuntimeProvider.capabilities,
   bindMountPerformance: "slow" as const,
+  fileSyncTargets: "prepared-volume" as const,
 };
 
 test("uses the canonical Windows root when planning a teardown target", async () => {
@@ -25,7 +28,7 @@ test("uses the canonical Windows root when planning a teardown target", async ()
   const discoveredRoot = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\embedded-app";
   const canonicalRoot = AbsolutePath.make("C:\\Users\\runneradmin\\AppData\\Local\\Temp\\embedded-app");
   const realpath = spyOn(fs, "realpath").mockResolvedValue(canonicalRoot);
-  const landofile = rememberLandofileAppRoot(
+  const landofile = literalTestLandofile(
     { name: "embedded-app", runtime: 4 as const, provider: ProviderId.make("test") },
     discoveredRoot,
   );
@@ -42,11 +45,14 @@ test("uses the canonical Windows root when planning a teardown target", async ()
     expect(plan.root).toBe(canonicalRoot);
     expect(plan.identity?.appRoot).toBe(canonicalRoot);
     expect(landofile).toEqual(authored);
-    expect(getLandofileAppRoot(landofile)).toBe(discoveredRoot);
+    expect(landofile.context.appRoot).toBe(AbsolutePath.make(discoveredRoot));
     const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
     await Effect.runPromise(
       validateResolvedAppTarget(target).pipe(
         Effect.provideService(RuntimeProviderRegistry, {
+          appliedPlansFor: () => Effect.succeed([]),
+          resolveAppliedPlan: () => Effect.succeed(undefined),
+          resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
           list: Effect.succeed([]),
           capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
           select: () => Effect.succeed(TestRuntimeProvider),
@@ -71,7 +77,7 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
     if (value.includes("RUNNER~1") || value === discoveredRoot) return canonicalRoot;
     return originalRealpath(input);
   }) as typeof fs.realpath);
-  const landofile = rememberLandofileAppRoot(
+  const landofile = literalTestLandofile(
     {
       name: "embedded-app",
       runtime: 4,
@@ -85,7 +91,20 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
   try {
     const plan = await Effect.runPromise(
       Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, slowBindCapabilities)).pipe(
-        Effect.provide(AppPlannerLayer.layer.pipe(Layer.provide(PluginRegistryLayer.layer))),
+        Effect.provide(
+          AppPlannerLayer.layer.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                PluginRegistryLayer.layer,
+                FileSyncResolver.layerWithEngine(
+                  { ...TestFileSyncEngine, id: "mutagen" },
+                  { platform: ["linux", "darwin", "win32"] },
+                ),
+              ),
+            ),
+          ),
+        ),
+        Effect.provideService(HostProviderOverride, ProviderId.make(TestRuntimeProvider.id)),
       ),
     );
 
@@ -97,11 +116,14 @@ test("plans file-sync sessions and bind mounts on the canonical Windows root", a
       expect(entry.session.source).toBe(plan.root);
     }
     const web = plan.services[ServiceName.make("web")];
-    expect(web?.appMount?.source).toBe(plan.root);
-    expect(web?.appMount?.target).toBe(PortablePath.make("/app"));
-    expect(web?.mounts.some((mount) => mount.type === "bind" && mount.source === plan.root)).toBe(false);
+    expect(serviceAppMount(web ?? { mounts: [] })?.source).toBe(plan.root);
+    expect(serviceAppMount(web ?? { mounts: [] })?.target).toBe(PortablePath.make("/app"));
+    expect(web?.mounts.filter((mount) => mount.type === "bind" && mount.source === plan.root)).toHaveLength(
+      1,
+    );
   } finally {
     realpath.mockRestore();
     await rm(canonicalRoot, { recursive: true, force: true });
   }
 });
+import { serviceAppMount } from "@lando/sdk/schema";

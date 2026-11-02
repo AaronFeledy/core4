@@ -17,6 +17,7 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { RedactionService } from "@lando/redaction/service";
 import { identityRedactor } from "@lando/sdk/command-result";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "../landofile/command-warnings.ts";
+import { captureHostProbeRunners, validateHealthcheckExecution } from "../subsystems/healthcheck/attempt.ts";
 import { collectAppPlanRedactionTokens } from "./app-plan-redaction.ts";
 import { runAppBuild } from "./build-app-runner.ts";
 import {
@@ -66,6 +67,8 @@ const mapBuildCacheError = (providerId: string, cause: unknown) =>
     operation: "buildResults",
     message: "Unable to access the scratch build-results cache.",
     cause,
+    remediation:
+      "Re-run the command after checking provider logs; if it persists, report the internal provider error.",
   });
 
 const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBuildStep) =>
@@ -127,6 +130,14 @@ const resolveSourceArtifact = (
   );
 };
 
+const serviceWithResolvedDigest = (
+  service: ServicePlan,
+  sourceArtifact: ArtifactRef | undefined,
+): ServicePlan => {
+  if (service.artifact?.kind !== "ref" || sourceArtifact?.digest === undefined) return service;
+  return { ...service, artifact: { ...service.artifact, digest: sourceArtifact.digest } };
+};
+
 const sourceIdentityMatches = (
   complete: {
     readonly sourceArtifactRef?: string | undefined;
@@ -166,19 +177,13 @@ const buildService = Effect.fn("BuildOrchestrator.buildService")(function* (inpu
         })
       : identityRedactor;
   const context = redactedBuildContext(redactor, plan, service);
-  const step = yield* buildStepFor(provider, service);
   const sourceArtifact = yield* resolveSourceArtifact(provider, service, {
     refresh: input.refresh,
     events,
     redactor,
   });
-  const resolvedService =
-    service.artifact?.kind === "ref" && sourceArtifact?.digest !== undefined
-      ? {
-          ...service,
-          artifact: { ...service.artifact, digest: sourceArtifact.digest },
-        }
-      : service;
+  const resolvedService = serviceWithResolvedDigest(service, sourceArtifact);
+  const step = yield* buildStepFor(provider, resolvedService);
   const resolvedPlan =
     resolvedService === service
       ? plan
@@ -297,9 +302,11 @@ export const layer = Layer.effect(
     const paths = yield* PathsService;
     const registry = yield* RuntimeProviderRegistry;
     const stateStore = yield* StateStore;
+    const hostProbeRunners = yield* captureHostProbeRunners;
 
     return BuildOrchestrator.of({
       build: Effect.fn("BuildOrchestrator.build")(function* (plan, options) {
+        yield* validateHealthcheckExecution(plan, hostProbeRunners);
         const refresh = options?.refresh === true;
         const provider = (yield* SelectedProvider) ?? (yield* registry.select(plan));
         const servicePlans = Object.values(plan.services);
@@ -363,7 +370,10 @@ export const layer = Layer.effect(
                 redactionTokens: collectAppPlanRedactionTokens(plan),
               })
             : identityRedactor;
-        yield* runAppBuild({ events, paths, provider, plan, redactor, stateStore }, options);
+        yield* runAppBuild(
+          { events, paths, provider, plan, redactor, stateStore, hostProbeRunners },
+          options,
+        );
       }),
     });
   }),

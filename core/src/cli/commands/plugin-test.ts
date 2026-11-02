@@ -1,16 +1,15 @@
 import { DateTime, Effect, Schema } from "effect";
 
-import { type FileIoError, type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
+import { PluginManifestError } from "@lando/sdk/errors";
 
 import { validatePluginManifest } from "@lando/engine/operations/plugin-install";
-import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
+import { bunSelfRun } from "./bun-self-runner";
 import { publishOptionalEvent } from "./optional-event-publish";
 import { resolvePluginPackageRoot } from "./plugin-package-root";
 
 export interface PluginTestOptions {
   readonly argv?: ReadonlyArray<string>;
   readonly cwd?: string;
-  readonly spawner?: BunSelfSpawner;
   readonly execPath?: string;
 }
 
@@ -36,9 +35,7 @@ const splitPluginTestArgv = (
   return { paths: argv.slice(0, dash), forwarded: argv.slice(dash + 1) };
 };
 
-export const pluginTest = Effect.fn("PluginTest.test")(function* (
-  options: PluginTestOptions = {},
-): Effect.fn.Return<PluginTestResult, NotImplementedError | FileIoError | PluginManifestError> {
+export const pluginTest = Effect.fn("PluginTest.test")(function* (options: PluginTestOptions = {}) {
   const pluginRoot = yield* resolvePluginPackageRoot(options.cwd, "meta:plugin:test");
   const { manifest } = yield* Effect.tryPromise({
     try: () => validatePluginManifest(pluginRoot),
@@ -47,7 +44,8 @@ export const pluginTest = Effect.fn("PluginTest.test")(function* (
         ? cause
         : new PluginManifestError({
             message: `Plugin manifest validation failed in ${pluginRoot}.`,
-            issues: [String(cause)],
+            issues: [{ path: [], message: String(cause) }],
+            remediation: `Check package.json in ${pluginRoot} and correct the reported manifest issues.`,
           }),
   });
   const { paths, forwarded } = splitPluginTestArgv(options.argv ?? []);
@@ -65,7 +63,6 @@ export const pluginTest = Effect.fn("PluginTest.test")(function* (
     cwd: pluginRoot,
     verb: "test",
     callerSubsystem,
-    ...(options.spawner === undefined ? {} : { spawner: options.spawner }),
     ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
   });
   yield* publishOptionalEvent({
@@ -76,7 +73,13 @@ export const pluginTest = Effect.fn("PluginTest.test")(function* (
     exitCode: result.exitCode,
     timestamp: DateTime.formatIso(yield* DateTime.now),
   });
-  return { pluginName: manifest.name, pluginRoot, argv, exitCode: result.exitCode };
+  const completed: PluginTestResult = {
+    pluginName: manifest.name,
+    pluginRoot,
+    argv,
+    exitCode: result.exitCode,
+  };
+  return completed;
 });
 
 export const renderPluginTestResult = (result: PluginTestResult): string =>

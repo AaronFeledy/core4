@@ -40,8 +40,20 @@ export const assertTopLevelAliasesClaimable = (commandId: string, aliases: Reado
 
 export const reservedToolingNameConflict = (
   name: string,
-  claimedBy: string,
+  serviceTypeId?: string,
 ): CommandAliasConflictError | undefined => {
-  if (reservedTopLevelAliasOwner(name) === undefined) return undefined;
-  return commandAliasConflictError(name, claimedBy);
+  const owner = reservedTopLevelAliasOwner(name);
+  if (owner === undefined) return undefined;
+  const claimedBy =
+    serviceTypeId === undefined ? `tooling task ${name}` : `service type ${serviceTypeId} task ${name}`;
+  return new CommandAliasConflictError({
+    message: `${claimedBy.charAt(0).toUpperCase()}${claimedBy.slice(1)} can't use the name ${name}, which belongs to the built-in ${owner} command.`,
+    alias: name,
+    claimedBy,
+    reservedFor: owner,
+    remediation:
+      serviceTypeId === undefined
+        ? `Rename tooling task ${name}; ${name} belongs to ${owner}.`
+        : `Set tooling.${name}: false in the Landofile to drop service type ${serviceTypeId}'s task, or redefine it under another name.`,
+  });
 };

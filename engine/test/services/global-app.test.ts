@@ -42,6 +42,21 @@ const parseGeneratedLandofile = (content: string) =>
   Effect.runPromise(parseLandofile({ file: ".lando.dist.yml", content, cwd: "/tmp" }));
 
 describe("GlobalAppServiceLayer.layer", () => {
+  test("does not seed YAML beside a canonical TypeScript Landofile", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const root = join(dataRoot, "global");
+      await mkdir(root, { recursive: true });
+      const typescript = join(root, ".lando.ts");
+      await writeFile(typescript, "export default { runtime: 4 };\n");
+      const result = await Effect.runPromise(
+        Effect.flatMap(GlobalAppService, (service) => service.ensureUserLandofile).pipe(
+          Effect.provide(globalAppLayer),
+        ),
+      );
+      expect(result).toEqual({ path: AbsolutePath.make(typescript), created: false });
+      expect(await Bun.file(join(root, ".lando.yml")).exists()).toBe(false);
+    });
+  });
   test("exposes the reserved global id", async () => {
     const id = await Effect.runPromise(
       Effect.map(GlobalAppService, (service) => service.id).pipe(Effect.provide(globalAppLayer)),
@@ -88,7 +103,7 @@ describe("GlobalAppServiceLayer.layer", () => {
 
       expect(first.status).toBe("created");
       expect(first.serviceIds).toEqual([]);
-      expect(parsed).toEqual({ name: "global", runtime: 4, provider: "lando", services: {} });
+      expect(parsed).toEqual({ name: "global", runtime: 4, services: {} });
       expect(Schema.decodeUnknownSync(LandofileShape)(parsed).name).toBe("global");
 
       const second = await Effect.runPromise(

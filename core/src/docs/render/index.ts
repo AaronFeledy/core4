@@ -29,7 +29,7 @@ export class InvalidSourceLinkBaseError extends Schema.TaggedError<InvalidSource
   {
     message: Schema.String,
     sourceLinkBase: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -38,7 +38,7 @@ export class InvalidSourceFileError extends Schema.TaggedError<InvalidSourceFile
   {
     message: Schema.String,
     sourceFile: Schema.String,
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

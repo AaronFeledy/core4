@@ -9,6 +9,8 @@ tags: [beta, docs, tooling, database]
 
 Prefer `lando db:import` from the bundled SQL plugin. It decompresses `.gz` and `.zst` dumps on the host. See [Import and export app databases](/guides/tooling/db-import-export/). For a plain SQL file, piping it into the database client works too.
 
+Start the database service, then run these commands from your app directory in a POSIX shell. `dump.sql` is a file on the host. Import executes the dump against the selected database and can change or replace existing data, so export a backup and verify the target before proceeding.
+
 Grab the database name and user from `lando info` first. It redacts the password, and the commands below don't need it.
 
 ```sh
@@ -54,7 +56,7 @@ Piped input reaches the client as plain bytes, not through a terminal. Nothing e
 
 ## Write a tooling alias
 
-Add your own client command when you want a shorter invocation:
+Add your own client command to `.lando.yml` when you want a shorter invocation:
 
 ```yaml
 name: import-a-database-demo

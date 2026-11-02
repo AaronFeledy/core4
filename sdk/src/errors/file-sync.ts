@@ -2,11 +2,29 @@ import { Schema } from "effect";
 
 import { FileSyncMode } from "../schema/file-sync.ts";
 
+export class FileSyncSelectionError extends Schema.TaggedError<FileSyncSelectionError>()(
+  "FileSyncSelectionError",
+  {
+    reason: Schema.Literals([
+      "unknown",
+      "missing",
+      "duplicate",
+      "ambiguous-default",
+      "ambiguous",
+      "capabilities",
+    ]),
+    engineId: Schema.optionalKey(Schema.String),
+    candidates: Schema.Array(Schema.String),
+    message: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
 export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()("FileSyncStartError", {
   engineId: Schema.String,
   message: Schema.String,
   sessionSpec: Schema.optional(Schema.Unknown),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -16,7 +34,7 @@ export class FileSyncDriftError extends Schema.TaggedError<FileSyncDriftError>()
   sessionRef: Schema.String,
   conflictedPaths: Schema.Array(Schema.String),
   suggestedMode: Schema.optional(FileSyncMode),
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -24,6 +42,6 @@ export class FileSyncStopError extends Schema.TaggedError<FileSyncStopError>()("
   engineId: Schema.String,
   sessionRef: Schema.String,
   message: Schema.String,
-  remediation: Schema.optional(Schema.String),
+  remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   cause: Schema.optional(Schema.Unknown),
 }) {}

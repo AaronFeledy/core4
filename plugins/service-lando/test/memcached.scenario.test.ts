@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema, Stream } from "effect";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 
 import { runTooling } from "@lando/engine/operations/tooling";
 import * as PluginRegistryLayer from "@lando/engine/plugins/registry";
@@ -8,7 +13,7 @@ import * as AppPlannerLayer from "@lando/engine/services/planner";
 import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engine";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -21,9 +26,9 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
@@ -36,6 +41,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -83,9 +89,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -111,15 +133,22 @@ const makeProvider = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
   };
   return { provider, calls };
 };
 
-const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
+const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
       Effect.provide(PluginRegistryLayer.layer),
     ),
@@ -127,13 +156,13 @@ const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
 
 const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => compileTestLandofile(options.landofile)),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -145,18 +174,21 @@ const makeToolingLayer = (options: {
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
     LandoEventService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
     emptyConfigServiceLayer,
   );
 };
@@ -174,10 +206,12 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
 
     expect(cache.type).toBe("memcached");
     expect(cache.artifact).toEqual({ kind: "ref", ref: "memcached:1.6" });
-    expect(cache.endpoints).toEqual([{ _tag: "internal", port: 11211, protocol: "tcp", name: "cache" }]);
-    expect(cache.storage).toEqual([]);
+    expect(cache.endpoints).toEqual([
+      { _tag: "internal", port: 11211, protocol: "tcp", name: "cache", primary: true },
+    ]);
+    expect(cache.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
     expect(cache.healthcheck?.kind).toBe("command");
-    expect(cache.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/11211"]);
+    expect(cache.healthcheck).toEqual(tcpProbe(11211, 30));
     expect(cache.environment.LANDO_SERVICE_TYPE).toBe("memcached");
   });
 
@@ -200,7 +234,9 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["stats"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["stats"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.tool).toBe("memcached-tool");
@@ -238,13 +274,17 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const setResult = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["set foo 0 0 3\r\nbar"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["set foo 0 0 3\r\nbar"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(setResult.exitCode).toBe(0);
     expect(setResult.stdout).toBe("STORED\r\n");
 
     const getResult = await Effect.runPromise(
-      runTooling({ name: "memcached-tool", args: ["get foo"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "memcached-tool", input: { _tag: "RawArgv", argv: ["get foo"] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
     expect(getResult.exitCode).toBe(0);
     expect(getResult.stdout).toContain("bar");

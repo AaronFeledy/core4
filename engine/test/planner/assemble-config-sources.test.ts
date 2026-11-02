@@ -34,7 +34,7 @@ const plan = (config: { readonly server?: string; readonly dir?: string }) => {
     services: { [ServiceName.make("db")]: { type: "compose", image: "postgres:16", home: false, config } },
   };
   return Effect.flatMap(AppPlanner, (planner) =>
-    planner.plan(landofile, TestRuntimeProvider.capabilities),
+    planTestLandofile(planner, landofile, TestRuntimeProvider.capabilities),
   ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(PluginRegistryLayer.layer));
 };
 
@@ -104,3 +104,4 @@ test("carries sorted source identities in the finished service extension", () =>
       ],
     });
   }));
+import { planTestLandofile } from "../compiled-landofile.ts";

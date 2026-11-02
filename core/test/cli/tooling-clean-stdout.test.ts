@@ -3,11 +3,13 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { renderRunToolingResult } from "../../src/cli/commands/tooling.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { environmentResolverLayer } from "../_support/value-contracts.ts";
 
 test.each(["alpha\nbeta\n", "no-newline"])(
   "script tooling preserves %j through the default renderer boundary",
@@ -31,7 +33,11 @@ test.each(["alpha\nbeta\n", "no-newline"])(
           }),
         ),
         {
-          runtime: PrivateFileAccessService.layer,
+          runtime: Layer.mergeAll(
+            BunProcessRunner.layer,
+            PrivateFileAccessService.layer,
+            environmentResolverLayer(),
+          ),
           rendererMode: "lando",
           streamingMode: "live",
           io,

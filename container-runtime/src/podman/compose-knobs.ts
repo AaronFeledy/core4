@@ -3,8 +3,8 @@ import { SchemaIssue } from "effect";
 import { Result, Schema } from "effect";
 
 import { ComposeServiceKnobKey, ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
+import type { EngineDialect } from "../dialect.ts";
 import { extraHostEntries, realizeHostAliases } from "../host-aliases.ts";
-import { requiresLongMountSyntax } from "../mount-syntax.ts";
 
 import {
   type InvalidKnob,
@@ -15,7 +15,6 @@ import {
   nonNegativeInteger,
   positiveInteger,
   scalarTextMap,
-  tmpfsMounts,
   ulimitEntries,
 } from "./compose-knobs-values.ts";
 
@@ -25,6 +24,9 @@ import {
  * The property signatures come from `ServiceConfig`, so the provider does not
  * duplicate the SDK schema. Its field transforms accept canonical output,
  * making re-decoding idempotent while rejecting values core could not produce.
+ *
+ * `tmpfs` is intentionally absent: planned tmpfs lives on `ServicePlan.mounts`
+ * and is realized by the mount renderers, not the Compose knob registry.
  */
 const PodmanComposeKnobs = Schema.Struct(
   Struct.pick(ServiceConfig.fields, [
@@ -35,13 +37,11 @@ const PodmanComposeKnobs = Schema.Struct(
     "devices",
     "ulimits",
     "sysctls",
-    "tmpfs",
     "shm_size",
     "dns",
     "dns_search",
     "dns_opt",
     "extra_hosts",
-    "init",
     "stop_signal",
     "stop_grace_period",
     "security_opt",
@@ -52,7 +52,6 @@ const PodmanComposeKnobs = Schema.Struct(
   ]),
 );
 type PodmanComposeKnobValues = typeof PodmanComposeKnobs.Type;
-type PodmanKnobKey = keyof PodmanComposeKnobValues;
 
 interface KnobFragment {
   readonly hostConfig?: Record<string, unknown>;
@@ -61,19 +60,30 @@ interface KnobFragment {
 }
 
 interface KnobRealizer {
+  readonly dialects: ReadonlyArray<EngineDialect>;
   readonly realize: (knobs: PodmanComposeKnobValues, fail: InvalidKnob, service: ServicePlan) => KnobFragment;
 }
 
 type KnobReader = (knobs: PodmanComposeKnobValues, fail: InvalidKnob, service: ServicePlan) => unknown;
 
-const hostConfigKnob = (field: string, read: KnobReader): KnobRealizer => ({
+const hostConfigKnob = (
+  dialects: ReadonlyArray<EngineDialect>,
+  field: string,
+  read: KnobReader,
+): KnobRealizer => ({
+  dialects,
   realize: (knobs, fail, service) => {
     const value = read(knobs, fail, service);
     return value === undefined ? {} : { hostConfig: { [field]: value } };
   },
 });
 
-const topLevelKnob = (field: string, read: KnobReader): KnobRealizer => ({
+const topLevelKnob = (
+  dialects: ReadonlyArray<EngineDialect>,
+  field: string,
+  read: KnobReader,
+): KnobRealizer => ({
+  dialects,
   realize: (knobs, fail, service) => {
     const value = read(knobs, fail, service);
     return value === undefined ? {} : { topLevel: { [field]: value } };
@@ -81,9 +91,11 @@ const topLevelKnob = (field: string, read: KnobReader): KnobRealizer => ({
 });
 
 const queryKnob = (
+  dialects: ReadonlyArray<EngineDialect>,
   parameter: string,
   read: (knobs: PodmanComposeKnobValues) => string | undefined,
 ): KnobRealizer => ({
+  dialects,
   realize: (knobs) => {
     const value = read(knobs);
     return value === undefined ? {} : { query: { [parameter]: value } };
@@ -107,46 +119,50 @@ const queryKnob = (
  *   would claim support for subfields that would then be silently dropped.
  */
 const PODMAN_COMPOSE_KNOB_REGISTRY = {
-  restart: hostConfigKnob("RestartPolicy", ({ restart }) =>
+  restart: hostConfigKnob(["libpod", "docker"], "RestartPolicy", ({ restart }) =>
     restart === undefined ? undefined : { Name: restart },
   ),
-  cap_add: hostConfigKnob("CapAdd", ({ cap_add }) => cap_add),
-  cap_drop: hostConfigKnob("CapDrop", ({ cap_drop }) => cap_drop),
-  privileged: hostConfigKnob("Privileged", ({ privileged }, fail) =>
+  cap_add: hostConfigKnob(["libpod", "docker"], "CapAdd", ({ cap_add }) => cap_add),
+  cap_drop: hostConfigKnob(["libpod", "docker"], "CapDrop", ({ cap_drop }) => cap_drop),
+  privileged: hostConfigKnob(["libpod", "docker"], "Privileged", ({ privileged }, fail) =>
     knobBoolean("privileged", privileged, fail),
   ),
-  devices: hostConfigKnob("Devices", ({ devices }) => deviceMappings(devices)),
-  ulimits: hostConfigKnob("Ulimits", ({ ulimits }, fail) => ulimitEntries(ulimits, fail)),
-  sysctls: hostConfigKnob("Sysctls", ({ sysctls }) => scalarTextMap(sysctls)),
-  tmpfs: hostConfigKnob("Tmpfs", ({ tmpfs }, fail) => tmpfsMounts(tmpfs, fail)),
-  shm_size: hostConfigKnob("ShmSize", ({ shm_size }, fail) => positiveInteger("shm_size", shm_size, fail)),
-  dns: hostConfigKnob("Dns", ({ dns }) => dns),
-  dns_search: hostConfigKnob("DnsSearch", ({ dns_search }) => dns_search),
-  dns_opt: hostConfigKnob("DnsOptions", ({ dns_opt }) => dns_opt),
-  extra_hosts: hostConfigKnob("ExtraHosts", ({ extra_hosts }, _fail, service) =>
+  devices: hostConfigKnob(["libpod", "docker"], "Devices", ({ devices }) => deviceMappings(devices)),
+  ulimits: hostConfigKnob(["libpod", "docker"], "Ulimits", ({ ulimits }, fail) =>
+    ulimitEntries(ulimits, fail),
+  ),
+  sysctls: hostConfigKnob(["libpod", "docker"], "Sysctls", ({ sysctls }) => scalarTextMap(sysctls)),
+  shm_size: hostConfigKnob(["libpod", "docker"], "ShmSize", ({ shm_size }, fail) =>
+    positiveInteger("shm_size", shm_size, fail),
+  ),
+  dns: hostConfigKnob(["libpod", "docker"], "Dns", ({ dns }) => dns),
+  dns_search: hostConfigKnob(["libpod", "docker"], "DnsSearch", ({ dns_search }) => dns_search),
+  dns_opt: hostConfigKnob(["libpod", "docker"], "DnsOptions", ({ dns_opt }) => dns_opt),
+  extra_hosts: hostConfigKnob(["libpod", "docker"], "ExtraHosts", ({ extra_hosts }, _fail, service) =>
     extraHostEntries(realizeHostAliases(service.hostAliases, extra_hosts)),
   ),
-  init: hostConfigKnob("Init", ({ init }, fail) => knobBoolean("init", init, fail)),
-  stop_signal: topLevelKnob("StopSignal", ({ stop_signal }) => stop_signal),
-  stop_grace_period: topLevelKnob("StopTimeout", ({ stop_grace_period }, fail) =>
+  stop_signal: topLevelKnob(["libpod", "docker"], "StopSignal", ({ stop_signal }) => stop_signal),
+  stop_grace_period: topLevelKnob(["libpod", "docker"], "StopTimeout", ({ stop_grace_period }, fail) =>
     nonNegativeInteger("stop_grace_period", stop_grace_period, fail),
   ),
-  security_opt: hostConfigKnob("SecurityOpt", ({ security_opt }) => security_opt),
-  group_add: hostConfigKnob("GroupAdd", ({ group_add }) => groupEntries(group_add)),
-  read_only: hostConfigKnob("ReadonlyRootfs", ({ read_only }, fail) =>
+  security_opt: hostConfigKnob(["libpod", "docker"], "SecurityOpt", ({ security_opt }) => security_opt),
+  group_add: hostConfigKnob(["libpod", "docker"], "GroupAdd", ({ group_add }) => groupEntries(group_add)),
+  read_only: hostConfigKnob(["libpod", "docker"], "ReadonlyRootfs", ({ read_only }, fail) =>
     knobBoolean("read_only", read_only, fail),
   ),
-  platform: queryKnob("platform", ({ platform }) => platform),
-  logging: hostConfigKnob("LogConfig", ({ logging }, fail) => logConfig(logging, fail)),
+  platform: queryKnob(["libpod", "docker"], "platform", ({ platform }) => platform),
+  logging: hostConfigKnob(["libpod", "docker"], "LogConfig", ({ logging }, fail) => logConfig(logging, fail)),
 } satisfies Partial<Record<ComposeServiceKnobKey, KnobRealizer>>;
 
-// Published knob order, so realization and capability declaration are both
-// deterministic; membership comes from the revalidation schema itself.
+// Published knob order is deterministic; membership and dialect support belong to the realizers.
+type PodmanKnobKey = keyof typeof PODMAN_COMPOSE_KNOB_REGISTRY;
 const PODMAN_KNOB_KEYS: ReadonlyArray<PodmanKnobKey> = ComposeServiceKnobKey.literals.filter(
-  (key): key is PodmanKnobKey => Object.hasOwn(PodmanComposeKnobs.fields, key),
+  (key): key is PodmanKnobKey => Object.hasOwn(PODMAN_COMPOSE_KNOB_REGISTRY, key),
 );
 
-export const podmanComposeKnobs = (): ReadonlyArray<ComposeServiceKnobKey> => [...PODMAN_KNOB_KEYS];
+/** Capabilities come from the realizers, never a provider-maintained allowlist. */
+export const composeKnobsForDialect = (dialect: EngineDialect): ReadonlyArray<ComposeServiceKnobKey> =>
+  PODMAN_KNOB_KEYS.filter((key) => PODMAN_COMPOSE_KNOB_REGISTRY[key].dialects.includes(dialect));
 
 interface PodmanComposeKnobRealization {
   readonly hostConfig: Record<string, unknown>;
@@ -156,73 +172,16 @@ interface PodmanComposeKnobRealization {
 
 interface RealizePodmanComposeKnobsOptions {
   readonly onInvalid: InvalidKnob;
+  readonly dialect?: EngineDialect;
 }
 
 const decodeComposeKnobs = Schema.decodeUnknownResult(PodmanComposeKnobs);
 
-const normalizedTmpfsEntry = (
-  value: unknown,
-): { readonly target: string; readonly options: string } | undefined => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-  const keys = Object.keys(value);
-  if (keys.some((key) => !["target", "read_only", "size", "mode"].includes(key))) return undefined;
-
-  const target = Reflect.get(value, "target");
-  const readOnly = Reflect.get(value, "read_only");
-  const size = Reflect.get(value, "size");
-  const mode = Reflect.get(value, "mode");
-  if (
-    typeof target !== "string" ||
-    (readOnly !== undefined && readOnly !== true) ||
-    (size !== undefined && typeof size !== "string" && typeof size !== "number") ||
-    (mode !== undefined && (!Number.isSafeInteger(mode) || typeof mode !== "number"))
-  ) {
-    return undefined;
-  }
-
-  const options = [
-    ...(readOnly === true ? ["ro"] : []),
-    ...(size === undefined ? [] : [`size=${size}`]),
-    ...(mode === undefined ? [] : [`mode=${mode}`]),
-  ];
-  return { target, options: options.join(",") };
-};
-
-const normalizeComposeTmpfs = (
-  compose: unknown,
-  longTmpfs: Record<string, string>,
-  fail: InvalidKnob,
-): unknown => {
-  if (typeof compose !== "object" || compose === null || Array.isArray(compose)) return compose;
-  const tmpfs = Reflect.get(compose, "tmpfs");
-  if (!Array.isArray(tmpfs) || tmpfs.every((entry) => typeof entry === "string")) return compose;
-  const normalized = tmpfs.flatMap((entry): ReadonlyArray<string | undefined> => {
-    if (typeof entry === "string") return [entry];
-    const mount = normalizedTmpfsEntry(entry);
-    if (mount === undefined) return [undefined];
-    if (requiresLongMountSyntax(mount.target)) {
-      if (Object.hasOwn(longTmpfs, mount.target))
-        return fail("Compose runtime knob `tmpfs` repeats a container destination.", {
-          knob: "tmpfs",
-          target: mount.target,
-        });
-      longTmpfs[mount.target] = mount.options;
-      return [];
-    }
-    return [mount.options.length === 0 ? mount.target : `${mount.target}:${mount.options}`];
-  });
-  return normalized.some((entry) => entry === undefined) ? compose : { ...compose, tmpfs: normalized };
-};
-
-const serviceKnobValues = (
-  service: ServicePlan,
-  fail: InvalidKnob,
-  longTmpfs: Record<string, string>,
-): PodmanComposeKnobValues => {
+const serviceKnobValues = (service: ServicePlan, fail: InvalidKnob): PodmanComposeKnobValues => {
   const compose = service.extensions.compose;
   if (compose === undefined) return {};
 
-  const decoded = decodeComposeKnobs(normalizeComposeTmpfs(compose, longTmpfs, fail));
+  const decoded = decodeComposeKnobs(compose);
   if (Result.isSuccess(decoded)) return decoded.success;
 
   const issues = SchemaIssue.makeFormatterStandardSchemaV1()(decoded.failure.issue).issues;
@@ -240,22 +199,18 @@ export const realizePodmanComposeKnobs = (
 ): PodmanComposeKnobRealization => {
   const fail: InvalidKnob = (message, details) =>
     options.onInvalid(message, { service: service.name, ...details });
-  const longTmpfs: Record<string, string> = {};
-  const knobs = serviceKnobValues(service, fail, longTmpfs);
+  const knobs = serviceKnobValues(service, fail);
 
   const hostConfig: Record<string, unknown> = {};
   const topLevel: Record<string, unknown> = {};
   const query: Record<string, string> = {};
 
   for (const key of PODMAN_KNOB_KEYS) {
+    if (!PODMAN_COMPOSE_KNOB_REGISTRY[key].dialects.includes(options.dialect ?? "libpod")) continue;
     const fragment = PODMAN_COMPOSE_KNOB_REGISTRY[key].realize(knobs, fail, service);
     Object.assign(hostConfig, fragment.hostConfig);
     Object.assign(topLevel, fragment.topLevel);
     Object.assign(query, fragment.query);
-  }
-
-  if (Object.keys(longTmpfs).length > 0) {
-    hostConfig.Tmpfs = { ...tmpfsMounts(knobs.tmpfs, fail), ...longTmpfs };
   }
 
   return { hostConfig, topLevel, query };

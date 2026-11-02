@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
+import { commonContainerLabels } from "@lando/container-runtime/plan";
 import {
   ProviderUnavailableError,
   ServiceNotFoundError,
@@ -20,6 +21,7 @@ import type { ApplyOptions, ServiceRuntimeInfo } from "@lando/sdk/services";
 import { TestFileSyncEngine, TestRouterService } from "@lando/sdk/test";
 
 import { restartApp } from "../../src/operations/restart.ts";
+import { withAcceleratedBind } from "../accelerated-plan.ts";
 import { byTag, makeHarness, plan, web } from "./start-progress-topology-support.ts";
 
 const redis: ServicePlan = {
@@ -68,14 +70,15 @@ const runtimeFor = (
   status: "running",
   state: "running",
   containerId: `cid-${String(service)}`,
-  endpoints: (plannedApp.services[service]?.endpoints ?? []).map((endpoint) =>
-    endpoint._tag === "published" && endpoint.publication.hostPort === undefined
-      ? {
-          ...endpoint,
-          materialization: { bindAddress: "127.0.0.1", hostPort: 34567 },
-        }
-      : endpoint,
-  ),
+  publications: {
+    status: "present",
+    bindings:
+      service === redis.name
+        ? [{ port: 6379, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 34567 }]
+        : service === web.name
+          ? [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }]
+          : [],
+  },
   ...extras,
 });
 
@@ -147,6 +150,49 @@ const runSelected = (
 };
 
 describe("selected service restart", () => {
+  test.each(["missing", "changed"] as const)(
+    "refuses %s create config before stopping any selected service",
+    async (scenario) => {
+      // Given two selected services and an old or missing create-config label on web.
+      const original = twoServicePlan();
+      const desired: AppPlan = {
+        ...original,
+        services: {
+          ...original.services,
+          [web.name]: { ...web, environment: { ...web.environment, MODE: "after" } },
+        },
+      };
+      const selected = runSelected(desired, {
+        services: [web.name, redis.name],
+        inspect: (target) =>
+          Effect.succeed(
+            runtimeFor(desired, target.service, {
+              labels:
+                target.service === web.name
+                  ? scenario === "missing"
+                    ? {}
+                    : commonContainerLabels(original, web)
+                  : commonContainerLabels(original, redis),
+            }),
+          ),
+      });
+      // When selected restart preflights the whole selection.
+      const error = await Effect.runPromise(Effect.flip(selected.operation));
+      // Then it refuses config recreation before stopping even an unchanged selected service.
+      expect(error).toMatchObject({
+        _tag: "ServiceRestartWouldRecreateError",
+        reason: "config",
+        service: "web",
+      });
+      if (!(error instanceof ServiceRestartWouldRecreateError)) {
+        throw new TypeError("expected ServiceRestartWouldRecreateError");
+      }
+      expect(error.remediation).toContain("lando rebuild -s web");
+      expect(selected.stopCalls).toEqual([]);
+      expect(selected.applyCalls).toEqual([]);
+    },
+  );
+
   test("refuses a missing container before stopping any selected service", async () => {
     // Given the provider's missing-container inspect response.
     const selected = runSelected(twoServicePlan(), {
@@ -157,7 +203,7 @@ describe("selected service restart", () => {
           service: target.service,
           providerId: plan.provider,
           status: "stopped",
-          endpoints: [],
+          publications: { status: "missing" },
         }),
     });
     // When a selected restart runs.
@@ -233,12 +279,8 @@ describe("selected service restart", () => {
     ]);
     expect(selected.runtimes.get("web")?.containerId).toBe("cid-web");
     expect(selected.runtimes.get("redis")?.containerId).toBe("cid-redis");
-    const redisHttp = selected.runtimes
-      .get("redis")
-      ?.endpoints?.find((endpoint) => endpoint._tag === "published");
-    expect(
-      redisHttp && "materialization" in redisHttp ? redisHttp.materialization?.hostPort : undefined,
-    ).toBe(34567);
+    const redisHttp = selected.runtimes.get("redis")?.publications;
+    expect(redisHttp?.status === "present" ? redisHttp.bindings[0]?.hostPort : undefined).toBe(34567);
     expect(result.servicesStarted.map((service) => service.name)).toEqual(["redis"]);
   });
 
@@ -336,54 +378,79 @@ describe("selected service restart", () => {
     expect(byTag(selected.harness.events, "pre-app-stop")).toEqual([]);
   });
 
-  test("file-sync sessions survive a selected container stop and start", async () => {
-    const session: FileSyncSessionInfo = {
-      ref: FileSyncSessionRef.make("sess-redis"),
-      app: { kind: "user", id: plan.id, root: plan.root },
-      service: redis.name,
-      mountKey: "data",
-      spec: {
-        app: { kind: "user", id: plan.id, root: plan.root },
-        service: redis.name,
-        mountKey: "data",
+  test.each([
+    { selectedService: redis.name, acceleratedSibling: false },
+    { selectedService: web.name, acceleratedSibling: false },
+    { selectedService: redis.name, acceleratedSibling: true },
+  ])(
+    "file-sync sessions survive a selected container stop and start (%j)",
+    async ({ selectedService, acceleratedSibling }) => {
+      const redisPlan = withAcceleratedBind(twoServicePlan(), redis.name, {
+        type: "bind",
         source: AbsolutePath.make(`${plan.root}/data`),
-        target: { _tag: "volume", name: "redis-data", path: PortablePath.make("/data") },
-        mode: "two-way-safe",
+        target: PortablePath.make("/data"),
+        readOnly: false,
+        realization: "accelerated",
+        mountKey: "data",
         excludes: [],
-      },
-      status: "running",
-      lastUpdatedAt: DateTime.makeUnsafe("2026-05-28T00:00:00Z"),
-    };
-    const terminated: string[] = [];
-    const flushed: string[] = [];
-    const plannedApp: AppPlan = {
-      ...twoServicePlan(),
-      fileSync: [{ engineId: "mutagen", session: session.spec }],
-    };
-    const selected = runSelected(plannedApp, {
-      services: [redis.name],
-      fileSync: {
-        ...TestFileSyncEngine,
-        id: "mutagen",
-        sessionsPersistAcrossProcesses: true,
-        isAvailable: Effect.succeed(true),
-        listSessions: () => Effect.succeed([session]),
-        flushSession: (ref) =>
-          Effect.sync(() => {
-            flushed.push(String(ref));
-          }),
-        terminateSession: (ref) =>
-          Effect.sync(() => {
-            terminated.push(String(ref));
-          }),
-      },
-    });
+      });
+      const plannedApp = acceleratedSibling
+        ? withAcceleratedBind(redisPlan, web.name, {
+            type: "bind",
+            source: plan.root,
+            target: PortablePath.make("/app"),
+            readOnly: false,
+            realization: "accelerated",
+            mountKey: "app-mount",
+            excludes: [],
+          })
+        : redisPlan;
+      const sessions: FileSyncSessionInfo[] = plannedApp.fileSync.map(({ session }) => ({
+        ref: FileSyncSessionRef.make(`sess-${session.service}`),
+        app: session.app,
+        service: session.service,
+        mountKey: session.mountKey,
+        spec: session,
+        status: "running",
+        lastUpdatedAt: DateTime.makeUnsafe("2026-05-28T00:00:00Z"),
+      }));
+      const terminated: string[] = [];
+      const flushed: string[] = [];
+      const selected = runSelected(plannedApp, {
+        services: [selectedService],
+        appliedFileSyncState: "accelerated",
+        fileSync: {
+          ...TestFileSyncEngine,
+          id: "mutagen",
+          sessionsPersistAcrossProcesses: true,
+          isAvailable: Effect.succeed(true),
+          listSessions: (filter) =>
+            Effect.succeed(
+              sessions.filter(
+                (session) =>
+                  (filter.service === undefined || session.service === filter.service) &&
+                  (filter.mountKey === undefined || session.mountKey === filter.mountKey),
+              ),
+            ),
+          createSession: () => Effect.die("Selected restart must preserve existing sessions"),
+          flushSession: (ref) =>
+            Effect.sync(() => {
+              flushed.push(String(ref));
+            }),
+          terminateSession: (ref) =>
+            Effect.sync(() => {
+              terminated.push(String(ref));
+            }),
+        },
+      });
 
-    await Effect.runPromise(selected.operation);
+      await Effect.runPromise(selected.operation);
 
-    expect(terminated).toEqual([]);
-    expect(flushed).toEqual(["sess-redis"]);
-    expect(selected.stopCalls).toEqual([redis.name]);
-    expect(selected.destroyCalls).toEqual([]);
-  });
+      expect(terminated).toEqual([]);
+      expect(flushed).toEqual(selectedService === redis.name ? ["sess-redis"] : []);
+      expect(selected.stopCalls).toEqual([selectedService]);
+      expect(selected.destroyCalls).toEqual([]);
+      expect(selected.applyCalls[0]?.options.recordedPlan?.fileSync).toEqual(plannedApp.fileSync);
+    },
+  );
 });

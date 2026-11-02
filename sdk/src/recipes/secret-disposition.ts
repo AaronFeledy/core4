@@ -53,6 +53,34 @@ export const validateRecipeSecretPrompts = (
   RecipeSecretDispositionError
 > => {
   const prompts = (manifest.prompts ?? []).filter((prompt) => prompt.type === "secret");
+  for (const action of manifest.postInit ?? []) {
+    switch (action.type) {
+      case "gitInit":
+      case "message":
+        break;
+      case "command":
+      case "bun":
+        for (const name of [
+          ...(action.stdin === undefined ? [] : [action.stdin.prompt]),
+          ...Object.values(action.secretEnv ?? {}),
+        ]) {
+          if (!prompts.some((prompt) => prompt.name === name))
+            return Result.fail(
+              new RecipeSecretDispositionError({
+                recipeId: manifest.id,
+                promptName: name,
+                reason: "sink-unresolved",
+                message: "Secret action binding must name a declared secret option.",
+                remediation:
+                  "Bind each secret action sink to a declared secret option with a matching disposition.",
+              }),
+            );
+        }
+        break;
+      default:
+        action satisfies never;
+    }
+  }
   const result: { promptName: string; disposition: RecipeSecretDisposition }[] = [];
   for (const prompt of prompts) {
     const fail = (reason: RecipeSecretDispositionError["reason"]) =>

@@ -18,22 +18,15 @@ import {
   activeRendererMode,
   activeResultFormat,
   commandErrorMessage,
-  emitDiagnosticLine,
   getActiveCommandInvocation,
   rejectInvalidInvocation,
 } from "../compiled-runtime";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary";
 
-export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
+export const runSetup = async (argv: ReadonlyArray<string>, signal?: AbortSignal): Promise<void> => {
   if (await rejectInvalidInvocation("meta:setup", argv)) return;
   const installDir = dirname(process.execPath);
   const input = compiledCommandInputFromArgv("meta:setup", argv);
-  const hostProxy = input.flags["host-proxy"];
-  if (hostProxy !== undefined && hostProxy !== "auto" && hostProxy !== "none") {
-    await emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
-    process.exitCode = 2;
-    return;
-  }
   const projectResultKeys = activeProjectResultKeys();
   const jqExpression = activeJq;
   await runWithRendererHandling(
@@ -50,6 +43,7 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       ...(projectResultKeys === undefined ? {} : { projectResultKeys }),
       ...(jqExpression === undefined ? {} : { jqExpression }),
       command: setupSpec.id,
+      ...(signal === undefined ? {} : { signal }),
       invocation: getActiveCommandInvocation() ?? {
         commandId: setupSpec.id,
         argv: input.argv,
@@ -60,8 +54,8 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
       render: (value, ctx) => setupSpec.render?.(value, undefined, ctx),
-      formatError: (failure) => {
-        const message = commandErrorMessage(failure, activeCommandId);
+      formatError: (failure, redactor) => {
+        const message = commandErrorMessage(failure, activeCommandId, redactor);
         return activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`;
       },
     },

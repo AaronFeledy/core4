@@ -8,9 +8,12 @@ tags: [beta, docs, release, sbom, supply-chain]
 
 # Verify supply-chain artifacts
 
-Stage 12 emits CycloneDX JSON 1.6 SBOM files for publishable release
-artifacts. Each binary and library archive receives an artifact-specific
+Use the artifact-specific software bill of materials (SBOM) to inspect the
+components recorded for a release. Stage 12 emits CycloneDX JSON 1.6 SBOM files
+for publishable release artifacts. Each binary and library archive receives an artifact-specific
 SBOM path of the form `dist/lando-<artifact>-<version>-sbom.cdx.json`.
 Each SBOM carries the release artifact identity, checksum, package
-components, Bun runtime component, and generator metadata.
-
+components, Bun runtime component, and generator metadata. Match the artifact
+identity and version to the release you are reviewing; the SBOM is distinct from
+signature verification. For the release procedure, see
+[the contributor release workflow](../../contributing/release.md).

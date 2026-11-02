@@ -1,14 +1,13 @@
+import { DATABASE_FAMILY_DEFAULT_PORTS } from "@lando/sdk/database-creds";
 import { PhpMyAdminHostsCredsError } from "@lando/sdk/errors";
-import type { ServiceConfig } from "@lando/sdk/schema";
-import { DEFAULT_PASSWORD } from "@lando/sdk/secrets";
+import type { EnvironmentValue, ServiceConfig } from "@lando/sdk/schema";
 import type { AppFeatureServiceView } from "@lando/sdk/services";
+import { credentialValuesAgree } from "./_creds-helpers.ts";
 
 export type PmaCreds = {
   readonly user: string;
-  readonly password: string;
+  readonly password: EnvironmentValue;
 };
-
-const DEFAULT_CREDS: PmaCreds = { user: "lando", password: DEFAULT_PASSWORD };
 
 export const authoredPmaCreds = (config: ServiceConfig): PmaCreds | undefined => {
   const user = config.creds?.user;
@@ -17,41 +16,24 @@ export const authoredPmaCreds = (config: ServiceConfig): PmaCreds | undefined =>
   return undefined;
 };
 
-const siblingCreds = (sibling: AppFeatureServiceView): PmaCreds => {
-  const creds = sibling.normalizedConfig.creds;
-  const environment = sibling.normalizedConfig.environment ?? {};
-  const pairs = [
-    [creds?.user, creds?.password],
-    [environment.MYSQL_USER, environment.MYSQL_PASSWORD],
-    [environment.MARIADB_USER, environment.MARIADB_PASSWORD],
-  ] as const;
-  for (const [user, password] of pairs) {
-    if (user !== undefined && password !== undefined) return { user, password };
-  }
-  return DEFAULT_CREDS;
-};
+const siblingCreds = (sibling: AppFeatureServiceView): PmaCreds | undefined => sibling.connection?.creds;
 
 const credsAgree = (left: PmaCreds, right: PmaCreds): boolean =>
-  left.user === right.user && left.password === right.password;
-
-export const credentialsFor = (siblings: ReadonlyArray<AppFeatureServiceView>): PmaCreds => {
-  const first = siblings[0];
-  if (first === undefined) return DEFAULT_CREDS;
-  const agreed = siblingCreds(first);
-  return siblings.every((sibling) => credsAgree(siblingCreds(sibling), agreed)) ? agreed : DEFAULT_CREDS;
-};
+  left.user === right.user && credentialValuesAgree(left.password, right.password);
 
 const hostsCredsError = (feature: string): PhpMyAdminHostsCredsError =>
   new PhpMyAdminHostsCredsError({
-    message: `App feature ${feature} could not resolve credentials for authored hosts`,
+    message: `App feature ${feature} requires matching canonical credentials for all selected hosts`,
     feature,
-    remediation: "Add creds: on the phpmyadmin service.",
+    remediation:
+      "Use matching database credentials, separate phpMyAdmin services, or explicit creds: for external hosts.",
   });
 
 export type AuthoredHostsWire =
   | {
       readonly _tag: "ok";
       readonly hosts: ReadonlyArray<string>;
+      readonly ports: readonly number[];
       readonly creds: PmaCreds;
       readonly matched: ReadonlyArray<AppFeatureServiceView>;
     }
@@ -65,20 +47,33 @@ export const resolveAuthoredHosts = (input: {
 }): AuthoredHostsWire => {
   const byName = new Map(input.siblings.map((sibling) => [sibling.serviceName, sibling] as const));
   const matched: AppFeatureServiceView[] = [];
+  const ports: number[] = [];
   for (const host of input.hosts) {
     const sibling = byName.get(host);
-    if (sibling !== undefined) matched.push(sibling);
+    if (sibling === undefined) {
+      ports.push(DATABASE_FAMILY_DEFAULT_PORTS.mysql);
+    } else {
+      if (sibling.connection === undefined) return { _tag: "fail", error: hostsCredsError(input.feature) };
+      matched.push(sibling);
+      ports.push(sibling.connection.port);
+    }
   }
   if (input.pmaCreds !== undefined) {
-    return { _tag: "ok", hosts: input.hosts, creds: input.pmaCreds, matched };
+    return { _tag: "ok", hosts: input.hosts, ports, creds: input.pmaCreds, matched };
   }
   const first = matched[0];
   if (first === undefined || matched.length !== input.hosts.length) {
     return { _tag: "fail", error: hostsCredsError(input.feature) };
   }
   const agreed = siblingCreds(first);
-  if (!matched.every((sibling) => credsAgree(siblingCreds(sibling), agreed))) {
+  if (
+    agreed === undefined ||
+    !matched.every((sibling) => {
+      const creds = siblingCreds(sibling);
+      return creds !== undefined && credsAgree(creds, agreed);
+    })
+  ) {
     return { _tag: "fail", error: hostsCredsError(input.feature) };
   }
-  return { _tag: "ok", hosts: input.hosts, creds: agreed, matched };
+  return { _tag: "ok", hosts: input.hosts, ports, creds: agreed, matched };
 };

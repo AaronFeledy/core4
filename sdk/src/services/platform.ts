@@ -2,10 +2,11 @@ import { Context, type Effect, type Scope } from "effect";
 import type { AppId } from "../schema/primitives.ts";
 
 import type {
+  AppPlacementError,
   CaError,
   HealthcheckError,
+  HealthcheckTargetUnsupportedError,
   HealthcheckTimeoutError,
-  HostProxyError,
   PortCollisionError,
   ProxyApplyError,
   ProxyError,
@@ -21,11 +22,13 @@ import type {
 import type { ProbeOutcome } from "../probe/index.ts";
 import type {
   AppPlan,
+  EndpointRef,
   HealthcheckPlan,
   ProxyApplyResult,
   ProxyCapabilities,
   ProxyConfig,
   ProxyStatus,
+  RouteEvidence,
   RoutePlan,
   ScanVerdict,
   ServiceName,
@@ -68,7 +71,10 @@ export class RouterService extends Context.Service<
     /** Resolve and persist route publication ports before starting required global services. */
     readonly prepare?: (
       config: ProxyConfig,
-    ) => Effect.Effect<void, ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch>;
+    ) => Effect.Effect<
+      void,
+      AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch
+    >;
     readonly setup: (
       config: ProxyConfig,
       options?: {
@@ -78,7 +84,7 @@ export class RouterService extends Context.Service<
       },
     ) => Effect.Effect<
       void,
-      ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
+      AppPlacementError | ProxySetupError | RouterPortsExhausted | RouterPortPinMismatch | RouterWatcherError,
       Scope.Scope
     >;
     /**
@@ -92,6 +98,10 @@ export class RouterService extends Context.Service<
       appId: AppId,
     ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
     readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+    readonly observeRoutes: (
+      app: AppId,
+      requestedRoutes: ReadonlyArray<RoutePlan>,
+    ) => Effect.Effect<RouteEvidence, ProxyError>;
     readonly status: Effect.Effect<ProxyStatus, ProxyError>;
     readonly stop: Effect.Effect<void, ProxyError>;
   }
@@ -127,7 +137,10 @@ export interface HealthcheckResult {
   readonly lastStatus?: string;
 }
 
-export type HealthcheckRunError = HealthcheckTimeoutError | HealthcheckError;
+export type HealthcheckRunError =
+  | HealthcheckTimeoutError
+  | HealthcheckError
+  | HealthcheckTargetUnsupportedError;
 
 export class HealthcheckRunner extends Context.Service<
   HealthcheckRunner,
@@ -137,6 +150,7 @@ export class HealthcheckRunner extends Context.Service<
       plan: HealthcheckPlan,
       appId: AppId,
       service: ServiceName,
+      appPlan?: AppPlan,
     ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
   }
 >()("@lando/core/HealthcheckRunner") {}
@@ -203,7 +217,11 @@ export class UrlScanner extends Context.Service<
       appId: AppId,
       options?: {
         readonly plan?: AppPlan;
-        readonly urls?: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+        readonly urls?: ReadonlyArray<{
+          readonly service: ServiceName;
+          readonly url: string;
+          readonly endpoint?: EndpointRef;
+        }>;
         /** Observe completed attempts without affecting probe verdicts; detail is redacted. */
         readonly onAttempt?: (attempt: ScanAttempt) => Effect.Effect<void>;
       },
@@ -215,53 +233,6 @@ export class UrlScanner extends Context.Service<
 >()("@lando/core/UrlScanner") {}
 
 export type UrlScannerShape = UrlScanner["Service"];
-
-/**
- * `HostProxyService` resolves `*.<base-domain>` (default `lndo.site`) to a
- * loopback address so users do not have to edit `/etc/hosts` themselves.
- *
- * Default platform behavior:
- * - macOS: write `/etc/resolver/<base-domain>` (no `/etc/hosts` edit)
- * - Linux: write `/etc/hosts` block or `systemd-resolved` drop-in
- * - Windows: write the HOSTS file
- *
- * Privileged operations happen at `lando setup` time only (gated behind a
- * sudo/UAC prompt). They MUST NOT run inline during `lando start`.
- *
- * Users who manage their own DNS can opt out by running
- * `lando setup --host-proxy=none`, which selects the `none` mode and reports
- * an inactive `HostProxyStatus`.
- */
-export type HostProxyMode = "auto" | "none";
-
-export type HostProxyMechanism = "etc-hosts" | "etc-resolver" | "hosts-file" | "skipped" | "none";
-
-export interface HostProxySetupOptions {
-  readonly mode: HostProxyMode;
-  readonly baseDomain?: string;
-  readonly loopback?: string;
-  readonly force?: boolean;
-}
-
-export interface HostProxyStatus {
-  readonly active: boolean;
-  readonly mode: HostProxyMode;
-  readonly mechanism: HostProxyMechanism;
-  readonly baseDomain: string;
-  readonly loopback: string;
-}
-
-export class HostProxyService extends Context.Service<
-  HostProxyService,
-  {
-    readonly id: string;
-    readonly setup: (options: HostProxySetupOptions) => Effect.Effect<void, HostProxyError>;
-    readonly status: () => Effect.Effect<HostProxyStatus, HostProxyError>;
-    readonly teardown: () => Effect.Effect<void, HostProxyError>;
-  }
->()("@lando/core/HostProxyService") {}
-
-export type HostProxyServiceShape = HostProxyService["Service"];
 
 export class PluginSource extends Context.Service<
   PluginSource,

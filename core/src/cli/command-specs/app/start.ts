@@ -1,18 +1,18 @@
 import { Effect } from "effect";
 
-import { type StartAppResult, StartAppResultSchema, startApp } from "@lando/engine/operations/start";
+import { startApp } from "@lando/engine/operations/start";
+import { withIncompleteStartNotice } from "@lando/engine/operations/start-incomplete-notice";
+import { StartAppResult, StreamFrame } from "@lando/sdk/schema";
 import { refreshAppCache } from "../../commands/app-cache-refresh";
 import { renderStartAppResult } from "../../commands/start-result";
 import { type LandoCommandSpec, extractSpecAbortSignal } from "../../spec/command-base";
-
-import { StreamFrame } from "@lando/sdk/schema";
 
 /**
  * `lando app:start` — native command metadata adapter.
  */
 
-export const startSpec: LandoCommandSpec<StartAppResult> = {
-  resultSchema: StartAppResultSchema,
+export const startSpec = {
+  resultSchema: StartAppResult,
   id: "app:start",
   recipePostInitAllowed: true,
   helpGroup: "common",
@@ -24,7 +24,9 @@ export const startSpec: LandoCommandSpec<StartAppResult> = {
   streaming: StreamFrame,
   run: (input) => {
     const signal = extractSpecAbortSignal(input);
-    return Effect.andThen(refreshAppCache(), startApp(signal === undefined ? {} : { signal }));
+    return withIncompleteStartNotice(
+      Effect.andThen(refreshAppCache(), startApp(signal === undefined ? {} : { signal })),
+    );
   },
-  render: (result, _input, ctx) => renderStartAppResult(result as StartAppResult, ctx),
-};
+  render: (result, _input, ctx) => renderStartAppResult(result, ctx),
+} satisfies LandoCommandSpec<StartAppResult>;

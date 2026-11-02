@@ -1,6 +1,6 @@
 # Lando v4: Runtime Provider API
 
-> **Part 5 of 19** · [Index](./README.md)
+> **Part 5 of 20** · [Index](./README.md)
 > **Read next:** [06 Services](./06-services.md)
 
 A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service instances. The Lando-managed runtime is the default; system Docker and system Podman are bundled opt-in providers.
@@ -24,7 +24,7 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 1. **Core never shells out to provider binaries.** Every provider operation goes through `RuntimeProvider`.
 2. **Core never makes provider-native files the source of truth.** Providers MAY emit native files from a plan.
-3. **Provider selection is explicit and cached.** App or global configuration overrides the bundled `lando` default; host-only commands and host tooling require no provider.
+3. **Provider selection is explicit and cached.** App or global configuration overrides the bundled `lando` default; host-only commands and host tooling require no provider unless they operate on runtime resources. The CLI/default host-provider policy resolves setup's scoped override, then `LANDO_PROVIDER`, then config `defaultProviderId`, then `lando`. Embedding hosts follow §16.5: host configuration MAY outrank or exclude environment input. An app's Landofile provider MUST NOT change the host provider. Planner and registry MUST share the applicable override-aware resolution. Plan cache identity MUST include the host provider.
 4. **Capabilities are validated before planning completes and before provider action.** Missing required behavior fails with a typed capability error.
 5. **Provider-specific configuration is namespaced** under `providers.<id>`.
 6. **Escape hatches are non-portable.** Supported Compose input remains shared input; provider extensions do not become portable semantics.
@@ -35,56 +35,134 @@ A `RuntimeProvider` turns a provider-neutral `AppPlan` into running service inst
 
 `RuntimeProvider` is an Effect service. Scoped methods MUST acquire external resources in `Scope`; interruption MUST reach the underlying operation and finalizers MUST reap owned resources.
 
+Provider apply retains container creation, resource ownership, service-start/dependency graph scheduling, and partial-apply persistence. The engine supplies an invocation-scoped `ApplyOptions.executeReadinessAttempt` delegate for both service and host checks, bound to the actual plan, cancellation signal, and selected provider exec. Providers MUST invoke that delegate rather than choosing an independent attempt executor. Direct apply without it MAY execute service readiness, but MUST reject host readiness before resource mutation. The delegate transfers attempt execution only, not scheduling or ownership. Full engine scheduling remains deferred pending provider-neutral per-service lifecycle primitives and a reviewed partial-apply/cancellation contract (§6.7).
+
 | Member | Contract |
 |---|---|
 | `id`, `displayName`, `version`, `platform` | Stable provider identity and host metadata. |
 | `capabilities` | Truthful `ProviderCapabilities` declaration used before planning or action. |
 | `isAvailable` | Reports whether the provider can operate on the host. |
 | `setup` | Acquires or configures provider prerequisites. |
-| `getStatus` | Reports readiness and actionable provider state. |
+| `getStatus` | Reports readiness and actionable provider state from the existing endpoint. It MUST NOT launch or repair a runtime, and a missing or unreachable endpoint is a tagged failure, not `running: false` with a healthy-looking message. |
 | `getVersions` | Reports provider and runtime component versions. |
 | `buildArtifact` | Builds a runnable artifact from an `ArtifactBuildSpec`. |
-| `pullArtifact` | Acquires a referenced artifact with optional policy `always` (default; acquire from source), `missing` (reuse a provider-local copy, acquire only when absent), or `never` (reuse a provider-local copy, fail without contacting the source when absent; §6.13.3). Provider policies are strict and do not fall back. |
+| `pullArtifact` | Acquires a referenced artifact with optional policy `always` (default; acquire from source), `missing` (reuse a provider-local copy, acquire only when absent), or `never` (reuse a provider-local copy, fail without contacting the source when absent; §6.13.3). Provider policies are strict and do not fall back. A digest-qualified reference MUST report exactly that digest. |
 | `removeArtifact` | Removes an artifact owned or selected by the request. |
-| `apply` | Reconciles an `AppPlan` and returns materialized runtime results. |
+| `apply` | Reconciles an `AppPlan` and returns materialized runtime results. Ordinary apply recreates only containers whose immutable create configuration drifted or whose `dev.lando.create-config` label is missing, and keeps unchanged containers and volumes (§5.3.2). A service start failure, interruption, dependency cycle, blocked gate, or volume-phase failure MUST leave the containers and networks apply created in place (created-but-not-started containers included) so a retry converges on them; apply still captures service-start log tails for the error. Shared networks are never removed. |
 | `start`, `stop`, `restart` | Changes lifecycle state for selected services. |
-| `destroy` | Removes the selected app realization according to `DestroyOptions` and returns a `DestroyOutcome`: `destroyed`, or `no-op` with reason `no-applied-plan` when the target carried no plan and the provider found no applied record. A planless destroy that removes nothing MUST report the no-op rather than succeed silently. |
-| `removeObservedService` | Stops and removes the container behind one observed `ServiceRuntimeInfo`, by observed identity, without resolving an applied plan; returns `removed` or `absent`. |
+| `destroy` | Removes the selected app realization according to `DestroyOptions` and returns a schema-backed `DestroyOutcome`: `destroyed`, or `no-op` with reason `no-applied-plan` when the target carried no plan and the provider found no applied record. A planless destroy that removes nothing MUST report the no-op rather than succeed silently. Either arm MAY carry `shutdownObservations` (§5.3.3). |
+| `cleanupOwnedResources` (optional) | Removes verified owned containers, private networks, and volumes selected by `DestroyOptions` for one root. Returns `OwnedResourcesCleanupResult` (`servicesRemoved`, `networksRemoved`, `volumesRemoved`). All bundled providers implement it. Shared networks are never owned or deleted. |
+| `removeObservedService` | Stops and removes the container behind one observed `ServiceRuntimeInfo`, by observed identity, without resolving an applied plan; returns a schema-backed `ObservedServiceRemoval`, `removed` or `absent`, optionally carrying `shutdownObservations` (§5.3.3). |
 | `exec` | Executes a short command and returns a collected `ExecResult`. |
+| `readAppEnvironment` | Required, read-only `(AppSelector, Readonly<Record<string, ReadonlyArray<string>>>)` to `ReadonlyArray<Redacted<string>>`; reads only requested names from existing containers identified by service. Missing containers, names, and empty values contribute nothing; MUST NOT start runtimes or mutate resources. Transport, permission, and malformed-response failures are sanitized typed `ProviderError`s without response bodies. |
 | `execStream` | Streams stdout/stderr and a terminal exit result for a command. |
-| `run` | Runs a scoped ephemeral workload, including declared mounts and input. |
+| `run` | Runs a scoped ephemeral workload with declared volume mounts and input; its spec carries only named-volume mounts, so binds and tmpfs are unrepresentable rather than dropped. |
 | `runStream` | Streaming sibling of `run`, used by generic data movement. |
 | `logs` | Streams raw, source-tagged service logs; redaction occurs at output boundaries. |
-| `inspect` | Returns `ServiceRuntimeInfo` for a selected service. |
+| `inspect` | Returns `ServiceRuntimeInfo` for a selected service. Its required `publications` field is a `PublicationObservation`: `unknown` when evidence could not be established or is malformed, `missing` when the container is proven absent, or `present` with the actual `bindings` (container `port`, `transport`, real `bindAddress`, assigned `hostPort`), where an empty list proves there are none. Inspect MUST NOT merge planned endpoints into the observation or fall back to plan values, and missing or malformed evidence is never reported as known-empty. |
 | `list` | Lists provider instances matching a `ListFilter`. |
-| `snapshotVolume`, `restoreVolume`, `removeVolumeSnapshot` | Creates, restores, and removes snapshots only when the provider declares native snapshot support; otherwise fails with a typed capability error. The shared container data plane accepts only native-format references, rejects another provider's reference before mutation, and removes artifacts idempotently. Plugin providers may implement other reference formats. |
-| `listVolumeSnapshots` (optional) | Lists provider snapshot artifacts with immutable reference, creation time, and labels, independently of host indexes. Non-native providers return an empty list. Listing MUST NOT start a stopped runtime. |
+| `snapshotVolume`, `restoreVolume`, `removeVolumeSnapshot` | Required for every provider, including removal. Creates, restores, and removes snapshots only when the provider declares native snapshot support; non-native providers MUST fail with the typed capability error. The shared container data plane accepts only native-format references, rejects another provider's reference before mutation, and removes artifacts idempotently. Its helper containers (snapshot commit, volume witness) run only from pinned digest refs, acquired through the provider's `pullArtifact` path with the `missing` policy and verified against the pin before the container is created; failure to acquire or verify fails the operation with a tagged error. Plugin providers may implement other reference formats. |
+| `listVolumeSnapshots` (optional) | Lists provider snapshot artifacts with immutable reference, creation time, and labels, independently of the host catalog. Non-native providers return an empty list. Listing MUST NOT start a stopped runtime. |
 | `listVolumes`, `removeVolume` | Enumerates and removes selected volumes. |
 | `copyToService`, `copyFromService` | Transfers bytes to or from a service. |
 | `exportArtifact`, `importArtifact` | Streams artifacts across the provider boundary. |
 | `openAgentSocketBridge` | Scoped; makes a host-side agent relay reachable to one app's services as a directory containing the named socket (§10.4). |
+| `prepareFileSyncTargets`, `inspectAppliedFileSync`, `disposeFileSyncTargets` (optional) | Accelerated-mount targets for a slow-IO provider (§10.6.3). `prepareFileSyncTargets` creates or re-verifies one labeled sync volume and helper per planned session, is idempotent on retry, fails closed on foreign or unlabeled resources, and returns no rollback: targets outlive a failed start and the next start resumes them. `inspectAppliedFileSync` reports `accelerated`, `ordinary`, `missing`, or `unknown` for the applied app. `disposeFileSyncTargets` removes the targets during destroy. A provider without these members realizes accelerated plans as ordinary binds. |
+| `quiesceForFileSync` (optional) | Stops app writers while retaining accelerated mount targets for the final synchronization flush. Returns schema-backed `FileSyncQuiesceResult` with optional `shutdownObservations` captured before container removal (§5.3.3). MUST use the existing runtime, not launch or repair it. |
 
 `exec` MUST be a collector over `execStream`, not a second execution path. `execStream`, foreground `run`, data transfers, and other live operations are scope-bound. `logs` MUST always support the implicit console source when `serviceLogs` is declared; following declared file sources additionally requires `serviceLogSources` and follows §6.14.
 
+`ApplyOptions.onVolumeCreated` is an optional effectful callback receiving the same verified `VolumeCreationFact` reported in `ApplyResult.createdVolumes`. Providers MUST await it for each volume immediately after verified creation and before starting any service container. A callback failure MUST fail apply before service startup. Existing or adopted volumes MUST NOT trigger the callback; ownership labels alone are not creation evidence. Receipts already persisted survive a later apply failure, and the volumes they describe are retained with them.
+
 #### 5.3.1 Teardown resolution and orphaned resources
+
+All app kinds use one placement rule. Desired placement is the selected provider; realized placement is the installed provider holding an applied plan for the exact canonical root and app identity. Scratch plans carry `SCRATCH_EXTENSION_KEY` and MUST match the scratch app id; user and global targets MUST exclude scratch plans. Placement, applied-plan evidence, teardown evidence, orphan grouping where an applied plan disambiguates identity, and ownership cleanup MUST share this predicate. Colocated app kinds MUST NOT claim or remove each other's resources. Before start, rebuild, or restart mutates resources, a different realized provider MUST fail with `AppPlacementError` carrying `AppRef`, desired and realized provider ids, and working remediation commands. Observation and teardown MUST follow applied placement, not a changed default. Ownership inventories alone MUST NOT claim placement. Multiple applied claims MUST fail as ambiguous. `destroy --provider=<id> --yes` MUST restrict evidence and cleanup to that provider, allowing duplicate realizations to be retired explicitly without reading another provider's inventory. Plain destroy MUST retain named volumes. Every volume rule in this section is about named volumes: an anonymous volume shares its container's lifetime and is removed with it (§6.5).
 
 `stop` and `destroy` callers resolve the app **root** from Landofile discovery, which succeeds on an invalid Landofile, and consult applied state and runtime evidence against that root before planning desired config:
 
-1. No applied plan and no owned runtime resources: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says. The one exception is `destroy --purge`, which still removes the root's snapshots (§10.11.2), takes only the provider actions that removal needs, and reports `destroyed` when it removed any.
-2. An applied plan exists: tear down from the applied plan.
+1. No applied plan, no owned runtime resources, no nonempty cleanup inventory, and no unfinished accelerated-start journal at the root: the operation reports `outcome: "unchanged"`, takes no provider action, and exits successfully whatever the Landofile says. A nonempty inventory requires provider verification even when every recorded resource returns absent. The one exception is `destroy --purge`, which still removes the root's snapshots (§10.11.2), takes only the provider actions that removal needs, and reports `destroyed` when it removed any.
+2. An applied plan exists: tear down from the applied plan. Landofile `events:` and `hostEvents` steps for that teardown come from the Landofile at the applied root at command time (§8.5.7); a Landofile that is missing, fails to load, or names another app or provider skips those steps with a notice. That tolerance is for hook sourcing only; the ownership and unfinished-accelerated-start checks below still fail closed.
 3. No applied plan but owned runtime resources exist: tear them down as orphans of that root. Both operations remove orphan containers through `removeObservedService` by observed identity, never through provider state looked up by app id. When destroy's volume policy selects orphan volumes for removal, it uses `removeVolume` by observed identity. The desired plan is loaded only if teardown needs it; a desired-config failure at that point is reported as the tagged planner/landofile error.
 
-`stop` reports `stopped` or `unchanged`; `destroy` reports `destroyed` or `unchanged`. Every renderer and machine format MUST preserve that distinction. The operation result vocabulary is distinct from the provider's `DestroyOutcome` (`destroyed`, or `no-op` with reason `no-applied-plan`, §5.3): rule 1 returns `unchanged` without any provider call, an applied-plan teardown (rule 2) reports `destroyed`, and an orphan teardown (rule 3) derives its result from what it removed, `unchanged` when nothing was removed. A direct provider `no-op` MUST NOT be rendered as `destroyed`; it corresponds to `unchanged` unless the same operation removed other resources. Both operations stop and remove the selected containers, but `stop` retains the applied plan and volumes, while `destroy` clears applied state and follows its volume policy. An orphan teardown MUST report what it removed; a result that lists a service MUST mean that service was stopped and removed. Orphan volume removal under `destroy --volumes` MUST classify cache and data volumes exactly as planful bring-down does. A plain `destroy` leaves data stores, so rule 3 lets a later `destroy --volumes` remove them.
+Destroy plans before it executes. Identity, inventory, capability, journal, and file-sync checks are read-only and run before the `pre-destroy` bracket (§3.5); every mutation, and any validation that depends on quiescing retained writers, runs inside it.
 
-Selected global stop (§20.7) is the one teardown exception to rule 3: an otherwise valid selected orphan request (orphaned runtime resources, no applied plan) fails with `AppResolveError` before any mutation, because route ownership cannot be reconstructed without applied route definitions. Whole-global stop follows rule 3.
+`stop` reports `stopped` or `unchanged`; `destroy` reports `destroyed` or `unchanged`. Every renderer and machine format MUST preserve that distinction. The operation result vocabulary is distinct from the provider's `DestroyOutcome` (`destroyed`, or `no-op` with reason `no-applied-plan`, §5.3): rule 1 returns `unchanged` without any provider call, an applied-plan teardown (rule 2) reports `destroyed`, and an orphan teardown (rule 3) derives its result from what it removed, `unchanged` when nothing was removed. A direct provider `no-op` MUST NOT be rendered as `destroyed`; it corresponds to `unchanged` unless the same operation removed other resources. Both operations stop and remove the selected containers, but `stop` retains the applied plan and named volumes, while `destroy` clears applied state and follows its volume policy. An orphan teardown MUST report what it removed; a result that lists a service MUST mean that service was stopped and removed. Orphan volume removal under `destroy --volumes` MUST classify cache and data volumes exactly as planful bring-down does. A plain `destroy` leaves data stores, so rule 3 lets a later `destroy --volumes` remove them.
 
-The relaxation is scoped to teardown callers. `start` and every other non-teardown caller keep the fail-closed refusal of orphaned runtime resources (`AppResolveError`) and MUST NOT be served by widening the shared evidence resolver's default.
+Selected global stop (§20.7) is the one teardown exception to rule 3: an otherwise valid selected orphan request (orphaned runtime resources or cleanup-only ownership hints, no applied plan) fails with `AppResolveError` before any mutation, because route ownership cannot be reconstructed without applied route definitions. Whole-global stop follows rule 3.
+
+The orphan-teardown relaxation is scoped to teardown callers. `start` MUST reconcile resources retained from a failed attempt when their recorded ownership and observed identity validate against the desired plan (§6.7). Unknown or foreign resources MUST remain untouched and fail closed through the applicable app-resolution or provider-ownership error; convergence MUST NOT widen the shared evidence resolver's default or adopt resources without ownership proof.
 
 The §10.11 `DataMover` uses native data-plane methods only when declared. Otherwise it MAY use the mount-aware ephemeral-run fallback; if `ephemeralMounts` is false and no native capability exists, planning or transfer fails with `CapabilityError`.
+
+Before any provider `apply` mutates app containers, private networks, or volumes, the provider records the union of the previous successful attempt, prior failed attempts, and the attempt in progress. The record holds identities and digests only, plus the expected app, provider, root, and owner, and the actual physical name, including Lando Windows names. Shared networks are never owned. Applied plans are recorded on success only. `ResourceOwnership` (`appRoot`, `ownerKey`, `providerId`, `appIds`) is a summary hint. It is not physical existence, readiness, or seed evidence.
+
+`RuntimeProviderContribution.resourceOwnership(ctx, root)` is a filesystem-only query and MUST NOT construct, initialize, or contact a runtime. It reads the provider-private `ctx.stateStore` `resource-ownership` namespace, keyed by canonical owner (§12.4.2). `RuntimeProviderRegistry.resourceOwnership(providerId, root)` is the optional per-provider form of the same query, with the same filesystem-only restriction.
+
+`RuntimeProviderContribution.declaredCapabilities(platform, arch)` is optional. It returns the provider's capabilities for a host without IO and without constructing, initializing, or contacting a runtime, so it is a plain synchronous function rather than an Effect. `PluginRegistry.declaredProviderCapabilities(id, platform)` exposes it for offline config lint, which passes the resolved host platform (`PathsService.platform`), never a raw `process.platform`. A provider without it gets one lint warning that capability checks run at `lando start`.
+
+`RuntimeProviderRegistry` MUST provide all three evidence members. Callers pass canonical roots; app-kind and identity matching follows the shared placement predicate above.
+
+| Required member | Result and behavior | Failure channel |
+|---|---|---|
+| `appliedPlansFor(root)` | All installed contributions' applied plans whose `identity.appRoot` exactly equals `root`. Filesystem-only; MUST NOT construct, initialize, or contact a runtime. Shared app placement uses it. | `ProviderUnavailableError \| NoProviderInstalledError` |
+| `resolveAppliedPlan(root)` | The unique nearest ancestor-matching non-scratch `AppPlan`, or `undefined` when no applied or owned evidence exists. Orphan resources or cleanup-only ownership MUST fail closed. A matching applied plan MUST NOT require runtime or ownership-inventory inspection. | `AppResolveError \| ProviderError \| NoProviderInstalledError` |
+| `resolveTeardownEvidence(root)` | Exact-root `AppliedTeardownEvidence`: `applied`, `orphans`, `owned`, or `absent`. MUST validate ownership before mutation and MUST NOT inherit an ancestor app as the teardown target. | `AppResolveError \| ProviderError \| NoProviderInstalledError` |
+
+Ambiguous applied claims and mismatched attribution MUST fail with `AppResolveError`; provider inspection failures MUST propagate through `ProviderError`. Missing registry members MUST NOT be replaced by empty or absent evidence.
+
+Exact teardown queries every installed contribution's root inventory before any mutation, including an old applied app and a separate failed app. It validates ownership. An offline or corrupt nonempty hint fails with an actionable error and MUST NOT be treated as absent. Teardown evidence MAY be an applied plan, orphan observation plus ownership, or an ownership inventory alone (cleanup-only, no applied plan). Global teardown is the exception to the every-contribution inventory query: it consults only the realized global provider's inventory, or the host provider's when no applied global plan exists, through `RuntimeProviderRegistry.resourceOwnership`, and cleans up through that provider. It MUST NOT read or act on another provider's inventory.
+
+Inventories are teardown evidence only, except that a successful apply retires the entries of app-owned authored networks it removes (§10.1). Non-teardown resolution (selected restart, applied-state resolution) serves a matching applied plan without reading any provider's inventory; it consults inventories only when no applied plan matches, and a nonempty hint then produces the existing orphan refusal (`AppResolveError`). Only teardown probes the availability and cleanup capability of inventory providers. The internal whole-app stop that restart and rebuild run does not perform ownership cleanup.
+
+Whole-app `stop` and `destroy` combine verified cleanup outcomes. A network-only removal is not `unchanged`. An all-absent result stays `unchanged`. Verified absent or removed containers and private networks are retired from the inventory. Named volumes remain until the existing volume flags select them; a removed container's anonymous volumes go with it. Verification uses ownership labels, not trusted names, with one legacy exception for per-app bridges.
+
+| Observed resource | Teardown action |
+|---|---|
+| Container with its app, root, and service ownership labels and an observed native id | Remove by observed native id. |
+| Container missing any of those labels or an observed native id | Refuse. No legacy exception. |
+| Per-app bridge at the exact planned private network name with no labels at all | Legacy (created by an earlier build). Remove by observed native id during planful bring-down and ownership-inventory cleanup; a failed bring-up retains it like every other network. |
+| Network with the expected ownership label set | Remove by observed native id. |
+| Network with any nonempty label set that is not the expected ownership set (partial, another app, root, owner, or provider) | MUST refuse. |
+| Shared network | Never removed. |
+
+This inventory MUST NOT widen partial `provider.destroy`, selected rebuild, or global `-s`. Selected global orphan refusal (§20.7) is unchanged. Orphan lifecycle events are unchanged. A failed or interrupted start at any phase retains the applied app, networks, routes, and volumes (§6.7); the ownership record is how the next start, stop, or destroy finds them. Neither path deletes named volumes unless the existing flags select them.
+
+Prepared file-sync targets are not in this inventory. An unfinished accelerated-start journal (§10.6.3) is the ownership evidence for them: it names the attempt's provider, app, root, engine, target volumes, and sessions, and `prepareFileSyncTargets` re-verifies each target's ownership labels live before a resume touches it. The §12.4.2 manifest is consulted beside it only to reject a foreign provider or app; its absence is not a refusal. `stop` with an unfinished attempt runs the full plan stop from any phase (provider teardown that stops writers, then engine drain or session termination, then the owned cleanup above) and leaves the attempt unfinished for the next start. `destroy` disposes the attempt's sessions and targets from any phase, then clears the journal; a target with no session is disposed only when no app writer could have used it, so a post-apply-intent target with no matching session refuses until the session's synchronization history is restored in the engine and `lando start` finishes the attempt. Both fail closed when the journal's identity does not match the current app, provider, or engine; "from any phase" is subject to those ownership and data-preservation checks, not a guarantee in every resource state.
+
+#### 5.3.2 Create-config identity
+
+Ordinary `start` and explicit `global:start` plan and build with the default cache policy (§6.13.3), then apply changed immutable container create configuration, keeping unchanged containers and named volumes; a recreated container's anonymous volumes are removed with it (§6.5). Bare `restart` stops and removes containers, then starts the app with the default cache policy (§6.15). `start` has no confirmation flag.
+
+| Drift | Apply behavior |
+|---|---|
+| Image reference, digest, or build key, under the ordinary build flow | Recreate the affected container. |
+| `command`, `entrypoint`, `init`, environment, `user`, working directory, mounts, storage, labels, preserved Compose knobs, or container `healthcheck` | Recreate the affected container. A change between absent and an explicit value, or between `true` and `false`, is drift; an unchanged value is not. |
+| Missing opaque `dev.lando.create-config` label | One-time recreate. |
+| Unchanged `${secret:...}` reference whose store value changed | Not a config-identity change. MUST NOT recreate for that reason alone. |
+| Per-session credentials, allocations, and timestamps | Excluded from identity. |
+| Host-proxy session (`dev.lando.host-proxy-session`) | Excluded from identity. A changed session recreates eligible services through the host-proxy session rule (§10.10.1), never as config drift, so selected restart is unaffected. |
+
+The label value is `v3:` plus one SHA-256 digest of the desired create configuration, including the physical mount list (type, source or store, target, access, tmpfs options, and accelerated sync volume) but not role, exclude, or include metadata, including both authored artifact provenance and the realized artifact reference and digest. It stores no raw values and no per-value hashes. Selected restart projects the current desired services onto ownership-matched applied artifacts before inspection and forbid-recreate apply, so an unchanged built service can restart without rebuilding or resolving creation secrets. Environment values enter the digest as their descriptors (§7.3.1): a literal string as its bytes, a `SecretRef` or `BoundText` as its reference identifiers, part order, and encodings, never as resolved SecretStore values. A literal `${secret:...}` string and a `SecretRef` to the same reference therefore have different identities. Literal env-file and YAML config, including a literal password, is desired configuration and is inside that single outer digest. The digest does not prevent dictionary inference and MUST NOT be described as proof that no secret was hashed.
+
+Explicit `rebuild` remains the forced artifact refresh and explicit recreate (§6.15). It is not required to apply create-config drift.
+
+A provider that realizes network names physically (the managed Windows machine) stamps the fingerprint computed from the physical plan. Its `inspect` presents the logical fingerprint only when the observed label exactly equals the physical expectation, so selected-restart preflight compares like with like. When physical and logical expectations differ, a physical mismatch withholds the fingerprint so it counts as config drift.
+
+#### 5.3.3 Shutdown observations
+
+Teardown reports what the daemon said about each container before removing it, never a verdict about how it stopped. `ServiceShutdownObservation` is an Effect Schema with inferred types: `appId`, `providerId`, `service`, optional exact `containerId` (the identity inspected, never a replacement found by name), optional `oomKilled` (the daemon's explicit OOM bit; omission means unknown, not `false`), and a discriminated `status`. `exited` carries an optional integer `exitCode`; a missing code is reported as unknown and is never read as `0`. `unknown` carries a `reason`: `container-absent`, `state-unavailable`, `not-exited`, or `inspect-failed`, and only `inspect-failed` carries a `diagnostic`, the canonical sanitized tagged-error JSON. The unknown arms reject an `exitCode`. A reported OOM bit is preserved even when the rest of the state is incomplete. No raw inspect body, environment, log bytes, native command, or unsanitized cause enters an observation.
+
+Providers that observe do so on the exact owned container after a successful or already-stopped stop and before removal, within the existing operation timeout. A container that never started is not exit `0`. An inspection failure becomes `unknown` with reason `inspect-failed` and does not block an authorized removal; a stop or delete failure remains a failure with its original tag, cause, and remediation. `DestroyOutcome` and `ObservedServiceRemoval` carry `shutdownObservations` on success, and the engine forwards them unchanged onto `StopAppResult`, `DestroyAppResult`, observed orphan removal, and the selected global stop and destroy results, preserving `appId` attribution when service names repeat across apps. The field is optional at every layer: a provider without observation support omits it, and ownership-only cleanup that saw no container MUST NOT fabricate one.
+
+There is no public graceful or forced boolean. Exit `137` alone does not prove a forced stop or an OOM kill, and exit `0` does not prove the application finished its own cleanup. Human output repeats the facts inline beside each service and raises a warning only for an explicit `oomKilled: true` or an inspection failure; machine output carries the schema-encoded observations.
+
+Accelerated destroy MUST retain observations returned by `quiesceForFileSync` through synchronization flush, session and target disposal, and final provider cleanup into `DestroyAppResult`. This does not change the existing action order or failure channels. A later `container-absent` placeholder MUST NOT obscure earlier facts for the same app, provider, and service when its exact container id matches or is unavailable; observations for distinct exact container ids or different app/provider identities remain separate. Providers without observation support return an empty receipt rather than inventing facts.
 
 ### 5.4 Capabilities
 
 Capabilities are schema-validated claims. Providers MUST report them truthfully, and the §13.1 provider contract suite verifies declared behavior.
+
+The §5.3.1 registry evidence members (`appliedPlansFor`, `resolveAppliedPlan`, and `resolveTeardownEvidence`) are required contracts, not optional provider capabilities.
 
 | Capability | Meaning |
 |---|---|
@@ -102,15 +180,18 @@ Capabilities are schema-validated claims. Providers MUST report them truthfully,
 | `persistentStorage` | Supports persistent stores. |
 | `bindMounts` | Supports host bind mounts. |
 | `bindMountPerformance` | Bind IO is `native`, `slow`, or `none`. |
-| `copyMounts` | Supports copy-style mounts. |
+| `copyMounts` | Supports copy-style mounts; deferred with copy mounts (#1810), so every provider reports `false`. |
+| `fileSyncTargets` | Optional `prepared-volume` support for provider-owned sync-target preparation and applied-state inspection; omission means unsupported. |
 | `hostPortPublish` | Publishing is `native`, `proxy`, `manual`, or `none`. |
 | `routeProvider` | Realizes host routes. |
 | `tlsCertificates` | TLS realization is `native`, `lando`, or `none`. |
 | `rootless` | Operates without root privileges. |
 | `privilegedServices` | Supports privileged service intent. |
+| `serviceInit` | Optional boolean: realizes native container init as PID 1 for a service with effective `init: true` (§6.2.1). Omission means unsupported, and planning fails closed with `CapabilityError` before provider action; absence or explicit `false` on a service never requires it. |
 | `composeSpec` | Compose realization is `none`, `portable`, or `native`. |
 | `composeKnobs` | Exact supported preserved container-runtime knobs. |
 | `composeServiceFields` | Exact supported preserved service field families. |
+| `authoredNetworks` | Optional boolean for normalized authored network attachments and aliases; omission means unsupported. |
 | `composeProjectFields` | Exact supported preserved project fields. |
 | `composePreservedPaths` | Exact supported preserved descendant paths. |
 | `volumeSnapshot` | Volume snapshots are `native` or `none`. DataMover owns the host-archive fallback. |
@@ -120,13 +201,15 @@ Capabilities are schema-validated claims. Providers MUST report them truthfully,
 | `providerExtensions` | Extension namespaces the provider accepts. |
 | `agentSocket` | Agent-socket delivery for §10.4 SSH and gpg relays: `{ delivery: "bind-directory" \| "guest-bridge" \| "volume-relay" }`. Omitted means no delivery; §10.4 sidecar mode then warns and starts without the socket overlay, while host mode and gpg forwarding fail planning with `CapabilityError`. |
 
-Missing required capabilities fail before provider action with `CapabilityError` naming the provider, feature, service when applicable, and remediation. Published endpoints require `hostPortPublish`; internal endpoints do not. Providers return assigned host ports as materialization results and MUST NOT mutate desired publication state.
+Missing required capabilities fail before provider action with `CapabilityError` naming the provider, feature, service when applicable, and remediation. Published endpoints require `hostPortPublish`; internal endpoints do not. Providers report assigned host ports only as `PublicationObservation` bindings from real inspection and MUST NOT mutate desired publication state or substitute plan values for observed ones.
 
 `composeSpec: native` is necessary but not sufficient for preserved Compose semantics. `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` are fail-closed exact declarations; omission means no support, non-empty declarations below `native` are invalid, and support MUST NOT be inferred from a parent field or tier. Declaring a field claims complete realization of its accepted forms. Service and project `x-*` fields remain inert preserved metadata unless a specific namespace later gains an explicit capability or provider extension.
 
+Bundled container providers MUST derive `composeKnobs.supported` from the shared realization table. Each realization declares the engine dialects for which its request fields implement the accepted forms with identical semantics. Docker uses the verified Docker Engine mappings; Lando-managed and system Podman use the libpod dialect's compatible create API. Independent request fixtures MUST cover every declared knob for each dialect, including query parameters and the Config versus HostConfig boundary. Docker's supported API range MUST preserve these mappings, including the container-create `platform` query parameter introduced in API 1.41.
+
 #### 5.4.1 Agent-socket delivery (`agentSocket`, `openAgentSocketBridge`)
 
-`openAgentSocketBridge(input)` takes `AgentSocketBridgeInput` (`appId`, `sessionId`, `kind: "ssh" | "gpg"`, an `upstream` that is a host Unix socket path or an authenticated host-loopback TCP endpoint, and `socketName`) and returns `AgentSocketBridgeResult`: either `bind-directory` naming a host directory the provider can bind, or `volume` naming a provider volume; in both cases the directory contains `socketName` once the bridge is live. The result is Scope-owned. Closing the scope tears down any guest listener, relay process, or volume and MUST reap them on interrupt. The provider MUST declare `agentSocket` only when its bridge works on the current host, so capability failure happens before planning rather than at apply.
+`openAgentSocketBridge(input)` takes `AgentSocketBridgeInput` (`appId`, `sessionId`, `kind: "ssh" | "gpg"`, an `upstream` that is a host Unix socket path or an authenticated host-loopback TCP endpoint, and `socketName`) and returns `AgentSocketBridgeResult`: either `bind-directory` naming a host directory the provider can bind, or `volume` naming a provider volume; in both cases the directory contains `socketName` once the bridge is live. The result is Scope-owned. Closing the scope tears down any guest listener, relay process, or volume and MUST reap them on interrupt. A failed or interrupted start MUST NOT close a bridge it has acquired and recorded; stop and destroy close it (§10.4). The provider MUST declare `agentSocket` only when its bridge works on the current host, so capability failure happens before planning rather than at apply.
 
 | Host and provider | `delivery` | Realization |
 |---|---|---|
@@ -136,7 +219,9 @@ Missing required capabilities fail before provider action with `CapabilityError`
 
 The relay carries raw agent bytes and is separate from the §10.10 host-proxy protocol. Failure policy follows §10.4: in sidecar mode an unsupported combination or a failed bridge publishes a warning, the app starts without the socket overlay, and `lando doctor` reports the ssh check degraded; in host mode (`sshAgent.sidecar: false`) and for gpg forwarding, a missing `agentSocket` capability is a planning-time `CapabilityError` naming the provider and the alternatives, start-time discovery and bridge failures are `SshAgentUnavailableError` or `GpgAgentUnavailableError`, and faults after readiness are the matching `*TransportError`. Relay sockets are `0666` inside a per-user `0700` run directory. The Windows `guest-bridge` loopback TCP broker carries no token: other local accounts on that Windows host can reach it while the app runs, which is a documented trust-boundary limitation.
 
-`bindMountPerformance: slow` causes the planner to use the active `FileSyncEngine` unless the user explicitly selects the documented passthrough escape hatch; `none` rejects bind mounts. `sharedCrossAppNetwork` gates global-service contributions. Data-plane declarations select native behavior, documented generic fallback, or typed failure.
+`bindMountPerformance: slow` permits acceleration through an eligible `FileSyncEngine` (§4.3). `appMount.accelerate: false`, global `defaultFileSyncEngine: passthrough`, or no eligible automatic candidate keeps ordinary binds; `native` never accelerates, though explicit engine choices still undergo host-policy validation; `none` rejects bind mounts. `sharedCrossAppNetwork` gates global-service contributions. Data-plane declarations select native behavior, documented generic fallback, or typed failure.
+
+A provider MUST declare `fileSyncTargets: prepared-volume` only when its actual implementation supplies the required preparation and inspection lifecycle. The bundled `lando` provider declares it only on Windows when it manages the runtime, has applied-plan state, and has the API request hook needed to construct its preparation operations. An external socket MUST NOT gain this capability merely because the host is Windows. The acquired provider's capabilities and methods MUST agree before hooks, rotation, journaling, or target work. Capability, preparation, and ownership failures for a planned accelerated app fail with tagged errors and actionable remediation, never an ordinary-bind downgrade.
 
 ### 5.5 The `AppPlan`
 
@@ -147,21 +232,28 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `name`, `type`, `provider`, `primary` | Service identity, resolved type, provider, and primary marker. |
 | `artifact` | Existing artifact reference or build specification. |
 | `command`, `entrypoint` | Planned process invocation. |
-| `environment`, `user`, `workingDirectory` | Runtime process environment and identity. |
-| `appMount`, `mounts`, `storage` | App source, mount, and persistent-store intent. |
+| `init` | Optional boolean native container init intent (§6.2.1). `true` and `false` are planned intent; absence means the provider's own default and is not rewritten. Realized through the shared container-runtime lowering, never a provider-specific mapping. |
+| `environment`, `user`, `workingDirectory` | Runtime process environment and identity. `environment` is one map of `EnvironmentValue` descriptors (§7.3.1): a literal string, a `SecretRef`, or flat `BoundText`. A literal is final bytes and is never rescanned; a descriptor is resolved by the operation's `EnvironmentValueResolver` session immediately before the provider request (§5.5.2). |
+| `connection` | Optional `DatabaseConnection` resolved once by a database service type: `family`, typed `creds` (`user`, `database` literal; `password`, `rootPassword` as `EnvironmentValue`), and the planned `port` (§6.12.4). Clients, info, SQL operations, and `services.<name>.*` expression scopes read this, never the environment map. |
+| `serviceTypeId` | Optional nonempty canonical registry ID of the effective service-type declaration, including its composed inheritance chain. Fresh plans stamp every resolved service independently of tooling winners; `type` retains its normalized-family meaning. Missing historical declaration identity is not inferred from that normalized type. |
+| `nonSqlCreds` | Optional typed `ServiceCreds` published by a non-SQL service type, such as password-protected Redis, for credential expression scopes. Mutually exclusive with `connection`; it survives plan serialization and never duplicates database connection credentials. |
+| `mounts` | Every container mount (binds including the `role: app` app source, named stores, tmpfs), unique targets ordered shallow to deep (§6.4). |
 | `endpoints`, `routes` | Service listeners and references to app routes. |
 | `dependsOn` | Planned service dependencies. |
-| `healthcheck`, `certs`, `hostAliases` | Health, certificate, and supported host-reachability intent. |
+| `healthcheck`, `readiness`, `readinessSource`, `certs`, `hostAliases` | Independent native health and lifecycle readiness, readiness provenance, certificate, and supported host-reachability intent. |
 | `metadata` | Provider-neutral planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |
 
 | `AppPlan` field | Meaning |
 |---|---|
+| `valueModel` | Optional literal `1`. Planners always write it. Observed plans decoded from applied state MAY lack it; no decoder invents it (§5.5.2). |
 | `id`, `name`, `slug`, `root` | Stable app identity and authoritative root. |
 | `provider` | Selected provider id. |
 | `services` | Planned services keyed by service name. |
 | `routes` | Planner-resolved routes with explicit backend service, protocol, and port. |
-| `networks`, `stores` | Provider-neutral network and storage intent. |
+| `stores` | Provider-neutral storage intent. |
+| `networking` | Explicit per-app bridge (or `null`), optional shared-network membership with service aliases, and the authored networks services join (§10.1). |
+| `events` | Compiled Landofile `events:` and `hostEvents` steps with provenance and plan-time status (§8.5.7). Omitted from provider applied-state records. |
 | `metadata` | App planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |
 
@@ -170,6 +262,16 @@ Providers MAY translate plans into native representations, but MUST consume reso
 #### 5.5.1 Supported Compose input at the boundary
 
 The Landofile accepts the supported Compose subset in §7.4, but a raw Compose document never becomes the provider source of truth. Core parses and validates input, normalizes portable intent into plan fields, preserves accepted native intent in namespaced extensions, capability-checks preserved runtime semantics, and rejects unsupported keys with remediation. The §7.4 disposition matrix owns normalize/preserve/reject classification.
+
+#### 5.5.2 Environment resolution and execution eligibility
+
+`CurrentExecutableAppPlan` is `AppPlan` with `valueModel: 1` required. Before creating or recreating any container, a provider MUST decode the incoming plan as `CurrentExecutableAppPlan`; a plan without the marker fails with tagged `PlanReplanRequiredError` before any removal or resource allocation, regardless of what its strings look like. Observation, logs, stop, and teardown accept historical plans without the marker. Restart or reuse of an existing container never resolves creation values. A partial plan merge MUST NOT grant retained legacy services the incoming plan's marker.
+
+The applied-state envelope is version 3: the one-mount-list shape (§6.4) with canonical init intent. Reading a version 1 envelope first migrates its `appMount`, `mounts`, `storage`, and Compose `tmpfs` knob into the one list. Both version 1 and version 2 records then migrate any `init` value under `extensions.compose`, in either persisted layout, into `ServicePlan.init`, including an explicit `false`, remove the extension entry, and keep the record's ownership identity. A malformed value makes the record unreadable without deleting it, and absence in a historical record stays unspecified rather than becoming `false`.
+
+A record that cannot be migrated without guessing, any undecodable record, and an aggregate record with any unconvertible member are unreadable. Every mutation (apply including reconcile, stop, restart, destroy, and teardown, even with a caller-supplied plan) reads applied state freshly and strictly and refuses unreadable state with `ProviderUnavailableError` naming the state file and the recovery: restore it, or move it aside and rerun destroy so ownership labels drive cleanup, accepting that unflushed accelerated changes may be lost. Protection is scoped: an unreadable per-app record protects only that app, and an unreadable aggregate record protects every app of that provider, so other apps, other providers, and commands run outside an app keep working. Observation reads tolerantly and reports unknown instead of failing; ownership-label and orphan cleanup skip and report the resources of protected apps rather than treating them as orphans. Historical plans whose environments are plain strings remain decodable as observed plans.
+
+`ApplyOptions.resolveServiceEnvironment` is the only path from descriptors to bytes at the provider boundary. The engine supplies it from a Scope-owned `EnvironmentValueResolver` session: each reference is read once per operation, every raw value, URI-encoded component, and secret-bearing composite is registered with the redactor before dispatch, and the resulting `Record<string, string>` reaches `CommandSpec.env` and container create requests only. Providers MUST call it only for a service they are about to create or recreate, before destructive replacement, and MUST NOT stringify or omit an unresolved descriptor. Resolved maps never enter applied state, caches, plans, or argv.
 
 ### 5.6 Provider extensions
 
@@ -187,11 +289,13 @@ Provider-specific intent MAY appear only under `providers.<id>`. Such intent is 
 | `ServiceNotFoundError` | Selected service does not exist. |
 | `ProviderConfigError` | Provider extension configuration is invalid. |
 | `ProviderInternalError` | Provider failed outside a more specific category. |
-| `VolumeOperationError` | Volume list, remove, snapshot, restore, or snapshot removal failed. |
+| `VolumeOperationError` | Volume locate, observe, adopt, coordinate, list, remove, snapshot, restore, or snapshot removal failed. |
 | `ServiceCopyError` | Service file transfer failed. |
 | `ArtifactTransferError` | Artifact export or import failed. |
 
-Every provider error MUST include `providerId`, `operation`, a user-facing `message`, redacted `details` when present, optional `remediation`, and an optional original `cause` for debug logs. `message` and `details` MUST already be redacted with the live value set when the error is returned, so library callers see the same masking as CLI output.
+Provider-owned errors MUST include `providerId`, `operation`, a user-facing `message`, a nonblank actionable `remediation`, redacted `details` when present, and an optional original `cause` for debug logs. Callers that return the provider error channel MUST pass an existing provider failure through with its own tag and remediation instead of relabeling it. A subsystem with its own published error channel (DataMover, URL scanner) MAY wrap the failure in its tagged error, but MUST keep it as `cause`, keep its remediation, and MUST NOT reclassify it as a different provider error; volume coordination, for example, reports `VolumeOperationError` only for an ownership conflict or a volume whose identity changed under it, and a runtime that cannot be reached stays `ProviderUnavailableError`. Volume observation keeps an unexpected HTTP status in the message without the response body and keeps a decode failure as `cause`. Lazy environment-resolution failures also travel through the provider error channel: `SecretStoreError` and `EnvironmentValueResolutionError` retain their own tagged shapes rather than being wrapped as provider outages. Messages and details MUST already be redacted with the owning runtime's live value set when an error is returned, so library callers see the same masking as CLI output.
+
+The runtime provider registry MUST enforce redaction on failures from every Effect and Stream member, provider construction, and contribution callback, including applied-plan and resource-ownership reads. It MUST reconstruct canonical error classes with redacted `message`, deep-redacted `details`, `remediation`, and other exposed text fields while preserving tags, schema encoding, yieldability, and the original debug-only `cause`. Defects and interruption are unchanged. Providers MUST still redact errors at construction as defense in depth.
 
 ### 5.8 Bundled providers
 
@@ -200,6 +304,16 @@ All bundled providers implement the complete `RuntimeProvider` contract.
 #### 5.8.1 Default: Lando-managed runtime (`@lando/provider-lando`)
 
 The default provider uses Podman privately but presents the “Lando runtime” to users. It owns verified runtime bundles, private configuration and storage, its API endpoint, and managed macOS/Windows machines under Lando-controlled roots (§12.4). Production bundle entries MUST name immutable published assets with real checksums and sizes and MUST remain available for older binaries. Overrides MAY redirect development to another manifest or paired URL/checksum but MUST NOT disable verification. Resolution precedence is alternate manifest, paired URL/checksum, then bundled manifest; there is no channel-aware or runtime-fetched production manifest.
+
+The managed provider declares `serviceInit` and owns the init helper that realizes it (§6.2.1). On Linux the helper is a static `catatonit`, and it is a component of the runtime bundle recipe, not an independently installed tool. The bundle source manifest (`runtime-bundle-sources.json`) is the one authored pin: for x64 and arm64 it names the Debian package URL, digest, and size, the archive member, the extracted binary's digest, size, and ELF machine, the upstream source archive pin, and the verified license texts. The assembler extracts only that regular member, verifies the binary is a static ELF of the pinned architecture, and packs it as `bin/catatonit` with its notices under `licenses/catatonit`. Recipe version `0.1.8` is the first helper-bearing Linux payload. The committed published manifest (`runtime-bundle-versions.json`) keeps naming the real released `0.1.7` assets until the normal release workflow publishes and pins a helper-bearing bundle; no production pin is invented ahead of that release.
+
+Installation verification treats the helper as part of the payload. For a helper-bearing version, a same-version installation counts as complete only when the runtime entrypoint, a verified helper (digest, static ELF, executable mode, owner-controlled regular file), and its notices are all present; otherwise the bundle is reinstalled from verified bytes. A helper-bearing installation whose helper or notices are still missing or damaged after that fails setup with remediation and MUST NOT fall back to a Debian download, because the bundle itself is the only source of its helper.
+
+One bounded compatibility bridge exists for the transition. It applies only when the persisted installation marker is exactly the published `0.1.7` version. The bridge verifies an installed helper and reuses it offline; only when the binary itself is unusable does it download the same pinned Debian package, extract only the regular member, verify it, and publish it atomically as an owner-controlled executable under the private runtime bin path. License texts are fetched only when the notices are incomplete. A `.catatonit.identity` receipt recording the pin is written last and marks completion, so an interrupted bridge is redone, never trusted. A missing, unmarked, or any other installation marker fails with `lando setup` remediation rather than a guessed helper source. Retiring the bridge after publication and an explicit upgrade path is tracked in #1934.
+
+Native init preparation belongs to creation. Setup and the operations that create or start a service with effective `init: true` (`apply`, and `start`, `restart`, or `resume` of such a service) prepare the helper and configuration under the runtime launch lock; a service whose `init` is absent or `false` never requires a helper download. Operations that read or tear down existing resources (status, logs, list, inspect, exec, environment reads, copies, volume discovery, service stop and suspend, destroy, observed removal, and file-sync inspection or disposal) use the already-running runtime as it is: they do not launch, repair, reconfigure, or download anything, and an unreachable endpoint is a tagged `ProviderUnavailableError`, never an empty or healthy answer. Preparation produces the desired configuration once and writes a file only when its content or mode differs, so repeated setup or start against a matching installation performs zero writes and no relaunch.
+
+The provider points `[containers].init_path` in its private `containers.conf` at that canonical helper path rather than enabling a global init override. The runtime configuration revision is part of the owned daemon's launch identity, so an already-running Lando-owned daemon with an older revision is relaunched once with its live run root preserved; daemons Lando does not own are never relaunched. Managed macOS and Windows machines use the guest helper reached through the existing machine seams, verified with the guest's own `catatonit --version` when native init is prepared, and never a host path. Setup's smoke probe creates its probe container with init enabled.
 
 Before it stops its runtime service, the provider makes a bounded, best-effort attempt to remove build-only containers left in its private storage. That attempt MUST NOT remove service containers, volumes, artifacts, or build cache, and its failure MUST NOT block the stop.
 
@@ -215,14 +329,14 @@ Podman’s published machine-OS update command spelling is unresolved; this spec
 
 #### 5.8.2 Opt-in: system Docker (`@lando/provider-docker`)
 
-The Docker provider targets Docker Engine or Docker Desktop and is selected by app or global provider configuration. It reports bind performance as `native` for Linux Engine and native WSL2 Engine with a WSL-resident app root, and `slow` for Docker Desktop on macOS or Windows.
+The Docker provider targets Docker Engine or Docker Desktop and is selected by app or global provider configuration. It reports bind performance as `native` for Linux Engine and native WSL2 Engine with a WSL-resident app root, and `slow` for Docker Desktop on macOS or Windows. It declares `serviceInit` and realizes it through the engine's own init setting; Lando MUST NOT install, configure, or guess an init helper on a system Docker host.
 
 #### 5.8.3 Opt-in: system Podman (`@lando/provider-podman`)
 
-The Podman provider targets system Podman 6 or newer and is selected by app or global provider configuration. It follows the same supported-host and fail-closed legacy-stack rules as the managed provider. It reports bind performance as `native` on Linux and `slow` on supported macOS and Windows machine-backed installations. Additional providers MUST report this capability honestly.
+The Podman provider targets system Podman 6 or newer and is selected by app or global provider configuration. It follows the same supported-host and fail-closed legacy-stack rules as the managed provider. It reports bind performance as `native` on Linux and `slow` on supported macOS and Windows machine-backed installations. Additional providers MUST report this capability honestly. It declares `serviceInit` and relies on the system Podman installation's own init helper; Lando MUST NOT modify system `containers.conf` or install a helper there.
 
 ### 5.9 Multi-provider apps (deferred)
 
-One provider is selected per app. Per-service provider data remains a non-portable extension hint. Cross-provider networking, route ownership, lifecycle ordering, failure handling, and capability negotiation are not specified; the ROADMAP sequences any future work.
+One provider is selected per app. Per-service provider data remains a non-portable extension hint. Multiple providers within one app, including their networking, route ownership, lifecycle ordering, failure handling, and capability negotiation, are deferred. Host-provider placement of the global app and cross-provider SSH delivery (§10.4) are not deferred. Cross-provider routing is unsupported: an enabled router with nonempty routes MUST fail planning when the app provider differs from the host provider (§10.2).
 
 ---

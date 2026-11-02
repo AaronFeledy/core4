@@ -8,6 +8,8 @@
  * reference can reach a build step command or its build-key identity.
  */
 
+import { ServiceConfigIssue } from "./_feature-helpers.ts";
+
 /** An ordered `[name, version]` pair after normalization. */
 export type PackageEntry = readonly [name: string, version: string];
 
@@ -51,7 +53,11 @@ const assertVersion = (
     value.length > VERSION_MAX_LENGTH ||
     !pattern.test(value)
   ) {
-    throw new Error(`Unsupported ${kind} ${JSON.stringify(value)} for "${name}". ${remediation}`);
+    throw new ServiceConfigIssue(
+      kind === "npm version specifier" ? ["globals", name] : ["composer", "packages", name],
+      `Unsupported ${kind} ${JSON.stringify(value)} for "${name}".`,
+      remediation,
+    );
   }
   return value;
 };
@@ -64,14 +70,18 @@ const assertVersion = (
 export const normalizeNpmGlobals = (value: unknown): ReadonlyArray<PackageEntry> => {
   if (value === undefined) return [];
   if (!isStringRecord(value)) {
-    throw new Error(
-      `Unsupported npm globals ${JSON.stringify(value)}. Set globals to a map of package name to version specifier, for example globals: { yarn: "1.22.4" }.`,
+    throw new ServiceConfigIssue(
+      ["globals"],
+      `Unsupported npm globals ${JSON.stringify(value)}.`,
+      'Set globals to a map of package name to version specifier, for example globals: { yarn: "1.22.4" }.',
     );
   }
   return sortedEntries(value).map(([name, version]) => {
     if (name.length === 0 || name.length > NPM_NAME_MAX_LENGTH || !NPM_NAME_PATTERN.test(name)) {
-      throw new Error(
-        `Unsupported npm package "${name}". Use a published package name such as yarn or @angular/cli.`,
+      throw new ServiceConfigIssue(
+        ["globals", name],
+        `Unsupported npm package "${name}".`,
+        "Use a published package name such as yarn or @angular/cli.",
       );
     }
     return [
@@ -94,14 +104,18 @@ export const normalizeNpmGlobals = (value: unknown): ReadonlyArray<PackageEntry>
 export const normalizeComposerPackages = (value: unknown): ReadonlyArray<PackageEntry> => {
   if (value === undefined) return [];
   if (!isStringRecord(value)) {
-    throw new Error(
-      `Unsupported Composer packages ${JSON.stringify(value)}. Set composer.packages to a map of package name to version constraint, for example { "drush/drush": "^13.0" }.`,
+    throw new ServiceConfigIssue(
+      ["composer", "packages"],
+      `Unsupported Composer packages ${JSON.stringify(value)}.`,
+      'Set composer.packages to a map of package name to version constraint, for example { "drush/drush": "^13.0" }.',
     );
   }
   return sortedEntries(value).map(([name, constraint]) => {
     if (!COMPOSER_NAME_PATTERN.test(name)) {
-      throw new Error(
-        `Unsupported Composer package "${name}". Use a lowercase vendor/name package such as drush/drush.`,
+      throw new ServiceConfigIssue(
+        ["composer", "packages", name],
+        `Unsupported Composer package "${name}".`,
+        "Use a lowercase vendor/name package such as drush/drush.",
       );
     }
     return [

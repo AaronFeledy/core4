@@ -3,6 +3,7 @@ import { Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import {
   APACHE_FEATURE_ID,
   APACHE_LISTEN_BUILD_STEP_ID,
@@ -93,17 +94,24 @@ describe("apache ServiceType", () => {
       LANDO_WEBROOT: "/app",
     });
 
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
-    expect(plan.appMount?.realization).toBe("passthrough");
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
+    expect(serviceAppMount(plan)?.realization).toBe("passthrough");
 
-    expect(plan.mounts).toEqual([]);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 80, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["sh", "-c", "nc -z 127.0.0.1 80"],
+      command: tcpProbe(80, 10).command,
+      target: { port: 80, transport: "tcp", names: [], primary: false },
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -114,9 +122,11 @@ describe("apache ServiceType", () => {
   test("uses serviceName for endpoints and LANDO env", async () => {
     const plan = await composeApachePlan({ type: "apache", port: 8080 }, "backend");
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "backend" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "backend", primary: true },
+    ]);
     expect(plan.healthcheck?.kind).toBe("command");
-    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 8080"]);
+    expect(plan.healthcheck).toEqual(tcpProbe(8080, 10));
     expect(apacheDirectives(plan.command)).toContain("Listen 8080");
     expect(plan.environment).toMatchObject({
       APACHE_DOCUMENT_ROOT: "/app",
@@ -187,6 +197,7 @@ describe("apache ServiceType", () => {
 
     // Then: Lando neither emits a directive nor edits the image.
     expect(plan.command).toEqual(["httpd-foreground"]);
+    expect(plan.listenerAuthority?.owner).toBe("launcher");
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
@@ -196,6 +207,7 @@ describe("apache ServiceType", () => {
 
     // Then: Lando neither emits a directive nor edits the image.
     expect(plan.entrypoint).toEqual(["/custom-start"]);
+    expect(plan.listenerAuthority?.owner).toBe("launcher");
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
 
@@ -210,8 +222,23 @@ describe("apache ServiceType", () => {
     // Then: Lando still generates the start command, but neither emits Listen
     // nor edits a config path that image may not have.
     expect(apacheDirectives(plan.command).some((directive) => directive.startsWith("Listen "))).toBe(false);
+    expect(plan.listenerAuthority).toEqual({
+      owner: "image",
+      daemon: "Apache",
+      port: 8080,
+      setting: "Listen 8080",
+    });
     expect(buildStepsFor(plan).map(({ id }) => id)).not.toContain(APACHE_LISTEN_BUILD_STEP_ID);
   });
+
+  test.each(["httpd:2.4-alpine", "library/httpd:2.4-alpine", "docker.io/library/httpd:2.4-alpine"])(
+    "catalog image %s retains listener ownership",
+    async (image) => {
+      const plan = await composeApachePlan({ type: "apache", image, port: 8080 });
+      expect(plan.listenerAuthority).toBeUndefined();
+      expect(apacheDirectives(plan.command)).toContain("Listen 8080");
+    },
+  );
 
   test("serves an authored webroot through Apache config and LANDO env", async () => {
     // Given / When
@@ -308,3 +335,4 @@ describe("apache ServiceType", () => {
     expect(directives.join("\n")).not.toContain("Include");
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

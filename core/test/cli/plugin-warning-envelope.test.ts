@@ -62,7 +62,8 @@ for (const resultFormat of ["json", "yaml"] as const) {
           }
           if (transport === "live") {
             const sink = yield* Effect.serviceOption(StreamFrameSink);
-            if (Option.isSome(sink)) yield* sink.value.emit({ _tag: "stdout", chunk: "streamed chunk\n" });
+            if (Option.isSome(sink))
+              yield* sink.value.emit({ kind: "bytes", _tag: "stdout", chunk: "streamed chunk\n" });
             else output = "streamed chunk\n";
           }
           yield* plugin.warn("last command warning");

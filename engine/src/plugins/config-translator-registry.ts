@@ -117,6 +117,7 @@ const loadCandidate = (
         message: `Config translator ${candidate.id} from ${candidate.pluginName} failed to load.`,
         pluginName: candidate.pluginName,
         cause,
+        remediation: `Repair plugin ${candidate.pluginName} so config translator ${candidate.id} loads.`,
       }),
   }).pipe(
     Effect.flatMap((translator) =>
@@ -126,6 +127,7 @@ const loadCandidate = (
             new PluginLoadError({
               message: `Config translator contribution ${candidate.id} from ${candidate.pluginName} loaded a translator with id ${translator.id}.`,
               pluginName: candidate.pluginName,
+              remediation: `Export a config translator whose id is ${candidate.id} from plugin ${candidate.pluginName}.`,
             }),
           ),
     ),

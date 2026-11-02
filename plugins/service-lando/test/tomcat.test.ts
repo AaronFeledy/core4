@@ -5,6 +5,7 @@ import { composeService } from "@lando/engine/services/feature";
 import { LandofileShape, ProviderId, ServiceName, TomcatServiceConfig } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import {
   TOMCAT_FEATURE_ID,
@@ -117,17 +118,22 @@ describe("tomcat ServiceType", () => {
         expect(plan.type).toBe("tomcat");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8080, protocol: "http", name: "appserver" },
+          { _tag: "internal", port: 8080, protocol: "http", name: "appserver", primary: true },
         ]);
-        expect(String(plan.appMount?.target)).toBe("/app");
-        expect(plan.mounts).toEqual([]);
+        expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+        expect(
+          plan.mounts.filter(
+            (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+          ),
+        ).toEqual([]);
         expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
         expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
         expect(plan.environment.LANDO_WEBROOT).toBe("/app");
         expect(String(plan.workingDirectory)).toBe("/app");
         expect(plan.healthcheck).toEqual({
           kind: "command",
-          command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"],
+          command: tcpProbe(8080, 20).command,
+          target: { port: 8080, transport: "tcp", names: [], primary: false },
           intervalSeconds: 10,
           timeoutSeconds: 5,
           retries: 5,
@@ -161,9 +167,9 @@ describe("tomcat ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "tomcat:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 8888, protocol: "http", name: "appserver" },
+          { _tag: "internal", port: 8888, protocol: "http", name: "appserver", primary: true },
         ]);
-        expect(String(plan.appMount?.target)).toBe("/app");
+        expect(String(serviceAppMount(plan)?.target)).toBe("/app");
         expect(plan.command).toEqual(["catalina.sh", "run"]);
         expect(plan.user).toBe("1000:1000");
       });
@@ -223,18 +229,22 @@ describe("tomcat ServiceType", () => {
     // Given: a webroot requiring app code on a service that disables it.
     const definition = { type: "tomcat", appMount: false, ...(webroot === undefined ? {} : { webroot }) };
     // When / Then: planning rejects the contradictory settings with remediation.
-    await expect(planTomcatService(tomcatServiceType, definition)).rejects.toThrow(
-      `tomcat webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
-    );
+    await expect(planTomcatService(tomcatServiceType, definition)).rejects.toMatchObject({
+      issues: [
+        {
+          path: ["webroot"],
+          message: `tomcat webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false.`,
+          suggestion: "Set webroot to an absolute container path, or remove appMount: false.",
+        },
+      ],
+    });
   });
 
   test("rejects a relative webroot outside the app mount", async () => {
     // Given / When / Then: an escaping document root fails type resolution.
     await expect(
       resolveTomcatService(tomcatServiceType, { type: "tomcat", webroot: "../x" }),
-    ).rejects.toThrow(
-      "tomcat webroot ../x leaves the app mount (/app); use an absolute container path instead.",
-    );
+    ).rejects.toThrow("tomcat webroot ../x leaves the app mount (/app).");
   });
 
   test("configures ROOT when the catalog image is explicitly authored", async () => {
@@ -251,3 +261,4 @@ describe("tomcat ServiceType", () => {
     });
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

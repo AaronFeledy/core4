@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../dist/schemas/landofile-shape.json
+services:
+  web:
+    environment:
+      LOG_LEVEL: debug
+    healthcheck:
+      retries: 5
+    appMount:
+      target: /workspace

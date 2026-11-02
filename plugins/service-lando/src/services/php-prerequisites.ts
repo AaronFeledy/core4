@@ -1,4 +1,6 @@
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
+import { Predicate } from "effect";
+import { ServiceConfigIssue } from "./_feature-helpers.ts";
 
 export const PHP_COMPOSER_RELEASES = {
   "2.7.7": {
@@ -90,7 +92,14 @@ export const composerCommandFor = (release: PhpComposerRelease): string =>
 
 export const PHP_COMPOSER_COMMAND = composerCommandFor(PHP_COMPOSER);
 
+export const PHP_PREREQUISITES_STEP_ID = "service-lando.php:prerequisites" as const;
+
 export const PHP_COMPOSER_STEP_ID = "service-lando.php:composer" as const;
+
+export const phpPrerequisitesBuildKeyInputs = () => ({
+  aptPackages: PHP_APT_PACKAGE_PINS,
+  extensions: PHP_COMMON_EXTENSIONS,
+});
 
 /**
  * The Composer version a service requested, independent of spelling: the
@@ -105,10 +114,15 @@ const phpComposerRequestedVersion = (value: unknown): unknown => {
 
 export const resolvePhpComposer = (value: unknown): PhpComposerRelease | false => {
   const requested = phpComposerRequestedVersion(value);
+  const path = Predicate.isObject(value) ? ["composer", "version"] : ["composer"];
   if (requested === undefined) return PHP_COMPOSER;
   if (requested === false) return false;
   if (typeof requested !== "string" || requested.length === 0) {
-    throw new Error(`Unsupported Composer version ${JSON.stringify(requested)}. ${composerRemediation}`);
+    throw new ServiceConfigIssue(
+      path,
+      `Unsupported Composer version ${JSON.stringify(requested)}.`,
+      composerRemediation,
+    );
   }
   if (isComposerMajor(requested)) {
     return PHP_COMPOSER_RELEASES[PHP_COMPOSER_MAJORS[requested]];
@@ -116,7 +130,7 @@ export const resolvePhpComposer = (value: unknown): PhpComposerRelease | false =
   if (isComposerExact(requested)) {
     return PHP_COMPOSER_RELEASES[requested];
   }
-  throw new Error(`Unsupported Composer version "${requested}". ${composerRemediation}`);
+  throw new ServiceConfigIssue(path, `Unsupported Composer version "${requested}".`, composerRemediation);
 };
 
 export const assertPhpComposerCompatible = (phpVersion: string, composerValue: unknown): void => {
@@ -129,8 +143,10 @@ export const assertPhpComposerCompatible = (phpVersion: string, composerValue: u
   const major = Number(majorText);
   const minor = Number(minorText);
   if (major > 8 || (major === 8 && minor >= 5)) {
-    throw new Error(
-      `Composer "2.7.7" cannot run on PHP ${phpVersion}. Set composer: "2" (2.10.2) or a newer exact pin.`,
+    throw new ServiceConfigIssue(
+      Predicate.isObject(composerValue) ? ["composer", "version"] : ["composer"],
+      `Composer "2.7.7" cannot run on PHP ${phpVersion}.`,
+      'Set composer: "2" (2.10.2) or a newer exact pin.',
     );
   }
 };
@@ -139,14 +155,11 @@ export const phpPrerequisiteBuildSteps = (
   composer: unknown = undefined,
 ): ReadonlyArray<ServiceBuildStepIntent> => {
   const prerequisites: ServiceBuildStepIntent = {
-    id: "service-lando.php:prerequisites",
+    id: PHP_PREREQUISITES_STEP_ID,
     phase: "build",
     command: PHP_PREREQUISITES_COMMAND,
     user: "root",
-    buildKeyInputs: {
-      aptPackages: PHP_APT_PACKAGE_PINS,
-      extensions: PHP_COMMON_EXTENSIONS,
-    },
+    buildKeyInputs: phpPrerequisitesBuildKeyInputs(),
   };
   const release = resolvePhpComposer(composer);
   if (release === false) return [prerequisites];

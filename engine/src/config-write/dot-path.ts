@@ -48,7 +48,7 @@ export const getAtPath = (root: unknown, path: string): unknown => {
   let cursor: unknown = root;
   for (const segment of segments) {
     if (segment.kind === "key") {
-      if (!Predicate.isObject(cursor)) return undefined;
+      if (!Predicate.isObject(cursor) || !Object.hasOwn(cursor, segment.key)) return undefined;
       cursor = cursor[segment.key];
     } else {
       if (!Array.isArray(cursor)) return undefined;

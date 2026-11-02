@@ -24,7 +24,7 @@ import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services"
 import { assertUnderRoot } from "@lando/landofile/include-guard";
 import { validationIssue } from "@lando/sdk/schema";
 
-const CERTS_FEATURE_ID = "lando.certs" as const;
+export const CERTS_FEATURE_ID = "lando.certs" as const;
 
 const CA_REMEDIATION =
   "Run `lando setup` to install a certificate authority, or set certs to false or a custom certificate path.";
@@ -54,11 +54,17 @@ interface ResolveCertsFeatureInput {
   readonly fileSystem?: Pick<Context.Service.Shape<typeof FileSystem>, "stat" | "readFile"> | undefined;
 }
 
-const validationError = (input: ResolveCertsFeatureInput, message: string): LandofileValidationError =>
+const validationError = (
+  input: ResolveCertsFeatureInput,
+  message: string,
+  cause?: unknown,
+): LandofileValidationError =>
   new LandofileValidationError({
     message: `services.${input.serviceName}.certs ${message}`,
+    remediation: "Use valid certificate material under the app root, or set certs to false.",
     file: `${input.appRoot}/.lando.yml`,
     issues: [validationIssue(["services", input.serviceName, "certs"], message)],
+    cause,
   });
 
 const internalAlias = (serviceName: string, appName: string): string => `${serviceName}.${appName}.internal`;
@@ -98,18 +104,17 @@ const resolveAuthoredPath = (
           ),
         );
       }
-      const unreadable = validationError(
-        input,
-        `path ${authoredPath} could not be read. Create the file or point certs at existing certificate material.`,
-      );
+      const unreadable = (cause: unknown) =>
+        validationError(
+          input,
+          `path ${authoredPath} could not be read. Create the file or point certs at existing certificate material.`,
+          cause,
+        );
       return fileSystem.stat(containedPath).pipe(
-        Effect.mapError(() => unreadable),
+        Effect.mapError(unreadable),
         Effect.flatMap((stat) =>
           stat.isFile
-            ? fileSystem.readFile(containedPath).pipe(
-                Effect.as(containedPath),
-                Effect.mapError(() => unreadable),
-              )
+            ? fileSystem.readFile(containedPath).pipe(Effect.as(containedPath), Effect.mapError(unreadable))
             : Effect.fail(validationError(input, `path ${authoredPath} must be a regular file.`)),
         ),
       );

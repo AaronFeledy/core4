@@ -5,7 +5,7 @@ import {
   LandofileParseError,
   SshAgentTransportError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, GlobalConfig, type LandofileShape } from "@lando/sdk/schema";
+import { AbsolutePath, GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService, LandofileService } from "@lando/sdk/services";
 import { Effect, Layer, Result, Schema } from "effect";
 import { type ResolvedAppTarget, userAppRef } from "../../src/landofile/app-resolution.ts";
@@ -16,6 +16,7 @@ import { gpgAgentPlanExtension, resolveGpgAgentIntent } from "../../src/subsyste
 import { gpgAgentEligibleServices } from "../../src/subsystems/gpg-agent/overlay.ts";
 import { sshAgentEligibleServices } from "../../src/subsystems/ssh-agent/overlay.ts";
 import { resolveSshAgentIntent, sshAgentPlanExtension } from "../../src/subsystems/ssh/intent.ts";
+import { literalTestLandofile } from "../compiled-landofile.ts";
 import { plan } from "../subsystems/gpg-agent/fixture.ts";
 
 const ssh = resolveStartAgentIntent({
@@ -63,12 +64,12 @@ const cases: readonly {
     fallback: { forward: true },
   },
 ];
-const landofile: LandofileShape = {
+const landofile = literalTestLandofile({
   name: "agent",
   services: {},
   sshAgent: { sidecar: false, socket: "/app/agent" },
   gpgAgent: { forward: true, socket: "/app/agent" },
-};
+});
 const globalConfig = Schema.decodeUnknownSync(GlobalConfig)({
   sshAgent: { sidecar: true, socket: "/global/agent" },
   gpgAgent: { forward: false, socket: "/global/agent" },
@@ -96,6 +97,7 @@ const loadFailure = new LandofileParseError({
   filePath: ".lando.yml",
   line: undefined,
   column: undefined,
+  remediation: "Correct the YAML syntax in .lando.yml.",
 });
 
 for (const agent of cases) {
@@ -136,6 +138,7 @@ for (const agent of cases) {
       expect(result.failure).toMatchObject({
         _tag: `${agent.label === "SSH" ? "Ssh" : "Gpg"}AgentTransportError`,
         stage: "broker",
+        cause: loadFailure,
         message: `Unable to resolve the current ${agent.label} agent configuration.`,
         remediation: "Fix the app Landofile and retry lando start.",
       });
@@ -154,10 +157,12 @@ for (const agent of cases) {
 
   test(`${agent.label} maps global configuration failures to its broker error`, async () => {
     // Given
-    const layer = Layer.succeed(ConfigService, {
-      load: Effect.fail(new ConfigError({ message: "invalid" })),
-      get: () => Effect.die("Unexpected get"),
-    });
+    const layer = Layer.effect(
+      ConfigService,
+      Effect.fail(
+        new ConfigError({ message: "invalid", remediation: "Injected config failure for agent intent." }),
+      ),
+    );
     // When
     const result = await Effect.runPromise(
       agent.resolve({ ...target, landofile }).pipe(Effect.provide(layer), Effect.result),
@@ -166,9 +171,8 @@ for (const agent of cases) {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result))
       expect(result.failure).toMatchObject({
-        stage: "broker",
-        message: `Unable to resolve the global ${agent.label} agent configuration.`,
-        remediation: "Fix the global configuration and retry lando start.",
+        _tag: "ConfigError",
+        message: "invalid",
       });
   });
 

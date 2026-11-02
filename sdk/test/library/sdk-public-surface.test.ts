@@ -1,0 +1,216 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+import ts from "typescript";
+
+import {
+  ConfigError,
+  ConfigExpressionError,
+  ConfigTranslateError,
+  ManagedFileTransactionError,
+  NoProviderInstalledError,
+  SshAgentUnavailableError,
+} from "@lando/sdk/errors";
+import * as sdkServices from "@lando/sdk/services";
+import type { LandofileServiceError } from "@lando/sdk/services";
+
+import sdkPackage from "../../package.json";
+import publicSurface from "../fixtures/sdk-public-surface.json";
+
+const repoRoot = new URL("../../..", import.meta.url).pathname;
+const servicesSourceDir = join(repoRoot, "sdk/src/services");
+
+const normalizeSignature = (value: string): string =>
+  value
+    .replace(/readonly\s+/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*([(),:;<>|&?])\s*/g, "$1")
+    .replace(/<\|/g, "<")
+    .replace(/,\|/g, ",")
+    .replace(/,\)/g, ")")
+    .replace(/=>/g, " => ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/;$/, "");
+
+// Every `Context.Service` contract lives in its own module under `sdk/src/services/`; `index.ts`
+// only re-exports them. Parse the whole directory so a shape extracted into a named interface in
+// one module still resolves when the class that references it sits in the same or another module.
+const serviceSourceFiles: ReadonlyArray<ts.SourceFile> = readdirSync(servicesSourceDir)
+  .filter((entry) => entry.endsWith(".ts") && entry !== "index.ts")
+  .sort()
+  .map((entry) => {
+    const path = join(servicesSourceDir, entry);
+    return ts.createSourceFile(
+      path,
+      readFileSync(path, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+  });
+
+const interfaces = new Map<string, ts.InterfaceDeclaration>();
+for (const sourceFile of serviceSourceFiles) {
+  for (const statement of sourceFile.statements) {
+    if (ts.isInterfaceDeclaration(statement)) interfaces.set(statement.name.text, statement);
+  }
+}
+
+const serviceShapeMembers = (typeNode: ts.TypeNode): ReadonlyArray<string> => {
+  if (ts.isTypeLiteralNode(typeNode)) {
+    return typeNode.members.map((member) => normalizeSignature(member.getText())).sort();
+  }
+
+  if (ts.isTypeReferenceNode(typeNode) && ts.isIdentifier(typeNode.typeName)) {
+    const interfaceDeclaration = interfaces.get(typeNode.typeName.text);
+    if (interfaceDeclaration === undefined) return [];
+    return interfaceDeclaration.members.map((member) => normalizeSignature(member.getText())).sort();
+  }
+
+  return [];
+};
+
+const tagTypeArguments = (expression: ts.Expression): ts.NodeArray<ts.TypeNode> | undefined => {
+  if (!ts.isCallExpression(expression)) return undefined;
+  return expression.typeArguments ?? tagTypeArguments(expression.expression);
+};
+
+const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> => {
+  const tags: Record<string, ReadonlyArray<string>> = {};
+
+  for (const sourceFile of serviceSourceFiles) {
+    for (const statement of sourceFile.statements) {
+      if (!ts.isClassDeclaration(statement) || statement.name === undefined) continue;
+      if (!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+
+      const contextServiceHeritage = statement.heritageClauses
+        ?.flatMap((clause) => clause.types)
+        .find((heritage) => heritage.getText().includes("Context.Service"));
+      if (contextServiceHeritage === undefined) continue;
+
+      const shapeType = tagTypeArguments(contextServiceHeritage.expression)?.[1];
+      if (shapeType === undefined) continue;
+
+      tags[statement.name.text] = serviceShapeMembers(shapeType);
+    }
+  }
+
+  return tags;
+};
+
+// Public changes must update sdk/test/fixtures/sdk-public-surface.json in the same change.
+describe("SDK public-surface snapshot", () => {
+  test("matches every ServiceFeatureContext member signature", () => {
+    const members = interfaces.get("ServiceFeatureContext")?.members;
+    expect(members?.map((member) => normalizeSignature(member.getText())).sort()).toEqual(
+      publicSurface.serviceFeatureContextMembers.map(normalizeSignature).sort(),
+    );
+  });
+  test("matches endpoint declaration signatures and excludes apply-time endpoint mutation", () => {
+    for (const [name, signature] of Object.entries(publicSurface.featureEndpointDeclarations)) {
+      const member = interfaces
+        .get(name)
+        ?.members.find((entry) => entry.name?.getText() === "declareEndpoints");
+      expect(normalizeSignature(member?.getText() ?? "")).toBe(normalizeSignature(signature));
+    }
+    for (const name of ["ServiceFeatureContext", "AppFeatureServiceMutators"]) {
+      expect(interfaces.get(name)?.members.map((member) => member.name?.getText())).not.toContain(
+        "addEndpoint",
+      );
+    }
+  });
+  test("matches the optional effective feature validation signature", () => {
+    const member = interfaces
+      .get("ServiceFeatureDefinition")
+      ?.members.find((entry) => entry.name?.getText() === "validateEffective");
+    expect(normalizeSignature(member?.getText() ?? "")).toBe(
+      normalizeSignature(publicSurface.featureEffectiveValidation),
+    );
+  });
+  test("matches every Landofile service failure tag", () => {
+    const tags = {
+      ComposeKeyRejectedError: true,
+      ConfigExpressionError: true,
+      Lando3LandofileDetected: true,
+      LandofileDialectMixError: true,
+      LandofileFormConflictError: true,
+      LandofileImportRefMisuseError: true,
+      LandofileIncludeError: true,
+      LandofileLoadError: true,
+      LandofileLoadLimitError: true,
+      LandofileLoadOutsideRootError: true,
+      LandofileLockMismatchError: true,
+      LandofileNotFoundError: true,
+      LandofileParseError: true,
+      LandofileSandboxError: true,
+      LandofileTimeoutError: true,
+      LandofileValidationError: true,
+      ManagedFileTransactionError: true,
+      NotImplementedError: true,
+      RouteInputError: true,
+    } satisfies Record<LandofileServiceError["_tag"], true>;
+    expect(Object.keys(tags).sort()).toEqual(publicSurface.landofileServiceErrorTags);
+  });
+  test("matches the structured global config error fields", () => {
+    expect(Object.keys(ConfigError.fields).sort()).toEqual(publicSurface.configErrorFields);
+  });
+  test("matches structured expression error provenance", () => {
+    expect(Object.keys(ConfigExpressionError.fields).sort()).toEqual(
+      publicSurface.configExpressionErrorFields,
+    );
+  });
+  test("matches the structured translation error fields", () => {
+    // Given
+    const expected = publicSurface.configTranslateErrorFields;
+    // When
+    const fields = Object.keys(ConfigTranslateError.fields).sort();
+    // Then
+    expect(fields).toEqual(expected);
+  });
+  test("matches managed-file transaction failure reasons", () => {
+    // Given / When: the public tagged error schema is the wire contract.
+    const reasons: readonly string[] = ManagedFileTransactionError.fields.reason.literals;
+    // Then
+    expect([...reasons]).toEqual(publicSurface.managedFileTransactionErrorReasons);
+  });
+  test("matches the provider installation diagnostic fields", () => {
+    expect(Object.keys(NoProviderInstalledError.fields).sort()).toEqual(
+      publicSurface.noProviderInstalledErrorFields,
+    );
+  });
+  test("matches the SSH agent unavailability diagnostic fields", () => {
+    expect(Object.keys(SshAgentUnavailableError.fields).sort()).toEqual(
+      publicSurface.sshAgentUnavailableErrorFields,
+    );
+  });
+  test("matches every package export subpath", () => {
+    expect(Object.keys(publicSurface.subpathExports).sort()).toEqual(Object.keys(sdkPackage.exports).sort());
+  });
+
+  for (const [subpath, expectedNames] of Object.entries(publicSurface.subpathExports)) {
+    test(`matches runtime exports for ${subpath}`, async () => {
+      const specifier = subpath === "." ? "@lando/sdk" : `@lando/sdk/${subpath.slice(2)}`;
+      const exports = await import(specifier);
+      expect(Object.keys(exports).sort()).toEqual(expectedNames);
+    });
+  }
+
+  test("re-exports every declared service tag through the public services barrel", () => {
+    const exportedServiceNames = Object.keys(sdkServices);
+    for (const tagName of Object.keys(currentServiceTagSignatures())) {
+      expect(exportedServiceNames).toContain(tagName);
+    }
+  });
+
+  test("matches all service tags and their normalized member signatures", () => {
+    const expectedTags = Object.fromEntries(
+      Object.entries(publicSurface.serviceTags).map(([tag, signatures]) => [
+        tag,
+        signatures.map(normalizeSignature).sort(),
+      ]),
+    );
+    expect(currentServiceTagSignatures()).toEqual(expectedTags);
+  });
+});

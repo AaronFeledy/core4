@@ -71,7 +71,9 @@ const buildStepsFor = (plan: ServicePlan) =>
   Schema.decodeUnknownSync(FeatureExtension)(plan.extensions["@lando/core/service-features"]).buildSteps ??
   [];
 
-const caEnvironment = (plan: ServicePlan): Readonly<Record<string, string | undefined>> => ({
+const caEnvironment = (
+  plan: ServicePlan,
+): Readonly<Record<string, import("@lando/sdk/schema").EnvironmentValue | undefined>> => ({
   NODE_EXTRA_CA_CERTS: plan.environment.NODE_EXTRA_CA_CERTS,
   REQUESTS_CA_BUNDLE: plan.environment.REQUESTS_CA_BUNDLE,
   SSL_CERT_FILE: plan.environment.SSL_CERT_FILE,
@@ -137,6 +139,7 @@ describe("lando.security feature", () => {
 
     expect(plan.mounts).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/host/b.pem",
         target: PortablePath.make(`/usr/local/share/ca-certificates/lando-${DIGEST_B}.crt`),
@@ -146,6 +149,7 @@ describe("lando.security feature", () => {
       {
         type: "bind",
         source: "/host/a.pem",
+        origin: "service",
         target: PortablePath.make(`/usr/local/share/ca-certificates/lando-${DIGEST_A}.crt`),
         readOnly: true,
         realization: "passthrough",

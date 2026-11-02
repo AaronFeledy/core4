@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 import { makePluginUpdateRunner } from "../../src/cli/commands/update-plugins.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
@@ -51,7 +52,8 @@ const makeTarball = async (name: string, version: string, postinstall = false): 
 };
 
 const layerFor = (trustStore: typeof PluginTrustStore.Service) =>
-  Layer.merge(
+  Layer.mergeAll(
+    BunProcessRunner.layer,
     Layer.succeed(
       ConfigService,
       ConfigService.of({

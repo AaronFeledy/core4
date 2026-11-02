@@ -60,8 +60,8 @@ test("adopts an observed legacy mount under its physical lock before an explicit
   expect(harness.lifecycle()).toEqual(["lock", "suspend", "snapshot", "resume"]);
   expect(harness.snapshots()[0]).toMatchObject({
     store: "actual-legacy-data",
+    owner: { appRoot: ownerRoot },
     metadata: {
-      sourceRoot: ownerRoot,
       volumeInstanceId: adoptedIdentity.generation,
     },
   });

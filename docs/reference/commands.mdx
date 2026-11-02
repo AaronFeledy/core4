@@ -1,27 +1,43 @@
 ---
 title: Command Reference
-description: Generated reference for every public Lando command and its flags.
+description: Generated reference for built-in and bundled plugin Lando commands and their flags.
 ---
 
 {/* GENERATED FILE — do not hand-edit. Regenerate via `bun run codegen:command-reference`. */}
 
 # Command Reference
 
-This page is generated from the command registry manifest and lists every public
-Lando command. Hidden and internal commands are omitted.
+Find built-in and bundled plugin commands, aliases, arguments, and flags below.
+Optional plugins document their own commands. Hidden and internal commands are
+omitted. This page is generated from command metadata.
 
 ## Machine-readable output
 
-Every command accepts the universal `--format json` flag (and its `--format=json`
-form) to emit a single machine-readable `CommandResultEnvelope` on stdout. The
-`--json` and `-j` shorthands are equivalent to `--format json`. These flags are
-injected into every command, so they are not repeated in the per-command flag
-tables below.
+Every command accepts `--format text`, `--format json`, and `--format yaml`.
+The equals forms, such as `--format=json`, work too. Text is the default.
+Commands offer `table` or `ndjson` only when they implement that format;
+check `lando <command> --help` for the formats that command supports.
 
-On success the envelope is `{ "ok": true, "result": <typed result> }`; on failure
-it is `{ "ok": false, "error": <tagged error> }` with the command's exit code
-preserved. Every envelope is redacted before emission. Agents and scripts should
-consume this JSON instead of parsing the rendered tables.
+Use `--format=json` or `-j` to run a command and read its result as JSON.
+Bare `--json` instead lists selectable result keys without running the command
+body. Use `--json=key` to run the command and select a key inside `result`.
+Replace `key` with a name from that list. `--jq` applies a jq expression to the
+redacted result and prints the expression's output, not the original envelope.
+
+Non-streaming JSON results use a `CommandResultEnvelope`: `ok: true` carries
+the typed `result`; `ok: false` carries the tagged `error`. The command's exit
+code is preserved. Streaming commands emit JSON frames and finish with a
+result frame instead of emitting one standalone envelope.
+
+YAML normally emits the same result envelope as one document, including for
+streaming commands. Commands that export a product document, such as the
+Landofile view, can emit that document instead on success. See
+[Script Lando with JSON](../guides/scripting-with-json.mdx) for document
+exceptions, projections, streaming results, and error handling.
+
+Results are redacted before emission. Scripts should consume the structured
+result rather than parse human-readable tables. Universal `--format` and
+`--json` flags are documented here instead of repeated in each flag table.
 
 ## Confirmation
 
@@ -79,7 +95,8 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--source` | Inspect raw layers, authored composition, or resolved config. (one of `raw`, `merged`, `resolved`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando app:config:edit`
 
@@ -90,6 +107,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 
 ## `lando app:config:explain`
@@ -100,7 +118,7 @@ Aliases: `lando config:explain`
 
 ## `lando app:config:lint`
 
-Validate the current app's Landofile schema and resolved event names.
+Check Landofile configuration, declared listeners, routes, and event names.
 
 Aliases: `lando config:lint`
 
@@ -135,7 +153,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando app:config:translate`
 
@@ -177,7 +195,7 @@ Validate the app's Landofile against the schema.
 
 ## `lando app:destroy`
 
-Destroy the current Lando app (preserves volumes unless --purge or --volumes).
+Destroy the current Lando app (preserves named volumes unless --purge or --volumes).
 
 Aliases: `lando destroy`
 
@@ -185,6 +203,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--provider` | Destroy only this provider's applied app and owned resources. |
 | `--purge` | Also remove app/service-scoped storage volumes and this folder's snapshots, including provider-stored data. |
 | `--purge-caches` | Remove cache storage volumes. |
 | `--root` | Clean up an app whose folder no longer exists, using the path lando doctor prints. |
@@ -231,7 +250,7 @@ Flags:
 
 ## `lando app:includes:verify`
 
-Verify the includes lockfile matches the resolved tree without updating it.
+Verify the includes lockfile pins every remote include and the pinned content matches, without updating it.
 
 ## `lando app:info`
 
@@ -260,7 +279,7 @@ Flags:
 | `--no-viewer` | Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior). |
 | `--service, -s` | Filter logs to a single planned service. |
 | `--since` | Only show logs since a duration (e.g. 30s, 15m, 2h) or an RFC3339 timestamp. |
-| `--source` | Select a declared source id, or `console` for the container stream. Redirected sources share that stdout/stderr stream and cannot be isolated. |
+| `--source` | Select a declared source id, or `console` for all container logs. Console aliases and redirects select a native stdout/stderr pipe; aliases on the same pipe share its logs. |
 | `--tail` | Show last N lines per service. |
 
 ## `lando app:open`
@@ -297,7 +316,7 @@ Flags:
 | --- | --- |
 | `--force` | Confirm protected remote operations. |
 | `--no-interactive` | Disable interactive confirmation prompts. |
-| `--no-snapshot` | Skip the safety snapshot before applying pulled data. |
+| `--no-snapshot` | Skip the safety snapshot before applying pulled data. Has no effect on push. |
 | `--only` | Comma-separated dataset kinds. |
 | `--remote` | Remote name. |
 | `--yes, -y` | Answer yes to confirmation prompts. |
@@ -320,7 +339,7 @@ Flags:
 | --- | --- |
 | `--force` | Confirm protected remote operations. |
 | `--no-interactive` | Disable interactive confirmation prompts. |
-| `--no-snapshot` | Skip the safety snapshot before applying pulled data. |
+| `--no-snapshot` | Skip the safety snapshot before applying pulled data. Has no effect on push. |
 | `--only` | Comma-separated dataset kinds. |
 | `--remote` | Remote name. |
 | `--yes, -y` | Answer yes to confirmation prompts. |
@@ -507,7 +526,7 @@ Flags:
 
 ## `lando app:ssh`
 
-Open an interactive shell in a Lando service (alias of `exec --tty --interactive sh -l`).
+Open an interactive shell in a Lando service (alias of `exec --tty --interactive` with bash when present, otherwise sh).
 
 Aliases: `lando ssh`
 
@@ -567,9 +586,9 @@ Flags:
 | `--package` | npm package spec <name>[@version] (for --source=npm). |
 | `--path` | Subdirectory within a remote recipe source. |
 | `--recipe` | Recipe to apply. |
-| `--registry-url` | Override the recipe registry base URL (for --source=registry). |
-| `--source` | Init source id (cwd, git, tarball, npm, registry, template). |
-| `--url` | Remote recipe source URL (for --source=git/tarball). |
+| `--registry-url` | Override the registry base URL for --source=registry or --source=npm, including npm recipe parents. |
+| `--source` | Remote recipe source (git, tarball, npm, registry). |
+| `--url` | Remote recipe source URL (for --source=git/tarball); git accepts @ref (tag, branch, or full commit SHA). |
 | `--yes, -y` | Accept every prompt's default without asking. |
 
 ## `lando apps:list`
@@ -728,9 +747,148 @@ Flags:
 | --- | --- |
 | `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
+## `lando db:export`
+
+Export a database dump from a service.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `file` | Destination dump file. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--compression-level` | Host dump compression level: gzip 0-9 or zstd 1-22, selected by the file suffix. |
+| `--service` | Source database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:import`
+
+Import a database dump into a service.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `file` | Dump file to import. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Target database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:reset`
+
+Reset a database service to an empty state.
+
+Provided by `@lando/sql`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Target database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:restore`
+
+Restore a database service from a snapshot.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `snapshot` | Snapshot id or label to restore. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--service` | Target database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:seed`
+
+Seed a fresh database from a dump, snapshot, or running app.
+
+Provided by `@lando/sql`.
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `file` | Dump file to seed from. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--from-app` | Running app to copy the database from. |
+| `--from-path` | Checkout of a running app to copy the database from. |
+| `--from-service` | Database service in the source app. |
+| `--service` | Target database service. |
+| `--snapshot` | Snapshot id or label to seed from. |
+
+## `lando db:snapshot`
+
+Create a named snapshot of a database service.
+
+Provided by `@lando/sql`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--compression` | Snapshot compression format. (one of `gzip`, `zstd`, `none`) |
+| `--label` | Optional snapshot label. |
+| `--service` | Source database service. |
+| `--yes, -y` | Skip confirmation prompts. |
+
+## `lando db:snapshots`
+
+List database snapshots and recovery points.
+
+Provided by `@lando/sql`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--from-app` | Explicit source app id. |
+| `--from-path` | Explicit canonical source app root. |
+| `--service` | Database service to list. |
+
+## `lando db:snapshots:prune`
+
+Preview or apply database snapshot retention.
+
+Provided by `@lando/sql`.
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--from-app` | Explicit sibling source app id. |
+| `--from-path` | Explicit canonical source app root. |
+| `--keep-latest` | Number of newest manual snapshots to retain. |
+| `--preview` | Show deletions without removing snapshots. |
+| `--service` | Database service to prune. |
+| `--yes, -y` | Confirm snapshot deletion. |
+
 ## `lando meta:bun`
 
-Proxy to the embedded Bun CLI via BunSelfRunner.
+Proxy to the embedded Bun CLI using the current executable.
 
 Aliases: `lando bun`
 
@@ -755,7 +913,8 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--source` | Inspect raw config.yml or resolved config. (one of `raw`, `resolved`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:doctor`
 
@@ -768,7 +927,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--all` | List every check, including passing ones, instead of only degraded checks. |
-| `--app` | Also lint the current app's Landofile against the canonical schema. |
+| `--app` | Also lint the current app's Landofile and check its running services' listeners. |
 | `--deprecations` | Also report deprecated surfaces used by the current app and loaded plugins. |
 | `--fix` | Re-run the setup step of each degraded subsystem whose recovery is safe to automate. |
 | `--provider` | Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman). |
@@ -800,7 +959,7 @@ Flags:
 | `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 | `--path` | Dot-path key selector. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:global:config:edit`
 
@@ -812,6 +971,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--dry-run` | Report the change without writing. |
 | `--editor` | Editor binary for edit. |
 
 ## `lando meta:global:config:set`
@@ -832,7 +992,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--dry-run` | Report the change without writing. |
-| `--type` | Value type for set. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
+| `--type` | Value type for set; inferred from the config schema when omitted. (one of `string`, `number`, `boolean`, `json`, `yaml`) |
 
 ## `lando meta:global:config:unset`
 
@@ -868,8 +1028,48 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--provider` | Destroy the global app only on this provider. |
 | `--purge` | Also remove global service data volumes. |
 | `--yes, -y` | Confirm destruction of global app provider resources. |
+
+## `lando meta:global:disable`
+
+Disable selected global contributions or a plugin's current and future contributions.
+
+Aliases: `lando global:disable`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `selector` | Contribution id or plugin package; repeat for related contributions. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--all` | Disable every known plugin's current and future global contributions. |
+| `--allow-disruption` | Acknowledge disruption to running apps or unknown consumer evidence. Volumes and resource ownership safeguards are preserved. |
+| `--dry-run` | Preview policy, dependencies, routes, and unresolved evidence without changing anything. |
+
+## `lando meta:global:enable`
+
+Enable selected global contributions or a plugin's current and future contributions.
+
+Aliases: `lando global:enable`
+
+Arguments:
+
+| Argument | Description |
+| --- | --- |
+| `selector` | Contribution id or plugin package; repeat for related contributions. |
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--all` | Enable every known plugin's current and future global contributions. |
+| `--dry-run` | Preview policy, dependencies, routes, and unresolved evidence without changing anything. |
 
 ## `lando meta:global:info`
 
@@ -882,24 +1082,6 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--service, -s` | Filter to a specific global service (repeatable). |
-
-## `lando meta:global:install`
-
-Materialize the host-level global Lando app Landofile stack.
-
-Aliases: `lando global:install`
-
-Arguments:
-
-| Argument | Description |
-| --- | --- |
-| `plugin` | Plugin name for future global-service enablement. |
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
 ## `lando meta:global:list`
 
@@ -933,6 +1115,19 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+
+## `lando meta:global:reconcile`
+
+Reconcile saved global policy and retry pending cleanup without starting services.
+
+Aliases: `lando global:reconcile`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--allow-disruption` | Acknowledge consumer disruption for this cleanup retry. This permission is not saved. |
+| `--dry-run` | Preview reconciliation without changing files or resources. |
 
 ## `lando meta:global:restart`
 
@@ -976,25 +1171,6 @@ Flags:
 | --- | --- |
 | `--service, -s` | Stop a specific global service (repeatable). |
 
-## `lando meta:global:uninstall`
-
-Clear generated services from the host-level global Lando app.
-
-Aliases: `lando global:uninstall`
-
-Arguments:
-
-| Argument | Description |
-| --- | --- |
-| `plugin` | Plugin name for future global-service disablement. |
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--purge` | Also remove global service provider resources and data volumes before clearing services. |
-| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
-
 ## `lando meta:mcp`
 
 Serve the Model Context Protocol over stdio, or --list the effective tool catalog.
@@ -1027,7 +1203,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--force` | Re-install even if already present. |
-| `--trust` | Trust the plugin for this session (required for non-interactive installs; persistent trust is not supported). |
+| `--trust` | Trust the plugin and save that trust by package name (required for non-interactive installs). |
 | `--yes, -y` | Alias of --trust. |
 
 ## `lando meta:plugin:build`
@@ -1044,30 +1220,6 @@ Arguments:
 | Argument | Description |
 | --- | --- |
 | `path` | Plugin authoring directory to link (defaults to cwd). |
-
-## `lando meta:plugin:login`
-
-Authenticate with a plugin source.
-
-Aliases: `lando plugin:login`
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--registry` | Registry URL. |
-
-## `lando meta:plugin:logout`
-
-Forget plugin source authentication.
-
-Aliases: `lando plugin:logout`
-
-Flags:
-
-| Flag | Description |
-| --- | --- |
-| `--registry` | Registry URL. |
 
 ## `lando meta:plugin:new`
 
@@ -1204,16 +1356,15 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--host-proxy` | Reserved for host DNS integration, which Lando does not provide; `auto` and `none` currently behave the same. (one of `auto`, `none`) |
 | `--no-interactive` | Do not prompt; fail or use documented non-interactive setup defaults. |
 | `--provider` | Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection. |
 | `--runtime-bundle-sha256` | Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle. |
 | `--runtime-bundle-url` | Override the Lando-managed runtime bundle URL for setup. |
-| `--skip-file-sync` | Skip Mutagen binary download during setup on a slow-mount host. |
-| `--skip-install-ca` |  |
-| `--skip-provider` |  |
+| `--skip-file-sync` | Skip file-sync engine installation during setup on a slow-mount host. |
+| `--skip-install-ca` | Skip installing certificate authority trust on the host. |
+| `--skip-provider` | Skip provider setup; continue the other setup steps. |
 | `--skip-proxy` | Skip router setup. |
-| `--skip-shell-integration` |  |
+| `--skip-shell-integration` | Skip SSH service setup and shell profile integration. |
 | `--smoke` | Verify container run, image build, and healthcheck operations during setup. |
 | `--yes, -y` | Consent to confirmation prompts and privileged host changes. Does not switch providers. |
 
@@ -1279,7 +1430,7 @@ Aliases: `lando --version`, `lando -v`, `lando version`
 
 ## `lando meta:x`
 
-One-shot package execution via BunSelfRunner.x (bunx-equivalent).
+Run a package with the embedded Bun executable (bunx-equivalent).
 
 Aliases: `lando x`
 

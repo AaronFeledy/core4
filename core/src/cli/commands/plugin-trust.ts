@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import { type ConfigError, NotImplementedError } from "@lando/sdk/errors";
 import { PluginTrustStore } from "@lando/sdk/services";
 
-import { invalidatePluginCommandCache } from "@lando/engine/cache/command-index-writer";
+import { invalidateAppToolingCaches } from "@lando/engine/cache/command-index-writer";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 
@@ -73,7 +73,7 @@ export const pluginTrust = Effect.fn("PluginTrust.trust")(function* (input: {
   }
   const store = yield* PluginTrustStore;
   yield* store.trustPlugin(name);
-  yield* invalidatePluginCommandCache({
+  yield* invalidateAppToolingCaches({
     ...(input.cacheRoot === undefined ? {} : { cacheRoot: input.cacheRoot }),
   });
   return { kind: "plugin", pluginName: name };
@@ -96,7 +96,7 @@ export const pluginTrustAuthoringRoot = Effect.fn("PluginTrust.trustAuthoringRoo
   const resolved = resolve(path);
   const store = yield* PluginTrustStore;
   yield* store.trustAuthoringRoot(resolved);
-  yield* invalidatePluginCommandCache({
+  yield* invalidateAppToolingCaches({
     ...(input.cacheRoot === undefined ? {} : { cacheRoot: input.cacheRoot }),
   });
   return { kind: "authoring-root", path: resolved };
@@ -132,7 +132,7 @@ export const pluginTrustRevoke = Effect.fn("PluginTrust.revoke")(function* (inpu
   }
   const store = yield* PluginTrustStore;
   yield* store.untrustPlugin(name);
-  yield* invalidatePluginCommandCache({
+  yield* invalidateAppToolingCaches({
     ...(input.cacheRoot === undefined ? {} : { cacheRoot: input.cacheRoot }),
   });
   return { kind: "revoke", pluginName: name };

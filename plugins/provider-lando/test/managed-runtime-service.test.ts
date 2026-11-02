@@ -208,6 +208,7 @@ describe("terminateOwnedRuntimeService", () => {
     providerId: "lando",
     operation: "cleanup",
     message: "unavailable",
+    remediation: "Install or start the `lando` provider and confirm it can perform `cleanup`.",
   });
   const storageList = { status: 200, body: '[{"Id":"leftover","State":"storage"}]' };
   const reclaimFailures: ReadonlyArray<

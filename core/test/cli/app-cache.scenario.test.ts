@@ -29,6 +29,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -105,7 +106,6 @@ describe("lando app:cache:refresh", () => {
             provider: providerId,
             services: {},
             routes: [],
-            networks: [],
             stores: [],
             fileSync: [],
             metadata,
@@ -122,14 +122,19 @@ describe("lando app:cache:refresh", () => {
           Layer.succeed(
             LandofileService,
             LandofileService.of({
-              discover: Effect.succeed({
-                name: "test-app-cache",
-                services: {},
-                tooling: { hello: { cmds: ["echo hi"], description: "say hi" } },
-              }),
+              discover: Effect.succeed(
+                literalLandofile(
+                  {
+                    name: "test-app-cache",
+                    services: {},
+                    tooling: { hello: { cmds: ["echo hi"], description: "say hi" } },
+                  },
+                  dir,
+                ),
+              ),
             }),
           ),
-          Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+          Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
           Layer.succeed(
             PluginRegistry,
             PluginRegistry.of({
@@ -143,6 +148,9 @@ describe("lando app:cache:refresh", () => {
           Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([providerId]),
               capabilities: Effect.succeed(capabilities),
               select: () => {
@@ -161,13 +169,11 @@ describe("lando app:cache:refresh", () => {
         expect(result.app).toBe("test-app-cache");
         expect(result.commandsCompiled).toBe(2);
         expect(result.appCommandCachePath).toMatch(/apps\/test-app-cache-[a-f0-9]{12}\/commands\.bin$/u);
-        expect(result.pluginCommandCachePath).toContain("plugin-command-cache.bin");
+        expect(result).not.toHaveProperty("pluginCommandCachePath");
         expect(renderAppCacheRefreshResult(result)).toBe("refreshed: test-app-cache (2 commands)");
 
         const appStat = await stat(result.appCommandCachePath ?? "");
         expect(appStat.size).toBeGreaterThan(0);
-        const pluginStat = await stat(result.pluginCommandCachePath ?? "");
-        expect(pluginStat.size).toBeGreaterThan(0);
       } finally {
         await rm(cacheRoot, { recursive: true, force: true });
       }
@@ -191,7 +197,6 @@ describe("lando app:cache:refresh", () => {
           provider: providerId,
           services: {},
           routes: [],
-          networks: [],
           stores: [],
           fileSync: [],
           metadata,
@@ -201,14 +206,19 @@ describe("lando app:cache:refresh", () => {
           Layer.succeed(
             LandofileService,
             LandofileService.of({
-              discover: Effect.succeed({
-                name: "strict-app-cache",
-                services: {},
-                tooling: { hello: { cmds: ["echo hi"] } },
-              }),
+              discover: Effect.succeed(
+                literalLandofile(
+                  {
+                    name: "strict-app-cache",
+                    services: {},
+                    tooling: { hello: { cmds: ["echo hi"] } },
+                  },
+                  dir,
+                ),
+              ),
             }),
           ),
-          Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
+          Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(currentTestPlan(plan)) })),
           Layer.succeed(
             PluginRegistry,
             PluginRegistry.of({
@@ -222,6 +232,9 @@ describe("lando app:cache:refresh", () => {
           Layer.succeed(
             RuntimeProviderRegistry,
             RuntimeProviderRegistry.of({
+              resolveAppliedPlan: () => Effect.succeed(undefined),
+              resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+              appliedPlansFor: () => Effect.succeed([]),
               list: Effect.succeed([providerId]),
               capabilities: Effect.succeed(capabilities),
               select: () => Effect.die("provider must not be selected"),
@@ -258,3 +271,4 @@ describe("lando app:cache:refresh", () => {
     });
   });
 });
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";

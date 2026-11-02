@@ -1,0 +1,20 @@
+{
+  "provenanceCommit": "e397cae8cb39233d4ec3a693dc533549f7cbb7f3",
+  "review": "Approved removal of the unverified IncludeEntry checksum field before release; lockfile pins carry remote include integrity. Do not regenerate this file from current artifacts. Only a closed object whose properties are exactly includeEntryKeys loses removedKey; every other checksum-bearing node, required key, and constraint stays untouched.",
+  "sources": ["sdk/src/schema/landofile.ts"],
+  "includeEntryKeys": [
+    "aliases",
+    "checksum",
+    "excludes",
+    "flatten",
+    "internal",
+    "kind",
+    "namespace",
+    "optional",
+    "path",
+    "source",
+    "vars",
+    "version"
+  ],
+  "removedKey": "checksum"
+}

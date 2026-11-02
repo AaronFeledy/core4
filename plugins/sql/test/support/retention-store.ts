@@ -3,18 +3,25 @@ import { Effect } from "effect";
 
 import { makeDataMoverService } from "@lando/data-mover/service";
 import { makeLandoPaths } from "@lando/paths";
-import { AbsolutePath, AppId, ProviderId, ServiceName, type SnapshotMetadata } from "@lando/sdk/schema";
-import { RuntimeProvider } from "@lando/sdk/services";
+import {
+  AbsolutePath,
+  AppId,
+  ProviderId,
+  ServiceName,
+  type SnapshotMetadata,
+  planAppIdentity,
+} from "@lando/sdk/schema";
+import { RuntimeProvider, StateStore } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { makeTestStateStore } from "@lando/state-store/testing";
+import * as DiskStateStore from "@lando/state-store/service";
 
 import { makeSqlTestDeps } from "./fakes.ts";
 
-export const makeRetentionTestDeps = (
+export const makeRetentionTestDeps = async (
   options: Parameters<typeof makeSqlTestDeps>[0] = { password: "lando" },
 ) => {
   const harness = makeSqlTestDeps(options);
-  const stateStore = makeTestStateStore().service;
+  const stateStore = await Effect.runPromise(StateStore.pipe(Effect.provide(DiskStateStore.layer)));
   const paths = makeLandoPaths({
     userConfRoot: join(harness.root, "conf"),
     userDataRoot: join(harness.root, "data"),
@@ -26,42 +33,45 @@ export const makeRetentionTestDeps = (
   const warnings: unknown[] = [];
   const moverForRoot = (sourceRoot: string) =>
     makeDataMoverService(
-      RuntimeProvider.of({
-        ...TestRuntimeProvider,
-        capabilities: { ...TestRuntimeProvider.capabilities, volumeSnapshot: "native" },
-        listVolumes: ({ app, store }) =>
-          Effect.succeed([
-            {
-              ref: { app: app ?? AppId.make("sql-app"), store: store ?? "sql-app_database_data" },
-              identity: {
-                coordinationKey: `daemon:${store}`,
-                nativeName: store ?? "sql-app_database_data",
-                generation: `volume-instance:${store}`,
-                ownerRoot: AbsolutePath.make(sourceRoot),
-                origin: "created",
+      Effect.succeed(
+        RuntimeProvider.of({
+          ...TestRuntimeProvider,
+          capabilities: { ...TestRuntimeProvider.capabilities, volumeSnapshot: "native" },
+          listVolumes: ({ app, store }) =>
+            Effect.succeed([
+              {
+                ref: { app: app ?? AppId.make("sql-app"), store: store ?? "sql-app_database_data" },
+                identity: {
+                  coordinationKey: `daemon:${store}`,
+                  nativeName: store ?? "sql-app_database_data",
+                  generation: `volume-instance:${store}`,
+                  ownerRoot: AbsolutePath.make(sourceRoot),
+                  origin: "created",
+                },
+                provenance: "known",
               },
-              provenance: "known",
-            },
-          ]),
-        snapshotVolume: ({ snapshotId }) =>
-          Effect.succeed({
-            provider: ProviderId.make("test"),
-            id: snapshotId ?? "snapshot",
-            digest: "sha256:fixture",
-            sizeBytes: 12,
-            format: "native",
-          }),
-        removeVolumeSnapshot: (snapshot) =>
-          Effect.sync(() => {
-            removed.push(snapshot.id);
-          }),
-      }),
+            ]),
+          snapshotVolume: ({ snapshotId }) =>
+            Effect.succeed({
+              provider: ProviderId.make("test"),
+              id: snapshotId ?? "snapshot",
+              digest: "sha256:fixture",
+              sizeBytes: 12,
+              format: "native",
+            }),
+          removeVolumeSnapshot: (snapshot) =>
+            Effect.sync(() => {
+              removed.push(snapshot.id);
+            }),
+        }),
+      ),
       { redactText: (text) => text, publish: () => Effect.void },
       { paths, stateStore },
     );
   const mover = moverForRoot(harness.root);
   const deps = {
     ...harness.deps,
+    plan: { ...harness.deps.plan, identity: planAppIdentity({ root: AbsolutePath.make(harness.root) }) },
     snapshot: (store: Parameters<typeof mover.snapshot>[0], opts: Parameters<typeof mover.snapshot>[1]) =>
       Effect.scoped(mover.snapshot(store, opts)).pipe(
         Effect.tap((snapshot) =>
@@ -71,6 +81,7 @@ export const makeRetentionTestDeps = (
         ),
       ),
     listSnapshots: mover.listSnapshots,
+    resolveSnapshot: mover.resolveSnapshot,
     pruneSnapshots: mover.pruneSnapshots,
     publish: (event: Parameters<typeof harness.deps.publish>[0]) =>
       Effect.sync(() => {
@@ -82,7 +93,6 @@ export const makeRetentionTestDeps = (
     scope: {
       readonly store?: string;
       readonly root?: string;
-      readonly ownerKey?: string;
       readonly service?: string;
       readonly app?: string;
     } = {},
@@ -94,8 +104,6 @@ export const makeRetentionTestDeps = (
         { app: AppId.make(scope.app ?? "sql-app"), store },
         {
           metadata: {
-            sourceRoot: AbsolutePath.make(root),
-            ownerKey: scope.ownerKey ?? "owner:sql-app",
             service: ServiceName.make(scope.service ?? "database"),
             volumeInstanceId: `volume-instance:${store}`,
             family: "mysql",

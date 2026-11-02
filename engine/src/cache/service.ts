@@ -32,6 +32,8 @@ const decodeStored = <A, I>(key: string, value: unknown, schema?: Schema.Codec<A
           message: `Cached value for ${key} failed schema decode.`,
           key,
           decodeError,
+          remediation:
+            "Clear the affected Lando cache entry under the user cache root, then re-run the command.",
         }),
     ),
   );

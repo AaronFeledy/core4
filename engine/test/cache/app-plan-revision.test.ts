@@ -22,6 +22,7 @@ import { cacheInput } from "../../src/planner/app-defaults.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
 const runtimeLandofileInput = {
+  hostProvider: "lando",
   appRoot: "/workspace/runtime-key",
   landofile: { name: "runtime-key", runtime: 4 as const },
   pluginManifests: [],
@@ -44,6 +45,12 @@ for (const config of [
   });
 }
 
+test("changes the cache key when the host provider changes", () => {
+  const original = deriveAppPlanCacheKey(runtimeLandofileInput);
+  const changed = deriveAppPlanCacheKey({ ...runtimeLandofileInput, hostProvider: "docker" });
+  expect(changed).not.toBe(original);
+});
+
 test("changes the cache key when only the resolved proxy default domain changes", () => {
   // Given
   const defaults = { sshAgentMode: "sidecar" as const, defaultDomain: "lndo.site" };
@@ -61,6 +68,7 @@ test("changes the cache key when only the resolved proxy default domain changes"
 });
 
 const runtimeAppPlan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("runtime-key"),
   name: "runtime-key",
   slug: "runtime-key",
@@ -68,7 +76,6 @@ const runtimeAppPlan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -82,91 +89,129 @@ const runtimeAppPlan: AppPlan = {
 const runWithCache = <A, E>(effect: Effect.Effect<A, E, import("@lando/sdk/services").CacheService>) =>
   Effect.runPromise(effect.pipe(Effect.provide(AppCacheService.layer)));
 
-test("ignores a valid revision-6 app plan without pinned PHP prerequisite identities", async () => {
-  // Given
-  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-v6-"));
-  const appRoot = "/workspace/redirect-app";
-  const appName = "redirect-app";
-  const key = "revision-6-key";
-  const serviceName = ServiceName.make("web");
-  const metadata = {
-    resolvedAt: DateTime.makeUnsafe("2026-07-21T00:00:00Z"),
-    source: `${appRoot}/.lando.yml`,
-    runtime: 4 as const,
-  };
-  const oldPlan = Schema.encodeSync(AppPlan)({
-    id: AppId.make(appName),
-    name: appName,
-    slug: appName,
-    root: AbsolutePath.make(appRoot),
-    provider: ProviderId.make("lando"),
-    services: {
-      [serviceName]: {
-        name: serviceName,
-        type: "apache",
-        provider: ProviderId.make("lando"),
-        primary: true,
-        environment: {},
-        mounts: [],
-        storage: [],
-        endpoints: [],
-        routes: [],
-        dependsOn: [],
-        hostAliases: [],
-        metadata,
-        extensions: {
-          "@lando/core/service-features": {
-            buildSteps: [
-              {
-                id: "lando-log-redirect:access",
-                phase: "build",
-                command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
-              },
-              {
-                id: "lando-log-redirect:error",
-                phase: "build",
-                command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
-              },
-            ],
-          },
-        },
-      },
-    },
-    routes: [],
-    networks: [],
-    stores: [],
-    fileSync: [],
-    metadata,
-    extensions: {},
-  });
+test("reads a current cache containing the retired networks field", async () => {
+  // Given an old wire plan in an otherwise current cache envelope.
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-legacy-networks-"));
+  const appName = runtimeAppPlan.slug;
+  const appRoot = runtimeAppPlan.root;
+  const key = "legacy-networks";
   const body = serialize({
-    schemaVersion: 6,
+    schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
     landoVersion: CORE_VERSION,
     key,
     versionConstraints: [],
+    shadowHostChecks: [],
+    gitHostChecks: [],
     generatedAtMs: 1,
-    plan: oldPlan,
+    plan: {
+      ...Schema.encodeSync(AppPlan)(runtimeAppPlan),
+      networks: [{ name: "lando-runtime-key", shared: false, driver: "bridge" }],
+    },
   });
   const header = Buffer.alloc(APP_PLAN_CACHE_HEADER_BYTES);
   APP_PLAN_CACHE_MAGIC.copy(header, 0);
-  header.writeBigUInt64BE(6n, 4);
+  header.writeBigUInt64BE(APP_PLAN_CACHE_SCHEMA_VERSION, 4);
   createHash("sha256").update(body).digest().copy(header, 12);
-  const persisted = Buffer.concat([header, body]);
   const path = appPlanCachePath(cacheRoot, appName, appRoot);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, persisted);
-
-  // When
+  await writeFile(path, Buffer.concat([header, body]));
+  // When the real cache reader decodes the persisted bytes.
   const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName, appRoot, key }));
-
-  // Then
-  expect(read).toBeNull();
-  expect(await readFile(path)).toEqual(persisted);
+  // Then this remains a cache hit with only the canonical network model.
+  expect(read?.id).toBe(runtimeAppPlan.id);
+  expect(read).not.toHaveProperty("networks");
 });
+
+test.each([6, 27, 28, 31, 38, 39, 44])(
+  "ignores desired-plan revision %i without deleting it",
+  async (revision) => {
+    // Given
+    const cacheRoot = await mkdtemp(join(tmpdir(), `lando-app-plan-v${revision}-`));
+    const appRoot = "/workspace/redirect-app";
+    const appName = "redirect-app";
+    const key = `revision-${revision}-key`;
+    const serviceName = ServiceName.make("web");
+    const metadata = {
+      resolvedAt: DateTime.makeUnsafe("2026-07-21T00:00:00Z"),
+      source: `${appRoot}/.lando.yml`,
+      runtime: 4 as const,
+    };
+    const oldPlan = Schema.encodeSync(AppPlan)({
+      valueModel: 1,
+      id: AppId.make(appName),
+      name: appName,
+      slug: appName,
+      root: AbsolutePath.make(appRoot),
+      provider: ProviderId.make("lando"),
+      services: {
+        [serviceName]: {
+          name: serviceName,
+          type: "apache",
+          provider: ProviderId.make("lando"),
+          primary: true,
+          environment: {},
+          mounts: [],
+          endpoints: [],
+          routes: [],
+          dependsOn: [],
+          hostAliases: [],
+          metadata,
+          extensions: {
+            "@lando/core/service-features": {
+              buildSteps: [
+                {
+                  id: "lando-log-redirect:access",
+                  phase: "build",
+                  command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
+                },
+                {
+                  id: "lando-log-redirect:error",
+                  phase: "build",
+                  command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
+                },
+              ],
+            },
+          },
+        },
+      },
+      routes: [],
+      stores: [],
+      fileSync: [],
+      metadata,
+      extensions: {},
+    });
+    const body = serialize({
+      schemaVersion: revision,
+      landoVersion: CORE_VERSION,
+      key,
+      versionConstraints: [],
+      shadowHostChecks: [],
+      gitHostChecks: [],
+      generatedAtMs: 1,
+      plan: oldPlan,
+    });
+    const header = Buffer.alloc(APP_PLAN_CACHE_HEADER_BYTES);
+    APP_PLAN_CACHE_MAGIC.copy(header, 0);
+    header.writeBigUInt64BE(BigInt(revision), 4);
+    createHash("sha256").update(body).digest().copy(header, 12);
+    const persisted = Buffer.concat([header, body]);
+    const path = appPlanCachePath(cacheRoot, appName, appRoot);
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, persisted);
+
+    // When
+    const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName, appRoot, key }));
+
+    // Then
+    expect(read).toBeNull();
+    expect(await readFile(path)).toEqual(persisted);
+  },
+);
 
 test("includes the canonical fingerprint revision in the app-plan cache key", () => {
   // Given
   const input = {
+    hostProvider: "lando",
     appRoot: "/workspace/revision-key",
     landofile: { name: "revision-key", runtime: 4 as const },
     pluginManifests: [],
@@ -176,13 +221,15 @@ test("includes the canonical fingerprint revision in the app-plan cache key", ()
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(23n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(47n);
+  expect(key).not.toBe("52ac114b46244edd3741469e45ce9009aa2a3c67f99bc8c2983104e3f399b737");
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });
 
 test("changes the app-plan cache key when env-file content or resolved path changes", () => {
   // Given
   const input = {
+    hostProvider: "lando",
     appRoot: "/workspace/env-key",
     landofile: { name: "env-key", runtime: 4 as const },
     pluginManifests: [],
@@ -259,6 +306,18 @@ test("misses plan.bin when the planning runtime fingerprint changes", async () =
   expect(nextKey).not.toBe(writtenKey);
   expect(read).toBeNull();
   expect((await readFile(cachePath)).length).toBeGreaterThan(0);
+});
+
+test("changes the app-plan cache key when only environment secret bindings change", () => {
+  // Given identical Landofile inputs that differ only in binding authority.
+  const literal = { ...runtimeLandofileInput, serviceInputs: { environment: { TOKEN: "${secret:TEST}" } } };
+  // When
+  const bound = {
+    ...runtimeLandofileInput,
+    serviceInputs: { environment: { TOKEN: { _tag: "SecretRef", reference: "TEST" } } },
+  };
+  // Then
+  expect(deriveAppPlanCacheKey(bound)).not.toBe(deriveAppPlanCacheKey(literal));
 });
 
 test("does not change the app-plan cache key for unrelated environment variables", () => {

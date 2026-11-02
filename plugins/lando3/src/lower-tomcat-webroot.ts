@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { isLegacyTagged } from "@lando/sdk/landofile";
+import { serviceCursor } from "./claims.ts";
 import type { LoweringPatch, ServiceLoweringContext } from "./lowering-contract.ts";
 import { needsReviewServiceKey, unsupportedServiceKey } from "./service-diagnostics.ts";
 
@@ -8,6 +9,7 @@ export const lowerTomcatWebroot = (
   ctx: ServiceLoweringContext,
   appMountDisabled: boolean,
 ): LoweringPatch => {
+  serviceCursor(service, ctx).mapTo(["webroot"]);
   if (appMountDisabled) {
     return {
       patch: {},

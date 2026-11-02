@@ -27,7 +27,7 @@ services:
           user: root
 ```
 
-Lint it, then start:
+Save this in `.lando.yml` at your project root. The `npm ci` step assumes your project already has a package lockfile. From that directory, lint the configuration, then start:
 
 ```sh
 lando app:config:lint
@@ -74,7 +74,7 @@ Mixing root and non-root steps in one list is fine. The order is preserved, so `
 
 ## What changes when you change `user`
 
-The step's user is part of its build key. Change an app step's user and only that step re-runs on the next `lando start`, the same as changing the command text. Change an artifact step's user and the whole image rebuilds, because those steps share one image key.
+The step's user is part of its build key. Change an app step's user and only that step re-runs on the next `lando start`, the same as changing the command text. Change an artifact step's user and the next `lando start` rebuilds the image, because those steps share one image key.
 
 For the image phase, Lando resolves every step's user during planning and only emits a `USER` switch when a step's user differs from the one currently active. After the last artifact step it restores the service's final user: `services.<name>.user` when you set it, otherwise the base image's own user. Two root steps in a row cost one switch, not two.
 
@@ -118,9 +118,9 @@ lando app:cache:refresh
       <UseFixture name="build-steps-invalid-user" />
     </Step>
     <Step name="lint-invalid-user">
-      <Run command="lando app:config:lint --format=json" />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
-      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"build\",\\s*\"artifact\",\\s*0,\\s*\"user\"\\s*\\]" } }} />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"valid\":\\s*false" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"app\",\\s*\"build\",\\s*\"artifact\",\\s*0,\\s*\"user\"\\s*\\]" } }} />
     </Step>
     <Step name="cleanup-invalid">
       <Cleanup />

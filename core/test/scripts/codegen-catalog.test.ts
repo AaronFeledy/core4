@@ -73,14 +73,14 @@ if (!isCodegenCatalogModule(importedCatalogModule)) {
 const { CODEGEN_CATALOG, groupCodegenWaves, resolveCodegenCommand } = importedCatalogModule;
 const catalog = CODEGEN_CATALOG;
 const expectedCatalogRows = [
-  ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo"],
+  ["build-guide-scenarios", "derived", "build-guide-scenarios.ts", "repo", ["core-service-env-catalog"]],
   ["build-recipe-readmes", "derived", "build-recipe-readmes.ts", "repo"],
   [
     "bundled-plugins",
     "derived",
     "build-bundled-plugins.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
   ],
   ["mutagen-versions", "committed-pin", "build-mutagen-versions.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -91,19 +91,33 @@ const expectedCatalogRows = [
     ["core-service-env-catalog"],
   ],
   ["php-msmtp-pins", "committed-pin", "build-php-msmtp-pins.ts", "repo"],
+  ["github-actions-pins", "committed-pin", "build-github-actions-pins.ts", "repo"],
   ["tomcat-catalog", "derived", "build-tomcat-catalog.ts", "repo"],
   ["provider-images", "derived", "build-provider-images.ts", "repo"],
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
-  ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
+  ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo", ["core-service-env-catalog"]],
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo", ["core-service-env-catalog"]],
   [
     "setup-plugin-flags",
     "derived",
     "build-setup-plugin-flags.ts",
     "repo",
-    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
+    ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog", "provider-images"],
   ],
-  ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo", ["setup-plugin-flags"]],
+  [
+    "bundled-command-descriptors",
+    "derived",
+    "build-bundled-command-descriptors.ts",
+    "repo",
+    ["bundled-plugins", "setup-plugin-flags"],
+  ],
+  [
+    "mcp-allowlist",
+    "derived",
+    "build-mcp-allowlist.ts",
+    "repo",
+    ["setup-plugin-flags", "bundled-command-descriptors"],
+  ],
   [
     "host-proxy-allowlist",
     "derived",
@@ -118,7 +132,13 @@ const expectedCatalogRows = [
     "derived",
     "build-command-registry-manifest.ts",
     "core",
-    ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations"],
+    [
+      "setup-plugin-flags",
+      "mcp-allowlist",
+      "schema-deprecations",
+      "bundled-command-descriptors",
+      "host-proxy-allowlist",
+    ],
   ],
   ["compiled-decoders", "derived", "build-compiled-decoders.ts", "repo", ["core-service-env-catalog"]],
   [
@@ -127,6 +147,7 @@ const expectedCatalogRows = [
     "build-schema-snapshot.ts",
     "repo",
     [
+      "bundled-command-descriptors",
       "bundled-plugins",
       "bundled-recipes",
       "bootstrap-layers",
@@ -137,7 +158,13 @@ const expectedCatalogRows = [
       "command-registry-manifest",
     ],
   ],
-  ["command-reference", "derived", "build-command-reference.ts", "repo", ["command-registry-manifest"]],
+  [
+    "command-reference",
+    "derived",
+    "build-command-reference.ts",
+    "repo",
+    ["command-registry-manifest", "bundled-plugins", "bundled-command-descriptors"],
+  ],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
   [
     "service-type-reference",
@@ -146,14 +173,22 @@ const expectedCatalogRows = [
     "repo",
     ["php-msmtp-pins", "tomcat-catalog"],
   ],
+  [
+    "service-listener-reference",
+    "derived",
+    "build-service-listener-reference.ts",
+    "repo",
+    ["php-msmtp-pins", "tomcat-catalog"],
+  ],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
-  ["php-base-images", "derived", "build-php-base-images.ts", "repo"],
+  ["php-base-images", "derived", "build-php-base-images.ts", "repo", ["core-service-env-catalog"]],
   ["ci-workflow", "committed-workflow", "build-ci-workflow.ts", "repo"],
   ["nightly-workflow", "committed-workflow", "build-nightly-workflow.ts", "repo"],
+  ["dependency-audit-workflow", "committed-workflow", "build-dependency-audit-workflow.ts", "repo"],
+  ["install-lifecycle-workflow", "committed-workflow", "build-install-lifecycle-journey-workflow.ts", "repo"],
   ["release-workflow", "committed-workflow", "build-release-workflow.ts", "repo"],
   ["provider-matrix-workflow", "committed-workflow", "build-provider-matrix-workflow.ts", "repo"],
   ["runtime-bundle-workflow", "committed-workflow", "build-runtime-bundle-workflow.ts", "repo"],
-  ["php-base-workflow", "committed-workflow", "build-php-base-workflow.ts", "repo"],
   ["compose-vendor-bump-workflow", "committed-workflow", "build-compose-vendor-bump-workflow.ts", "repo"],
   ["tomcat-bump-workflow", "committed-workflow", "build-tomcat-bump-workflow.ts", "repo"],
   ["platform-readiness-workflow", "committed-workflow", "build-platform-readiness-workflow.ts", "repo"],
@@ -212,7 +247,8 @@ describe("codegen catalog", () => {
   });
 
   test("generates pins before every generator that imports bundled plugins", async () => {
-    // Given: bundled plugins statically import the mutagen and PHP msmtp pins,
+    // Given: bundled plugins statically import the mutagen and PHP msmtp pins
+    // (and the provider-image pins through `@lando/container-runtime`),
     // so any generator that imports the bundled plugin list transitively reads
     // those pins. Derive those generators from source instead of hard-coding ids,
     // so a newly added one is covered automatically.
@@ -229,12 +265,16 @@ describe("codegen catalog", () => {
       waves.findIndex((wave) => wave.some((entry) => entry.id === id));
 
     // When: each pin generator is placed in a wave.
-    const pinWaves = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"].map(
-      (id) => ({
-        id,
-        wave: waveIndexOf(id),
-      }),
-    );
+    const pinWaves = [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "provider-images",
+    ].map((id) => ({
+      id,
+      wave: waveIndexOf(id),
+    }));
 
     // Then: the pin is fully written before any importer reads it. Sharing a wave
     // lets the import observe the file mid-truncation, because `Bun.write`
@@ -253,12 +293,15 @@ describe("codegen catalog", () => {
     // Given: `@lando/sdk/schema` re-exports generated/core-service-env.ts, so any
     // generator that imports that barrel can observe a truncated write if it
     // shares a wave with the catalog writer.
+    const phpMetadataImporters = ["php-base-images"];
     const schemaImporters = (
       await Promise.all(
         catalog.map(async (entry) => {
           if (entry.id === "core-service-env-catalog") return undefined;
           const source = await Bun.file(resolve(repositoryRoot, "scripts", entry.script)).text();
-          return source.includes("@lando/sdk/schema") ? entry : undefined;
+          return source.includes("@lando/sdk/schema") || phpMetadataImporters.includes(entry.id)
+            ? entry
+            : undefined;
         }),
       )
     ).filter((entry) => entry !== undefined);
@@ -301,14 +344,20 @@ describe("codegen catalog", () => {
 
   test("classifies ownership and references unique existing scripts", async () => {
     // Given
-    const expectedCommittedPins = ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins"];
+    const expectedCommittedPins = [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "github-actions-pins",
+    ];
     const expectedCommittedWorkflows = [
       "ci-workflow",
       "nightly-workflow",
+      "dependency-audit-workflow",
+      "install-lifecycle-workflow",
       "release-workflow",
       "provider-matrix-workflow",
       "runtime-bundle-workflow",
-      "php-base-workflow",
       "compose-vendor-bump-workflow",
       "tomcat-bump-workflow",
       "platform-readiness-workflow",
@@ -326,13 +375,13 @@ describe("codegen catalog", () => {
     );
 
     // Then
-    expect(catalog).toHaveLength(36);
+    expect(catalog).toHaveLength(40);
     expect(new Set(ids).size).toBe(catalog.length);
     expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
-    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(3);
-    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(12);
-    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(21);
+    expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(4);
+    expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(13);
+    expect(ownerships.filter((ownership) => ownership === "derived")).toHaveLength(23);
     expect(
       catalog.every((entry) => (entry.ownership === "committed-workflow") === entry.id.endsWith("-workflow")),
     ).toBe(true);
@@ -368,8 +417,11 @@ describe("codegen catalog", () => {
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("host-proxy-allowlist"));
     expect(waveOf("mcp-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("bootstrap-layers"));
+    expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("build-guide-scenarios"));
     expect(waveOf("core-service-env-catalog")).toBeLessThan(waveOf("mutagen-versions"));
     expect(waveOf("schema-deprecations")).toBeLessThan(waveOf("command-registry-manifest"));
+    // The manifest builder imports the command graph, which reads the generated host-proxy allowlist.
+    expect(waveOf("host-proxy-allowlist")).toBeLessThan(waveOf("command-registry-manifest"));
     expect(new Set(waves[0]?.map((entry) => entry.id))).toEqual(
       new Set(catalog.filter((entry) => (entry.dependsOn ?? []).length === 0).map((entry) => entry.id)),
     );

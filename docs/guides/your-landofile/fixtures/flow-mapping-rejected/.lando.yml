@@ -1,0 +1,8 @@
+# lando-lint: expect-invalid populated flow mapping with a quoted hash
+name: flow-mapping-rejected
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      DEMO: {key: "echo # hi"}

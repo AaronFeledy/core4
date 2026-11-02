@@ -2,31 +2,33 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import {
+import type {
   LandofileFormConflictError,
-  type LandofileLoadExpressionError,
+  LandofileLoadExpressionError,
   LandofileNotFoundError,
   LandofileParseError,
-  type LandofileSandboxError,
-  type LandofileTimeoutError,
-  type LandofileValidationError,
-  type NotImplementedError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
+  LandofileValidationError,
+  NotImplementedError,
 } from "@lando/sdk/errors";
 import type {
   ComposeKeyRejectedError,
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileIncludeError,
+  LandofileLoadError,
   LandofileLockMismatchError,
   ManagedFileTransactionError,
-  ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { StateStore } from "@lando/sdk/services";
 
-import { loadLandofileFile, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { findLandofilePath } from "@lando/landofile/discovery";
+import { scopedLandofileRuntimeInputs, updateLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { includeAcquisitionView } from "@lando/landofile/include-layer-overlays";
 import type { IncludeUpdateReport, LandofileIncludeDeps } from "@lando/landofile/includes";
-import { presentLandofileLayers } from "@lando/landofile/layers";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { prepareLandofileRootLayers, validatePreparedAuthoringLayers } from "@lando/landofile/root-compile";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 
 export type {
   IncludeUpdateEntry,
@@ -38,6 +40,7 @@ export type AppIncludesUpdateFormat = "text" | "json";
 
 const IncludeUpdateEntrySchema = Schema.Struct({
   source: Schema.String,
+  version: Schema.optionalKey(Schema.String),
   resolved: Schema.String,
   checksum: Schema.String,
   status: Schema.Union([Schema.Literal("added"), Schema.Literal("updated"), Schema.Literal("unchanged")]),
@@ -63,6 +66,7 @@ export interface AppIncludesUpdateOptions {
 }
 
 export type AppIncludesUpdateError =
+  | import("@lando/sdk/errors").ConfigExpressionError
   | Lando3LandofileDetected
   | LandofileDialectMixError
   | ManagedFileTransactionError
@@ -74,8 +78,8 @@ export type AppIncludesUpdateError =
   | LandofileTimeoutError
   | NotImplementedError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
 
@@ -88,50 +92,30 @@ export type AppIncludesUpdateError =
 export const appIncludesUpdate = Effect.fn("AppIncludesUpdate.update")(function* (
   options: AppIncludesUpdateOptions = {},
 ): Effect.fn.Return<IncludeUpdateReport, AppIncludesUpdateError, StateStore> {
-  const cwd = options.cwd ?? process.cwd();
-  const filePath = yield* Effect.tryPromise({
-    try: () => findLandofilePath(cwd),
-    catch: (cause) =>
-      cause instanceof LandofileFormConflictError
-        ? cause
-        : new LandofileParseError({
-            message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-            filePath: cwd,
-            line: undefined,
-            column: undefined,
-            cause,
-          }),
-  });
-  if (filePath === undefined) {
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: "No .lando.yml or .lando.ts found. Run `lando init` to create one before updating includes.",
-        cwd,
-      }),
-    );
-  }
+  const { filePath } = yield* findDiscoveredLandofilePath(options.cwd);
   const appRoot = dirname(filePath);
-  const layers = yield* Effect.tryPromise({
-    try: () => presentLandofileLayers(appRoot),
-    catch: (cause) =>
-      cause instanceof LandofileFormConflictError
-        ? cause
-        : new LandofileParseError({
-            message: cause instanceof Error ? cause.message : "Failed to discover Landofile layers.",
-            filePath,
-            line: undefined,
-            column: undefined,
-            cause,
-          }),
-  });
   const includes = [];
   const composeIncludes: string[] = [];
-  for (const layer of layers) {
-    const landofile = yield* loadLandofileFile(layer.filePath);
+  const inputs = yield* scopedLandofileRuntimeInputs;
+  const root = yield* prepareLandofileRootLayers(appRoot, inputs);
+  const { prepared, runtime } = root;
+  const loadScope = {
+    ...(yield* buildLandofileLoadScope(
+      prepared.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
+      runtime.compilationContext?.env,
+      runtime.pendingSites,
+    )),
+    recorder: runtime.recorder,
+  };
+  for (const { landofile: overlay } of prepared) {
+    const landofile = includeAcquisitionView(overlay);
     includes.push(...(landofile.includes ?? []));
     composeIncludes.push(...(landofile.include ?? []));
   }
   return yield* updateLandofileIncludes({
+    validate: validatePreparedAuthoringLayers(root, "all").pipe(Effect.asVoid),
+    loadScope,
+    layers: prepared,
     landofile: { includes, include: composeIncludes },
     appRoot,
     ...(options.check === true ? { check: true } : {}),

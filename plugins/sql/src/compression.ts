@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { Effect, Stream } from "effect";
+import { Effect, Stream, absurd } from "effect";
 
 import { DataChecksumMismatchError, SqlDumpCompressionError } from "@lando/sdk/errors";
 import type { DataTransferResult } from "@lando/sdk/schema";
@@ -51,10 +51,21 @@ const streamThrough = (
   source: ReadableStream<Uint8Array>,
   compression: Exclude<DumpCompression, "none">,
   operation: "compress" | "decompress",
-): ReadableStream<Uint8Array> =>
-  source.pipeThrough(
-    operation === "compress" ? new CompressionStream(compression) : new DecompressionStream(compression),
-  );
+  level?: number,
+): ReadableStream<Uint8Array> => {
+  switch (operation) {
+    case "compress":
+      return source.pipeThrough(
+        level === undefined
+          ? new CompressionStream(compression)
+          : new CompressionStream(compression, { level }),
+      );
+    case "decompress":
+      return source.pipeThrough(new DecompressionStream(compression));
+    default:
+      return absurd(operation);
+  }
+};
 
 const dumpCompressionError = (
   path: string,
@@ -81,6 +92,7 @@ export const writeDumpTransform = (
   compression: Exclude<DumpCompression, "none">,
   operation: "compress" | "decompress",
   expectedDigest?: string,
+  level?: number,
 ): Effect.Effect<
   { readonly digest: string; readonly sizeBytes: number },
   SqlDumpCompressionError | DataChecksumMismatchError
@@ -100,7 +112,7 @@ export const writeDumpTransform = (
         );
       const result = yield* persistVerifiedStream({
         body: Stream.fromReadableStream({
-          evaluate: () => streamThrough(source, compression, operation),
+          evaluate: () => streamThrough(source, compression, operation, level),
           onError: () => dumpCompressionError(sourcePath, compression, operation),
           releaseLockOnEnd: true,
         }),
@@ -146,6 +158,7 @@ export const releaseStagedDump = (path: string): Effect.Effect<void> =>
 export const withHostDumpCompression = <E, R>(input: {
   readonly path: string;
   readonly compression: DumpCompression;
+  readonly compressionLevel?: number;
   readonly direction: "export" | "import";
   readonly expectedDigest?: string;
   readonly transfer: (workingPath: string, digest?: string) => Effect.Effect<DataTransferResult, E, R>;
@@ -174,7 +187,14 @@ export const withHostDumpCompression = <E, R>(input: {
         return yield* input.transfer(staged, decompressed.digest);
       }
       const result = yield* input.transfer(staged);
-      const compressed = yield* writeDumpTransform(staged, input.path, compression, "compress");
+      const compressed = yield* writeDumpTransform(
+        staged,
+        input.path,
+        compression,
+        "compress",
+        undefined,
+        input.compressionLevel,
+      );
       return { ...result, ...compressed };
     }),
   );

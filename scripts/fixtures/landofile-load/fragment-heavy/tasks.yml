@@ -1,0 +1,7 @@
+tooling:
+  check:
+    service: web
+    cmd: node --check server.js
+  database:
+    service: database
+    cmd: psql -U app app

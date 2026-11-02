@@ -1,3 +1,6 @@
+import { dirname, join, win32 } from "node:path";
+import { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "@lando/container-runtime/labels";
+import { sha256Hex } from "@lando/sdk/digest";
 import { type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
 
 import { isHostProxyRunLandoEnvName } from "./session-env.ts";
@@ -7,9 +10,9 @@ import type { HostProxyTransportKind } from "./transport-session.ts";
 export { HOST_PROXY_RUN_LANDO_ENV_NAMES, isHostProxyRunLandoEnvName } from "./session-env.ts";
 
 export const HOST_PROXY_CONTAINER_SOCKET = "/run/lando/host-proxy.sock";
-export const HOST_PROXY_CONTAINER_SHIM = "/usr/local/lib/lando/host-proxy-client";
 export const HOST_PROXY_CONTAINER_LANDO = "/usr/local/bin/lando";
-export const HOST_PROXY_TRANSPORT_EXTENSION_KEY = "@lando/core/host-proxy-transport";
+export { HOST_PROXY_TRANSPORT_EXTENSION_KEY } from "@lando/container-runtime/labels";
+export const HOST_PROXY_CONTAINER_CREDENTIALS = "/run/lando/host-proxy/credentials";
 
 export interface HostProxyRunLandoFeatureSession extends HostProxyRunLandoConnectionSession {
   readonly shimPath: string;
@@ -19,8 +22,10 @@ export interface HostProxyRunLandoFeatureSession extends HostProxyRunLandoConnec
 
 interface HostProxyRunLandoFeatureMutators {
   addEnv(name: string, value: string): void;
+  addExtension(name: string, value: { readonly sessionDigest: string }): void;
   addMount(mount: {
     readonly type: "bind";
+    readonly origin: "integration";
     readonly source: string;
     readonly target: typeof PortablePath.Type;
     readonly readOnly: boolean;
@@ -40,37 +45,47 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
       service.addEnv("LANDO_HOST_PROXY_SOCKET", HOST_PROXY_CONTAINER_SOCKET);
       service.addMount({
         type: "bind",
+        origin: "integration",
         source: session.socketPath,
         target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
         readOnly: true,
         realization: "passthrough",
       });
     }
-    service.addEnv("LANDO_HOST_PROXY_TOKEN", session.token);
-    service.addEnv("LANDO_HOST_PROXY_SESSION", session.sessionId);
-    service.addEnv("LANDO_HOST_PROXY_APP", session.appId);
+    service.addExtension(HOST_PROXY_TRANSPORT_EXTENSION_KEY, {
+      sessionDigest: sha256Hex(session.sessionId).slice(0, 16),
+    });
+    const path =
+      /^[a-z]:[\\/]/iu.test(session.shimPath) || session.shimPath.startsWith("\\\\")
+        ? win32
+        : { dirname, join };
+    service.addMount({
+      type: "bind",
+      origin: "integration",
+      source: path.join(path.dirname(session.shimPath), "credentials"),
+      target: PortablePath.make(HOST_PROXY_CONTAINER_CREDENTIALS),
+      readOnly: true,
+      realization: "passthrough",
+    });
     service.addEnv("LANDO_HOST_PROXY_DEPTH", "0");
-    service.addMount({
-      type: "bind",
-      source: session.shimPath,
-      target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
-      readOnly: true,
-      realization: "passthrough",
-    });
-    service.addMount({
-      type: "bind",
-      source: session.shimPath,
-      target: PortablePath.make(HOST_PROXY_CONTAINER_LANDO),
-      readOnly: true,
-      realization: "passthrough",
-    });
+    for (const target of [HOST_PROXY_CONTAINER_LANDO, "/usr/local/bin/xdg-open", "/usr/local/bin/open"])
+      service.addMount({
+        type: "bind",
+        origin: "integration",
+        source: session.shimPath,
+        target: PortablePath.make(target),
+        readOnly: true,
+        realization: "passthrough",
+      });
   },
 });
 
-const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
+export const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
   HOST_PROXY_CONTAINER_SOCKET,
-  HOST_PROXY_CONTAINER_SHIM,
+  HOST_PROXY_CONTAINER_CREDENTIALS,
   HOST_PROXY_CONTAINER_LANDO,
+  "/usr/local/bin/xdg-open",
+  "/usr/local/bin/open",
 ]);
 
 const stripHostProxyService = (service: ServicePlan): ServicePlan => ({
@@ -79,7 +94,11 @@ const stripHostProxyService = (service: ServicePlan): ServicePlan => ({
     Object.entries(service.environment).filter(([name]) => !isHostProxyRunLandoEnvName(name)),
   ),
   mounts: service.mounts.filter(
-    (mount) => !(mount.type === "bind" && HOST_PROXY_MOUNT_TARGETS.has(mount.target)),
+    (mount) =>
+      !(
+        HOST_PROXY_MOUNT_TARGETS.has(mount.target) &&
+        (mount.origin === "integration" || (mount.origin === undefined && mount.type === "bind"))
+      ),
   ),
   extensions: Object.fromEntries(
     Object.entries(service.extensions).filter(([name]) => name !== HOST_PROXY_TRANSPORT_EXTENSION_KEY),

@@ -8,10 +8,10 @@ describe("reservedToolingNameConflict", () => {
   test("returns CommandAliasConflictError for the reserved run name", () => {
     // Given
     const name = "run";
-    const claimedBy = "service type php task run";
+    const serviceTypeId = "php";
 
     // When
-    const conflict = reservedToolingNameConflict(name, claimedBy);
+    const conflict = reservedToolingNameConflict(name, serviceTypeId);
 
     // Then
     expect(conflict).toBeInstanceOf(CommandAliasConflictError);
@@ -19,16 +19,18 @@ describe("reservedToolingNameConflict", () => {
       alias: "run",
       claimedBy: "service type php task run",
       reservedFor: "apps:scratch:run",
+      remediation:
+        "Set tooling.run: false in the Landofile to drop service type php's task, or redefine it under another name.",
     });
   });
 
   test("returns undefined for an unreserved tooling name", () => {
     // Given
     const name = "composer";
-    const claimedBy = "service type php task composer";
+    const serviceTypeId = "php";
 
     // When
-    const conflict = reservedToolingNameConflict(name, claimedBy);
+    const conflict = reservedToolingNameConflict(name, serviceTypeId);
 
     // Then
     expect(conflict).toBeUndefined();
@@ -37,10 +39,10 @@ describe("reservedToolingNameConflict", () => {
   test("returns CommandAliasConflictError for the reserved scratch name", () => {
     // Given
     const name = "scratch";
-    const claimedBy = "service type php task scratch";
+    const serviceTypeId = "php";
 
     // When
-    const conflict = reservedToolingNameConflict(name, claimedBy);
+    const conflict = reservedToolingNameConflict(name, serviceTypeId);
 
     // Then
     expect(conflict).toBeInstanceOf(CommandAliasConflictError);
@@ -54,10 +56,10 @@ describe("reservedToolingNameConflict", () => {
   test("returns CommandAliasConflictError for a reserved scratch: prefix name", () => {
     // Given
     const name = "scratch:gc";
-    const claimedBy = "service type php task scratch:gc";
+    const serviceTypeId = "php";
 
     // When
-    const conflict = reservedToolingNameConflict(name, claimedBy);
+    const conflict = reservedToolingNameConflict(name, serviceTypeId);
 
     // Then
     expect(conflict).toBeInstanceOf(CommandAliasConflictError);
@@ -71,12 +73,24 @@ describe("reservedToolingNameConflict", () => {
   test("returns undefined for a name that only shares a scratch prefix", () => {
     // Given
     const name = "scratchpad";
-    const claimedBy = "service type php task scratchpad";
+    const serviceTypeId = "php";
 
     // When
-    const conflict = reservedToolingNameConflict(name, claimedBy);
+    const conflict = reservedToolingNameConflict(name, serviceTypeId);
 
     // Then
     expect(conflict).toBeUndefined();
+  });
+
+  test("authored reserved tooling remediation never suggests remapping an alias", () => {
+    // Given
+    const name = "run";
+    // When
+    const conflict = reservedToolingNameConflict(name);
+    // Then
+    expect(conflict).toMatchObject({
+      claimedBy: "tooling task run",
+      remediation: "Rename tooling task run; run belongs to apps:scratch:run.",
+    });
   });
 });

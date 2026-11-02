@@ -112,6 +112,7 @@ describe("@lando/core/paths package export", () => {
     expect(pathsPackage.private).toBe(true);
     expect(pathsPackage.exports).toEqual({
       ".": "./src/paths.ts",
+      "./config-sources": "./src/config-sources.ts",
       "./overlay": "./src/overlay.ts",
       "./yaml-min": "./src/yaml-min.ts",
     });

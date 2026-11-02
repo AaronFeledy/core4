@@ -15,6 +15,7 @@ import {
 } from "@lando/sdk/landofile";
 import { lintLandofile } from "../src/lint.ts";
 import { loadLandofileFile } from "../src/service.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 describe("lintLandofile", () => {
   let dir: string;
@@ -27,11 +28,36 @@ describe("lintLandofile", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  const lint = (cwd: string) => Effect.runPromiseExit(lintLandofile({ cwd }));
+  const lint = (cwd: string) =>
+    Effect.runPromiseExit(
+      lintLandofile(
+        { cwd },
+        {
+          ports: makeTestLandofilePorts(cwd),
+          stateStore: makeTestLandofileStateStore(),
+          templates: { modules: [] },
+        },
+      ),
+    );
 
   const write = async (content: string) => writeFile(join(dir, ".lando.yml"), content, "utf8");
 
-  test("reports invalid route shorthand with the authored key path", async () => {
+  test("preserves the closest-key suggestion when an unknown key contains a planner expression", async () => {
+    // Given
+    await write('name: typo\nservices:\n  web:\n    primry: "{{ app.name }}"\n');
+    // When
+    const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
+    // Then
+    expect(result.valid).toBe(false);
+    expect(result.violations).toContainEqual(
+      expect.objectContaining({
+        path: ["services", "web", "primry"],
+        suggestion: 'Did you mean "primary"?',
+      }),
+    );
+  });
+
+  test("retains route shorthand for resolved planner validation", async () => {
     // Given
     await write(
       'name: routes\nservices:\n  web:\n    routes:\n      - "http://app.lndo.site"\nproxy:\n  api:\n    - "api.lndo.site"\n    - "api:65536"\n',
@@ -39,11 +65,8 @@ describe("lintLandofile", () => {
     // When
     const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
     // Then
-    expect(result.valid).toBe(false);
-    expect(result.violations).toEqual([
-      { path: ["services", "web", "routes", 0], message: expect.any(String), suggestion: expect.any(String) },
-      { path: ["proxy", "api", 1], message: expect.any(String), suggestion: expect.any(String) },
-    ]);
+    expect(result.valid).toBe(true);
+    expect(result.violations).toEqual([]);
   });
 
   test("accepts filters on object routes", async () => {
@@ -163,6 +186,34 @@ describe("lintLandofile", () => {
     }
   });
 
+  test("accepts whole-value typed expressions before schema validation", async () => {
+    // Given
+    await write(
+      "name: typed\nservices:\n  web:\n    primary: \"{{ eq(default(env.LANDO_TYPED_FLAG, 'off'), 'on') }}\"\n",
+    );
+    // When
+    const exit = await lint(dir);
+    // Then
+    expect(Exit.isSuccess(exit) && exit.value.valid).toBe(true);
+  });
+
+  test("reports an unset env expression at its path in the authoring layer", async () => {
+    // Given
+    await write("name: typed\n");
+    await writeFile(
+      join(dir, ".lando.base.yml"),
+      'services:\n  web:\n    primary: "{{ env.LANDO_TYPED_UNSET_FOR_LINT }}"\n',
+    );
+    // When
+    const result = await Effect.runPromise(lintLandofile({ cwd: dir }));
+    // Then
+    expect(result).toMatchObject({
+      valid: false,
+      file: join(dir, ".lando.base.yml"),
+      violations: [{ path: ["services", "web", "primary"] }],
+    });
+  });
+
   test("same-layer YAML and TS forms fail with LandofileFormConflictError", async () => {
     await writeFile(join(dir, ".lando.yml"), "name: yaml-app\n", "utf8");
     await writeFile(join(dir, ".lando.ts"), 'export default { name: "ts-app" };\n', "utf8");
@@ -195,6 +246,7 @@ describe("lintLandofile", () => {
   });
 
   test("top-level Compose subset keys lint clean while version is accepted as deprecated", async () => {
+    await writeFile(join(dir, "compose.yml"), "services:\n  worker:\n    image: busybox\n");
     await write(
       [
         "name: myapp",
@@ -409,7 +461,7 @@ describe("lintLandofile", () => {
       const violation = exit.value.violations.find(
         (entry) => formatValidationIssuePath(entry.path) === "sshAgent.socket",
       );
-      expect(violation?.message).toContain("Expected string");
+      expect(violation?.message).toMatch(/Expected .*string/);
       expect(violation?.suggestion).toContain("sshAgent.socket");
       expect(violation?.suggestion).toContain("string");
     }

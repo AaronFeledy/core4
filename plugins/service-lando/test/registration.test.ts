@@ -7,8 +7,11 @@ import { AppPlan, LandofileShape, PortablePath, ProviderId, ServiceName } from "
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 import { globalServices, services } from "../src/index.ts";
+import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import { nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
+import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
+import { compileTestLandofile } from "./support/compiled-landofile.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
 
@@ -19,6 +22,7 @@ const providerCapabilities = {
   buildSsh: true,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "native",
@@ -48,10 +52,9 @@ const registryLayer = Layer.merge(services, PluginRegistryLayer.layer);
 
 const plan = (landofile: LandofileShape) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLayer.layer),
-      Effect.provide(registryLayer),
-    ),
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(compileTestLandofile(landofile), providerCapabilities),
+    ).pipe(Effect.provide(AppPlannerLayer.layer), Effect.provide(registryLayer)),
   );
 
 describe("@lando/service-lando registration", () => {
@@ -94,6 +97,8 @@ describe("@lando/service-lando registration", () => {
       "node",
       "node:lts",
       "node:22",
+      "node:24",
+      "node:26",
       "opensearch",
       "opensearch:2",
       "php:8.1",
@@ -152,7 +157,11 @@ describe("@lando/service-lando registration", () => {
       runtime: 4,
       services: {
         [ServiceName.make("queue")]: { type: "rabbitmq" },
-        [ServiceName.make("object-store")]: { type: "minio", database: "uploads" },
+        [ServiceName.make("object-store")]: {
+          type: "minio",
+          database: "uploads",
+          image: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z",
+        },
         [ServiceName.make("aws")]: { type: "localstack" },
       },
     };
@@ -174,27 +183,36 @@ describe("@lando/service-lando registration", () => {
       ["tcp", 5672],
       ["http", 15672],
     ]);
-    expect(queue.storage).toContainEqual({
+    expect(queue.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "catalog-app-rabbitmq-data",
       target: PortablePath.make("/var/lib/rabbitmq"),
       readOnly: false,
     });
-    expect(queue.healthcheck?.command).toEqual(["rabbitmq-diagnostics", "-q", "ping"]);
+    const queueProbes = rabbitmqProbes(5672);
+    expect(queue.healthcheck).toEqual(queueProbes.healthcheck);
+    expect(queue.readiness).toEqual(queueProbes.readiness);
 
-    expect(objectStore.artifact).toEqual({ kind: "ref", ref: "quay.io/minio/minio:latest" });
+    expect(objectStore.artifact).toEqual({
+      kind: "ref",
+      ref: "quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z",
+    });
     expect(
       objectStore.endpoints.flatMap((endpoint) =>
         "port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [],
       ),
     ).toEqual([
-      ["tcp", 9000],
+      ["http", 9000],
       ["http", 9001],
     ]);
     expect(objectStore.environment.MINIO_BUCKET).toBe("uploads");
     expect(objectStore.command).toEqual([
       "mkdir -p /data/$MINIO_BUCKET && exec minio server /data --address :9000 --console-address :9001",
     ]);
-    expect(objectStore.storage).toContainEqual({
+    expect(objectStore.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "catalog-app-minio-data",
       target: PortablePath.make("/data"),
       readOnly: false,
@@ -205,7 +223,9 @@ describe("@lando/service-lando registration", () => {
     expect(
       aws.endpoints.flatMap((endpoint) => ("port" in endpoint ? [[endpoint.protocol, endpoint.port]] : [])),
     ).toEqual([["http", 4566]]);
-    expect(aws.storage).toContainEqual({
+    expect(aws.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "catalog-app-localstack-data",
       target: PortablePath.make("/var/lib/localstack"),
       readOnly: false,
@@ -318,7 +338,9 @@ describe("@lando/service-lando registration", () => {
       hostname: "api.dotnet-app.lndo.site",
       backend: { service: ServiceName.make("api"), protocol: "http", port: 5000 },
     });
-    expect(api.storage).toContainEqual({
+    expect(api.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "lando-cache-nuget",
       target: PortablePath.make("/root/.nuget/packages"),
       readOnly: false,
@@ -329,7 +351,7 @@ describe("@lando/service-lando registration", () => {
       kind: "cache",
       key: "nuget",
     });
-    expect(api.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(api.command).toEqual(["tail", "-f", "/dev/null"]);
   });
 
   test("AppPlanner composes mssql environment, storage, and healthcheck through PluginRegistry", async () => {
@@ -348,24 +370,39 @@ describe("@lando/service-lando registration", () => {
     // Then
     expect(database.environment).toMatchObject({ ACCEPT_EULA: "Y", MSSQL_PID: "Developer" });
     const saPassword = database.environment.SA_PASSWORD;
-    if (saPassword === undefined) throw new Error("mssql SA_PASSWORD missing");
+    if (typeof saPassword !== "string") throw new Error("default mssql SA_PASSWORD must be literal");
     expect(saPassword).toStartWith("Lando!");
-    expect(database.storage).toContainEqual({
+    expect(database.environment.SQLCMDPASSWORD).toBe(saPassword);
+    expect(database.environment.LANDO_DB_USER).toBe("sa");
+    expect(database.environment.LANDO_DB_PASSWORD).toBe(saPassword);
+    expect(database.mounts).toContainEqual({
+      origin: "service",
+      type: "volume",
       store: "sql-app-mssql-data",
       target: PortablePath.make("/var/opt/mssql"),
       readOnly: false,
     });
     expect(database.healthcheck?.command).toEqual([
+      "/bin/bash",
+      "-c",
+      'export SQLCMDPASSWORD="$SA_PASSWORD"; exec "$@"',
+      "lando-mssql-health",
       "/opt/mssql-tools18/bin/sqlcmd",
       "-S",
-      "localhost",
+      "localhost,1433",
       "-U",
       "sa",
-      "-P",
-      saPassword,
       "-C",
+      "-b",
+      "-r1",
+      "-d",
+      "master",
+      "-l",
+      "2",
+      "-t",
+      "5",
       "-Q",
-      "SELECT 1",
+      "IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'sql-app' AND state_desc = 'ONLINE' AND HAS_DBACCESS(name) = 1) THROW 50000, 'Database is not accessible', 1;",
     ]);
   });
 
@@ -464,7 +501,7 @@ describe("@lando/service-lando registration", () => {
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("php:8.2");
     expect(web.environment.LANDO_WEBROOT).toBe("/app/web");
     expect(web.healthcheck?.kind).toBe("command");
-    expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80"]);
+    expect(web.healthcheck).toEqual(tcpProbe(80, 10));
 
     expect(api.type).toBe("php:8.3");
     expect(String(api.workingDirectory)).toBe("/app/public");
@@ -644,9 +681,9 @@ describe("@lando/service-lando registration", () => {
     }
 
     expect(java.artifact).toEqual({ kind: "ref", ref: TOMCAT_CATALOG["11"].image });
-    expect(java.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
+    expect(java.healthcheck).toEqual(tcpProbe(8080, 20));
     expect(cache.artifact).toEqual({ kind: "ref", ref: "varnish:7" });
-    expect(cache.healthcheck?.command).toEqual(["varnishadm", "ping"]);
+    expect(cache.healthcheck).toEqual(tcpProbe(80, 5));
     expect(cache.dependsOn).toEqual([
       { service: ServiceName.make("appserver"), condition: "service_healthy", required: true },
     ]);

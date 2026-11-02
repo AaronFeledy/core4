@@ -13,22 +13,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export interface EditorRunInput {
-  /** Prompt name — used to build a readable temp-file name. */
-  readonly name: string;
-  /** Seed content written to the buffer before the editor opens. */
-  readonly content: string;
-  /** Working directory for the editor invocation. */
-  readonly cwd: string;
-}
-
-export type EditorRunResult =
-  | { readonly kind: "edited"; readonly content: string }
-  | { readonly kind: "no-editor" }
-  | { readonly kind: "failed"; readonly reason: string; readonly exitCode?: number };
-
-/** Open a buffer in the configured editor and return the edited content. */
-export type EditorRunner = (input: EditorRunInput) => Promise<EditorRunResult>;
+import type { EditorRunner } from "@lando/engine/config-write/editor";
+export type { EditorRunInput, EditorRunResult, EditorRunner } from "@lando/engine/config-write/editor";
 
 export interface EditorSpawnerOptions {
   readonly cmd: string;

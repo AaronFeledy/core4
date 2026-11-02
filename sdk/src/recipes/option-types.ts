@@ -38,7 +38,7 @@ export const optionValueMatchesDescriptor = (descriptor: RecipeOptionType, value
     case "boolean":
       return typeof value === "boolean";
     case "enum":
-      return typeof value === "string" && descriptor.values.includes(value);
+      return descriptor.values.some((candidate) => candidate === value);
     case "array":
       return (
         Array.isArray(value) &&
@@ -89,7 +89,8 @@ export const validateOptionValues = (
 
 /**
  * Determine whether ordinary init metadata also supports declarative migration.
- * Local programmatic recipes remain valid for init when no snapshot is supplied.
+ * Migratability metadata alone does not establish init support: external recipes
+ * initialized through the snapshot decomposer still need their own snapshot.
  * Dynamic choices cannot describe a closed historical option vocabulary.
  */
 export const recipeMigratability = (
@@ -118,7 +119,13 @@ export const recipeMigratability = (
     return { status: "nonmigratable", reason: "identity-mismatch" };
   if (manifest.prompts?.some((prompt) => prompt.choicesFrom !== undefined))
     return { status: "nonmigratable", reason: "unsupported-option-type" };
-  if (Result.isFailure(validateOptionValues(manifest.snapshot.optionTypes, {}, manifest.snapshot.defaults)))
+  const snapshot = manifest.snapshot;
+  if (
+    Object.entries(snapshot.defaults).some(([name, value]) => {
+      const descriptor = Object.hasOwn(snapshot.optionTypes, name) ? snapshot.optionTypes[name] : undefined;
+      return descriptor === undefined || !optionValueMatchesDescriptor(descriptor, value);
+    })
+  )
     return { status: "nonmigratable", reason: "unsupported-option-type" };
   if (Result.isFailure(validateSnapshotTemplate(manifest.id, manifest.snapshot.template)))
     return { status: "nonmigratable", reason: "invalid-template" };

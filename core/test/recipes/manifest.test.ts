@@ -2,15 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
 import { RecipeManifestParseError, RecipeManifestValidationError } from "@lando/sdk/errors";
+import { parseLandofile } from "@lando/sdk/landofile";
 
-import {
-  nodePostgresRecipeSource,
-  nodePostgresRecipeYaml,
-} from "../../src/recipes/builtin/node-postgres/manifest.ts";
-import { parseRecipe } from "../../src/recipes/manifest/service.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { source: nodePostgresRecipeSource, manifest: nodePostgresRecipeManifest } =
+  bundledRecipe("node-postgres");
+import { parseRecipeYaml } from "../../src/recipes/manifest/parser.ts";
+import { validateRecipeManifestObject } from "../../src/recipes/manifest/service.ts";
 
 const runParse = async (source: string, content: string) =>
-  Effect.runPromiseExit(parseRecipe(source, content));
+  Effect.runPromiseExit(
+    parseRecipeYaml({ source, content }).pipe(
+      Effect.flatMap((parsed) => validateRecipeManifestObject(source, parsed)),
+    ),
+  );
 
 const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -21,7 +26,7 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   return failure.value;
 };
 
-describe("RecipeManifestService.parse — happy paths", () => {
+describe("Derived RecipeManifest validation — happy paths", () => {
   test("metadata: required id/title/description/version with optional authors/tags/requires", async () => {
     const yaml = `id: my-app
 title: My App
@@ -208,25 +213,25 @@ files:
     expect(files[2]?.when).toBe("answers.installScript");
   });
 
-  test("Landofile output: recipe can describe a .lando.yml emission", async () => {
+  test("auxiliary output retains its destination and template declaration", async () => {
     const yaml = `id: lando-output
 title: Landofile Output
-description: Recipe emits a .lando.yml file.
+description: Recipe emits an auxiliary file.
 version: 0.0.1
 files:
-  - src: templates/.lando.yml.tmpl
-    dest: .lando.yml
+  - src: templates/README.md.tmpl
+    dest: README.md
     template: true
 `;
     const exit = await runParse("test://lando-output", yaml);
     expect(Exit.isSuccess(exit)).toBe(true);
     if (!Exit.isSuccess(exit)) return;
-    const landofileEntry = exit.value.files?.find((f) => f.dest === ".lando.yml");
+    const landofileEntry = exit.value.files?.find((f) => f.dest === "README.md");
     expect(landofileEntry).toBeDefined();
     expect(landofileEntry?.template).toBe(true);
   });
 
-  test("postInit: gitInit / message / command / bun.install all decode", async () => {
+  test("postInit: message / guarded command / bun.install all validate", async () => {
     const yaml = `id: post-init
 title: Post init
 description: One of each supported post-init action.
@@ -237,7 +242,6 @@ prompts:
     message: Start services?
     default: false
 postInit:
-  - type: gitInit
   - type: message
     text: Done!
   - type: command
@@ -253,14 +257,14 @@ postInit:
     expect(Exit.isSuccess(exit)).toBe(true);
     if (!Exit.isSuccess(exit)) return;
     const actions = exit.value.postInit ?? [];
-    expect(actions.map((a) => a.type)).toEqual(["gitInit", "message", "command", "bun"]);
-    const command = actions[2];
+    expect(actions.map((a) => a.type)).toEqual(["message", "command", "bun"]);
+    const command = actions[1];
     expect(command?.type).toBe("command");
     if (command?.type === "command") {
       expect(command.cmd).toBe("app:start");
       expect(command.args).toEqual(["--yes"]);
     }
-    const bun = actions[3];
+    const bun = actions[2];
     expect(bun?.type).toBe("bun");
     if (bun?.type === "bun") {
       expect(bun.verb).toBe("install");
@@ -269,7 +273,7 @@ postInit:
   });
 });
 
-describe("RecipeManifestService.parse — unsupported action rejections", () => {
+describe("Derived RecipeManifest validation — unsupported action rejections", () => {
   const baseHeader = `id: unsupported-rejection
 title: rejection
 description: Trigger one surface per case.
@@ -374,7 +378,7 @@ version: 0.0.1
   });
 });
 
-describe("RecipeManifestService.parse — postInit bun verbs", () => {
+describe("Derived RecipeManifest validation — postInit bun verbs", () => {
   const baseHeader = `id: bun-verbs
 title: Bun verbs
 description: Exercises each supported bun verb.
@@ -628,7 +632,7 @@ version: 0.0.1
   });
 });
 
-describe("RecipeManifestService.parse — validation/parse errors", () => {
+describe("Derived RecipeManifest validation — validation/parse errors", () => {
   test("unknown top-level key is rejected by strict decode", async () => {
     const yaml = `id: unknown-key
 title: Unknown key
@@ -754,18 +758,88 @@ files:
       expect(error.line).toBeGreaterThan(0);
     }
   });
+
+  test("simple inline flow mapping is rejected with a block rewrite in the message", async () => {
+    const yaml = `id: flow
+title: Flow
+description: rejects flow mappings
+version: 0.0.1
+meta: {a: 1, b: 2}
+`;
+    const exit = await runParse("test://flow-simple", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestParseError);
+    if (error instanceof RecipeManifestParseError) {
+      expect(error.message).toContain("Inline objects are not supported");
+      expect(error.message).toContain(
+        ["Rewrite the flow mapping as a block mapping:", "meta:", "  a: 1", "  b: 2"].join("\n"),
+      );
+    }
+  });
+
+  test.each(["a.b", "a/b", "@key", "__proto__"])(
+    "uses generic advice when a flow member %s cannot be rewritten for both parsers",
+    async (key) => {
+      const error = expectFailure(await runParse("test://flow-key", `meta: {${key}: "8.3"}`));
+      expect(error).toBeInstanceOf(RecipeManifestParseError);
+      if (!(error instanceof RecipeManifestParseError)) throw new Error("Expected recipe parse error");
+      expect(error.message).toContain(
+        "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.",
+      );
+      expect(error.message).not.toContain(`\n  ${key}:`);
+    },
+  );
+
+  test.each(['meta: {version: "8.3", enabled: true}', "healthcheck: {disable: true}"])(
+    "reparses concrete advice through both actual parsers: %s",
+    (content) => {
+      const source = "test://flow-rewrite";
+      const result = Effect.runSync(Effect.result(parseRecipeYaml({ source, content })));
+      if (result._tag !== "Failure") throw new Error("Expected rejected flow mapping");
+      const rewrite = result.failure.message.split("\n").slice(1).join("\n");
+      const expected = content.startsWith("meta")
+        ? { meta: { version: "8.3", enabled: true } }
+        : { healthcheck: { disable: true } };
+      expect(Effect.runSync(parseRecipeYaml({ source, content: rewrite }))).toEqual(expected);
+      expect(Effect.runSync(parseLandofile({ file: source, content: rewrite, cwd: "/app" }))).toEqual(
+        expected,
+      );
+    },
+  );
+
+  test("nested inline flow mapping is rejected with a generic block suggestion", async () => {
+    const yaml = `id: flow-nested
+title: Flow nested
+description: rejects nested flow mappings
+version: 0.0.1
+meta: {a: [1, 2]}
+`;
+    const exit = await runParse("test://flow-nested", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestParseError);
+    if (error instanceof RecipeManifestParseError) {
+      expect(error.message).toContain("Inline objects are not supported");
+      expect(error.message).toContain(
+        "Rewrite the flow mapping as an indented block mapping; use a block sequence for mapping items.",
+      );
+      expect(error.message).not.toContain("\n  a:");
+    }
+  });
 });
 
-describe("RecipeManifestService.parse — bundled node-postgres recipe", () => {
-  test("the built-in node-postgres recipe parses cleanly", async () => {
-    const exit = await runParse(nodePostgresRecipeSource, nodePostgresRecipeYaml);
+describe("Derived RecipeManifest validation — bundled node-postgres recipe", () => {
+  test("the built-in node-postgres carrier contains only auxiliary assets and authored prompts", async () => {
+    const exit = await Effect.runPromiseExit(
+      validateRecipeManifestObject(nodePostgresRecipeSource, nodePostgresRecipeManifest),
+    );
     expect(Exit.isSuccess(exit)).toBe(true);
     if (!Exit.isSuccess(exit)) return;
     const manifest = exit.value;
     expect(manifest.id).toBe("node-postgres");
     expect(manifest.title).toBe("Node + Postgres");
-    expect(manifest.files?.map((f) => f.dest)).toEqual([".lando.yml", "package.json", "server.js"]);
-    expect(manifest.prompts?.[0]?.name).toBe("name");
+    expect(manifest.files?.map((f) => f.dest)).toEqual(["package.json", "server.js"]);
+    expect(manifest.prompts).toEqual([]);
+    expect(manifest.snapshot?.assets.map((asset) => asset.dest)).toEqual(["package.json", "server.js"]);
     expect(manifest.postInit?.[0]?.type).toBe("message");
   });
 });

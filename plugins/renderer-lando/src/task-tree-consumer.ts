@@ -1,5 +1,5 @@
 import { Semaphore } from "effect";
-import { Effect, Fiber, Layer, Option, Queue } from "effect";
+import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import type { RendererNarrationIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
@@ -24,6 +24,19 @@ const taskIdOf = (event: LandoEvent): string | undefined => {
   return typeof value === "string" ? value : undefined;
 };
 
+const timestampOf = (event: LandoEvent): string => {
+  const value = Reflect.get(event, "timestamp");
+  return DateTime.isDateTime(value) ? String(DateTime.toEpochMillis(value)) : "";
+};
+
+/**
+ * Identity of an input-published expand/collapse event as it echoes back from
+ * the bus. The bus delivers a redacted copy, not the published object, so echo
+ * suppression keys on the event's fields rather than on object identity.
+ */
+const echoKeyOf = (event: LandoEvent): string =>
+  `${event._tag}\u0000${taskIdOf(event) ?? ""}\u0000${timestampOf(event)}`;
+
 // allow: SIZE_OK — terminal ownership and its shutdown barrier share one scoped consumer closure.
 export const layer = (
   io: RendererNarrationIO,
@@ -31,6 +44,7 @@ export const layer = (
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
   raiseInterrupt: () => void,
   prefetchLiveRegion: () => void,
+  color: boolean,
 ): Layer.Layer<never, never, EventService | TranscriptTailReader> =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -47,13 +61,13 @@ export const layer = (
       let handleResize = (_width: number, _height: number): void => {};
       let unsubscribe: (() => void) | undefined;
       let session: TaskTreeSession = idleSession();
-      const toolingStatus = createToolingStatusPainter(undefined, () => closing);
+      const toolingStatus = createToolingStatusPainter(color, undefined, () => closing);
       let active:
         | (SessionSubstrate & { readonly dispose: () => void; readonly hasTasks: () => boolean })
         | undefined;
 
       const line = (event: LandoEvent): void => {
-        const text = renderLandoLine(event, true, io.terminalColumns);
+        const text = renderLandoLine(event, true, io.terminalColumns, color);
         if (text !== null) journal.writeStderr(`${text}\n`);
       };
       const reportDegradation = Effect.suspend(() => {
@@ -81,6 +95,7 @@ export const layer = (
         const acquired = yield* Effect.tryPromise(() =>
           createLiveRegion({
             stdout,
+            noColor: !color,
             width: io.terminalColumns ?? 80,
             height: io.terminalRows ?? 24,
             onResize: (width, height) => handleResize(width, height),
@@ -103,7 +118,7 @@ export const layer = (
           closeSession,
           hasTasks,
           dispose,
-        } = makeTaskTreeSubstrateHandler(io, controller);
+        } = makeTaskTreeSubstrateHandler(io, controller, color);
         const transcriptTail = yield* makeTranscriptTailController({
           reader: transcriptReader,
           viewModel,
@@ -112,7 +127,15 @@ export const layer = (
           isClosing: () => closing,
         });
         const input = new TaskTreeInputController(viewModel);
-        const publishedByInput = new WeakSet<LandoEvent>();
+        const awaitingEcho = new Map<string, number>();
+        const claimEcho = (event: LandoEvent): boolean => {
+          const key = echoKeyOf(event);
+          const pending = awaitingEcho.get(key);
+          if (pending === undefined) return false;
+          if (pending > 1) awaitingEcho.set(key, pending - 1);
+          else awaitingEcho.delete(key);
+          return true;
+        };
         const transition = Effect.fnUntraced(function* (
           event: LandoEvent,
           preferredInternalId?: string,
@@ -161,9 +184,8 @@ export const layer = (
           return true;
         });
         const consume = Effect.fnUntraced(function* (event: LandoEvent): Effect.fn.Return<void> {
-          if (publishedByInput.delete(event)) return;
           if (event._tag === "task.detail.expand" || event._tag === "task.detail.collapse") {
-            yield* transition(event);
+            if (!claimEcho(event)) yield* transition(event);
             return;
           }
           yield* Effect.tryPromise({
@@ -198,7 +220,8 @@ export const layer = (
                 }
                 for (const event of result.events) {
                   if (!(yield* transition(event, result.preferredInternalId))) continue;
-                  publishedByInput.add(event);
+                  const key = echoKeyOf(event);
+                  awaitingEcho.set(key, (awaitingEcho.get(key) ?? 0) + 1);
                   yield* events.publish(event);
                 }
               }),
@@ -206,6 +229,7 @@ export const layer = (
           });
         }
         active = {
+          color,
           controller,
           consume,
           dispose,

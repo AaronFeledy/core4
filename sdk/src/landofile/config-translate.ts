@@ -6,6 +6,7 @@ import type {
   ConfigTranslateResult,
 } from "../schema/config-translate.ts";
 import { LandofileAuthoringFragment } from "../schema/landofile-authoring.ts";
+import { isPlainRecord } from "./record.ts";
 
 // ==== Input membership and selection invariants
 const invalid = (message: string, remediation: string) =>
@@ -86,11 +87,12 @@ export const validateConfigTranslateResult = (
     ...result.outputs.flatMap((output) => output.sourceIds),
     ...result.diagnostics.map((diagnostic) => diagnostic.sourceId),
     ...result.deletions.map((deletion) => deletion.sourceId),
+    ...(result.expectations ?? []).map((expectation) => expectation.sourceId),
   ];
   if (mentioned.some((id) => !declared.has(id)))
     return invalid(
       "Translation refers to an undeclared source.",
-      "Attribute every output, diagnostic, and deletion to an input sourceId.",
+      "Attribute every output, diagnostic, deletion, and expectation to an input sourceId.",
     );
   const targets = result.outputs.map((output) => output.targetLayer);
   if (new Set(targets).size !== targets.length)
@@ -158,5 +160,27 @@ export const validateConfigTranslateResult = (
         "Emit only supported Landofile authoring fields and expressions with the expected field type.",
       );
   }
-  return Result.succeed(result);
+  const services = new Set(
+    result.outputs.flatMap(({ fragment }) =>
+      isPlainRecord(fragment) && isPlainRecord(fragment.services) ? Object.keys(fragment.services) : [],
+    ),
+  );
+  if (result.expectations?.some(({ service }) => !services.has(service)))
+    return invalid(
+      "Translation expectation names a service absent from the outputs.",
+      "Attribute expectations only to converted services present in the output fragments.",
+    );
+  const seen = new Set<string>();
+  return Result.succeed(
+    result.expectations === undefined
+      ? result
+      : {
+          ...result,
+          expectations: result.expectations.filter(({ service }) => {
+            if (seen.has(service)) return false;
+            seen.add(service);
+            return true;
+          }),
+        },
+  );
 };

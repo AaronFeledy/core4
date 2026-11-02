@@ -19,13 +19,12 @@ const plan = {
   provider: ProviderId.make("test"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-06T00:00:00Z"), source: "test", runtime: 4 },
   extensions: {},
 } satisfies AppPlan;
-const ctx = { providerId: "test", remediation: "Run doctor." } as const;
+const ctx = { providerId: "test", remediation: "Run doctor.", env: {} } as const;
 
 const noPlanError = (missingApp: AppId, operation: string) =>
   new ProviderUnavailableError({
@@ -59,7 +58,13 @@ const makeService = (calls: Call[]): ResolvedProviderOpsInput["service"] => ({
   },
   inspect: (resolvedPlan, selector) => {
     calls.push({ name: "inspect", args: [resolvedPlan, selector] });
-    return Effect.succeed({ app, service, providerId: ProviderId.make("test"), status: "running" });
+    return Effect.succeed({
+      app,
+      service,
+      providerId: ProviderId.make("test"),
+      status: "running",
+      publications: { status: "unknown" as const },
+    });
   },
 });
 
@@ -142,18 +147,46 @@ const makeInput = (
     ctx,
     resolvePlan,
     noPlanError,
-    before: Effect.sync(() => calls.push({ name: "before", args: [] })),
+    readAppEnvironment: () => Effect.succeed([]),
+    before: () => Effect.sync(() => calls.push({ name: "before", args: [] })),
     service: makeService(calls),
     ...(dataPlane === undefined ? {} : { dataPlane }),
   };
 };
 
 describe("resolved provider operations", () => {
-  // destroy --purge removes snapshot images before teardown, so removal must start a stopped runtime.
-  test("removes snapshot images after the runtime-starting before hook", async () => {
+  test.each(["start", "stop", "restart"] as const)(
+    "%s checks durable state even with a supplied plan",
+    async (operation) => {
+      const calls: Call[] = [];
+      const error = noPlanError(app, "applied-state.read");
+      const ops = makeResolvedProviderOps({ ...makeInput(calls), beforeMutation: () => Effect.fail(error) });
+      const failure = await Effect.runPromise(ops[operation]({ ...target, plan }).pipe(Effect.flip));
+      expect(failure).toBe(error);
+      expect(calls).toEqual([]);
+    },
+  );
+
+  test("inspect does not use the strict mutation guard", async () => {
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps({
+      ...makeInput(calls),
+      beforeMutation: () => Effect.fail(noPlanError(app, "applied-state.read")),
+    });
+    expect(await Effect.runPromise(ops.inspect({ ...target, plan }))).toMatchObject({ status: "running" });
+    expect(calls.map((call) => call.name)).toEqual(["before", "inspect"]);
+  });
+  test("secret read-back never invokes the runtime-starting before hook", async () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps(makeInput(calls));
-    if (ops.removeVolumeSnapshot === undefined) throw new Error("Expected snapshot removal adapter");
+    expect(await Effect.runPromise(ops.readAppEnvironment({ app }, {}))).toEqual([]);
+    expect(calls).toEqual([]);
+  });
+  // destroy --purge removes snapshot images before teardown, so removal must start a stopped runtime.
+  test.each([undefined, true, false])("snapshot removal honors startRuntime=%s", async (startRuntime) => {
+    // Given a provider with an observable runtime ensure hook.
+    const calls: Call[] = [];
+    const ops = makeResolvedProviderOps(makeInput(calls));
     const snapshot = {
       provider: "test",
       id: "snap",
@@ -161,14 +194,22 @@ describe("resolved provider operations", () => {
       sizeBytes: 1,
       format: "native" as const,
     };
-    await Effect.runPromise(Effect.scoped(ops.removeVolumeSnapshot(snapshot)));
-    expect(calls.map((call) => call.name)).toEqual(["before", "removeVolumeSnapshot"]);
+    // When removing with the requested startup policy.
+    await Effect.runPromise(
+      Effect.scoped(
+        ops.removeVolumeSnapshot(snapshot, startRuntime === undefined ? undefined : { startRuntime }),
+      ),
+    );
+    // Then only the opt-out bypasses runtime startup.
+    expect(calls.map((call) => call.name)).toEqual(
+      startRuntime === false ? ["removeVolumeSnapshot"] : ["before", "removeVolumeSnapshot"],
+    );
   });
   test("lists snapshot images without invoking the runtime-starting before hook", async () => {
     const calls: Call[] = [];
     const ops = makeResolvedProviderOps({
       ...makeInput(calls),
-      before: Effect.die("must not start runtime"),
+      before: () => Effect.die("must not start runtime"),
     });
     if (ops.listVolumeSnapshots === undefined) throw new Error("Expected snapshot listing adapter");
     expect(await Effect.runPromise(ops.listVolumeSnapshots())).toEqual([]);
@@ -203,6 +244,7 @@ describe("resolved provider operations", () => {
             providerId: ProviderId.make("test"),
             status: "stopped",
             containerId: "observed-id",
+            publications: { status: "unknown" as const },
           }),
       },
     });
@@ -227,6 +269,7 @@ describe("resolved provider operations", () => {
             providerId: ProviderId.make("test"),
             status: "stopped",
             containerId: "observed-id",
+            publications: { status: "unknown" as const },
           }),
       },
     });
@@ -526,7 +569,7 @@ describe("resolved provider operations", () => {
       if (!Exit.isFailure(exit)) throw new Error("Expected unavailable failure");
       const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
       expect(error).toBeInstanceOf(ProviderUnavailableError);
-      expect(error.providerId).toBe(ctx.providerId);
+      expect(error).toMatchObject({ _tag: "ProviderUnavailableError", providerId: ctx.providerId });
     }
   });
 });

@@ -276,7 +276,7 @@ describe("schema snapshot artifact-set gate", () => {
     const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
       Record<string, string>
     >;
-    const canonicalIds = Object.keys(compiledCommands).sort();
+    const canonicalIds = [...Object.keys(compiledCommands), "cli:help"].sort();
 
     expect(Object.keys(commandSchemaIndex).sort()).toEqual(canonicalIds);
     expect(new Set(Object.values(commandSchemaIndex)).size).toBe(canonicalIds.length);

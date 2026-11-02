@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../../dist/schemas/landofile-shape.json
+name: bench-fragment-heavy
+includes:
+  - source: ./web.yml
+    kind: landofile
+  - source: ./database.yml
+    kind: landofile
+  - source: ./cache.yml
+    kind: landofile
+  - source: ./worker.yml
+    kind: landofile
+  - source: ./tasks.yml
+    kind: tooling
+    namespace: dev
+services:
+  web:
+    environment:
+      NODE_ENV: development
+tooling:
+  node:
+    service: web
+    cmd: node

@@ -4,7 +4,7 @@ import { Context, Effect, Predicate, Schema } from "effect";
 import * as McpSchema from "effect/ai/McpSchema";
 import { McpServer } from "effect/ai/McpServer";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
-import { withResultTokens } from "./dispatch";
+import type { McpDispatchDeps } from "./dispatch";
 
 export interface McpResourceEntry {
   readonly uri: string;
@@ -42,9 +42,10 @@ const contents = Effect.fnUntraced(function* (uri: string, value: unknown, redac
 export const registerResources = Effect.fn("McpService.registerResources")(function* (
   entries: ReadonlyArray<McpResourceEntry>,
   context: Context.Context<unknown>,
-  redactor: Redactor,
+  redaction: Pick<McpDispatchDeps, "redactor" | "resultRedactor">,
 ) {
   const server = yield* McpServer;
+  const { redactor, resultRedactor } = redaction;
   for (const entry of entries) {
     const readResource = Effect.fn("McpService.readResource")(
       function* () {
@@ -53,7 +54,7 @@ export const registerResources = Effect.fn("McpService.registerResources")(funct
         return yield* contents(
           entry.uri,
           encoded,
-          withResultTokens(redactor, entry.redactionTokens?.(value) ?? []),
+          yield* resultRedactor(entry.redactionTokens?.(value) ?? []),
         );
       },
       Effect.scoped,

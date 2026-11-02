@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import { AppPlanner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeStateStore } from "@lando/state-store/service";
@@ -35,8 +36,13 @@ test.each([
     );
     const plan = await Effect.runPromise(
       Effect.gen(function* () {
+        const authored = { name: "profile-app-key", includes: ["user:profile.yml"] };
+        const loadScope = yield* buildLandofileLoadScope([
+          { file: join(root, ".lando.yml"), value: authored },
+        ]);
         const landofile = yield* resolveLandofileIncludes({
-          landofile: { name: "profile-app-key", includes: ["user:profile.yml"] },
+          landofile: authored,
+          loadScope,
           appRoot: root,
           cacheRoot: join(root, "cache"),
           ports: { ...landofileRuntimeInputs().ports, resolveUserIncludesDir: () => includesRoot },

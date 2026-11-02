@@ -1,3 +1,4 @@
+import { retainCreateArtifactIdentity } from "@lando/container-runtime/create-fingerprint";
 import { Effect, Predicate } from "effect";
 
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -59,7 +60,7 @@ export const serviceWithArtifact = (service: ServicePlan, artifact: ArtifactRef)
   const mounts = hasTrustStoreBuild(service)
     ? service.mounts.filter((mount) => String(mount.target) !== CA_BUNDLE_PATH)
     : service.mounts;
-  return {
+  return retainCreateArtifactIdentity(service, {
     ...service,
     mounts,
     artifact: {
@@ -67,5 +68,5 @@ export const serviceWithArtifact = (service: ServicePlan, artifact: ArtifactRef)
       ref: artifact.ref,
       ...(artifact.digest === undefined ? {} : { digest: artifact.digest }),
     },
-  };
+  });
 };

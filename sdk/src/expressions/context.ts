@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { EnvironmentValue } from "../schema/environment-value.ts";
 
 const UnknownRecord = Schema.Record(Schema.String, Schema.Unknown);
 const StringRecord = Schema.Record(Schema.String, Schema.String);
@@ -19,7 +20,7 @@ export interface ExpressionContext {
   readonly services?: Readonly<Record<string, unknown>> | undefined;
   readonly plugin?: Readonly<Record<string, unknown>> | undefined;
   readonly info?: Readonly<Record<string, unknown>> | undefined;
-  readonly secrets?: Readonly<Record<string, string>> | undefined;
+  readonly secrets?: Readonly<Record<string, EnvironmentValue>> | undefined;
   readonly globalServices?: Readonly<Record<string, unknown>> | undefined;
   readonly event?: Readonly<Record<string, unknown>> | undefined;
   readonly item?: unknown;
@@ -50,7 +51,7 @@ export const ExpressionContext: Schema.Codec<ExpressionContext> = Schema.Struct(
   services: Schema.optionalKey(UnknownRecord),
   plugin: Schema.optionalKey(UnknownRecord),
   info: Schema.optionalKey(UnknownRecord),
-  secrets: Schema.optionalKey(StringRecord),
+  secrets: Schema.optionalKey(Schema.Record(Schema.String, EnvironmentValue)),
   globalServices: Schema.optionalKey(UnknownRecord),
   event: Schema.optionalKey(UnknownRecord),
   item: Schema.optionalKey(Schema.Unknown),

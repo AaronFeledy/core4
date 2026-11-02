@@ -18,6 +18,10 @@ const notices = ["LICENSE", "NOTICE"] as const;
 const withFixture = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = await mkdtemp(join(tmpdir(), "lando-tomcat-distribution-"));
   try {
+    const goNotices = join(root, "core/container-helper/dist/licenses/go");
+    await mkdir(goNotices, { recursive: true });
+    await writeFile(join(goNotices, "LICENSE"), "fixture Go license\n");
+    await writeFile(join(goNotices, "files.json"), '["licenses/go/LICENSE"]');
     await run(root);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -45,11 +49,11 @@ const publishLocally = async (script: string, root: string): Promise<void> => {
   await cp(resolve(repoRoot, tomcatPath), join(root, tomcatPath), { recursive: true });
   await runCommand(
     [
-      "bash",
+      process.env.LANDO_TEST_BASH ?? "bash",
       "-euc",
       `RELEASE_TAG=v4.0.0-dev.42
       gh() {
-        [ "$1 $2" = "release create" ] || return 0
+        [ "$1 $2" = "release create" ] || [ "$1 $2" = "release upload" ] || return 0
         shift 3
         for asset in "$@"; do
           case "$asset" in --*) break;; esac
@@ -92,16 +96,20 @@ test("delivers complete Tomcat notices when the service plugin is packed for pub
   });
 });
 
-test.skipIf(process.platform === "win32")(
+test.skipIf(process.platform === "win32" && !process.env.LANDO_TEST_BASH)(
   "delivers complete Tomcat notices beside all binaries when the dev release is published",
   async () => {
     // Given: the CI binary artifacts and generated publication command.
     const workflow = renderReleaseWorkflow();
-    const publish = workflow.match(/^\s+(gh release create .+)$/m)?.[1];
-    if (publish === undefined) throw new Error("Missing dev publication command");
+    const publish = workflow.match(/^\s+if (gh release upload .+); then$/m)?.[1];
+    if (publish === undefined) throw new Error("Missing dev publication upload command");
     await withFixture(async (root) => {
       await mkdir(join(root, "dist"));
-      for (const name of [...CI_PLATFORMS.map(releaseBinaryFileName), "SHA256SUMS"]) {
+      for (const name of [
+        ...CI_PLATFORMS.map(releaseBinaryFileName),
+        "SHA256SUMS",
+        "THIRD_PARTY_NOTICES.md",
+      ]) {
         await writeFile(join(root, "dist", name), name);
       }
 
@@ -114,6 +122,9 @@ test.skipIf(process.platform === "win32")(
           await readFile(resolve(repoRoot, tomcatPath, name), "utf8"),
         );
       }
+      expect(await readFile(join(root, "published/THIRD_PARTY_NOTICES.md"), "utf8")).toBe(
+        "THIRD_PARTY_NOTICES.md",
+      );
       for (const platform of CI_PLATFORMS) {
         expect(await readFile(join(root, "published", releaseBinaryFileName(platform)), "utf8")).toBe(
           releaseBinaryFileName(platform),
@@ -124,11 +135,11 @@ test.skipIf(process.platform === "win32")(
   },
 );
 
-test.skipIf(process.platform === "win32")(
+test.skipIf(process.platform === "win32" && !process.env.LANDO_TEST_BASH)(
   "delivers complete Tomcat notices when the manual binary release is published",
   async () => {
     // Given: the manual release stage's binary manifest and companion artifacts.
-    const stage = RELEASE_STAGES.find(({ id }) => id === "13-publish");
+    const stage = RELEASE_STAGES.find(({ id }) => id === "14-publish");
     if (stage === undefined) throw new Error("Missing publish stage");
     await withFixture(async (root) => {
       await mkdir(join(root, "dist"));
@@ -153,6 +164,7 @@ test.skipIf(process.platform === "win32")(
         "update-manifest.json.sig",
         "update-manifest.json.crt",
         "release-notes.md",
+        "THIRD_PARTY_NOTICES.md",
       ])
         await writeFile(join(root, "dist", name), name);
       await writeFile(
@@ -163,7 +175,7 @@ test.skipIf(process.platform === "win32")(
         }),
       );
 
-      // When: stage 13 publishes through its real shell, without compiling or contacting GitHub.
+      // When: stage 14 publishes through its real shell, without compiling or contacting GitHub.
       await withCwd(root, () =>
         stage.run({
           target: "binary",
@@ -185,6 +197,9 @@ test.skipIf(process.platform === "win32")(
           await readFile(resolve(repoRoot, tomcatPath, name), "utf8"),
         );
       }
+      expect(await readFile(join(root, "published/THIRD_PARTY_NOTICES.md"), "utf8")).toBe(
+        "THIRD_PARTY_NOTICES.md",
+      );
     });
   },
 );

@@ -43,12 +43,14 @@ test("normalizes a Compose bind volume into a resolved mount", async () => {
     {
       type: "bind",
       source: resolve(appRoot, "src"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/app2",
       readOnly: false,
       realization: "passthrough",
     },
   ]);
-  expect(plan.storage).toEqual([]);
+  expect(plan.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
   expect(plan.extensions?.compose).toBeUndefined();
 });
 
@@ -76,6 +78,8 @@ test("carries an explicit false bind.create_host_path into mount intent", async 
     {
       type: "bind",
       source: resolve(appRoot, "src"),
+      origin: "authored",
+      relativeTo: "app",
       target: "/app2",
       readOnly: false,
       createHostPath: false,
@@ -93,8 +97,8 @@ test("normalizes a named Compose volume into app-scoped storage", async () => {
   const plan = await planService(service);
 
   // Then
-  expect(plan.storage.map((storage) => ({ ...storage, target: String(storage.target) }))).toEqual([
-    { store: "us469-db", target: "/data", readOnly: false },
+  expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
+    { type: "volume", store: "us469-db", target: "/data", readOnly: false, origin: "authored" },
   ]);
   expect(plan.extensions?.compose).toBeUndefined();
 });
@@ -112,8 +116,15 @@ test("carries volume.subpath into storage intent", async () => {
   const plan = await planService(service);
 
   // Then
-  expect(plan.storage.map((storage) => ({ ...storage, target: String(storage.target) }))).toEqual([
-    { store: "us469-db", target: "/data", readOnly: false, subpath: "tenant" },
+  expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
+    {
+      type: "volume",
+      store: "us469-db",
+      target: "/data",
+      readOnly: false,
+      subpath: "tenant",
+      origin: "authored",
+    },
   ]);
   expect(plan.extensions?.compose).toBeUndefined();
 });
@@ -126,12 +137,18 @@ test("assigns a deterministic store to an anonymous Compose volume", async () =>
   const plan = await planService(service);
 
   // Then
-  expect(plan.storage.map((storage) => ({ ...storage, target: String(storage.target) }))).toEqual([
-    { store: "us469-web-var-lib-mysql", target: "/var/lib/mysql", readOnly: false },
+  expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
+    {
+      type: "volume",
+      store: "us469-web-var-lib-mysql",
+      target: "/var/lib/mysql",
+      readOnly: false,
+      origin: "authored",
+    },
   ]);
 });
 
-test("preserves Compose tmpfs in the compose extension only", async () => {
+test("normalizes Compose tmpfs into the mount list", async () => {
   // Given
   const service = {
     type: "compose",
@@ -144,11 +161,10 @@ test("preserves Compose tmpfs in the compose extension only", async () => {
   const plan = await planService(service);
 
   // Then
-  expect(plan.extensions?.compose).toEqual({
-    tmpfs: [{ target: "/cache", read_only: true, size: "64m", mode: 448 }],
-  });
-  expect(plan.mounts).toEqual([]);
-  expect(plan.storage).toEqual([]);
+  expect(plan.extensions?.compose).toBeUndefined();
+  expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
+    { type: "tmpfs", target: "/cache", readOnly: true, options: "size=64m,mode=700", origin: "authored" },
+  ]);
 });
 
 test("keeps Lando tmpfs mounts on the MountPlan path", async () => {
@@ -165,6 +181,6 @@ test("keeps Lando tmpfs mounts on the MountPlan path", async () => {
 
   // Then
   expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
-    { type: "tmpfs", target: "/run/cache", readOnly: false, realization: "passthrough" },
+    { type: "tmpfs", target: "/run/cache", readOnly: false, origin: "authored" },
   ]);
 });

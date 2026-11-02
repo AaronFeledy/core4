@@ -11,7 +11,7 @@ import { Effect } from "effect";
  * Both `ExecutableCommandSpec` (plugin/tooling) and `LandoCommandSpec`
  * (built-in) satisfy this shape, so callers holding an `EventCommandTarget`
  * union can pass `target.spec` without widening the built-in spec to the
- * SDK's Effect-returning `render`/`successExitCode` contract.
+ * SDK's Effect-returning `render` and completion contract.
  */
 export interface EventCommandInputSpec {
   readonly id: string;

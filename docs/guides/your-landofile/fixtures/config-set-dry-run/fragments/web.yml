@@ -1,0 +1,4 @@
+services:
+  web:
+    type: "node:22"
+    port: 3000

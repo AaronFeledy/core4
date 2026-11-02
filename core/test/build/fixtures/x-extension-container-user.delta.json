@@ -1,0 +1,15 @@
+{
+  "provenance": {
+    "commit": "fe52e912a43511d41c9bfcd430d19e649a927ca4",
+    "sources": {
+      "sdk/src/schema/primitives.ts": "ec2fa3a99aa2c06b357a65e0c8d7b63b48bb6886",
+      "sdk/src/schema/landofile.ts": "e712840c70ec4d7bd7969537c44b184748d2facd"
+    }
+  },
+  "pointer": "/properties/services/additionalProperties/properties/user",
+  "before": { "type": "string" },
+  "after": {
+    "type": "string",
+    "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-9_][A-Za-z0-9_.-]*)?$"
+  }
+}

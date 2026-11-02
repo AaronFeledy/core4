@@ -1,7 +1,7 @@
-import { RedactionService } from "@lando/redaction/service";
+import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
 import { HttpTrustError } from "@lando/sdk/errors";
 import { PostHttpCallEvent, PreHttpCallEvent } from "@lando/sdk/events";
-import { REDACTED, createRedactor } from "@lando/sdk/secrets";
+import { REDACTED } from "@lando/sdk/secrets";
 import { ConfigService, EventService } from "@lando/sdk/services";
 import { Clock, Context, DateTime, Effect, Exit, Layer, Option, Scope } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
@@ -26,9 +26,10 @@ import { failureDetail, observeResponse } from "./response-events.ts";
 export { RequestPolicy, type RequestPolicyShape } from "./policy.ts";
 
 export interface ClientOptions {
+  readonly env?: Readonly<Record<string, string | undefined>>;
   readonly fetch?: typeof fetch;
-  readonly systemCaPems?: SystemCaProvider;
   readonly direct?: DirectHttpTransport;
+  readonly systemCaPems?: SystemCaProvider;
 }
 
 /** Strip credentials and all query values before a URL reaches telemetry. */
@@ -38,28 +39,65 @@ const redactedUrl = (url: URL, policy: RequestPolicyShape): string => {
   safe.password = "";
   for (const key of new Set(safe.searchParams.keys())) safe.searchParams.set(key, REDACTED);
   safe.hash = "";
-  return createRedactor("secrets", { values: policy.redactionTokens ?? [] }).redactString(safe.href);
+  return createStandaloneRedactor("secrets", { authoritativeTokens: policy.redactionTokens }).redactString(
+    safe.href,
+  );
 };
 
 const transportError = (request: HttpClientRequest.HttpClientRequest, cause: unknown) =>
   new HttpClientError.HttpClientError({ reason: new HttpClientError.TransportError({ request, cause }) });
 
+const isProxyTunnelError = (cause: unknown): cause is Error & { code: "ERR_PROXY_TUNNEL"; status: number } =>
+  cause instanceof Error &&
+  "code" in cause &&
+  cause.code === "ERR_PROXY_TUNNEL" &&
+  "status" in cause &&
+  typeof cause.status === "number";
+
+const trustFailure = (url: URL, cause: unknown, redact: (value: string) => string): unknown => {
+  if (isProxyTunnelError(cause)) {
+    return new HttpTrustError({
+      message: redact(cause.message),
+      urlOrigin: url.origin,
+      kind: "proxy-tunnel-refused",
+      remediation: `Proxy answered ${cause.status}; check network.proxy / HTTPS_PROXY credentials or add the host to network.proxy.noProxy / NO_PROXY.`,
+      cause,
+    });
+  }
+  if (
+    url.protocol === "https:" &&
+    cause instanceof Error &&
+    /cert|tls|ssl|self.signed|issuer/i.test(cause.message)
+  ) {
+    return new HttpTrustError({
+      message: "TLS trust verification failed",
+      urlOrigin: url.origin,
+      kind: "missing-custom-ca",
+      remediation: "Supply the issuer CA through network.ca.certs or LANDO_NETWORK_CA_CERTS.",
+      cause,
+    });
+  }
+  return cause;
+};
+
 const resolveTrust = Effect.fnUntraced(function* (
   context: Context.Context<never>,
   injected: ResolvedNetworkTrust | undefined,
+  env: Readonly<Record<string, string | undefined>>,
 ) {
   if (injected !== undefined) return injected;
   const config = Context.getOption(context, ConfigService);
   if (Option.isNone(config)) return undefined;
-  const globalConfig = yield* config.value.load.pipe(Effect.catch(() => Effect.succeed(undefined)));
+  const globalConfig = yield* config.value.load;
   const plan = yield* Effect.try({
-    try: () => resolveNetworkTrustPlan(globalConfig === undefined ? {} : { network: globalConfig.network }),
+    try: () => resolveNetworkTrustPlan({ network: globalConfig.network }, env),
     catch: (cause) =>
       new HttpTrustError({
         message: cause instanceof Error ? cause.message : "Could not resolve network trust",
         urlOrigin: "unknown",
         kind: "missing-custom-ca",
-        remediation: "Check network.ca.certs and LANDO_NETWORK_CA_CERTS.",
+        remediation:
+          "Check network.ca.certs, LANDO_NETWORK_CA_CERTS, and proxy trust settings (HTTPS_PROXY / network.proxy), then retry.",
         cause,
       }),
   });
@@ -79,20 +117,30 @@ const resolveTrust = Effect.fnUntraced(function* (
 });
 
 export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.HttpClient> => {
-  const transports = {
-    fetch: options.fetch ?? globalThis.fetch,
-    direct: options.direct ?? directHttpRequest,
-  };
+  const env = { ...(options.env ?? process.env) };
   const systemCaPems = options.systemCaPems ?? defaultSystemCaPems;
   return Layer.effect(
     HttpClient.HttpClient,
     Effect.gen(function* () {
+      // Each layer owns a pool isolated from plugins' global fetch connections.
+      // Keep session defaults neutral: per-request SDK trust decides proxy and CA.
+      const session = yield* Effect.acquireRelease(
+        Effect.sync(() => new Bun.FetchSession()),
+        (session) => Effect.sync(() => session.close()),
+      );
+      const transports = {
+        fetch: options.fetch ?? session.fetch,
+        direct: options.direct ?? directHttpRequest,
+      };
+      const layerContext = yield* Effect.context<never>();
       const layerEvents = yield* Effect.serviceOption(EventService);
       const client = HttpClient.make((request, url, signal, fiber) => {
         const policy = fiber.getRef(RequestPolicy);
         const safeUrl = redactedUrl(url, policy);
         const safeRequest = HttpClientRequest.setUrlParams(HttpClientRequest.setUrl(request, safeUrl), []);
-        const redact = createRedactor("secrets", { values: policy.redactionTokens ?? [] }).redactString;
+        const redact = createStandaloneRedactor("secrets", {
+          authoritativeTokens: policy.redactionTokens,
+        }).redactString;
         const eventService = Option.orElse(Context.getOption(fiber.context, EventService), () => layerEvents);
         const publish = (event: Parameters<EventService["Service"]["publish"]>[0]) =>
           Option.isSome(eventService)
@@ -103,7 +151,8 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
           const spanUrl = Option.isNone(canonical)
             ? safeUrl
             : (yield* canonical.value.forProfile("secrets", {
-                redactionTokens: policy.redactionTokens,
+                sourceEnv: env,
+                authoritativeTokens: policy.redactionTokens,
               })).redactString(safeUrl);
           yield* Effect.annotateCurrentSpan({ "http.request.method": request.method, "url.full": spanUrl });
           const startedAt = yield* Clock.currentTimeMillis;
@@ -168,11 +217,13 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
             }
             if (url.protocol !== "http:" && url.protocol !== "https:")
               return yield* Effect.fail(transportError(safeRequest, "unsupported scheme"));
-            const resolved = yield* resolveTrust(fiber.context, fiber.getRef(NetworkTrust)).pipe(
-              Effect.mapError((cause) => transportError(safeRequest, cause)),
-            );
+            const resolved = yield* resolveTrust(
+              Context.merge(layerContext, fiber.context),
+              fiber.getRef(NetworkTrust),
+              env,
+            ).pipe(Effect.mapError((cause) => transportError(safeRequest, cause)));
             const hostCaPems = process.platform === "win32" || resolved !== undefined ? systemCaPems() : [];
-            const trust = withWindowsHostTrust(resolved, hostCaPems);
+            const trust = resolved === undefined ? undefined : withWindowsHostTrust(resolved, hostCaPems);
             const body = yield* requestBody(request);
             const web = yield* Effect.tryPromise({
               try: () =>
@@ -183,26 +234,12 @@ export const layerWith = (options: ClientOptions = {}): Layer.Layer<HttpClient.H
                     headers: request.headers,
                     body,
                     redirect: policy.redirect ?? "follow",
+                    connectionTarget: policy.connectionTarget,
                   },
                   { transports, trust, systemCaPems: hostCaPems },
                   AbortSignal.any([signal, controller.signal]),
                 ),
-              catch: (cause) =>
-                transportError(
-                  safeRequest,
-                  url.protocol === "https:" &&
-                    cause instanceof Error &&
-                    /cert|tls|ssl|self.signed|issuer/i.test(cause.message)
-                    ? new HttpTrustError({
-                        message: "TLS trust verification failed",
-                        urlOrigin: url.origin,
-                        kind: "missing-custom-ca",
-                        remediation:
-                          "Supply the issuer CA through network.ca.certs or LANDO_NETWORK_CA_CERTS.",
-                        cause,
-                      })
-                    : cause,
-                ),
+              catch: (cause) => transportError(safeRequest, trustFailure(url, cause, redact)),
             });
             return HttpClientResponse.fromWeb(safeRequest, web);
           }).pipe(Effect.onExit((exit) => (Exit.isFailure(exit) ? complete(exit) : Effect.void)));

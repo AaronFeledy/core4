@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import { resolveInitialDockerApiPrefix } from "../src/docker/api-prefix.ts";
 import {
   DOCKER_API_MAX_TESTED_VERSION,
   DOCKER_API_PREFERRED_VERSION,
@@ -85,6 +86,17 @@ describe("Docker API version negotiation", () => {
     if (parsed.ok) throw new Error("expected override to fail");
     expect(parsed.message).toContain("1.51");
     expect(parsed.message).toContain("1.43-1.44");
+  });
+
+  test.each(["1.40", "1.41", "1.42"])("rejects %s overrides below the supported floor", (version) => {
+    expect(parseDockerApiVersionOverride(version)).toMatchObject({ ok: false, ourRange: "1.43-1.44" });
+    expect(
+      resolveInitialDockerApiPrefix({
+        endpointKey: `floor-${version}`,
+        explicitPrefix: `/v${version}`,
+        preferredPrefix: DOCKER_API_PREFIX,
+      }),
+    ).toMatchObject({ ok: false, ourRange: "1.43-1.44" });
   });
 
   test("extracts daemon range from headers, JSON, and 400 text", () => {

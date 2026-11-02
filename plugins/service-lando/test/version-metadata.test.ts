@@ -20,7 +20,7 @@ const EXPECTED_OWNED_MATRICES = {
     "2022": "mcr.microsoft.com/mssql/server:2022-latest",
   },
   mysql: { "8.0": "mysql:8.0", "8.4": "mysql:8.4", "9.7": "mysql:9.7" },
-  node: { lts: "node:lts", "22": "node:22" },
+  node: { lts: "node:24", "22": "node:22", "24": "node:24", "26": "node:26" },
   opensearch: { "2": "opensearchproject/opensearch:2" },
   php: {
     "8.1": "php:8.1-apache-bookworm",

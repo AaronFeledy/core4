@@ -1,33 +1,38 @@
 import { dirname } from "node:path";
+import { escapeDiagnosticText } from "../diagnostic-text.ts";
 
 import { Effect, Schema } from "effect";
 
-import {
-  type ComposeKeyRejectedError,
-  type LandofileIncludeError,
-  type LandofileLoadExpressionError,
-  type LandofileLockMismatchError,
+import type {
+  ComposeKeyRejectedError,
+  Lando3LandofileDetected,
+  LandofileDialectMixError,
+  LandofileFormConflictError,
+  LandofileIncludeError,
+  LandofileLoadError,
+  LandofileLoadExpressionError,
+  LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
-  type NotImplementedError,
-  type ToolingIncludeCycleError,
-  causeMessage,
+  ManagedFileTransactionError,
+  NotImplementedError,
 } from "@lando/sdk/errors";
-import { LandofileShape, formatValidationIssueLine, validationIssuesFromCause } from "@lando/sdk/schema";
+import { TaggedErrorJson } from "@lando/sdk/schema";
 import type { StateStore } from "@lando/sdk/services";
 
-import { verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
-import { rejectComposeKeys } from "@lando/landofile/compose/rejections";
-import { findLandofilePath } from "@lando/landofile/discovery";
+import { scopedLandofileRuntimeInputs, verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
+import { includeAcquisitionView } from "@lando/landofile/include-layer-overlays";
 import type {
   IncludeVerifyReport,
   IncludeVerifyStatus,
   LandofileIncludeDeps,
 } from "@lando/landofile/includes";
-import { parseLandofile } from "@lando/landofile/parser";
-import { rejectUnsupportedToolingFeatures } from "@lando/landofile/tooling-unsupported";
-import { decodeLandofileLayer, mergeLandofiles } from "@lando/sdk/landofile";
+import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
+import { prepareLandofileRootLayers, validatePreparedAuthoringLayers } from "@lando/landofile/root-compile";
+import { findDiscoveredLandofilePath } from "@lando/landofile/service";
 
 export type {
   IncludeVerifyEntry,
@@ -50,6 +55,7 @@ const IncludeVerifyEntrySchema = Schema.Struct({
   ]),
   expected: IncludeVerifyNullableStringSchema,
   actual: IncludeVerifyNullableStringSchema,
+  condition: Schema.optionalKey(Schema.Literal("disabled")),
 });
 
 const IncludeVerifyMismatchSchema = Schema.Struct({
@@ -66,6 +72,7 @@ export const AppIncludesVerifyResultSchema = Schema.Struct({
   lockfilePath: Schema.String,
   entries: Schema.Array(IncludeVerifyEntrySchema),
   mismatches: Schema.Array(IncludeVerifyMismatchSchema),
+  failures: Schema.Array(TaggedErrorJson),
   ok: Schema.Boolean,
 });
 
@@ -75,66 +82,57 @@ export interface AppIncludesVerifyOptions {
 }
 
 export type AppIncludesVerifyError =
+  | import("@lando/sdk/errors").ConfigExpressionError
+  | Lando3LandofileDetected
+  | LandofileDialectMixError
+  | LandofileFormConflictError
+  | ManagedFileTransactionError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
   | NotImplementedError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
-  | ToolingIncludeCycleError
   | ComposeKeyRejectedError
   | LandofileLoadExpressionError;
 
-const decodeLandofile = Schema.decodeUnknownResult(LandofileShape);
-
 /**
- * Read-only check that the current app's `.lando.lock.yml` matches its resolved
- * `includes:` tree. Discovers + parses the Landofile directly (no
+ * Read-only check that the current app's `.lando.lock.yml` pins every remote
+ * include and that the pinned content matches. Discovers + parses the Landofile directly (no
  * `LandofileService`) so the command runs at the `minimal` bootstrap level, then
  * delegates to {@link verifyLandofileIncludes}, which never mutates the lockfile.
  */
 export const appIncludesVerify = Effect.fn("AppIncludesVerify.verify")(function* (
   options: AppIncludesVerifyOptions = {},
 ): Effect.fn.Return<IncludeVerifyReport, AppIncludesVerifyError, StateStore> {
-  const cwd = options.cwd ?? process.cwd();
-  const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
-  if (filePath === undefined) {
-    return yield* Effect.fail(
-      new LandofileNotFoundError({
-        message: "No .lando.yml found. Run `lando init` to create one before verifying includes.",
-        cwd,
-      }),
-    );
-  }
+  const { filePath } = yield* findDiscoveredLandofilePath(options.cwd);
   const appRoot = dirname(filePath);
-  const content = yield* Effect.tryPromise({
-    try: () => Bun.file(filePath).text(),
-    catch: (cause) =>
-      new LandofileParseError({
-        message: `Could not read ${filePath}: ${causeMessage(cause)}`,
-        filePath,
-        line: undefined,
-        column: undefined,
-        cause,
-      }),
-  });
-  const parsed = yield* parseLandofile({ file: filePath, content, cwd: appRoot });
-  const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
-  yield* rejectUnsupportedToolingFeatures(filePath, checkedParsed);
-  const overlay = yield* decodeLandofileLayer(filePath, checkedParsed);
-  const decoded = decodeLandofile(mergeLandofiles([overlay]), { onExcessProperty: "error", errors: "all" });
-  if (decoded._tag === "Failure") {
-    const issues = validationIssuesFromCause(decoded.failure);
-    return yield* Effect.fail(
-      new LandofileValidationError({
-        message: `Landofile ${filePath} is not valid: ${issues.map(formatValidationIssueLine).join(", ")}`,
-        file: filePath,
-        issues,
-      }),
-    );
+  const inputs = yield* scopedLandofileRuntimeInputs;
+  const root = yield* prepareLandofileRootLayers(appRoot, inputs);
+  const { prepared, runtime } = root;
+  const loadScope = {
+    ...(yield* buildLandofileLoadScope(
+      prepared.map(({ layer, landofile }) => ({ file: layer.filePath, value: landofile })),
+      runtime.compilationContext?.env,
+      runtime.pendingSites,
+    )),
+    recorder: runtime.recorder,
+  };
+  const includes = [];
+  const composeIncludes: string[] = [];
+  for (const { landofile: overlay } of prepared) {
+    const landofile = includeAcquisitionView(overlay);
+    includes.push(...(landofile.includes ?? []));
+    composeIncludes.push(...(landofile.include ?? []));
   }
   return yield* verifyLandofileIncludes({
-    landofile: decoded.success,
+    validate: validatePreparedAuthoringLayers(root, "all").pipe(Effect.asVoid),
+    landofile: { includes, include: composeIncludes },
+    loadScope,
+    layers: prepared,
     appRoot,
     ...(options.deps === undefined ? {} : { deps: options.deps }),
   });
@@ -165,8 +163,20 @@ export const renderIncludesVerifyResult = (
   _format: AppIncludesVerifyFormat = "text",
 ): string => {
   const lines = [summaryLine(report)];
+  for (const failure of report.failures)
+    lines.push(
+      `  ${escapeDiagnosticText(failure.message)}`,
+      `    fix: ${escapeDiagnosticText(failure.remediation)}`,
+    );
   for (const entry of report.entries) {
-    lines.push(`  ${STATUS_GLYPH[entry.status]} ${entry.source}: ${entry.status}`);
+    lines.push(`  ${STATUS_GLYPH[entry.status]} ${escapeDiagnosticText(entry.source)}: ${entry.status}`);
+    if (entry.condition === "disabled") {
+      lines.push("    note: disabled by when in this environment");
+      if (entry.status === "missing") {
+        const mismatch = report.mismatches.find((item) => item.source === entry.source);
+        if (mismatch !== undefined) lines.push(`    fix: ${escapeDiagnosticText(mismatch.remediation)}`);
+      }
+    }
   }
   if (report.entries.length === 0) lines.push("  (no remote includes to verify)");
   if (!report.ok) {

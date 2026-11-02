@@ -1,0 +1,10 @@
+id: simple-source
+title: Simple Source
+description: A small authored recipe without generated metadata.
+version: 1.0.0
+config:
+  runtime: 4
+  services:
+    app:
+      type: lando
+      image: alpine:3.21

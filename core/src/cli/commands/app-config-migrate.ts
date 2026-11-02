@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { parseLandofile } from "@lando/landofile/parser";
-import { LandofileNotFoundError, type ManagedFileTransactionError } from "@lando/sdk/errors";
+import type { LandofileNotFoundError, ManagedFileTransactionError } from "@lando/sdk/errors";
 import {
   isBareRecipeReference,
   renderRecipeSnapshot,
@@ -81,13 +81,7 @@ export const appConfigMigrate = Effect.fn("AppConfigMigrate.migrate")(
     Scope.Scope
   > {
     const cwd = options.cwd ?? process.cwd();
-    const { appRoot, dualForm } = yield* Effect.tryPromise({
-      try: () => discoverRecipeAnalysisRoot(cwd),
-      catch: (cause) =>
-        cause instanceof LandofileNotFoundError
-          ? cause
-          : new LandofileNotFoundError({ message: "Cannot discover the app Landofile.", cwd }),
-    });
+    const { appRoot, dualForm } = yield* discoverRecipeAnalysisRoot(cwd);
     const guard = yield* Effect.serviceOption(ManagedFileTransactionGuard);
     if (Option.isSome(guard)) yield* honorMigrationJournal(guard.value, appRoot, options.dryRun === true);
     const landofilePath = join(appRoot, CANONICAL_LANDOFILE);
@@ -281,7 +275,7 @@ export const appConfigMigrate = Effect.fn("AppConfigMigrate.migrate")(
             : "committed",
       ...(analysis.committed === undefined ? {} : { committed: analysis.committed }),
       ...(analysis.noMutation === undefined ? {} : { noMutation: analysis.noMutation }),
-      next: analysis.committed === undefined ? "" : "run `lando rebuild`",
+      next: analysis.committed === undefined ? "" : "run `lando start`",
     } satisfies AppConfigMigrateResult;
   },
   (effect, _options: AppConfigMigrateOptions = {}) => Effect.scoped(effect),

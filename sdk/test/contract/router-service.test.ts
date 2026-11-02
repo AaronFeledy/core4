@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { AppId, ProxyApplyResult, ProxyCapabilities, ProxyStatus, ServiceName } from "@lando/sdk/schema";
+import {
+  AppId,
+  ProxyApplyResult,
+  ProxyCapabilities,
+  ProxyStatus,
+  RouteEvidence,
+  ServiceName,
+} from "@lando/sdk/schema";
 import {
   ContractFailure,
   TestRouterService,
@@ -11,6 +18,47 @@ import {
 } from "@lando/sdk/test";
 
 describe("RouterService contract", () => {
+  test("observes only requested matching live routes with their path and backend", async () => {
+    const router = makeTestRouterService();
+    const app = AppId.make("observed-app");
+    const route = {
+      hostname: "web.lndo.site",
+      priority: 65539,
+      scheme: "https",
+      service: ServiceName.make("web"),
+      pathPrefix: "/api",
+      backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
+    } as const;
+    await Effect.runPromise(Effect.scoped(router.setup({ defaultDomain: "lndo.site" })));
+    await Effect.runPromise(router.applyRoutes([route], app));
+    const evidence = await Effect.runPromise(router.observeRoutes(app, [route]));
+    expect(Schema.encodeSync(RouteEvidence)(evidence)).toEqual({
+      configuredAuthorities: [{ scheme: "https", hostname: "web.lndo.site", port: 38443 }],
+      observation: {
+        status: "present",
+        publications: [{ route, authority: { scheme: "https", hostname: "web.lndo.site", port: 38443 } }],
+      },
+    });
+    const mismatch = await Effect.runPromise(
+      router.observeRoutes(app, [{ ...route, pathPrefix: "/different" }]),
+    );
+    expect(mismatch.observation).toEqual({ status: "missing" });
+  });
+  test("observes unknown before setup without starting ingress or configuring routes", async () => {
+    const router = makeTestRouterService();
+    const evidence = await Effect.runPromise(router.observeRoutes(AppId.make("unconfigured"), []));
+    expect(evidence).toEqual({ configuredAuthorities: [], observation: { status: "unknown" } });
+    expect((await Effect.runPromise(router.status)).state).toBe("stopped");
+    expect(router.routesByApp.size).toBe(0);
+  });
+
+  test("distinguishes missing route evidence after setup without mutating requested routes", async () => {
+    const router = makeTestRouterService();
+    await Effect.runPromise(Effect.scoped(router.setup({ defaultDomain: "lndo.site" })));
+    const evidence = await Effect.runPromise(router.observeRoutes(AppId.make("unconfigured"), []));
+    expect(evidence.observation).toEqual({ status: "missing" });
+    expect(router.routesByApp.size).toBe(0);
+  });
   test("ProxyStatus accepts omitted listen ports and validates each reported scheme", () => {
     const status = { state: "running", authorities: [], configuredApps: [] };
     expect(Schema.is(ProxyStatus)(status)).toBe(true);

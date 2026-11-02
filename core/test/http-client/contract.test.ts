@@ -97,7 +97,9 @@ describe("HttpClient contract suite", () => {
   test("HttpClient layer (injected fetch + NetworkTrust) satisfies the contract", async () => {
     const sources = new Map<string, Uint8Array>();
     const events: LandoEvent[] = [];
-    let lastInit: { url: string; proxy?: string; tls?: { ca?: ReadonlyArray<string> } } | undefined;
+    let lastInit:
+      | { url: string; proxy?: BunFetchRequestInit["proxy"]; tls?: { ca?: ReadonlyArray<string> } }
+      | undefined;
     let connectCount = 0;
     let offline = false;
     let interruptSignal: AbortSignal | undefined;
@@ -109,7 +111,7 @@ describe("HttpClient contract suite", () => {
       const url = typeof input === "string" ? input : input.toString();
       if (offline) return Promise.reject(new Error("offline"));
       const requestInit = (init ?? {}) as {
-        proxy?: string;
+        proxy?: BunFetchRequestInit["proxy"];
         signal?: AbortSignal;
         tls?: { ca?: ReadonlyArray<string> };
       };
@@ -159,17 +161,6 @@ describe("HttpClient contract suite", () => {
     const layer = layerWith({
       fetch: fetchImpl,
       systemCaPems: () => [SYSTEM_CA_SAMPLE],
-      // NO_PROXY / loopback hosts use the direct transport; mirror fetch capture.
-      direct: (url, init) => {
-        lastInit = {
-          url: url.href,
-          ...(init.ca === undefined ? {} : { tls: { ca: [...init.ca] } }),
-        };
-        connectCount += 1;
-        const body = sources.get(url.href);
-        if (body === undefined) return Promise.resolve(new Response("missing", { status: 404 }));
-        return Promise.resolve(new Response(body, { status: 200 }));
-      },
     }).pipe(Layer.provide(eventLayer));
 
     const service = await run(

@@ -4,7 +4,6 @@ services:
     type: compose
     image: typesense/typesense:30.2
     appMount: false
-    home: false
     ports:
       - 8108:8108
     volumes:

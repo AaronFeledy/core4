@@ -6,24 +6,24 @@ import { Effect, Layer, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { StreamFrame } from "@lando/sdk/schema";
-import { HostProxyService, PathsService, RouterService } from "@lando/sdk/services";
-import { makeTestHostProxyService, makeTestRouterService } from "@lando/sdk/test";
+import { PathsService, RouterService } from "@lando/sdk/services";
+import { makeTestRouterService } from "@lando/sdk/test";
 
 import * as BunFileSystem from "@lando/engine/services/file-system";
 import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import { HostDnsResolver } from "../../src/cli/commands/doctor-host-dns.ts";
-import { HOST_PROXY_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
+import { HOST_DNS_SPEC, PROXY_SPEC } from "../../src/cli/commands/doctor-subsystem-checks.ts";
 import {
-  DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
   renderSubsystemDoctorResult,
   renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
 } from "../../src/cli/commands/doctor-subsystems.ts";
+import { DefaultSubsystemDoctorLayer } from "./doctor-subsystem-fixture.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.subsystems.ndjson");
 
-const EXPECTED_SUBSYSTEMS = ["router", "certs", "ssh", "healthcheck", "scanner", "host-proxy"] as const;
+const EXPECTED_SUBSYSTEMS = ["router", "certs", "ssh", "host-dns"] as const;
 
 const dnsLayer = (addresses: ReadonlyArray<string>) =>
   Layer.succeed(HostDnsResolver, HostDnsResolver.of({ lookup: () => Effect.succeed(addresses) }));
@@ -65,9 +65,9 @@ const writeAcquisitionState = (
 };
 
 describe("meta:doctor subsystem checks", () => {
-  test("Traefik doctor check name is router and host-proxy is unchanged", () => {
+  test("names ingress and host DNS checks distinctly", () => {
     expect(PROXY_SPEC.name).toBe("router");
-    expect(HOST_PROXY_SPEC.name).toBe("host-proxy");
+    expect(HOST_DNS_SPEC.name).toBe("host-dns");
   });
 
   test("aggregates one check per subsystem with a {status, severity, context, solution} record", async () => {
@@ -78,7 +78,7 @@ describe("meta:doctor subsystem checks", () => {
       expect(["pass", "warn", "fail"]).toContain(check.status);
       expect(["info", "warn", "error"]).toContain(check.severity);
       expect(check.context.subsystem).toBe(check.name);
-      expect(typeof check.context.subsystemId).toBe("string");
+      if (check.name !== "host-dns") expect(typeof check.context.subsystemId).toBe("string");
       expect(Array.isArray(check.solutions)).toBe(true);
     }
   });
@@ -97,45 +97,43 @@ describe("meta:doctor subsystem checks", () => {
         expect(solution?.command).toBe("lando doctor --fix");
       } else {
         expect(solution?.kind).toBe("manual");
-        if (check.name !== "host-proxy") expect(solution?.command).toBeDefined();
+        if (check.name !== "host-dns") expect(solution?.command).toBeDefined();
       }
     }
     const manual = failing.filter((check) => check.recovery === "manual");
     expect(manual.length).toBeGreaterThanOrEqual(1);
     expect(
       manual
-        .filter((check) => check.name !== "host-proxy")
+        .filter((check) => check.name !== "host-dns")
         .every((check) => check.solutions[0]?.command === "lando setup"),
     ).toBe(true);
   });
 
-  test("host-proxy check surfaces structured DNS status context", async () => {
+  test("host-dns check surfaces structured DNS observations", async () => {
     const result = await runDefault();
-    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    const hostDns = result.checks.find((check) => check.name === "host-dns");
 
-    expect(hostProxy).toBeDefined();
-    expect(hostProxy?.context.active).toBe("false");
-    expect(hostProxy?.context.mode).toBe("none");
-    expect(hostProxy?.context.mechanism).toBe("skipped");
-    expect(hostProxy?.context.baseDomain).toBe("lndo.site");
-    expect(hostProxy?.context.loopback).toBe("127.0.0.1");
+    expect(hostDns?.context).toEqual({
+      subsystem: "host-dns",
+      baseDomain: "lndo.site",
+      loopback: "127.0.0.1",
+      dnsHostname: "lando-doctor-probe.lndo.site",
+      dnsResolved: "false",
+    });
   });
 
-  test("passes intentionally disabled host DNS when the hostname resolves to loopback", async () => {
+  test("passes host DNS when the hostname resolves to loopback", async () => {
     const result = await Effect.runPromise(
       subsystemDoctor().pipe(
         Effect.provide(dnsLayer(["127.0.0.1"])),
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
     );
-    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
-    expect(hostProxy).toMatchObject({
+    const hostDns = result.checks.find((check) => check.name === "host-dns");
+    expect(hostDns).toMatchObject({
       status: "pass",
       severity: "info",
       context: {
-        active: "false",
-        mode: "none",
-        mechanism: "skipped",
         dnsHostname: "lando-doctor-probe.lndo.site",
         dnsResolved: "true",
       },
@@ -143,9 +141,9 @@ describe("meta:doctor subsystem checks", () => {
     });
   });
 
-  test("warns with manual DNS remediation when the disabled integration cannot resolve hostnames", async () => {
+  test("warns with manual DNS remediation when the resolver cannot resolve hostnames", async () => {
     const result = await runDefault();
-    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
     expect(hostProxy?.context.dnsResolved).toBe("false");
     expect(hostProxy?.solutions[0]?.description).toContain("Add a local DNS rule");
@@ -159,21 +157,16 @@ describe("meta:doctor subsystem checks", () => {
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
     );
-    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
     expect(hostProxy?.context.dnsAddresses).toBe("192.0.2.1");
   });
 
-  test("warns when an active DNS integration no longer resolves the expected hostname", async () => {
-    const service = makeTestHostProxyService();
-    await Effect.runPromise(service.setup({ mode: "auto" }));
-    const layer = Layer.mergeAll(Layer.succeed(HostProxyService, HostProxyService.of(service)), dnsLayer([]));
-    const result = await Effect.runPromise(
-      subsystemDoctor().pipe(Effect.provide(layer), Effect.provide(DefaultSubsystemDoctorLayer)),
-    );
-    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+  test("skips manual DNS recovery when fix is requested", async () => {
+    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(dnsLayer([]))));
+    const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
-    expect(hostProxy?.context.active).toBe("true");
+    expect(hostProxy?.context.fixOutcome).toBe("skipped-manual");
     expect(hostProxy?.context.dnsResolved).toBe("false");
     expect(hostProxy?.solutions[0]?.kind).toBe("manual");
     expect(hostProxy?.solutions[0]?.command).toBeUndefined();
@@ -193,7 +186,7 @@ describe("meta:doctor subsystem checks", () => {
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
     );
-    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
     expect(hostProxy?.context.dnsResolved).toBe("false");
     expect(JSON.stringify(hostProxy)).not.toContain("sensitive resolver detail");
@@ -207,7 +200,7 @@ describe("meta:doctor subsystem checks", () => {
         Effect.provide(DefaultSubsystemDoctorLayer),
       ),
     );
-    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    const hostProxy = result.checks.find((check) => check.name === "host-dns");
     expect(hostProxy?.status).toBe("warn");
     expect(hostProxy?.context.dnsResolved).toBe("false");
     expect(performance.now() - started).toBeLessThan(3000);
@@ -230,11 +223,11 @@ describe("meta:doctor subsystem checks", () => {
 
     // Then
     const certs = result.checks.find((check) => check.name === "certs");
-    expect(certs).toMatchObject({
-      status: "pass",
-      severity: "info",
-      context: { subsystem: "certs", subsystemId: "mkcert", ready: "true" },
-      solutions: [],
+    expect(certs).toBeUndefined();
+    expect(result.skipped).toContainEqual({
+      section: "certs",
+      status: "skipped",
+      reason: expect.any(String),
     });
   });
 
@@ -451,21 +444,31 @@ describe("meta:doctor subsystem checks", () => {
     }
   });
 
-  test("wires the real runProbe-backed healthcheck and scanner runners, not the unavailable stubs", async () => {
-    const result = await runDefault();
-    const healthcheck = result.checks.find((check) => check.name === "healthcheck");
-    const scanner = result.checks.find((check) => check.name === "scanner");
+  test.each([false, true])(
+    "skips uninspected subsystems with runtime services provided=%s",
+    async (provided) => {
+      // Given a runtime with or without the inspectable subsystem services.
+      const runtime = provided ? DefaultSubsystemDoctorLayer : dnsLayer([]);
+      // When doctor inspects that runtime.
+      const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(runtime)));
+      // Then missing services and unexecuted probes never become passing checks.
+      const healthcheck = result.checks.find((check) => check.name === "healthcheck");
+      const scanner = result.checks.find((check) => check.name === "scanner");
 
-    expect(healthcheck?.context.subsystemId).toBe("provider-exec");
-    expect(healthcheck?.context.ready).toBe("true");
-    expect(healthcheck?.status).toBe("pass");
-    expect(healthcheck?.solutions).toEqual([]);
-
-    expect(scanner?.context.subsystemId).toBe("http-probe");
-    expect(scanner?.context.ready).toBe("true");
-    expect(scanner?.status).toBe("pass");
-    expect(scanner?.solutions).toEqual([]);
-  });
+      expect(healthcheck).toBeUndefined();
+      expect(scanner).toBeUndefined();
+      expect(result.checks.map((check) => check.name)).toEqual(
+        provided ? [...EXPECTED_SUBSYSTEMS] : ["certs", "host-dns"],
+      );
+      expect(result.skipped?.map((entry) => entry.section)).toEqual(
+        provided ? ["healthcheck", "scanner"] : ["router", "ssh", "healthcheck", "scanner"],
+      );
+      for (const entry of result.skipped ?? []) {
+        expect(entry.status).toBe("skipped");
+        expect(entry.reason.length).toBeGreaterThan(0);
+      }
+    },
+  );
 
   test("plain-text renderer surfaces every subsystem name, status, and remediation", async () => {
     const result = await runDefault();

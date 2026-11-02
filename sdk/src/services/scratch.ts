@@ -1,6 +1,8 @@
 import { Context, type Effect, type Scope } from "effect";
 
 import type {
+  AppPlacementError,
+  DebuggerHostUnavailableError,
   LandofileVersionConstraintError,
   ScratchAppError,
   ScratchAppNotFoundError,
@@ -132,6 +134,8 @@ export interface ScratchStartOptions {
 
 export interface ScratchDestroyOptions {
   readonly keepVolumes?: boolean;
+  /** Poweroff may reap a discovered scratch whose registry entry is gone. */
+  readonly reason?: "explicit" | "poweroff";
 }
 
 export interface ScratchGcOptions {
@@ -159,6 +163,8 @@ export class ScratchAppService extends Context.Service<
       | ScratchSourceUnresolvedError
       | ScratchIsolationConflictError
       | ScratchAppError
+      | AppPlacementError
+      | DebuggerHostUnavailableError
       | LandofileVersionConstraintError,
       Scope.Scope
     >;

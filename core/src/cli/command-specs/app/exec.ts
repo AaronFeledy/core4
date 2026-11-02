@@ -1,25 +1,25 @@
+import { commandCompletionFromExitCode } from "@lando/sdk/command-result";
 import { Args, Flags } from "../../spec/metadata";
 
 import {
   type ExecAppError,
-  type ExecAppResult,
   type ExecAppServices,
   execApp,
   execAppRedactionTokens,
 } from "@lando/engine/operations/exec";
-import { StreamFrame } from "@lando/sdk/schema";
+import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
-import { EmptyResultSchema, type LandoCommandSpec } from "../../spec/command-base";
+import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
-import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
+import { booleanFlag, specArgsOf, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 
 export const execInputUsesCliHostIo = (input: unknown): boolean =>
   typeof input === "object" && input !== null && "hostIo" in input && input.hostIo === "cli";
 
 export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServices> = {
-  resultSchema: EmptyResultSchema,
+  resultSchema: ExecAppResult,
   id: "app:exec",
   helpGroup: "common",
   mcpAllowed: true,
@@ -42,6 +42,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
   args: {
     command: Args.string({
       name: "command",
+      multiple: true,
       description: "Command argv after `--`. An optional service name may come first.",
     }),
   },
@@ -52,9 +53,17 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     const format = stringFlag(flags, "format");
     const user = stringFlag(flags, "user");
     const cwd = stringFlag(flags, "cwd");
+    const parsedArgv = extractSpecParsedArgv(input);
+    const namedCommand = specArgsOf(input).command;
+    const command =
+      parsedArgv.length > 0
+        ? parsedArgv
+        : Array.isArray(namedCommand)
+          ? namedCommand.filter((arg): arg is string => typeof arg === "string")
+          : [];
     const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
     const base = {
-      command: extractSpecParsedArgv(input),
+      command,
       ...(user === undefined ? {} : { user }),
       ...(cwd === undefined ? {} : { cwd }),
     };
@@ -71,15 +80,15 @@ export const execSpec: LandoCommandSpec<ExecAppResult, ExecAppError, ExecAppServ
     return withInheritedStdinRawMode(attached.tty === true && interactive, execApp(attached));
   },
   streamFrames: (value) => {
-    const result = value as ExecAppResult;
+    const result = value;
     const frames = [];
-    if (result.stdout.length > 0)
+    if (result.stdout !== undefined && result.stdout.length > 0)
       frames.push({ _tag: "stdout" as const, service: result.service, chunk: result.stdout });
-    if (result.stderr.length > 0)
+    if (result.stderr !== undefined && result.stderr.length > 0)
       frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
     return frames;
   },
   redactionTokens: execAppRedactionTokens,
-  successExitCode: (result) => result.exitCode,
-  render: (result) => renderExecAppResult(result as ExecAppResult),
+  completion: (result) => commandCompletionFromExitCode(result.exitCode),
+  render: (result) => renderExecAppResult(result),
 };

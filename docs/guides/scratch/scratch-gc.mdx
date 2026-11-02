@@ -14,7 +14,9 @@ tags: [beta, docs, scratch, gc]
 lando scratch:gc
 ```
 
-Dry run first. Then prune. Scratch gc is a janitor with a clipboard, not a flamethrower.
+Review the dry-run report before deciding to prune. Resources on stopped or
+unreachable runtimes are not included; start those runtimes and repeat the scan
+if you need to account for their scratch apps too.
 
 ## Inspect
 
@@ -52,8 +54,10 @@ Orphans include:
 - a cache directory with no registry entry
 - a provider resource tagged with a scratch id that is gone from the registry
 - a foreground registry entry whose owner process is gone
+- a scratch whose destroy failed partway, even if its owner is still running or it was detached
 
-Destroy a known id instead of sweeping:
+To remove one known scratch instead of scanning for orphans, replace `<id>` with
+its id from `lando scratch:list` and run:
 
 ```sh
 lando scratch:destroy <id>

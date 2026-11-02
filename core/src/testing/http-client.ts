@@ -9,12 +9,12 @@ import type { LandoEvent } from "@lando/sdk/services";
 
 import { RequestPolicy, type RequestPolicyShape } from "@lando/http-client/live";
 import type { ResolvedNetworkTrust } from "@lando/http-client/network-trust";
-import { fetchInitForNetwork } from "@lando/http-client/network-trust";
+import { fetchInitForNetwork, shouldBypassProxy } from "@lando/http-client/network-trust";
 
 /** A fetch init the double recorded for the most recent request under trust. */
 export interface TestHttpCapturedInit {
   readonly url: string;
-  readonly proxy?: string;
+  readonly proxy?: BunFetchRequestInit["proxy"];
   readonly tls?: { readonly ca?: ReadonlyArray<string> };
 }
 
@@ -77,8 +77,13 @@ export const makeTestHttpClient = (
   let lastInit: TestHttpCapturedInit | undefined;
 
   const recordInit = (url: string): void => {
-    const init = activeTrust === undefined ? undefined : fetchInitForNetwork(url, activeTrust, systemCaPems);
-    const proxy = typeof init?.proxy === "string" ? init.proxy : undefined;
+    const init =
+      activeTrust === undefined
+        ? shouldBypassProxy(url, [])
+          ? { proxy: false as const }
+          : undefined
+        : fetchInitForNetwork(url, activeTrust, systemCaPems);
+    const proxy = init?.proxy;
     const ca = Array.isArray(init?.tls?.ca)
       ? init.tls.ca.filter((entry): entry is string => typeof entry === "string")
       : undefined;

@@ -7,7 +7,7 @@ tags: [beta, docs, solr, solr10, service]
 
 # Add Solr 10
 
-Pin Solr 10 on the typed `solr` service with `image: solr:10`. Landofile-supplied images need `home: false` or `home.path`:
+Pin Solr 10 on the typed `solr` service with `image: solr:10`:
 
 ```yaml
 name: solr10-demo
@@ -15,7 +15,6 @@ services:
   search:
     type: solr
     image: solr:10
-    home: false
 tooling:
   solr:
     service: search
@@ -24,8 +23,6 @@ tooling:
     service: search
     cmd: curl -sf
 ```
-
-Omitting both `home` keys refuses with `HomePathCapabilityError`. This example uses `home: false` because Lando does not know that image's user or home path. Set `home.path` when you know the path. See [Keep a service home across rebuilds and reach your host](../home-and-host/).
 
 The catalog type is still `solr` (default image `solr:9`). Pinning `solr:10` keeps the typed healthcheck and endpoints while you run the newer major. Start, then check info:
 
@@ -88,14 +85,13 @@ services:
   search:
     type: solr
     image: solr:10
-    home: false
     cores: [gettingstarted]
 ```
 
-After changing an existing app, rebuild and check the core:
+After changing an existing app, start and check the core:
 
 ```sh
-lando rebuild -y
+lando start
 lando solr-cli 'http://localhost:8983/solr/admin/cores?action=STATUS&wt=json'
 ```
 
@@ -116,7 +112,6 @@ Check that `status` contains `gettingstarted` and `initFailures` is empty. If yo
       <Run command="lando app:config --format=json" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"type\":\\s*\"solr\"" } }} />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "solr:10" } }} />
-      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"home\":\\s*false" } }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />

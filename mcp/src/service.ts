@@ -5,6 +5,7 @@ import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/
 import { EventService } from "@lando/sdk/services";
 import { Context, Effect, Layer, Option } from "effect";
 import type { Stdio } from "effect/Stdio";
+import { filterMcpDefaultAllowlist } from "./allowlist";
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog";
 import { type MemoryPressureLevel, handleMemoryPressure } from "./memory-pressure";
 import { McpCommandExecutor } from "./port";
@@ -48,7 +49,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
         : undefined;
       const effective = (options?: McpCatalogOptions) =>
         computeEffectiveAllowlist({
-          defaults: config.defaultAllowlist,
+          defaults: filterMcpDefaultAllowlist(config.defaultAllowlist, config.commandEntries),
           allow:
             options?.tooling === true
               ? [...(options.allow ?? []), ...(config.toolingEntries ?? []).map((entry) => entry.spec.id)]
@@ -78,7 +79,11 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           closeIdleSockets: () => {},
         });
       const serve = Effect.fn("McpService.serve")(function* (options: McpServeOptions) {
-        const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+        const sourceEnv = { ...process.env };
+        const resultRedactor = (tokens: ReadonlyArray<string>) =>
+          redaction.forProfile("secrets", { sourceEnv, authoritativeTokens: tokens });
+        const redactor = yield* resultRedactor([]);
+        const payloadValues = yield* redaction.payloadValues({ sourceEnv });
         const allowlist = effective(options);
         const entries =
           options.tooling === true
@@ -90,15 +95,17 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           catalog: yield* catalog(options),
           executor,
           redactor,
+          payloadValues,
           handleMemoryPressure: onMemoryPressure,
           deps: {
             registry: new Map(entries.map((entry) => [entry.spec.id, entry])),
             effective: allowlist.ids,
             allowlistSource: options.tooling === true ? `${allowlist.source}+tooling` : allowlist.source,
             redactor,
+            resultRedactor,
             ...(publish === undefined ? {} : { publish }),
           },
-        });
+        }).pipe(Effect.provideService(RedactionService, redaction));
       });
       return McpService.of({ serve, catalog, handleMemoryPressure: onMemoryPressure });
     }),

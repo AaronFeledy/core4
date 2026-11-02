@@ -1,5 +1,4 @@
 export const VOLUME_WITNESS_FILE = ".lando-volume-witness.json";
-export const VOLUME_WITNESS_IMAGE = "oven/bun:1.4.0-alpine";
 export const VOLUME_WITNESS_MOUNT = "/lando-data";
 
 // Runs inside the scoped helper, not the host. Directory/file descriptors prevent

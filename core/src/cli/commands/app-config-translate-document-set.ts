@@ -1,7 +1,7 @@
 import { basename, relative } from "node:path";
 import { LANDOFILE_LAYER_POSITIONS, presentLandofileLayers } from "@lando/landofile/layers";
 import { parseLandofile } from "@lando/landofile/parser";
-import { ConfigTranslateError, LandofileFormConflictError } from "@lando/sdk/errors";
+import { ConfigTranslateError, type LandofileFormConflictError } from "@lando/sdk/errors";
 import { decodeLandofileAuthoringLayer } from "@lando/sdk/landofile";
 import type {
   ConfigTranslateDocument,
@@ -103,17 +103,7 @@ export const lowerV4LayerFragments: (
 > {
   if (args.selectedSourceIds.length === 0) return [];
   const highest = Math.max(...args.selectedSourceIds.map((id) => layerOrder(layerForSourcePath(id))));
-  const present = yield* Effect.tryPromise({
-    try: () => presentLandofileLayers(args.appRoot),
-    catch: (cause) =>
-      cause instanceof LandofileFormConflictError
-        ? cause
-        : new ConfigTranslateError({
-            message: "Could not discover lower Landofile layers.",
-            remediation: "Check that the app root and its Landofiles are readable.",
-            cause,
-          }),
-  });
+  const present = yield* presentLandofileLayers(args.appRoot);
   const lower = present
     .filter(
       ({ order, filePath }) =>

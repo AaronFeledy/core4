@@ -9,7 +9,7 @@ import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { makeLandoPaths } from "@lando/paths";
 import { type LandoPluginContext, definePlugin } from "@lando/sdk/plugins";
 import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
-import { AppPlanSanitizer, Downloader, LogFileHelperAssets, PathsService } from "@lando/sdk/services";
+import { AppPlanSanitizer, ContainerHelperAssets, Downloader, PathsService } from "@lando/sdk/services";
 import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
 import { manifest, plugin } from "../src/index.ts";
@@ -77,7 +77,10 @@ describe("provider-lando plugin descriptor", () => {
     const services = Layer.mergeAll(
       Layer.succeed(PathsService, PathsService.of(paths)),
       Layer.succeed(Downloader, Downloader.of(downloader)),
-      Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+      Layer.succeed(
+        ContainerHelperAssets,
+        ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
+      ),
       Layer.succeed(AppPlanSanitizer, AppPlanSanitizer.of({ sanitizeForPersistence: (plan) => plan })),
     );
     const runtimeProvider = plugin.runtimeProviders?.values().next().value;

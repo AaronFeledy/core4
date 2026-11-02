@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { makeRedactionService } from "@lando/redaction/service";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { Effect } from "effect";
 import {
@@ -16,14 +16,21 @@ import {
   normalizeNamedPipePath,
 } from "../src/transport.ts";
 
-const ctx = { providerId: "custom-docker", remediation: "Start the custom engine." } as const;
+const ctx = {
+  providerId: "custom-docker",
+  remediation: "Start the custom engine.",
+  env: {},
+  get redactor() {
+    return Effect.runSync(fixtureRedaction.forProfile("secrets"));
+  },
+} as const;
+let fixtureRedaction = makeRedactionService();
 
 beforeEach(() => {
-  resetRegisteredRedactionValuesForTesting();
+  fixtureRedaction = makeRedactionService();
   resetDockerApiPrefixCache();
 });
 afterEach(() => {
-  resetRegisteredRedactionValuesForTesting();
   resetDockerApiPrefixCache();
 });
 
@@ -42,7 +49,7 @@ describe("Docker API client", () => {
   test("redacts runtime-registered values in malformed curl stdout", async () => {
     // Given
     const canary = "opaque-curl-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const spawn = new Proxy(Bun.spawn, {
       apply: () => ({
         stdout: new Blob([`engine said ${canary}`]).stream(),
@@ -69,7 +76,7 @@ describe("Docker API client", () => {
   ] as const)("redacts runtime-registered values from %s", async (_case, stdout, exitCode, call) => {
     // Given
     const canary = "opaque-info-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const spawn = new Proxy(Bun.spawn, {
       apply: () => ({
         stdout: new Blob([stdout]).stream(),
@@ -180,28 +187,30 @@ describe("Docker API client", () => {
     );
     // Then
     expect(response).toEqual({ status: 201, body: '{"ok":true}' });
-    expect(calls).toEqual([
-      [
-        [
-          "curl",
-          "--silent",
-          "--show-error",
-          "--include",
-          "--unix-socket",
-          "/var/run/docker.sock",
-          "--request",
-          "POST",
-          "--write-out",
-          "\n%{http_code}",
-          "--header",
-          "Content-Type: application/json",
-          "--data",
-          '{"Image":"test"}',
-          `http://localhost${DOCKER_API_PREFIX}/containers/create`,
-        ],
-        { stderr: "pipe", stdin: "ignore", stdout: "pipe" },
-      ],
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toEqual([
+      "curl",
+      "--silent",
+      "--show-error",
+      "--include",
+      "--unix-socket",
+      "/var/run/docker.sock",
+      "--request",
+      "POST",
+      "--write-out",
+      "\n%{http_code}",
+      "--header",
+      "Content-Type: application/json",
+      "--data",
+      '{"Image":"test"}',
+      `http://localhost${DOCKER_API_PREFIX}/containers/create`,
     ]);
+    const spawnOptions = calls[0]?.[1];
+    expect(spawnOptions).toMatchObject({ stderr: "pipe", stdin: "ignore", stdout: "pipe" });
+    if (typeof spawnOptions !== "object" || spawnOptions === null || !("signal" in spawnOptions)) {
+      throw new TypeError("Expected curl spawn options");
+    }
+    expect(spawnOptions.signal).toBeInstanceOf(AbortSignal);
   });
 
   test.each(["parse", "connect", "write", "read", "http"] as const)(

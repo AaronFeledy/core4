@@ -23,7 +23,6 @@ describe("filterHostProxyEnv", () => {
       HOME: "/root",
     });
     expect(filtered).toEqual({
-      LANDO_APP: "demo",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",
@@ -54,7 +53,7 @@ describe("buildRunLandoRequest", () => {
     expect(request.argv).toEqual(["open", "--print"]);
     expect(String(request.cwd)).toBe("/app");
     expect(request.tty).toBe(false);
-    expect(request.env).toEqual({ LANDO_APP: "demo", OPENCODE: "1" });
+    expect(request.env).toEqual({ OPENCODE: "1" });
   });
 
   test("omits env when the filtered set is empty", () => {
@@ -138,8 +137,14 @@ describe("tryMapHostCwd", () => {
 
 describe("resolveContainerCwd", () => {
   const mounted = {
-    appMount: { source: "/workspace/drupal", target: "/app" },
-    mounts: [] as const,
+    mounts: [
+      {
+        type: "bind" as const,
+        source: "/workspace/drupal",
+        target: "/app",
+        role: "app" as const,
+      },
+    ],
     workingDirectory: "/app/web",
   };
   const unmounted = {
@@ -166,9 +171,16 @@ describe("resolveContainerCwd", () => {
     try {
       // Then: `web` must not be resolved against the process cwd and re-mapped.
       expect(resolveContainerCwd(mounted, "web", "/workspace/drupal/web")).toBe("web");
-      expect(resolveContainerCwd({ ...mounted, appMount: { source: "/", target: "/app" } }, "web", "/")).toBe(
-        "web",
-      );
+      expect(
+        resolveContainerCwd(
+          {
+            ...mounted,
+            mounts: [{ type: "bind" as const, source: "/", target: "/app", role: "app" as const }],
+          },
+          "web",
+          "/",
+        ),
+      ).toBe("web");
     } finally {
       process.chdir(original);
     }
@@ -188,5 +200,26 @@ describe("resolveContainerCwd", () => {
 
   test("returns undefined when there is no app mount and no workingDirectory", () => {
     expect(resolveContainerCwd(bare, undefined, "/home/aaron/somewhere/else")).toBeUndefined();
+  });
+
+  test("enumerates nested binds and falls back to the app bind target", () => {
+    const nested = {
+      mounts: [
+        {
+          type: "bind" as const,
+          source: "/workspace/drupal",
+          target: "/app",
+          role: "app" as const,
+        },
+        {
+          type: "bind" as const,
+          source: "/workspace/drupal/web",
+          target: "/app/web",
+        },
+      ],
+      workingDirectory: "/app",
+    };
+    expect(resolveContainerCwd(nested, undefined, "/workspace/drupal/web/modules")).toBe("/app/web/modules");
+    expect(resolveContainerCwd(nested, undefined, "/tmp/elsewhere")).toBe("/app");
   });
 });

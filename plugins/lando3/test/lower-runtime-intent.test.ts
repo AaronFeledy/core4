@@ -2,13 +2,15 @@ import { describe, expect, test } from "bun:test";
 import { LandofileShape } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
+import { normalizeAssignments } from "../src/environment.ts";
 import { withoutHostAlias, withoutHostIpVariable } from "../src/host-reachability.ts";
 import { lowerScannerAndHome, withHomeIntent } from "../src/lower-runtime-intent.ts";
 import type { LoweringPatch, ServiceLoweringContext } from "../src/lowering-contract.ts";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator, testPorts } from "./fixtures/test-ports.ts";
 
 const ctx: ServiceLoweringContext = {
+  serviceFacts: testPorts().serviceFacts,
   serviceName: "web",
   keyPath: ["services", "web"],
   fallbackSourceId: "source",
@@ -44,7 +46,7 @@ describe("scanner", () => {
       "dropped services.web.scanner.okCodes.2",
       "dropped services.web.scanner.okCodes.3",
       "dropped services.web.scanner.maxRedirects",
-      "rewritten services.web.scanner",
+      "needs-review services.web.scanner",
     ]);
   });
 
@@ -72,6 +74,7 @@ describe("scanner", () => {
 
   test("keeps false and drops the redundant true", () => {
     expect(lowerScannerAndHome({ scanner: false }, ctx)).toEqual({
+      claims: [["scanner"]],
       patch: { scanner: false },
       diagnostics: [],
     });
@@ -108,32 +111,46 @@ describe("home", () => {
     ["node:22", "node"],
     ["apache", "www-data"],
     ["solr:9", undefined],
-  ])("keeps the Lando 4 default home for %s as %p", (type, user) => {
+  ])("records implicit home intent for %s as %p without assessing a catalog", (type, user) => {
     const input = lowered({ type, ...(user === undefined ? {} : { user }) });
-    expect(withHomeIntent(input, {}, ctx)).toBe(input);
+    const result = withHomeIntent(input, {}, ctx);
+    expect<unknown>(result.expectations).toEqual([
+      { _tag: "PersistedHome", sourceId: "source", keyPath: ["services", "web"], service: "web" },
+    ]);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  test("disables home with path remediation when the catalog user has no declared home", () => {
+  test("leaves assessment of an authored user to the host", () => {
     const result = withHomeIntent(lowered({ type: "php:8.3", user: "www-data" }), {}, ctx);
-    expect(result.patch).toEqual({ type: "php:8.3", user: "www-data", home: false });
-    expect(summary(result.diagnostics)).toEqual(["needs-review services.web"]);
-    expect(result.diagnostics[0]?.remediation).toContain("services.web.home.path");
+    expect(result.patch).toEqual({ type: "php:8.3", user: "www-data" });
+    expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   test.each([
     ["an image", { type: "lando", image: "custom:1" }],
     ["a build context", { type: "lando", build: { context: "." } }],
     ["a catalog override image", { type: "node:22", image: "custom:1" }],
-  ])("disables home with unknown-image remediation for %s", (_label, patch) => {
+  ])("leaves home unset and records intent for %s", (_label, patch) => {
     const result = withHomeIntent(lowered(patch), { api: 4 }, ctx);
-    expect(result.patch.home).toBe(false);
-    expect(result.diagnostics[0]?.message).toContain("image comes from the Landofile");
+    expect(result.patch).toEqual(patch);
+    expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
+    expect(result.diagnostics).toEqual([]);
   });
 
-  test("marks a raw Compose service homeless because Lando 3 never gave it a home", () => {
-    const result = withHomeIntent(lowered({ type: "compose", image: "redis:7" }), { type: "compose" }, ctx);
-    expect(result.patch.home).toBe(false);
-    expect(summary(result.diagnostics)).toEqual(["generated services.web"]);
+  test("leaves a raw Compose service unchanged because Lando 3 never persisted its home", () => {
+    const input = lowered({ type: "compose", image: "redis:7" });
+    const result = withHomeIntent(input, { type: "compose" }, ctx);
+    expect(result).toBe(input);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  test("leaves unknown type assessment to the host", () => {
+    const input = lowered({ type: "unknown-service" });
+    const result = withHomeIntent(input, {}, ctx);
+    expect(result.patch).toEqual(input.patch);
+    expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
+    expect(result.diagnostics).toEqual([]);
   });
 
   test("leaves authored home and blocked services alone", () => {
@@ -141,6 +158,22 @@ describe("home", () => {
     expect(withHomeIntent(authored, { api: 4 }, ctx)).toBe(authored);
     const blocked: LoweringPatch = { patch: { type: "lando", image: "x" }, diagnostics: [], blocked: true };
     expect(withHomeIntent(blocked, { api: 4 }, ctx)).toBe(blocked);
+  });
+  test.each([false, "/srv", { path: "/srv" }])("omits implicit intent for authored home %p", (home) => {
+    // Given / When
+    const result = withHomeIntent(lowerScannerAndHome({ home }, ctx), { home }, ctx);
+    // Then
+    expect(result.expectations).toBeUndefined();
+  });
+  test("keeps home true as an expectation and reports the dropped setting", async () => {
+    // Given / When
+    const result = await translate("name: legacy\nservices:\n  web:\n    type: node:22\n    home: true\n");
+    // Then
+    expect(result.expectations?.map(({ service }) => String(service))).toEqual(["web"]);
+    expect(JSON.stringify(result.outputs)).not.toContain('"home"');
+    expect(
+      result.diagnostics.filter(({ keyPath }) => keyPath.at(-1) === "home").map(({ kind }) => kind),
+    ).toEqual(["dropped"]);
   });
 });
 
@@ -168,12 +201,29 @@ describe("host reachability", () => {
     ]);
   });
 
-  test("drops an authored LANDO_HOST_IP", () => {
+  test("drops an authored LANDO_HOST_IP at its authored key or list index", () => {
+    // Given the variable authored as a map key and as the last of duplicate list assignments
     const diagnostics: LoweringPatch["diagnostics"][number][] = [];
-    expect(withoutHostIpVariable({ LANDO_HOST_IP: "1.2.3.4" }, ctx, ["environment"], diagnostics)).toEqual(
-      {},
+    const map = { LANDO_HOST_IP: "1.2.3.4" };
+    const list = ["LANDO_HOST_IP=1.1.1.1", "KEEP=1", "LANDO_HOST_IP=1.2.3.4"];
+    // When
+    const fromMap = withoutHostIpVariable(
+      normalizeAssignments(map, { ctx, relative: ["environment"] }, "environment").entries,
+      ctx,
+      diagnostics,
     );
-    expect(summary(diagnostics)).toEqual(["rewritten services.web.environment.LANDO_HOST_IP"]);
+    const fromList = withoutHostIpVariable(
+      normalizeAssignments(list, { ctx, relative: ["overrides", "environment"] }, "environment").entries,
+      ctx,
+      diagnostics,
+    );
+    // Then
+    expect(fromMap).toEqual({});
+    expect(fromList).toEqual({ KEEP: "1" });
+    expect(summary(diagnostics)).toEqual([
+      "rewritten services.web.environment.LANDO_HOST_IP",
+      "rewritten services.web.overrides.environment.2",
+    ]);
   });
 });
 
@@ -225,10 +275,9 @@ describe("converted Landofile", () => {
             user: "www-data",
             scanner: { okCodes: [401], retries: 3, timeout: 8000 },
             environment: { XDEBUG_MODE: "debug" },
-            home: false,
           },
           node: { type: "node:22", scanner: false },
-          cache: { type: "compose", image: "redis:7", home: false },
+          cache: { type: "compose", image: "redis:7" },
         },
       },
     ]);

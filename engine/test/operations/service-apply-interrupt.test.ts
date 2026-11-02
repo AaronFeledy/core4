@@ -1,11 +1,10 @@
 import { expect, test } from "bun:test";
 import { Cause, Deferred, Effect, Exit, Fiber, Scope } from "effect";
-import { isReadinessInterruptCause } from "../../src/lifecycle/readiness-failure.ts";
-import { withRetainedSession } from "../../src/operations/retained-session.ts";
+import { type PublishSession, withRetainedSession } from "../../src/operations/retained-session.ts";
 import { startApp } from "../../src/operations/start.ts";
 import { makeHarness, plan } from "./start-progress-topology-support.ts";
 
-test("provider-apply interruption rolls back instead of taking post-commit readiness retention", async () => {
+test("provider-apply interruption retains the app and managed resources", async () => {
   const applying = Deferred.makeUnsafe<void>();
   const scope = await Effect.runPromise(Scope.make());
   let destroyed = 0;
@@ -18,7 +17,7 @@ test("provider-apply interruption rolls back instead of taking post-commit readi
   });
   const fiber = Effect.runFork(
     withRetainedSession(
-      Effect.succeed("resource"),
+      (publish: PublishSession<string>) => publish("resource").pipe(Effect.as("resource")),
       () =>
         startApp(
           {},
@@ -28,7 +27,6 @@ test("provider-apply interruption rolls back instead of taking post-commit readi
             app: { kind: "user", id: plan.id, root: plan.root },
           },
           { scope },
-          { onFailedStart: Scope.close(scope, Exit.void) },
         ),
       {
         scope,
@@ -43,8 +41,8 @@ test("provider-apply interruption rolls back instead of taking post-commit readi
   await Effect.runPromise(Fiber.interrupt(fiber));
   const exit = await Effect.runPromise(Fiber.await(fiber));
   expect(Exit.isFailure(exit) && Cause.hasInterrupts(exit.cause)).toBe(true);
-  expect(Exit.isFailure(exit) && isReadinessInterruptCause(exit.cause)).toBe(false);
-  expect(destroyed).toBe(1);
-  expect(closed).toBe(1);
+  expect(destroyed).toBe(0);
+  expect(closed).toBe(0);
   await Effect.runPromise(Scope.close(scope, Exit.void));
+  expect(closed).toBe(1);
 });

@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
 
-import { NotImplementedError } from "@lando/sdk/errors";
+import { LandofileValidationError } from "@lando/sdk/errors";
+import { ServiceName } from "@lando/sdk/schema";
 
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "../src/load-expression-file.ts";
 import { resolveLandofileLoadExpressions } from "../src/load-expression.ts";
@@ -101,7 +102,7 @@ describe("landofile load-time route hostname expressions", () => {
     });
   });
 
-  test("loads an authored exact service environment secret reference unchanged", async () => {
+  test("compiles an authored exact service environment reference without resolving it", async () => {
     await withApp(async (appRoot) => {
       // Given
       await writeFile(
@@ -113,10 +114,10 @@ describe("landofile load-time route hostname expressions", () => {
       const landofile = await Effect.runPromise(loadLandofileLayers(appRoot, join(appRoot, ".lando.yml")));
 
       // Then
-      const services = landofile.services as
-        | Readonly<Record<string, { readonly environment: Readonly<Record<string, string>> }>>
-        | undefined;
-      expect(services?.appserver?.environment.API_TOKEN).toBe("${secret:API_TOKEN}");
+      expect(landofile.document.services?.[ServiceName.make("appserver")]?.environment?.API_TOKEN).toEqual({
+        _tag: "SecretRef",
+        reference: "API_TOKEN",
+      });
     });
   });
 
@@ -130,7 +131,10 @@ describe("landofile load-time route hostname expressions", () => {
 
       // Then
       if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
-      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toBeInstanceOf(NotImplementedError);
+      expect(Option.getOrThrow(Cause.findErrorOption(exit.cause))).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: [{ path: ["services", "appserver", "image"], rule: "unsupported-expression" }],
+      });
     });
   });
 
@@ -145,9 +149,12 @@ describe("landofile load-time route hostname expressions", () => {
       // Then
       if (Exit.isSuccess(exit)) throw new Error("expected unsupported expression rejection");
       const failure = Option.getOrThrow(Cause.findErrorOption(exit.cause));
-      expect(failure).toBeInstanceOf(NotImplementedError);
-      expect(failure).toMatchObject({ _tag: "NotImplementedError" });
-      if (failure instanceof NotImplementedError) {
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      expect(failure).toMatchObject({
+        _tag: "LandofileValidationError",
+        issues: [{ path: ["hostname"], rule: "unsupported-expression" }],
+      });
+      if (failure instanceof LandofileValidationError) {
         expect(failure.message).not.toMatch(/\b(?:Alpha|Beta)\b/);
       }
     });

@@ -2,9 +2,8 @@ import { Flags } from "../spec/metadata";
 
 export const formatFlag = Flags.string({ description: "Output format.", default: "table" });
 export const typeFlag = Flags.string({
-  description: "Value type for set.",
+  description: "Value type for set; inferred from the config schema when omitted.",
   options: ["string", "number", "boolean", "json", "yaml"],
-  default: "string",
 });
 export const pathFlag = Flags.string({ description: "Dot-path key selector." });
 export const editorFlag = Flags.string({ description: "Editor binary for edit." });

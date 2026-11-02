@@ -16,7 +16,7 @@ import {
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "agentSocket"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "agentSocket", "fileSyncTargets"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -421,7 +421,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         platform: "linux",
         env: {},
         podmanApi: podmanApiForArch("x64"),
-        logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+        resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
       }),
     );
 
@@ -433,8 +433,8 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: podmanApiForArch("aarch64"),
-        logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+        podmanApi: podmanApiForArch("riscv64"),
+        resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
       }),
     );
 

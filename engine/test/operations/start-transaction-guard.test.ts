@@ -31,6 +31,7 @@ test("fails start before events or provider action when the transaction is block
       app: { kind: "user", id: plan.id, root: plan.root },
     }).pipe(
       Effect.provideService(ManagedFileTransactionGuard, {
+        assertReadable: () => Effect.void,
         ensureConsistent: (root) => {
           roots.push(root);
           return Effect.fail(failure);
@@ -67,6 +68,7 @@ for (const [name, operation] of [
     });
     const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
     const guard = {
+      assertReadable: () => Effect.void,
       ensureConsistent: () =>
         Effect.sync(() => {
           calls.push("recover");
@@ -106,6 +108,7 @@ for (const name of ["start", "restart", "rebuild"] as const) {
     });
     const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
     const guard = {
+      assertReadable: () => Effect.void,
       ensureConsistent: (root: string) => {
         calls.push(`guard:${root}`);
         return Effect.fail(failure);
@@ -153,6 +156,7 @@ for (const name of ["start", "restart", "rebuild"] as const) {
     });
     const target = { plan, root: plan.root, app: { kind: "user" as const, id: plan.id, root: plan.root } };
     const guard = {
+      assertReadable: () => Effect.void,
       ensureConsistent: (root: string) =>
         Effect.sync(() => {
           calls.push(`guard:${root}`);

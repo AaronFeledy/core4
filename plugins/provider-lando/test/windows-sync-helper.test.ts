@@ -121,7 +121,7 @@ const makeFakeApi = () => {
           container.State = { Running: true };
           return response(204);
         }
-        if (method === "DELETE" && path === "/containers/helper-container-id?force=true") {
+        if (method === "DELETE" && path === "/containers/helper-container-id?force=true&v=true") {
           if (container === undefined) return response(404);
           if (controls.failDelete) return response(500);
           container = undefined;

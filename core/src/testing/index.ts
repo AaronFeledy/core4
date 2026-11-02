@@ -31,7 +31,6 @@ export { type SummaryDocument, formatSummary } from "@lando/renderer/summary";
 
 export { makePluginStateStore } from "@lando/engine/plugins/context-state";
 export * as PluginRegistryLayer from "@lando/engine/plugins/registry";
-export { loadLogFileHelperPayloads } from "@lando/engine/providers/log-file-helper-payloads";
 export { L337_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/l337";
 export { LANDO_BASE_DEFAULT_FEATURE_IDS } from "@lando/engine/services/base/lando";
 export { buildKeyForService } from "@lando/engine/services/build-key";

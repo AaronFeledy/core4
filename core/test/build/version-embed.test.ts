@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import corePackage from "../../package.json";
 import { buildCliBundle } from "./cli-bundle.ts";
+import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
 
 const coreRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -17,11 +18,15 @@ interface RunResult {
 }
 
 // Built CLIs run outside any app: app commandAliases route `version` past the bare-version fast path.
-const runCommand = async (cmd: ReadonlyArray<string>, cwd = tmpdir()): Promise<RunResult> => {
+const runCommand = async (
+  cmd: ReadonlyArray<string>,
+  cwd = tmpdir(),
+  env: Readonly<Record<string, string | undefined>> = { ...process.env },
+): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [...cmd],
     cwd,
-    env: { ...process.env },
+    env,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -101,6 +106,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
             "8.8.8-stamped",
           ],
           coreRoot,
+          { ...process.env, LANDO_CONTAINER_HELPER_DIR: await stubContainerHelperDir() },
         );
         expect(build.exitCode).toBe(0);
 

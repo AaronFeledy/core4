@@ -12,6 +12,8 @@
  */
 import { Effect, type Fiber, type Scope } from "effect";
 
+import { defaultInterruptSignals } from "./process-signals.ts";
+
 export interface InstallSignalHandlersOptions {
   readonly fiber: Fiber.Fiber<unknown, unknown>;
   /**
@@ -23,13 +25,13 @@ export interface InstallSignalHandlersOptions {
 export const installSignalHandlers = Effect.fnUntraced(function* (
   options: InstallSignalHandlersOptions,
 ): Effect.fn.Return<void, never, Scope.Scope> {
-  const signals = Array.from(new Set(options.signals ?? ["SIGINT", "SIGTERM"]));
+  const signals = Array.from(new Set(options.signals ?? defaultInterruptSignals()));
   const interruptor = options.fiber.id;
   const handlers = signals.map((signal) => {
     const handler = () => {
       options.fiber.interruptUnsafe(interruptor);
     };
-    (process as NodeJS.EventEmitter).once(signal, handler);
+    (process as NodeJS.EventEmitter).on(signal, handler);
     return { signal, handler };
   });
 

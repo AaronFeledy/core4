@@ -83,6 +83,7 @@ describe("lando init — Drupal recipe", () => {
         process.chdir(appDir);
         const loaded = await Effect.runPromise(
           Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+            Effect.map((compiled) => compiled.document),
             Effect.provide(TestLandofileServiceLayer.layer),
           ),
         );

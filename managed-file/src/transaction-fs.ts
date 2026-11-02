@@ -188,6 +188,7 @@ export const mutateEntry = async (
   entry: Entry,
   privateFileAccess: PrivateFileAccess,
 ): Promise<void> => {
+  if (entry.publication === "create") throw transactionError("journal", "commit");
   await verifyState(root, entry, entry.before);
   const path = resolve(root, entry.path);
   if (entry.after.present) {

@@ -24,6 +24,9 @@ import {
   hasVersionConstraintEntries,
   rememberVersionConstraintEntries,
 } from "@lando/landofile/version-constraint";
+import { withValueOrigins } from "@lando/sdk/landofile";
+import { getOrigins, rememberOrigins } from "../src/pipeline/origins.ts";
+import { getSourceDocuments, rememberSourceDocuments } from "../src/pipeline/source-table.ts";
 
 test("copies every remembered provenance entry from a frozen source", () => {
   const source = Object.freeze({ lando: ">=4" });
@@ -37,9 +40,28 @@ test("copies every remembered provenance entry from a frozen source", () => {
   rememberVersionConstraintEntries(source, [
     { range: ">=4", source: "/app/base.yml", layer: "base", order: 0 },
   ]);
+  const documents = [
+    {
+      file: "/app/base.yml",
+      form: "yaml" as const,
+      layer: "base" as const,
+      document: { lando: ">=4" },
+      content: "lando: '>=4'\n",
+      digest: "abc",
+    },
+  ];
+  const origins = withValueOrigins(source, (path) => ({
+    file: "/app/base.yml",
+    layer: "base" as const,
+    path,
+  })).origins;
+  rememberSourceDocuments(source, documents);
+  rememberOrigins(source, origins);
   const target = { ...source };
   expect(copyLandofileProvenance(source, target)).toBe(target);
   expect(getLandofileAppRoot(target)).toBe("/app");
+  expect(getSourceDocuments(target)).toBe(documents);
+  expect(getOrigins(target)).toBe(origins);
   expect(getLocalIncludePaths(target)).toEqual(["/app/base.yml"]);
   expect(getLandofileIncludeSources(target)).toEqual([{ id: "base", sha256: "abc" }]);
   expect(getLandofileReferencedFiles(target)).toEqual([

@@ -25,6 +25,7 @@ const strictValidator =
           new LandofileValidationError({
             file,
             message: "Invalid Landofile layer.",
+            remediation: "Fix each listed value.",
             issues: validationIssuesFromCause(cause),
           }),
       ),
@@ -58,6 +59,7 @@ const decodeLayer = Effect.fnUntraced(function* <A>(
     throw new LandofileValidationError({
       file,
       message: `${reason} ${REMEDIATION}`,
+      remediation: REMEDIATION,
       issues: [{ path, message: reason, suggestion: REMEDIATION }],
     });
   };
@@ -104,6 +106,7 @@ const decodeLayer = Effect.fnUntraced(function* <A>(
         : new LandofileValidationError({
             file,
             message: `Invalid directive tree. ${REMEDIATION}`,
+            remediation: REMEDIATION,
             issues: validationIssuesFromCause(cause),
           }),
   });
@@ -116,6 +119,7 @@ const decodeLayer = Effect.fnUntraced(function* <A>(
             file: error.file,
             issues: error.issues,
             message: `${error.message} ${REMEDIATION}`,
+            remediation: REMEDIATION,
           }),
     ),
   );
@@ -145,6 +149,7 @@ const decodeLayer = Effect.fnUntraced(function* <A>(
         : new LandofileValidationError({
             file,
             message: `Cannot restore directive paths. ${REMEDIATION}`,
+            remediation: REMEDIATION,
             issues: validationIssuesFromCause(cause),
           }),
   });

@@ -1,6 +1,13 @@
 # Eleventy
 
-`lando init --recipe eleventy` scaffolds an Eleventy app with a Node builder and an nginx sidecar.
+Create the Lando services for an Eleventy site, with a Node builder for
+development and nginx for generated static files. The recipe writes
+`.lando.yml` but does not create site templates.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe eleventy --name=my-eleventy --yes

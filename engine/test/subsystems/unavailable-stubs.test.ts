@@ -38,8 +38,9 @@ test.each(["web", "database"])("unavailable healthcheck retains service %s", asy
     Result.fail(
       new HealthcheckError({
         message:
-          "HealthcheckRunner requires provider-exec. Run `lando setup` to install the provider (full implementation is not available yet).",
+          "No provider-bound healthcheck runner is available in this context. Run `lando setup`, then start the app so readiness uses its selected provider.",
         service,
+        remediation: "Run `lando setup` to install a runtime provider, then retry healthchecks.",
       }),
     ),
   );
@@ -61,6 +62,8 @@ test("unavailable certificates preserve setup and issuance errors", async () => 
       message:
         "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA (full implementation is not available yet).",
       caId: "unavailable",
+      remediation:
+        "Install a certificate-authority plugin with `lando setup` and select it as the active CA, then re-run.",
     }),
   );
   expect(result).toEqual({ id: "unavailable", setup: failure, issue: failure });

@@ -58,6 +58,7 @@ export const parseLegacyLandofile = (
             filePath: options.file,
             line: undefined,
             column: undefined,
+            remediation: `Inspect ${options.file} and correct the Lando 3 Landofile so it parses as valid YAML.`,
             cause,
           }),
   });

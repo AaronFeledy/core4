@@ -27,7 +27,10 @@ test("a local Landofile replaces tooling cmds instead of merging by service", as
     );
     // When the real loader decodes and merges both layers.
     const resolved = await Effect.runPromise(
-      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+      loadLandofileLayers(appRoot, canonicalPath).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(makeTestStateStore().layer),
+      ),
     );
     // Then only the local step remains.
     expect(resolved.tooling?.test?.cmds).toEqual([{ service: "a", cmd: "new-a" }]);
@@ -62,7 +65,10 @@ test("a higher Landofile layer removes internal provenance from its task winner"
 
     // When all Landofile layers are loaded and command metadata is compiled
     const resolved = await Effect.runPromise(
-      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+      loadLandofileLayers(appRoot, canonicalPath).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(makeTestStateStore().layer),
+      ),
     );
     const commands = compileToolingCommands(resolved);
 
@@ -91,7 +97,10 @@ test("an authored internal fragment hides its compiled commands", async () => {
 
     // When the Landofile is loaded and command metadata is compiled
     const resolved = await Effect.runPromise(
-      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+      loadLandofileLayers(appRoot, canonicalPath).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(makeTestStateStore().layer),
+      ),
     );
     const commands = compileToolingCommands(resolved);
 
@@ -130,7 +139,10 @@ test("composes canonical tooling declarations from every Landofile layer", async
 
     // When the complete Landofile is loaded
     const resolved = await Effect.runPromise(
-      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+      loadLandofileLayers(appRoot, canonicalPath).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(makeTestStateStore().layer),
+      ),
     );
 
     // Then no layer's declaration is replaced by a higher layer's includes array
@@ -165,7 +177,10 @@ test("keeps sibling canonical declarations sharing a namespace in one layer", as
 
     // When the complete Landofile is loaded through the layer path
     const resolved = await Effect.runPromise(
-      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+      loadLandofileLayers(appRoot, canonicalPath).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(makeTestStateStore().layer),
+      ),
     );
 
     // Then the layer path agrees with direct include resolution and drops neither fragment
@@ -208,7 +223,10 @@ test("a higher layer overrides a canonical tooling declaration sharing its names
 
     // When the complete Landofile is loaded and command metadata is compiled
     const resolved = await Effect.runPromise(
-      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+      loadLandofileLayers(appRoot, canonicalPath).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(makeTestStateStore().layer),
+      ),
     );
     const commands = compileToolingCommands(resolved);
 
@@ -239,7 +257,10 @@ test("resolves tooling includes only after Landofile layers merge", async () => 
 
     // When the complete Landofile is loaded and command metadata is compiled
     const resolved = await Effect.runPromise(
-      loadLandofileLayers(appRoot, canonicalPath).pipe(Effect.provide(makeTestStateStore().layer)),
+      loadLandofileLayers(appRoot, canonicalPath).pipe(
+        Effect.map((compiled) => compiled.document),
+        Effect.provide(makeTestStateStore().layer),
+      ),
     );
     const commands = compileToolingCommands(resolved);
 

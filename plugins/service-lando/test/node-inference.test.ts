@@ -28,7 +28,17 @@ describe("bare node version inference", () => {
     ["22", "node:22", "22"],
     ["v22", "node:22", "22"],
     ["jod", "node:22", "22"],
-    ["lts/*", "node:lts", "lts/*"],
+    ["lts/jod", "node:22", "22"],
+    ["24", "node:24", "24"],
+    ["v24", "node:24", "24"],
+    ["24.11", "node:24.11", "24.11"],
+    ["24.11.0", "node:24.11.0", "24.11.0"],
+    ["krypton", "node:24", "24"],
+    ["lts/krypton", "node:24", "24"],
+    ["26", "node:26", "26"],
+    ["v26.1.0", "node:26.1.0", "26.1.0"],
+    ["lts", "node:24", "lts"],
+    ["lts/*", "node:24", "lts/*"],
     ["22.11.0 # pin", "node:22.11.0", "22.11.0"],
     ["# comment\n22", "node:22", "22"],
   ] satisfies ReadonlyArray<readonly [string, string, string]>)(
@@ -56,12 +66,33 @@ describe("bare node version inference", () => {
     },
   );
 
-  test("uses package engines only when they contain the complete supported major", () => {
+  test("uses package engines only when they contain a complete supported major", () => {
     expect(resolve(undefined, JSON.stringify({ engines: { node: ">=22.0.0 <23.0.0" } }))).toMatchObject({
       artifact: "node:22",
       normalizedConstraint: ">=22.0.0 <23.0.0",
       sourcePath: "package.json",
     });
+  });
+
+  test.each([
+    [">=20", "node:24"],
+    ["*", "node:24"],
+    [">=22", "node:24"],
+    [">=24", "node:24"],
+    [">=26", "node:26"],
+    ["22 || 26", "node:26"],
+  ] satisfies ReadonlyArray<readonly [string, string]>)(
+    "prefers the table LTS major when engines.node %s allows it",
+    (engines, artifact) => {
+      expect(resolve(undefined, JSON.stringify({ engines: { node: engines } }))).toMatchObject({ artifact });
+    },
+  );
+
+  test("lists supported majors in nvmrc and engines remediation", () => {
+    expect(() => resolve("18", undefined)).toThrow(/supported Node major \(22, 24, 26\)/);
+    expect(() => resolve(undefined, JSON.stringify({ engines: { node: ">=22.11.0 <23" } }))).toThrow(
+      /complete supported Node image channel \(22, 24, 26\)/,
+    );
   });
 
   test.each([
@@ -106,9 +137,9 @@ describe("bare node version inference", () => {
     expect(resolveNodeInference(inputs)).toMatchObject({ artifact: "node:22.11.0", sourcePath: path });
   });
 
-  test("accepts floating LTS only with unrestricted engines", () => {
+  test("resolves floating LTS through the table to the current LTS major", () => {
     expect(resolve("lts/*", JSON.stringify({ engines: { node: "*" } }))).toMatchObject({
-      artifact: "node:lts",
+      artifact: "node:24",
     });
   });
 

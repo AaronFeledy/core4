@@ -3,6 +3,7 @@ import { Effect, Schema } from "effect";
 
 import { LandofileShape, RabbitMQServiceConfig, ServiceName } from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
+import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
 
 import {
   RABBITMQ_FEATURE_ID,
@@ -12,6 +13,14 @@ import {
   rabbitmqServiceType,
 } from "../src/services/rabbitmq.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { nativeListenPortSuite } from "./support/listen-port.ts";
+
+nativeListenPortSuite({
+  serviceType: rabbitmqServiceType,
+  variable: "RABBITMQ_NODE_PORT",
+  defaultPort: 5672,
+  reservedPorts: [4369, 15672, 15692],
+});
 
 const metadata = {
   resolvedAt: "2026-08-18T00:00:00Z",
@@ -54,6 +63,56 @@ const resolveRabbitMQService = (serviceType: ServiceType, serviceDefinition: Rec
   );
 
 describe("rabbitmq ServiceType", () => {
+  test.each([
+    [{ port: 50000 }, "distribution port"],
+    [{ port: 5673, environment: { RABBITMQ_DIST_PORT: "5673" } }, "AMQP listener"],
+    ...[4369, 15672, 15692].map(
+      (port) => [{ environment: { RABBITMQ_DIST_PORT: String(port) } }, "conflicts"] as const,
+    ),
+    ...["0", "65536", "1.5", "invalid"].map(
+      (port) => [{ environment: { RABBITMQ_DIST_PORT: port } }, "not a TCP port number"] as const,
+    ),
+  ] as const)("rejects invalid distribution configuration %j", async (definition, message) => {
+    await expect(
+      planRabbitMQService(rabbitmqServiceType, { type: "rabbitmq", ...definition }),
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path:
+            "port" in definition && !("environment" in definition)
+              ? ["port"]
+              : ["environment", "RABBITMQ_DIST_PORT"],
+          message: expect.stringContaining(message),
+          suggestion: expect.any(String),
+        },
+      ],
+    });
+    await expect(
+      resolveRabbitMQService(rabbitmqServiceType, { type: "rabbitmq", ...definition }),
+    ).rejects.toMatchObject({
+      issues: [
+        {
+          path:
+            "port" in definition && !("environment" in definition)
+              ? ["port"]
+              : ["environment", "RABBITMQ_DIST_PORT"],
+          message: expect.stringContaining(message),
+          suggestion: expect.any(String),
+        },
+      ],
+    });
+  });
+
+  test("accepts an explicit distribution port when AMQP leaves no default room", async () => {
+    const plan = await planRabbitMQService(rabbitmqServiceType, {
+      type: "rabbitmq",
+      port: 50000,
+      environment: { RABBITMQ_DIST_PORT: "25672" },
+    });
+    expect(plan.environment.RABBITMQ_NODE_PORT).toBe("50000");
+    expect(plan.environment.RABBITMQ_DIST_PORT).toBe("25672");
+  });
+
   for (const [id, image, serviceType] of [
     ["rabbitmq:3", "rabbitmq:3-management", rabbitmq3ServiceType],
     ["rabbitmq:4", "rabbitmq:4-management", rabbitmq4ServiceType],
@@ -68,25 +127,20 @@ describe("rabbitmq ServiceType", () => {
         expect(plan.type).toBe("rabbitmq");
         expect(plan.artifact).toEqual({ kind: "ref", ref: image });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 5672, protocol: "tcp", name: "queue" },
+          { _tag: "internal", port: 5672, protocol: "tcp", name: "queue", primary: true },
           { _tag: "internal", port: 15672, protocol: "http", name: "management" },
         ]);
-        expect(plan.storage).toHaveLength(1);
-        expect(plan.storage[0]?.store).toBe("myapp-rabbitmq-data");
-        expect(String(plan.storage[0]?.target)).toBe("/var/lib/rabbitmq");
-        expect(plan.storage[0]?.readOnly).toBe(false);
+        const volumes = plan.mounts.filter((mount) => mount.type === "volume");
+        expect(volumes).toHaveLength(1);
+        expect(volumes[0]?.store).toBe("myapp-rabbitmq-data");
+        expect(String(volumes[0]?.target)).toBe("/var/lib/rabbitmq");
+        expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.environment).toMatchObject({
           RABBITMQ_DEFAULT_USER: "lando",
           RABBITMQ_DEFAULT_PASS: "lando",
         });
-        expect(plan.healthcheck).toEqual({
-          kind: "command",
-          command: ["rabbitmq-diagnostics", "-q", "ping"],
-          intervalSeconds: 10,
-          timeoutSeconds: 5,
-          retries: 5,
-          startPeriodSeconds: 30,
-        });
+        expect(plan.healthcheck).toEqual(rabbitmqProbes(5672).healthcheck);
+        expect(plan.readiness).toEqual(rabbitmqProbes(5672).readiness);
       });
 
       test("resolves default tooling", async () => {
@@ -137,14 +191,17 @@ describe("rabbitmq ServiceType", () => {
 
         expect(plan.artifact).toEqual({ kind: "ref", ref: "rabbitmq:custom" });
         expect(plan.endpoints).toEqual([
-          { _tag: "internal", port: 25672, protocol: "tcp", name: "queue" },
+          { _tag: "internal", port: 25672, protocol: "tcp", name: "queue", primary: true },
           { _tag: "internal", port: 15672, protocol: "http", name: "management" },
         ]);
         expect(plan.environment).toMatchObject({
           RABBITMQ_DEFAULT_USER: "author",
           RABBITMQ_DEFAULT_PASS: "lando",
+          RABBITMQ_NODE_PORT: "25672",
           EXTRA_VAR: "extra",
         });
+        expect(plan.healthcheck).toEqual(rabbitmqProbes(25672).healthcheck);
+        expect(plan.readiness).toEqual(rabbitmqProbes(25672).readiness);
         expect(plan.command).toEqual(["rabbitmq-server"]);
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(String(plan.workingDirectory)).toBe("/var/lib/rabbitmq");

@@ -1,11 +1,12 @@
+import { configRedactionTokens } from "../../../commands/config-redaction";
 import { Args } from "../../../spec/metadata";
 
 import {
   type GlobalConfigResult,
   GlobalConfigResultSchema,
-  globalConfig,
   renderGlobalConfigResult,
 } from "../../../commands/meta/global-config";
+import { runGlobalConfig } from "../../../config-command-runtime.ts";
 import type { LandoCommandSpec } from "../../../spec/command-base";
 import { dryRunFlag, editorFlag, typeFlag } from "../../config-flags";
 import { globalConfigFormatFromInput, globalConfigOptionsFromInput } from "./config";
@@ -16,16 +17,16 @@ const makeSpec = (
   metadata: Pick<LandoCommandSpec, "args" | "flags">,
 ): LandoCommandSpec<GlobalConfigResult> => ({
   resultSchema: GlobalConfigResultSchema,
+  redactionTokens: configRedactionTokens,
   id: `meta:global:config:${subcommand}`,
   summary,
   description: summary,
   namespace: "meta",
   topLevelAlias: `global:config:${subcommand}`,
-  bootstrap: "global",
+  bootstrap: "plugins",
   ...metadata,
-  run: (input) => globalConfig({ ...globalConfigOptionsFromInput(input), subcommand }),
-  render: (result, input) =>
-    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
+  run: (input) => runGlobalConfig({ ...globalConfigOptionsFromInput(input), subcommand }),
+  render: (result, input) => renderGlobalConfigResult(result, globalConfigFormatFromInput(input)),
 });
 
 export const metaGlobalConfigSetSpec = makeSpec("set", "Set a value in the global app's Landofile.", {
@@ -44,7 +45,7 @@ export const metaGlobalConfigUnsetSpec = makeSpec("unset", "Remove a key from th
 });
 
 export const metaGlobalConfigEditSpec = makeSpec("edit", "Edit the global app's Landofile in $EDITOR.", {
-  flags: { editor: editorFlag },
+  flags: { editor: editorFlag, "dry-run": dryRunFlag },
 });
 
 export const metaGlobalConfigValidateSpec = makeSpec(

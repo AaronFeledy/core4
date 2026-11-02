@@ -18,8 +18,8 @@ import {
 import {
   AppPlanSanitizer,
   ConfigService,
+  ContainerHelperAssets,
   Downloader,
-  LogFileHelperAssets,
   ManagedFileService,
   PathsService,
   PluginRegistry,
@@ -51,7 +51,11 @@ const manifestWithProvider = (name: string, providerId: ProviderId) =>
   });
 
 const notRegistered = (id: string): PluginLoadError =>
-  new PluginLoadError({ message: `not registered in descriptor registry test: ${id}`, pluginName: id });
+  new PluginLoadError({
+    message: `not registered in descriptor registry test: ${id}`,
+    pluginName: id,
+    remediation: "Install or register the plugin, then retry.",
+  });
 
 const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ telemetry: { enabled: false } });
@@ -79,7 +83,10 @@ const makeDependencyLayer = (manifests: ReadonlyArray<PluginManifest>) => {
     Layer.succeed(ConfigService, configService),
     Layer.succeed(Downloader, Downloader.of(downloader.service)),
     Layer.succeed(HttpClient.HttpClient, httpClient),
-    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+    Layer.succeed(
+      ContainerHelperAssets,
+      ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
+    ),
     Layer.succeed(ManagedFileService, managedFiles.service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/descriptor-registry-test" })),
     Layer.succeed(PluginRegistry, pluginRegistry),
@@ -95,7 +102,6 @@ const planFor = (provider: ProviderId): AppPlan => ({
   provider,
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: {
@@ -178,11 +184,28 @@ describe("RuntimeProviderRegistry descriptor lookup", () => {
     // When: the contributed provider is selected through the registry.
     const result = await selectEither([module], [manifest]);
 
-    // Then: the descriptor factory's provider shape is returned; only apply is decorated for redaction.
+    // Then: the descriptor factory's provider is returned behind the registry's redaction adapters.
     expect(result._tag).toBe("Success");
     if (result._tag === "Success") {
-      expect(result.success.apply).not.toBe(fakeProvider.apply);
-      expect({ ...result.success, apply: fakeProvider.apply }).toEqual(fakeProvider);
+      const selected = result.success;
+      expect(selected.apply).not.toBe(fakeProvider.apply);
+      expect({
+        id: selected.id,
+        displayName: selected.displayName,
+        version: selected.version,
+        platform: selected.platform,
+        capabilities: selected.capabilities,
+      }).toEqual({
+        id: fakeProvider.id,
+        displayName: fakeProvider.displayName,
+        version: fakeProvider.version,
+        platform: fakeProvider.platform,
+        capabilities: fakeProvider.capabilities,
+      });
+      expect(Object.keys(selected).sort()).toEqual(Object.keys(fakeProvider).sort());
+      expect(await Effect.runPromise(selected.getVersions)).toEqual(
+        await Effect.runPromise(fakeProvider.getVersions),
+      );
     }
   });
 });

@@ -8,7 +8,8 @@ tags: [beta, docs, schemas]
 
 # The public schema registry
 
-Import `publicSchemaRegistry`, `JSON_SCHEMA_NAMES`,
+The public schema registry is the shared list used to generate Lando's SDK
+schema artifacts. Import `publicSchemaRegistry`, `JSON_SCHEMA_NAMES`,
 `publicSchemaMetadataIndex`, `schemaArtifactFilename`, and
 `renderPublicSchemaReferencePages` from the canonical SDK schema entry
 point:
@@ -26,4 +27,3 @@ generation reads from `publicSchemaRegistry`, so listed schemas and
 generated artifacts stay in lockstep. This registry export contract is
 locked by `sdk/test/library/exports.test.ts` and
 `core/test/build/schema-snapshot.test.ts`.
-

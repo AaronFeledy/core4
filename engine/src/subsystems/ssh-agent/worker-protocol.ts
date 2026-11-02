@@ -14,11 +14,12 @@ import {
 import { Schema } from "effect";
 
 export const AGENT_RELAY_WORKER_COMMAND = "__internal:agent-relay-worker";
-export const AGENT_RELAY_WORKER_PROTOCOL_VERSION = 1;
+export const AGENT_RELAY_WORKER_PROTOCOL_VERSION = 2;
 export const AgentRelayWorkerInput = Schema.Struct({
   app: Schema.Struct({ kind: Schema.Literals(["user", "scratch"]), id: Schema.String, root: AbsolutePath }),
   plan: Schema.Struct({ id: AppId, provider: ProviderId }),
   kind: AgentSocketKind,
+  configDigest: Schema.String,
   upstream: Schema.Union([AgentSocketUpstream, Schema.TaggedStruct("named-pipe", { path: Schema.String })]),
   delivery: AgentSocketDelivery,
   socketName: Schema.String.pipe(Schema.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/))),
@@ -38,7 +39,8 @@ export const AgentRelayWorkerIdentity = Schema.Struct({
   appRoot: AbsolutePath,
   sessionId: Schema.String,
   kind: AgentSocketKind,
-  protocolVersion: Schema.Literal(1),
+  protocolVersion: Schema.Literal(AGENT_RELAY_WORKER_PROTOCOL_VERSION),
+  configDigest: Schema.String,
   pid: Schema.Number.pipe(Schema.check(Schema.isInt()), Schema.check(Schema.isGreaterThan(0))),
 });
 export type AgentRelayWorkerIdentity = typeof AgentRelayWorkerIdentity.Type;
@@ -50,6 +52,21 @@ export const AgentRelayWorkerRecord = Schema.Struct({
   mount: AgentSocketBridgeResult,
 });
 export type AgentRelayWorkerRecord = typeof AgentRelayWorkerRecord.Type;
+const LegacyAgentRelayWorkerIdentity = Schema.Struct({
+  ...AgentRelayWorkerIdentity.fields,
+  protocolVersion: Schema.Literal(1),
+  configDigest: Schema.optionalKey(Schema.String),
+});
+export const TerminableAgentRelayWorkerIdentity = Schema.Union([
+  AgentRelayWorkerIdentity,
+  LegacyAgentRelayWorkerIdentity,
+]);
+export type TerminableAgentRelayWorkerIdentity = typeof TerminableAgentRelayWorkerIdentity.Type;
+export const TerminableAgentRelayWorkerRecord = Schema.Union([
+  AgentRelayWorkerRecord,
+  Schema.Struct({ ...AgentRelayWorkerRecord.fields, ...LegacyAgentRelayWorkerIdentity.fields }),
+]);
+export type TerminableAgentRelayWorkerRecord = typeof TerminableAgentRelayWorkerRecord.Type;
 export const AgentRelayWorkerReady = Schema.TaggedStruct("ready", AgentRelayWorkerRecord.fields);
 export type AgentRelayWorkerReady = typeof AgentRelayWorkerReady.Type;
 
@@ -60,7 +77,9 @@ const controlError = () =>
     remediation: "Stop the owning app or inspect its relay worker before replacing this session.",
   });
 
-export const identifyAgentRelayWorker = (record: AgentRelayWorkerRecord): Promise<AgentRelayWorkerIdentity> =>
+export const identifyAgentRelayWorker = (
+  record: TerminableAgentRelayWorkerRecord,
+): Promise<TerminableAgentRelayWorkerIdentity> =>
   new Promise((resolve, reject) => {
     const socket = connect({ host: "127.0.0.1", port: record.controlPort });
     let text = "";
@@ -84,7 +103,9 @@ export const identifyAgentRelayWorker = (record: AgentRelayWorkerRecord): Promis
       const newline = text.indexOf("\n");
       if (newline < 0) return;
       try {
-        resolve(Schema.decodeUnknownSync(AgentRelayWorkerIdentity)(JSON.parse(text.slice(0, newline))));
+        resolve(
+          Schema.decodeUnknownSync(TerminableAgentRelayWorkerIdentity)(JSON.parse(text.slice(0, newline))),
+        );
       } catch (cause) {
         reject(cause instanceof Error ? cause : controlError());
       } finally {

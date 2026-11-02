@@ -62,34 +62,37 @@ test("rejects a missing target below an escaping symlink", async () => {
   if (result._tag === "Failure") expect(result.failure.reason).toBe("path");
 });
 
-test("climbs on injected EACCES and reconstructs the missing target", async () => {
+test("preserves injected EACCES instead of reconstructing an unverified target", async () => {
   // Given a successful root lookup followed by a denied target lookup
   const denied = Object.assign(new Error("denied"), { code: "EACCES" });
   const lookup = spyOn(fs, "realpath").mockResolvedValueOnce(base).mockRejectedValueOnce(denied);
   try {
     // When state path resolution encounters the denial
     const result = await Effect.runPromise(
-      resolveStatePath({ path: AbsolutePath.make(base) }, undefined, "key", "open"),
+      resolveStatePath({ path: AbsolutePath.make(base) }, undefined, "key", "open").pipe(Effect.result),
     );
-    // Then this caller's catch-all climbing policy retains the target suffix
-    expect(result.file).toBe(join(base, "key"));
-    expect(lookup.mock.calls.map(([path]) => path)).toEqual([base, join(base, "key"), base]);
+    // Then the denial fails resolution without climbing past the inaccessible target.
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") expect(result.failure.cause).toBe(denied);
+    expect(lookup.mock.calls.map(([path]) => path)).toEqual([base, join(base, "key")]);
   } finally {
     lookup.mockRestore();
   }
 });
 
-test("retains the original root when no ancestor can resolve", async () => {
+test("refuses an inaccessible root without falling back to its lexical path", async () => {
   // Given a caller whose every filesystem lookup fails
   const denied = Object.assign(new Error("denied"), { code: "EACCES" });
   const lookup = spyOn(fs, "realpath").mockRejectedValue(denied);
   try {
-    // When root and target traversal exhaust all ancestors
+    // When root traversal encounters the denial
     const result = await Effect.runPromise(
-      resolveStatePath({ path: AbsolutePath.make(base) }, undefined, "key", "open"),
+      resolveStatePath({ path: AbsolutePath.make(base) }, undefined, "key", "open").pipe(Effect.result),
     );
-    // Then state-store keeps its original-path fallback
-    expect(result).toEqual({ rootReal: base, file: join(base, "key") });
+    // Then no unverifiable root is accepted and no parent is probed.
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") expect(result.failure.cause).toBe(denied);
+    expect(lookup.mock.calls.map(([path]) => path)).toEqual([base]);
   } finally {
     lookup.mockRestore();
   }

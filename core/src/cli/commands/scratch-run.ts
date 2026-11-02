@@ -1,7 +1,8 @@
 import { Effect, Option, Schema } from "effect";
 
 import {
-  type ConfigError,
+  type AppPlacementError,
+  type DebuggerHostUnavailableError,
   type LandofileVersionConstraintError,
   ScratchAppError,
   type ScratchAppNotFoundError,
@@ -13,6 +14,7 @@ import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type ConfigService,
   type FileSystem,
+  type ProviderError,
   RuntimeProviderRegistry,
   type ScratchAppService,
 } from "@lando/sdk/services";
@@ -66,15 +68,18 @@ export const ScratchRunResultSchema = Schema.Struct({
 });
 
 export type ScratchRunError =
+  | ProviderError
+  | AppPlacementError
   | ScratchSourceUnresolvedError
   | ScratchIsolationConflictError
   | ScratchAppError
   | ScratchAppNotFoundError
   | ScratchRunTargetError
-  | ConfigError
+  | DebuggerHostUnavailableError
   | LandofileVersionConstraintError;
 
 export type ScratchRunServices =
+  | import("@lando/sdk/services").EnvironmentValueResolver
   | ScratchAppService
   | ConfigService
   | FileSystem
@@ -174,6 +179,8 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
               message: `Unable to select a provider for scratch app ${handle.id}.`,
               operation: "run",
               cause,
+              remediation:
+                "Run `lando doctor` and ensure a runtime provider is installed before `lando run`.",
             }),
         ),
       );
@@ -204,6 +211,8 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
               message: `Unable to run ${options.command.join(" ")} in scratch app ${handle.id}.`,
               operation: "run",
               cause,
+              remediation:
+                "Fix the command failure inside the scratch app, then rerun `lando run -- <command>`.",
             }),
         ),
       );
@@ -220,13 +229,10 @@ export const scratchRun = Effect.fn("ScratchRun.run")(function* (
         command: options.command,
         exitCode: result.exitCode,
         kept: options.keep,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
         redactionTokens: redactionTokensFromEnv(env),
       } satisfies ScratchRunResult;
     }),
   );
 });
-
-export const scratchRunSuccessExitCode = (result: ScratchRunResult): number | undefined =>
-  result.exitCode === 0 ? undefined : result.exitCode;

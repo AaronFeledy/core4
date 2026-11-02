@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { SchemaIssue } from "effect";
-import { Result, Schema } from "effect";
+import { JsonSchema, Result, Schema, SchemaRepresentation } from "effect";
 
-import { ServiceConfig } from "@lando/sdk/schema";
+import { ServiceConfig, getJsonSchema } from "@lando/sdk/schema";
+import { importableNode } from "./landofile-parity-json-schema-fixup.ts";
 
 describe("Compose map input contracts", () => {
   test.each([
@@ -119,7 +120,7 @@ const canonicalCases: ReadonlyArray<CanonicalCase> = [
   ["dns_search scalar", { dns_search: "example.test" }, { dns_search: ["example.test"] }],
   ["dns_opt scalar", { dns_opt: "use-vc" }, { dns_opt: ["use-vc"] }],
   ["extra_hosts list form", { extra_hosts: ["db:127.0.0.1"] }, { extra_hosts: { db: "127.0.0.1" } }],
-  ["init string", { init: "true" }, { init: "true" }],
+  ["init string", { init: "true" }, { init: true }],
   ["stop_grace_period duration", { stop_grace_period: "1m30s" }, { stop_grace_period: 90 }],
   ["security_opt scalar", { security_opt: "label=disable" }, { security_opt: ["label=disable"] }],
   ["group_add scalar", { group_add: 1000 }, { group_add: [1000] }],
@@ -171,6 +172,7 @@ const rejectionCases: ReadonlyArray<readonly [key: string, invalid: unknown]> = 
   ["dns_opt", 1],
   ["extra_hosts", ["missing-separator"]],
   ["init", 1],
+  ["init", "sometimes"],
   ["stop_signal", true],
   ["stop_grace_period", "soon"],
   ["security_opt", 1],
@@ -188,6 +190,66 @@ const decodeStrict = (input: unknown) =>
   Schema.decodeUnknownSync(ServiceConfig)(input, { onExcessProperty: "error" });
 
 describe("Compose service runtime knobs", () => {
+  const published = Schema.make<Schema.Codec<unknown>>(
+    SchemaRepresentation.fromJsonSchemaDocument(
+      JsonSchema.fromSchemaDraft2020_12(getJsonSchema("ServiceConfigInput")),
+      { patterns: "apply", onEnter: importableNode },
+    ).ast,
+  );
+  test.each([
+    [true, true],
+    [false, true],
+    ["true", true],
+    ["FALSE", true],
+    ["TrUe", true],
+    ["oFf", true],
+    ["yes", true],
+    ["YeS", true],
+    ["nO", true],
+    ["ON", true],
+    ["1", true],
+    ["0", true],
+    ["sometimes", false],
+    [" true", false],
+    ["false ", false],
+    ["true\n", false],
+    ["", false],
+    [1, false],
+    [0, false],
+    [null, false],
+  ] as const)("published and runtime init acceptance agree for %j", (init, accepted) => {
+    // Given
+    const input = { init };
+    // When
+    const wire = Schema.decodeUnknownResult(published)(input, { onExcessProperty: "error" });
+    const runtime = Schema.decodeUnknownResult(ServiceConfig)(input, { onExcessProperty: "error" });
+    // Then
+    expect(Result.isSuccess(wire)).toBe(accepted);
+    expect(Result.isSuccess(runtime)).toBe(accepted);
+  });
+
+  test.each([
+    [true, true],
+    [false, false],
+    ["true", true],
+    ["false", false],
+    ["on", true],
+    ["off", false],
+    ["1", true],
+    ["0", false],
+    ["yes", true],
+    ["no", false],
+    ["TRUE", true],
+    ["OFF", false],
+  ] as const)("normalizes init %j and round-trips its boolean", (input, expected) => {
+    // Given / When
+    const decoded = decodeStrict({ init: input });
+    const encoded = Schema.encodeSync(ServiceConfig)(decoded);
+    // Then
+    expect(decoded.init).toBe(expected);
+    expect(decodeStrict(encoded).init).toBe(expected);
+  });
+
   test("Given ServiceConfig, when fields are inspected, then every runtime knob uses its verbatim Compose key", () => {
     // Given / When
     const fields = Object.keys(ServiceConfig.fields);

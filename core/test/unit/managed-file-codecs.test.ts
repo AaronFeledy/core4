@@ -130,7 +130,7 @@ describe("managed-file codecs — decode", () => {
   });
 
   test("invalid landofile content fails with reason decode", async () => {
-    const error = await failure(decode("landofile", "name: ${env.X}\n"));
+    const error = await failure(decode("landofile", "name: *missing\n"));
     expect(error.reason).toBe("decode");
   });
 

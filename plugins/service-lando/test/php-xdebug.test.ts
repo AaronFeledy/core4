@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
 
-import { LandofileShape, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import {
+  DEBUGGER_HOST_ALIAS,
+  HOST_GATEWAY_TARGET,
+  LandofileShape,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import type { ServiceType } from "@lando/sdk/services";
 
 import {
@@ -19,7 +26,7 @@ const PHP_XDEBUG_RELEASE = {
   sha256: "f073de91bea046106abf4d6071c963ea71e58571df6ce58948ceca89d121cb2d",
   url: "https://pecl.php.net/get/xdebug-3.5.3.tgz",
 } as const;
-const PHP_XDEBUG_CLIENT_HOST = "host.lando.internal";
+const PHP_XDEBUG_CLIENT_HOST = "debugger.lando.internal";
 const PHP_XDEBUG_PORT = 9003;
 
 const BuildSteps = Schema.Struct({
@@ -89,8 +96,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
-      expect(message).toMatch(pattern);
+      expect(error).toBeInstanceOf(ServiceTypeError);
+      if (!(error instanceof ServiceTypeError)) throw error;
+      expect(error.issues).toEqual([
+        { path: ["xdebug"], message: expect.any(String), suggestion: expect.any(String) },
+      ]);
+      expect([error.issues?.[0]?.message, error.issues?.[0]?.suggestion].join(" ")).toMatch(pattern);
     },
   );
   expect(rejected).toBe(true);
@@ -104,6 +115,10 @@ describe("PHP xdebug option", () => {
     const plan = await composePhpPlan({ xdebug: true, environment: { XDEBUG_CONFIG } });
     // Then
     expect(plan.environment.XDEBUG_CONFIG).toBe(XDEBUG_CONFIG);
+    expect(plan.hostAliases).toContainEqual({
+      hostname: DEBUGGER_HOST_ALIAS,
+      ip: HOST_GATEWAY_TARGET,
+    });
   });
   test("Given no xdebug key, when planning, then it installs nothing and contributes no tooling", async () => {
     const plan = await composePhpPlan();
@@ -114,6 +129,7 @@ describe("PHP xdebug option", () => {
     expect(plan.environment.XDEBUG_MODE).toBeUndefined();
     expect(plan.environment.XDEBUG_CONFIG).toBeUndefined();
     expect(resolution.tooling?.xdebug).toBeUndefined();
+    expect(plan.hostAliases.some((alias) => alias.hostname === DEBUGGER_HOST_ALIAS)).toBe(false);
   });
 
   test("Given xdebug false, when planning, then it installs nothing", async () => {
@@ -151,12 +167,20 @@ describe("PHP xdebug option", () => {
     expect(plan.environment.XDEBUG_CONFIG).toBe(
       `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${PHP_XDEBUG_PORT}`,
     );
+    expect(plan.hostAliases).toContainEqual({
+      hostname: DEBUGGER_HOST_ALIAS,
+      ip: HOST_GATEWAY_TARGET,
+    });
   });
 
   test("Given an explicitly authored XDEBUG_CONFIG, when planning, then it remains untouched", async () => {
     const value = "client_host=debugger.example.test client_port=9003";
     const plan = await composePhpPlan({ xdebug: true, environment: { XDEBUG_CONFIG: value } });
     expect(plan.environment.XDEBUG_CONFIG).toBe(value);
+    expect(plan.hostAliases).toContainEqual({
+      hostname: DEBUGGER_HOST_ALIAS,
+      ip: HOST_GATEWAY_TARGET,
+    });
   });
 
   test("Given an explicit mode string, when planning, then xdebug.mode and buildKey use that mode", async () => {
@@ -188,8 +212,13 @@ describe("PHP xdebug option", () => {
     expect(command).toContain(`"${PHP_XDEBUG_CLIENT_HOST}" "${PHP_XDEBUG_PORT}"`);
     expect(command).toMatch(/off\) write_ini off; reload; status/);
     expect(command).toMatch(/status\) status/);
+    expect(command).toContain("getent hosts");
+    expect(command).toContain('printf "Client: %s:%s');
+    expect(command).toContain("xdebug.client_host=");
+    expect(command).toContain("xdebug.client_port=");
     expect(command).not.toContain("php -m");
-    expect(command).not.toContain("ini_get");
+    expect(command).toContain('ini_get("xdebug.client_host")');
+    expect(command).toContain('ini_get("xdebug.client_port")');
   });
 
   test.each(["apache", "fpm", "cli"] as const)(
@@ -224,6 +253,7 @@ describe("PHP xdebug option", () => {
 
     expect(steps.map(({ id }) => id)).toEqual([
       "lando.boot:scaffold",
+      "service-lando.php:baseline",
       "service-lando.php:prerequisites",
       "service-lando.php:xdebug",
       "service-lando.php:apache-default-site",
@@ -264,6 +294,15 @@ describe("PHP xdebug option", () => {
     expect(plan.environment.XDEBUG_CONFIG).toBe(
       `client_host=${PHP_XDEBUG_CLIENT_HOST} client_port=${PHP_XDEBUG_PORT}`,
     );
+    expect(plan.hostAliases).toContainEqual({
+      hostname: DEBUGGER_HOST_ALIAS,
+      ip: HOST_GATEWAY_TARGET,
+    });
     expect(resolution.tooling?.xdebug).toBeDefined();
+  });
+
+  test("Given xdebug false, when planning, then it does not request the debugger host alias", async () => {
+    const plan = await composePhpPlan({ xdebug: false });
+    expect(plan.hostAliases.some((alias) => alias.hostname === DEBUGGER_HOST_ALIAS)).toBe(false);
   });
 });

@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { serviceContainerName } from "@lando/container-runtime/plan";
-import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
+import { bringDown, bringUp, exec, logs, makePodmanApiClient } from "@lando/provider-lando";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
-import { Clock, Duration, Effect, type Scope } from "effect";
+import { Clock, Duration, Effect, Schema, type Scope, Stream } from "effect";
 
 /**
  * Podman API client handle shared by every lifecycle call for one live app.
@@ -35,12 +35,14 @@ export interface LiveAppLifecycle {
     service: ServiceName,
     command: ReadonlyArray<string>,
   ) => Effect.Effect<ExecResult, unknown>;
+  readonly diagnose?: (plan: AppPlan, api: LiveProviderApi, service: ServiceName) => Effect.Effect<string>;
 }
 
 export interface LiveApp {
   readonly plan: AppPlan;
   readonly api: LiveProviderApi;
   readonly exec: (service: string, command: ReadonlyArray<string>) => Effect.Effect<ExecResult, unknown>;
+  readonly diagnose?: (service: string) => Effect.Effect<string>;
 }
 
 export const defaultLiveAppLifecycle: LiveAppLifecycle = {
@@ -76,6 +78,45 @@ export const defaultLiveAppLifecycle: LiveAppLifecycle = {
     ),
   exec: (plan, api, service, command) =>
     exec(plan, { app: plan.id, service }, { command: [...command] }, { api }),
+  diagnose: Effect.fn("LiveAppLifecycle.diagnose")(function* (plan, api, service) {
+    const observation = yield* Effect.result(
+      Effect.gen(function* () {
+        const request = api.request;
+        if (request === undefined)
+          return yield* Effect.fail(new Error("Container inspect API is unavailable."));
+        const response = yield* request({
+          method: "GET",
+          path: `/containers/${encodeURIComponent(serviceContainerName(plan, service))}/json`,
+        });
+        if (response.status !== 200)
+          return yield* Effect.fail(new Error(`Container inspect returned HTTP ${response.status}.`));
+        const raw: unknown = yield* Effect.try(() => JSON.parse(response.body));
+        const container = yield* Schema.decodeUnknownEffect(
+          Schema.Struct({
+            State: Schema.Struct({
+              Status: Schema.String,
+              ExitCode: Schema.Number,
+              OOMKilled: Schema.Boolean,
+              Error: Schema.String,
+            }),
+          }),
+        )(raw);
+        const state = container.State;
+        return `state=${state.Status} exitCode=${state.ExitCode} OOMKilled=${state.OOMKilled} error=${JSON.stringify(state.Error)}`;
+      }),
+    );
+    const tail = yield* Effect.result(
+      Stream.runCollect(logs(plan, { app: plan.id, service }, { follow: false, tail: 50 }, { api })),
+    );
+    return [
+      observation._tag === "Success"
+        ? observation.success
+        : `Container inspect failed: ${String(observation.failure)}`,
+      tail._tag === "Success"
+        ? tail.success.map((chunk) => chunk.line).join("\n")
+        : `Container logs failed: ${String(tail.failure)}`,
+    ].join("\n");
+  }),
 };
 
 /**
@@ -123,11 +164,17 @@ export const acquireLiveApp = (args: {
   readonly lifecycle?: LiveAppLifecycle;
 }): Effect.Effect<LiveApp, unknown, Scope.Scope> => {
   const lifecycle = args.lifecycle ?? defaultLiveAppLifecycle;
+  const diagnose = lifecycle.diagnose;
   const api = makePodmanApiClient(args.socketPath);
   const app: LiveApp = {
     plan: args.plan,
     api,
     exec: (service, command) => lifecycle.exec(args.plan, api, ServiceName.make(service), command),
+    ...(diagnose === undefined
+      ? {}
+      : {
+          diagnose: (service: string) => diagnose(args.plan, api, ServiceName.make(service)),
+        }),
   };
   return Effect.acquireRelease(
     Effect.as(
@@ -165,9 +212,10 @@ export const execUntil = Effect.fnUntraced(function* (args: {
     }
     yield* Effect.sleep(interval);
   }
+  const diagnostics = args.app.diagnose === undefined ? "" : `\n${yield* args.app.diagnose(args.service)}`;
   return yield* Effect.fail(
     new Error(
-      `Service ${args.service} never satisfied \`${args.command.join(" ")}\` within ${args.timeoutMs}ms. Last observation: ${last}`,
+      `Service ${args.service} never satisfied \`${args.command.join(" ")}\` within ${args.timeoutMs}ms. Last observation: ${last}${diagnostics}`,
     ),
   );
 });

@@ -9,7 +9,7 @@ import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors"
 import type { LandofileShape } from "@lando/sdk/schema";
 
 import { composeServiceDispositions } from "@lando/sdk/landofile";
-import { resolveLandofileIncludes as resolveLandofileIncludesPackage } from "../src/includes.ts";
+import { resolveAuthoredIncludes as resolveLandofileIncludesPackage } from "./include-pipeline.ts";
 import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 const resolveLandofileIncludes = (options: Parameters<typeof resolveLandofileIncludesPackage>[0]) =>

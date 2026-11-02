@@ -15,10 +15,12 @@ describe("db:snapshots output", () => {
       sizeBytes: 1_572_864,
       createdAt: DateTime.makeUnsafe("2026-09-11T10:00:00Z"),
       label: "before-upgrade",
-      metadata: {
-        sourceRoot: AbsolutePath.make("/workspace/sql-app"),
+      owner: {
+        appRoot: AbsolutePath.make("/workspace/sql-app"),
         ownerKey: "owner:sql-app",
         repoGroupKey: "repository:sql-app",
+      },
+      metadata: {
         service: ServiceName.make("database"),
         volumeInstanceId: "volume-instance:database",
         family: "mysql",

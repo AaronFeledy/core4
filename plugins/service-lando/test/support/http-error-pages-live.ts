@@ -16,7 +16,7 @@ import {
 import {
   AbsolutePath,
   AppId,
-  type AppPlan,
+  CurrentExecutableAppPlan,
   LandofileShape,
   ProviderId,
   type ServiceConfig,
@@ -187,7 +187,8 @@ export const startErrorPageStack = async ({
   }
   const [first] = services;
   if (first === undefined) throw new Error(`${server} stack has no services`);
-  const plan: AppPlan = {
+  const plan = CurrentExecutableAppPlan.make({
+    valueModel: 1,
     id: AppId.make(slug),
     name: slug,
     slug,
@@ -195,7 +196,6 @@ export const startErrorPageStack = async ({
     provider: providerId,
     services: Object.fromEntries(services.map((service) => [service.name, service])),
     routes: [],
-    networks: [],
     networking: landoNetworkingPlan({
       slug,
       serviceNames: services.map((service) => service.name),
@@ -205,7 +205,7 @@ export const startErrorPageStack = async ({
     fileSync: [],
     metadata: first.metadata,
     extensions: {},
-  };
+  });
   const api = makePodmanApiClient(socketPath);
   const baseUrl = `http://127.0.0.1:${HOST_PORTS[server]}`;
   const provider = await Effect.runPromise(
@@ -221,7 +221,7 @@ export const startErrorPageStack = async ({
   );
 
   const built: Array<Parameters<typeof provider.removeArtifact>[0]> = [];
-  let activePlan: AppPlan = plan;
+  let activePlan: CurrentExecutableAppPlan = plan;
   const stop = async () => {
     await Effect.runPromise(Effect.result(bringDown(activePlan, { api })));
     for (const artifact of built) {

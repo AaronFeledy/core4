@@ -6,6 +6,7 @@ import type { Context } from "effect";
 export interface GitAcquisitionPort {
   readonly clone: (input: {
     readonly url: string;
+    readonly ref?: string;
     readonly stagingDir: string;
     readonly dest: string;
   }) => Promise<{ readonly commitSha: string }>;
@@ -25,6 +26,7 @@ export interface ResolvedNpmRecipePackage {
 
 export interface NpmRecipeSourcePort {
   readonly resolve: (packageSpec: string) => Promise<ResolvedNpmRecipePackage>;
+  readonly fetchTarball: (resolved: ResolvedNpmRecipePackage) => Promise<Uint8Array>;
 }
 
 export interface TarballAcquisitionPort {
@@ -51,8 +53,12 @@ export interface TemplateEngineInputs {
 }
 
 export interface LandofileRuntimeInputs {
+  /** Read cached include snapshots without acquiring or publishing new sources or lock pins. */
+  readonly readOnly?: boolean;
   readonly transactionGuard?: Context.Service.Shape<typeof ManagedFileTransactionGuard>;
   readonly stateStore?: StateStoreShape;
   readonly ports: LandofileRuntimePorts;
   readonly templates: TemplateEngineInputs;
 }
+
+export type LandofileEvaluationInputs = Pick<LandofileRuntimeInputs, "ports" | "templates">;

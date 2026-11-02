@@ -1,0 +1,9 @@
+name: file-sync-mutagen-demo
+services:
+  app:
+    type: "node:22"
+    primary: true
+    appMount:
+      target: /app
+      excludes:
+        - dist

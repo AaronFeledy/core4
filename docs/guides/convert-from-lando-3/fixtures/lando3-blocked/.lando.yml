@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid lando3 blocked app translation input
 name: blocked-demo
 recipe: lamp
 config:

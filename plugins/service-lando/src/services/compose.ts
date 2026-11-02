@@ -1,30 +1,24 @@
-import { Effect, Predicate, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { splitComposeCommand } from "@lando/sdk/landofile";
-import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
-import { serviceFeatureApply } from "./_feature-helpers.ts";
+import { ServiceConfigIssue, serviceFeatureApply } from "./_feature-helpers.ts";
 
-import { appNameFor } from "../app-name.ts";
-import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
-import {
-  type ClassifiedComposeVolume,
-  canonicalTarget,
-  classifyComposeVolume,
-  occupiedTargets,
-} from "./_volume-helpers.ts";
 
 export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
 export const COMPOSE_FEATURE_PRIORITY = 600;
+export const APP_MOUNT_TARGET = "/app";
 
 const applyCompose = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const hasImage = service.image !== undefined && service.image.length > 0;
   const hasComposeBuild = service.build !== undefined && "context" in service.build;
   if (!hasImage && !hasComposeBuild) {
-    throw new Error(
-      `compose service "${ctx.serviceName}" requires either "image:" or "build:" (Compose build block).`,
+    throw new ServiceConfigIssue(
+      ["type"],
+      "A Compose service requires an image or build artifact.",
+      'Set "image:" or "build:" (Compose build block).',
     );
   }
 
@@ -32,62 +26,15 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     ctx.setArtifact({ kind: "ref", ref: service.image as string });
   }
 
-  const appName = appNameFor(ctx);
-  const composeVolumes = (service.volumes ?? []).map((entry) =>
-    classifyComposeVolume(entry, { appRoot: ctx.appRoot, appName, serviceName: ctx.serviceName }),
-  );
-  const occupied = occupiedTargets(service);
-  const tmpfsEntries: Array<Extract<ClassifiedComposeVolume, { readonly _tag: "tmpfs" }>["tmpfs"]> = [];
-  for (const volume of composeVolumes.filter((entry) => !occupied.has(canonicalTarget(entry.target)))) {
-    switch (volume._tag) {
-      case "mount":
-        ctx.addMount({
-          ...volume.mount,
-          target: PortablePath.make(volume.mount.target),
-        });
-        break;
-      case "storage":
-        ctx.addStorage({
-          ...volume.storage,
-          target: PortablePath.make(volume.storage.target),
-        });
-        break;
-      case "tmpfs":
-        tmpfsEntries.push(volume.tmpfs);
-        break;
-      default: {
-        const exhaustive: never = volume;
-        throw new Error(`Unsupported classified Compose volume: ${exhaustive}`);
-      }
-    }
-  }
-
-  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
-    ctx.addEndpoint(endpoint);
-  }
-  for (const endpoint of internalEndpointsFromExpose(service.expose ?? [], "tcp")) {
-    switch (endpoint.protocol) {
-      case "unix":
-        ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
-        break;
-      case "http":
-      case "https":
-      case "tcp":
-      case "udp":
-        ctx.addEndpoint(endpoint);
-        break;
-      default:
-        endpoint satisfies never;
-    }
-  }
-
   for (const field of ["command", "entrypoint"] as const) {
     const authored = service[field];
     if (authored === undefined) continue;
     const argv = typeof authored === "string" ? splitComposeCommand(authored)?.argv : authored;
     if (argv === undefined) {
-      throw new Error(
-        `Compose ${field} has malformed quoting or escaping; use valid quoting or an argv list.`,
+      throw new ServiceConfigIssue(
+        [field],
+        `Compose ${field} has malformed quoting or escaping.`,
+        "Use valid quoting or an argv list.",
       );
     }
     switch (field) {
@@ -103,13 +50,6 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   }
   applyAuthoredProcessFields(ctx, ["user", "workingDirectory"]);
   for (const [key, value] of Object.entries(service.providers ?? {})) ctx.addExtension(key, value);
-  if (tmpfsEntries.length > 0) {
-    const existing = service.providers?.compose;
-    ctx.addExtension("compose", {
-      ...(Predicate.isObject(existing) ? existing : {}),
-      tmpfs: tmpfsEntries,
-    });
-  }
 };
 
 export const composeServiceFeature: ServiceFeatureDefinition = {
@@ -127,6 +67,6 @@ export const composeServiceType: ServiceType = {
     Effect.succeed({
       base: "l337",
       normalizedConfig: { ...input.service, type: "compose" },
-      features: [{ id: COMPOSE_FEATURE_ID }, { id: "lando.app-mount", config: { target: "/app" } }],
+      features: [{ id: COMPOSE_FEATURE_ID }, { id: "lando.app-mount", config: { target: APP_MOUNT_TARGET } }],
     }),
 };

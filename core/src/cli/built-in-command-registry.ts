@@ -63,22 +63,21 @@ import {
   metaGlobalConfigValidateSpec,
 } from "./command-specs/meta/global/config-verbs";
 import { metaGlobalDestroySpec } from "./command-specs/meta/global/destroy";
+import { metaGlobalDisableSpec } from "./command-specs/meta/global/disable";
+import { metaGlobalEnableSpec } from "./command-specs/meta/global/enable";
 import { metaGlobalInfoSpec } from "./command-specs/meta/global/info";
-import { metaGlobalInstallSpec } from "./command-specs/meta/global/install";
 import { metaGlobalListSpec } from "./command-specs/meta/global/list";
 import { globalLogsSpec } from "./command-specs/meta/global/logs";
 import { metaGlobalRebuildSpec } from "./command-specs/meta/global/rebuild";
+import { metaGlobalReconcileSpec } from "./command-specs/meta/global/reconcile";
 import { metaGlobalRestartSpec } from "./command-specs/meta/global/restart";
 import { metaGlobalStartSpec } from "./command-specs/meta/global/start";
 import { metaGlobalStatusSpec } from "./command-specs/meta/global/status";
 import { metaGlobalStopSpec } from "./command-specs/meta/global/stop";
-import { metaGlobalUninstallSpec } from "./command-specs/meta/global/uninstall";
 import { metaMcpSpec } from "./command-specs/meta/mcp";
 import { pluginAddSpec } from "./command-specs/meta/plugin/add";
 import { pluginBuildSpec } from "./command-specs/meta/plugin/build";
 import { pluginLinkSpec } from "./command-specs/meta/plugin/link";
-import { pluginLoginSpec } from "./command-specs/meta/plugin/login";
-import { pluginLogoutSpec } from "./command-specs/meta/plugin/logout";
 import { pluginNewSpec } from "./command-specs/meta/plugin/new";
 import { pluginPublishSpec } from "./command-specs/meta/plugin/publish";
 import { pluginRemoveSpec } from "./command-specs/meta/plugin/remove";
@@ -210,7 +209,8 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       metaGlobalConfigValidateSpec,
       metaGlobalDestroySpec,
       metaGlobalInfoSpec,
-      metaGlobalInstallSpec,
+      metaGlobalEnableSpec,
+      metaGlobalReconcileSpec,
       metaGlobalListSpec,
       globalLogsSpec,
       metaGlobalRebuildSpec,
@@ -218,13 +218,11 @@ export const builtInCommandCatalog: Readonly<Record<string, BuiltInCommandEntry>
       metaGlobalStartSpec,
       metaGlobalStatusSpec,
       metaGlobalStopSpec,
-      metaGlobalUninstallSpec,
+      metaGlobalDisableSpec,
       metaMcpSpec,
       pluginAddSpec,
       pluginBuildSpec,
       pluginLinkSpec,
-      pluginLoginSpec,
-      pluginLogoutSpec,
       pluginNewSpec,
       pluginPublishSpec,
       pluginRemoveSpec,
@@ -273,16 +271,24 @@ export const isBuiltInCommandImplemented = (commandId: string): boolean =>
 export const resolveBuiltInCommand = (token: string | undefined): BuiltInCommandEntry | undefined =>
   token === undefined ? undefined : builtInCommandIndex.byToken.get(token);
 
-export const suggestBuiltInCommandForSuffix = (token: string): string | undefined => {
-  let match: BuiltInCommandEntry | undefined;
-  for (const entry of builtInCommandEntries) {
-    const id = entry.spec.id;
+export const suggestCommandForSuffix = (
+  token: string,
+  pluginCommandIds: ReadonlyArray<string> = [],
+): string | undefined => {
+  const matchesSuffix = (id: string): boolean => {
     const separator = id.indexOf(":");
-    if (separator < 0 || id.slice(separator + 1) !== token) continue;
-    if (match !== undefined) return undefined;
-    match = entry;
+    return separator >= 0 && id.slice(separator + 1) === token;
+  };
+  const matches = new Set<string>();
+  for (const entry of builtInCommandEntries) {
+    if (matchesSuffix(entry.spec.id)) matches.add(entry.spec.id);
   }
-  return match?.status.kind === "deferred" ? undefined : match?.spec.id;
+  for (const id of pluginCommandIds) {
+    if (matchesSuffix(id)) matches.add(id);
+  }
+  if (matches.size !== 1) return undefined;
+  const [match] = matches;
+  return match === undefined || deferredBuiltInCommandIds.includes(match) ? undefined : match;
 };
 
 export const isReservedNamespaceHead = (head: string | undefined): boolean =>

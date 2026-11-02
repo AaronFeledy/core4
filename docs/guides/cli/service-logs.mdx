@@ -9,13 +9,20 @@ defaultLayer: scenario
 
 # Read service logs
 
+Read a service’s console output and declared log files from your app directory on the host. Replace `appserver` with the service you want to inspect:
+
 ```sh
 lando logs --service appserver
 ```
 
-That prints a snapshot for the service, merging console output with any declared file sources. File-source lines carry their source id (`appserver stderr [myapp-error]: line`). Console lines omit a source label (`appserver stdout: line`).
+That prints a snapshot for the service, reading its native console once and
+merging any followed files. File-source lines carry their source id; unfiltered
+console lines omit it. A catalog alias does not add another copy of console
+output to this default view.
 
-Declare extra in-container log files on the service that owns them:
+Every line prints whole, however the container writes it. A service that writes a line in pieces, the way SQL Server does, still gets one line stamped with the time its first piece arrived. A last line with no trailing newline prints when the output ends. While following, a partial line waits for its newline. Lines longer than 64 KiB are cut there and end in `…[truncated]`. A known secret that straddles the cut is still masked.
+
+To include an in-container log file, add `logs:` to the service that owns it in your Landofile. This fragment uses a service named `myapp`:
 
 ```yaml
 services:
@@ -26,9 +33,11 @@ services:
         label: myapp error log
 ```
 
-A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and timestamp behavior. The implicit container stdout/stderr source is always available. Use `--source console` to select that combined stream.
+A user-declared source needs a `path`. You can also set `id`, `label`, `stream`, and `timestamps`. Set `timestamps: true` only when the file's lines carry parseable leading timestamps so `--since` can filter them. It defaults to false; Lando does not add timestamps to the file. The implicit container stdout/stderr source is always available. Use `--source console` to select that combined stream. `lando app:config:lint` accepts a declared source as written, and reports a duplicate `id` at the second `services.<name>.logs` entry that uses it.
 
 Lando-built images can redirect daemon log files through stdout/stderr. Bring-your-own images and logs that cannot redirect are followed by the active runtime provider. You do not run `tail -F` yourself.
+
+Following works the same in Debian, Alpine, and distroless images. The image needs no shell, no `tail`, and no particular libc. Lando copies a small static reader into the container's `/tmp` once per followed source and removes it when `lando logs` exits, so that directory must be writable and allow running programs.
 
 ## Filter and follow
 
@@ -44,7 +53,7 @@ lando logs --service appserver --source myapp-error
 lando logs --service appserver --source myapp-error --follow
 ```
 
-`--tail` applies per source, not as one total across merged sources:
+`--tail` applies to each collected source, not as one total across merged sources:
 
 ```sh
 lando logs --service appserver --tail 50
@@ -56,43 +65,99 @@ lando logs --service appserver --tail 50
 lando logs --service appserver --since 15m
 ```
 
+## Select a PHP console alias
+
+For a stock PHP service with Lando-generated startup, select `access` or `error`:
+
+```sh
+lando logs --service appserver --source access --tail 50
+lando logs --service appserver --source error --follow
+```
+
+Apache's `access` alias selects stdout; `error` selects stderr. PHP-FPM's
+`access` and `error` aliases both select stderr, so either shows the same
+shared pipe. Other writers on that pipe can appear too. These are not
+file-specific or producer-isolated views. The selected source id labels the
+returned lines; the native pipe is selected before applying `--tail` and `--since`.
+
+Run `lando info --format=json` to inspect the service's `logSources`. These
+catalog entries have `strategy: console` and a `stream`, not a file path.
+Human info shows `console/stdout` or `console/stderr`. This is catalog metadata,
+not new Landofile syntax: an authored `logs:` entry still requires `path`.
+An explicit file source with `id: access` or `id: error` replaces the matching
+catalog alias. Use a different id to keep both.
+
+Custom PHP images, replacement context builds, CLI mode, and authored
+`command:`/`entrypoint:` values do not get PHP's implicit aliases. They keep
+native stdout/stderr and any explicit file sources. For both native streams,
+without followed files, run:
+
+```sh
+lando logs --service appserver --source console
+```
+
 ## When a source is missing
 
-A provider that cannot stream service logs fails before planning with a tagged capability error and a fix. Follow sources from container files need the `serviceLogSources` capability. Redirect sources still work without it because they flow through the console stream.
+A provider that cannot stream service logs fails before planning with a tagged capability error and a fix. Follow sources from container files need the `serviceLogSources` capability. Console aliases and redirect sources still work without it because they select native console pipes; they need no file reader.
 
-Selecting a redirected source selects that console stream. Other stdout and stderr from the same container can appear with it because the runtime cannot separate the original file after redirection. Use a `follow` source when you need file-specific output and the provider supports it.
+Selecting a redirected source selects its declared stdout or stderr pipe,
+not both streams. Other writers on that same pipe can appear because the
+runtime cannot separate the original file after redirection. Declare a file
+source when you need file-specific output and the provider supports following it.
 
 A required follow source fails up front when the provider cannot follow service files. A non-required unavailable follow source is marked unavailable and skipped. An undeclared `--source` fails and lists the known source ids, including `console`.
 
+When selecting a source across services, Lando skips services without that id;
+it does not substitute their console output.
+
 Without `--follow`, a file source emits a bounded snapshot and reaches EOF. Followers survive common log rotation (rename+create and copytruncate) and keep per-source order. Interrupting `lando logs` releases every follower. Lines are redacted once before they reach the CLI.
+
+For scripts, `lando logs --format=json` emits a buffered frame stream. Its
+terminal `result` frame carries the app name at `envelope.result.app` and the
+collected lines at `envelope.result.lines`. Each line carries `service`, `stream`,
+and `line`, plus `source` and a timestamp in epoch milliseconds when available.
+With `--follow --format=json`, lines arrive as stream frames instead; the final
+result contains `app` but omits `lines` rather than returning an empty array.
 
 ## Read a start-failure log tail
 
-When the provider cannot apply a service, Lando tries to capture its console logs before rollback removes newly created containers. Captured output appears in the failure report, including in non-interactive runs. The snapshot keeps the last 50 lines within 4,000 characters; an oversized line keeps its end.
+When the provider cannot apply a service, Lando tries to capture its console logs for the failure report, including in non-interactive runs. Containers stay in place so you can inspect any available logs afterward with `lando logs -s <service>`. A container that was created but never started may have no logs. The snapshot keeps the last 50 whole lines within 4,000 characters; an oversized line keeps its end.
 
-After apply succeeds, `lando start`, `lando restart`, and `lando rebuild` wait for services to stay running and pass their enabled healthchecks. Longer waits show per-service readiness progress. Selected-service operations follow the same rule. An unsupervised exited service or exhausted check fails non-zero with `ServiceNotReadyError`, naming the service and reason, with the stopped container's exit code and log tail when available. Running containers do not report an exit code. Lando retains the applied app, routes, and volumes so you can inspect the failure:
+After apply succeeds, `lando start`, `lando restart`, and `lando rebuild` wait for services to stay running and pass effective readiness: authored `readiness`, otherwise a contributed type check, otherwise native `healthcheck`. Explicit `readiness: false` blocks fallback but keeps process supervision. Longer waits show per-service readiness progress. Selected-service operations follow the same rule. An unsupervised exited service or exhausted check fails non-zero with `ServiceNotReadyError`, naming the service and reason, with the stopped container's exit code and log tail when available. Running containers do not report an exit code. A failed start at any phase leaves the app, routes, and volumes in place so you can inspect the failure; the next `lando start` picks up where it stopped:
 
 ```sh
 lando logs -s appserver --tail 50
 lando info
 ```
 
-Fix the service and run `lando start` again. For a healthcheck failure, correct the command or relax the timing in `healthcheck:`; set `healthcheck: { disable: true }` only when you want running-state checks without a health probe. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
+When a readiness check or healthy dependency gate fails on a TCP port, the error also reports which ports the service is actually listening on, and a dependency failure names the dependency's logs command. See [Inspect a failed start](../services/wait-for-your-app.mdx#inspect-a-failed-start) for what each finding means.
 
-With authored `restart: always` or `unless-stopped`, an exit or observed restart delegates recovery to the container engine. `on-failure` does that only for a non-zero exit; exit 0 remains a readiness failure. Start warns with the reason, available exit code, a short redacted log tail, and app-specific logs remediation, then reports `restarting`. Exhausted healthchecks still fail, and completion jobs must exit 0 regardless of restart policy. Pressing Ctrl-C during user-app readiness leaves the applied app running while the command exits as interrupted.
+Fix the service and run `lando start` again. For a readiness failure, correct its command or timing; set `readiness: false` only when you want process supervision without a lifecycle command gate. Native `healthcheck: false` does not disable authored or contributed readiness. A `service_healthy` dependency still requires enabled command readiness. Post-start steps run only after readiness succeeds. URL-scan warnings do not fail start.
+
+With authored `restart: always` or `unless-stopped`, an exit or observed restart delegates recovery to the container engine. `on-failure` does that only for a non-zero exit; exit 0 remains a readiness failure. Start warns with the reason, available exit code, a short redacted log tail, and app-specific logs remediation, then reports `restarting`. Exhausted readiness still fails, and completion jobs must exit 0 regardless of restart policy. Pressing Ctrl-C during user-app readiness leaves the applied app running while the command exits as interrupted.
 
 An inspection failure uses reason `inspect-failed`, not a stopped-container verdict. Run `lando doctor` to diagnose the provider. For global services, use `lando global:logs -s <service>` and retry `lando global:start`. Scratch acquisition also waits for readiness, but failure or interruption cleans up unless `--keep-on-failure` was passed. Inspect a retained scratch by its id, not with user-app `lando start`.
 
-A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`). Gate metadata reports the last healthcheck or completion exit code and whether the healthcheck timed out.
+A blocked dependency gate captures the dependency that failed the gate, not the service that was waiting on it, and its remediation names that dependency's logs command. `--format=json` puts the same snapshot on `error.logTail` (`service`, `lines`, `truncated`, and optional `exitCode` / `timedOut`). Gate metadata reports the last healthcheck or completion exit code and whether the healthcheck timed out.
 
 Known secrets and credential patterns are redacted before truncation. Unregistered secrets, such as passwords generated inside a container, can still appear. Empty logs, capture failures, and the four-second capture timeout omit the tail without replacing the original start error. Starts interrupted before capture skip it.
 
 <Guide>
+  <Scenario id="declared-source" render>
+    <Step name="check-declared-source">
+      <UseFixture name="declared-source" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"logs\":\\s*\\[\\{[^}]*\"path\":\\s*\"/tmp/app.log\"[^}]*\"id\":\\s*\"applog\"[^}]*\"timestamps\":\\s*true" } }} />
+      <Verify command="lando app:config:lint --format=json" expect={{ stdout: { regex: "\"valid\":\\s*true" } }} />
+    </Step>
+  </Scenario>
+
   <Scenario id="documented-flags" tags={["scenario", "read-only"]} render={false} reason="Verify the documented logs flags without a running container">
     <Step name="check-flags">
       <Run command="lando logs --help" />
       <Verify command="lando logs --help" expect={{ stdout: { regex: "--service" } }} />
       <Verify command="lando logs --help" expect={{ stdout: { regex: "--source" } }} />
+      <Verify command="lando logs --help" expect={{ stdout: { regex: "aliases on the same pipe share" } }} />
     </Step>
   </Scenario>
 </Guide>

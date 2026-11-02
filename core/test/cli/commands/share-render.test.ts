@@ -30,6 +30,7 @@ const session = (over: Partial<TunnelSession> = {}): TunnelSession => ({
 });
 
 const ctx = (over: Partial<RenderContext> = {}): RenderContext => ({
+  noColor: false,
   mode: "lando",
   format: "text",
   columns: 80,
@@ -105,7 +106,7 @@ describe("renderShareResult", () => {
   ]) {
     test(`suppresses automatic QR for ${url} with a custom domain`, () => {
       // Given
-      const context = ctx({ proxyDefaultDomain: "Dev.Example.Test." });
+      const context = ctx({ proxyDefaultDomain: "Dev.Example.Test" });
       // When
       const output = renderShareResult(session({ publicUrl: url }), "text", context);
       // Then
@@ -126,7 +127,7 @@ describe("renderShareResult", () => {
     // Given
     const url = "https://web.dev.example.test";
     const runtime = makeTestRuntime({
-      config: Schema.decodeUnknownSync(GlobalConfig)({ proxy: { defaultDomain: "  Dev.Example.Test...  " } }),
+      config: Schema.decodeUnknownSync(GlobalConfig)({ proxy: { defaultDomain: "Dev.Example.Test" } }),
     });
     const io = createBufferedRendererIO({ isTTY: true });
     // When

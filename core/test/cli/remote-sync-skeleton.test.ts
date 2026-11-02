@@ -18,9 +18,10 @@ import {
 } from "@lando/core/services";
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
 import { SnapshotNotFoundError } from "@lando/sdk/errors";
-import { type SyncResult, SyncResult as SyncResultSchema } from "@lando/sdk/schema";
+import { type SyncResult, SyncResult as SyncResultSchema, appIdentityKey } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
 import { pushSpec } from "../../src/cli/command-specs/app/push.ts";
+import { currentTestPlan, literalLandofile } from "../_support/value-contracts.ts";
 
 type RemoteConfigInput = { readonly source: string } & Readonly<Record<string, unknown>>;
 
@@ -263,7 +264,7 @@ describe("remote sync command skeleton", () => {
         snapshot: (store) =>
           Effect.sync(() => {
             snapshots.push(store.store);
-            return { id: "cli-remote-snapshot", store };
+            return { id: "cli-remote-snapshot", store, ownerKey: appIdentityKey("owner", dir) };
           }),
         restore: () => Effect.void,
         listSnapshots: () => Effect.succeed([]),
@@ -287,7 +288,7 @@ describe("remote sync command skeleton", () => {
           confirms += 1;
           return true;
         });
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
 
       const pullProgram = operations
         .appPull(
@@ -309,6 +310,9 @@ describe("remote sync command skeleton", () => {
               Layer.succeed(
                 RuntimeProviderRegistry,
                 RuntimeProviderRegistry.of({
+                  resolveAppliedPlan: () => Effect.succeed(undefined),
+                  resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                  appliedPlansFor: () => Effect.succeed([]),
                   list: Effect.succeed([]),
                   capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                   select: () => Effect.die("target supplies the plan"),
@@ -339,7 +343,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       let confirms = 0;
       const interaction: InteractionServiceShape = InteractionService.of({
         id: "remote-cli-interaction",
@@ -372,13 +376,18 @@ describe("remote sync command skeleton", () => {
                   Layer.succeed(
                     LandofileService,
                     LandofileService.of({
-                      discover: Effect.succeed({ name: "remote-skeleton", services: {} }),
+                      discover: Effect.succeed(
+                        literalLandofile({ name: "remote-skeleton", services: {} }, dir),
+                      ),
                     }),
                   ),
                   Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plan) })),
                   Layer.succeed(
                     RuntimeProviderRegistry,
                     RuntimeProviderRegistry.of({
+                      resolveAppliedPlan: () => Effect.succeed(undefined),
+                      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                      appliedPlansFor: () => Effect.succeed([]),
                       list: Effect.succeed([]),
                       capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                       select: () => Effect.die("provider selection is not used"),
@@ -402,7 +411,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "default-env", config: { source: "default-env" } }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const target = {
         plan,
         root: AbsolutePath.make(dir),
@@ -446,6 +455,9 @@ describe("remote sync command skeleton", () => {
                 Layer.succeed(
                   RuntimeProviderRegistry,
                   RuntimeProviderRegistry.of({
+                    resolveAppliedPlan: () => Effect.succeed(undefined),
+                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                    appliedPlansFor: () => Effect.succeed([]),
                     list: Effect.succeed([]),
                     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                     select: () => Effect.die("target supplies the plan"),
@@ -486,7 +498,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const target = {
         plan,
         root: AbsolutePath.make(dir),
@@ -502,6 +514,9 @@ describe("remote sync command skeleton", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([]),
             capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
             select: () => Effect.die("target supplies the plan"),
@@ -541,7 +556,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const target = {
         plan,
         root: AbsolutePath.make(dir),
@@ -558,6 +573,9 @@ describe("remote sync command skeleton", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([]),
             capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
             select: () => Effect.die("target supplies the plan"),
@@ -593,7 +611,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "multi", config: { source: "multi" } }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const target = {
         plan,
         root: AbsolutePath.make(dir),
@@ -626,6 +644,9 @@ describe("remote sync command skeleton", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([]),
             capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
             select: () => Effect.die("target supplies the plan"),
@@ -667,7 +688,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
 
       const exit = await Effect.runPromiseExit(
         operations
@@ -693,6 +714,9 @@ describe("remote sync command skeleton", () => {
                 Layer.succeed(
                   RuntimeProviderRegistry,
                   RuntimeProviderRegistry.of({
+                    resolveAppliedPlan: () => Effect.succeed(undefined),
+                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                    appliedPlansFor: () => Effect.succeed([]),
                     list: Effect.succeed([]),
                     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                     select: () => Effect.die("target supplies the plan"),
@@ -742,7 +766,7 @@ describe("remote sync command skeleton", () => {
       await Effect.runPromise(
         operations.appRemoteAdd({ cwd: dir, name: "no-push", config: { source: "test-no-push" } }),
       );
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const baseLayer = Layer.mergeAll(
         Layer.succeed(Dataset, Dataset.of(TestDataset.dataset)),
         Layer.succeed(
@@ -753,6 +777,9 @@ describe("remote sync command skeleton", () => {
         Layer.succeed(
           RuntimeProviderRegistry,
           RuntimeProviderRegistry.of({
+            resolveAppliedPlan: () => Effect.succeed(undefined),
+            resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+            appliedPlansFor: () => Effect.succeed([]),
             list: Effect.succeed([]),
             capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
             select: () => Effect.die("target supplies the plan"),
@@ -845,7 +872,11 @@ describe("remote sync command skeleton", () => {
         snapshot: () =>
           Effect.sync(() => {
             snapshotCalls += 1;
-            return { id: "unexpected", store: { app: TestDataset.context.plan.id, store: "database" } };
+            return {
+              id: "unexpected",
+              store: { app: TestDataset.context.plan.id, store: "database" },
+              ownerKey: appIdentityKey("owner", dir),
+            };
           }),
         restore: () => Effect.void,
         listSnapshots: () => Effect.succeed([]),
@@ -863,7 +894,7 @@ describe("remote sync command skeleton", () => {
         findOrphanedSnapshots: Effect.succeed([]),
         removeOrphanedSnapshot: () => Effect.void,
       });
-      const plan = TestDataset.context.plan;
+      const plan = currentTestPlan(TestDataset.context.plan);
       const result = (await Effect.runPromise(
         operations
           .appPull(
@@ -891,6 +922,9 @@ describe("remote sync command skeleton", () => {
                 Layer.succeed(
                   RuntimeProviderRegistry,
                   RuntimeProviderRegistry.of({
+                    resolveAppliedPlan: () => Effect.succeed(undefined),
+                    resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+                    appliedPlansFor: () => Effect.succeed([]),
                     list: Effect.succeed([]),
                     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                     select: () => Effect.die("target supplies the plan"),

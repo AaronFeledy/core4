@@ -4,13 +4,16 @@ import { Effect } from "effect";
 
 import { dashboardConfigFile, dynamicConfigDir } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
+import { quoteRuleArgument } from "./routing.ts";
 import { normalizeDefaultDomain } from "./tls.ts";
 
 // Router-owned hostnames cannot be captured by an app route.
 export const TRAEFIK_DASHBOARD_PRIORITY = ROUTE_PRIORITY_MAX + 1;
 
 export const renderTraefikDashboardConfig = (defaultDomain: string): string => {
-  const rule = quoteYamlScalar(`Host(\`traefik.${normalizeDefaultDomain(defaultDomain)}\`)`);
+  const rule = quoteYamlScalar(
+    `Host(${quoteRuleArgument(`traefik.${normalizeDefaultDomain(defaultDomain)}`)})`,
+  );
   return [
     "http:",
     "  routers:",

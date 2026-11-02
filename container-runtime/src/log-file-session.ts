@@ -1,6 +1,7 @@
 import { Effect, Stream } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import type { Redactor } from "@lando/sdk/secrets";
 import type { ProviderError } from "@lando/sdk/services";
 
 import { AsyncQueue } from "./async-queue.ts";
@@ -23,12 +24,22 @@ const stdinLines = (queue: AsyncQueue<Uint8Array>): AsyncIterable<Uint8Array> =>
   },
 });
 
+export interface HelperSessionOptions {
+  readonly redactor: Redactor;
+  /**
+   * When the exec stream ends before a response line arrives, produce a richer
+   * ProviderUnavailableError (e.g. after inspecting exec ExitCode).
+   */
+  readonly onEndedBeforeResponse?: () => Effect.Effect<ProviderError, never>;
+}
+
 export class HelperSession {
   private readonly input = new AsyncQueue<Uint8Array>();
   private readonly responses = new AsyncQueue<ResponseItem>();
   private readonly controller = new AbortController();
   private readonly decoder = new TextDecoder();
   private readonly decodeOutput: ReturnType<typeof makeHelperExecOutputDecoder>;
+  private readonly onEndedBeforeResponse: HelperSessionOptions["onEndedBeforeResponse"];
   private buffered = "";
   private closed = false;
   private closePromise: Promise<void> | undefined;
@@ -39,8 +50,10 @@ export class HelperSession {
       stdin: AsyncIterable<Uint8Array>,
       signal: AbortSignal,
     ) => Stream.Stream<Uint8Array, ProviderError>,
+    options: HelperSessionOptions,
   ) {
-    this.decodeOutput = makeHelperExecOutputDecoder(providerId);
+    this.decodeOutput = makeHelperExecOutputDecoder(providerId, options.redactor);
+    this.onEndedBeforeResponse = options.onEndedBeforeResponse;
     void Effect.runPromiseExit(
       start(this.stdin, this.signal).pipe(
         Stream.runForEach((chunk) => Effect.sync(() => this.feedOutput(chunk))),
@@ -101,6 +114,10 @@ export class HelperSession {
 
   private async next(): Promise<ResponseItem> {
     for await (const item of this.responses) return item;
+    if (this.onEndedBeforeResponse !== undefined) {
+      const error = await Effect.runPromise(this.onEndedBeforeResponse());
+      return { kind: "error", error };
+    }
     return {
       kind: "error",
       error: unavailable(this.providerId, "Log helper exec session ended before responding."),

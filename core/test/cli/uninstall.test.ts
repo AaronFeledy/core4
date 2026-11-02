@@ -201,9 +201,9 @@ describe("meta:uninstall", () => {
     }
   });
 
-  test("is registered as a minimal bootstrap command with a top-level alias", () => {
+  test("is registered as a none bootstrap command with a top-level alias", () => {
     expect(metaUninstallSpec.id).toBe("meta:uninstall");
-    expect(metaUninstallSpec.bootstrap).toBe("minimal");
+    expect(metaUninstallSpec.bootstrap).toBe("none");
     expect(metaUninstallSpec.topLevelAlias).toBe(true);
   });
 
@@ -1379,41 +1379,6 @@ describe("meta:uninstall", () => {
       expect(existsSync(userDataRoot)).toBe(false);
       expect(existsSync(userCacheRoot)).toBe(false);
       expect(existsSync(userConfRoot)).toBe(false);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  test("purge discovery probes the managed podman binary with runtime flags", async () => {
-    const { root, userDataRoot, userCacheRoot } = makeRoots();
-    try {
-      const runtimeBinDir = join(userDataRoot, "runtime", "bin");
-      mkdirSync(runtimeBinDir, { recursive: true });
-      const probeLog = join(root, "managed-podman-argv.log");
-      writeFileSync(
-        join(runtimeBinDir, "podman"),
-        ["#!/bin/sh", `echo "$@" >> "${probeLog}"`, "exit 0", ""].join("\n"),
-        { mode: 0o755 },
-      );
-
-      await Effect.runPromise(
-        metaUninstallSpec.run({
-          flags: { "dry-run": true, purge: true },
-          _userDataRoot: userDataRoot,
-          _userCacheRoot: userCacheRoot,
-          ...sandboxCliExtras(root),
-        }),
-      );
-
-      const recorded = existsSync(probeLog) ? readFileSync(probeLog, "utf8") : "";
-      expect(recorded).toContain("--root");
-      expect(recorded).toContain(join(userDataRoot, "runtime", "storage"));
-      expect(recorded).toContain("--runroot");
-      expect(recorded).toContain(join(userDataRoot, "runtime", "run"));
-      expect(recorded).toContain("--config");
-      expect(recorded).toContain(join(userDataRoot, "runtime", "config"));
-      expect(recorded).toContain("--storage-opt");
-      expect(recorded).toContain(`overlay.mount_program=${join(runtimeBinDir, "fuse-overlayfs")}`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

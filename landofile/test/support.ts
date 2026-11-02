@@ -2,7 +2,14 @@ import { cp, rename, rm, stat } from "node:fs/promises";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { makeStateStore } from "@lando/state-store/service";
 
+import { Effect } from "effect";
 import type { LandofileRuntimePorts } from "../src/ports.ts";
+import { loadLandofileFile, loadLandofileLayers } from "../src/service.ts";
+
+export const loadTestLandofileLayers = (...args: Parameters<typeof loadLandofileLayers>) =>
+  loadLandofileLayers(...args).pipe(Effect.map((compiled) => compiled.document));
+export const loadTestLandofileFile = (...args: Parameters<typeof loadLandofileFile>) =>
+  loadLandofileFile(...args).pipe(Effect.map((compiled) => compiled.document));
 
 const exists = async (path: string): Promise<boolean> =>
   stat(path)
@@ -57,6 +64,9 @@ export const makeTestLandofilePorts = (
   resolveUserCacheRoot: () => cacheRoot,
   resolveUserIncludesDir: () => userIncludesDir,
   npmRecipeSource: {
+    fetchTarball: async () => {
+      throw new Error("Unexpected npm tarball port call in test");
+    },
     resolve: async () => {
       throw new Error("Unexpected npm recipe source port call in test");
     },

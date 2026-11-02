@@ -11,6 +11,7 @@ import {
   ComposeDnsOptField,
   ComposeDnsSearchField,
   ComposeGroupAddField,
+  ComposeInitField,
   ComposePullPolicyField,
   ComposeRestartField,
   ComposeSecurityOptField,
@@ -23,6 +24,23 @@ const describeEncodedField = <A, I>(schema: Schema.Codec<A, I, never, never>, de
   Schema.toEncoded(schema).annotate({ description }).pipe(Schema.decodeTo(schema)).annotate({
     description,
   });
+
+/** Compose service `tmpfs:`; a mount spelling normalized into the service mount list, not a runtime knob. */
+export const ComposeTmpfsServiceField = Schema.optionalKey(
+  describeEncodedField(
+    ComposeTmpfsField,
+    "Temporary filesystem mounts as a single Compose mount string or string list; normalized into tmpfs entries in the service mount list.",
+  ),
+).annotate({
+  description: "Temporary filesystem mounts normalized into tmpfs entries in the service mount list.",
+});
+
+export const ComposeInitServiceField = Schema.optionalKey(
+  describeEncodedField(
+    ComposeInitField,
+    "Native container init for direct-child signal forwarding and orphan reaping; boolean spellings normalize to booleans.",
+  ),
+).annotate({ description: "Whether to use native container init; false explicitly opts out." });
 
 export const ComposeServiceKnobFields = {
   restart: Schema.optionalKey(ComposeRestartField).annotate({
@@ -71,14 +89,6 @@ export const ComposeServiceKnobFields = {
   ).annotate({
     description: "Container kernel parameters as a map or KEY=value list, canonicalized to a map.",
   }),
-  tmpfs: Schema.optionalKey(
-    describeEncodedField(
-      ComposeTmpfsField,
-      "Temporary filesystem mounts as a single Compose mount string or string list; canonicalized to a string list.",
-    ),
-  ).annotate({
-    description: "Temporary filesystem mounts; a scalar mount specification canonicalizes to a list.",
-  }),
   shm_size: Schema.optionalKey(
     describeEncodedField(
       ComposeShmSizeField,
@@ -119,9 +129,6 @@ export const ComposeServiceKnobFields = {
     ),
   ).annotate({
     description: "Additional hostname mappings as a map or HOST:IP list, canonicalized to a map.",
-  }),
-  init: Schema.optionalKey(ComposeBooleanOrStringField).annotate({
-    description: "Whether an init process forwards signals and reaps child processes in the container.",
   }),
   stop_signal: Schema.optionalKey(Schema.String).annotate({
     description: "Signal used to request graceful container shutdown, such as SIGTERM.",

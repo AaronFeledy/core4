@@ -3,9 +3,15 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AppId } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Schema, Stream } from "effect";
 import { makeProviderDataPlane } from "../src/data-plane.ts";
 import { VOLUME_WITNESS_FILE } from "../src/volume-witness-helper.ts";
+
+const passthroughRedactor = {
+  redactString: (value: string) => value,
+  redactValue: (value: unknown) => value,
+} satisfies Redactor;
 
 test("native restore preserves target witness and excludes source witness", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-witness-restore-"));
@@ -23,7 +29,7 @@ test("native restore preserves target witness and excludes source witness", asyn
     const plane = makeProviderDataPlane({
       providerId: "fixture",
       capabilities: { volumeSnapshot: "native" },
-      redactDetails: (value) => value,
+      redactor: passthroughRedactor,
       api: {
         request: (input) => {
           if (input.path === "/volumes/actual") {

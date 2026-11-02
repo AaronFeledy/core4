@@ -11,17 +11,18 @@ import {
   readFreshAppCommandCacheForCwd,
   writeAppCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
-import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache/command-index.ts";
+import { decodeAppCommandIndex } from "../../src/cache/command-index.ts";
 import { appPlanCachePath, appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
-test.each([17, 18, 19])("rejects matching revision-%i persisted plans", async (revision) => {
+test.each([17, 18, 19, 28, 29, 30])("rejects matching revision-%i persisted plans", async (revision) => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-canonical-plan-"));
   try {
     const appRoot = "/workspace/canonical-app";
     const appName = "canonical-app";
     const key = "matching-key";
     const plan: AppPlan = {
+      valueModel: 1,
       id: AppId.make(appName),
       name: appName,
       slug: appName,
@@ -29,7 +30,6 @@ test.each([17, 18, 19])("rejects matching revision-%i persisted plans", async (r
       provider: ProviderId.make("lando"),
       services: {},
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata: {
@@ -44,6 +44,8 @@ test.each([17, 18, 19])("rejects matching revision-%i persisted plans", async (r
       landoVersion: CORE_VERSION,
       key,
       versionConstraints: [],
+      shadowHostChecks: [],
+      gitHostChecks: [],
       generatedAtMs: 1,
       plan: Schema.encodeSync(AppPlan)(plan),
     });
@@ -61,29 +63,25 @@ test.each([17, 18, 19])("rejects matching revision-%i persisted plans", async (r
   }
 });
 
-for (const magic of ["LCAC", "LCPC"]) {
-  test(`rejects revision-3 ${magic} bytes when the old payload is otherwise valid`, () => {
-    const header = Buffer.alloc(12);
-    header.write(magic);
-    header.writeBigUInt64LE(3n, 4);
-    const bytes = Buffer.concat([
-      header,
-      serialize({
-        schemaVersion: 3,
-        landoVersion: CORE_VERSION,
-        appName: "app",
-        sourceFile: "/app/.lando.yml",
-        sourceMtimeMs: 0,
-        sourceSize: 0,
-        pluginNames: [],
-        generatedAtMs: 1,
-        entries: [],
-      }),
-    ]);
-    const decoded = magic === "LCAC" ? decodeAppCommandIndex(bytes) : decodePluginCommandIndex(bytes);
-    expect(decoded).toBeNull();
-  });
-}
+test("rejects revision-3 LCAC bytes when the old payload is otherwise valid", () => {
+  const header = Buffer.alloc(12);
+  header.write("LCAC");
+  header.writeBigUInt64LE(3n, 4);
+  const bytes = Buffer.concat([
+    header,
+    serialize({
+      schemaVersion: 3,
+      landoVersion: CORE_VERSION,
+      appName: "app",
+      sourceFile: "/app/.lando.yml",
+      sourceMtimeMs: 0,
+      sourceSize: 0,
+      generatedAtMs: 1,
+      entries: [],
+    }),
+  ]);
+  expect(decodeAppCommandIndex(bytes)).toBeNull();
+});
 
 test("fresh command reader rejects revision-3 artifacts without recomputing fingerprints", async () => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-canonical-command-"));

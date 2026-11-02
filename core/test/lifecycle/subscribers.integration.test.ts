@@ -17,13 +17,15 @@ import { RedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { Stdio } from "effect";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
-import { versionSpec } from "../../src/cli/command-specs/meta/version.ts";
+import { versionSpec as typedVersionSpec } from "../../src/cli/command-specs/meta/version.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 import { serviceLayer as mcpServiceLayer } from "../../src/mcp-command-executor.ts";
 import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const roots: string[] = [];
+const versionSpec: LandoCommandSpec = typedVersionSpec;
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -70,11 +72,15 @@ const runtime = async (
       pluginManifests: [],
       externalImports,
       cwd,
-      rootOverrides: {
-        userDataRoot: absolute("data"),
-        userConfRoot: absolute("config"),
-        userCacheRoot: absolute("cache"),
-        systemPluginRoot: absolute("system"),
+      configInputs: {
+        env: {},
+        sources: { user: true, env: false },
+        rootOverrides: {
+          userDataRoot: absolute("data"),
+          userConfRoot: absolute("config"),
+          userCacheRoot: absolute("cache"),
+          systemPluginRoot: absolute("system"),
+        },
       },
     });
   return {
@@ -106,7 +112,7 @@ const writeCommandSubscriberPlugin = async (
         version: plugin.version,
         api: 4,
         entry: "index.js",
-        contributes: { commands: [plugin.commandId] },
+        contributes: { commands: [{ id: plugin.commandId, summary: "Release plugin." }] },
         subscribers: [
           {
             id: "terminal-marker",
@@ -277,8 +283,8 @@ describe("subscriber runtime integration", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[0]");
-          expect(failure.value.message).toContain("app:project-release");
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(failure.value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(failure.value.message).toContain("install and enable the plugin");
         }
       }
@@ -320,8 +326,8 @@ describe("subscriber runtime integration", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[0]");
-          expect(failure.value.message).toContain("app:notify-release");
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(failure.value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(failure.value.message).toContain("install and enable the plugin");
         }
       }
@@ -416,7 +422,7 @@ describe("subscriber runtime integration", () => {
     // Then: app behavior wins selector expansion, while only the global command remains notify-valid.
     expect(observed.effectiveManifest).toMatchObject({
       version: "2.0.0",
-      contributes: { commands: [appCommandId] },
+      contributes: { commands: [{ id: appCommandId, summary: "Release plugin." }] },
     });
     expect(observed.markerValue).toBe("app");
     expect(Exit.isFailure(observed.invalidExit)).toBe(true);
@@ -426,8 +432,8 @@ describe("subscriber runtime integration", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[0]");
-          expect(failure.value.message).toContain(appCommandId);
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(failure.value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(failure.value.message).toContain("install and enable the plugin");
         }
       }
@@ -520,8 +526,8 @@ describe("subscriber runtime integration", () => {
         const value: unknown = failure.value;
         expect(value).toBeInstanceOf(ConfigError);
         if (value instanceof ConfigError) {
-          expect(value.path).toBe("notify.commands[0]");
-          expect(value.message).toContain("app:missing-command");
+          expect(value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(value.message).toContain("install and enable the plugin");
         }
       }
@@ -557,8 +563,8 @@ describe("subscriber runtime integration", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ConfigError);
         if (failure.value instanceof ConfigError) {
-          expect(failure.value.path).toBe("notify.commands[0]");
-          expect(failure.value.message).toContain("app:missing-command");
+          expect(failure.value.issues?.[0]?.path).toEqual(["notify", "commands", 0]);
+          expect(failure.value.issues?.[0]?.source?.layer).toBe("config-file");
           expect(failure.value.message).toContain("install and enable the plugin");
         }
       }

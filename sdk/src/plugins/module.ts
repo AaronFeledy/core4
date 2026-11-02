@@ -1,5 +1,6 @@
 import type { Effect, Layer } from "effect";
 import type { SecretStoreUnavailableError } from "../errors/secret.ts";
+import type { AbsolutePath, ResourceOwnership } from "../schema/index.ts";
 
 import type {
   ProviderCapabilityError,
@@ -10,6 +11,7 @@ import type {
 import type { RendererContribution } from "../renderer/index.ts";
 import type {
   AppPlan,
+  AppliedStateInventory,
   HostPlatform,
   PluginManifest,
   ProviderCapabilities,
@@ -24,7 +26,7 @@ import type {
   PluginDoctorReport,
 } from "../schema/plugin-doctor.ts";
 import type { ConfigTranslatorShape } from "../services/config-translator.ts";
-import type { LogFileHelperAssets } from "../services/host-assets.ts";
+import type { ContainerHelperAssets } from "../services/host-assets.ts";
 import type {
   AppFeatureDefinition,
   CertificateAuthority,
@@ -49,11 +51,19 @@ import type { LandoPluginContext } from "./index.ts";
 export type RuntimeProviderFactoryRequirements =
   | PathsService
   | Downloader
-  | LogFileHelperAssets
+  | ContainerHelperAssets
   | AppPlanSanitizer;
 
 export interface RuntimeProviderContribution {
+  readonly appliedStateInventory?: (
+    ctx: LandoPluginContext,
+  ) => Effect.Effect<AppliedStateInventory, ProviderUnavailableError, PathsService>;
   readonly id: ProviderId;
+  readonly declaredCapabilities?: (platform: HostPlatform, arch?: string) => ProviderCapabilities;
+  readonly resourceOwnership?: (
+    ctx: LandoPluginContext,
+    root: AbsolutePath,
+  ) => Effect.Effect<ResourceOwnership | undefined, ProviderUnavailableError>;
   /** Read durable ownership claims without connecting to or initializing the runtime. */
   readonly appliedPlans: (
     ctx: LandoPluginContext,
@@ -135,7 +145,11 @@ export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
  */
 export type ConfigTranslatorLoader = () => Promise<ConfigTranslatorShape>;
 
-export type FileSyncEngineContributionLayer = Layer.Layer<FileSyncEngine, unknown, unknown>;
+export type FileSyncEngineContributionLayer = Layer.Layer<
+  FileSyncEngine,
+  unknown,
+  PathsService | Downloader | ProcessRunner
+>;
 export interface FileSyncEngineContribution {
   readonly make: (ctx: LandoPluginContext) => FileSyncEngineContributionLayer;
 }

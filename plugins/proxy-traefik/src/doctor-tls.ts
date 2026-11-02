@@ -1,6 +1,6 @@
 import { lstat, open, readFile, readdir } from "node:fs/promises";
 
-import { makeLandoPaths } from "@lando/paths";
+import { globalAppRootPath } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import { Effect } from "effect";
 
@@ -133,8 +133,7 @@ export const proxyTlsDoctorCheck: PluginDoctorCheckContribution = {
   id: "proxy-tls",
   run: Effect.fnUntraced(function* ({ userDataRoot, platform }) {
     if (userDataRoot === undefined) return [];
-    const resolved = makeLandoPaths({ userDataRoot, platform });
-    const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
+    const paths: ProxyPaths = { platform, globalAppRoot: globalAppRootPath(userDataRoot, platform) };
     const names = yield* readNames(dynamicConfigDir(paths));
     if (names === undefined) return [];
     const httpsConfigs = yield* Effect.forEach(

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import {
@@ -12,11 +14,14 @@ import {
   resolveOpenTuiNativeImport,
 } from "../../../scripts/build-compiled-binary.ts";
 import { opentuiNativeCatalog } from "../../../scripts/generated/opentui-native/catalog.generated.ts";
+import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
+
+const STRICT_CODEGEN_EXEC_ARGV = ["--disallow-code-generation-from-strings=strict"];
 
 const releaseTargets = Object.entries(opentuiNativeCatalog.targetToNativeRoot);
 const fixtureShimAssets = async (): Promise<readonly [string, string]> => [
-  "/fixture/lando-host-proxy-linux-x64.bin.gz",
-  "/fixture/lando-host-proxy-linux-arm64.bin.gz",
+  "/fixture/lando-container-helper-linux-x64.tar.gz",
+  "/fixture/lando-container-helper-linux-arm64.tar.gz",
 ];
 
 describe("compiled binary OpenTUI native pruning", () => {
@@ -83,7 +88,7 @@ describe("compiled binary OpenTUI native pruning", () => {
       "linux-x64",
     );
 
-    // Then: compile, bytecode, minification, sourcemap, define, and exactly one pruning plugin are preserved.
+    // Then: compile, strict code-generation hardening, bytecode, minification, sourcemap, define, and exactly one pruning plugin are preserved.
     expect(received).toMatchObject({
       target: "bun",
       format: "esm",
@@ -100,6 +105,7 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect<unknown>(received?.compile).toEqual({
       target: `bun-${target}`,
       outfile: `./dist/lando-${target}`,
+      execArgv: STRICT_CODEGEN_EXEC_ARGV,
     });
     expect(received?.plugins).toHaveLength(1);
     expect(received?.plugins?.[0]?.name).toBe("opentui-native-pruning");
@@ -157,7 +163,11 @@ describe("compiled binary OpenTUI native pruning", () => {
       sourcemap: "external",
     });
     expect(received?.plugins).toHaveLength(1);
-    expect(received?.compile).toEqual({ target: `bun-${target}`, outfile: "./dist/lando.exe" });
+    expect(received?.compile).toEqual({
+      target: `bun-${target}`,
+      outfile: "./dist/lando.exe",
+      execArgv: STRICT_CODEGEN_EXEC_ARGV,
+    });
   });
 
   test("omits Windows resources for a non-Windows target on a Windows host", async () => {
@@ -174,7 +184,11 @@ describe("compiled binary OpenTUI native pruning", () => {
       "windows-x64",
     );
     // Then: the compile configuration contains no Windows resources.
-    expect(received?.compile).toEqual({ target: "bun-linux-x64", outfile: "./dist/lando" });
+    expect(received?.compile).toEqual({
+      target: "bun-linux-x64",
+      outfile: "./dist/lando",
+      execArgv: STRICT_CODEGEN_EXEC_ARGV,
+    });
   });
 
   test("CLI accepts the normative Bun build flags and normalizes the target", () => {
@@ -261,6 +275,42 @@ describe("compiled binary OpenTUI native pruning", () => {
     expect(stdout).toBe("");
     expect(stderr).toContain("Refusing to stamp compiled binary with placeholder version 0.0.0.");
     expect(stderr).not.toContain("Uncaught");
+  });
+
+  test("plain CLI compiles only the binary without distribution notice checks", async () => {
+    const root = await mkdtemp(resolve(tmpdir(), "lando-plain-compile-"));
+    const helperDir = await stubContainerHelperDir();
+    try {
+      const calls = resolve(root, "calls.json");
+      const proc = Bun.spawn({
+        cmd: [
+          process.execPath,
+          "--preload",
+          resolve(import.meta.dirname, "fixtures/compiled-binary-build-preload.ts"),
+          "scripts/build-compiled-binary.ts",
+          "--target=linux-x64",
+          `--outfile=${resolve(root, "lando")}`,
+          "--version=4.0.0-dev.1",
+        ],
+        cwd: resolve(import.meta.dirname, "../../.."),
+        env: {
+          ...process.env,
+          LANDO_TEST_COMPILE_CALLS: calls,
+          LANDO_COMPILE_METAFILE: "0",
+          LANDO_CONTAINER_HELPER_DIR: helperDir,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+
+      expect(exitCode, stderr).toBe(0);
+      expect(await Bun.file(calls).json()).toEqual([{ compile: true, metafile: false }]);
+      expect(await Bun.file(resolve(root, "THIRD_PARTY_NOTICES.md")).exists()).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(helperDir, { recursive: true, force: true });
+    }
   });
 
   test("CLI accepts --metafile-md and LANDO_COMPILE_METAFILE without changing default compile flags", () => {

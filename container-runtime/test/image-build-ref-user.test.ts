@@ -33,7 +33,6 @@ const plan = (withRootStep: boolean): AppPlan => {
     user: runtimeUser,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],
@@ -63,7 +62,6 @@ const plan = (withRootStep: boolean): AppPlan => {
     provider: providerId,
     services: { [serviceName]: service },
     routes: [],
-    networks: [],
     stores: [],
     fileSync: [],
     metadata,
@@ -100,7 +98,7 @@ const run = async (withRootStep: boolean, inheritedUser = "app:staff") => {
   await Effect.runPromise(
     buildContainerArtifact(
       { app: appId, service: serviceName, plan: plan(withRootStep), buildKey: "user-key" },
-      { providerId, api: { request } },
+      { providerId, api: { request }, sourceEnv: {} },
     ),
   );
   const posts = requests.filter((entry) => entry.method === "POST");

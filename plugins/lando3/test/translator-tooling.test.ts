@@ -4,8 +4,8 @@ import { LandofileAuthoringFragment, classifyAuthoringSource } from "@lando/sdk/
 import { createRedactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import { lowerLegacyTag } from "../src/legacy-tags.ts";
-import { makeLando3ConfigTranslator } from "../src/translator.ts";
 import { document, documentSet, fakeDecomposers } from "./fixtures/fake-decomposers.ts";
+import { makeTestTranslator as makeLando3ConfigTranslator } from "./fixtures/test-ports.ts";
 
 const translateFiles = (files: ReadonlyArray<readonly [string, string]>) => {
   const translator = makeLando3ConfigTranslator({
@@ -72,20 +72,32 @@ describe("tooling", () => {
         ],
       },
       iamroot: { service: "appserver", cmd: "id", dir: "/tmp", env: { TIMEOUT: 600 }, user: "root" },
-      "xdebug-off": { disabled: true },
-      php: { disabled: true },
+      "xdebug-off": false,
+      php: false,
     });
     expect(summary(result)).toEqual([
       "needs-review services.appserver.type",
       "generated tooling.git",
-      "rewritten tooling.test.cmd",
-      "rewritten tooling.install.cmd",
+      "needs-review tooling.test.cmd",
+      "needs-review tooling.install.cmd",
       "rewritten tooling.iamroot.user",
       "dropped tooling.iamroot.env.LANDO_X",
       "rewritten tooling.xdebug-off",
-      "rewritten tooling.php",
     ]);
   });
+
+  test.each(["disabled", "echo hi", "true", "42", "null", "[]"])(
+    "keeps non-mapping legacy task %s disabled instead of turning it into a command",
+    async (value) => {
+      // Given
+      const text = `name: legacy\ntooling:\n  retired: ${value}\n`;
+      // When
+      const result = await translate(text);
+      // Then
+      expect(fragment(result).tooling).toEqual({ retired: false });
+      expect(summary(result)).toContain("rewritten tooling.retired");
+    },
+  );
 
   test("lowers options and positionals to flags and args", async () => {
     // Given / When
@@ -128,12 +140,12 @@ describe("tooling", () => {
     });
     expect(summary(result)).toEqual([
       "needs-review services.appserver.type",
-      "rewritten tooling.word.options",
+      "needs-review tooling.word.options",
       "dropped tooling.word.options.word.alias.1",
       "dropped tooling.word.options.word.interactive",
       "dropped tooling.word.options.env.default",
       "dropped tooling.word.options.no-wipe.default",
-      "rewritten tooling.drupal-update <core> [module]",
+      "needs-review tooling.drupal-update <core> [module]",
       "needs-review tooling.drupal-update <core> [module].cmd",
     ]);
   });
@@ -158,10 +170,10 @@ describe("tooling", () => {
       "what-host": { cmd: "env", service: ":host-service", flags: { "host-service": { default: "node" } } },
     });
     expect(summary(result)).toEqual([
-      "rewritten tooling.whoami.service",
-      "rewritten tooling.whoami.options",
+      "needs-review tooling.whoami.service",
+      "needs-review tooling.whoami.options",
       "needs-review tooling.what-host.service",
-      "rewritten tooling.what-host.options",
+      "needs-review tooling.what-host.options",
       "unsupported tooling.broken.service",
     ]);
   });
@@ -300,7 +312,6 @@ describe("events", () => {
       "post-restart": [{ cmd: "drush cr", service: "appserver" }],
     });
     expect(summary(result)).toEqual([
-      "generated services.web",
       "needs-review services.appserver.type",
       "generated events.pre-start.0",
       "rewritten events.pre-start.1.node",

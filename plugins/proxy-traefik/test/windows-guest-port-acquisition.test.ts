@@ -505,5 +505,5 @@ test("Unix host bind planning never probes provider guest ports", async () => {
   if (fixture.service.prepare === undefined) throw new Error("Router prepare is unavailable");
   await Effect.runPromise(fixture.service.prepare({ defaultDomain: "lndo.site" }));
   expect(fixture.guestProbes).toBe(0);
-  expect(fixture.readinessCalls).toBe(0);
+  expect(fixture.readinessCalls).toBe(1);
 });

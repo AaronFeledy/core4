@@ -1,96 +1,49 @@
+import type { AppPlan, InternalEndpoint, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
+import { containerMountIntent } from "./container-mounts.ts";
+import { ContainerPlanError } from "./container-plan-error.ts";
+import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
+import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
+import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environment-values.ts";
 import {
-  type AppPlan,
-  type InternalEndpoint,
-  type PublishedEndpoint,
-  type ServicePlan,
-  fileSyncVolumeName,
-  sameAppMountTarget,
-} from "@lando/sdk/schema";
-import { APP_LABEL, APP_ROOT_LABEL, SERVICE_LABEL } from "./labels.ts";
+  APP_LABEL,
+  APP_ROOT_LABEL,
+  SERVICE_LABEL,
+  containerIntegrationLabels,
+  scratchLabelsForPlan,
+} from "./labels.ts";
 
-import {
-  bindSourceForComposeConfig,
-  composeConfigBindStrings,
-  composeConfigMounts,
-} from "./compose-configs.ts";
-import { requiresLongMountSyntax } from "./mount-syntax.ts";
+import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 
-export { composeConfigBindStrings };
+export { bindMountStrings, mountSuffix } from "./container-mounts.ts";
+export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
 
 /** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
 export const mergeAppliedPlan = (
   previous: AppPlan | undefined,
   incoming: AppPlan,
   reconcile: boolean,
-): AppPlan =>
-  previous === undefined || reconcile || previous.id !== incoming.id
-    ? incoming
-    : { ...incoming, services: { ...previous.services, ...incoming.services } };
+): AppPlan => {
+  if (previous === undefined || reconcile || previous.id !== incoming.id) return incoming;
+  const merged = { ...incoming, services: { ...previous.services, ...incoming.services } };
+  if (
+    previous.valueModel !== 1 &&
+    Object.keys(previous.services).some((name) => !(name in incoming.services))
+  ) {
+    const { valueModel: _valueModel, ...observed } = merged;
+    return observed;
+  }
+  return merged;
+};
 
 /** Container name shared by every provider. `-` is in the allowed class, so sanitizing the joined name matches sanitizing slug and service separately. */
 export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: string): string =>
   `lando-${plan.slug}-${service}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-export class ContainerPlanError extends Error {
-  readonly _tag = "ContainerPlanError";
-  readonly details?: unknown;
-
-  constructor(message: string, details?: unknown) {
-    super(message);
-    this.name = "ContainerPlanError";
-    if (details !== undefined) this.details = details;
-  }
-}
-
 export const envArrayFromRecord = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
   Object.entries(environment).map(([key, value]) => `${key}=${value}`);
 
 export const serviceEnv = (service: ServicePlan): ReadonlyArray<string> =>
-  envArrayFromRecord(service.environment);
-
-export const mountSuffix = (readOnly: boolean): string => (readOnly ? ":ro" : "");
-
-export const normalizeCommand = (
-  command: ReadonlyArray<string> | string | undefined,
-): Array<string> | undefined => {
-  if (command === undefined) return undefined;
-  if (typeof command === "string") return ["sh", "-lc", command];
-  return [...command];
-};
-
-export const normalizeEntrypoint = (
-  entrypoint: ReadonlyArray<string> | string | undefined,
-): Array<string> | undefined => {
-  if (entrypoint === undefined) return undefined;
-  if (typeof entrypoint === "string") return [entrypoint];
-  return [...entrypoint];
-};
-
-const containerHealthcheck = (
-  healthcheck: ServicePlan["healthcheck"],
-): Record<string, unknown> | undefined => {
-  if (healthcheck === undefined) return undefined;
-  switch (healthcheck.kind) {
-    case "none":
-      return { Test: ["NONE"] };
-    case "command": {
-      const command = healthcheck.command;
-      if (command === undefined) return undefined;
-      return {
-        Test: typeof command === "string" ? ["CMD-SHELL", command] : ["CMD", ...command],
-        Interval: healthcheck.intervalSeconds * 1_000_000_000,
-        Timeout: healthcheck.timeoutSeconds * 1_000_000_000,
-        Retries: healthcheck.retries,
-        ...(healthcheck.startPeriodSeconds === undefined
-          ? {}
-          : { StartPeriod: healthcheck.startPeriodSeconds * 1_000_000_000 }),
-      };
-    }
-    case "http":
-    case "tcp":
-      return undefined;
-  }
-};
+  envArrayFromRecord(literalServiceEnvironment(service));
 
 export const commonContainerLabels = (
   plan: AppPlan,
@@ -108,164 +61,35 @@ export const commonContainerLabels = (
           Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
         )
       : {};
-  return {
-    ...userLabels,
-    [APP_LABEL]: plan.id,
-    [APP_ROOT_LABEL]: plan.root,
-    [SERVICE_LABEL]: service.name,
-    ...extra,
-  };
+  const baseLabels = containerIntegrationLabels(
+    service.environment,
+    {
+      ...userLabels,
+      [APP_LABEL]: plan.id,
+      [APP_ROOT_LABEL]: plan.root,
+      [SERVICE_LABEL]: service.name,
+      ...scratchLabelsForPlan(plan),
+      ...extra,
+    },
+    service.extensions,
+  );
+  return { ...baseLabels, [CREATE_CONFIG_LABEL]: createConfigFingerprint(plan, service, baseLabels) };
 };
 
 export interface ContainerHostConfigOptions {
-  readonly onMissingBindMountSource?: (mount: ServicePlan["mounts"][number]) => never;
   /** Local endpoint copy for the create body. Does not rewrite desired state. */
   readonly endpoints?: ReadonlyArray<InternalEndpoint | PublishedEndpoint>;
 }
-
-const missingBindMountSource = (mount: ServicePlan["mounts"][number]): never => {
-  throw new ContainerPlanError("Container bind mounts require a source.", { mount });
-};
-
-interface ContainerBindMountObject {
-  readonly Type: "bind";
-  readonly Source: string;
-  readonly Target: string;
-  readonly ReadOnly: boolean;
-  readonly BindOptions?: { readonly CreateMountpoint: false };
-}
-
-interface ContainerVolumeMountObject {
-  readonly Type: "volume";
-  readonly Source: string;
-  readonly Target: string;
-  readonly ReadOnly: boolean;
-  readonly VolumeOptions?: { readonly Subpath: string };
-}
-
-type ContainerMountObject =
-  | ContainerBindMountObject
-  | ContainerVolumeMountObject
-  | {
-      readonly Type: "tmpfs";
-      readonly Target: string;
-      readonly ReadOnly: boolean;
-    };
-
-const containerMountObjects = (
-  plan: AppPlan,
-  service: ServicePlan,
-  options: ContainerHostConfigOptions = {},
-): ReadonlyArray<ContainerMountObject> => [
-  ...(service.appMount !== undefined && requiresLongMountSyntax(service.appMount.target)
-    ? [
-        {
-          Type: service.appMount.realization === "accelerated" ? ("volume" as const) : ("bind" as const),
-          Source:
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source,
-          Target: service.appMount.target,
-          ReadOnly: service.appMount.readOnly,
-        },
-      ]
-    : []),
-  ...service.mounts.flatMap((mount, index): ReadonlyArray<ContainerMountObject> => {
-    if (sameAppMountTarget(service.appMount, mount)) return [];
-    const strictBind =
-      mount.type === "bind" && mount.realization === "passthrough" && mount.createHostPath === false;
-    if (mount.type !== "volume" && !strictBind && !requiresLongMountSyntax(mount.target)) {
-      return [];
-    }
-    if (mount.type === "tmpfs") return [{ Type: "tmpfs", Target: mount.target, ReadOnly: mount.readOnly }];
-    if (mount.source === undefined)
-      return (options.onMissingBindMountSource ?? missingBindMountSource)(mount);
-    return [
-      {
-        Type: mount.type === "volume" || mount.realization === "accelerated" ? "volume" : "bind",
-        Source:
-          mount.type === "bind" && mount.realization === "accelerated"
-            ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-            : mount.source,
-        Target: mount.target,
-        ReadOnly: mount.readOnly,
-        ...(strictBind ? { BindOptions: { CreateMountpoint: false as const } } : {}),
-      },
-    ];
-  }),
-  ...service.storage.flatMap(
-    (storeMount): ReadonlyArray<ContainerVolumeMountObject> =>
-      storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
-        ? []
-        : [
-            {
-              Type: "volume",
-              Source: storeMount.store,
-              Target: storeMount.target,
-              ReadOnly: storeMount.readOnly,
-              ...(storeMount.subpath === undefined ? {} : { VolumeOptions: { Subpath: storeMount.subpath } }),
-            },
-          ],
-  ),
-  ...composeConfigMounts(plan, service).flatMap(
-    (mount): ReadonlyArray<ContainerBindMountObject> =>
-      requiresLongMountSyntax(mount.target)
-        ? [{ Type: "bind", Source: bindSourceForComposeConfig(mount), Target: mount.target, ReadOnly: true }]
-        : [],
-  ),
-];
-
-export const bindMountStrings = (
-  plan: AppPlan,
-  service: ServicePlan,
-  options: ContainerHostConfigOptions = {},
-): ReadonlyArray<string> => {
-  const appMounts =
-    service.appMount === undefined || requiresLongMountSyntax(service.appMount.target)
-      ? []
-      : [
-          `${
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source
-          }:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`,
-        ];
-  const binds = service.mounts.flatMap((mount, index) => {
-    if (mount.type !== "bind") return [];
-    if (sameAppMountTarget(service.appMount, mount)) return [];
-    if (mount.source === undefined) {
-      (options.onMissingBindMountSource ?? missingBindMountSource)(mount);
-    }
-    if (
-      requiresLongMountSyntax(mount.target) ||
-      (mount.realization === "passthrough" && mount.createHostPath === false)
-    )
-      return [];
-    const source =
-      mount.realization === "accelerated"
-        ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-        : mount.source;
-    return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
-  });
-  const storage = service.storage.flatMap((storeMount) =>
-    storeMount.subpath === undefined && !requiresLongMountSyntax(storeMount.target)
-      ? [`${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`]
-      : [],
-  );
-  return Array.from(
-    new Set([...appMounts, ...binds, ...storage, ...composeConfigBindStrings(plan, service)]),
-  );
-};
 
 export const containerPortBindings = (
   endpoints: ReadonlyArray<PublishedEndpoint>,
 ): Record<string, ReadonlyArray<Record<string, string>>> => {
   const grouped = new Map<string, Array<Record<string, string>>>();
-  for (const endpoint of endpoints) {
-    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
+  for (const endpoint of physicalPublications(endpoints)) {
+    const key = `${endpoint.port}/${endpoint.transport}`;
     const binding = {
-      HostIp: endpoint.publication.bindAddress ?? "127.0.0.1",
-      HostPort: endpoint.publication.hostPort === undefined ? "" : String(endpoint.publication.hostPort),
+      HostIp: endpoint.bindAddress,
+      HostPort: endpoint.hostPort === undefined ? "" : String(endpoint.hostPort),
     };
     const existing = grouped.get(key);
     if (existing === undefined) grouped.set(key, [binding]);
@@ -283,7 +107,7 @@ export const fingerprintPortBindings = (
       parts.push(`${key}@${item.HostIp ?? ""}:${item.HostPort ?? ""}`);
     }
   }
-  return parts.sort().join("|");
+  return [...new Set(parts)].sort().join("|");
 };
 
 export const fingerprintPlannedPublishPorts = (endpoints: ReadonlyArray<PublishedEndpoint>): string => {
@@ -313,13 +137,7 @@ export const fingerprintInspectPublishPorts = (inspect: unknown): string => {
 export const containerExposedPorts = (
   endpoints: ReadonlyArray<PublishedEndpoint | InternalEndpoint>,
 ): Record<string, Record<string, never>> => {
-  const ports: Record<string, Record<string, never>> = {};
-  for (const endpoint of endpoints) {
-    if (endpoint.protocol === "unix") continue;
-    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
-    ports[key] = {};
-  }
-  return ports;
+  return Object.fromEntries(physicalListenerPorts(endpoints).map((key) => [key, {}]));
 };
 
 export const containerHostConfigFragment = (
@@ -332,13 +150,14 @@ export const containerHostConfigFragment = (
       endpoint._tag === "published" ? [endpoint] : [],
     ),
   );
-  const binds = bindMountStrings(plan, service, options);
-  const mounts = containerMountObjects(plan, service, options);
+  const { binds, mounts, tmpfs } = containerMountIntent(plan, service);
   const extraHosts = service.hostAliases.map(({ hostname, ip }) => `${hostname}:${ip}`);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
+    ...(service.init === undefined ? {} : { Init: service.init }),
     ...(binds.length > 0 ? { Binds: binds } : {}),
     ...(mounts.length > 0 ? { Mounts: mounts } : {}),
+    ...(Object.keys(tmpfs).length > 0 ? { Tmpfs: tmpfs } : {}),
     ...(extraHosts.length === 0 ? {} : { ExtraHosts: extraHosts }),
   };
 };
@@ -361,17 +180,18 @@ export const containerCreateBodyFragment = (
   service: ServicePlan,
   options: ContainerCreateBodyOptions = {},
 ): Record<string, unknown> => {
+  requireCurrentCreationPlan(plan);
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") {
     return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
-  const healthcheck = containerHealthcheck(service.healthcheck);
+  const healthcheck = containerHealthcheck(service.healthcheck, plan, service);
   const exposedPorts = containerExposedPorts(service.endpoints);
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
-    Env: envArrayFromRecord(options.environment ?? service.environment),
+    Env: envArrayFromRecord(options.environment ?? literalServiceEnvironment(service)),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,

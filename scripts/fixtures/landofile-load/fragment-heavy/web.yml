@@ -1,0 +1,16 @@
+services:
+  web:
+    type: node:22
+    port: 3000
+    routes:
+      - http://fragments.lndo.site
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+    healthcheck:
+      command: node --version
+      interval: 5s
+    appMount:
+      target: /app
+      excludes:
+        - node_modules

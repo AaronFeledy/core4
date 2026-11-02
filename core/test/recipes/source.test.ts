@@ -10,10 +10,9 @@ import {
   RecipeManifestValidationError,
 } from "@lando/sdk/errors";
 
-import {
-  nodePostgresRecipeSource,
-  nodePostgresRecipeYaml,
-} from "../../src/recipes/builtin/node-postgres/manifest.ts";
+import { bundledRecipe } from "../_support/bundled-recipe.ts";
+const { source: nodePostgresRecipeSource, manifestYaml: nodePostgresRecipeYaml } =
+  bundledRecipe("node-postgres");
 import { resolveRecipeRef } from "../../src/recipes/source.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {

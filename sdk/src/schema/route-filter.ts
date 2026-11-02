@@ -20,6 +20,7 @@ const name = Schema.optionalKey(Schema.String).annotate({
 const prefix = Schema.NonEmptyString.pipe(
   Schema.check(
     Schema.isPattern(PREFIX_PATTERN, {
+      message: "Expected a path prefix starting with /",
       toJsonSchema: () => ({ pattern: PREFIX_PATTERN.source }),
     }),
   ),
@@ -29,6 +30,7 @@ const prefix = Schema.NonEmptyString.pipe(
 const header = Schema.String.pipe(
   Schema.check(
     Schema.isPattern(HEADER_PATTERN, {
+      message: "Expected an HTTP header name containing only letters, digits, and hyphens",
       toJsonSchema: () => ({ pattern: HEADER_PATTERN.source }),
     }),
   ),
@@ -66,5 +68,7 @@ export const RouteFilter = Schema.Union([
     to: Schema.NonEmptyString.annotate({ description: "Non-empty redirect destination." }),
     permanent: Schema.optionalKey(Schema.Boolean).annotate({ description: "Use a permanent redirect." }),
   }),
-]);
+]).annotate({
+  expected: "a filter with type stripPrefix, addPrefix, requestHeader, responseHeader, or redirect",
+});
 export type RouteFilter = typeof RouteFilter.Type;

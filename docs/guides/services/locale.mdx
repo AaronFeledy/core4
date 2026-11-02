@@ -29,7 +29,7 @@ services:
       LANG: de_DE.UTF-8
 ```
 
-Drop an `index.php` next to it so the web side has something to say:
+Save the configuration as `.lando.yml` and create `index.php` beside it. This page lets you check the locale used by PHP web requests:
 
 ```php
 <?php
@@ -116,23 +116,23 @@ glibc tools still need a generated locale. Give the Debian-based `node` service 
 
 ## Change the locale
 
-Switching `LANG` to a locale the image already has only needs a restart:
+Switching `LANG` to a locale the image already has is an environment change. Bare `lando restart` stop/starts and picks it up. `lando start` does too:
 
 ```sh
 lando restart
 ```
 
-`lando start` on an app that is already running keeps the old value. Restart it.
-
-Adding a locale changes the build step, so rebuild. Append another `localedef` to the same `run` line:
+Adding a locale changes the build step, so the next `lando start` rebuilds that image. Append another `localedef` to the same `run` line:
 
 ```yaml
-        - run: apt-get update && apt-get install -y --no-install-recommends locales && localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale.alias de_DE.UTF-8 && localedef -i en_GB -c -f UTF-8 -A /usr/share/locale/locale.alias en_GB.UTF-8 && rm -rf /var/lib/apt/lists/*
-          user: root
+build:
+  artifact:
+    - run: apt-get update && apt-get install -y --no-install-recommends locales && localedef -i de_DE -c -f UTF-8 -A /usr/share/locale/locale.alias de_DE.UTF-8 && localedef -i en_GB -c -f UTF-8 -A /usr/share/locale/locale.alias en_GB.UTF-8 && rm -rf /var/lib/apt/lists/*
+      user: root
 ```
 
 ```sh
-lando rebuild -y
+lando start
 lando exec -- locale -a
 ```
 

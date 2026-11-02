@@ -29,7 +29,7 @@ describe("shared webroot resolution", () => {
     "rejects relative webroot %s when the app mount is disabled",
     (webroot) => {
       expect(() => resolveWebroot("nginx", webroot, false)).toThrow(
-        `nginx webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
+        `nginx webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false.`,
       );
     },
   );
@@ -59,7 +59,7 @@ describe("shared webroot resolution", () => {
 
   test.each(["../srv", "public/../.."])("rejects escaping relative path %s", (authored) => {
     expect(() => resolveWebroot("PHP", authored)).toThrow(
-      `PHP webroot ${authored} leaves the app mount (/app); use an absolute container path instead.`,
+      `PHP webroot ${authored} leaves the app mount (/app).`,
     );
   });
 
@@ -92,7 +92,7 @@ describe("resolved service document roots", () => {
       // When: the service is composed with the authored mount wrapper.
       const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
       // Then: the launcher, working directory, and webroot environment agree with that mount.
-      expect(String(plan.appMount?.target)).toBe("/site");
+      expect(String(serviceAppMount(plan)?.target)).toBe("/site");
       expect(plan.environment.LANDO_WEBROOT).toBe(resolved);
       expect(String(plan.workingDirectory)).toBe(resolved);
       expect(Array.isArray(plan.command) ? plan.command.join(" ") : String(plan.command)).toContain(
@@ -110,9 +110,15 @@ describe("resolved service document roots", () => {
       // When / Then: planning rejects it with the effective mount in the error.
       await expect(
         composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata }),
-      ).rejects.toThrow(
-        `${type === "nginx" ? "nginx" : "PHP"} webroot ../x leaves the app mount (/site); use an absolute container path instead.`,
-      );
+      ).rejects.toMatchObject({
+        issues: [
+          {
+            path: ["webroot"],
+            message: `${type === "nginx" ? "nginx" : "PHP"} webroot ../x leaves the app mount (/site).`,
+            suggestion: "Use an absolute container path instead.",
+          },
+        ],
+      });
     });
   }
 
@@ -186,7 +192,17 @@ describe("resolved service document roots", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("ServiceTypeError");
-      expect(result.failure.message).toContain(message);
+      expect(result.failure.issues).toEqual([
+        {
+          path: ["webroot"],
+          message: message.includes("leaves the app mount")
+            ? `tomcat webroot ${webroot} leaves the app mount (/app).`
+            : message,
+          suggestion: message.includes("leaves the app mount")
+            ? "Use an absolute container path instead."
+            : "Set webroot to a safe relative path or an absolute container path.",
+        },
+      ]);
     }
   });
 
@@ -213,7 +229,7 @@ describe("resolved service document roots", () => {
 
     // Then: the authored webroot is kept and the app mount stays at /app.
     expect(String(resolution.normalizedConfig.webroot)).toBe(webroot);
-    expect(String(plan.appMount?.target)).toBe("/app");
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
   });
 
   for (const [type, serviceType, label] of [
@@ -233,9 +249,15 @@ describe("resolved service document roots", () => {
       // When / Then: type resolution rejects the missing app mount.
       await expect(
         composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata }),
-      ).rejects.toThrow(
-        `${label} webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false. Set webroot to an absolute container path, or remove appMount: false.`,
-      );
+      ).rejects.toMatchObject({
+        issues: [
+          {
+            path: ["webroot"],
+            message: `${label} webroot "${webroot ?? "."}" is relative to the app mount, but appMount is false.`,
+            suggestion: "Set webroot to an absolute container path, or remove appMount: false.",
+          },
+        ],
+      });
     });
 
     test(`${type} accepts an image document root with appMount false`, async () => {
@@ -248,7 +270,7 @@ describe("resolved service document roots", () => {
       // When: the service is planned.
       const plan = await composeServicePlan({ serviceType, service, appRoot: "/srv/apps/myapp", metadata });
       // Then: image content is served without app code or app-root environment.
-      expect(plan.appMount).toBeUndefined();
+      expect(serviceAppMount(plan)).toBeUndefined();
       expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
       expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
       expect(plan.workingDirectory).toBeUndefined();
@@ -256,3 +278,4 @@ describe("resolved service document roots", () => {
     });
   }
 });
+import { serviceAppMount } from "@lando/sdk/schema";

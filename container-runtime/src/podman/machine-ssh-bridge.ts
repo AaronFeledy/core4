@@ -154,7 +154,7 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
       });
       throw cause;
     }
-    return { dir: AbsolutePath.make(dir), socket: AbsolutePath.make(socket), release };
+    return { dir: AbsolutePath.make(dir), socket: AbsolutePath.make(socket), exited: child.exited, release };
   };
   const open = Effect.fn("RuntimeProvider.openMachineSshBridge")(function* (
     operation: "host-proxy-bridge" | "agent-socket-bridge",
@@ -175,7 +175,9 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
     );
   });
   return {
-    openHostProxyBridge: (input: HostProxyBridgeInput): BridgeEffect<HostProxyBridgeResult> =>
+    openHostProxyBridge: (
+      input: HostProxyBridgeInput,
+    ): BridgeEffect<HostProxyBridgeResult & { readonly exited: Promise<number> }> =>
       open("host-proxy-bridge", () => {
         const url = new URL(input.loopbackUrl);
         const port = Number(url.port);
@@ -188,7 +190,7 @@ export const makeMachineSshBridge = (options: MachineSshBridgeOptions) => {
           socketName: "host-proxy.sock",
           local: `127.0.0.1:${port}`,
         };
-      }).pipe(Effect.map(({ socket }) => ({ socketPath: socket }))),
+      }).pipe(Effect.map(({ socket, exited }) => ({ socketPath: socket, exited }))),
     openAgentSocketBridge: (input: AgentSocketBridgeInput): BridgeEffect<AgentSocketBridgeResult> =>
       open("agent-socket-bridge", () => {
         const local = Match.value(input.upstream).pipe(

@@ -3,11 +3,13 @@ import { Context, type Effect } from "effect";
 import type {
   AppIdReservedError,
   ComposeKeyRejectedError,
+  ConfigExpressionError,
   Lando3LandofileDetected,
   LandofileDialectMixError,
   LandofileFormConflictError,
   LandofileImportRefMisuseError,
   LandofileIncludeError,
+  LandofileLoadError,
   LandofileLoadLimitError,
   LandofileLoadOutsideRootError,
   LandofileLockMismatchError,
@@ -20,9 +22,8 @@ import type {
   ManagedFileTransactionError,
   NotImplementedError,
   RouteInputError,
-  ToolingIncludeCycleError,
 } from "../errors/index.ts";
-import type { LandofileShape } from "../schema/index.ts";
+import type { LoadScopedLandofile } from "../schema/index.ts";
 
 export type LandofileServiceError =
   | Lando3LandofileDetected
@@ -35,13 +36,14 @@ export type LandofileServiceError =
   | LandofileTimeoutError
   | LandofileFormConflictError
   | LandofileIncludeError
+  | LandofileLoadError
   | LandofileLockMismatchError
   | LandofileImportRefMisuseError
   | LandofileLoadLimitError
   | LandofileLoadOutsideRootError
-  | ToolingIncludeCycleError
   | NotImplementedError
   | ComposeKeyRejectedError
+  | ConfigExpressionError
   | ManagedFileTransactionError;
 
 export type UserLandofileError = LandofileServiceError | LandofileVersionConstraintError | AppIdReservedError;
@@ -49,6 +51,6 @@ export type UserLandofileError = LandofileServiceError | LandofileVersionConstra
 export class LandofileService extends Context.Service<
   LandofileService,
   {
-    readonly discover: Effect.Effect<LandofileShape, LandofileServiceError>;
+    readonly discover: Effect.Effect<LoadScopedLandofile, LandofileServiceError>;
   }
 >()("@lando/core/LandofileService") {}

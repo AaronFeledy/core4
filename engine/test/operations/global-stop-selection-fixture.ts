@@ -1,12 +1,29 @@
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
-import { RouterService, type ServiceRuntimeInfo } from "@lando/sdk/services";
+import { makeLandoPaths } from "@lando/paths";
+import { PluginManifestError } from "@lando/sdk/errors";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  PluginManifest,
+  ProviderId,
+  ServiceName,
+} from "@lando/sdk/schema";
+import {
+  PathsService,
+  PluginRegistry,
+  RouterService,
+  type ServiceRuntimeInfo,
+  StateStore,
+} from "@lando/sdk/services";
 import { TestRuntimeProvider, makeTestRouterService } from "@lando/sdk/test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Layer, Schema } from "effect";
+import { globalPolicyBucket } from "../../src/global-app/enablement.ts";
 import {
   executeGlobalStopSelection,
   resolveGlobalStopSelection,
   type resolveGlobalTeardown,
 } from "../../src/operations/global-teardown.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 export const root = AbsolutePath.make("/tmp/global-stop-selection");
 export const id = AppId.make("global");
@@ -23,7 +40,6 @@ const service = (name: string) => ({
   artifact: { kind: "ref" as const, ref: "test:latest" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -53,7 +69,6 @@ export const plan: AppPlan = {
     endpoint: 80,
     backend: { service: ServiceName.make(name), protocol: "http", port: 80 },
   })),
-  networks: [{ name: "shared", shared: true }],
   stores: [],
   fileSync: [],
   metadata,
@@ -67,6 +82,8 @@ export const harness = (
     readonly missing?: boolean;
     readonly race?: boolean;
     readonly observations?: readonly ServiceRuntimeInfo[];
+    readonly disabled?: readonly string[];
+    readonly inventoryFailure?: boolean;
   } = {},
 ) => {
   const removed: ServiceRuntimeInfo[] = [];
@@ -82,6 +99,7 @@ export const harness = (
         providerId: ProviderId.make("lando"),
         service: ServiceName.make(name),
         status,
+        publications: { status: "unknown" as const },
         ...(options.missing && name === "mail" ? {} : { containerId: `${name}-container` }),
       }))
     ).filter((observation) => !removedIds.has(observation.containerId));
@@ -123,12 +141,68 @@ export const harness = (
         return { app: id, appliedRoutes: routes, authorities: [] };
       }),
   };
+  const layer = Layer.mergeAll(
+    Layer.succeed(
+      PathsService,
+      makeLandoPaths({
+        userDataRoot: "/tmp/global-stop-fixture-state",
+        userCacheRoot: "/tmp/global-stop-fixture-cache",
+        userConfRoot: "/tmp/global-stop-fixture-conf",
+        systemPluginRoot: "/tmp/global-stop-fixture-sys",
+        env: {},
+        platform: "linux",
+      }),
+    ),
+    Layer.succeed(StateStore, makeTestStateStore().service),
+    Layer.succeed(
+      PluginRegistry,
+      PluginRegistry.of({
+        list: options.inventoryFailure
+          ? Effect.fail(
+              new PluginManifestError({
+                message: "Plugin inventory unavailable.",
+                issues: [],
+                remediation: "Repair plugin inventory.",
+              }),
+            )
+          : Effect.succeed([
+              Schema.decodeUnknownSync(PluginManifest)({
+                name: "@example/stop",
+                version: "1.0.0",
+                api: 4,
+                contributes: {
+                  globalServices: ["database", "sibling"].map((id) => ({
+                    id,
+                    module: "/missing/global-stop-fixture.ts",
+                    enabledByDefault: true,
+                  })),
+                },
+              }),
+            ]),
+        load: () => Effect.die("unused plugin load"),
+        loadServiceType: () => Effect.die("unused service load"),
+        loadServiceFeature: () => Effect.die("unused service feature"),
+        loadAppFeature: () => Effect.die("unused app feature"),
+      }),
+    ),
+  );
   const run = (names: readonly string[]) =>
     Effect.runPromise(
       Effect.gen(function* () {
+        const bucket = yield* globalPolicyBucket();
+        yield* bucket.set({
+          revision: 1,
+          plugins: {
+            "@example/stop": {
+              contributions: Object.fromEntries(
+                (options.disabled ?? []).map((id) => [id, { defaultEnabled: true, enabled: false }]),
+              ),
+            },
+          },
+        });
         const selection = yield* resolveGlobalStopSelection(resolved, names);
         return yield* executeGlobalStopSelection(resolved, selection);
-      }).pipe(Effect.provideService(RouterService, router)),
+      }).pipe(Effect.provideService(RouterService, router), Effect.provide(layer)),
     );
-  return { resolved, removed, states, published, run, observed };
+  return { resolved, removed, states, published, run, observed, layer };
 };

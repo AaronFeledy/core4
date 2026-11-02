@@ -1,0 +1,10 @@
+# lando-lint: expect-invalid Prefix must be a string, not a number.
+name: wrong-filter-prefix
+services:
+  web:
+    image: nginx
+    routes:
+      - hostname: web.lndo.site
+        filters:
+          - type: stripPrefix
+            prefix: 5

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { sha256Hex } from "@lando/sdk/digest";
 import { DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import {
@@ -16,14 +17,9 @@ import {
 } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import {
   HOST_PROXY_CONTAINER_LANDO,
-  HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
   HOST_PROXY_TRANSPORT_EXTENSION_KEY,
   connectHostProxyRunLando,
@@ -70,9 +66,7 @@ const fakeExecutable = async (): Promise<string> => {
 const redactionLayer = Layer.succeed(
   RedactionService,
   RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => []),
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+    ...makeRedactionService(),
   }),
 );
 const eventLayer = Layer.succeed(
@@ -81,6 +75,7 @@ const eventLayer = Layer.succeed(
     publish: () => Effect.void,
     subscribe: () => Stream.die("unused"),
     subscribeQueue: Effect.die("unused"),
+    subscribeWithHistory: () => Effect.never,
     waitForAny: () => Effect.die("unused"),
     query: () => Effect.die("unused"),
     waitFor: () => Effect.die("unused"),
@@ -98,31 +93,37 @@ const sessionFor = async () =>
       mountInfo: mount,
       allowlist: ["app:open"],
       callerService: "web",
-      executor: () => Effect.succeed({ envelope, exitCode: 0 }),
+      executor: () => Effect.succeed({ stdout: JSON.stringify(envelope), stderr: "", exitCode: 0 }),
       paths: { userCacheRoot: await tempRoot(), userDataRoot: await tempRoot() },
       shimArtifactPath: await fakeExecutable(),
     }),
   );
 
 describe("hostProxyRunLandoFeature", () => {
-  test("injects least-privilege socket and shim mounts plus auth env", async () => {
+  test("injects least-privilege socket, credentials, and shim file binds without auth env", async () => {
     const session = await sessionFor();
     if (session.shimPath === undefined) throw new TypeError("host-proxy shim path is missing");
     if (session.socketPath === undefined) throw new TypeError("host-proxy socket path is missing");
     const environment: Record<string, string> = {};
+    const extensions: Record<string, unknown> = {};
     const mounts: Array<{
       readonly type: "bind";
+      readonly origin: "integration";
       readonly source: string;
       readonly target: string;
       readonly readOnly: boolean;
       readonly realization: "passthrough";
     }> = [];
     const service = {
+      addExtension: (name: string, value: { readonly sessionDigest: string }) => {
+        extensions[name] = value;
+      },
       addEnv: (name: string, value: string) => {
         environment[name] = value;
       },
       addMount: (mountValue: {
         readonly type: "bind";
+        readonly origin: "integration";
         readonly source: string;
         readonly target: string;
         readonly readOnly: boolean;
@@ -135,29 +136,45 @@ describe("hostProxyRunLandoFeature", () => {
     hostProxyRunLandoFeature(session).apply(service);
 
     expect(environment.LANDO_HOST_PROXY_SOCKET).toBe("/run/lando/host-proxy.sock");
-    expect(environment.LANDO_HOST_PROXY_TOKEN).toBe(session.token);
+    expect(environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+    expect(environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
+    expect(environment.LANDO_HOST_PROXY_APP).toBeUndefined();
+    expect(extensions[HOST_PROXY_TRANSPORT_EXTENSION_KEY]).toEqual({
+      sessionDigest: sha256Hex(session.sessionId).slice(0, 16),
+    });
     expect(mounts).toEqual([
       {
         type: "bind",
         source: session.socketPath,
+        origin: "integration",
         target: "/run/lando/host-proxy.sock",
         readOnly: true,
         realization: "passthrough",
       },
       {
         type: "bind",
-        source: session.shimPath,
-        target: "/usr/local/lib/lando/host-proxy-client",
+        source: join(dirname(session.shimPath), "credentials"),
+        origin: "integration",
+        target: "/run/lando/host-proxy/credentials",
         readOnly: true,
         realization: "passthrough",
       },
       {
         type: "bind",
         source: session.shimPath,
+        origin: "integration",
         target: "/usr/local/bin/lando",
         readOnly: true,
         realization: "passthrough",
       },
+      ...["/usr/local/bin/xdg-open", "/usr/local/bin/open"].map((target) => ({
+        type: "bind" as const,
+        source: session.shimPath,
+        origin: "integration" as const,
+        target,
+        readOnly: true,
+        realization: "passthrough" as const,
+      })),
     ]);
     await session.close();
   });
@@ -174,6 +191,7 @@ describe("hostProxyRunLandoFeature", () => {
       shimPath: "C:\\lando\\shim",
       transport: "unix-socket",
     }).apply({
+      addExtension: () => undefined,
       addEnv: (name, value) => {
         environment[name] = value;
       },
@@ -187,11 +205,19 @@ describe("hostProxyRunLandoFeature", () => {
       source: "/home/user/.local/share/lando/host-proxy/session/host-proxy.sock",
       target: HOST_PROXY_CONTAINER_SOCKET,
     });
+    expect(mounts).toContainEqual(
+      expect.objectContaining({
+        source: "C:\\lando\\credentials",
+        target: "/run/lando/host-proxy/credentials",
+        readOnly: true,
+      }),
+    );
   });
   test("exposes TCP host-gateway URL without socket metadata or host-gateway mapping", () => {
     const environment: Record<string, string> = {};
     const mounts: Array<{ readonly target: string }> = [];
     const service = {
+      addExtension: () => undefined,
       addEnv: (name: string, value: string) => {
         environment[name] = value;
       },
@@ -213,7 +239,16 @@ describe("hostProxyRunLandoFeature", () => {
     expect(environment.LANDO_HOST_PROXY_TRANSPORT).toBe("tcp-host-gateway");
     expect(environment.LANDO_HOST_PROXY_URL).toBe("http://host.containers.internal:49152");
     expect(environment.LANDO_HOST_PROXY_SOCKET).toBeUndefined();
-    expect(environment.LANDO_HOST_PROXY_TOKEN).toBe("secret-token");
+    expect(environment.LANDO_HOST_PROXY_TOKEN).toBeUndefined();
+    expect(environment.LANDO_HOST_PROXY_SESSION).toBeUndefined();
+    expect(environment.LANDO_HOST_PROXY_APP).toBeUndefined();
+    expect(mounts).toContainEqual(
+      expect.objectContaining({
+        target: "/run/lando/host-proxy/credentials",
+        source: "C:\\Users\\me\\AppData\\Local\\Lando\\Data\\run\\demo\\credentials",
+        readOnly: true,
+      }),
+    );
     expect(mounts).not.toContainEqual(expect.objectContaining({ target: "/run/lando/host-proxy.sock" }));
   });
 
@@ -235,17 +270,19 @@ describe("hostProxyRunLandoFeature", () => {
         LANDO_HOST_PROXY_DEPTH: "0",
       },
       mounts: [
+        ...["/usr/local/bin/xdg-open", "/usr/local/bin/open", "/run/lando/host-proxy/credentials"].map(
+          (target) => ({
+            type: "bind" as const,
+            source: "/tmp/lando-shim",
+            target: PortablePath.make(target),
+            readOnly: true,
+            realization: "passthrough" as const,
+          }),
+        ),
         {
           type: "bind" as const,
           source: "/tmp/host-proxy.sock",
           target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
-          readOnly: true,
-          realization: "passthrough" as const,
-        },
-        {
-          type: "bind" as const,
-          source: "/tmp/lando-shim",
-          target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
           readOnly: true,
           realization: "passthrough" as const,
         },
@@ -258,13 +295,11 @@ describe("hostProxyRunLandoFeature", () => {
         },
         {
           type: "volume" as const,
-          source: "app-data",
+          store: "app-data",
           target: PortablePath.make("/data"),
           readOnly: false,
-          realization: "passthrough" as const,
         },
       ],
-      storage: [],
       endpoints: [],
       routes: [],
       dependsOn: [],
@@ -281,7 +316,6 @@ describe("hostProxyRunLandoFeature", () => {
       provider: ProviderId.make("lando"),
       services: { [ServiceName.make("web")]: service },
       routes: [],
-      networks: [],
       stores: [],
       fileSync: [],
       metadata,
@@ -293,10 +327,9 @@ describe("hostProxyRunLandoFeature", () => {
     expect(strippedWeb?.mounts).toEqual([
       {
         type: "volume",
-        source: "app-data",
+        store: "app-data",
         target: PortablePath.make("/data"),
         readOnly: false,
-        realization: "passthrough",
       },
     ]);
     expect(strippedWeb?.extensions).toEqual({ keep: true });

@@ -1,1 +1,1 @@
-extra file from the child recipe
+Added by lamp-child.

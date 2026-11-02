@@ -1,0 +1,6 @@
+name: config-lint-pgport
+services:
+  db:
+    type: postgres:16
+    environment:
+      PGPORT: "5433"

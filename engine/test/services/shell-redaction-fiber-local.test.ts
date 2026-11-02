@@ -1,28 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import { RedactionService, registerRedactionValues } from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createRedactor } from "@lando/sdk/secrets";
 import { ShellRunner } from "@lando/sdk/services";
 import { Deferred, Effect, Fiber, Layer } from "effect";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
 import { withShellRedactionTokens } from "../../src/services/shell-runner.ts";
+import * as BunShellRunner from "../shell-runner.ts";
 
 const layer = Layer.mergeAll(
   BunShellRunner.layer(() => {
     throw new TypeError("Unexpected interactive shell");
   }),
-  Layer.succeed(
-    RedactionService,
-    RedactionService.of({
-      registerValues: registerRedactionValues,
-      payloadValues: (options) => Effect.succeed(() => options?.redactionTokens ?? []),
-      forProfile: (profile, options) =>
-        Effect.succeed(
-          createRedactor(profile, {
-            values: options?.redactionTokens ?? [],
-          }),
-        ),
-    }),
-  ),
+  Layer.succeed(RedactionService, {
+    ...makeRedactionService(),
+    payloadValues: (options) => Effect.succeed(() => options?.redactionTokens ?? []),
+    forProfile: (profile, options) =>
+      Effect.succeed(createRedactor(profile, { values: options?.redactionTokens ?? [] })),
+  }),
 );
 const output = "left-fiber-secret right-fiber-secret";
 const failShell = Effect.flatMap(ShellRunner, (shell) => shell.exec(`printf '${output}'; exit 7`)).pipe(

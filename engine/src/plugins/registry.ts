@@ -55,9 +55,7 @@ const makePluginRegistry = (
   const discoverGlobalPlugins = Effect.gen(function* () {
     if (input.staticGlobalPlugins !== undefined) return input.staticGlobalPlugins;
     const userDataRoot =
-      configService === undefined
-        ? resolveUserDataRoot()
-        : yield* configService.get("userDataRoot").pipe(Effect.catch(() => Effect.succeed(undefined)));
+      configService === undefined ? resolveUserDataRoot() : yield* configService.get("userDataRoot");
     const userPlugins =
       discovery.user === false || userDataRoot === undefined
         ? []
@@ -67,8 +65,7 @@ const makePluginRegistry = (
   const discoverPlugins = Effect.gen(function* () {
     if (staticPlugins !== undefined) return staticPlugins;
     const globalPlugins = yield* discoverGlobalPlugins;
-    const appRoot =
-      discovery.app === false ? undefined : yield* Effect.promise(() => findAppRoot(process.cwd()));
+    const appRoot = discovery.app === false ? undefined : yield* findAppRoot();
     const appPlugins =
       appRoot === undefined
         ? []
@@ -84,6 +81,8 @@ const makePluginRegistry = (
   );
 
   const registry: Context.Service.Shape<typeof PluginRegistry> = PluginRegistry.of({
+    declaredProviderCapabilities: (id, platform) =>
+      capabilities.runtimeProviders.get(id)?.declaredCapabilities?.(platform, process.arch),
     list: discover,
     load: Effect.fn("PluginRegistry.load")(function* (name) {
       const manifests = yield* discover;
@@ -97,6 +96,7 @@ const makePluginRegistry = (
         new PluginLoadError({
           message: `Plugin ${name} is not registered.`,
           pluginName: name,
+          remediation: `Install or enable plugin ${name}, then retry.`,
         }),
       );
     }),
@@ -121,6 +121,7 @@ const makePluginRegistry = (
         new PluginLoadError({
           message: `Service type ${id} is not registered.`,
           pluginName: "@lando/core",
+          remediation: `Install a plugin that contributes service type ${id}, or correct the type: field in the Landofile.`,
         }),
       );
     }),
@@ -130,6 +131,7 @@ const makePluginRegistry = (
           new PluginLoadError({
             message: `Bundled service feature ${id} is not registered.`,
             pluginName: "@lando/core",
+            remediation: `Enable bundled plugins that contribute service feature ${id}, or remove the feature from the Landofile.`,
           }),
         );
       }
@@ -141,6 +143,7 @@ const makePluginRegistry = (
         new PluginLoadError({
           message: `Bundled service feature ${id} is not registered.`,
           pluginName: "@lando/core",
+          remediation: `Enable bundled plugins that contribute service feature ${id}, or remove the feature from the Landofile.`,
         }),
       );
     },
@@ -160,6 +163,7 @@ const makePluginRegistry = (
         new PluginLoadError({
           message: `App feature ${id} is not registered.`,
           pluginName: "@lando/core",
+          remediation: `Install a plugin that contributes app feature ${id}, or remove it from the Landofile.`,
         }),
       );
     }),

@@ -33,7 +33,7 @@ describe("provider-docker isAvailable", () => {
     const negotiation = negotiateDockerApiVersion({ minApiVersion: "1.50", apiVersion: "1.55" });
     if (negotiation.ok) throw new Error("expected incompatible daemon range");
     const versionError = dockerApiVersionUnavailable(
-      { providerId: "docker", remediation: "Start Docker." },
+      { providerId: "docker", remediation: "Start Docker.", env: {} },
       negotiation,
     );
     let infoCalls = 0;

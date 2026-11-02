@@ -139,6 +139,17 @@ describe("embedded command registry manifest", () => {
     expect(Object.keys(manifest.topics).sort()).toEqual(Object.keys(COMMAND_TOPICS).sort());
     expect(manifest.version).toBe("0.0.0");
     expect(manifestIds).toEqual(registryIds);
+    for (const id of [
+      "meta:config",
+      "app:config",
+      "app:config:set",
+      "meta:global:config",
+      "meta:global:config:set",
+    ]) {
+      const type = manifest.commands[id]?.flags.type;
+      expect(type).toMatchObject({ options: ["string", "number", "boolean", "json", "yaml"] });
+      expect(type).not.toHaveProperty("default");
+    }
     for (const entry of builtInCommandEntries) {
       expect(manifest.commands[entry.spec.id]?.spec).toMatchObject({
         id: entry.spec.id,
@@ -169,6 +180,10 @@ describe("embedded command registry manifest", () => {
 
     // Then
     const reference = await readFile(fixture.commandReferencePath, "utf8");
+    expect(reference).toContain("## `lando db:export`");
+    expect(reference).toContain("Provided by `@lando/sql`.");
+    expect(reference).toContain("| `--yes, -y` |");
+    expect(reference).not.toContain("## `lando github-actions:list`");
     expect(reference).toContain(
       "| `command` | Command argv after `--`. An optional service name may come first. |",
     );

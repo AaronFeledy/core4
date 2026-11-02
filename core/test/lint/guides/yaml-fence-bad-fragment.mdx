@@ -1,0 +1,22 @@
+---
+id: yaml-fence-bad-fragment
+provider: test
+diataxis: tutorial
+---
+
+Fragment with an unknown service field.
+
+```yaml
+services:
+  web:
+    type: lando
+    notARealServiceKey: true
+```
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>

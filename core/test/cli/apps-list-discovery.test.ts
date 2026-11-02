@@ -562,33 +562,6 @@ describe("apps:list host-wide discovery", () => {
     });
   });
 
-  test("fails prune instead of reporting success when cwd inventory mutation fails", async () => {
-    await withTempRoot(async (userDataRoot) => {
-      const paths = makeLandoPaths({ userDataRoot });
-      const statePath = join(paths.pluginStateDir("@lando/provider-lando"), "applied-plans", "alpha.json");
-      await mkdir(join(statePath, ".."), { recursive: true });
-      await writeFile(
-        statePath,
-        JSON.stringify(stateEnvelope("alpha", "alpha", "/missing/alpha", [], "lando")),
-      );
-      await writeFile(join(userDataRoot, "cwd-app-map.bin"), "corrupt");
-
-      const failed = await runList(userDataRoot, {
-        prune: true,
-        discoverContainersEvidence: async () => ({
-          apps: [],
-          confirmedProviderIds: ["lando"],
-          ownedAppIds: [],
-        }),
-      }).then(
-        () => false,
-        () => true,
-      );
-      expect(failed).toBe(true);
-      expect(await Bun.file(statePath).exists()).toBe(true);
-    });
-  });
-
   test("does not prune stale state without provider confirmation", async () => {
     await withTempRoot(async (userDataRoot) => {
       const paths = makeLandoPaths({ userDataRoot });

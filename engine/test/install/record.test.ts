@@ -158,6 +158,23 @@ describe("destination ownership", () => {
 });
 
 describe("install record filesystem integration", () => {
+  test("keeps an inspection failure distinct from a missing install record", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-record-inspection-"));
+    try {
+      const loop = join(root, "loop");
+      await symlink(loop, loop);
+      const result = await Effect.runPromise(
+        readInstallRecord(join(loop, "record.json")).pipe(Effect.provide(BunFileSystem.layer), Effect.result),
+      );
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect(result.failure.cause).toMatchObject({ _tag: "FileIoError", path: join(loop, "record.json") });
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test.each(["absent", "regular", "symlink", "directory", "corrupt"] as const)(
     "reads %s record",
     async (kind) => {

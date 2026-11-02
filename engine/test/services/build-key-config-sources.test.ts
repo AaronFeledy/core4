@@ -26,7 +26,6 @@ const key = (configSources: ReadonlyArray<ServiceConfigSource>) => {
     primary: true,
     environment: {},
     mounts: [],
-    storage: [],
     endpoints: [],
     routes: [],
     dependsOn: [],

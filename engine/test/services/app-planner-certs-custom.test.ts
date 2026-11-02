@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { AppPlan, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { planAppPlannerCerts, planAppPlannerCertsEffect } from "./app-planner-certs-harness.ts";
@@ -73,6 +73,7 @@ test("mounts validated custom certificate material without contacting the certif
     expect(pair?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/pair.crt");
     expect(pair?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/pair.key");
     expect(pair?.certs).toBeUndefined();
+    expect(pair?.extensions["@lando/core/certs"]).toBe("custom");
     expect(pair?.mounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -85,9 +86,16 @@ test("mounts validated custom certificate material without contacting the certif
 
     expect(single?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/single.crt");
     expect(single?.environment.LANDO_SERVICE_KEY).toBeUndefined();
+    expect(single?.certs).toBeUndefined();
+    expect(single?.extensions["@lando/core/certs"]).toBe("custom");
 
     expect(off?.environment.LANDO_SERVICE_CERT).toBeUndefined();
     expect(off?.certs).toBeUndefined();
+    expect(off?.extensions["@lando/core/certs"]).toBe("none");
+    const restored = Schema.decodeSync(AppPlan)(Schema.encodeSync(AppPlan)(appPlan));
+    expect(restored.services[ServiceName.make("pair")]?.extensions["@lando/core/certs"]).toBe("custom");
+    expect(restored.services[ServiceName.make("single")]?.extensions["@lando/core/certs"]).toBe("custom");
+    expect(restored.services[ServiceName.make("off")]?.extensions["@lando/core/certs"]).toBe("none");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

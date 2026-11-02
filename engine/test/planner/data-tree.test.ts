@@ -16,6 +16,13 @@ const intent = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("resolveDataTreeOwnership", () => {
+  test.each(["constructor", "toString", "__proto__", "hasOwnProperty:staff"])(
+    "refuses inherited object principal %s",
+    (plannedUser) => {
+      const resolved = resolveDataTreeOwnership({ ...intent(), plannedUser });
+      expect(resolved).toBeInstanceOf(DataTreeOwnershipCapabilityError);
+    },
+  );
   test("Given no planned user, When resolved, Then the image's own identity owns the tree and nothing is prepared", () => {
     expect(resolveDataTreeOwnership({ ...intent(), plannedUser: undefined })).toEqual([]);
   });

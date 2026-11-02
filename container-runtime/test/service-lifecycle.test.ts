@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { makeRedactionService } from "@lando/redaction/service";
 import { DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
@@ -32,7 +32,6 @@ const service: ServicePlan = {
   artifact: { kind: "ref", ref: "node:22-alpine" },
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   dependsOn: [],
@@ -48,7 +47,6 @@ const plan: AppPlan = {
   provider: providerId,
   services: { [serviceName]: service },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -56,11 +54,17 @@ const plan: AppPlan = {
 };
 const target = { app: appId, service: serviceName };
 
-beforeEach(resetRegisteredRedactionValuesForTesting);
-afterEach(resetRegisteredRedactionValuesForTesting);
+let fixtureRedaction = makeRedactionService();
+beforeEach(() => {
+  fixtureRedaction = makeRedactionService();
+});
 
 describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (providerName) => {
-  const ctx = { providerId: providerName, remediation: `Repair ${providerName} and retry.` } as const;
+  const ctx = {
+    providerId: providerName,
+    remediation: `Repair ${providerName} and retry.`,
+    env: {},
+  } as const;
 
   for (const action of lifecycleActions) {
     test(`issues only POST /${action} for the planned container`, async () => {
@@ -106,18 +110,25 @@ describe.each(["docker", "lando", "podman"] as const)("%s service lifecycle", (p
 
       // Then
       expect(failure).toBeInstanceOf(ServiceNotFoundError);
-      expect(failure.providerId).toBe(providerName);
+      expect(failure).toMatchObject({ _tag: "ServiceNotFoundError", providerId: providerName });
     });
   }
 });
 
 describe("service lifecycle failures", () => {
-  const ctx = { providerId: "podman", remediation: "Repair Podman and retry." } as const;
+  const ctx = {
+    providerId: "podman",
+    remediation: "Repair Podman and retry.",
+    env: {},
+    get redactor() {
+      return Effect.runSync(fixtureRedaction.forProfile("secrets"));
+    },
+  } as const;
 
   test("redacts runtime-registered values in a failed stop response", async () => {
     // Given
     const canary = "opaque-lifecycle-canary-1261";
-    Effect.runSync(registerRedactionValues([canary]));
+    Effect.runSync(fixtureRedaction.registerValues([canary]));
     const api: EngineHttpApi = {
       request: () =>
         Effect.succeed({ status: 500, body: JSON.stringify({ message: `engine said ${canary}` }) }),
@@ -157,7 +168,7 @@ describe("service lifecycle failures", () => {
 
     // Then
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
-    expect(failure.providerId).toBe("podman");
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
     expect(failure.remediation).toBe(ctx.remediation);
   });
 
@@ -167,6 +178,8 @@ describe("service lifecycle failures", () => {
       providerId: "podman",
       operation: "podman-api",
       message: "socket parse failed",
+      remediation:
+        "Re-run the command after checking `podman` logs for the `podman-api` failure; if it persists, report the error with that operation name.",
     });
     const api: EngineHttpApi = { request: () => Effect.fail(requestFailure) };
 
@@ -178,7 +191,7 @@ describe("service lifecycle failures", () => {
     // Then
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     expect(failure.cause).toBe(requestFailure);
-    expect(failure.providerId).toBe("podman");
+    expect(failure).toMatchObject({ _tag: "ProviderUnavailableError", providerId: "podman" });
   });
 
   test("adds a redacted API reason to non-success status messages", async () => {
@@ -215,7 +228,7 @@ describe.each(["docker", "lando", "podman"] as const)("%s exact service lifecycl
         target,
         { containerId: "sha256:inspected-container", imageIdentity: "sha256:inspected-image" },
         "start",
-        { api, ctx: { providerId: providerName, remediation: `Repair ${providerName} and retry.` } },
+        { api, ctx: { providerId: providerName, remediation: `Repair ${providerName} and retry.`, env: {} } },
       ),
     );
 

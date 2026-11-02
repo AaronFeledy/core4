@@ -56,10 +56,13 @@ class RegistryDecodeError extends Error {
 const decodeRegistryResponse = (payload: unknown): RecipeRegistryResponseType =>
   Schema.decodeUnknownSync(RecipeRegistryResponse)(payload);
 
-export const defaultRecipeRegistryClient = (registryUrl: string): RecipeRegistryClient => ({
+export const defaultRecipeRegistryClient = (
+  registryUrl: string,
+  fetchJson: typeof httpJsonFetch = httpJsonFetch,
+): RecipeRegistryClient => ({
   fetchResolution: async (id) => {
     const base = registryUrl.replace(/\/+$/u, "");
-    const response = await httpJsonFetch(`${base}/${encodeURIComponent(id)}`, {
+    const response = await fetchJson(`${base}/${encodeURIComponent(id)}`, {
       headers: [{ name: "accept", value: "application/json" }],
       redirect: "follow",
       timeoutMs: 15000,

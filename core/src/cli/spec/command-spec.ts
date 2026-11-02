@@ -2,7 +2,7 @@ import type { ProjectedFailure } from "@lando/sdk/command-result";
 import { Schema } from "effect";
 
 import type { ExecutableCommandSpec } from "@lando/sdk/plugins";
-import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
+import type { CommandCompletion, DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 
 import { assertTopLevelAliasesClaimable } from "@lando/engine/operations/reserved-aliases";
 import { assertMcpAllowlistSafe } from "@lando/mcp/allowlist";
@@ -34,8 +34,9 @@ const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAl
   Array.isArray(value);
 
 export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
-  extends Omit<ExecutableCommandSpec<A, E, R, unknown>, "namespace" | "render" | "successExitCode"> {
+  extends Omit<ExecutableCommandSpec<A, E, R, unknown>, "namespace" | "render" | "completion"> {
   readonly namespace: LandoCommandNamespace;
+  readonly summary: string;
   readonly description?: string;
   readonly deprecated?: DeprecationNotice;
   /** True only for commands exposed as MCP tools by default; destructive surfaces must not set this. */
@@ -61,18 +62,19 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown>
   /** Present only for commands that stream incremental output (logs/exec/build). */
   readonly streaming?: StreamFrameSchema;
   readonly streamingMode?: "live" | ((input: unknown) => "live" | undefined);
-  readonly streamFrames?: (result: unknown) => ReadonlyArray<StreamOutputFrame>;
-  readonly redactionTokens?: (result: unknown) => ReadonlyArray<string>;
+  readonly streamFrames?: {
+    bivarianceHack(result: A): ReadonlyArray<StreamOutputFrame>;
+  }["bivarianceHack"];
   /**
    * Core CLI string render hook. Omitted from the SDK Effect union and
    * redeclared here so built-in call sites keep `RenderContext` and a
    * `string | undefined` return (no Effect leakage).
    */
   readonly render?: {
-    bivarianceHack(result: unknown, input?: unknown, ctx?: RenderContext): string | undefined;
+    bivarianceHack(result: A, input?: unknown, ctx?: RenderContext): string | undefined;
   }["bivarianceHack"];
-  readonly successExitCode?: {
-    bivarianceHack(result: A, input?: unknown): number | undefined;
+  readonly completion?: {
+    bivarianceHack(result: A, input: unknown): CommandCompletion;
   }["bivarianceHack"];
   readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
   /**
@@ -108,7 +110,7 @@ export class CommandRegistrationError extends Schema.TaggedError<CommandRegistra
   {
     message: Schema.String,
     commandId: Schema.optionalKey(Schema.String),
-    remediation: Schema.optionalKey(Schema.String),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 

@@ -7,7 +7,6 @@ import type { LandoEvent } from "@lando/sdk/events";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AbsolutePath, type NotifyConfig, type PluginManifest } from "@lando/sdk/schema";
 import {
-  CommandRegistry,
   ConfigService,
   EventService,
   Logger,
@@ -22,12 +21,11 @@ import { RedactionService } from "@lando/redaction/service";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { builtInCommandIds, bundledPluginModules } from "../composition.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
-import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
 import { EventDispatchControl } from "../services/event-service.ts";
 import { makePublishRender } from "./publish-render.ts";
 import { resolveNotifyConfig } from "./subscriber-config.ts";
 import type { IndexedSubscriber } from "./subscriber-index.ts";
-import { makeSubscriberRegistrationClosure } from "./subscriber-index.ts";
+import { makeSubscriberRegistrationClosure, staticSubscriberCommandIds } from "./subscriber-index.ts";
 import {
   type RuntimeSubscriberFactory,
   type RuntimeSubscriberHandler,
@@ -41,12 +39,7 @@ export const canonicalSubscriberCommandIds = (
   commands: ReadonlyArray<RegisteredCommand> = [],
   builtIns: ReadonlyArray<string> = builtInCommandIds(),
 ): ReadonlyArray<string> => {
-  const ids = new Set<string>(builtIns);
-  for (const manifest of manifests) {
-    for (const command of manifest.contributes?.commands ?? []) {
-      ids.add(typeof command === "string" ? command : command.id);
-    }
-  }
+  const ids = new Set(staticSubscriberCommandIds(manifests, builtIns));
   for (const command of commands) ids.add(command.id);
   return [...ids];
 };
@@ -66,6 +59,7 @@ export const loadSubscriberFactory = (
       new PluginLoadError({
         pluginName: subscriber.pluginName,
         message: `Bundled subscriber factory ${subscriber.entry.id} is not registered.`,
+        remediation: `Register subscriber factory ${subscriber.entry.id} on the ${subscriber.pluginName} bundled plugin descriptor.`,
       }),
     );
   }
@@ -75,6 +69,7 @@ export const loadSubscriberFactory = (
       new PluginLoadError({
         pluginName: subscriber.pluginName,
         message: `Bundled subscriber factory ${subscriber.entry.id} failed to load: ${String(cause)}`,
+        remediation: `Repair plugin ${subscriber.pluginName} so subscriber factory ${subscriber.entry.id} loads.`,
       }),
   }).pipe(
     Effect.flatMap((factory) =>
@@ -84,6 +79,7 @@ export const loadSubscriberFactory = (
             new PluginLoadError({
               pluginName: subscriber.pluginName,
               message: `Bundled subscriber factory ${subscriber.entry.id} did not export a factory.`,
+              remediation: `Export a subscriber factory for ${subscriber.entry.id} from plugin ${subscriber.pluginName}.`,
             }),
           ),
     ),
@@ -114,6 +110,7 @@ const subscriberEventError = (
     event: input.event._tag,
     message: `Subscriber ${input.subscriber.pluginName}/${input.subscriber.entry.id} failed to load.`,
     cause,
+    remediation: "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
   });
 
 const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> => {
@@ -149,7 +146,6 @@ export const layer = (
   Layer.effectDiscard(
     Effect.gen(function* () {
       const plugins = yield* PluginRegistry;
-      const globalPlugins = yield* GlobalPluginManifests;
       const configService = yield* ConfigService;
       const events = yield* EventService;
       const dispatchControl = yield* EventDispatchControl;
@@ -160,50 +156,45 @@ export const layer = (
       const httpClient = yield* HttpClient.HttpClient;
       const redaction = yield* RedactionService;
       const manifests = yield* plugins.list;
-      const globalManifests = yield* globalPlugins.list;
-      const commandRegistry = yield* CommandRegistry;
-      const resolvedCommands = yield* commandRegistry.list;
-      const commandIds = canonicalSubscriberCommandIds(manifests, resolvedCommands, builtIns);
-      const notifyCommandIds = new Set(canonicalSubscriberCommandIds(globalManifests, [], builtIns));
       const hasNotifySubscriber = manifests.some((manifest) =>
         manifest.subscribers?.some((subscriber) => subscriber.configKey === "notify"),
       );
-      const notify = hasNotifySubscriber
-        ? yield* resolveNotifyConfig(yield* configService.load, notifyCommandIds)
-        : undefined;
+      const notify = hasNotifySubscriber ? yield* resolveNotifyConfig(yield* configService.load) : undefined;
       const closure = makeSubscriberRegistrationClosure(manifests);
-      const index = yield* closure.close(commandIds);
+      const index = yield* closure.close({ builtIns });
       const handlers = new Map<IndexedSubscriber, Effect.Effect<RuntimeSubscriberHandler, PluginLoadError>>();
-      for (const entries of index.values()) {
-        for (const subscriber of entries) {
-          if (handlers.has(subscriber)) continue;
-          const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
-            paths.pluginStateDir(subscriber.pluginName),
-          );
-          const context = makeLandoPluginContext({
-            id: subscriber.pluginName,
-            managedFileService: managedFiles,
-            stateStore,
-            pluginStateRoot,
-            privateFileAccess,
-            httpClient,
-            publishRender: makePublishRender(events, redaction),
-          });
-          const getHandler = yield* makeCachedSubscriberHandler(
-            loadSubscriberFactory(subscriber, modules),
-            context,
-            projectedConfig(subscriber, notify),
-          );
-          handlers.set(subscriber, getHandler);
-        }
+      for (const subscriber of index.subscribers) {
+        const pluginStateRoot = yield* Schema.decodeUnknownEffect(AbsolutePath)(
+          paths.pluginStateDir(subscriber.pluginName),
+        );
+        const context = makeLandoPluginContext({
+          id: subscriber.pluginName,
+          managedFileService: managedFiles,
+          stateStore,
+          pluginStateRoot,
+          privateFileAccess,
+          httpClient,
+          publishRender: makePublishRender(events, redaction),
+        });
+        const getHandler = yield* makeCachedSubscriberHandler(
+          loadSubscriberFactory(subscriber, modules),
+          context,
+          projectedConfig(subscriber, notify),
+        );
+        handlers.set(subscriber, getHandler);
       }
       yield* dispatchControl.install({
-        hasSubscribers: (eventName) => index.has(eventName),
+        hasSubscribers: (eventName) => index.forEvent(eventName).length > 0,
         dispatch: (event) => {
-          const entries = index.get(event._tag) ?? [];
+          const entries = index.forEvent(event._tag);
           if (!Schema.is(LandoEventSchema)(event)) {
             return Effect.fail(
-              new EventError({ event: event._tag, message: "Indexed event failed schema validation." }),
+              new EventError({
+                event: event._tag,
+                message: "Indexed event failed schema validation.",
+                remediation:
+                  "Fix the failing event handler or emitter, then re-run the operation that publishes it.",
+              }),
             );
           }
           return Effect.forEach(

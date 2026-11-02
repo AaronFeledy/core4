@@ -34,10 +34,13 @@ const fieldKey =
     isPlainRecord(item) ? identityText(item[field]) : undefined;
 const dependencyEntries = (value: unknown): ReadonlyArray<unknown> | undefined => {
   if (Array.isArray(value)) return value.map((item) => (typeof item === "string" ? { service: item } : item));
-  if (!isPlainRecord(value)) return undefined;
-  return Object.entries(value).map(([service, spec]) =>
-    isPlainRecord(spec) ? { ...spec, service } : { service, condition: spec },
-  );
+  if (!isPlainRecord(value) || Object.hasOwn(value, "__proto__")) return undefined;
+  const projected = [];
+  for (const [service, spec] of Object.entries(value)) {
+    if (!isPlainRecord(spec) || Object.hasOwn(spec, "service")) return undefined;
+    projected.push({ ...spec, service });
+  }
+  return projected;
 };
 const ruleImplementation = (identity: Extract<LayerMergeRule, { kind: "keyed" }>["identity"]) => {
   switch (identity) {

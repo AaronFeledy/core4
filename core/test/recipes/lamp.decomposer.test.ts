@@ -1,20 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import {
-  computeRecipeContentDigest,
-  fullRecipeMigratability,
-  recipeContentDigestProjection,
-  renderRecipeSnapshot,
-} from "@lando/sdk/recipes";
-import { type RecipeDecomposeInput, RecipeManifest } from "@lando/sdk/schema";
+import { fullRecipeMigratability, renderRecipeSnapshot } from "@lando/sdk/recipes";
+import type { RecipeDecomposeInput } from "@lando/sdk/schema";
 import { runRecipeDecomposerContractSuite } from "@lando/sdk/test";
-import { Effect, Result, Schema } from "effect";
-import { parse } from "yaml";
-import { lampDecomposer } from "../../src/recipes/builtin/lamp/decomposer.ts";
-import { lampRecipeYaml } from "../../src/recipes/builtin/lamp/manifest.ts";
-import { lampProducer, lampSnapshot } from "../../src/recipes/builtin/lamp/snapshot.ts";
+import { Effect, Result } from "effect";
+import { bundledRecipe, recompiledBundledDigest } from "../_support/bundled-recipe.ts";
+const {
+  decomposer: lampDecomposer,
+  producer: lampProducer,
+  snapshot: lampSnapshot,
+  manifest,
+} = bundledRecipe("lamp");
 
 const defaults = { php: "8.4", database: "mariadb:11.4", composer: "2", webroot: "." };
-const alternatives = { php: "8.1", database: "mysql:8.0", composer: "false", webroot: "/app/web" };
+const alternatives = { php: "8.1", database: "mysql:8.0", composer: false, webroot: "/app/web" };
 const validInput: RecipeDecomposeInput = { producer: lampProducer, options: defaults, secrets: {} };
 const decomposer = lampDecomposer({
   redactor: { redactString: (text) => text, redactValue: (value) => value },
@@ -86,7 +84,7 @@ describe("lamp decomposition", () => {
     expect<unknown>(fragment).toEqual({
       runtime: 4,
       recipe: provenance,
-      services: { ...expectedServices, appserver: { ...expectedServices.appserver, composer: false } },
+      services: expectedServices,
       tooling: { php: phpTool },
     });
     expect<unknown>(provenance.options).toEqual(alternatives);
@@ -97,7 +95,7 @@ describe("lamp decomposition", () => {
     ["php", "9.0"],
     ["database", false],
     ["database", "postgres:16"],
-    ["composer", false],
+    ["composer", "false"],
     ["composer", "3"],
     ["webroot", 42],
     ["webroot", "unsafe path"],
@@ -117,22 +115,18 @@ describe("lamp decomposition", () => {
 
   test("publishes an explicit empty auxiliary inventory when decoding the manifest", () => {
     // Given / When
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(parse(lampRecipeYaml));
     // Then
-    expect<unknown>(manifest.files).toEqual([
-      { src: "templates/.lando.yml.tmpl", dest: ".lando.yml", template: true },
-    ]);
+    expect<unknown>(manifest.files ?? []).toEqual([]);
     expect<unknown>(manifest.postInit).toEqual([
       { type: "message", text: "Run 'lando start' inside the new app directory to bring the LAMP stack up." },
     ]);
     expect(manifest.snapshot?.assets).toEqual([]);
   });
 
-  test("publishes a migratable snapshot with matching content identity", () => {
+  test("publishes a migratable snapshot with matching content identity", async () => {
     // Given
-    const manifest = Schema.decodeUnknownSync(RecipeManifest)(parse(lampRecipeYaml));
     // When
-    const digest = computeRecipeContentDigest(recipeContentDigestProjection(manifest));
+    const digest = await recompiledBundledDigest(manifest);
     // Then
     expect<unknown>(digest).toBe(manifest.snapshot?.identity.contentDigest);
     expect(manifest.snapshot?.identity.recipeId).toBe(manifest.id);

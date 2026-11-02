@@ -1,12 +1,8 @@
 import { expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
-import { PluginName } from "@lando/sdk/schema";
 import { APP_PLAN_CACHE_SCHEMA_VERSION, deriveAppPlanCacheKey } from "../../src/cache/app-plan.ts";
 import { canonicalCacheJson } from "../../src/cache/canonical.ts";
-import {
-  deriveAppCommandEntriesFingerprint,
-  derivePluginCommandPluginListSha,
-} from "../../src/cache/command-index.ts";
+import { deriveAppCommandEntriesFingerprint } from "../../src/cache/command-index.ts";
 import { fingerprintPlanningRuntimeParts } from "../../src/cache/planning-runtime.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
@@ -49,21 +45,6 @@ test("hashes canonical text when planning runtime keys have numeric names", () =
   expect(fingerprint).toBe(sha256Hex('{"10":"ten","2":"two","B":1,"a":2,"coreVersion":"test"}'));
 });
 
-test("sorts manifest sets by UTF-16 when names differ by case and non-ASCII characters", () => {
-  const manifests = ["é", "a", "B", "日本"].map((name) => ({
-    name: PluginName.make(name),
-    version: "1",
-    api: 4 as const,
-    bootstrap: "app" as const,
-  }));
-  const fingerprint = derivePluginCommandPluginListSha(manifests);
-  expect(fingerprint).toBe(
-    sha256Hex(
-      '[{"api":4,"name":"B","version":"1"},{"api":4,"name":"a","version":"1"},{"api":4,"name":"é","version":"1"},{"api":4,"name":"日本","version":"1"}]',
-    ),
-  );
-});
-
 test("preserves command entry order when fingerprinting a semantic array", () => {
   const entries = [
     { id: "B", summary: "", hidden: false },
@@ -76,6 +57,7 @@ test("preserves command entry order when fingerprinting a semantic array", () =>
 test("shares native date and bigint normalization across app-plan and command caches", () => {
   const input = {
     appRoot: "/app",
+    hostProvider: "lando",
     landofile: { name: "app" },
     pluginManifests: [],
     planningRuntime: "fixed",
@@ -103,6 +85,7 @@ test("shares native date and bigint normalization across app-plan and command ca
 test("sorts referenced-file sets by UTF-16 while omitting their modification times", () => {
   const input = {
     appRoot: "/app",
+    hostProvider: "lando",
     landofile: { name: "app" },
     pluginManifests: [],
     planningRuntime: "fixed",
@@ -120,7 +103,7 @@ test("sorts referenced-file sets by UTF-16 while omitting their modification tim
   const fingerprint = deriveAppPlanCacheKey(input);
   expect(fingerprint).toBe(
     sha256Hex(
-      `{"appRoot":"/app","cache":"app-plan","config":null,"hostHome":"/home/fixed","includedFragmentShas":[],"landoVersion":${JSON.stringify(CORE_VERSION)},"landofile":{"name":"app"},"planningRuntime":"fixed","pluginManifests":[],"schemaVersion":${Number(APP_PLAN_CACHE_SCHEMA_VERSION)},"serviceInputs":{},"sourceFingerprint":{"includeLockfileHash":null,"includeSources":[],"includedFragmentShas":[],"landofileContentHashes":[],"referencedFiles":[{"absolutePath":"/B","sha256":"B","size":1},{"absolutePath":"/a","sha256":"a","size":1}]},"versionConstraints":[]}`,
+      `{"appFeatureEnv":{},"appRoot":"/app","cache":"app-plan","config":null,"hostHome":"/home/fixed","hostProvider":"lando","includedFragmentShas":[],"landoVersion":${JSON.stringify(CORE_VERSION)},"landofile":{"name":"app"},"planningRuntime":"fixed","pluginManifests":[],"schemaVersion":${Number(APP_PLAN_CACHE_SCHEMA_VERSION)},"serviceInputs":{},"sourceFingerprint":{"includeLockfileHash":null,"includeSources":[],"includedFragmentShas":[],"landofileContentHashes":[],"referencedFiles":[{"absolutePath":"/B","sha256":"B","size":1},{"absolutePath":"/a","sha256":"a","size":1}]},"versionConstraints":[]}`,
     ),
   );
 });

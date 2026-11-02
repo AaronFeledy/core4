@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
+import { PluginManifest } from "@lando/sdk/schema";
+import { Schema } from "effect";
+import packageJson from "../package.json";
 import { PLUGIN_NAME, manifest, plugin } from "../src/index.ts";
 
 const contributionIds = (
@@ -7,6 +10,11 @@ const contributionIds = (
 ): readonly string[] => (entries ?? []).map((entry) => (typeof entry === "string" ? entry : entry.id));
 
 describe("@lando/sql plugin descriptor", () => {
+  test("manifest metadata agrees across YAML, package and descriptor", async () => {
+    const yaml = Bun.YAML.parse(await Bun.file(new URL("../plugin.yaml", import.meta.url)).text());
+    expect(Schema.decodeUnknownSync(PluginManifest)(yaml)).toEqual(manifest);
+    expect(Schema.decodeUnknownSync(PluginManifest)(packageJson.landoPlugin)).toEqual(manifest);
+  });
   test("plugin.name matches manifest.name", () => {
     expect(plugin.name).toBe(manifest.name);
     expect(plugin.name).toBe(PLUGIN_NAME);
@@ -37,6 +45,11 @@ describe("@lando/sql plugin descriptor", () => {
       expect(spec.namespace).toBe("db");
       expect(spec.bootstrap).toBe("app");
       expect(spec.resultSchema).toBeDefined();
+      if (id === "db:export") {
+        expect(spec.flags?.["compression-level"]).toMatchObject({ type: "number", valueType: "integer" });
+      } else {
+        expect(spec.flags).not.toHaveProperty("compression-level");
+      }
     }
   });
 

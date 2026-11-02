@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../../../dist/schemas/landofile-shape.json
+services:
+  web:
+    type: node:22
+    port: 3000
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+    routes:
+      - http://base.lndo.site
+    healthcheck:
+      command: node --version
+      interval: 10s
+      retries: 3
+    appMount:
+      target: /srv/app
+      excludes:
+        - node_modules

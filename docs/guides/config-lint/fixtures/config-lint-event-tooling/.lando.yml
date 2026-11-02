@@ -1,0 +1,17 @@
+name: config-lint-event-tooling
+services:
+  web:
+    type: compose
+    image: nginx:1.27-alpine
+    hostnames:
+      - not_a_hostname
+tooling:
+  build:
+    service: web
+    cmd: echo build
+  run:
+    service: web
+    cmd: echo run
+events:
+  pre-buidl:
+    - echo before

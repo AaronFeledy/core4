@@ -24,6 +24,7 @@ import {
 } from "./port-acquisition.ts";
 import { identifyAnyPortHolder, systemdUnitForPid } from "./preferred-host-ports-linux.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
+import { normalizeRouterBindAddress } from "./router-bind-address.ts";
 
 export type ResolvedTryLists = {
   readonly httpTryList: readonly number[];
@@ -98,8 +99,9 @@ const windowsTryList = (
 };
 
 export const resolveTryLists = (dependencies: TraefikProxyDependencies): ResolvedTryLists => {
-  const bindAddress =
-    dependencies.fingerprint?.bindAddress ?? dependencies.router?.bindAddress ?? LOOPBACK_HOST;
+  const bindAddress = normalizeRouterBindAddress(
+    dependencies.router?.bindAddress ?? dependencies.fingerprint?.bindAddress ?? LOOPBACK_HOST,
+  );
   if (dependencies.paths.platform !== "win32") {
     const httpTryList =
       dependencies.fingerprint?.http ??
@@ -115,7 +117,7 @@ export const resolveTryLists = (dependencies: TraefikProxyDependencies): Resolve
         dependencies.router?.httpsFallbacks,
         DEFAULT_HTTPS_TRY_LIST,
       );
-    const fingerprint = dependencies.fingerprint ?? {
+    const fingerprint = {
       http: [...httpTryList],
       https: [...httpsTryList],
       bindAddress,

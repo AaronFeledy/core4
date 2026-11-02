@@ -151,7 +151,7 @@ describe("provisional startup title", () => {
   });
 
   test("paints a styled title-only frame for the derived label", () => {
-    const frame = provisionalTitleFrame("app:start");
+    const frame = provisionalTitleFrame("app:start", true);
     expect(frame).toHaveLength(1);
     expect(stripAnsi(frame[0] ?? "")).toBe("╭─ start");
     expect(frame[0]).toContain(ESC);

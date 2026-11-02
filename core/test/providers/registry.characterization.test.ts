@@ -10,8 +10,8 @@ import { GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanSanitizer,
   ConfigService,
+  ContainerHelperAssets,
   Downloader,
-  LogFileHelperAssets,
   ManagedFileService,
   PathsService,
   PluginRegistry,
@@ -34,7 +34,11 @@ const manifestWithProviders = (providers: ReadonlyArray<unknown>) =>
   });
 
 const notRegistered = (id: string): PluginLoadError =>
-  new PluginLoadError({ message: `not wired for this characterization test: ${id}`, pluginName: id });
+  new PluginLoadError({
+    message: `not wired for this characterization test: ${id}`,
+    pluginName: id,
+    remediation: "Install or register the plugin, then retry.",
+  });
 
 interface FakeRegistryOptions {
   readonly manifests: ReadonlyArray<PluginManifest>;
@@ -49,7 +53,7 @@ const buildDependencyLayer = (
   | ConfigService
   | PluginRegistry
   | Downloader
-  | LogFileHelperAssets
+  | ContainerHelperAssets
   | ManagedFileService
   | PathsService
   | StateStore
@@ -87,7 +91,10 @@ const buildDependencyLayer = (
     Layer.succeed(PluginRegistry, pluginRegistryService),
     Layer.succeed(Downloader, Downloader.of(downloaderHandle.service)),
     Layer.succeed(HttpClient.HttpClient, httpClient),
-    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+    Layer.succeed(
+      ContainerHelperAssets,
+      ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
+    ),
     Layer.succeed(ManagedFileService, managedFileHandle.service),
     Layer.succeed(PathsService, landoPaths),
     Layer.succeed(StateStore, stateStoreHandle.service),

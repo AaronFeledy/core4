@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer, Option, Schema } from "effect";
 
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
+import { EventService } from "@lando/sdk/services";
 
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 import { createBufferedRendererIO } from "@lando/renderer/io";
@@ -10,6 +11,7 @@ import { infoSpec } from "../../src/cli/command-specs/app/info.ts";
 import { CommandWarnings } from "../../src/cli/command-warnings.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { preCommandOutputMode } from "../../src/cli/spec/command-boundary.ts";
+import { connections } from "./connection-fixtures";
 
 const infoResult = {
   app: "demo",
@@ -22,7 +24,10 @@ const infoResult = {
       provider: "lando",
       primary: true,
       status: "running",
-      endpoints: ["http://demo.lndo.site"],
+      connections: [
+        ...connections(["http://demo.lndo.site"]),
+        ...connections(["http://appserver:80"], "app"),
+      ],
     },
     {
       app: "demo",
@@ -32,7 +37,7 @@ const infoResult = {
       provider: "lando",
       primary: false,
       status: "running",
-      endpoints: [],
+      connections: connections(["tcp://database:3306"], "app"),
     },
   ],
 } as const;
@@ -142,10 +147,25 @@ describe("--format=yaml on a live-streaming command", () => {
   const ResultSchema = Schema.Struct({ message: Schema.String, output: Schema.optional(Schema.String) });
 
   const streamingEffect = Effect.gen(function* () {
+    yield* (yield* EventService).publish({
+      _tag: "message.info",
+      body: "stream starting",
+      timestamp: "2026-10-30T00:00:00.000Z",
+    });
     const sink = yield* Effect.serviceOption(StreamFrameSink);
     if (Option.isSome(sink)) {
-      yield* sink.value.emit({ _tag: "stdout", chunk: "raw-stdout-chunk\n", service: "appserver" });
-      yield* sink.value.emit({ _tag: "stderr", chunk: "raw-stderr-chunk\n", service: "appserver" });
+      yield* sink.value.emit({
+        kind: "bytes",
+        _tag: "stdout",
+        chunk: "raw-stdout-chunk\n",
+        service: "appserver",
+      });
+      yield* sink.value.emit({
+        kind: "bytes",
+        _tag: "stderr",
+        chunk: "raw-stderr-chunk\n",
+        service: "appserver",
+      });
     }
     return { message: "done", output: Option.isSome(sink) ? "" : "raw-stdout-chunk\nraw-stderr-chunk\n" };
   });
@@ -168,14 +188,22 @@ describe("--format=yaml on a live-streaming command", () => {
     return io;
   };
 
-  test("json keeps the stdout, stderr and result frame sequence", async () => {
+  test("json emits the published event and data frames before one terminal result", async () => {
     const io = await runStreaming("json");
     const frames = io
       .stdoutLines()
       .filter((line) => line.length > 0)
       .map((line) => Schema.decodeUnknownSync(StreamFrame)(JSON.parse(line)));
 
-    expect(frames.map((frame) => frame._tag)).toEqual(["stdout", "stderr", "result"]);
+    expect(frames.filter((frame) => frame._tag === "event")).toMatchObject([
+      { _tag: "event", event: "message.info", payload: { body: "stream starting" } },
+    ]);
+    expect(frames.filter((frame) => frame._tag !== "event").map((frame) => frame._tag)).toEqual([
+      "stdout",
+      "stderr",
+      "result",
+    ]);
+    expect(frames.at(-1)?._tag).toBe("result");
   });
 
   test("yaml emits exactly one envelope document and no raw chunk", async () => {
@@ -304,7 +332,7 @@ describe("documentOutput keeps a command's own document on success only", () => 
     const { io, exitCode } = await run({ documentOutput: true });
     expect(io.stdout()).toBe("name: demo\n");
     expect(io.stdout()).not.toContain("apiVersion");
-    expect(exitCode).toBeUndefined();
+    expect(exitCode).toBe(0);
   });
 
   test("without the declaration the same command emits the envelope", async () => {

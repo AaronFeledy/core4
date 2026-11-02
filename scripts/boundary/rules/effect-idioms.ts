@@ -130,6 +130,23 @@ export const effectIdiomsRule = {
         }
       };
       const visit = (node: ts.Node): void => {
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.name.text === "catch"
+        ) {
+          const handler = node.arguments[0];
+          if (
+            handler !== undefined &&
+            ts.isArrowFunction(handler) &&
+            handler.parameters.length === 0 &&
+            returnedExpression(handler.body)?.kind === ts.SyntaxKind.NullKeyword
+          )
+            report(
+              handler,
+              "Zero-argument .catch returns null; narrow expected failures and propagate the rest",
+            );
+        }
         if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
           const specifier = node.moduleSpecifier;
           if (

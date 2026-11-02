@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  FAKE_CLIENT_PROVIDER_TESTS,
   NIGHTLY_TIER_TESTS,
   TEST_TIMINGS_FILE,
   UNIT_SHARD_COUNT,
@@ -35,7 +36,10 @@ describe("test shards", () => {
 
     const files = await collectShardedTestFiles();
     expect(files.length).toBeGreaterThan(0);
-    expect(files.some((file) => file.endsWith(".integration.test.ts"))).toBe(false);
+    expect(files.filter((file) => file.endsWith(".integration.test.ts")).sort()).toEqual(
+      [...FAKE_CLIENT_PROVIDER_TESTS].sort(),
+    );
+    for (const file of FAKE_CLIENT_PROVIDER_TESTS) expect(isShardedUnitTest(file)).toBe(true);
     expect(files.some((file) => file.startsWith("core/test/library/"))).toBe(false);
     expect(files.some((file) => file.startsWith("sdk/test/library/"))).toBe(false);
     expect(files.some((file) => file.startsWith("core/test/recipes/"))).toBe(false);

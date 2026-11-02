@@ -82,6 +82,7 @@ const makeDiskHarness = async (userDataRoot: string, text: string) => {
     JSON.stringify(matchingRecord({ failureClass: "permission", detail: "Previous file watcher failure" })),
   );
   const service = makeTraefikRouterService({
+    readTraefikState: () => Effect.succeed("running"),
     probeForward: () => Effect.succeed({ kind: "success" }),
     certificateAuthority: makeTestCertificateAuthority(),
     paths,
@@ -133,7 +134,7 @@ describe("makeRouterFileWatcherCheck", () => {
   });
 
   test("reports a lando-managed Traefik record when doctor selected a different app provider", async () => {
-    // Given: last observation is from the global Traefik host, which is always the Lando-managed provider.
+    // Given: last observation is from the provider that hosts the global Traefik.
     const record = matchingRecord({ providerId: "lando" });
     const readRecord = () => Effect.succeed(record);
 

@@ -302,7 +302,7 @@ describe("update signed manifest", () => {
       runUpdate({
         currentVersion: "4.0.0",
         dryRun: true,
-        selfUpdate: {},
+        selfUpdate: { execve: () => Effect.void },
         fetchManifestBytes: fetcherFor("stable"),
         verifyManifestSignature: verifierFor(),
       }),
@@ -846,6 +846,7 @@ describe("update signed manifest", () => {
         }),
         selfUpdate: {
           platform: "win32",
+          execve: () => Effect.void,
           arch: "x64",
           argv: [executablePath, "update", "--channel=stable"],
           env: { Path: "C:\\Windows" },
@@ -910,6 +911,7 @@ describe("update signed manifest", () => {
         }),
         selfUpdate: {
           platform: "win32",
+          execve: () => Effect.void,
           arch: "x64",
           replaceWindows: () =>
             Effect.fail(new Error("CreateProcess failed for C:\\Users\\Alice\\lando.exe")),
@@ -1416,7 +1418,7 @@ describe("update signed manifest", () => {
   });
 
   test("source and compiled input helpers map update flags identically", () => {
-    const cliSelfUpdate = { selfUpdate: { argv: process.argv } };
+    const cliSelfUpdate = { selfUpdate: { argv: process.argv, execve: expect.any(Function) } };
     expect(updateOptionsFromInput({ flags: { channel: "next", "dry-run": true } })).toEqual({
       channel: "next",
       dryRun: true,
@@ -1439,11 +1441,11 @@ describe("update signed manifest", () => {
       ...cliSelfUpdate,
     });
     expect(
-      updateSpec.successExitCode?.(
+      updateSpec.completion?.(
         { updatedCore: false, updatedPlugins: [], hasFailures: true },
         { args: {}, flags: {}, argv: [] },
       ),
-    ).toBe(1);
+    ).toEqual({ ok: false, exitCode: 1 });
   });
 
   test("renders the update receipt through the command spec", () => {

@@ -27,7 +27,10 @@ describe("Redis authentication and persistence", () => {
     expect(JSON.stringify(result.command)).not.toContain(password);
     expect(result.command).not.toEqual(["redis-server", "--appendonly", "yes"]);
     expect(JSON.stringify(result.command)).toContain("chmod 0444 /tmp/lando-redis.conf");
-    expect(result.healthcheck).toMatchObject({ kind: "command", command: ["redis-cli", "ping"] });
+    expect(result.healthcheck).toMatchObject({
+      kind: "command",
+      command: ["redis-cli", "-p", "6379", "ping"],
+    });
   });
 
   test("publishes credentials and env-backed tooling when password is authored", async () => {
@@ -50,7 +53,7 @@ describe("Redis authentication and persistence", () => {
     // Given / When
     const result = await plan({ type: "redis", persist: false });
     // Then
-    expect(result.storage).toEqual([]);
+    expect(result.mounts.filter((mount) => mount.type === "volume")).toEqual([]);
     expect(result.command).toEqual(["redis-server", "--appendonly", "no", "--save", ""]);
   });
 
@@ -60,7 +63,7 @@ describe("Redis authentication and persistence", () => {
       // Given / When
       const result = await plan({ type: "redis", ...options });
       // Then
-      expect(result.storage).toHaveLength(1);
+      expect(result.mounts.filter((mount) => mount.type === "volume")).toHaveLength(1);
       expect(result.command).toEqual(["redis-server", "--appendonly", "yes"]);
     },
   );

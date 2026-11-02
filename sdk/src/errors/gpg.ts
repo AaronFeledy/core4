@@ -4,6 +4,7 @@ export class GpgAgentUnavailableError extends Schema.TaggedError<GpgAgentUnavail
   "GpgAgentUnavailableError",
   {
     message: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
     reason: Schema.Literals([
       "host-agent-not-found",
       "socket-missing",
@@ -13,7 +14,7 @@ export class GpgAgentUnavailableError extends Schema.TaggedError<GpgAgentUnavail
       "unrestricted-socket",
     ]),
     socketPath: Schema.optional(Schema.String),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
   },
 ) {}
 
@@ -22,7 +23,7 @@ export class GpgAgentTransportError extends Schema.TaggedError<GpgAgentTransport
   {
     message: Schema.String,
     stage: Schema.Literals(["broker", "worker", "bridge"]),
-    remediation: Schema.String,
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
     cause: Schema.optional(Schema.Unknown),
   },
 ) {}

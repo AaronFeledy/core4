@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { composeKnobsForDialect } from "@lando/container-runtime/podman/compose-knobs";
 import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport-feature";
 import { Effect, Exit } from "effect";
 
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
+import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import {
   decodeProviderCapabilities,
   introspectProviderCapabilities,
@@ -13,9 +16,11 @@ import {
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { ownerOnlyFileAccess } from "./private-file-access.ts";
 
-const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths"];
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "fileSyncTargets"];
 
 const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
   .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
@@ -40,6 +45,47 @@ const podmanApiForArch = (arch: string) => ({
 });
 
 describe("provider-lando capabilities", () => {
+  test("declares native service init on each managed platform", () => {
+    for (const platform of ["linux", "darwin", "win32"] as const) {
+      expect(mvpProviderCapabilities(platform, platform === "darwin" ? "arm64" : "x64").serviceInit).toBe(
+        true,
+      );
+    }
+  });
+  test("declares prepared-volume targets only under the complete managed Windows preparation gate", async () => {
+    const appliedPlanState = makePluginStateStore(
+      makeTestStateStore().service,
+      AbsolutePath.make("/tmp/lando-sync-capabilities"),
+      ownerOnlyFileAccess,
+    );
+    const podmanApi = {
+      ...podmanApiForArch("x64"),
+      request: () => Effect.die("Capability introspection must not prepare targets"),
+    };
+    const base = { platform: "win32" as const, providerSocketPath: "managed", appliedPlanState, podmanApi };
+    const eligible = await resolveRuntimeProvider(base);
+    expect(eligible.capabilities.fileSyncTargets).toBe("prepared-volume");
+    expect(eligible.prepareFileSyncTargets).toBeDefined();
+    const { appliedPlanState: _state, ...withoutState } = base;
+    for (const options of [
+      { ...base, platform: "linux" as const },
+      { ...base, socketPath: "external" },
+      withoutState,
+      { ...base, podmanApi: podmanApiForArch("x64") },
+    ]) {
+      const provider = await resolveRuntimeProvider(options);
+      expect(provider.capabilities.fileSyncTargets).toBeUndefined();
+      expect(provider.prepareFileSyncTargets).toBeUndefined();
+    }
+  });
+  test.each(["linux", "darwin", "win32"] as const)(
+    "%s declares only its dialect realizations",
+    (platform) => {
+      expect(mvpProviderCapabilities(platform).composeKnobs?.supported).toEqual(
+        composeKnobsForDialect("libpod"),
+      );
+    },
+  );
   test("advertises agentSocket bind-directory on linux and guest-bridge on darwin and win32", () => {
     // Given: native and managed-machine host platforms.
     const platforms = ["linux", "darwin", "win32", "wsl"] as const;
@@ -164,7 +210,7 @@ describe("provider-lando capabilities", () => {
     const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
       podmanApi: podmanApiForArch("x86_64"),
-      logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+      resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
     });
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(true);
@@ -173,8 +219,8 @@ describe("provider-lando capabilities", () => {
   test("does not advertise service log source following when Podman info architecture has no helper payload", async () => {
     const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
-      podmanApi: podmanApiForArch("aarch64"),
-      logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+      podmanApi: podmanApiForArch("riscv64"),
+      resolveContainerHelper: () => Effect.die("provider construction resolved helper bytes"),
     });
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(false);

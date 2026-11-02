@@ -1,13 +1,8 @@
 import { choiceDescription, choiceLabel, selectedChoiceIndex } from "./prompt-choice.ts";
-import type {
-  OpenTuiModuleLike,
-  PromptDriverRequestLike,
-  RenderableLike,
-  RendererLike,
-} from "./prompt-driver-types.ts";
+import type { PromptDriverRequestLike, RenderableLike, RendererLike } from "./prompt-driver-types.ts";
 import { type PromptDisposer, noopDisposer } from "./prompt-listeners.ts";
 import { addDescribedSelect } from "./prompt-select-described.ts";
-import { promptSelectColors } from "./prompt-theme.ts";
+import { type PromptModuleLike, promptSelectColors } from "./prompt-theme.ts";
 import { SELECT_PREVIEW_LAYOUT } from "./select-preview-layout.ts";
 
 export const hasDescribedChoices = (choices: ReadonlyArray<unknown>): boolean =>
@@ -17,7 +12,7 @@ export const selectPanelMaxCols = (request: PromptDriverRequestLike): number =>
   hasDescribedChoices(request.choices ?? request.prompt.choices ?? []) ? SELECT_PREVIEW_LAYOUT.PANEL_MAX : 72;
 
 const addPlainSelect = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
+  mod: PromptModuleLike<R>,
   renderer: R,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
@@ -41,7 +36,7 @@ const addPlainSelect = <R extends RendererLike>(
     options,
     showDescription,
     selectedIndex: selectedChoiceIndex(choices, defaultRaw),
-    ...promptSelectColors,
+    ...promptSelectColors(mod.theme),
     showScrollIndicator: false,
   });
   select.on(mod.SelectRenderableEvents.ITEM_SELECTED, (index: number) => done(String(index + 1)));
@@ -51,7 +46,7 @@ const addPlainSelect = <R extends RendererLike>(
 };
 
 export const addSelectControl = <R extends RendererLike>(
-  mod: OpenTuiModuleLike<R>,
+  mod: PromptModuleLike<R>,
   renderer: R,
   panel: RenderableLike,
   request: PromptDriverRequestLike,

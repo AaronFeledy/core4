@@ -1,30 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 
+import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
 import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
-import { CommandAliasConflictError } from "@lando/sdk/errors";
-import {
-  AbsolutePath,
-  AppId,
-  type AppPlan,
-  type LandofileShape,
-  PortablePath,
-  ProviderId,
-} from "@lando/sdk/schema";
+import { AbsolutePath, AppId, AppPlan, LandofileShape, PortablePath, ProviderId } from "@lando/sdk/schema";
 import { validEventNames } from "../../src/planner/event-names.ts";
 
 import { runAppEvent } from "../../src/operations/events.ts";
 import {
-  attachEffectiveEvents,
   compileEffectiveEvents,
   effectiveEventsForPlan,
   eventStepsFromCompiled,
+  withProjectEvents,
 } from "../../src/planner/effective-events.ts";
 import * as toolingForPlan from "../../src/planner/effective-tooling.ts";
-import {
-  compileEffectiveTooling,
-  validateServiceTypeReservedToolingNames,
-} from "../../src/planner/effective-tooling.ts";
+import { compileEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 
 const eventPlan = (): AppPlan => ({
   id: AppId.make("same-app"),
@@ -34,7 +24,6 @@ const eventPlan = (): AppPlan => ({
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata: { resolvedAt: DateTime.makeUnsafe("2026-08-16T00:00:00Z"), source: "test", runtime: 4 },
@@ -42,6 +31,44 @@ const eventPlan = (): AppPlan => ({
 });
 
 describe("compileEffectiveTooling", () => {
+  test.each([false, { disabled: true }])(
+    "persists the authored disable source for a service-type task %j",
+    async (disabled) => {
+      const file = "/tmp/same-app/.lando.local.yml";
+      const compiled = await Effect.runPromise(
+        loadAuthoredDocuments([{ file, value: { tooling: { inspect: disabled } } }], {
+          appRoot: "/tmp/same-app",
+          file,
+        }),
+      );
+      const tasks = compileEffectiveTooling({
+        landofile: compiled.document,
+        services: [{ name: "web", tooling: { inspect: { cmd: "service-type" } } }],
+      });
+      const plan = toolingForPlan.attachEffectiveTooling(
+        eventPlan(),
+        tasks,
+        {},
+        toolingForPlan.disabledToolingSources(compiled.document, tasks),
+      );
+      const roundTrip = Schema.decodeUnknownSync(AppPlan)(Schema.encodeSync(AppPlan)(plan));
+      expect(toolingForPlan.effectiveToolingForPlan(roundTrip)?.inspect).toEqual({ disabled: true });
+      expect(toolingForPlan.disabledToolingSourceForPlan(roundTrip, "inspect")).toBe(file);
+    },
+  );
+  test("false drops a service-type task definition wholesale", () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({ tooling: { inspect: false } });
+    // When
+    const tooling = compileEffectiveTooling({
+      landofile,
+      services: [
+        { name: "web", tooling: { inspect: { cmd: "inspect", flags: { loud: { boolean: true } } } } },
+      ],
+    });
+    // Then
+    expect(tooling.inspect).toEqual({ disabled: true });
+  });
   test("attachment preserves internal include provenance", () => {
     // Given
     const landofile = rememberInternalToolingTasks(
@@ -53,21 +80,21 @@ describe("compileEffectiveTooling", () => {
     const plan = toolingForPlan.attachEffectiveTooling(eventPlan(), tooling);
     const attached = toolingForPlan.effectiveToolingForPlan(plan);
     // Then
-    expect(attached).toBe(tooling);
+    expect(attached).toEqual(tooling);
     if (attached === undefined) throw new Error("missing attached tooling");
     expect(validEventNames(attached)).toEqual(validEventNames(tooling));
     expect(validEventNames(attached)).not.toContain("pre-ops:migrate");
   });
   test("returns attached effective tasks when tooling is attached to a plan", () => {
     // Given
-    const plan = eventPlan();
+    const basePlan = eventPlan();
     const tooling = compileEffectiveTooling({
       landofile: { toolingDefaults: { env: { COUNT: "2" } } },
       services: [
         { name: "web", tooling: { inspect: { cmd: "inspect", flags: { loud: { boolean: true } } } } },
       ],
     });
-    toolingForPlan.attachEffectiveTooling(plan, tooling);
+    const plan = toolingForPlan.attachEffectiveTooling(basePlan, tooling);
     // When
     const attached = toolingForPlan.effectiveToolingForPlan(plan);
     // Then
@@ -221,17 +248,16 @@ describe("compileEffectiveEvents", () => {
     });
   });
 
-  test("plans with the same id and root do not inherit another plan's events", () => {
+  test("events are a plan value: a spread keeps them and a plan built without them has none", () => {
     // Given
-    const shared = eventPlan();
-    const first = { ...shared };
-    const second = { ...shared };
+    const first = withProjectEvents(eventPlan(), { "pre-start": ["echo first"] });
 
     // When
-    attachEffectiveEvents(first, { "pre-start": ["echo first"] });
+    const spread = { ...first, fileSync: [] };
+    const second = eventPlan();
 
     // Then
-    expect(effectiveEventsForPlan(first)?.["pre-start"]).toEqual(["echo first"]);
+    expect(effectiveEventsForPlan(spread)?.["pre-start"]).toEqual(["echo first"]);
     expect(effectiveEventsForPlan(second)).toBeUndefined();
   });
 
@@ -260,41 +286,35 @@ describe("compileEffectiveEvents", () => {
   });
 });
 
-describe("validateServiceTypeReservedToolingNames", () => {
-  test("returns undefined when service-type tasks are unreserved", () => {
+describe("reserved tooling compilation before shared validation", () => {
+  test("retains service-type tasks for shared validation", () => {
     // Given
     const landofile: LandofileShape = {};
     const services = [{ name: "web", serviceTypeId: "php", tooling: { inspect: { cmd: "php -v" } } }];
 
     // When
-    const conflict = validateServiceTypeReservedToolingNames({ landofile, services });
+    const tooling = compileEffectiveTooling({ landofile, services });
 
     // Then
-    expect(conflict).toBeUndefined();
-    expect(compileEffectiveTooling({ landofile, services }).inspect).toEqual({
+    expect(tooling.inspect).toEqual({
       cmd: "php -v",
       service: "web",
     });
   });
 
-  test("returns CommandAliasConflictError when a service type contributes run", () => {
+  test("retains a reserved service-type task for shared validation", () => {
     // Given
     const landofile: LandofileShape = {};
     const services = [{ name: "web", serviceTypeId: "php", tooling: { run: { cmd: "php" } } }];
 
     // When
-    const conflict = validateServiceTypeReservedToolingNames({ landofile, services });
+    const tooling = compileEffectiveTooling({ landofile, services });
 
     // Then
-    expect(conflict).toBeInstanceOf(CommandAliasConflictError);
-    expect(conflict).toMatchObject({
-      alias: "run",
-      claimedBy: "service type php task run",
-      reservedFor: "apps:scratch:run",
-    });
+    expect(tooling.run).toEqual({ cmd: "php", service: "web" });
   });
 
-  test("returns the first ordinal reserved name when one service contributes two", () => {
+  test("retains every reserved name for aggregation by shared validation", () => {
     // Given
     const landofile: LandofileShape = {};
     const services = [
@@ -309,26 +329,39 @@ describe("validateServiceTypeReservedToolingNames", () => {
     ];
 
     // When
-    const conflict = validateServiceTypeReservedToolingNames({ landofile, services });
+    const tooling = compileEffectiveTooling({ landofile, services });
 
     // Then
-    expect(conflict).toBeInstanceOf(CommandAliasConflictError);
-    expect(conflict).toMatchObject({
-      alias: "scratch",
-      claimedBy: "service type php task scratch",
-      reservedFor: "apps:scratch:start",
-    });
+    expect(Object.keys(tooling)).toEqual(["scratch", "scratch:gc"]);
   });
 
-  test("returns undefined when landofile tooling overlays a reserved service-type name", () => {
+  test("authored reserved tooling replaces a service-type task before shared validation", () => {
     // Given
     const landofile: LandofileShape = { tooling: { run: { cmd: "authored" } } };
     const services = [{ name: "web", serviceTypeId: "php", tooling: { run: { cmd: "php" } } }];
 
     // When
-    const conflict = validateServiceTypeReservedToolingNames({ landofile, services });
+    const tooling = compileEffectiveTooling({ landofile, services });
 
     // Then
-    expect(conflict).toBeUndefined();
+    expect(tooling.run).toEqual({ cmd: "authored" });
+  });
+
+  test("a disabled reserved task from the first contributing service claims nothing", () => {
+    // Given
+    const landofile: LandofileShape = {};
+    const services = [
+      { name: "a", serviceTypeId: "php", tooling: { run: { cmd: "php", disabled: true } } },
+      { name: "b", serviceTypeId: "node", tooling: { run: { cmd: "node" } } },
+    ];
+
+    // When
+    const tooling = compileEffectiveTooling({ landofile, services });
+
+    // Then
+    expect(tooling.run).toMatchObject({
+      service: "a",
+      disabled: true,
+    });
   });
 });

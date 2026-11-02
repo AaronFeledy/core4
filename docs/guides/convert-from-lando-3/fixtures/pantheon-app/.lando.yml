@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid lando3 Pantheon translation input
 name: pantheon-demo
 recipe: pantheon
 config:

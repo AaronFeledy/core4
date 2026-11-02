@@ -1,56 +1,29 @@
-/**
- * Pure Effect operations behind `meta:recipes:list`, `meta:recipes:describe`,
- * and `meta:recipes:validate`.
- *
- * `list` reads only the compile-time embedded bundled-recipe table.
- * `describe` resolves a recipe ref (bundled id or local path) through the
- * standard recipe source resolver, then reports metadata and the prompt set
- * without performing an init. `validate` parses a `recipe.yml` (or a recipe
- * directory) against the published RecipeManifest schema.
- */
-import { basename, dirname, isAbsolute, resolve } from "node:path";
-
-import { Effect, Schema } from "effect";
-
-import {
-  type NotImplementedError,
-  type RecipeExtendsError,
-  RecipeManifestNotFoundError,
-  type RecipeManifestParseError,
-  RecipeManifestValidationError,
-  type RecipeSourceError,
-  causeMessage,
-} from "@lando/sdk/errors";
+import { dirname, isAbsolute, resolve } from "node:path";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
-
-import { validationIssue } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
 import { getRecipeCatalog } from "../../recipes/catalog";
 import { renderRecipeCatalog } from "../../recipes/catalog-render";
-import { parseRecipe } from "../../recipes/manifest/service";
+import { compileResolvedRecipe } from "../../recipes/compiled-source";
+import { prepareRecipeInit } from "../../recipes/prepared-init";
+import { resolveRecipeSource } from "../../recipes/resolved-source";
 import { resolveRecipeRef } from "../../recipes/source";
+import { defaultAppNameFromCwd } from "./init-app-name";
+import { initOptionPrompts } from "./init-option-answers";
+import { loadRecipeEncoder } from "./init-preparation";
+import { RecipeReadinessFields } from "./recipe-init-schemas";
 
 export const RecipesListEntrySchema = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
   description: Schema.String,
 });
-
-export const RecipesListResultSchema = Schema.Struct({
-  recipes: Schema.Array(RecipesListEntrySchema),
-});
+export const RecipesListResultSchema = Schema.Struct({ recipes: Schema.Array(RecipesListEntrySchema) });
 export type RecipesListResult = typeof RecipesListResultSchema.Type;
-
 export const recipesList: Effect.Effect<RecipesListResult> = Effect.sync(() => ({
-  recipes: getRecipeCatalog().map((entry) => ({
-    id: entry.id,
-    title: entry.title,
-    description: entry.description,
-  })),
+  recipes: getRecipeCatalog().map(({ id, title, description }) => ({ id, title, description })),
 }));
-
 export const renderRecipesListResult = (result: RecipesListResult): string =>
   renderRecipeCatalog(result.recipes);
-
 export const RecipesPromptSchema = Schema.Struct({
   name: Schema.String,
   type: Schema.String,
@@ -58,7 +31,6 @@ export const RecipesPromptSchema = Schema.Struct({
   default: Schema.optionalKey(Schema.String),
   choices: Schema.optionalKey(Schema.Array(Schema.String)),
 });
-
 export const RecipesDescribeResultSchema = Schema.Struct({
   id: Schema.String,
   title: Schema.String,
@@ -69,207 +41,132 @@ export const RecipesDescribeResultSchema = Schema.Struct({
   prompts: Schema.Array(RecipesPromptSchema),
   files: Schema.Array(Schema.String),
   postInit: Schema.Array(Schema.String),
+  ...RecipeReadinessFields,
 });
 export type RecipesDescribeResult = typeof RecipesDescribeResultSchema.Type;
-
-export type RecipesManifestError =
-  | RecipeExtendsError
-  | RecipeManifestNotFoundError
-  | RecipeManifestParseError
-  | RecipeManifestValidationError
-  | RecipeSourceError
-  | NotImplementedError;
-
-const choiceValue = (choice: PromptChoice): string =>
-  typeof choice === "object" && choice !== null ? String(choice.value) : String(choice);
-
-const describeFromManifest = (manifest: RecipeManifest, source: string): RecipesDescribeResult => ({
-  id: manifest.id,
-  title: manifest.title,
-  description: manifest.description,
-  version: manifest.version,
-  source,
-  tags: [...(manifest.tags ?? [])],
-  prompts: (manifest.prompts ?? []).map((prompt) => ({
-    name: prompt.name,
-    type: prompt.type,
-    message: prompt.message,
-    ...(prompt.default === undefined ? {} : { default: String(prompt.default) }),
-    ...(prompt.choices === undefined ? {} : { choices: prompt.choices.map(choiceValue) }),
-  })),
-  files: (manifest.files ?? []).map((file) => file.dest),
-  postInit: (manifest.postInit ?? []).map((action) => action.type),
-});
-
-const looksLikeRelativePath = (ref: string): boolean =>
-  !ref.includes(":") &&
-  (ref.includes("/") || ref.includes("\\") || ref.endsWith(".yml") || ref.endsWith(".yaml"));
-
-const expandsAsLocalPath = (ref: string): boolean =>
-  ref.startsWith("./") ||
-  ref.startsWith("../") ||
-  ref.startsWith("~/") ||
-  isAbsolute(ref) ||
-  looksLikeRelativePath(ref);
-
-const expandRecipePath = (path: string, cwd: string): string =>
-  path.startsWith("~/")
-    ? resolve(process.env.HOME ?? cwd, path.slice(2))
-    : isAbsolute(path)
-      ? path
-      : resolve(cwd, path);
-
-const recipeManifestPath = (path: string, cwd: string): string => {
-  const expanded = expandRecipePath(path, cwd);
-  return basename(expanded) === "recipe.yml" || expanded.endsWith(".yml") || expanded.endsWith(".yaml")
-    ? expanded
-    : resolve(expanded, "recipe.yml");
-};
-
-export const recipesDescribe = Effect.fn("Recipes.describe")(function* (
-  ref: string,
-  options: { readonly cwd: string },
-): Effect.fn.Return<RecipesDescribeResult, RecipesManifestError> {
-  if (expandsAsLocalPath(ref)) {
-    const manifestPath = recipeManifestPath(ref, options.cwd);
-    const manifestYaml = yield* readManifestText(manifestPath);
-    yield* ensureSingleRecipeManifestForm(manifestPath);
-    const manifest = yield* parseRecipe(manifestPath, manifestYaml);
-    yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
-    return describeFromManifest(manifest, manifestPath);
-  }
-  const resolved = yield* resolveRecipeRef(ref, { cwd: options.cwd });
-  const manifest = resolved.manifest ?? (yield* parseRecipe(resolved.source, resolved.manifestYaml));
-  return describeFromManifest(manifest, resolved.source);
-});
-
-export const renderRecipesDescribeResult = (result: RecipesDescribeResult): string => {
-  const lines = [
-    `${result.id} ${result.version} — ${result.title}`,
-    result.description,
-    `source: ${result.source}`,
-  ];
-  if (result.tags.length > 0) lines.push(`tags: ${result.tags.join(", ")}`);
-  lines.push(result.prompts.length === 0 ? "prompts: (none)" : "prompts:");
-  for (const prompt of result.prompts) {
-    const details = [
-      prompt.type,
-      ...(prompt.default === undefined ? [] : [`default: ${prompt.default}`]),
-      ...(prompt.choices === undefined ? [] : [`choices: ${prompt.choices.join(", ")}`]),
-    ].join(", ");
-    lines.push(`  ${prompt.name} (${details}) — ${prompt.message}`);
-  }
-  if (result.files.length > 0) lines.push(`files: ${result.files.join(", ")}`);
-  if (result.postInit.length > 0) lines.push(`postInit: ${result.postInit.join(", ")}`);
-  return lines.join("\n");
-};
-
 export const RecipesValidateResultSchema = Schema.Struct({
   valid: Schema.Literal(true),
   id: Schema.String,
   source: Schema.String,
   prompts: Schema.Number,
   files: Schema.Number,
+  ...RecipeReadinessFields,
 });
 export type RecipesValidateResult = typeof RecipesValidateResultSchema.Type;
 
-const readManifestText = (manifestPath: string): Effect.Effect<string, RecipeManifestNotFoundError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const file = Bun.file(manifestPath);
-      if (!(await file.exists())) {
-        throw new Error(`No recipe.yml found at ${manifestPath}.`);
-      }
-      return await file.text();
-    },
-    catch: (cause) =>
-      new RecipeManifestNotFoundError({
-        message: `Could not read recipe manifest at ${manifestPath}: ${causeMessage(cause)}.`,
-        source: manifestPath,
-      }),
+const inspectionRef = (ref: string, cwd: string, pathOnly: boolean): string => {
+  const local =
+    pathOnly || isAbsolute(ref) || ref.startsWith(".") || ref.includes("/") || /\.(?:ya?ml|ts)$/.test(ref);
+  if (!local || ref.startsWith("~/")) return ref;
+  const path = resolve(cwd, ref);
+  return /\.(?:ya?ml|ts)$/.test(path) ? dirname(path) : path;
+};
+const inspectRecipe = Effect.fn("Recipes.inspect")(function* (
+  ref: string,
+  options: { readonly cwd: string },
+  pathOnly: boolean,
+) {
+  const resolved = yield* resolveRecipeRef(inspectionRef(ref, options.cwd, pathOnly), options);
+  const resolution = yield* resolveRecipeSource(resolved);
+  const compiled = yield* compileResolvedRecipe(resolution);
+  const encoder = yield* Effect.promise(loadRecipeEncoder);
+  const preparation = yield* prepareRecipeInit({
+    compiled,
+    appRoot: options.cwd,
+    appName: defaultAppNameFromCwd(options.cwd),
+    answers: {},
+    encoder,
   });
-
-const ensureSingleRecipeManifestForm = (
-  manifestPath: string,
-): Effect.Effect<void, RecipeManifestNotFoundError | RecipeManifestValidationError> => {
-  const recipeRoot = dirname(manifestPath);
-  const recipeTsPath = resolve(recipeRoot, "recipe.ts");
-  return Effect.tryPromise({
-    try: () => Bun.file(recipeTsPath).exists(),
-    catch: (cause) =>
-      new RecipeManifestNotFoundError({
-        message: `Could not stat recipe.ts at ${recipeTsPath}: ${causeMessage(cause)}.`,
-        source: recipeTsPath,
-      }),
-  }).pipe(
-    Effect.flatMap((programmaticManifestExists) =>
-      programmaticManifestExists
-        ? Effect.fail(
-            new RecipeManifestValidationError({
-              message: `Both recipe.yml and recipe.ts are present in ${recipeRoot}. A recipe ships one or the other, never both.`,
-              source: recipeRoot,
-              issues: [
-                validationIssue([], "recipe.yml and recipe.ts are mutually exclusive in a recipe directory"),
-              ],
-            }),
-          )
-        : Effect.void,
-    ),
-  );
-};
-
-const ensureRecipeIdMatchesDirectory = (
-  manifest: RecipeManifest,
-  manifestPath: string,
-): Effect.Effect<void, RecipeManifestValidationError> => {
-  const recipeRoot = dirname(manifestPath);
-  const dirBasename = basename(recipeRoot);
-  return manifest.id === dirBasename
-    ? Effect.void
-    : Effect.fail(
-        new RecipeManifestValidationError({
-          message: `Recipe id "${manifest.id}" must match the directory basename "${dirBasename}" (recipe at ${manifestPath}).`,
-          source: manifestPath,
-          issues: [
-            validationIssue([], `id: "${manifest.id}" must equal directory basename "${dirBasename}"`),
-          ],
-        }),
-      );
-};
-
+  const readiness =
+    preparation.status === "requires-input"
+      ? {
+          initializable: true as const,
+          readiness: "requires-input" as const,
+          missingAnswers: preparation.missing,
+          historyEligible: compiled.historyEligible,
+        }
+      : {
+          initializable: true as const,
+          readiness: preparation.conflicts.length > 0 ? ("conflict" as const) : ("ready" as const),
+          missingAnswers: [],
+          historyEligible: compiled.historyEligible,
+          preview: preparation.preview,
+        };
+  return { manifest: compiled.manifest, source: resolved.source, readiness };
+});
+export type RecipesManifestError = Effect.Error<ReturnType<typeof inspectRecipe>>;
+const choiceValue = (choice: PromptChoice): string =>
+  typeof choice === "object" && choice !== null ? String(choice.value) : String(choice);
+const promptsFromManifest = (manifest: RecipeManifest) =>
+  initOptionPrompts(manifest).map((prompt) => ({
+    name: prompt.name,
+    type: prompt.type,
+    message: prompt.message,
+    ...(prompt.default === undefined ? {} : { default: String(prompt.default) }),
+    ...(prompt.choices === undefined ? {} : { choices: prompt.choices.map(choiceValue) }),
+  }));
+export const recipesDescribe = Effect.fn("Recipes.describe")(function* (
+  ref: string,
+  options: { readonly cwd: string },
+) {
+  const { manifest, source, readiness } = yield* inspectRecipe(ref, options, false);
+  return {
+    id: manifest.id,
+    title: manifest.title,
+    description: manifest.description,
+    version: manifest.version,
+    source,
+    tags: [...(manifest.tags ?? [])],
+    prompts: promptsFromManifest(manifest),
+    files: (manifest.files ?? []).map(({ dest }) => dest),
+    postInit: (manifest.postInit ?? []).map(({ type }) => type),
+    ...readiness,
+  } satisfies RecipesDescribeResult;
+});
 export const recipesValidate = Effect.fn("Recipes.validate")(function* (
   path: string,
   options: { readonly cwd: string },
-): Effect.fn.Return<RecipesValidateResult, RecipesManifestError> {
-  const manifestPath = recipeManifestPath(path, options.cwd);
-  const manifestYaml = yield* readManifestText(manifestPath);
-  yield* ensureSingleRecipeManifestForm(manifestPath);
-  const manifest = yield* parseRecipe(manifestPath, manifestYaml);
-  yield* ensureRecipeIdMatchesDirectory(manifest, manifestPath);
+) {
+  const { manifest, source, readiness } = yield* inspectRecipe(path, options, true);
   return {
-    valid: true as const,
+    valid: true,
     id: manifest.id,
-    source: manifestPath,
-    prompts: manifest.prompts?.length ?? 0,
+    source,
+    prompts: initOptionPrompts(manifest).length,
     files: manifest.files?.length ?? 0,
-  };
+    ...readiness,
+  } satisfies RecipesValidateResult;
 });
-
+export const renderRecipesDescribeResult = (result: RecipesDescribeResult): string =>
+  [
+    `${result.id} ${result.version} - ${result.title}`,
+    result.description,
+    `source: ${result.source}`,
+    `readiness: ${result.readiness}`,
+    `history eligible: ${result.historyEligible}`,
+    ...(result.missingAnswers.length === 0 ? [] : [`missing answers: ${result.missingAnswers.join(", ")}`]),
+    ...(result.tags.length === 0 ? [] : [`tags: ${result.tags.join(", ")}`]),
+    ...result.prompts.map((prompt) => `  ${prompt.name} (${prompt.type}) - ${prompt.message}`),
+    `files: ${result.files.join(", ")}`,
+    `postInit: ${result.postInit.join(", ")}`,
+  ].join("\n");
 export const renderRecipesValidateResult = (result: RecipesValidateResult): string =>
-  `${result.source} is a valid recipe manifest (id: ${result.id}, ${result.prompts} prompt${
-    result.prompts === 1 ? "" : "s"
-  }, ${result.files} file${result.files === 1 ? "" : "s"}).`;
-
+  `${result.source} is a valid recipe source (id: ${result.id}; readiness: ${result.readiness}; history eligible: ${result.historyEligible}).`;
 const argsFromInput = (input: unknown): Record<string, unknown> => {
-  if (typeof input !== "object" || input === null) return {};
-  return (input as { readonly args?: Record<string, unknown> }).args ?? {};
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    !("args" in input) ||
+    typeof input.args !== "object" ||
+    input.args === null
+  )
+    return {};
+  return Object.fromEntries(Object.entries(input.args));
 };
-
 export const recipeRefFromInput = (input: unknown): string => {
   const ref = argsFromInput(input).ref;
   return typeof ref === "string" ? ref : "";
 };
-
 export const recipePathFromInput = (input: unknown): string => {
   const path = argsFromInput(input).path;
   return typeof path === "string" ? path : "";

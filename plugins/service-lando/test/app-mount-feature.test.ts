@@ -61,7 +61,7 @@ describe("lando.app-mount", () => {
     ]);
   });
 
-  test("realizes authored mounts in order when no default target opts it in", async () => {
+  test("leaves authored mounts to the planner when no default target opts it in", async () => {
     // Given
     const { ctx, calls } = recordFeatureContext({
       serviceType: "redis",
@@ -76,10 +76,7 @@ describe("lando.app-mount", () => {
     await Effect.runPromise(landoAppMountFeature.apply(ctx));
 
     // Then
-    expect(calls).toEqual([
-      ["addMount", { type: "bind", source: "/srv/apps/myapp/config", target: "/etc/redis", readOnly: true }],
-      ["addMount", { type: "tmpfs", target: "/scratch", readOnly: false }],
-    ]);
+    expect(calls).toEqual([]);
   });
 
   test.each([

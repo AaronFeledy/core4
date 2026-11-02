@@ -1,3 +1,4 @@
+import { stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { Schema } from "effect";
 import type { HostProxyWorkerEntry } from "../../composition.ts";
@@ -10,7 +11,23 @@ import {
 } from "../detached-worker/process.ts";
 import { isHostProxyRunLandoEnvName } from "./session-env.ts";
 
+export { writeWorkerDiagnostic } from "../detached-worker/log.ts";
+
 export const HOST_PROXY_WORKER_COMMAND = "__internal:host-proxy-worker";
+/**
+ * Identifies the installed Lando executable without reading it: replacing or rebuilding the
+ * binary changes its inode, size, or timestamps, so a worker started from an older build is
+ * replaced on the next owning start. Hashing the compiled binary would add a full-file read to
+ * every `lando start`.
+ */
+export const hostProxyExecutableIdentity = async (entry: HostProxyWorkerEntry): Promise<string> => {
+  const target =
+    entry.entryPath?.includes("$bunfs") === false && entry.execPath.includes("bun")
+      ? entry.bunSourceEntryPath
+      : entry.execPath;
+  const metadata = await stat(target);
+  return `${target}:${metadata.dev}:${metadata.ino}:${metadata.size}:${metadata.mtimeMs}:${metadata.ctimeMs}`;
+};
 export const WorkerReady = Schema.TaggedStruct("ready", {
   appId: Schema.String,
   sessionId: Schema.String,
@@ -25,7 +42,9 @@ export const WorkerReady = Schema.TaggedStruct("ready", {
 export type WorkerReady = typeof WorkerReady.Type;
 export type HostProxyWorkerProcess = DetachedWorkerProcess<WorkerReady>;
 export type HostProxyWorkerSpawnSpec = DetachedWorkerSpawnSpec;
-export type HostProxyWorkerSpawner = (spec: HostProxyWorkerSpawnSpec) => HostProxyWorkerProcess;
+export type HostProxyWorkerSpawner = (
+  spec: HostProxyWorkerSpawnSpec,
+) => HostProxyWorkerProcess | Promise<HostProxyWorkerProcess>;
 
 export class HostProxyWorkerExitedBeforeReadyError extends DetachedWorkerExitedBeforeReadyError {
   constructor(input: WorkerExitDetails) {
@@ -60,8 +79,8 @@ export const hostProxyWorkerArgv = (
 
 export const defaultSpawnWorker = (
   spec: HostProxyWorkerSpawnSpec,
-  options: { readonly payloadTimeoutMs?: number } = {},
-): HostProxyWorkerProcess =>
+  options: { readonly payloadTimeoutMs?: number; readonly readyTimeoutMs?: number } = {},
+): Promise<HostProxyWorkerProcess> =>
   spawnDetachedWorker(
     { ...spec, env: hostProxyWorkerEnv() },
     {

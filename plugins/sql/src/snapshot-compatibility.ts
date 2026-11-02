@@ -14,9 +14,9 @@ export const requireSeedCompatibleSnapshot = (
     metadata.family === context.metadata.family &&
     metadata.version === context.metadata.version &&
     metadata.imageIdentity === context.metadata.imageIdentity &&
-    metadata.ownerKey === context.metadata.ownerKey &&
+    source?.owner.ownerKey === context.owner.ownerKey &&
     metadata.service === context.metadata.service &&
-    metadata.sourceRoot === context.metadata.sourceRoot
+    source?.owner.appRoot === context.owner.appRoot
     ? Effect.void
     : Effect.fail(
         new SqlRecoveryUnavailableError({

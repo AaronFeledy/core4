@@ -44,12 +44,20 @@ describe("authoring expression slots", () => {
 
   test.each([
     ["number", "v{{ env.V }}"],
+    ["number", "  {{ number(env.PORT) }}  "],
+    ["number", "  {{- number(env.PORT) -}}  "],
+    ["number", "{{ number(env.PORT) }}\n"],
     ["string", "{{ nope.x }}"],
     ["string", "{{ frobnicate(env.X) }}"],
     ["boolean", "{{ length(app.name) }}"],
     ["string", "plain"],
     ["string", "{{ env.X"],
     ["number", "${VAR:-x}"],
+    ["string", "{{ number(env.PORT) }}"],
+    ["string", "{{ boolean(env.FLAG) }}"],
+    ["boolean", "{{ app.primary }}"],
+    ["number", "{{ proxy.port }}"],
+    ["array", "{{ services.names }}"],
   ] as const)("rejects a %s site when its source is %s", (kind, source) => {
     // Given
     const slot = authoring.authoringExpressionSlot(kind);
@@ -57,6 +65,21 @@ describe("authoring expression slots", () => {
     const result = Schema.decodeUnknownResult(slot)(source);
     // Then
     expect(Result.isFailure(result)).toBe(true);
+  });
+
+  test.each([
+    ["number", "{{ number(env.PORT) }}"],
+    ["number", "{{ env.PORT | number }}"],
+    ["number", "{{- number(env.PORT) -}}"],
+    ["number", "{{- number(env.PORT) }}"],
+    ["number", "{{ number(env.PORT) -}}"],
+    ["boolean", "{{ boolean(env.FLAG) }}"],
+    ["boolean", "{{ env.FLAG | boolean }}"],
+  ] as const)("accepts %s converter source %s", (kind, source) => {
+    // Given / When / Then
+    expect(
+      Result.isSuccess(Schema.decodeUnknownResult(authoring.authoringExpressionSlot(kind))(source)),
+    ).toBe(true);
   });
 
   test("classifies escaped interpolation as plain when parsing yields literals", () => {
@@ -67,6 +90,13 @@ describe("authoring expression slots", () => {
     // Then
     expect(classification).toBe("plain");
   });
+
+  test.each(["path=${1:-/}; echo ${path}", "${@}", "${value%/*}"])(
+    "preserves shell-only text %s",
+    (source) => {
+      expect(authoring.isPlainAuthoringString(source)).toBe(true);
+    },
+  );
 
   test("excludes expressions when checking plain authoring strings", () => {
     // Given

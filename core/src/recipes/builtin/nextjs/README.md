@@ -1,6 +1,21 @@
 # nextjs
 
-Next.js frontend with an optional database and Auth helper picker.
+Use this recipe for a Next.js frontend with an optional database. It configures
+the stack but does not download or start Next.js. The Auth helper picker records
+your choice as an environment hint; you still install and configure that helper.
+
+## Host prerequisites
+
+- Lando v4 alpha install with `provider-lando` or `provider-docker`.
+
+## Init contract
+
+- `lando init --recipe nextjs` writes `.lando.yml` only and downloads no
+  application code. The app comes from `lando nextjs-scaffold` after
+  `lando start`, or from an existing project (`lando npm install`, then
+  `lando next dev`).
+- `lando start` does not launch Next. `lando next dev` runs in the foreground
+  on port 3000.
 
 ## Generated services
 
@@ -23,23 +38,10 @@ Next.js frontend with an optional database and Auth helper picker.
   path. If `npm install` fails, generated sources stay; fix the npm error and
   run `lando npm install`.
 
-## Init contract
-
-- `lando init --recipe nextjs` writes `.lando.yml` only and downloads no
-  application code. The app comes from `lando nextjs-scaffold` after
-  `lando start`, or from an existing project (`lando npm install`, then
-  `lando next dev`).
-- `lando start` does not launch Next. `lando next dev` runs in the foreground
-  on port 3000.
-
 ## Alpha limitations
 
-- Auth picker (`nextauth`, `clerk`, `none`) only sets the
-  `NEXTAUTH_PROVIDER` env hint. Users install and configure the chosen helper
+- Auth picker (`nextauth`, `clerk`, `none`) sets only the
+  `NEXTAUTH_PROVIDER` environment hint. Install and configure the chosen helper
   through the generated tooling.
 - A dedicated Next.js service type with first-class build presets is deferred
   to Beta.
-
-## Host prerequisites
-
-- Lando v4 alpha install with `provider-lando` or `provider-docker`.

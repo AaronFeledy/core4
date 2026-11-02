@@ -8,6 +8,10 @@ export interface RequestPolicyShape {
   readonly allowFileSource?: boolean;
   readonly offline?: boolean;
   readonly redirect?: "follow" | "manual" | "error";
+  readonly connectionTarget?: {
+    readonly address: string;
+    readonly origin: string;
+  };
 }
 
 export const RequestPolicy = Context.Reference<RequestPolicyShape>("@lando/http-client/RequestPolicy", {

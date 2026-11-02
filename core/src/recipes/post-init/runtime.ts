@@ -1,35 +1,20 @@
-import { realpath } from "node:fs/promises";
-import { dirname, isAbsolute, resolve, sep } from "node:path";
+import { sep } from "node:path";
 
 import { createStandaloneRedactor } from "@lando/redaction/service";
 import { NotImplementedError, RecipePostInitError } from "@lando/sdk/errors";
 import type { RecipePostInitAction } from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 
-import {
-  type BunSelfSpawner,
-  childEnv as buildChildEnv,
-  defaultBunSelfSpawner,
-} from "../../cli/commands/bun-self-runner";
 import { type ChoicesCommandRunner, createDefaultChoicesCommandRunner } from "../prompts/choices-command";
 import { defaultRunWarning, evaluateRunPermission, runNotAllowedError } from "../run-allowlist";
 import { shouldRunPostInitAction } from "./authorization";
+import { resolveCreateTemplate } from "./create-template.ts";
+import { ensurePackageJson, resolveBunCwd, resolveCreateDest, resolveScriptPath } from "./paths";
 
 export interface PostInitIO {
   readonly out: (line: string) => void | Promise<void>;
   readonly err: (line: string) => void | Promise<void>;
 }
-
-export const createStdioPostInitIO = (
-  stdout: NodeJS.WriteStream = process.stdout,
-  stderr: NodeJS.WriteStream = process.stderr,
-): PostInitIO => ({
-  out: (line) => {
-    stdout.write(`${line}\n`);
-  },
-  err: (line) => {
-    stderr.write(`${line}\n`);
-  },
-});
 
 export interface PostInitExecutedAction {
   readonly index: number;
@@ -49,114 +34,46 @@ export interface RunPostInitOptions {
   readonly appName: string;
   readonly answers: Readonly<Record<string, unknown>>;
   readonly io?: PostInitIO;
-  readonly spawner?: BunSelfSpawner;
+  readonly runBun: (request: {
+    readonly argv: readonly string[];
+    readonly cwd: string;
+    readonly env: NodeJS.ProcessEnv;
+    readonly execPath?: string;
+  }) => Promise<{ readonly exitCode: number }>;
   readonly env?: NodeJS.ProcessEnv;
   readonly execPath?: string;
   readonly runs?: ReadonlyArray<string>;
   readonly commandRunner?: ChoicesCommandRunner;
   readonly recipeRoot?: string;
+  readonly redact?: (text: string) => string;
 }
 
-const secretsRedactor = createStandaloneRedactor("secrets");
-
-export const redactBunOutput = (text: string): string => secretsRedactor.redactString(text);
-
-const realpathOrUndefined = async (path: string): Promise<string | undefined> => {
-  try {
-    return await realpath(path);
-  } catch {
-    return undefined;
-  }
+type ResolvedPostInitOptions = RunPostInitOptions & {
+  readonly redact: (text: string) => string;
+  readonly env: NodeJS.ProcessEnv;
 };
 
-// Security: a `bun create` dest leaf does not exist yet, so realpath(target)
-// fails; falling back to the lexical path would skip symlink resolution of the
-// existing parents and let a recipe-shipped symlink ancestor escape the
-// destination. Realpath the nearest EXISTING parent to close that gap.
-const nearestExistingRealpath = async (target: string): Promise<string> => {
-  let current = target;
-  for (;;) {
-    const resolved = await realpathOrUndefined(current);
-    if (resolved !== undefined) return resolved;
-    const parent = dirname(current);
-    if (parent === current) return current;
-    current = parent;
-  }
-};
+/** Env-aware pattern/exact redactor for post-init when the caller did not inject one. */
+const fallbackPostInitRedactor = (sourceEnv: Readonly<Record<string, string | undefined>>): Redactor =>
+  createStandaloneRedactor("secrets", { sourceEnv: { ...sourceEnv } });
 
-const isInside = (parent: string, candidate: string): boolean =>
-  candidate === parent || candidate.startsWith(`${parent}${sep}`);
-
-const resolveBunCwd = async (
-  rawCwd: string | undefined,
-  destination: string,
-  recipe: string,
-  index: number,
-  verb: string,
-): Promise<string> => {
-  const raw = typeof rawCwd === "string" && rawCwd.length > 0 ? rawCwd : ".";
-
-  if (raw.split(/[\\/]/u).some((segment) => segment === "..")) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun ${verb}): cwd "${raw}" must not contain ".." segments.`,
-      recipe,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: verb,
-      kind: "outside-destination",
-      remediation:
-        "Set `cwd:` to the recipe destination or a subdirectory of it. Path traversal via `..` is rejected.",
-    });
-  }
-
-  const initial = isAbsolute(raw) ? raw : resolve(destination, raw);
-
-  const resolvedDestination = (await realpathOrUndefined(destination)) ?? destination;
-  const resolvedCwd = (await realpathOrUndefined(initial)) ?? initial;
-
-  if (!isInside(resolvedDestination, resolvedCwd)) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun ${verb}): cwd "${raw}" resolves outside the recipe destination (${resolvedDestination}).`,
-      recipe,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: verb,
-      kind: "outside-destination",
-      remediation:
-        "Set `cwd:` to the recipe destination or a subdirectory of it. Symlinks that escape the destination are rejected.",
-    });
-  }
-
-  return resolvedCwd;
-};
-
-const ensurePackageJson = async (cwd: string, recipe: string, index: number, verb: string): Promise<void> => {
-  const pkgPath = `${cwd}${sep}package.json`;
-  const exists = await Bun.file(pkgPath).exists();
-  if (exists) return;
-  throw new RecipePostInitError({
-    message: `postInit[${index}] (bun ${verb}): no package.json found at ${pkgPath}.`,
-    recipe,
-    actionIndex: index,
-    actionType: "bun",
-    actionVerb: verb,
-    kind: "missing-package-json",
-    remediation: `Author a recipe that writes package.json before the bun ${verb} action runs, or remove the action.`,
-  });
-};
+export const redactBunOutput = (
+  text: string,
+  sourceEnv: Readonly<Record<string, string | undefined>> = process.env,
+): string => fallbackPostInitRedactor(sourceEnv).redactString(text);
 
 const spawnBun = async (
   argv: ReadonlyArray<string>,
   cwd: string,
-  index: number,
-  verb: string,
-  options: RunPostInitOptions,
+  execution: { readonly index: number; readonly verb: string; readonly options: ResolvedPostInitOptions },
 ): Promise<void> => {
-  const spawner = options.spawner ?? defaultBunSelfSpawner;
-  const execPath = options.execPath ?? process.execPath;
-  const childEnv = buildChildEnv(options.env ?? process.env);
-
-  const result = await spawner.spawn({ cmd: [execPath, ...argv], env: childEnv, cwd });
+  const { index, verb, options } = execution;
+  const result = await options.runBun({
+    argv,
+    cwd,
+    env: options.env,
+    ...(options.execPath === undefined ? {} : { execPath: options.execPath }),
+  });
 
   if (result.exitCode !== 0) {
     const detail =
@@ -170,136 +87,10 @@ const spawnBun = async (
       actionType: "bun",
       actionVerb: verb,
       kind: "exit",
-      remediation: redactBunOutput(
-        `\`bun ${verb}\` exited with code ${result.exitCode} in ${cwd}. ${detail}`,
-      ),
+      remediation: options.redact(`\`bun ${verb}\` exited with code ${result.exitCode} in ${cwd}. ${detail}`),
       exitCode: result.exitCode,
     });
   }
-};
-
-const ANSWER_REFERENCE_PATTERN = /\$\{answers\.([A-Za-z0-9_-]+)\}/gu;
-
-const substituteAnswers = (
-  template: string,
-  index: number,
-  verb: string,
-  options: RunPostInitOptions,
-): string =>
-  template.replace(ANSWER_REFERENCE_PATTERN, (_match, name: string) => {
-    const value = options.answers[name];
-    if (value === undefined || value === null || typeof value === "object") {
-      throw new RecipePostInitError({
-        message: `postInit[${index}] (bun ${verb}): template references unknown answer "${name}".`,
-        recipe: options.recipeId,
-        actionIndex: index,
-        actionType: "bun",
-        actionVerb: verb,
-        kind: "invalid-argv",
-        remediation: `Declare a prompt named "${name}" (or pass --answer ${name}=<value>) before the bun ${verb} action runs.`,
-      });
-    }
-    return String(value);
-  });
-
-const resolveCreateDest = async (
-  rawDest: string,
-  destination: string,
-  cwd: string,
-  index: number,
-  options: RunPostInitOptions,
-): Promise<string> => {
-  if (rawDest.split(/[\\/]/u).some((segment) => segment === "..")) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun create): dest "${rawDest}" must not contain ".." segments.`,
-      recipe: options.recipeId,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: "create",
-      kind: "outside-destination",
-      remediation:
-        "Set `dest:` to a path inside the recipe destination. Path traversal via `..` is rejected.",
-    });
-  }
-  // Resolve `dest` against the execution `cwd` (where `bun create` actually
-  // writes it), then verify the realpathed nearest existing parent stays inside
-  // the recipe destination. Returning the absolute resolved path keeps the
-  // validated path and the spawned argv in lockstep.
-  const resolvedDest = isAbsolute(rawDest) ? rawDest : resolve(cwd, rawDest);
-  const resolvedDestination = (await realpathOrUndefined(destination)) ?? destination;
-  const anchor = await nearestExistingRealpath(resolvedDest);
-  if (!isInside(resolvedDestination, anchor)) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun create): dest "${rawDest}" resolves outside the recipe destination (${resolvedDestination}).`,
-      recipe: options.recipeId,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: "create",
-      kind: "outside-destination",
-      remediation:
-        "Set `dest:` to a path inside the recipe destination. Absolute paths and symlinks that escape it are rejected.",
-    });
-  }
-  return resolvedDest;
-};
-
-const resolveScriptPath = async (
-  rawScript: string,
-  index: number,
-  options: RunPostInitOptions,
-): Promise<string> => {
-  const recipeRoot = options.recipeRoot;
-  if (recipeRoot === undefined) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun script): no recipe source tree is available to resolve "${rawScript}".`,
-      recipe: options.recipeId,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: "script",
-      kind: "invalid-argv",
-      remediation:
-        "The `script` verb requires a recipe with an on-disk source tree (`templates/` or `assets/`); bundled in-binary recipes cannot use it.",
-    });
-  }
-  if (rawScript.split(/[\\/]/u).some((segment) => segment === "..")) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun script): script "${rawScript}" must not contain ".." segments.`,
-      recipe: options.recipeId,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: "script",
-      kind: "outside-recipe",
-      remediation: "Set `script:` to a path under the recipe's `templates/` or `assets/` tree.",
-    });
-  }
-  const initial = isAbsolute(rawScript) ? rawScript : resolve(recipeRoot, rawScript);
-  const resolvedRoot = (await realpathOrUndefined(recipeRoot)) ?? recipeRoot;
-  const resolvedScript = await realpathOrUndefined(initial);
-  if (resolvedScript === undefined) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun script): script file "${rawScript}" was not found under the recipe source tree.`,
-      recipe: options.recipeId,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: "script",
-      kind: "invalid-argv",
-      remediation:
-        "Ship the script under the recipe's `templates/` or `assets/` tree, or fix the `script:` path.",
-    });
-  }
-  if (!isInside(resolvedRoot, resolvedScript)) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun script): script "${rawScript}" resolves outside the recipe source tree (${resolvedRoot}).`,
-      recipe: options.recipeId,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: "script",
-      kind: "outside-recipe",
-      remediation:
-        "Set `script:` to a path inside the recipe's `templates/` or `assets/` tree. Symlinks that escape it are rejected.",
-    });
-  }
-  return resolvedScript;
 };
 
 const ADD_CATEGORY_FLAGS = [
@@ -312,14 +103,15 @@ const ADD_CATEGORY_FLAGS = [
 const runBun = async (
   action: Extract<RecipePostInitAction, { type: "bun" }>,
   index: number,
-  options: RunPostInitOptions,
+  options: ResolvedPostInitOptions,
 ): Promise<void> => {
-  const cwd = await resolveBunCwd(action.cwd, options.destination, options.recipeId, index, action.verb);
+  const execution = { index, verb: action.verb, options };
+  const cwd = await resolveBunCwd(action, execution);
 
   switch (action.verb) {
     case "install": {
-      await ensurePackageJson(cwd, options.recipeId, index, action.verb);
-      await spawnBun(["install"], cwd, index, action.verb, options);
+      await ensurePackageJson(cwd, action.verb, execution);
+      await spawnBun(["install"], cwd, execution);
       return;
     }
     case "add": {
@@ -327,41 +119,26 @@ const runBun = async (
         const packages = action[key] ?? [];
         if (packages.length === 0) continue;
         const argv = flag === undefined ? ["add", ...packages] : ["add", flag, ...packages];
-        await spawnBun(argv, cwd, index, action.verb, options);
+        await spawnBun(argv, cwd, execution);
       }
       return;
     }
     case "create": {
-      const template = substituteAnswers(action.template, index, action.verb, options);
-      const trimmedTemplate = template.trim();
-      if (trimmedTemplate === "" || trimmedTemplate.startsWith("-")) {
-        throw new RecipePostInitError({
-          message: `postInit[${index}] (bun create): template "${template}" is invalid; it must not be empty or begin with "-".`,
-          recipe: options.recipeId,
-          actionIndex: index,
-          actionType: "bun",
-          actionVerb: "create",
-          kind: "invalid-argv",
-          remediation:
-            "Ensure the `template:` value (after answer substitution) is a package or template name, not empty or a flag.",
-        });
-      }
+      const template = resolveCreateTemplate(action.template, index, options);
       const dest =
-        action.dest === undefined
-          ? undefined
-          : await resolveCreateDest(action.dest, options.destination, cwd, index, options);
+        action.dest === undefined ? undefined : await resolveCreateDest(action.dest, cwd, execution);
       const argv = dest === undefined ? ["create", template] : ["create", template, dest];
-      await spawnBun(argv, cwd, index, action.verb, options);
+      await spawnBun(argv, cwd, execution);
       return;
     }
     case "run": {
-      await ensurePackageJson(cwd, options.recipeId, index, action.verb);
-      await spawnBun(["run", action.script, ...(action.args ?? [])], cwd, index, action.verb, options);
+      await ensurePackageJson(cwd, action.verb, execution);
+      await spawnBun(["run", action.script, ...(action.args ?? [])], cwd, execution);
       return;
     }
     case "script": {
-      const scriptPath = await resolveScriptPath(action.script, index, options);
-      await spawnBun(["run", scriptPath, ...(action.args ?? [])], cwd, index, action.verb, options);
+      const scriptPath = await resolveScriptPath(action.script, execution);
+      await spawnBun(["run", scriptPath, ...(action.args ?? [])], cwd, execution);
       return;
     }
     case "x": {
@@ -382,10 +159,9 @@ const runBun = async (
         throw runNotAllowedError(spec, permission.allowlist, options.recipeId);
       }
       if (permission.kind === "warn") {
-        const io = options.io ?? createStdioPostInitIO();
-        await io.err(defaultRunWarning(spec, permission.allowlist));
+        await options.io?.err(defaultRunWarning(spec, permission.allowlist));
       }
-      await spawnBun(["x", spec, ...(action.argv ?? [])], cwd, index, action.verb, options);
+      await spawnBun(["x", spec, ...(action.argv ?? [])], cwd, execution);
       return;
     }
     default: {
@@ -399,8 +175,7 @@ const runMessage = async (
   action: Extract<RecipePostInitAction, { type: "message" }>,
   options: RunPostInitOptions,
 ): Promise<void> => {
-  const io = options.io ?? createStdioPostInitIO();
-  await io.out(action.text);
+  await options.io?.out(action.text);
 };
 
 const rejectGitInit = (index: number): never => {
@@ -414,14 +189,15 @@ const rejectGitInit = (index: number): never => {
 const runCommand = async (
   action: Extract<RecipePostInitAction, { type: "command" }>,
   index: number,
-  options: RunPostInitOptions,
+  options: ResolvedPostInitOptions,
 ): Promise<void> => {
   const runner = options.commandRunner ?? createDefaultChoicesCommandRunner({ cwd: options.destination });
   const result = await runner({ command: action.cmd, args: action.args ?? [] });
 
   if (result.exitCode !== 0) {
-    const stderr = redactBunOutput(result.stderr.trim());
-    const stdout = redactBunOutput(result.stdout.trim());
+    const redact = options.redact;
+    const stderr = redact(result.stderr.trim());
+    const stdout = redact(result.stdout.trim());
     const details = [stderr, stdout].filter((line) => line !== "").join(" ");
     throw new RecipePostInitError({
       message: `postInit[${index}] (command ${action.cmd}) failed with exit code ${result.exitCode}.`,
@@ -429,7 +205,7 @@ const runCommand = async (
       actionIndex: index,
       actionType: "command",
       kind: "exit",
-      remediation: redactBunOutput(
+      remediation: redact(
         `Command \`${action.cmd}\` exited with code ${result.exitCode}.${details === "" ? "" : ` Output: ${details}`} Fix the command or remove it from the recipe postInit action.`,
       ),
       exitCode: result.exitCode,
@@ -439,9 +215,15 @@ const runCommand = async (
 
 export const runPostInit = async (options: RunPostInitOptions): Promise<PostInitOutcome> => {
   const executed: PostInitExecutedAction[] = [];
-  const selected = options.actions.map((action, index) => shouldRunPostInitAction(action, options, index));
+  const sourceEnv = { ...(options.env ?? process.env) };
+  const resolved: ResolvedPostInitOptions = {
+    ...options,
+    env: sourceEnv,
+    redact: options.redact ?? fallbackPostInitRedactor(sourceEnv).redactString,
+  };
+  const selected = resolved.actions.map((action, index) => shouldRunPostInitAction(action, resolved, index));
 
-  for (const [index, action] of options.actions.entries()) {
+  for (const [index, action] of resolved.actions.entries()) {
     if (!selected[index]) {
       executed.push({ index, type: action.type, skipped: true });
       continue;
@@ -449,12 +231,12 @@ export const runPostInit = async (options: RunPostInitOptions): Promise<PostInit
 
     switch (action.type) {
       case "message": {
-        await runMessage(action, options);
+        await runMessage(action, resolved);
         executed.push({ index, type: "message" });
         break;
       }
       case "bun": {
-        await runBun(action, index, options);
+        await runBun(action, index, resolved);
         executed.push({ index, type: "bun", verb: action.verb });
         break;
       }
@@ -463,7 +245,7 @@ export const runPostInit = async (options: RunPostInitOptions): Promise<PostInit
         break;
       }
       case "command": {
-        await runCommand(action, index, options);
+        await runCommand(action, index, resolved);
         executed.push({ index, type: "command" });
         break;
       }

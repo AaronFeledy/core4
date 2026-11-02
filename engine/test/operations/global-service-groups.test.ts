@@ -1,26 +1,107 @@
-import { describe, expect, test } from "bun:test";
-import { ServiceStartError } from "@lando/sdk/errors";
-import { type AppPlan, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import type { ApplyOptions, RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
-import { Cause, Effect, Exit } from "effect";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { makeLandoPaths } from "@lando/paths";
+import { GlobalAppError, ServiceStartError } from "@lando/sdk/errors";
 import {
-  applyGlobalServiceGroups,
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  DEBUGGER_HOST_ALIAS,
+  GlobalConfig,
+  HOST_GATEWAY_TARGET,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
+import {
+  type ApplyOptions,
+  ConfigService,
+  EnvironmentValueResolver,
+  GlobalAppService,
+  PathsService,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
+import { TestRuntimeProvider } from "@lando/sdk/test";
+import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
+import { Cause, DateTime, Effect, Exit, Layer, Schema } from "effect";
+import { withGlobalMutation } from "../../src/global-app/mutation.ts";
+import { readGlobalConsumerReservations } from "../../src/operations/global-consumer-lease.ts";
+import {
+  applyGlobalServiceGroups as applyGlobalServiceGroupsEffect,
   globalServiceGroupError,
 } from "../../src/operations/global-service-groups.ts";
-import { MANAGED_PROVIDER_SELECT_PLAN } from "../../src/providers/managed.ts";
+import * as BunFileSystem from "../../src/services/file-system.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
+import { testEnvironmentResolverLayer } from "../environment-values.ts";
+
+const directory = mkdtempSync(join(tmpdir(), "lando-global-groups-"));
+const root = AbsolutePath.make(join(directory, "global"));
+mkdirSync(root);
+afterAll(() => rmSync(directory, { recursive: true, force: true }));
+const leaseLayer = Layer.mergeAll(
+  makeTestStateStore().layer,
+  testEnvironmentResolverLayer,
+  BunFileSystem.layer,
+  PrivateFileAccessService.layer,
+  Layer.succeed(
+    PathsService,
+    makeLandoPaths({
+      userDataRoot: directory,
+      userConfRoot: join(directory, "conf"),
+      userCacheRoot: join(directory, "cache"),
+      systemPluginRoot: join(directory, "plugins"),
+      env: {},
+      platform: "linux",
+    }),
+  ),
+  Layer.succeed(
+    GlobalAppService,
+    GlobalAppService.of({
+      id: "global",
+      providerId: Effect.succeed(ProviderId.make("lando")),
+      root: Effect.succeed(root),
+      paths: Effect.succeed({
+        root,
+        distLandofile: AbsolutePath.make(join(root, ".lando.dist.yml")),
+        userLandofile: AbsolutePath.make(join(root, ".lando.yml")),
+      }),
+      ensureRoot: Effect.void,
+      ensureUserLandofile: Effect.die("unused"),
+      ensureRunning: () => Effect.die("unused"),
+      regenerateDist: () => Effect.die("unused"),
+    }),
+  ),
+);
+const applyGlobalServiceGroups = <E, R, AdmissionE = never, AdmissionR = never>(
+  ...args: Parameters<typeof applyGlobalServiceGroupsEffect<E, R, AdmissionE, AdmissionR>>
+) => withGlobalMutation(applyGlobalServiceGroupsEffect(...args)).pipe(Effect.provide(leaseLayer));
+
+const globalPlan: AppPlan = {
+  id: AppId.make("global"),
+  name: "global",
+  slug: "global",
+  root,
+  provider: ProviderId.make("lando"),
+  services: {},
+  routes: [],
+  stores: [],
+  fileSync: [],
+  metadata: { resolvedAt: DateTime.makeUnsafe("1970-01-01T00:00:00Z"), source: "test", runtime: 4 },
+  extensions: {},
+};
 
 const service = (name: string, dependencies: ReadonlyArray<string> = []): ServicePlan => ({
   type: "test",
-  provider: MANAGED_PROVIDER_SELECT_PLAN.provider,
+  provider: globalPlan.provider,
   primary: true,
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [],
   routes: [],
   hostAliases: [],
-  metadata: MANAGED_PROVIDER_SELECT_PLAN.metadata,
+  metadata: globalPlan.metadata,
   extensions: {},
   name: ServiceName.make(name),
   artifact: { kind: "ref", ref: `unbuilt:${name}` },
@@ -31,7 +112,7 @@ const service = (name: string, dependencies: ReadonlyArray<string> = []): Servic
   })),
 });
 const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
-  ...MANAGED_PROVIDER_SELECT_PLAN,
+  ...globalPlan,
   services: Object.fromEntries(services.map((service) => [service.name, service])),
 });
 const build = (plan: AppPlan) =>
@@ -50,11 +131,49 @@ const failure = (name: string, remediation?: string) =>
     providerId: "lando",
     operation: "apply",
     message: `Cannot start ${name}`,
-    ...(remediation === undefined ? {} : { remediation }),
+    remediation:
+      remediation ??
+      `Inspect \`lando logs -s ${name}\`, fix the service configuration or image, and start the app again.`,
   });
 const refs = (plan: AppPlan) => Object.values(plan.services).map((service) => service.artifact);
 
 describe("global service groups", () => {
+  test("a failed group retains its created containers and leaves successful groups running", async () => {
+    const plan = planWith([service("working"), service("broken"), service("later")]);
+    const created = new Set<string>();
+    const cleanup: string[] = [];
+    const error = failure("broken", "Repair the dependency and retry.");
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      apply: (group) =>
+        Effect.gen(function* () {
+          for (const name of Object.keys(group.services)) created.add(name);
+          if (group.services[ServiceName.make("broken")] !== undefined) return yield* Effect.fail(error);
+          return { changed: true };
+        }),
+      destroy: (target) =>
+        Effect.sync(() => {
+          cleanup.push(String(target.app));
+          created.clear();
+          return { kind: "destroyed" as const };
+        }),
+      stop: (target) =>
+        Effect.sync(() => {
+          cleanup.push(String(target.service));
+        }),
+    };
+    const outcome = await Effect.runPromise(
+      applyGlobalServiceGroups(
+        plan,
+        { provider, services: Object.values(plan.services), options: { reconcile: false } },
+        build,
+      ),
+    );
+    expect([...created]).toEqual(["working", "broken", "later"]);
+    expect(cleanup).toEqual([]);
+    expect(outcome.services.map((service) => String(service.name))).toEqual(["working", "later"]);
+    expect(outcome.failures).toEqual([{ names: [ServiceName.make("broken")], error }]);
+  });
   test("an empty selection leaves the plan unchanged without building or applying", async () => {
     // Given a plan with no selected services and callbacks that must not run.
     const plan = planWith([service("unselected")]);
@@ -243,7 +362,14 @@ describe("global service groups", () => {
     );
     // Then the provider receives no unbuilt full-plan override.
     expect(optionsSeen[0]).not.toHaveProperty("recordedPlan");
-    expect(optionsSeen[0]?.completionPlan).toBe(plan);
+    expect(optionsSeen[0]?.completionPlan?.services[ServiceName.make("mailpit")]?.artifact).toEqual({
+      kind: "ref",
+      ref: "built:mailpit",
+    });
+    expect(optionsSeen[0]?.completionPlan?.services[ServiceName.make("traefik")]?.artifact).toEqual({
+      kind: "ref",
+      ref: "unbuilt:traefik",
+    });
     expect(refs(recorded)).toEqual([
       { kind: "ref", ref: "built:mailpit" },
       { kind: "ref", ref: "built:traefik" },
@@ -303,6 +429,49 @@ describe("global service groups", () => {
     expect(error?.cause).toBe(cause);
   });
 
+  test("applies the resolved debugger address while building and recording neutral plans", async () => {
+    // Given a service that requests the debugger alias and a configured debugger host.
+    const plan = planWith([
+      { ...service("debuggable"), hostAliases: [{ hostname: DEBUGGER_HOST_ALIAS, ip: HOST_GATEWAY_TARGET }] },
+    ]);
+    const built: AppPlan[] = [];
+    const applied: AppPlan[] = [];
+    const recorded: AppPlan[] = [];
+    const provider: RuntimeProviderShape = {
+      ...TestRuntimeProvider,
+      apply: (group, options) =>
+        Effect.sync(() => {
+          applied.push(group);
+          if (options?.recordedPlan !== undefined) recorded.push(options.recordedPlan);
+          return { changed: true };
+        }),
+    };
+    const config = Schema.decodeUnknownSync(GlobalConfig)({ debugger: { host: "192.0.2.40" } });
+    // When the groups are built and applied.
+    const outcome = await Effect.runPromise(
+      applyGlobalServiceGroups(
+        plan,
+        { provider, services: Object.values(plan.services), options: { reconcile: true } },
+        (value) => {
+          built.push(value);
+          return build(value);
+        },
+      ).pipe(
+        Effect.provideService(
+          ConfigService,
+          ConfigService.of({ load: Effect.succeed(config), get: (key) => Effect.succeed(config[key]) }),
+        ),
+      ),
+    );
+    // Then only the provider receives the resolved address.
+    const alias = (value: AppPlan) => value.services[ServiceName.make("debuggable")]?.hostAliases[0]?.ip;
+    expect(outcome.failures).toEqual([]);
+    expect(applied.map(alias)).toEqual(["192.0.2.40"]);
+    expect(built.map(alias)).toEqual([HOST_GATEWAY_TARGET]);
+    expect(recorded.map(alias)).toEqual([HOST_GATEWAY_TARGET]);
+    expect(alias(outcome.builtPlan)).toBe(HOST_GATEWAY_TARGET);
+  });
+
   test("no failures produce no aggregate error", () => {
     // Given a successful service outcome.
     const outcome = { services: [service("working")], failures: [] };
@@ -322,18 +491,121 @@ describe("global service groups", () => {
       "Fix the error above, then run `lando global:rebuild`. Run `lando doctor` if the failure persists.",
     ],
   ] as const)("partial %s errors use operation-specific fallback remediation", (operation, remediation) => {
-    // Given multiple failed services without tagged remediation and one running service.
-    const cause = failure("broken");
+    // Given multiple failed services whose cause has no tagged remediation, and one running service.
+    const cause = new Error("broken without tagged remediation");
     // When the aggregate is constructed for the selected operation.
     const error = globalServiceGroupError(operation, {
       services: [service("working")],
       failures: [{ names: ["broken", "dependent"], error: cause }],
     });
     // Then fallback instructions match the operation and grammar matches the service counts.
-    expect(error?.remediation).toBe(remediation);
-    expect(error?.message).toBe(
+    if (error === undefined || !(error instanceof GlobalAppError)) throw new Error("expected GlobalAppError");
+    expect(error.remediation).toBe(remediation);
+    expect(error.message).toBe(
       `Global services broken, dependent failed to ${operation}; working is running.`,
     );
-    expect(error?.cause).toBe(cause);
+    expect(error.cause).toBe(cause);
   });
+});
+
+test("post-build admission failure preserves an earlier applied group and skips the stale group", async () => {
+  const first = service("first");
+  const second = service("second");
+  const plan = planWith([first, second]);
+  const applied: string[] = [];
+  const timeline: string[] = [];
+  let admitted = true;
+  const changed = new GlobalAppError({
+    operation: "startup-admission",
+    message: "Saved policy changed during the second build.",
+    remediation: "Retry with the current policy.",
+  });
+  const outcome = await Effect.runPromise(
+    applyGlobalServiceGroups(
+      plan,
+      {
+        provider: {
+          ...TestRuntimeProvider,
+          apply: (group) =>
+            Effect.sync(() => {
+              const name = Object.keys(group.services)[0];
+              if (name === undefined) throw new Error("expected selected group");
+              applied.push(name);
+              timeline.push(`apply:${name}`);
+              return { changed: true };
+            }),
+        },
+        services: [first, second],
+        options: { reconcile: false },
+        beforeApply: Effect.suspend(() => {
+          timeline.push("admission");
+          return admitted ? Effect.void : Effect.fail(changed);
+        }),
+      },
+      (group) =>
+        Effect.sync(() => {
+          const name = Object.keys(group.services)[0];
+          timeline.push(`build:${name}`);
+          if (name === "second") admitted = false;
+          return group;
+        }),
+    ),
+  );
+  expect(timeline).toEqual([
+    "build:first",
+    "admission",
+    "admission",
+    "apply:first",
+    "build:second",
+    "admission",
+  ]);
+  expect(applied).toEqual(["first"]);
+  expect(outcome.services.map((service) => service.name)).toEqual([first.name]);
+  expect(outcome.failures).toEqual([{ names: [second.name], error: changed }]);
+  const error = globalServiceGroupError("start", outcome);
+  expect(error).toMatchObject({ _tag: "GlobalAppError", operation: "start", cause: changed });
+  expect(error?.message).toContain("first is running");
+});
+
+test("each global group reserves its selected IDs inside provider apply while sharing one environment session", async () => {
+  const first = service("first");
+  const second = service("second");
+  const plan = planWith([first, second]);
+  const observed: string[][] = [];
+  let sessions = 0;
+  const resolver = EnvironmentValueResolver.of({
+    openSession: () =>
+      Effect.sync(() => {
+        sessions++;
+        return { resolveEnvironment: () => Effect.succeed({}) };
+      }),
+  });
+  const provider: RuntimeProviderShape = {
+    ...TestRuntimeProvider,
+    apply: (group) =>
+      Effect.gen(function* () {
+        const records = yield* readGlobalConsumerReservations(["first", "second"]);
+        expect(records).toHaveLength(1);
+        expect(records[0]?.app.kind).toBe("global");
+        expect(records[0]?.app.root).toBe(root);
+        expect(records[0]?.services).toEqual(Object.keys(group.services));
+        observed.push([...(records[0]?.services ?? [])]);
+        return { changed: true };
+      }).pipe(Effect.provide(leaseLayer), Effect.orDie),
+  };
+  await Effect.runPromise(
+    withGlobalMutation(
+      applyGlobalServiceGroupsEffect(
+        plan,
+        {
+          provider,
+          services: [first, second],
+          options: { reconcile: false },
+        },
+        build,
+      ).pipe(Effect.provideService(EnvironmentValueResolver, resolver)),
+    ).pipe(Effect.provide(leaseLayer)),
+  );
+  expect(sessions).toBe(1);
+  expect(observed).toEqual([["first"], ["second"]]);
 });

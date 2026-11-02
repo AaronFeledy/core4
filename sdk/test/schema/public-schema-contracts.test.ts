@@ -4,14 +4,40 @@ import { Result, Schema } from "effect";
 
 import { AbsolutePath } from "@lando/sdk/schema";
 import { TaskStartEvent } from "../../src/events/task.ts";
-import { JSON_SCHEMA_NAMES, publicSchemaRegistry } from "../../src/schema/index.ts";
 import {
-  PUBLIC_SCHEMA_CONTRACT_FIXTURES,
+  JSON_SCHEMA_NAMES,
+  publicSchemaMetadataIndex,
+  publicSchemaRegistry,
+} from "../../src/schema/index.ts";
+import {
   assertPublicSchemaContractCoverage,
+  publicSchemaContractTestFile,
   publicSchemaHappyPathFixture,
 } from "./public-schema-contracts.ts";
+import { GRANDFATHERED_SCHEMA_DESCRIPTION_IDS } from "./public-schema-description-debt.ts";
 
 describe("public schema contracts", () => {
+  test.each([
+    ["StartAppResult", "sdk/test/schema/app-results.test.ts"],
+    ["LandofileShape", "sdk/test/schema/public-schema-contracts.test.ts"],
+  ] as const)("%s resolves its contract test file", (schemaName, expectedFile) => {
+    // Given / When
+    const testFile = publicSchemaContractTestFile(schemaName);
+    // Then
+    expect(testFile).toBe(expectedFile);
+  });
+
+  test("generated descriptions exactly match the shrinking grandfathered ledger", () => {
+    // Given the published metadata, detect only the generated fallback, not authored prose.
+    const generated = publicSchemaMetadataIndex.filter(({ id, description }) => {
+      const title = id.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+      return description === `Public Lando schema contract for ${title}.`;
+    });
+    // When comparing the actual fallback ids to the explicit existing debt,
+    // Then both newly undocumented and newly documented schemas require a ledger change.
+    const generatedIds: string[] = generated.map(({ id }) => id).sort();
+    expect(generatedIds).toEqual([...GRANDFATHERED_SCHEMA_DESCRIPTION_IDS].sort());
+  });
   test("TaskStartEvent additively decodes old payloads and branded transcript paths", () => {
     const oldPayload = Schema.decodeUnknownSync(TaskStartEvent)({
       _tag: "task.start",
@@ -32,7 +58,6 @@ describe("public schema contracts", () => {
   });
 
   test("every public schema has a schema contract fixture", () => {
-    expect([...Object.keys(PUBLIC_SCHEMA_CONTRACT_FIXTURES)]).toEqual([...JSON_SCHEMA_NAMES]);
     expect(() => assertPublicSchemaContractCoverage()).not.toThrow();
   });
 

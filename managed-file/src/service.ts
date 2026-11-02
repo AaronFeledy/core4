@@ -161,12 +161,34 @@ type ManagedFileEventKind =
   | "managed-file-conflict-detected"
   | "managed-file-skipped";
 
+const remediationForReason = (reason: ManagedFileError["reason"]): string => {
+  switch (reason) {
+    case "io":
+      return "Check path permissions and free disk space, then retry the managed-file operation.";
+    case "decode":
+      return "Fix the on-disk file so it parses as the declared format, then retry.";
+    case "conflict":
+      return "Resolve the in-place edit or pass overwrite after reviewing the conflict.";
+    case "path":
+      return "Managed-file paths must stay inside the resolved base (app root).";
+    case "format":
+      return "Use a supported format or correct the structured content for this codec.";
+  }
+};
+
 const fail = (
   reason: ManagedFileError["reason"],
   operation: ManagedFileOperation,
   detail: { readonly path?: string; readonly remediation?: string; readonly cause?: unknown } = {},
 ): Effect.Effect<never, ManagedFileError> =>
-  Effect.fail(new ManagedFileError({ reason, operation, ...detail }));
+  Effect.fail(
+    new ManagedFileError({
+      reason,
+      operation,
+      ...detail,
+      remediation: detail.remediation ?? remediationForReason(reason),
+    }),
+  );
 
 const isManagedFileError = (cause: unknown): cause is ManagedFileError =>
   typeof cause === "object" &&
@@ -997,7 +1019,14 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
     // the deepest existing ancestor, which would sit above a missing root.
     return Effect.tryPromise({
       try: () => mkdir(dir, { recursive: true }),
-      catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
+      catch: (cause) =>
+        new StateStoreError({
+          reason: "io",
+          operation: "open",
+          path: dir,
+          cause,
+          remediation: `Create or fix permissions on managed-file ledger directory ${dir}.`,
+        }),
     }).pipe(
       Effect.andThen(
         stateStore.open({
@@ -1026,12 +1055,27 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
           throw cause;
         }
       },
-      catch: (cause) => new StateStoreError({ reason: "io", operation: "open", path: dir, cause }),
+      catch: (cause) =>
+        new StateStoreError({
+          reason: "io",
+          operation: "open",
+          path: dir,
+          cause,
+          remediation: `Create or fix permissions on managed-file ledger directory ${dir}.`,
+        }),
     }).pipe(
       Effect.flatMap((exists) => (exists ? ledgerBucketFor(base, "discard") : Effect.succeed(null))),
       Effect.flatMap((bucket) => (bucket === null ? Effect.succeed({ entries: [] }) : bucket.get)),
       Effect.map((state) => state?.entries ?? []),
-      Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, cause })),
+      Effect.mapError(
+        (cause) =>
+          new ManagedFileError({
+            reason: "io",
+            operation,
+            cause,
+            remediation: remediationForReason("io"),
+          }),
+      ),
     );
   };
 
@@ -1040,7 +1084,14 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
     resolveTarget: (base, relPath, operation) =>
       Effect.tryPromise({
         try: () => resolveContained(base, relPath),
-        catch: (cause) => new ManagedFileError({ reason: "io", operation, path: relPath, cause }),
+        catch: (cause) =>
+          new ManagedFileError({
+            reason: "io",
+            operation,
+            path: relPath,
+            cause,
+            remediation: remediationForReason("io"),
+          }),
       }).pipe(
         Effect.flatMap((abs) =>
           abs === null ? Effect.fail(containmentError(operation, relPath)) : Effect.succeed(abs),
@@ -1054,8 +1105,20 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
         },
         catch: (cause) =>
           (cause as { code?: string }).code === "ENOENT"
-            ? new ManagedFileError({ reason: "io", operation, path: abs, cause: "ENOENT" })
-            : new ManagedFileError({ reason: "io", operation, path: abs, cause }),
+            ? new ManagedFileError({
+                reason: "io",
+                operation,
+                path: abs,
+                cause: "ENOENT",
+                remediation: `Create ${abs} or point the managed file at an existing path.`,
+              })
+            : new ManagedFileError({
+                reason: "io",
+                operation,
+                path: abs,
+                cause,
+                remediation: remediationForReason("io"),
+              }),
       }).pipe(
         Effect.catchIf(
           (error) => error.cause === "ENOENT",
@@ -1067,7 +1130,16 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
         ...(mode === undefined ? {} : { mode }),
         privateFileAccess: options.privateFileAccess.enforce,
       }).pipe(
-        Effect.mapError((cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause })),
+        Effect.mapError(
+          (cause) =>
+            new ManagedFileError({
+              reason: "io",
+              operation,
+              path: abs,
+              cause,
+              remediation: remediationForReason("io"),
+            }),
+        ),
       ),
     removeFile: (abs, operation) =>
       Effect.tryPromise({
@@ -1077,7 +1149,14 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
             if (cause.code !== "ENOENT") throw cause;
           });
         },
-        catch: (cause) => new ManagedFileError({ reason: "io", operation, path: abs, cause }),
+        catch: (cause) =>
+          new ManagedFileError({
+            reason: "io",
+            operation,
+            path: abs,
+            cause,
+            remediation: remediationForReason("io"),
+          }),
       }),
     peekLedger: (operation, base) => readonlyLedgerEntries(operation, base),
     mutateLedger: (operation, f, base) =>
@@ -1093,7 +1172,14 @@ export const makeDiskBackend = Effect.fnUntraced(function* (options: {
           ),
         ),
         Effect.mapError((cause) =>
-          isManagedFileError(cause) ? cause : new ManagedFileError({ reason: "io", operation, cause }),
+          isManagedFileError(cause)
+            ? cause
+            : new ManagedFileError({
+                reason: "io",
+                operation,
+                cause,
+                remediation: remediationForReason("io"),
+              }),
         ),
       ),
   } satisfies ManagedFileBackend;

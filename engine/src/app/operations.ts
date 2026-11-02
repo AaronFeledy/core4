@@ -1,8 +1,3 @@
-import { Effect } from "effect";
-
-import type { ShareAppError, ShareStopAppResult } from "@lando/sdk/app";
-import type { StateStore } from "@lando/sdk/services";
-
 import { appConfigLint } from "../operations/app-config-lint.ts";
 import { destroyAppForTarget } from "../operations/destroy.ts";
 import { execApp } from "../operations/exec.ts";
@@ -25,17 +20,6 @@ import { startAppForTarget } from "../operations/start.ts";
 import { stopAppForTarget } from "../operations/stop.ts";
 import { runTooling } from "../operations/tooling.ts";
 
-const appShareStopForHandle = (
-  options: Parameters<typeof appShareStop>[0],
-): Effect.Effect<ShareStopAppResult, ShareAppError, StateStore> =>
-  appShareStop(options).pipe(
-    Effect.map((result) => ({
-      sessionId: result.sessionId,
-      ...(result.provider === undefined ? {} : { provider: result.provider }),
-      status: "stopped",
-    })),
-  );
-
 export const appOperations = {
   startApp: startAppForTarget,
   stopApp: stopAppForTarget,
@@ -57,7 +41,7 @@ export const appOperations = {
   appRemoteEnvList,
   appShare: appShareForTarget,
   appShareList: appShareListForTarget,
-  appShareStop: appShareStopForHandle,
+  appShareStop,
 } as const;
 
 export type AppOperations = typeof appOperations;

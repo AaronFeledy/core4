@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { type Context, Effect, Predicate } from "effect";
@@ -7,6 +6,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import type { LandofileShape, ProviderCapabilities } from "@lando/sdk/schema";
 import { validationIssue } from "@lando/sdk/schema";
 import type { FileSystem } from "@lando/sdk/services";
+import { bindSource } from "./authored-mount-entry.ts";
 
 type ComposeConfigFileInput = {
   readonly name: string;
@@ -52,6 +52,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
     return yield* Effect.fail(
       new LandofileValidationError({
         message: `Service ${grant.service} grants Compose config ${grant.source}, which is not defined under top-level configs. Add configs.${grant.source}.file or remove the grant.`,
+        remediation: `Add configs.${grant.source}.file or remove the grant.`,
         file: `${input.appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -72,6 +73,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
       new LandofileValidationError({
         message:
           "The Landofile declares configs, but the FileSystem service is unavailable. Provide FileSystem so config files can be read.",
+        remediation: "Provide FileSystem so config files can be read.",
         file: `${input.appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -90,6 +92,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
       return yield* Effect.fail(
         new LandofileValidationError({
           message: `Compose config ${name} uses external: true, which Lando does not realize. Remove external and set file: to a path under the app root.`,
+          remediation: "Remove external and set file: to a path under the app root.",
           file: `${input.appRoot}/.lando.yml`,
           issues: [
             validationIssue(
@@ -104,6 +107,7 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
       return yield* Effect.fail(
         new LandofileValidationError({
           message: `Compose config ${name} is missing file:. Set file: to a readable path under the app root.`,
+          remediation: "Set file: to a readable path under the app root.",
           file: `${input.appRoot}/.lando.yml`,
           issues: [
             validationIssue(
@@ -114,12 +118,13 @@ export const loadComposeConfigFiles = Effect.fn("AppPlanner.loadComposeConfigs")
         }),
       );
     }
-    const source = resolve(input.appRoot, definition.file);
+    const source = bindSource(definition.file, input.appRoot);
     const content = yield* input.fileSystem.readText(source).pipe(
       Effect.mapError(
         (cause) =>
           new LandofileValidationError({
             message: `Unable to read config file ${source} for configs.${name}: ${cause.message}. Create a readable file at that path or remove the configs entry.`,
+            remediation: "Create a readable file at that path or remove the configs entry.",
             file: source,
             issues: [
               validationIssue(

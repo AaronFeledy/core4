@@ -7,23 +7,20 @@ tags: [recipe, drupal, php]
 
 # Drupal
 
-`lando init --recipe drupal` scaffolds PHP, a database, Drush, and Composer.
+Create a Drupal stack with PHP, a database, Composer, and Drush tooling.
+After starting the services, run the scaffold command below to download the
+Drupal project and project-local Drush.
+
+Before you begin, install Lando and complete provider setup. For a new app,
+run the initialization command from the directory that will contain it. If this
+README is already in a generated app, skip the `lando init` and `cd` lines below. Run
+the remaining app commands from that directory.
 
 ```sh
 lando init --recipe drupal --name=my-drupal-app --yes
+cd my-drupal-app
 lando start
 lando info
-```
-
-`--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer` for nginx plus FPM, another PHP, or another database. PHP 8.6 is a valid `--answer=php=8.6`.
-
-```sh
-lando init --recipe drupal --name=my-drupal-app --yes \
-  --answer=php=8.5 \
-  --answer=webserver=nginx \
-  --answer=database=postgres:16 \
-  --answer=composer=2 \
-  --answer=drupal=10
 ```
 
 `lando start` prints the app URL. `lando info` repeats it.
@@ -35,7 +32,23 @@ lando drupal-scaffold
 lando drush --version
 ```
 
-`lando destroy -y` removes the app containers and networks. Volumes stay unless you pass `--volumes` or `--purge`.
+## Choose stack options
+
+`--yes` uses Drupal 11, PHP 8.4, Apache, MariaDB 11.4, Composer 2, and webroot `web`. Pass `--answer` for nginx plus FPM, another PHP, or another database. PHP 8.6 is a valid `--answer=php=8.6`.
+
+To choose a different stack, use this initialization command instead of the
+default one above. Run it from the parent directory, not inside the app:
+
+```sh
+lando init --recipe drupal --name=my-drupal-app --yes \
+  --answer=php=8.5 \
+  --answer=webserver=nginx \
+  --answer=database=postgres:16 \
+  --answer=composer=2 \
+  --answer=drupal=10
+```
+
+`lando destroy -y` removes the app containers and networks and keeps its named volumes. See [Keep data across stop, restart, and destroy](https://aaronfeledy.github.io/core4/guides/tutorial/app-lifecycle/#keep-data-across-stop-restart-and-destroy).
 
 For day-to-day tooling and database hosts, see [Run the Drupal recipe](https://aaronfeledy.github.io/core4/guides/recipes/drupal-workflow/).
 

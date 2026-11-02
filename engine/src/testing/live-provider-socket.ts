@@ -1,10 +1,8 @@
 import { statSync } from "node:fs";
 
-import { makeLandoPaths } from "@lando/paths";
-
 export const LANDO_TEST_PODMAN_SOCKET_ENV = "LANDO_TEST_PODMAN_SOCKET";
 
-export type LiveProviderSocketSource = "env" | "paths";
+export type LiveProviderSocketSource = "env";
 
 export interface LiveProviderSocket {
   readonly socketPath: string;
@@ -56,22 +54,14 @@ const socketAnswers = (path: string): boolean =>
 const isLiveSocket = (path: string): boolean => isSocketOnDisk(path) && socketAnswers(path);
 
 /**
- * Resolves the live provider socket from the rehearsal override or the
- * Lando-managed Paths default, requiring the candidate to answer a connection
- * rather than merely to exist. The override keeps its precedence but is not
- * exempt from that check: an override naming a dead socket is absent, so
- * resolution falls through to the equally checked managed candidate. Returns
- * `undefined` when neither candidate answers.
+ * Requires explicit opt-in through LANDO_TEST_PODMAN_SOCKET and a candidate
+ * that answers a connection rather than merely exists. Never discovers or
+ * falls back to the host's managed runtime.
  */
 export const resolveLiveProviderSocket = (): LiveProviderSocket | undefined => {
   const override = process.env[LANDO_TEST_PODMAN_SOCKET_ENV];
   if (override !== undefined && override.length > 0 && isLiveSocket(override)) {
     return { socketPath: override, source: "env" };
-  }
-
-  const managedSocketPath = makeLandoPaths().providerSocketPath;
-  if (isLiveSocket(managedSocketPath)) {
-    return { socketPath: managedSocketPath, source: "paths" };
   }
 
   return undefined;

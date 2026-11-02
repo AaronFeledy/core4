@@ -51,7 +51,12 @@ export interface MkcertCertificateAuthorityOptions {
 }
 
 const caError = (message: string, cause?: unknown): CaError =>
-  new CaError({ message, caId: CA_ID, ...(cause === undefined ? {} : { cause }) });
+  new CaError({
+    message,
+    caId: CA_ID,
+    ...(cause === undefined ? {} : { cause }),
+    remediation: `Repair the ${CA_ID} certificate authority (install mkcert via lando setup, trust the CA, then re-run).`,
+  });
 
 /**
  * Map a certificate common name onto a file name contained in the certs

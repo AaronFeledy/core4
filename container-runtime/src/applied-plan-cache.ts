@@ -11,7 +11,10 @@ export interface AppliedPlanCacheOptions {
   readonly providerName: string;
   readonly appliedPlanState?: PluginStateStore;
   readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
-  readonly load: (state: PluginStateStore, appId: AppId) => Effect.Effect<AppPlan | undefined, never>;
+  readonly load: (
+    state: PluginStateStore,
+    appId: AppId,
+  ) => Effect.Effect<AppPlan | undefined, ProviderUnavailableError>;
   readonly persist: (
     state: PluginStateStore,
     plan: AppPlan,
@@ -24,28 +27,37 @@ const LOCK_REMEDIATION = "Retry after the concurrent app operation completes.";
 export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
   const plans = new Map<AppId, AppPlan>();
   const state = options.appliedPlanState;
-  const sanitize = options.sanitizeAppliedPlan ?? ((plan: AppPlan) => plan);
+  const sanitize = (plan: AppPlan): AppPlan => {
+    const { events: _events, ...applied } = options.sanitizeAppliedPlan?.(plan) ?? plan;
+    return applied;
+  };
 
-  const resolvePlan = (appId: AppId): Effect.Effect<AppPlan | undefined, never> => {
-    const cached = plans.get(appId);
-    if (cached !== undefined) return Effect.succeed(cached);
-    if (state === undefined) return Effect.succeed(undefined);
+  const resolveMutationPlan = (
+    appId: AppId,
+  ): Effect.Effect<AppPlan | undefined, ProviderUnavailableError> => {
+    if (state === undefined) return Effect.sync(() => plans.get(appId));
     return options.load(state, appId).pipe(
+      Effect.map((loaded) => (loaded === undefined ? undefined : sanitize(loaded))),
       Effect.tap((loaded) =>
         Effect.sync(() => {
           if (loaded !== undefined) plans.set(appId, loaded);
+          else plans.delete(appId);
         }),
       ),
+      Effect.tapError(() => Effect.sync(() => plans.delete(appId))),
     );
+  };
+  // Observation reuses the cached plan (rememberPlan and forgetPlan keep it current);
+  // only mutation pays for a fresh strict read, and unreadable state observes as unknown.
+  const resolvePlan = (appId: AppId): Effect.Effect<AppPlan | undefined> => {
+    const cached = plans.get(appId);
+    if (cached !== undefined) return Effect.succeed(cached);
+    return resolveMutationPlan(appId).pipe(Effect.catch(() => Effect.succeed(undefined)));
   };
 
   const rememberPlan = (plan: AppPlan, reconcile: boolean): Effect.Effect<void, ProviderUnavailableError> => {
     const write = Effect.gen(function* () {
-      const previous = reconcile
-        ? undefined
-        : state === undefined
-          ? yield* resolvePlan(plan.id)
-          : yield* options.load(state, plan.id);
+      const previous = yield* resolveMutationPlan(plan.id);
       const persisted = sanitize(mergeAppliedPlan(previous, plan, reconcile));
       if (state !== undefined) yield* options.persist(state, persisted);
       plans.set(plan.id, persisted);
@@ -73,5 +85,5 @@ export const makeAppliedPlanCache = (options: AppliedPlanCacheOptions) => {
       Effect.tap(() => Effect.sync(() => plans.delete(appId))),
     );
 
-  return { plans, resolvePlan, rememberPlan, forgetPlan };
+  return { plans, resolvePlan, resolveMutationPlan, rememberPlan, forgetPlan };
 };

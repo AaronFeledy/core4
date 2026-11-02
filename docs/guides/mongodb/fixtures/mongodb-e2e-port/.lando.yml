@@ -1,0 +1,5 @@
+name: mongodb-e2e-port
+services:
+  db:
+    type: mongodb
+    port: 27018

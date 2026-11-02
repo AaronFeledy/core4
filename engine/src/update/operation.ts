@@ -4,10 +4,10 @@ import { basename, dirname, join } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 
 import { causeMessage } from "@lando/sdk/errors";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import type { UpdateChannel, UpdateManifestSchema as UpdateManifest } from "@lando/sdk/schema";
-import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import { Downloader, ProcessRunner, Telemetry } from "@lando/sdk/services";
 import { recordUpdateOutcomeTelemetry, updateOutcomeFromError } from "@lando/telemetry/events";
 import { scrubTelemetryValue } from "@lando/telemetry/redaction";
 import { refreshInstallRecord, resolveOwnedExecutable } from "../install/owned-executable.ts";
@@ -170,6 +170,8 @@ const launchProbeError = ({
     probeCommand: probeCommandSummary(path),
     outputSummary: probeOutputSummary(outputInput),
     exitCode,
+    remediation:
+      "Inspect the launch-probe outputSummary and exitCode; restore the previous binary if it is still recoverable beside the install path, then retry `lando update` or install a known-good release manually.",
     cause,
   });
 };
@@ -183,6 +185,7 @@ const withRollbackFailure = (error: UpdateLaunchProbeError, cause: unknown): Upd
     outputSummary: error.outputSummary,
     exitCode: error.exitCode,
     rollbackFailure: scrubTelemetryValue(causeMessage(cause)),
+    remediation: error.remediation,
     cause: error.cause,
   });
 
@@ -452,6 +455,7 @@ const defaultUpdate = Effect.fn("Update.defaultUpdate")(function* (
       new UpdateNetworkError({
         message: `Update manifest channel ${manifest.channel} does not match requested channel ${options.channel}.`,
         url: manifestUrl,
+        remediation: `Pass --channel=${manifest.channel} or point LANDO_UPDATE_MANIFEST_URL at a manifest for ${options.channel}.`,
       }),
     );
   }
@@ -463,6 +467,7 @@ const defaultUpdate = Effect.fn("Update.defaultUpdate")(function* (
       new UpdateNetworkError({
         message: `Update manifest at ${manifestUrl} has no binary entry for ${manifestPlatform}.`,
         url: manifestUrl,
+        remediation: `Use a channel that publishes a ${manifestPlatform} binary, or install that platform build manually.`,
       }),
     );
   }
@@ -471,6 +476,7 @@ const defaultUpdate = Effect.fn("Update.defaultUpdate")(function* (
       new UpdateNetworkError({
         message: `Update manifest at ${manifestUrl} has a placeholder binary entry for ${manifestPlatform}.`,
         url: manifestUrl,
+        remediation: `Wait for a published ${manifestPlatform} build on this channel, or install a release binary manually.`,
       }),
     );
   }
@@ -649,7 +655,13 @@ export const update = Effect.fn("Update.update")(function* (
   options: UpdateOptions = {},
 ): Effect.fn.Return<UpdateResult, UpdateError, Telemetry | ProcessRunner> {
   const telemetry = yield* Telemetry;
-  const required = resolvedOptions(options);
+  const downloader = yield* Effect.serviceOption(Downloader);
+  const required = resolvedOptions({
+    ...options,
+    fetchManifestBytes:
+      options.fetchManifestBytes ??
+      ((url) => defaultFetchManifestBytes(url, Option.getOrUndefined(downloader))),
+  });
   if (!required.dryRun && options.handoff?.token !== undefined) {
     const receipt = yield* options.handoff.consume(options.handoff.token);
     if (receipt !== undefined) {
@@ -670,6 +682,8 @@ export const update = Effect.fn("Update.update")(function* (
       new UpdateNetworkError({
         message: "The one-shot update replacement receipt is missing or was already consumed.",
         url: "state://update/handoff",
+        remediation:
+          "Rerun `lando update` to start a fresh replacement; do not re-invoke a consumed handoff token.",
       }),
     );
   }

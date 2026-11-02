@@ -1,3 +1,5 @@
+import * as BunProcessRunner from "@lando/engine/services/process-runner";
+import { ProcessRunner } from "@lando/sdk/services";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect } from "effect";
 import { type AppConfigMigrateOptions, appConfigMigrate } from "../../src/cli/commands/app-config-migrate.ts";
@@ -28,7 +30,16 @@ export const ownerOnlyFileAccess: PrivateFileAccess = PrivateFileAccessService.o
 
 export const initAppWithOwnerOnlyFileAccess = (
   options: Omit<InitAppOptions, "privateFileAccess">,
-): Promise<InitAppResult> => initApp({ ...options, privateFileAccess: ownerOnlyFileAccess });
+  runner = Effect.runSync(ProcessRunner.pipe(Effect.provide(BunProcessRunner.layer))),
+): Promise<InitAppResult> =>
+  Effect.runPromise(
+    initApp({ ...options, privateFileAccess: ownerOnlyFileAccess }).pipe(
+      Effect.provideService(ProcessRunner, runner),
+    ),
+  );
+
+export const initAppWithProcessRunner = (options: InitAppOptions): Promise<InitAppResult> =>
+  Effect.runPromise(initApp(options).pipe(Effect.provide(BunProcessRunner.layer)));
 
 export const appConfigMigrateWithOwnerOnlyFileAccess = (options: AppConfigMigrateOptions = {}) =>
   appConfigMigrate({ ...options, privateFileAccess: ownerOnlyFileAccess });

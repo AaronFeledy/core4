@@ -27,6 +27,25 @@ const composeOnce = (features: ReadonlyArray<ServiceFeatureDefinition>): Promise
   Effect.runPromise(composeService(inputFor(features)));
 
 describe("composeService", () => {
+  test.each(["lando", "l337"] as const)("keeps the %s base init default", async (baseKind) => {
+    // Given / When
+    const plan = await Effect.runPromise(composeService({ ...inputFor([]), baseKind }));
+    // Then
+    expect(plan.init).toBe(baseKind === "lando" ? true : undefined);
+  });
+  test.each([true, false])("finalizes feature init %s over the Lando default", async (init) => {
+    // Given
+    const feature: ServiceFeatureDefinition = {
+      id: "feature.init",
+      priority: 100,
+      apply: (ctx) => Effect.sync(() => ctx.setInit(init)),
+    };
+    // When
+    const plan = await composeOnce([feature]);
+    // Then
+    expect(plan.init).toBe(init);
+  });
+
   test("applies features in stable ascending priority order", async () => {
     const calls: string[] = [];
     const later: ServiceFeatureDefinition = {
@@ -89,6 +108,7 @@ describe("composeService", () => {
     expect(plan.environment).toEqual({ FROM_BASE: "yes", NODE_ENV: "development" });
     expect(plan.mounts).toEqual([
       {
+        origin: "service",
         type: "bind",
         source: "/host/cache",
         target: PortablePath.make("/cache"),
@@ -96,7 +116,9 @@ describe("composeService", () => {
         realization: "passthrough",
       },
     ]);
-    expect(plan.mounts.every((mount) => mount.realization === "passthrough")).toBe(true);
+    expect(plan.mounts.every((mount) => mount.type !== "bind" || mount.realization === "passthrough")).toBe(
+      true,
+    );
     expect(plan.extensions).toEqual({
       "@lando/core/service-features": {
         featureIds: ["feature.plan-intent"],
@@ -133,11 +155,12 @@ describe("composeService", () => {
     const feature: ServiceFeatureDefinition = {
       id: "feature.deterministic",
       priority: 100,
+      declareEndpoints: () =>
+        Effect.succeed([{ _tag: "internal", name: "http", protocol: "http", port: 80 }]),
       apply: (ctx) =>
         Effect.sync(() => {
           ctx.addEnv("B", "2");
           ctx.addEnv("A", "1");
-          ctx.addEndpoint({ _tag: "internal", name: "http", protocol: "http", port: 80 });
         }),
     };
 
@@ -151,7 +174,14 @@ describe("composeService", () => {
     const feature: ServiceFeatureDefinition = {
       id: "feature.fail",
       priority: 100,
-      apply: () => Effect.fail(new ServiceFeatureError({ message: "boom", feature: "feature.fail" })),
+      apply: () =>
+        Effect.fail(
+          new ServiceFeatureError({
+            message: "boom",
+            feature: "feature.fail",
+            remediation: "Correct the `feature.fail` feature configuration in the Landofile, then re-run.",
+          }),
+        ),
     };
 
     const exit = await Effect.runPromiseExit(composeService(inputFor([feature])));

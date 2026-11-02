@@ -1,6 +1,9 @@
 import type {
+  AppIdentity,
   DataTransferSpec,
+  DatabaseConnection,
   SnapshotFilter,
+  SnapshotHandle,
   SnapshotMetadata,
   SnapshotRestoreOptions,
   VolumeRef,
@@ -10,6 +13,7 @@ import type { SqlCommandDeps } from "../../src/run.ts";
 export type ExtraSqlService = { readonly name: string; readonly type: string };
 export type SqlTestOptions = {
   readonly password: string;
+  readonly connection?: DatabaseConnection;
   readonly appliedPlans?: SqlCommandDeps["appliedPlans"];
   readonly inspectSource?: SqlCommandDeps["inspectSource"];
   readonly rootPassword?: string;
@@ -38,9 +42,11 @@ export type RecordedExec = {
   readonly env?: Readonly<Record<string, string>>;
 };
 export type RecordedSnapshot = {
+  readonly owner: AppIdentity;
   readonly store: string;
   readonly format?: string;
   readonly label?: string;
+  readonly repoGroupKey?: string;
   readonly metadata?: SnapshotMetadata;
 };
 export type SqlLifecycleStep = "lock" | "snapshot" | "stop" | "restore" | "start" | "resume" | "suspend";
@@ -51,6 +57,7 @@ export type SqlTestHarness = {
   readonly snapshots: () => ReadonlyArray<RecordedSnapshot>;
   readonly restores: () => ReadonlyArray<{
     readonly id: string;
+    readonly handle: SnapshotHandle;
     readonly store: VolumeRef;
     readonly opts?: SnapshotRestoreOptions;
   }>;

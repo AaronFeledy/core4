@@ -47,6 +47,7 @@ export type RecipePackageName = typeof RecipePackageName.Type;
  * without creating a circular definition.
  */
 export const RecipeContentDigest = patternString(SHA256_PREFIXED_DIGEST_PATTERN, {
+  message: "Expected sha256:<64 hex characters>",
   toJsonSchema: () => ({ pattern: SHA256_PREFIXED_DIGEST_PATTERN.source }),
 }).annotate(
   metadata("RecipeContentDigest", "SHA-256 over canonical recipe inputs, excluding the digest and history."),

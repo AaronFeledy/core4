@@ -1,3 +1,4 @@
+# lando-lint: expect-invalid deliberate typo imgae so config-lint can show a finding
 name: config-lint-invalid
 services:
   web:

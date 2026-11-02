@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { makeLandoPaths } from "@lando/paths";
+import { globalAppRootPath } from "@lando/paths";
 import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
 import type { HostPlatform, RouterPortPair } from "@lando/sdk/schema";
 import { Effect, absurd } from "effect";
@@ -115,8 +115,10 @@ const resolveProbedPair = (
 ): Effect.Effect<LeftoverProxyPortPair> => {
   if (override !== undefined) return Effect.succeed(override);
   if (input.userDataRoot === undefined) return Effect.succeed(LAST_FALLBACK);
-  const resolved = makeLandoPaths({ userDataRoot: input.userDataRoot, platform: input.platform });
-  const paths: ProxyPaths = { platform: resolved.platform, globalAppRoot: resolved.globalAppRoot };
+  const paths: ProxyPaths = {
+    platform: input.platform,
+    globalAppRoot: globalAppRootPath(input.userDataRoot, input.platform),
+  };
   return Effect.tryPromise(() => readFile(acquisitionStateFile(paths), "utf8")).pipe(
     Effect.flatMap((text) =>
       Effect.try({

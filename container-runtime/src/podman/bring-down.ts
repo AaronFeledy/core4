@@ -1,15 +1,7 @@
-import { type Context, DateTime, Effect } from "effect";
-import { serviceContainerName } from "../plan.ts";
+import { type Context, Effect } from "effect";
 
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { PostServiceStopEvent, PreServiceStopEvent } from "@lando/sdk/events";
-import {
-  type AppPlan,
-  type AppRef,
-  ProviderId,
-  type ServicePlan,
-  landoAppNetworkName,
-} from "@lando/sdk/schema";
+import { type ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { type AppPlan, type ServiceShutdownObservation, landoOwnedNetworkNames } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
 import { type LifecycleDialect, libpodLifecycleDialect } from "../dialect.ts";
@@ -21,9 +13,18 @@ import type {
 } from "../engine-api.ts";
 import { missingApi } from "../engine-errors.ts";
 import { parseJsonOrUndefined } from "../engine-json.ts";
-import { redactDetails, withApiReason } from "../redact.ts";
+import {
+  isVolumeInUse,
+  listVolumeHolders,
+  volumeInUseMessage,
+  volumeInUseRemediation,
+} from "../ephemeral-data-helpers.ts";
+import { inspectOwnedNativeId, isSharedNetwork, networkOwnershipLabels } from "../native-ownership.ts";
+import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
+import { retainShutdownObservations } from "../stop-container.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
+import { stopService } from "./stop-service.ts";
 import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
 
 type EventPublisher = Pick<Context.Service.Shape<typeof EventService>, "publish">;
@@ -37,6 +38,7 @@ const GLOBAL_DESTROY_REMEDIATION =
 
 interface StopResult {
   readonly changed: boolean;
+  readonly shutdownObservations: readonly ServiceShutdownObservation[];
 }
 
 export interface BringDownOptions {
@@ -54,16 +56,6 @@ interface BringDownDeps {
   readonly remediation: string;
 }
 
-const appRef = (plan: AppPlan): AppRef => ({
-  kind: "user",
-  id: plan.id,
-  root: plan.root,
-});
-
-const containerName = (plan: AppPlan, service: ServicePlan) => serviceContainerName(plan, service.name);
-
-const networkName = (plan: AppPlan) => landoAppNetworkName(plan);
-
 const request = (
   deps: BringDownDeps,
   input: EngineHttpRequest,
@@ -76,73 +68,31 @@ const podmanFailure = (deps: BringDownDeps, operation: string, message: string, 
   new ProviderUnavailableError({
     providerId: deps.options.ctx.providerId,
     operation,
-    message: withApiReason(message, details),
+    message: withApiReason(message, details, redactorFor(deps.options.ctx)),
     remediation: deps.remediation,
-    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    ...(details === undefined ? {} : { details: redactDetails(details, redactorFor(deps.options.ctx)) }),
   });
 
-const publish = (
+const removeNetwork = Effect.fnUntraced(function* (
   deps: BringDownDeps,
-  event: Parameters<EventPublisher["publish"]>[0],
-): Effect.Effect<void, ProviderInternalError> =>
-  deps.options.eventService === undefined
-    ? Effect.void
-    : deps.options.eventService.publish(event).pipe(
-        Effect.mapError(
-          (cause) =>
-            new ProviderInternalError({
-              providerId: deps.options.ctx.providerId,
-              operation: "bringDown.event",
-              message: `Failed to publish lifecycle event: ${event._tag}`,
-              remediation: deps.remediation,
-              cause,
-            }),
-        ),
-      );
-
-const stopContainer = (deps: BringDownDeps, name: string): Effect.Effect<boolean, BringDownError> =>
-  request(deps, { method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` }).pipe(
-    Effect.flatMap((response) => {
-      if (response.status === 204) {
-        return Effect.succeed(true);
-      }
-      if (response.status === 304 || response.status === 404) {
-        return Effect.succeed(false);
-      }
-      return Effect.fail(
-        podmanFailure(
-          deps,
-          "bringDown.stop",
-          `provider-${deps.options.ctx.providerId} container stop failed with HTTP ${response.status}.`,
-          { name, body: response.body },
-        ),
-      );
-    }),
+  plan: AppPlan,
+  name: string,
+): Effect.fn.Return<boolean, BringDownError> {
+  if (isSharedNetwork(plan, name)) return false;
+  const id = yield* inspectOwnedNativeId(
+    deps.api,
+    {
+      kind: "network",
+      name,
+      labels: networkOwnershipLabels(plan),
+      legacy: plan.networking?.authoredNetworks?.some((network) => network.name === name)
+        ? "reject"
+        : "accept",
+    },
+    deps.options.ctx,
   );
-
-const removeContainer = (deps: BringDownDeps, name: string): Effect.Effect<boolean, BringDownError> =>
-  request(deps, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
-    Effect.flatMap((response) => {
-      if (response.status === 200 || response.status === 204) {
-        return Effect.succeed(true);
-      }
-      if (response.status === 404) {
-        return Effect.succeed(false);
-      }
-      return Effect.fail(
-        podmanFailure(
-          deps,
-          "bringDown.remove",
-          `provider-${deps.options.ctx.providerId} container remove failed with HTTP ${response.status}.`,
-          { name, body: response.body },
-        ),
-      );
-    }),
-  );
-
-const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolean, BringDownError> => {
-  const name = networkName(plan);
-  return request(deps, { method: "DELETE", path: `/networks/${encodeURIComponent(name)}` }).pipe(
+  if (id === undefined) return false;
+  return yield* request(deps, { method: "DELETE", path: `/networks/${encodeURIComponent(id)}` }).pipe(
     Effect.flatMap((response) => {
       if (response.status === 200 || response.status === 204) {
         return Effect.succeed(true);
@@ -160,7 +110,7 @@ const removeNetwork = (deps: BringDownDeps, plan: AppPlan): Effect.Effect<boolea
       );
     }),
   );
-};
+});
 
 const parseVolumeLabels = (body: string): Readonly<Record<string, string>> | undefined => {
   const parsed = parseJsonOrUndefined(body);
@@ -206,6 +156,24 @@ const removeVolume = Effect.fnUntraced(function* (
   });
   if (response.status === 200 || response.status === 204) return true;
   if (response.status === 404) return false;
+  if (isVolumeInUse(response)) {
+    const redactor = redactorFor(deps.options.ctx);
+    const holders = deps.api.request === undefined ? [] : yield* listVolumeHolders(deps.api.request, name);
+    return yield* Effect.fail(
+      new ProviderUnavailableError({
+        providerId: deps.options.ctx.providerId,
+        operation: "bringDown.volume",
+        message: volumeInUseMessage(
+          `provider-${deps.options.ctx.providerId} volume remove failed with HTTP ${response.status}.`,
+          holders,
+          response,
+          redactor,
+        ),
+        remediation: volumeInUseRemediation(redactor),
+        details: redactDetails({ name, body: response.body, status: response.status }, redactor),
+      }),
+    );
+  }
   return yield* Effect.fail(
     podmanFailure(
       deps,
@@ -240,42 +208,6 @@ const pruneAppScopedVolumes = (deps: BringDownDeps, plan: AppPlan): Effect.Effec
     all: deps.options.volumes === true,
   }).pipe(Effect.map((report) => report.pruned.length > 0 || report.errors.length > 0));
 
-const stopService = Effect.fnUntraced(function* (
-  deps: BringDownDeps,
-  plan: AppPlan,
-  service: ServicePlan,
-): Effect.fn.Return<StopResult, BringDownError> {
-  const name = containerName(plan, service);
-  const providerId = ProviderId.make(deps.options.ctx.providerId);
-
-  yield* publish(
-    deps,
-    PreServiceStopEvent.make({
-      eventName: "pre-service-stop",
-      appRef: appRef(plan),
-      serviceName: service.name,
-      providerId,
-      timestamp: yield* DateTime.now,
-    }),
-  );
-
-  const stopped = yield* stopContainer(deps, name);
-  const removed = yield* removeContainer(deps, name);
-
-  yield* publish(
-    deps,
-    PostServiceStopEvent.make({
-      eventName: "post-service-stop",
-      appRef: appRef(plan),
-      serviceName: service.name,
-      providerId,
-      timestamp: yield* DateTime.now,
-    }),
-  );
-
-  return { changed: stopped || removed };
-});
-
 export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   plan: AppPlan,
   options: BringDownOptions,
@@ -294,19 +226,38 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
   };
 
   let changed = false;
+  const shutdownObservations: ServiceShutdownObservation[] = [];
   for (const service of Object.values(plan.services).reverse()) {
-    const result = yield* stopService(deps, plan, service);
+    const result = yield* stopService(plan, service, {
+      ...options,
+      api,
+      ctx: { ...options.ctx, remediation: deps.remediation },
+    }).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
     changed = changed || result.changed;
+    shutdownObservations.push(...result.shutdownObservations);
   }
-  const networkRemoved = yield* removeNetwork(deps, plan);
+  let networkRemoved = false;
+  for (const name of landoOwnedNetworkNames(plan)) {
+    const authored = plan.networking?.authoredNetworks?.find((network) => network.name === name);
+    if (authored !== undefined && Object.keys(authored.members).some((member) => !(member in plan.services)))
+      continue;
+    const removed = yield* removeNetwork(deps, plan, name).pipe(
+      Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+    );
+    networkRemoved = networkRemoved || removed;
+  }
   let volumesRemoved = false;
   if (options.volumes === true || options.purgeCaches === true) {
-    volumesRemoved = yield* removeAppScopedVolumes(deps, plan);
+    volumesRemoved = yield* removeAppScopedVolumes(deps, plan).pipe(
+      Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+    );
     if ((options.dialect ?? libpodLifecycleDialect).volumePrune !== undefined) {
-      const pruned = yield* pruneAppScopedVolumes(deps, plan);
+      const pruned = yield* pruneAppScopedVolumes(deps, plan).pipe(
+        Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+      );
       volumesRemoved = volumesRemoved || pruned;
     }
   }
 
-  return { changed: changed || networkRemoved || volumesRemoved };
+  return { changed: changed || networkRemoved || volumesRemoved, shutdownObservations };
 });

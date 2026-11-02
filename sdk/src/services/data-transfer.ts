@@ -59,18 +59,19 @@ export class DataMover extends Context.Service<
       opts?: SnapshotOptions,
     ) => Effect.Effect<SnapshotHandle, DataMoverError, Scope.Scope>;
     readonly restore: (
-      handle: SnapshotHandle | SnapshotId,
-      store: VolumeRef,
+      handle: SnapshotHandle,
+      target: VolumeRef,
       opts?: SnapshotRestoreOptions,
     ) => Effect.Effect<void, DataMoverError, Scope.Scope>;
     readonly listSnapshots: (
       filter: SnapshotFilter,
     ) => Effect.Effect<ReadonlyArray<SnapshotInfo>, DataMoverError>;
+    /** Resolve ids and labels only within the supplied scope. */
     readonly resolveSnapshot: (
       reference: string,
       scope: SnapshotFilter,
     ) => Effect.Effect<SnapshotInfo, DataMoverError>;
-    readonly removeSnapshot: (id: SnapshotId, store?: VolumeRef) => Effect.Effect<void, DataMoverError>;
+    readonly removeSnapshot: (handle: SnapshotHandle) => Effect.Effect<void, DataMoverError>;
     readonly findOrphanedSnapshots: Effect.Effect<ReadonlyArray<VolumeSnapshotArtifact>, DataMoverError>;
     readonly removeOrphanedSnapshot: (
       artifact: VolumeSnapshotArtifact,

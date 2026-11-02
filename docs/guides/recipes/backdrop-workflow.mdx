@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, backdrop, php, mariadb, bee]
 
 # Run the Backdrop recipe
 
+Start PHP and MariaDB for a new Backdrop site, then install Bee and Backdrop using the steps below. Run these commands from your host terminal; initialization creates the environment, not the Backdrop application.
+
 ```sh
 lando init --recipe backdrop --name=backdrop-demo --yes
 cd backdrop-demo
@@ -108,12 +110,12 @@ services:
           user: root
 ```
 
-The last step pins Bee 1.x-1.2.0 and checks its published SHA-256 digest before `chmod`, so a bad download fails the rebuild instead of landing on `PATH`. On the MySQL answer, drop the `ln` step: `mysql-community-client` already ships `mysql` and `mysqldump`.
+The last step pins Bee 1.x-1.2.0 and checks its published SHA-256 digest before `chmod`, so a bad download fails the image build instead of landing on `PATH`. On the MySQL answer, drop the `ln` step: `mysql-community-client` already ships `mysql` and `mysqldump`.
 
-Rebuild, then check both additions:
+Start, then check both additions:
 
 ```sh
-lando rebuild
+lando start
 lando exec appserver -- mysqldump --version
 lando bee version
 ```
@@ -131,7 +133,7 @@ lando exec appserver -- sh -c 'set -eu; cd /tmp; rm -rf backdrop
   unzip -q backdrop.zip && cp -a backdrop/. /app/ && rm -rf backdrop backdrop.zip'
 ```
 
-Leave `settings.php` as shipped; `BACKDROP_SETTINGS` carries the credentials. Generate an admin password locally and install:
+Leave `settings.php` as shipped; `BACKDROP_SETTINGS` carries the credentials. The following password-generation commands require a POSIX shell with `openssl` on your host. On Windows, generate a password with your preferred tool and pass it to Bee's `--password` option. Generate an admin password locally and install:
 
 ```sh
 BACKDROP_ADMIN_PASSWORD="$(openssl rand -base64 24)"
@@ -148,7 +150,7 @@ lando bee install --auto \
 unset BACKDROP_ADMIN_PASSWORD
 ```
 
-`--auto` skips Bee's prompts and takes the defaults for anything you leave out. Bee's `install` still wants the `--db-*` flags; pass the values from `BACKDROP_SETTINGS`, with `--db-name` set to the app name (here `backdrop-demo`). The snippet assumes a POSIX shell with `openssl`. On Windows, generate the password however you like and pass it the same way.
+`--auto` skips Bee's prompts and takes the defaults for anything you leave out. Bee's `install` still wants the `--db-*` flags; pass the values from `BACKDROP_SETTINGS`, with `--db-name` set to the app name (here `backdrop-demo`).
 
 Check the install:
 
@@ -200,7 +202,7 @@ lando bee status
 
 ## Import and export the database
 
-Export first: `db:import --yes` replaces whatever the database holds.
+Export first: `db:import --yes` executes the dump's SQL without confirmation and can change or replace existing data.
 
 ```sh
 lando db:export backdrop.sql.gz
@@ -227,7 +229,7 @@ Bee prints a one-time login link for the admin account. Match `--base-url` to th
 
 ## Debug with Xdebug
 
-Turn it on for `appserver`, then rebuild:
+Turn it on for `appserver`, then start:
 
 ```yaml
 services:
@@ -236,7 +238,7 @@ services:
 ```
 
 ```sh
-lando rebuild
+lando start
 lando xdebug status
 ```
 
@@ -251,7 +253,7 @@ Point your IDE at port `9003` and map `/app` to the project root. Xdebug doesn't
 
 ## Catch outgoing mail
 
-Add a Mailpit service, then rebuild. Every PHP service sends through it unless you set `mailFrom`, and Backdrop's default mail system calls PHP `mail()`, so password resets and contact forms land in its inbox:
+Add a Mailpit service, then start. Every PHP service sends through it unless you set `mailFrom`, and Backdrop's default mail system calls PHP `mail()`, so password resets and contact forms land in its inbox:
 
 ```yaml
 services:
@@ -260,7 +262,7 @@ services:
 ```
 
 ```sh
-lando rebuild
+lando start
 lando exec appserver -- php -r 'mail("you@example.test", "Mailpit check", "Hello from Backdrop");'
 lando info
 ```

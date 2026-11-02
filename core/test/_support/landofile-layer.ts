@@ -6,6 +6,7 @@ import { Effect, Layer } from "effect";
 export const layerTransactionGuard = Layer.succeed(
   ManagedFileTransactionGuard,
   ManagedFileTransactionGuard.of({
+    assertReadable: () => Effect.void,
     ensureConsistent: () => Effect.void,
     pending: () => Effect.succeed(null),
   }),

@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ComposeEnvironmentInput } from "./environment-input.ts";
+
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
 export type AppId = typeof AppId.Type;
 
@@ -35,7 +37,11 @@ export const CONTAINER_USER_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(?::[A-Za-z0-
 export const isContainerUser = (value: string): boolean => CONTAINER_USER_PATTERN.test(value);
 
 export const ContainerUser = Schema.String.pipe(
-  Schema.check(Schema.isPattern(CONTAINER_USER_PATTERN)),
+  Schema.check(
+    Schema.isPattern(CONTAINER_USER_PATTERN, {
+      message: "Expected a container user name or numeric id, optionally followed by :group or :gid",
+    }),
+  ),
 ).annotate({
   description:
     'Container identity as "<name|uid>" or "<name|uid>:<group|gid>". Letters, digits, underscores, dots, and hyphens only, and each part must start with a letter, digit, or underscore.',
@@ -54,7 +60,11 @@ export const isAbsoluteContainerPath = (value: string): boolean =>
   ABSOLUTE_CONTAINER_PATH_PATTERN.test(value);
 
 export const AbsoluteContainerPath = Schema.String.pipe(
-  Schema.check(Schema.isPattern(ABSOLUTE_CONTAINER_PATH_PATTERN)),
+  Schema.check(
+    Schema.isPattern(ABSOLUTE_CONTAINER_PATH_PATTERN, {
+      message: "Expected an absolute container path",
+    }),
+  ),
 ).annotate({
   description:
     "Absolute path inside a container. Must start with '/' and must not contain NUL or backslash characters.",
@@ -130,3 +140,14 @@ export type ProviderExtensionConfig = typeof ProviderExtensionConfig.Type;
  */
 export const CommandSpec = Schema.Union([Schema.String, Schema.Array(Schema.String)]);
 export type CommandSpec = typeof CommandSpec.Type;
+
+/**
+ * ToolingVarLiteral — a scalar literal value for a Landofile `tooling.<task>.vars.<name>`.
+ */
+export const ToolingVarLiteral = Schema.Union([Schema.String, Schema.Number, Schema.Boolean]);
+export type ToolingVarLiteral = typeof ToolingVarLiteral.Type;
+
+export const ToolingEnvironment = ComposeEnvironmentInput.annotate({
+  description: "Environment variables supplied to a tooling task as scalar values.",
+});
+export type ToolingEnvironment = typeof ToolingEnvironment.Type;

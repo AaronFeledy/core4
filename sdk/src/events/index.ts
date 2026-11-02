@@ -17,6 +17,7 @@ export * from "./provider.ts";
 export * from "./notify.ts";
 export * from "./renderer.ts";
 export * from "./rich-render.ts";
+export * from "./scratch.ts";
 export * from "./sync.ts";
 export * from "./task.ts";
 export * from "./tunnel.ts";

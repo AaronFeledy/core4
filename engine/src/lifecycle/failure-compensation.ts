@@ -1,24 +1,7 @@
-import { FailureRoleAnnotation } from "@lando/sdk/command-result";
-import type { FailureRole } from "@lando/sdk/schema";
-import { Cause, Context, Effect, Exit, Option } from "effect";
-import { isReadinessInterruptCause } from "./readiness-failure.ts";
+import { mergeFailure } from "@lando/sdk/command-result";
+import { Cause, Effect, Exit } from "effect";
 
-export const mergeFailure = <E, E2>(
-  primary: Cause.Cause<E>,
-  secondary: Cause.Cause<E2>,
-  role: FailureRole,
-): Cause.Cause<E | E2> =>
-  Cause.combine(
-    primary,
-    Cause.fromReasons(
-      secondary.reasons.map((reason) => {
-        const existing = Context.getOrUndefined(Cause.reasonAnnotations(reason), FailureRoleAnnotation);
-        return existing === undefined || existing === "peer"
-          ? reason.annotate(Context.make(FailureRoleAnnotation, role), { overwrite: true })
-          : reason;
-      }),
-    ),
-  );
+export { mergeFailure };
 
 export const mapFailureErrors =
   <E, E2>(map: (error: E) => E2) =>
@@ -40,27 +23,15 @@ export const runAllAndMergeFailures = Effect.fn("Lifecycle.runAllAndMergeFailure
   );
 });
 
-export const compensateFailureUnless = <A, E, R, CleanupError, CleanupServices>(
-  effect: Effect.Effect<A, E, R>,
-  cleanup: Effect.Effect<void, CleanupError, CleanupServices>,
-  skip: (error: E) => boolean,
-): Effect.Effect<A, E | CleanupError, R | CleanupServices> =>
-  Effect.matchCauseEffect(effect, {
-    onSuccess: Effect.succeed,
-    onFailure: (failureCause) => {
-      const failed = Cause.findErrorOption(failureCause);
-      if (isReadinessInterruptCause(failureCause) || (Option.isSome(failed) && skip(failed.value))) {
-        return Effect.failCause(failureCause);
-      }
-      return Effect.matchCauseEffect(cleanup, {
-        onSuccess: () => Effect.failCause(failureCause),
-        onFailure: (cleanupCause) => Effect.failCause(mergeFailure(failureCause, cleanupCause, "rollback")),
-      });
-    },
-  });
-
 export const compensateFailure = <A, E, R, CleanupError, CleanupServices>(
   effect: Effect.Effect<A, E, R>,
   cleanup: Effect.Effect<void, CleanupError, CleanupServices>,
 ): Effect.Effect<A, E | CleanupError, R | CleanupServices> =>
-  compensateFailureUnless(effect, cleanup, () => false);
+  Effect.matchCauseEffect(effect, {
+    onSuccess: Effect.succeed,
+    onFailure: (failureCause) =>
+      Effect.matchCauseEffect(cleanup, {
+        onSuccess: () => Effect.failCause(failureCause),
+        onFailure: (cleanupCause) => Effect.failCause(mergeFailure(failureCause, cleanupCause, "rollback")),
+      }),
+  });

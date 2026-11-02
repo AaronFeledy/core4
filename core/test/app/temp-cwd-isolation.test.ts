@@ -183,14 +183,10 @@ describe("withEnvVar", () => {
   });
 
   test("restores an unset variable by deleting it instead of storing the string undefined", async () => {
-    const before = process.env[name];
-    delete process.env[name];
-    try {
-      await withEnvVar(name, "/tmp/lando-env-was-unset", async () => undefined);
-      expect(name in process.env).toBe(false);
-    } finally {
-      if (before === undefined) delete process.env[name];
-      else process.env[name] = before;
-    }
+    // A name nothing else sets: earlier cases anchor the Lando root, which the test preload defines.
+    const unsetName = "LANDO_TEST_WITH_ENV_VAR_UNSET";
+    delete process.env[unsetName];
+    await withEnvVar(unsetName, "/tmp/lando-env-was-unset", async () => undefined);
+    expect(unsetName in process.env).toBe(false);
   });
 });

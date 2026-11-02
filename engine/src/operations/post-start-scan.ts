@@ -1,44 +1,54 @@
 import { DateTime, Effect } from "effect";
 
+import { listenerDiagnostic } from "@lando/container-runtime/listener-diagnostic";
+import { expectedTcpListener } from "@lando/container-runtime/listener-observation";
 import { MessageWarnEvent } from "@lando/sdk/events";
-import { type AppPlan, type CheckResult, ServiceName } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type CheckResult,
+  type EndpointRef,
+  type ListenerObservation,
+  ServiceName,
+  type ServicePlan,
+  type StartedService,
+} from "@lando/sdk/schema";
 import type { EventServiceShape, ScanEndpoint, UrlScannerShape } from "@lando/sdk/services";
 import { makeTaskTree } from "@lando/sdk/task-progress";
 
 import { RedactionService, createStandaloneRedactor } from "@lando/redaction/service";
+import { endpointScanPolicy } from "../services/endpoint-scan.ts";
+import { scanTargets } from "../subsystems/scanner/connection-targets.ts";
 import { startScanTreeId } from "./start-progress.ts";
 
 export interface PostStartScanInput {
   readonly scanner: UrlScannerShape;
   readonly plan: AppPlan;
   readonly events: Pick<EventServiceShape, "publish">;
-  readonly urls: ReadonlyArray<{ readonly service: ServiceName; readonly url: string }>;
+  readonly observeListener?: (service: ServicePlan) => Effect.Effect<ListenerObservation | undefined>;
+  readonly urls: ReadonlyArray<{
+    readonly service: ServiceName;
+    readonly url: string;
+    readonly endpoint?: EndpointRef;
+  }>;
 }
-
-const appendScanPath = (base: string, path: string): string => {
-  const origin = base.endsWith("/") ? base : `${base}/`;
-  const relative = path === "/" ? "" : path.replace(/^\//u, "");
-  return new URL(relative, origin).toString();
-};
 
 export const startupScanUrls = (
   plan: AppPlan,
-  services: ReadonlyArray<{ readonly name: string; readonly endpoints: ReadonlyArray<string> }>,
-): ReadonlyArray<{ readonly service: ServiceName; readonly url: string }> =>
-  services.flatMap((service) => {
+  services: readonly StartedService[],
+): PostStartScanInput["urls"] => {
+  const targets = services.flatMap((service) => {
     const name = ServiceName.make(service.name);
-    const scan = plan.services[name]?.scanner;
-    const path = scan?.path ?? "/";
-    return service.endpoints
-      .filter((base) => {
-        const url = new URL(base);
-        return (url.protocol === "http:" || url.protocol === "https:") && !url.hostname.includes("*");
-      })
-      .map((base) => ({
-        service: name,
-        url: appendScanPath(base, path),
-      }));
+    const planned = plan.services[name];
+    if (planned?.scanner?.enabled === false) return [];
+    return service.connections.flatMap((connection) =>
+      scanTargets(
+        [{ ...connection, service: name }],
+        endpointScanPolicy(planned, connection.endpoint)?.path ?? planned?.scanner?.path ?? "/",
+      ),
+    );
   });
+  return [...new Map(targets.map((target) => [`${target.service}/${target.url}`, target])).values()];
+};
 
 const resolveRedactor = Effect.gen(function* () {
   const redaction = yield* Effect.serviceOption(RedactionService);
@@ -62,6 +72,13 @@ export const runPostStartScan = Effect.fnUntraced(function* (
   if (targets.length === 0) return [];
   const redactor = yield* resolveRedactor;
   const redact = (value: string): string => redactor.redactString(value);
+  const listeners = new Map(
+    yield* Effect.forEach(Object.values(input.plan.services), (service) =>
+      Effect.cached(Effect.suspend(() => input.observeListener?.(service) ?? Effect.succeed(undefined))).pipe(
+        Effect.map((observe) => [service.name, observe] as const),
+      ),
+    ),
+  );
   const events = {
     publish: (event: Parameters<EventServiceShape["publish"]>[0]) =>
       Effect.suspend(() => input.events.publish(event)).pipe(Effect.catchCause(() => Effect.void)),
@@ -81,7 +98,13 @@ export const runPostStartScan = Effect.fnUntraced(function* (
           const scanned = yield* Effect.result(
             input.scanner.scan(input.plan.id, {
               plan: input.plan,
-              urls: [{ service: target.service, url: target.url }],
+              urls: [
+                {
+                  service: target.service,
+                  url: target.url,
+                  ...(target.endpoint === undefined ? {} : { endpoint: target.endpoint }),
+                },
+              ],
               onAttempt: (attempt) =>
                 (attempt.verdict !== "lando-error" && attempt.verdict !== "service-error") ||
                 attempt.willRetry === false ||
@@ -113,6 +136,24 @@ export const runPostStartScan = Effect.fnUntraced(function* (
                 : (endpoint.detail ?? "no response reported"),
           );
           const status = endpoint.statusCode ?? "HTTP response";
+          const service = input.plan.services[target.service];
+          const listener =
+            endpoint.verdict === "lando-error" &&
+            (endpoint.routerMarker === "upstream-unreachable" ||
+              (scanned._tag === "Success" &&
+                scanned.success.endpoints.length > 0 &&
+                endpoint.routerMarker === undefined &&
+                !endpoint.reachable)) &&
+            service !== undefined &&
+            target.endpoint !== undefined &&
+            target.endpoint.transport === "tcp" &&
+            target.endpoint.port === expectedTcpListener(service)?.port
+              ? yield* listeners.get(service.name) ?? Effect.succeed(undefined)
+              : undefined;
+          const diagnostic =
+            listener === undefined || service === undefined
+              ? undefined
+              : listenerDiagnostic(listener, service, "scan");
           let message: string;
           switch (endpoint.verdict) {
             case "ready":
@@ -132,7 +173,9 @@ export const runPostStartScan = Effect.fnUntraced(function* (
               yield* tree.warnTask(target.id, redact(message));
               yield* events.publish(
                 MessageWarnEvent.make({
-                  body: redact(`Lando could not reach ${target.url}: ${detail}`),
+                  body: redact(
+                    `Lando could not reach ${target.url}: ${detail}${diagnostic === undefined ? "" : `. ${diagnostic.finding.charAt(0).toUpperCase()}${diagnostic.finding.slice(1)}. ${diagnostic.action}${diagnostic.authority === undefined ? "" : ` ${diagnostic.authority}`}`}`,
+                  ),
                   timestamp: yield* DateTime.now,
                 }),
               );
@@ -151,6 +194,18 @@ export const runPostStartScan = Effect.fnUntraced(function* (
             ...(endpoint.statusCode === undefined ? {} : { statusCode: endpoint.statusCode }),
             message: redact(message),
             ...(endpoint.verdict === "ready" ? {} : { detail }),
+            ...(listener === undefined
+              ? {}
+              : {
+                  listener: {
+                    ...listener,
+                    service: redact(listener.service),
+                    listening: listener.listening.map((binding) => ({
+                      ...binding,
+                      address: redact(binding.address),
+                    })),
+                  },
+                }),
           } satisfies CheckResult;
         }),
         { concurrency: 4 },

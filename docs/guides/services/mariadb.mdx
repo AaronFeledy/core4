@@ -7,7 +7,7 @@ tags: [beta, docs, mariadb, service, database]
 
 # Add MariaDB
 
-Put `type: mariadb` in your services block. Lando pulls `mariadb:11.4` and listens on `3306`:
+Add `type: mariadb` under `services` in `.lando.yml`. Lando pulls `mariadb:11.4` and listens on `3306`:
 
 ```yaml
 name: mariadb-demo
@@ -16,7 +16,7 @@ services:
     type: mariadb
 ```
 
-Set `creds:` when you want explicit values. Defaults stay `lando` / `lando` / the app name, plus a generated root password. `creds.user` is the database username. Container `user:` is not.
+Set `creds:` when you want explicit values. By default, the username and password are both `lando`, the database is named after the app, and the root password is generated. `creds.user` is the database username. Container `user:` is not.
 
 ```yaml
 services:
@@ -61,7 +61,7 @@ MariaDB also exports the `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` env 
 mysql://lando:lando@db:3306/mariadb-demo
 ```
 
-MariaDB speaks the MySQL wire protocol, so that's the right scheme.
+MariaDB speaks the MySQL wire protocol, so that's the right scheme. That URL uses the default port; use your authored `port:` in application connection URLs.
 
 ## Open the client
 
@@ -71,7 +71,9 @@ The `mariadb` type ships the client task. After start:
 lando mariadb
 ```
 
-Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). Or pipe a plain SQL file straight into the client:
+The generated client supplies its password for each invocation. Lando scopes the client-only `MYSQL_PWD` variable to client and healthcheck processes, not the database server's initialization environment.
+
+Import a dump with `lando db:import`. See [Import and export app databases](../tooling/db-import-export.mdx). You can also pipe a plain SQL file directly into the client. This executes the statements in the dump against the database, so back up any data you need first:
 
 ```sh
 lando mariadb < dump.sql
@@ -89,9 +91,32 @@ services:
       server: ./config/my.cnf
 ```
 
-Lando mounts that file read-only at `/etc/mysql/conf.d/99-lando.cnf`. The server reads it as a drop-in on startup, after its own defaults, so anything you set there wins. It has to be a regular file, not a directory.
+Lando mounts that file read-only at `/etc/mysql/conf.d/99-lando.cnf`. The server reads it as a drop-in on startup, after its own defaults. It has to be a regular file, not a directory.
+
+Lando's planned port, `port:` or the default, beats a port line in your config file. An authored `command:` or `entrypoint:` owns the daemon's flags instead.
 
 The path has to stay inside the app root. Absolute paths, paths that climb out of the app root, and symlinks that point outside it are rejected when Lando plans the app, before anything starts.
+
+## Change the port
+
+Set `port:` to move the daemon's listener, healthcheck, endpoint, and Lando's own clients together:
+
+```yaml
+services:
+  db:
+    type: mariadb
+    port: 3307
+```
+
+Other services now connect to `db:3307`. Lando sets `MYSQL_TCP_PORT` for the server and in-container clients, and publishes the same value as `LANDO_DB_PORT`. `lando mariadb` and `lando db:*` commands use that planned port.
+
+An authored `MYSQL_TCP_PORT` must match the planned port, or planning fails; `lando app:config:lint` reports the mismatch at `services.<name>.environment.MYSQL_TCP_PORT`. With `config.server`, Lando pins `port:` or the default on its command line. If you author `command:` or `entrypoint:`, you own the daemon's flags; pass `--port=3307` yourself if the option file sets another port.
+
+Apply the change with `lando rebuild`, then check the running server:
+
+```sh
+lando mariadb -N -e 'SELECT @@port'
+```
 
 ## Pin a version
 

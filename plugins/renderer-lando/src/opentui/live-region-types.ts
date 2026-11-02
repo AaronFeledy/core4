@@ -1,5 +1,6 @@
 import type { NativeStyledTextModuleLike } from "./ansi-styled-text.ts";
 import type { LiveRegionSpoolFactory } from "./live-region-spool.ts";
+import type { OpenTuiModuleLike, RendererLike } from "./prompt-driver-types.ts";
 
 export type LiveRegionScreenMode = "alternate-screen" | "main-screen" | "split-footer";
 type LiveRegionExternalOutputMode = "capture-stdout" | "passthrough";
@@ -24,7 +25,7 @@ interface ScrollbackSnapshotLike {
 
 type ScrollbackWriterLike = (context: ScrollbackRenderContextLike) => ScrollbackSnapshotLike;
 
-export interface LiveRegionRendererLike {
+export interface LiveRegionRendererLike extends Pick<RendererLike, "addPostProcessFn"> {
   readonly root: {
     add(child: LiveRegionRenderableLike): unknown;
   };
@@ -57,8 +58,12 @@ export interface OpenTuiLiveRegionModuleLike<
   TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike,
 > extends NativeStyledTextModuleLike {
   createCliRenderer(config: Record<string, unknown>): Promise<TRenderer>;
+  readonly RGBA: NativeStyledTextModuleLike["RGBA"] & OpenTuiModuleLike["RGBA"];
   BoxRenderable: RenderableConstructorLike;
-  TextRenderable: RenderableConstructorLike;
+  TextRenderable: new (
+    context: unknown,
+    options: Record<string, unknown>,
+  ) => Pick<LiveRegionRenderableLike, "destroy">;
 }
 
 export interface LiveRegionStdout {
@@ -72,6 +77,7 @@ export interface LiveRegionStdout {
 
 export interface LiveRegionControllerOptions {
   readonly stdout: LiveRegionStdout;
+  readonly noColor?: boolean;
   readonly width: number;
   readonly height: number;
   readonly footerHeight?: number;

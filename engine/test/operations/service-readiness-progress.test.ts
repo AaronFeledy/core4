@@ -21,6 +21,7 @@ const running: RuntimeProviderShape["inspect"] = (target) =>
     service: target.service,
     providerId: plan.provider,
     status: "running",
+    publications: { status: "unknown" as const },
     state: "running",
     lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
   });
@@ -101,6 +102,7 @@ test("an exit during a healthcheck reports the readiness reason and stopped exit
             service: target.service,
             providerId: plan.provider,
             status: "stopped",
+            publications: { status: "unknown" },
             exitCode: 17,
           })
         : running(target),

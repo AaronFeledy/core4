@@ -1,0 +1,11 @@
+# yaml-language-server: $schema=../../../../dist/schemas/landofile-shape.json
+services:
+  web:
+    environment:
+      USER_MODE: local
+    routes:
+      - http://user.lndo.site
+    appMount:
+      target: /workspace
+      excludes:
+        - .cache

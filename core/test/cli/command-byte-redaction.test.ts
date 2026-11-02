@@ -1,5 +1,5 @@
-import { afterEach, expect, test } from "bun:test";
-import { registerRedactionValues, resetRegisteredRedactionValuesForTesting } from "@lando/redaction/service";
+import { expect, test } from "bun:test";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { RENDERER_CAPABILITIES_NONE } from "@lando/sdk/renderer";
 import { Renderer } from "@lando/sdk/services";
 import { Context, Effect, Schema } from "effect";
@@ -7,12 +7,11 @@ import { makeEventCommandExecutor } from "../../src/cli/event-command-executor.t
 import { pluginOwnedCommandEffect } from "../../src/cli/run-plugin-owned-command.ts";
 import type { LandoCommandSpec } from "../../src/cli/spec/command-spec.ts";
 
-afterEach(resetRegisteredRedactionValuesForTesting);
-
 for (const mode of ["plugin-run", "plugin-render", "event-run"] as const) {
   test(`${mode} masks split registered bytes on both channels and flushes trailing prefixes`, async () => {
     // Given
     const secret = "command-byte-canary-4632";
+    const redaction = makeRedactionService();
     const output = { stdout: "", stderr: "" };
     const write = (destination: keyof typeof output) => (chunk: string | Uint8Array) =>
       Effect.sync(() => {
@@ -25,7 +24,7 @@ for (const mode of ["plugin-run", "plugin-render", "event-run"] as const) {
       output: { stdout: write("stdout"), stderr: write("stderr") },
     });
     const body = Effect.gen(function* () {
-      yield* registerRedactionValues([secret]);
+      yield* (yield* RedactionService).registerValues([secret]);
       const current = yield* Renderer;
       for (const channel of [current.output.stdout, current.output.stderr]) {
         yield* channel(new TextEncoder().encode(secret.slice(0, 10)));
@@ -44,7 +43,10 @@ for (const mode of ["plugin-run", "plugin-render", "event-run"] as const) {
     if (mode === "event-run") {
       await Effect.runPromise(
         makeEventCommandExecutor(
-          Context.make(Context.Service<unknown>("test/bytes"), {}).pipe(Context.add(Renderer, renderer)),
+          Context.make(Context.Service<unknown>("test/bytes"), {}).pipe(
+            Context.add(Renderer, renderer),
+            Context.add(RedactionService, redaction),
+          ),
           [{ spec, status: { kind: "implemented" } }],
         ).run({ command: spec.id, flags: {}, args: {}, argv: [], cwd: process.cwd() }),
       );
@@ -52,6 +54,7 @@ for (const mode of ["plugin-run", "plugin-render", "event-run"] as const) {
       await Effect.runPromise(
         pluginOwnedCommandEffect({ ...spec, render: () => body }, [], mode === "plugin-render").pipe(
           Effect.provideService(Renderer, renderer),
+          Effect.provideService(RedactionService, redaction),
         ),
       );
     }

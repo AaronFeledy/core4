@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve } from "node:path";
 
 import { PluginManifestError } from "@lando/sdk/errors";
@@ -11,6 +11,7 @@ export interface PackageJson {
   readonly landoPlugin?: unknown;
   readonly dependencies?: unknown;
   readonly peerDependencies?: unknown;
+  readonly publishConfig?: unknown;
 }
 
 export interface ExportEntry {
@@ -20,8 +21,32 @@ export interface ExportEntry {
   readonly dts: string;
 }
 
+export const declarationTsconfigContents = async (
+  pluginRoot: string,
+  entries: ReadonlyArray<{ readonly source: string }>,
+): Promise<string> => {
+  const hasBaseTsconfig = await stat(join(pluginRoot, "tsconfig.json")).then(
+    (entry) => entry.isFile(),
+    () => false,
+  );
+  const config = {
+    ...(hasBaseTsconfig ? { extends: "./tsconfig.json" } : {}),
+    compilerOptions: {
+      composite: false,
+      incremental: false,
+      declaration: true,
+      emitDeclarationOnly: true,
+      outDir: "./dist",
+      rootDir: declarationRootDir(entries),
+      noEmit: false,
+    },
+    include: entries.map((entry) => entry.source),
+  };
+  return `${JSON.stringify(config, null, 2)}\n`;
+};
+
 export const commandError = (message: string, remediation: string): PluginManifestError =>
-  new PluginManifestError({ message, issues: [remediation] });
+  new PluginManifestError({ message, issues: [{ path: [], message: remediation }], remediation });
 
 export const readPackageJson = async (pluginRoot: string): Promise<PackageJson> => {
   const raw = await readFile(join(pluginRoot, "package.json"), "utf8");

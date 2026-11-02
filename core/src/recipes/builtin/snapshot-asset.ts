@@ -8,5 +8,5 @@ import type { RecipeContentDigest } from "@lando/sdk/schema";
  * assets therefore hash with their substitution tokens still in place, which
  * keeps the published digest independent of the app name.
  */
-export const recipeAssetDigest = (source: string): RecipeContentDigest =>
+export const recipeAssetDigest = (source: string | Uint8Array): RecipeContentDigest =>
   `sha256:${new Bun.CryptoHasher("sha256").update(source, "utf8").digest("hex")}` as RecipeContentDigest;

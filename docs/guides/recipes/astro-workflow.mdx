@@ -7,6 +7,8 @@ tags: [beta, docs, recipes, astro, node, postgres, mariadb]
 
 # Run the Astro recipe
 
+Create a local Astro environment, then scaffold and serve the application inside `web`. Run the commands from your host terminal.
+
 ```sh
 lando init --recipe astro --name=astro-demo --yes
 cd astro-demo
@@ -15,9 +17,59 @@ lando start
 
 `--yes` skips prompts. Defaults are Node lts and no database. First start builds `web`. If host ports 80 or 443 are already taken, `lando info` URLs may use fallback ports such as `:8080` and `:8443`.
 
+## Scaffold Astro, then run it
+
+`create-astro` wants a clean directory, and `.lando.yml` is already there. Scaffold into a subdirectory, then move the app up and keep `.lando.yml`. Pin a `create-astro` release you trust (this guide used `4.13.2`); bump the version when you want a newer scaffold:
+
+```sh
+lando exec web -- npx --yes create-astro@4.13.2 webapp -- \
+  --template minimal \
+  --install \
+  --no-git \
+  --typescript strict \
+  --yes \
+  --skip-houston \
+  --no-ai
+```
+
+Move the contents of `webapp/` into the app root. Leave `.lando.yml` in place. If `node_modules` already exists at the root, move the scaffold files first, remove the empty root `node_modules` if needed, then run:
+
+```sh
+lando npm install
+```
+
+Confirm tooling:
+
+```sh
+lando astro --version
+lando astro --help
+lando npm --version
+```
+
+Serve through the proxy with an all-interfaces bind on the recipe's port, `4321`. Pass your app hostname to `--allowed-hosts` (swap `astro-demo` for your app name) so Vite accepts the Traefik `Host` header:
+
+```sh
+lando astro dev --host 0.0.0.0 --port 4321 --allowed-hosts astro-demo.lndo.site
+```
+
+Open the URL `lando info` prints. Prefer Node 22 with Postgres at init?
+
+```sh
+lando init --recipe astro --name=astro-pg --yes \
+  --answer=node=22 \
+  --answer=database=postgres
+```
+
+MariaDB instead:
+
+```sh
+lando init --recipe astro --name=astro-maria --yes \
+  --answer=database=mariadb
+```
+
 ## See what the recipe writes
 
-Init writes `.lando.yml` only. Put an Astro app in after start.
+Init writes only `.lando.yml`; it does not create the Astro application. Follow the scaffold steps below to add application code to the running service.
 
 | Piece | What you get |
 | --- | --- |
@@ -71,56 +123,6 @@ Routes use `{{ app.name }}.{{ proxy.defaultDomain }}` on HTTP and HTTPS. Pick a 
   </Scenario>
 </Guide>
 
-## Scaffold Astro, then run it
-
-`create-astro` wants a clean directory, and `.lando.yml` is already there. Scaffold into a subdirectory, then move the app up and keep `.lando.yml`. Pin a `create-astro` release you trust (this guide used `4.13.2`); bump the version when you want a newer scaffold:
-
-```sh
-lando exec web -- npx --yes create-astro@4.13.2 webapp -- \
-  --template minimal \
-  --install \
-  --no-git \
-  --typescript strict \
-  --yes \
-  --skip-houston \
-  --no-ai
-```
-
-Move the contents of `webapp/` into the app root. Leave `.lando.yml` in place. If `node_modules` already exists at the root, move the scaffold files first, remove the empty root `node_modules` if needed, then run:
-
-```sh
-lando npm install
-```
-
-Confirm tooling:
-
-```sh
-lando astro --version
-lando astro --help
-lando npm --version
-```
-
-Serve through the proxy with an all-interfaces bind on the recipe's port, `4321`. Pass your app hostname to `--allowed-hosts` (swap `astro-demo` for your app name) so Vite accepts the Traefik `Host` header:
-
-```sh
-lando astro dev --host 0.0.0.0 --port 4321 --allowed-hosts astro-demo.lndo.site
-```
-
-Open the URL `lando info` prints. Prefer Node 22 with Postgres at init?
-
-```sh
-lando init --recipe astro --name=astro-pg --yes \
-  --answer=node=22 \
-  --answer=database=postgres
-```
-
-MariaDB instead:
-
-```sh
-lando init --recipe astro --name=astro-maria --yes \
-  --answer=database=mariadb
-```
-
 ## Talk to Postgres
 
 When you pick `database=postgres`, the app network hostname is `database`:
@@ -142,7 +144,7 @@ services:
       DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
 ```
 
-Then `lando rebuild`. Read `process.env.DATABASE_URL` in your app code, so the password never lands in a committed file. `lando info` redacts it. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
+Then `lando start`. Read `process.env.DATABASE_URL` in your app code, so the password never lands in a committed file. `lando info` redacts it. See [Plan-time service credentials](../landofile/expressions.mdx#plan-time-service-credentials).
 
 Query it with the `psql` tooling. It logs in with the service credentials, so you never type the password:
 

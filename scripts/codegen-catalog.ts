@@ -20,6 +20,7 @@ export type CodegenCommand = {
 export const CODEGEN_CATALOG = [
   {
     id: "build-guide-scenarios",
+    dependsOn: ["core-service-env-catalog"],
     ownership: "derived",
     script: "build-guide-scenarios.ts",
     workspace: "repo",
@@ -31,11 +32,18 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    // Imports every bundled plugin, including their mutagen and PHP msmtp pins.
+    // Imports every bundled plugin, including their mutagen and PHP msmtp pins and the
+    // provider-image pins that `@lando/container-runtime` re-exports.
     // Without these edges pin generators and importers run in the same
     // wave and the import can observe the file mid-truncation (`Bun.write` is
     // not atomic), which surfaces as `JSON Parse error: Unexpected EOF`.
-    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
+    dependsOn: [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "provider-images",
+    ],
     id: "bundled-plugins",
     ownership: "derived",
     script: "build-bundled-plugins.ts",
@@ -65,6 +73,12 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "github-actions-pins",
+    ownership: "committed-pin",
+    script: "build-github-actions-pins.ts",
+    workspace: "repo",
+  },
+  {
     id: "tomcat-catalog",
     ownership: "derived",
     script: "build-tomcat-catalog.ts",
@@ -84,6 +98,7 @@ export const CODEGEN_CATALOG = [
   },
   {
     id: "bundled-recipes",
+    dependsOn: ["core-service-env-catalog"],
     ownership: "derived",
     script: "build-bundled-recipes.ts",
     workspace: "repo",
@@ -101,18 +116,31 @@ export const CODEGEN_CATALOG = [
   },
   {
     // Also imports every bundled plugin; see `bundled-plugins`.
-    dependsOn: ["mutagen-versions", "docker-cli-versions", "php-msmtp-pins", "tomcat-catalog"],
+    dependsOn: [
+      "mutagen-versions",
+      "docker-cli-versions",
+      "php-msmtp-pins",
+      "tomcat-catalog",
+      "provider-images",
+    ],
     id: "setup-plugin-flags",
     ownership: "derived",
     script: "build-setup-plugin-flags.ts",
     workspace: "repo",
   },
   {
+    id: "bundled-command-descriptors",
+    ownership: "derived",
+    script: "build-bundled-command-descriptors.ts",
+    workspace: "repo",
+    dependsOn: ["bundled-plugins", "setup-plugin-flags"],
+  },
+  {
     id: "mcp-allowlist",
     ownership: "derived",
     script: "build-mcp-allowlist.ts",
     workspace: "repo",
-    dependsOn: ["setup-plugin-flags"],
+    dependsOn: ["setup-plugin-flags", "bundled-command-descriptors"],
   },
   {
     id: "host-proxy-allowlist",
@@ -140,7 +168,14 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-command-registry-manifest.ts",
     workspace: "core",
-    dependsOn: ["setup-plugin-flags", "mcp-allowlist", "schema-deprecations"],
+    // Imports the command graph, including doctor's host-proxy allowlist check, which reads the generated allowlist.
+    dependsOn: [
+      "setup-plugin-flags",
+      "mcp-allowlist",
+      "schema-deprecations",
+      "bundled-command-descriptors",
+      "host-proxy-allowlist",
+    ],
   },
   {
     // Imports `@lando/sdk/schema`; see `bootstrap-layers`.
@@ -156,6 +191,7 @@ export const CODEGEN_CATALOG = [
     script: "build-schema-snapshot.ts",
     workspace: "repo",
     dependsOn: [
+      "bundled-command-descriptors",
       "bundled-plugins",
       "bundled-recipes",
       "bootstrap-layers",
@@ -171,7 +207,7 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-command-reference.ts",
     workspace: "repo",
-    dependsOn: ["command-registry-manifest"],
+    dependsOn: ["command-registry-manifest", "bundled-plugins", "bundled-command-descriptors"],
   },
   {
     id: "compose-key-matrix",
@@ -188,12 +224,20 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    dependsOn: ["php-msmtp-pins", "tomcat-catalog"],
+    id: "service-listener-reference",
+    ownership: "derived",
+    script: "build-service-listener-reference.ts",
+    workspace: "repo",
+  },
+  {
     id: "opentui-native-stubs",
     ownership: "derived",
     script: "build-opentui-native-stubs.ts",
     workspace: "repo",
   },
   {
+    dependsOn: ["core-service-env-catalog"],
     id: "php-base-images",
     ownership: "derived",
     script: "build-php-base-images.ts",
@@ -212,6 +256,18 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
+    id: "dependency-audit-workflow",
+    ownership: "committed-workflow",
+    script: "build-dependency-audit-workflow.ts",
+    workspace: "repo",
+  },
+  {
+    id: "install-lifecycle-workflow",
+    ownership: "committed-workflow",
+    script: "build-install-lifecycle-journey-workflow.ts",
+    workspace: "repo",
+  },
+  {
     id: "release-workflow",
     ownership: "committed-workflow",
     script: "build-release-workflow.ts",
@@ -227,12 +283,6 @@ export const CODEGEN_CATALOG = [
     id: "runtime-bundle-workflow",
     ownership: "committed-workflow",
     script: "build-runtime-bundle-workflow.ts",
-    workspace: "repo",
-  },
-  {
-    id: "php-base-workflow",
-    ownership: "committed-workflow",
-    script: "build-php-base-workflow.ts",
     workspace: "repo",
   },
   {

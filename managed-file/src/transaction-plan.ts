@@ -1,10 +1,15 @@
 import { relative, resolve, sep } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { Schema } from "effect";
+import { planCreateDestination } from "./transaction-create-path.ts";
 import { transactionError } from "./transaction-error.ts";
 import { sameState, snapshot, statMaybe, targetPath } from "./transaction-fs.ts";
-import type { Entry } from "./transaction-journal.ts";
+import type { DirectoryPolicy, Entry } from "./transaction-journal.ts";
 
+const SafeMode = Schema.Number.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isBetween({ minimum: 0, maximum: 0o777 })),
+);
 const ExpectedBefore = Schema.Union([
   Schema.Struct({ present: Schema.Literal(false) }),
   Schema.Struct({
@@ -39,6 +44,12 @@ export const TransactionRequest = Schema.Struct({
             }),
           ]),
         ),
+      }),
+      Schema.Struct({
+        kind: Schema.Literal("create"),
+        path: Schema.String,
+        content: Schema.Union([Schema.String, Schema.Uint8Array]),
+        mode: Schema.optionalKey(SafeMode),
       }),
       Schema.Struct({
         kind: Schema.Literal("remove"),
@@ -80,18 +91,52 @@ interface PlannedEntry {
   readonly entry: Entry;
   readonly beforeBytes: Uint8Array;
   readonly afterBytes: Uint8Array;
+  readonly stagePath?: string;
+}
+export interface TransactionPlan {
+  readonly entries: readonly PlannedEntry[];
+  readonly directoryPolicy: readonly DirectoryPolicy[];
 }
 
 export const planTransaction = async (
   root: string,
   request: TransactionRequest,
   id: string,
-): Promise<readonly PlannedEntry[]> => {
+): Promise<TransactionPlan> => {
   await verifyTransactionConditions(root, request.readConditions, "prepare");
   const plans: PlannedEntry[] = [];
+  const directoryPolicy: DirectoryPolicy[] = [];
+  const directories = new Set<string>();
   const targets = new Set<string>();
   const artifacts = new Set<string>();
   for (const operation of request.operations) {
+    if (operation.kind === "create") {
+      const destination = await planCreateDestination(root, operation.path, { id, index: plans.length });
+      if (targets.has(destination.target)) throw transactionError("path", "prepare", operation.path);
+      targets.add(destination.target);
+      const afterBytes =
+        typeof operation.content === "string"
+          ? new TextEncoder().encode(operation.content)
+          : new Uint8Array(operation.content);
+      for (const parent of destination.missingParents) {
+        if (directories.has(parent)) continue;
+        directories.add(parent);
+        directoryPolicy.push({ path: parent, action: "create-if-absent" });
+      }
+      artifacts.add(destination.stagePath);
+      plans.push({
+        entry: {
+          path: destination.relativePath,
+          before: { present: false },
+          after: { present: true, digest: sha256Hex(afterBytes), mode: operation.mode ?? 0o644 },
+          publication: "create",
+        },
+        beforeBytes: new Uint8Array(),
+        afterBytes,
+        stagePath: destination.stagePath,
+      });
+      continue;
+    }
     const target = await targetPath(root, operation.path);
     const path = relative(root, target);
     if (targets.has(target)) throw transactionError("path", "prepare", operation.path);
@@ -150,9 +195,9 @@ export const planTransaction = async (
   }
   for (const artifact of artifacts) {
     await targetPath(root, relative(root, artifact));
-    if (artifact.endsWith(`.lando-stage.${id}`) && (await statMaybe(artifact)) !== null) {
+    if (artifact.includes(`.lando-stage.${id}`) && (await statMaybe(artifact)) !== null) {
       throw transactionError("conflict", "prepare");
     }
   }
-  return plans;
+  return { entries: plans, directoryPolicy };
 };

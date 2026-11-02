@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 
 import { RecipeManifestParseError } from "@lando/sdk/errors";
+import { flowMappingRemediation } from "@lando/sdk/landofile/flow-mapping-remediation";
+import { stripYamlLineComment } from "@lando/sdk/yaml";
 
 export interface RecipeYamlParseOptions {
   readonly source: string;
@@ -13,14 +15,30 @@ interface ParsedLine {
   readonly text: string;
 }
 
+const syntaxRemediation = (source: string, line?: number): string =>
+  line === undefined
+    ? `Correct the YAML syntax in ${source}.`
+    : `Correct the YAML syntax in ${source} at line ${line}.`;
+
 const parseError = (
   source: string,
   message: string,
   line?: number,
   column?: number,
-): RecipeManifestParseError => new RecipeManifestParseError({ message, source, line, column });
+  remediation?: string,
+): RecipeManifestParseError =>
+  new RecipeManifestParseError({
+    message,
+    source,
+    line,
+    column,
+    remediation: remediation ?? syntaxRemediation(source, line),
+  });
 
-const stripComment = (line: string): string => line.replace(/\s+#.*$/, "");
+const stripComment = (line: string): string => {
+  const prefix = line.match(/^ *(?:- )?(?:[A-Za-z0-9_-]+:\s*)?/)?.[0] ?? "";
+  return prefix + stripYamlLineComment(line.slice(prefix.length));
+};
 
 const guardKey = (source: string, key: string, line: number): void => {
   if (key === "__proto__") {
@@ -34,7 +52,7 @@ const parseInlineArray = (value: string, source: string, line: number): Readonly
   return inner.split(",").map((part) => parseScalar(part.trim(), source, line));
 };
 
-const parseScalar = (value: string, source: string, line: number): unknown => {
+const parseScalar = (value: string, source: string, line: number, parentKey?: string): unknown => {
   const trimmed = value.trim();
   if (trimmed === "") return "";
   if (trimmed === "null" || trimmed === "~") return null;
@@ -43,7 +61,14 @@ const parseScalar = (value: string, source: string, line: number): unknown => {
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) return parseInlineArray(trimmed, source, line);
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    throw parseError(source, `Inline objects are not supported in recipe.yml at line ${line}`, line);
+    const suggestion = flowMappingRemediation(trimmed, parentKey === undefined ? {} : { parentKey });
+    throw parseError(
+      source,
+      `Inline objects are not supported in recipe.yml at line ${line}. ${suggestion}`,
+      line,
+      undefined,
+      suggestion,
+    );
   }
   if (
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
@@ -114,7 +139,7 @@ const parseMap = (
       continue;
     }
 
-    result[key] = parseScalar(rawValue, source, line.line);
+    result[key] = parseScalar(rawValue, source, line.line, key);
     index += 1;
   }
 
@@ -203,7 +228,7 @@ const parseListItemMap = (
       index = nextIndex;
       return;
     }
-    item[key] = parseScalar(rawValue, source, keyLine);
+    item[key] = parseScalar(rawValue, source, keyLine, key);
   };
 
   consumeKey(firstKey, firstRawValue, startLine.line, childIndent);
@@ -254,6 +279,7 @@ export const parseRecipeYaml = (
             source: options.source,
             line: undefined,
             column: undefined,
+            remediation: `Inspect ${options.source} and correct the recipe manifest so it parses as valid YAML.`,
             cause,
           }),
   });

@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { LandofileWriteValidationError } from "@lando/sdk/errors";
-import { ConfigService } from "@lando/sdk/services";
+import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { Cause, Effect, Exit, Option } from "effect";
 import { type EditorRunner, config } from "../../src/operations/config.ts";
+import { GlobalConfigSources } from "../../src/services/config.ts";
 
 let dir = "";
 const configPath = (): string => join(dir, "config.yml");
@@ -21,23 +21,50 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const configService = {
-  load: Effect.die("unused"),
-  get: () => Effect.die("unused"),
-};
-const run = <A, E>(effect: Effect.Effect<A, E, ConfigService>): Promise<A> =>
-  Effect.runPromise(effect.pipe(Effect.provideService(ConfigService, configService)));
-const exit = <A, E>(effect: Effect.Effect<A, E, ConfigService>) =>
-  Effect.runPromiseExit(effect.pipe(Effect.provideService(ConfigService, configService)));
+const configInputs = () => ({
+  env: {},
+  sources: { user: true, env: false },
+  rootOverrides: { userConfRoot: dir },
+});
+const run = <A, E>(effect: Effect.Effect<A, E, GlobalConfigSources>): Promise<A> =>
+  Effect.runPromise(effect.pipe(Effect.provideService(GlobalConfigSources, configInputs())));
+const exit = <A, E>(effect: Effect.Effect<A, E, GlobalConfigSources>) =>
+  Effect.runPromiseExit(effect.pipe(Effect.provideService(GlobalConfigSources, configInputs())));
 
 const writeErrorIssues = (result: Exit.Exit<unknown, unknown>): string => {
   if (!Exit.isFailure(result)) return "";
   const error = Option.getOrUndefined(Cause.findErrorOption(result.cause));
-  if (error instanceof LandofileWriteValidationError) return JSON.stringify(error.issues);
+  if (error instanceof LandofileWriteValidationError || error instanceof ConfigError)
+    return JSON.stringify(error.issues);
   return result.cause.toString();
 };
 
 describe("meta config set (S4)", () => {
+  test.each(["set", "unset"] as const)("keeps comments through config %s", async (subcommand) => {
+    // Given
+    await seed("# host\nrenderer: json # chosen\n# tail\n");
+    // When
+    await run(config({ subcommand, key: "renderer", value: "plain", configPath: configPath() }));
+    // Then
+    expect(await readFile(configPath(), "utf8")).toBe(
+      subcommand === "set" ? "# host\nrenderer: plain # chosen\n# tail\n" : "# host\n# tail\n",
+    );
+  });
+
+  test.each([
+    ["router.httpPort", "8080", 8080],
+    ["gpgAgent.forward", "true", true],
+    ["appEnv", '{"TEAM":"platform"}', { TEAM: "platform" }],
+  ])("infers %s without a type override", async (key, value, expected) => {
+    // Given
+    await seed("renderer: json\n");
+    // When
+    const result = await run(config({ subcommand: "set", key, value, configPath: configPath() }));
+    // Then
+    expect(result.value).toEqual(expected);
+    expect((await run(config({ subcommand: "validate", configPath: configPath() }))).valid).toBe(true);
+  });
+
   test("writes a scalar to config.yml", async () => {
     const result = await run(
       config({ subcommand: "set", key: "renderer", value: "json", configPath: configPath() }),
@@ -114,7 +141,7 @@ describe("meta config set (S4)", () => {
 });
 
 describe("meta config agentEnv wildcard rejection (S2)", () => {
-  test("set of a wildcard allow name fails with AgentEnvPatternError, file untouched", async () => {
+  test("set of a wildcard allow name fails with sourced write issues, file untouched", async () => {
     await seed("renderer: json\n");
     const before = await readConfig();
     const result = await exit(
@@ -129,8 +156,8 @@ describe("meta config agentEnv wildcard rejection (S2)", () => {
     expect(Exit.isFailure(result)).toBe(true);
     if (Exit.isFailure(result)) {
       const text = result.cause.toString();
-      expect(text).toContain("AgentEnvPatternError");
-      expect(text).toContain("CLAUDE_*");
+      expect(text).toContain("LandofileWriteValidationError");
+      expect(writeErrorIssues(result)).toContain("agentEnv");
     }
     expect(await readConfig()).toBe(before);
   });
@@ -149,11 +176,11 @@ describe("meta config agentEnv wildcard rejection (S2)", () => {
     expect(await readConfig()).toContain("FOO_TOKEN");
   });
 
-  test("validate rejects a hand-written wildcard deny name with AgentEnvPatternError", async () => {
+  test("validate rejects a hand-written wildcard deny name with ConfigError", async () => {
     await seed("agentEnv:\n  deny:\n    - BAD*\n");
     const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
     expect(Exit.isFailure(result)).toBe(true);
-    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("AgentEnvPatternError");
+    if (Exit.isFailure(result)) expect(result.cause.toString()).toContain("ConfigError");
   });
 });
 
@@ -165,17 +192,14 @@ describe("meta config unset", () => {
     expect(await readConfig()).not.toContain("renderer");
   });
 
-  test("rejects a remaining wildcard agentEnv entry with AgentEnvPatternError, file untouched", async () => {
+  test("unsets a key despite a pre-existing wildcard agentEnv entry", async () => {
+    // Given
     await seed("agentEnv:\n  allow:\n    - CLAUDE_*\n  deny:\n    - CI\nrenderer: json\n");
-    const before = await readConfig();
-    const result = await exit(config({ subcommand: "unset", key: "renderer", configPath: configPath() }));
-    expect(Exit.isFailure(result)).toBe(true);
-    if (Exit.isFailure(result)) {
-      const text = result.cause.toString();
-      expect(text).toContain("AgentEnvPatternError");
-      expect(text).toContain("CLAUDE_*");
-    }
-    expect(await readConfig()).toBe(before);
+    // When
+    const result = await run(config({ subcommand: "unset", key: "renderer", configPath: configPath() }));
+    // Then
+    expect(result.changed).toBe(true);
+    expect(await readConfig()).toBe("agentEnv:\n  allow:\n    - CLAUDE_*\n  deny:\n    - CI\n");
   });
 
   test("--path is honored when no positional key is given", async () => {
@@ -194,9 +218,22 @@ describe("meta config validate", () => {
   });
 
   test("invalid config fails with issues", async () => {
+    // Given a file with one wrongly typed key.
     await seed("telemetry:\n  enabled: notbool\n");
+    // When it is validated.
     const result = await exit(config({ subcommand: "validate", configPath: configPath() }));
+    // Then the failure names the key and read-only repair commands, not a retried write.
     expect(Exit.isFailure(result)).toBe(true);
+    if (!Exit.isFailure(result)) return;
+    const failure = Cause.findErrorOption(result.cause);
+    expect(Option.isSome(failure)).toBe(true);
+    if (!Option.isSome(failure)) return;
+    expect(failure.value).toMatchObject({
+      _tag: "ConfigError",
+      issues: [{ path: ["telemetry", "enabled"] }],
+      remediation: expect.stringContaining("lando config unset <key>"),
+    });
+    expect(failure.value.message).not.toContain("resulting config");
   });
 });
 
@@ -235,7 +272,7 @@ describe("meta config edit via injected editor seam", () => {
 
 describe("meta config hostEvents hand-edit", () => {
   test.each(["set", "unset"] as const)(
-    "%s rejects an unrelated write when existing hostEvents are invalid",
+    "%s permits an unrelated write when existing hostEvents are invalid",
     async (subcommand) => {
       // Given
       const before = "renderer: json\nhostEvents:\n  pre-start:\n    - echo container\n";
@@ -245,9 +282,10 @@ describe("meta config hostEvents hand-edit", () => {
         config({ subcommand, key: "renderer", value: "plain", configPath: configPath() }),
       );
       // Then
-      expect(Exit.isFailure(result)).toBe(true);
-      expect(writeErrorIssues(result)).toContain("config.yml hostEvents.pre-start[0]");
-      expect(await readConfig()).toBe(before);
+      expect(Exit.isSuccess(result)).toBe(true);
+      expect(await readConfig()).toBe(
+        subcommand === "set" ? before.replace("json", "plain") : before.replace("renderer: json\n", ""),
+      );
     },
   );
 

@@ -1,0 +1,7 @@
+name: unsupported-tcp
+services:
+  web:
+    type: node:lts
+    healthcheck:
+      kind: tcp
+      port: 3000

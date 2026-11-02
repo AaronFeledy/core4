@@ -23,6 +23,7 @@ const globalAppLayer = Layer.succeed(
   GlobalAppService,
   GlobalAppService.of({
     id: "global",
+    providerId: Effect.die("global provider resolution is unused"),
     root: Effect.succeed(AbsolutePath.make("/tmp/lando-global")),
     ensureRoot: Effect.void,
     paths: Effect.succeed({
@@ -143,15 +144,15 @@ describe("global-app doctor check", () => {
     expect(text).toContain("readError: permission denied");
   });
 
-  test("not-installed solution points at global:install and auto-provision on start", async () => {
+  test("not-installed solution points at global:reconcile and auto-provision on start", async () => {
     const result = await Effect.runPromise(globalAppDoctor().pipe(Effect.provide(notInstalledLayer)));
     const check = result.checks[0];
 
     expect(check?.status).toBe("warn");
     expect(check?.context.installed).toBe("false");
-    expect(check?.solutions[0]?.command).toBe("lando global:install");
+    expect(check?.solutions[0]?.command).toBe("lando global:reconcile");
     expect(check?.solutions[0]?.description).toContain("automatically");
-    expect(check?.solutions[0]?.description).toContain("lando global:install");
+    expect(check?.solutions[0]?.description).toContain("lando global:reconcile");
     expect(check?.solutions[0]?.description).not.toContain("manually");
     expect(check?.solutions[0]?.description).not.toContain("global:start");
   });

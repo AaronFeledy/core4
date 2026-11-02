@@ -1,6 +1,6 @@
 import { Duration, Effect, Exit } from "effect";
 
-import { redactDetails } from "@lando/container-runtime/redact";
+import { redactDetails, standaloneSecretsRedactor } from "@lando/container-runtime/redact";
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import { type HostPlatform, hostPlatformFamily } from "@lando/sdk/schema";
@@ -9,9 +9,11 @@ import { writeFileAtomic } from "@lando/state-store/atomic";
 import { rejectIntelMacHost } from "./host-support.ts";
 import type { ArtifactDownload } from "./runtime-bundle.ts";
 
+import { type EnsureManagedCatatonitOptions, ensureManagedCatatonit } from "./catatonit-provision.ts";
 import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
   type LinuxRuntimeHealthDeps,
+  linuxRuntimeHasOwnedService,
   linuxRuntimeIsHealthy,
   reapLegacyStaleRuntime,
   stopDiscoveredRuntimeProcesses,
@@ -29,17 +31,23 @@ import {
   classifyRootlessFailure,
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
+import { writeManagedRuntimeContainersConf } from "./runtime-config.ts";
 import { writeLaunchState } from "./runtime-launch-state.ts";
 import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodmanMachine } from "./setup.ts";
+
+const hostSecretsRedactor = () => standaloneSecretsRedactor({ ...process.env });
 
 export interface EnsureRuntimeDeps extends LinuxRuntimeHealthDeps {
   readonly platform: HostPlatform;
   readonly arch?: string;
+  readonly prepareNativeInit?: boolean;
+  readonly runtimeBinDir?: string;
   readonly nftProvision?: {
     readonly download: ArtifactDownload;
     readonly cacheDir: string;
     readonly arch?: string;
   };
+  readonly catatonitProvision?: EnsureManagedCatatonitOptions;
   readonly machineRunner?: PodmanMachineRunner;
   readonly rootlessProbes?: RootlessProbes;
   readonly readinessPolicy?: RetryPolicy;
@@ -166,11 +174,14 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
                       : "The Lando runtime service did not become reachable after launch.",
                   remediation:
                     "Run `lando doctor` to inspect the runtime service, then rerun the command; run `lando setup` if the runtime is not installed.",
-                  details: redactDetails({
-                    attempts: result.attempts,
-                    elapsedMs: result.elapsedMs,
-                    ...(stderr === undefined ? {} : { stderr }),
-                  }),
+                  details: redactDetails(
+                    {
+                      attempts: result.attempts,
+                      elapsedMs: result.elapsedMs,
+                      ...(stderr === undefined ? {} : { stderr }),
+                    },
+                    hostSecretsRedactor(),
+                  ),
                   cause: result.lastError,
                 }),
               ),
@@ -194,27 +205,31 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
 const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(function* (
   deps: EnsureRuntimeDeps,
 ): Effect.fn.Return<void, ProviderUnavailableError> {
-  if (deps.nftProvision !== undefined) {
-    const runtimeBinDir = deps.podmanBin.includes("/")
-      ? deps.podmanBin.slice(0, deps.podmanBin.lastIndexOf("/"))
-      : undefined;
+  const repair = Effect.gen(function* () {
+    if (deps.catatonitProvision !== undefined) {
+      yield* ensureManagedCatatonit(deps.catatonitProvision);
+    }
+    const runtimeBinDir = deps.runtimeBinDir ?? deps.catatonitProvision?.runtimeBinDir;
     if (runtimeBinDir !== undefined) {
-      yield* ensureManagedNft({
+      yield* writeManagedRuntimeContainersConf({
         runtimeBinDir,
-        download: deps.nftProvision.download,
-        cacheDir: deps.nftProvision.cacheDir,
-        platform: deps.platform,
-        arch: deps.nftProvision.arch ?? process.arch,
+        runtimeConfigDir: deps.configDir,
       });
     }
-  }
-  if ((yield* linuxRuntimeIsHealthy(deps)) && deps.generationStore === undefined) {
-    yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
-    yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
-    return;
-  }
-
-  const repair = Effect.gen(function* () {
+    if (deps.nftProvision !== undefined) {
+      const runtimeBinDir = deps.podmanBin.includes("/")
+        ? deps.podmanBin.slice(0, deps.podmanBin.lastIndexOf("/"))
+        : undefined;
+      if (runtimeBinDir !== undefined) {
+        yield* ensureManagedNft({
+          runtimeBinDir,
+          download: deps.nftProvision.download,
+          cacheDir: deps.nftProvision.cacheDir,
+          platform: deps.platform,
+          arch: deps.nftProvision.arch ?? process.arch,
+        });
+      }
+    }
     if (yield* linuxRuntimeIsHealthy(deps)) {
       const adopted =
         deps.generationStore === undefined
@@ -242,6 +257,12 @@ const ensureLinuxRuntime = Effect.fn("ProviderLando.ensureLinuxRuntime")(functio
       yield* stopDiscoveredRuntimeProcesses(deps);
       yield* reapLegacyStaleRuntime(deps);
     } else {
+      if (yield* linuxRuntimeHasOwnedService(deps)) {
+        yield* adoptHealthyRuntimeGeneration({
+          ...deps,
+          generationStore: deps.generationStore,
+        });
+      }
       yield* reapStaleLinuxRuntime({
         serviceRunner: deps.serviceRunner,
         podmanBin: deps.podmanBin,
@@ -287,6 +308,7 @@ const ensureMachineRuntime = (
     Effect.catch(() => Effect.succeed(false)),
   );
   const completeProgress = Effect.gen(function* () {
+    if (deps.prepareNativeInit === true) yield* machine.verifyNativeInit ?? Effect.void;
     yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
     yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
   });
@@ -318,7 +340,11 @@ export const ensureRuntime = Effect.fn("ProviderLando.ensureRuntime")(function* 
       : ensureMachineRuntime(
           deps,
           deps.machineRunner,
-          ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid),
+          ensureMacOSPodmanMachine(
+            deps.prepareNativeInit === true
+              ? deps.machineRunner
+              : { ...deps.machineRunner, verifyNativeInit: Effect.void },
+          ).pipe(Effect.asVoid),
         );
   }
 
@@ -328,7 +354,11 @@ export const ensureRuntime = Effect.fn("ProviderLando.ensureRuntime")(function* 
       : ensureMachineRuntime(
           deps,
           deps.machineRunner,
-          ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid),
+          ensureWindowsPodmanMachine(
+            deps.prepareNativeInit === true
+              ? deps.machineRunner
+              : { ...deps.machineRunner, verifyNativeInit: Effect.void },
+          ).pipe(Effect.asVoid),
         );
   }
 

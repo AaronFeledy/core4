@@ -27,7 +27,13 @@ const fileError = (path: string, cause: unknown, fallback: string): FileSystemEr
   if (code !== undefined && permissionCodes.has(code)) {
     return new FilePermissionError({ message: messageFrom(cause, fallback), path, cause });
   }
-  return new FileIoError({ message: messageFrom(cause, fallback), path, cause });
+  return new FileIoError({
+    message: messageFrom(cause, fallback),
+    path,
+    cause,
+    remediation:
+      "Ensure the reported path exists and is readable/writable by this user, then re-run the command.",
+  });
 };
 
 const notFound = (path: string): FileNotFoundError =>
@@ -69,7 +75,8 @@ const readText = async (path: string): Promise<string> => {
   if (!(await file.exists())) {
     throw notFound(path);
   }
-  return await file.text();
+  // exists() caches size zero for virtual files; read with an uninspected BunFile.
+  return await Bun.file(path).text();
 };
 
 const write = async (path: string, content: string | Uint8Array): Promise<void> => {
@@ -165,10 +172,12 @@ const fileSystemService: Context.Service.Shape<typeof FileSystem> = FileSystem.o
       catch: mapFileError(path, `Failed to write ${path}`),
     }),
   writeAtomic: (path, content) =>
-    Effect.tryPromise({
-      try: () => writeAtomicFile(path, content),
-      catch: mapFileError(path, `Failed to write ${path}`),
-    }),
+    Effect.uninterruptible(
+      Effect.tryPromise({
+        try: () => writeAtomicFile(path, content),
+        catch: mapFileError(path, `Failed to write ${path}`),
+      }),
+    ),
   exists: (path) =>
     Effect.tryPromise({
       try: async () => {

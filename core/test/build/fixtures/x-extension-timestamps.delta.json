@@ -1,0 +1,39 @@
+{
+  "provenanceCommit": "08d1490c6ae5773be71abfd3283faf8ebe4f9189",
+  "review": "Approved optional timestamps addition to LogSourceInput after closed-x repair and shorthand replay. Do not regenerate this file from current artifacts. Only a closed object with exactly id, label, path, and stream properties gains timestamps; required keys and all existing constraints stay untouched. The bare projection adds a boolean, authoring adds a boolean or whole-template expression, and directive-capable authoring additionally admits optional-value override and reset envelopes. Decoding defaults timestamps to false; this delta adds no JSON Schema default or required key.",
+  "sources": ["sdk/src/schema/log-source.ts", "sdk/src/schema/landofile-authoring.ts"],
+  "logSourceInputKeys": ["id", "label", "path", "stream"],
+  "bareTimestamps": { "type": "boolean" },
+  "authoringTimestamps": {
+    "anyOf": [
+      { "type": "boolean" },
+      { "pattern": "^\\{\\{-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])", "type": "string" }
+    ]
+  },
+  "directiveTimestamps": {
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "_tag": { "enum": ["LandofileOverride"], "type": "string" },
+          "value": {
+            "anyOf": [
+              { "type": "boolean" },
+              { "pattern": "^\\{\\{-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])", "type": "string" }
+            ]
+          }
+        },
+        "required": ["_tag"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": { "_tag": { "enum": ["LandofileReset"], "type": "string" } },
+        "required": ["_tag"],
+        "type": "object"
+      },
+      { "type": "boolean" },
+      { "pattern": "^\\{\\{-?(?:(?!\\{\\{|\\}\\})[\\s\\S])+?-?\\}\\}(?![\\s\\S])", "type": "string" }
+    ]
+  }
+}

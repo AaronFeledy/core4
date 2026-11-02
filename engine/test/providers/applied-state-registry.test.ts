@@ -18,8 +18,8 @@ import {
 import {
   AppPlanSanitizer,
   ConfigService,
+  ContainerHelperAssets,
   Downloader,
-  LogFileHelperAssets,
   ManagedFileService,
   PathsService,
   PluginRegistry,
@@ -29,6 +29,7 @@ import {
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { TeardownProvider } from "../../src/providers/app-placement.ts";
 import { makeRuntimeProviderRegistry } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
@@ -43,7 +44,6 @@ const plan: AppPlan = {
   provider: ProviderId.make("lando"),
   services: {},
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   extensions: {},
@@ -54,6 +54,7 @@ const unavailable = (providerId: string, operation: string) =>
     providerId,
     operation,
     message: `${providerId} ${operation} unavailable`,
+    remediation: "Install or start the selected runtime provider, then re-run the failed command.",
   });
 
 const moduleFor = (
@@ -79,10 +80,21 @@ const moduleFor = (
   return { name: manifest.name, manifest, runtimeProviders: new Map([[providerId, contribution]]) };
 };
 
-const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
+const run = (
+  modules: ReadonlyArray<LandoPluginModule>,
+  observe = false,
+  exactRoot?: AbsolutePath,
+  selected?: ProviderId,
+) => {
   const config = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: "podman" });
   const unsupported = (name: string) =>
-    Effect.fail(new PluginLoadError({ message: "unused", pluginName: name }));
+    Effect.fail(
+      new PluginLoadError({
+        message: "unused",
+        pluginName: name,
+        remediation: "Install or register the plugin, then retry.",
+      }),
+    );
   const httpClient = HttpClient.make((request) =>
     Effect.succeed(HttpClientResponse.fromWeb(request, new Response(null, { status: 204 }))),
   );
@@ -103,7 +115,10 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
     ),
     Layer.succeed(Downloader, Effect.runSync(makeTestDownloader()).service),
     Layer.succeed(HttpClient.HttpClient, httpClient),
-    Layer.succeed(LogFileHelperAssets, LogFileHelperAssets.of({ payloads: Effect.succeed({}) })),
+    Layer.succeed(
+      ContainerHelperAssets,
+      ContainerHelperAssets.of({ resolve: () => Effect.die("unused helper") }),
+    ),
     Layer.succeed(ManagedFileService, Effect.runSync(makeTestManagedFileStore()).service),
     Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/applied-state-registry" })),
     Layer.succeed(StateStore, makeTestStateStore().service),
@@ -112,11 +127,13 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
   return Effect.runPromise(
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
+      if (exactRoot !== undefined) {
+        return yield* registry.appliedPlansFor(exactRoot);
+      }
       if (observe) {
         if (registry.observeRuntime === undefined) return yield* Effect.die("missing observer");
         return yield* registry.observeRuntime;
       }
-      if (registry.resolveAppliedPlan === undefined) return yield* Effect.die("missing resolver");
       const selected = yield* registry.resolveAppliedPlan(root);
       return selected === undefined
         ? undefined
@@ -132,9 +149,24 @@ const run = (modules: ReadonlyArray<LandoPluginModule>, observe = false) => {
         }).pipe(Layer.provide(dependencies)),
       ),
       Effect.result,
+      Effect.provideService(TeardownProvider, selected),
     ),
   );
 };
+
+test("provider-scoped resolution disambiguates two applied owners without reading the other provider", async () => {
+  const dockerPlan = { ...plan, provider: ProviderId.make("docker") };
+  const modules = [
+    moduleFor(
+      "lando",
+      Effect.die("must not read excluded provider"),
+      Effect.die("must not initialize excluded provider"),
+    ),
+    moduleFor("docker", Effect.succeed([dockerPlan]), Effect.succeed(TestRuntimeProvider)),
+  ];
+  const result = await run(modules, false, undefined, dockerPlan.provider);
+  expect(result).toMatchObject({ _tag: "Success", success: { plan: dockerPlan, providerId: "docker" } });
+});
 
 test("recovers the persisted owner when an unrelated provider cannot initialize", async () => {
   // Given: the default is Podman, but Lando owns the saved app; Podman has no saved claim.
@@ -155,6 +187,22 @@ test("recovers the persisted owner when an unrelated provider cannot initialize"
   // Then
   expect(result).toMatchObject({ _tag: "Success", success: { plan, providerId: "lando" } });
   expect(unrelatedInitializations).toBe(0);
+});
+
+test("exact-root placement reads contribution plans without constructing any runtime", async () => {
+  const modules = [
+    moduleFor(
+      "lando",
+      Effect.succeed([
+        plan,
+        { ...plan, identity: { appRoot: AbsolutePath.make(`${root}/child`), ownerKey: "child" } },
+      ]),
+      Effect.die("must not construct managed runtime"),
+    ),
+    moduleFor("docker", Effect.succeed([]), Effect.die("must not introspect Docker capabilities")),
+  ];
+  const result = await run(modules, false, root);
+  expect(result).toMatchObject({ _tag: "Success", success: [plan] });
 });
 
 test.each([false, true])(

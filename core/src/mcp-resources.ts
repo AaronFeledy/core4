@@ -1,6 +1,6 @@
 import { withResolvedCwd } from "@lando/engine/landofile/app-resolution";
-import { AppInfoResultSchema } from "@lando/engine/operations/info";
 import type { McpResourceEntry } from "@lando/mcp/service";
+import { InfoAppResult } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import { resolveApp } from "./app/resolve";
 import { AppConfigResultSchema, appConfig, appConfigRedactionTokens } from "./cli/commands/app-config";
@@ -24,7 +24,7 @@ export const resources: ReadonlyArray<McpResourceEntry> = [
     uri: "lando://app/info",
     name: "App information",
     description: "Services and endpoints for the current app.",
-    resultSchema: AppInfoResultSchema,
+    resultSchema: InfoAppResult,
     read: Effect.gen(function* () {
       const app = yield* resolveApp();
       return yield* app.info({ deep: true });

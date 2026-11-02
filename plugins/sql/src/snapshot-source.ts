@@ -3,7 +3,13 @@ import { resolve } from "node:path";
 import { Effect } from "effect";
 
 import { SqlRecoveryUnavailableError } from "@lando/sdk/errors";
-import { type AbsolutePath, AppId, ServiceName, type SnapshotFilter } from "@lando/sdk/schema";
+import {
+  type AbsolutePath,
+  AppId,
+  ServiceName,
+  type SnapshotFilter,
+  appIdentityKey,
+} from "@lando/sdk/schema";
 
 type SnapshotSourceInput = {
   readonly app: string;
@@ -48,9 +54,12 @@ export const resolveSnapshotSource = (
     });
   }
   if (input.fromPath !== undefined) {
-    return input
-      .canonicalizePath(resolve(input.hostCwd, input.fromPath))
-      .pipe(Effect.map((sourceRoot) => ({ sourceRoot, service: ServiceName.make(input.service) })));
+    return input.canonicalizePath(resolve(input.hostCwd, input.fromPath)).pipe(
+      Effect.map((sourceRoot) => ({
+        ownerKey: appIdentityKey("owner", sourceRoot),
+        service: ServiceName.make(input.service),
+      })),
+    );
   }
   return Effect.succeed({
     app: AppId.make(input.app),

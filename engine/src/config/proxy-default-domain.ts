@@ -20,8 +20,5 @@ export const readProxyDefaultDomain = (
 export const resolveProxyDefaultDomain: Effect.Effect<string> = Effect.gen(function* () {
   const configOpt = yield* Effect.serviceOption(ConfigService);
   if (configOpt._tag === "None") return DEFAULT_PROXY_DOMAIN;
-  return yield* configOpt.value.load.pipe(
-    Effect.map(readProxyDefaultDomain),
-    Effect.catch(() => Effect.succeed(DEFAULT_PROXY_DOMAIN)),
-  );
+  return yield* configOpt.value.load.pipe(Effect.map(readProxyDefaultDomain));
 });

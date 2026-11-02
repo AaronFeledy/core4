@@ -69,12 +69,13 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | PRD-04 | US-102 | CertificateAuthority via @lando/ca-mkcert | `docs/guides/subsystems/certificates-mkcert.mdx` | Shipped |
 | PRD-04 | US-103 | SshService sidecar (default) plus host-agent forwarding opt-in | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
-| PRD-04 | US-104 | HealthcheckService (tcp/http/cmd probes) | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
+| PRD-04 | US-104 | native health, lifecycle command readiness, attempt execution, and inspection truth | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
 | PRD-04 | US-105 | ScannerService endpoint discovery + port-collision detection | `docs/guides/subsystems/scanner-service.mdx` | Shipped |
-| PRD-04 | US-106 | HostProxyService (`lndo.site`-style hostnames) | `docs/guides/subsystems/host-proxy.mdx` | Shipped |
+| PRD-04 | US-106 | Host DNS for `lndo.site`-style hostnames | `docs/guides/subsystems/host-dns.mdx` | Shipped |
+| PRD-04 | US-106 | Open host URLs and reveal app files from containers | `docs/guides/subsystems/host-open.mdx` | Shipped |
 | PRD-04 | US-108 | `lando doctor` subsystem walkthrough | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
-| PRD-05 | US-111 | GlobalAppService + reserved id `global` | `docs/guides/global/install-and-bundled-services.mdx` | Shipped |
-| PRD-05 | US-116 | `meta:global:*` CLI namespace incl. uninstall | `docs/guides/global/uninstall-and-purge.mdx` | Shipped |
+| PRD-05 | US-111 | GlobalAppService + reserved id `global`, owned contribution policy and eligibility | `docs/guides/global/install-and-bundled-services.mdx` | Shipped |
+| PRD-05 | US-116 | `meta:global:*` enable, disable, reconcile, runtime stop, and explicit data purge | `docs/guides/global/uninstall-and-purge.mdx` | Shipped |
 | PRD-05 | US-119 | global-app integration with `lando doctor` | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |
 | PRD-06 | US-122 | fork mode (`apps:scratch:start --fork`) | `docs/guides/scratch/fork-existing-app.mdx` | Shipped |
 | PRD-06 | US-123 | scratch mode (`apps:scratch:start --from=<recipe-ref>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Shipped |
@@ -91,6 +92,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Shipped |
 | PRD-08 | US-148 | `app:config:translate` command | `docs/guides/landofile/config-translate.mdx` | Shipped |
 | PRD-08 | US-195 | `app:config:lint` command (IDE / standalone) | `docs/guides/landofile/config-lint.mdx` | Shipped |
+| - | - | Raw, merged, and resolved config inspection | `docs/guides/landofile/config-views.mdx` | Shipped |
 | - | - | `app:config:explain` recipe provenance report | `docs/guides/landofile/config-explain.mdx` | Shipped |
 | PRD-10 | US-159 | tooling bootstrap level + cache-only app-plan read | `docs/guides/tooling/composer-php.mdx` | Shipped |
 | PRD-10 | US-163 | service-mode `lando shell` | `docs/guides/tooling/lando-shell.mdx` | Shipped |
@@ -143,7 +145,9 @@ the Beta guides above.
 | - | - | php service type (runtime + framework presets) | `docs/guides/services/php.mdx` | Shipped |
 | - | - | node service type | `docs/guides/services/node.mdx` | Shipped |
 | - | - | TypeScript toolchain on a Node service | `docs/guides/services/node-typescript.mdx` | Shipped |
+| - | - | TanStack Start with Drizzle on Postgres | `docs/guides/services/node-tanstack-start.mdx` | Shipped |
 | - | - | compile PHP CMS theme assets with a Node sidecar | `docs/guides/services/node-theme-assets.mdx` | Shipped |
+| - | - | run Playwright end-to-end tests from an e2e service | `docs/guides/services/node-playwright.mdx` | Shipped |
 | - | - | python service type | `docs/guides/services/python.mdx` | Shipped |
 | - | - | ruby service type | `docs/guides/services/ruby.mdx` | Shipped |
 | - | - | mysql service type | `docs/guides/services/mysql.mdx` | Shipped |
@@ -235,15 +239,19 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | VS Code integration | `docs/guides/tooling/vscode.mdx` | Shipped |
 | - | - | install and run on WSL | `docs/guides/install/wsl.mdx` | Shipped |
 | - | - | GitHub Actions CI install and drive | `docs/guides/install/ci-github-actions.mdx` | Shipped |
+| - | - | optional `github-actions:list` offline workflow inspection via linked plugin | `docs/guides/plugins/github-actions-inspection.mdx` | Shipped |
 | - | - | external access to app services | `docs/guides/subsystems/external-access.mdx` | Shipped |
 | - | - | Traefik host-port fallback when 80/443 are taken | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | - | - | how services find each other (service keys, .internal, *.lndo.site) | `docs/guides/subsystems/service-dns.mdx` | Shipped |
+| - | - | reach host services and sibling Compose stacks from containers | `docs/guides/subsystems/host-services.mdx` | Shipped |
+| - | - | reach another project's services: fold a compose file in with `include:`, join external and app-owned networks with `networks:` | `docs/guides/config/networks.mdx` | Shipped |
 | - | - | in-container agent context markers | `docs/guides/agent-native/in-container-context.mdx` | Shipped |
 | - | - | opt-in project-local agent skill pack | `docs/guides/agent-native/project-skills.mdx` | Shipped |
 | - | - | app name edge cases and validation | `docs/guides/landofile/app-name-edge-cases.mdx` | Shipped |
 | - | - | Landofile with zero services | `docs/guides/landofile/zero-services.mdx` | Shipped |
 | - | - | Drupal stack service and tooling overrides | `docs/guides/recipes/drupal-stack-overrides.mdx` | Shipped |
 | - | - | Drupal multisite configuration | `docs/guides/recipes/drupal-multisite.mdx` | Shipped |
+| - | - | Drupal PHPUnit suites with a headless Chrome service | `docs/guides/recipes/drupal-testing.mdx` | Shipped |
 | - | - | `app:config:migrate` recipe migration edges | `docs/guides/recipes/migrating-recipes.mdx` | Shipped |
 | - | - | PHP version selection matrix | `docs/guides/services/php-version-matrix.mdx` | Shipped |
 | - | - | Composer workflows in PHP services | `docs/guides/tooling/php-composer-workflows.mdx` | Shipped |
@@ -261,9 +269,11 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | FastAPI recipe day-to-day workflow | `docs/guides/recipes/fastapi-workflow.mdx` | Shipped |
 | - | - | MEAN recipe day-to-day workflow | `docs/guides/recipes/mean-workflow.mdx` | Shipped |
 | - | - | Symfony recipe day-to-day workflow | `docs/guides/recipes/symfony-workflow.mdx` | Shipped |
+| - | - | Symfony Messenger workers on Postgres | `docs/guides/recipes/symfony-messenger.mdx` | Shipped |
 | - | - | Laravel recipe day-to-day workflow | `docs/guides/recipes/laravel-workflow.mdx` | Shipped |
 | - | - | Laravel Reverb websockets behind the proxy | `docs/guides/recipes/laravel-reverb.mdx` | Shipped |
 | - | - | Laravel Horizon queues on Redis | `docs/guides/recipes/laravel-horizon.mdx` | Shipped |
+| - | - | Laravel Vite HMR through the proxy | `docs/guides/recipes/laravel-vite.mdx` | Shipped |
 | - | - | SvelteKit recipe day-to-day workflow | `docs/guides/recipes/sveltekit-workflow.mdx` | Shipped |
 | - | - | Next.js recipe day-to-day workflow | `docs/guides/recipes/nextjs-workflow.mdx` | Shipped |
 | - | - | Node API recipe day-to-day workflow | `docs/guides/recipes/node-api-workflow.mdx` | Shipped |
@@ -273,11 +283,12 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | Backdrop recipe day-to-day workflow | `docs/guides/recipes/backdrop-workflow.mdx` | Shipped |
 | - | - | WordPress recipe day-to-day workflow | `docs/guides/recipes/wordpress-workflow.mdx` | Shipped |
 | - | - | WordPress Vite HMR with a Node service | `docs/guides/recipes/wordpress-vite.mdx` | Shipped |
+| - | - | WordPress multisite network on subdomains | `docs/guides/recipes/wordpress-multisite.mdx` | Shipped |
 | - | - | Drupal recipe day-to-day workflow | `docs/guides/recipes/drupal-workflow.mdx` | Shipped |
 | - | - | Drupal CMS recipe day-to-day workflow | `docs/guides/recipes/drupal-cms-workflow.mdx` | Shipped |
 | - | - | Joomla recipe day-to-day workflow | `docs/guides/recipes/joomla-workflow.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | rabbitmq service type | `docs/guides/services/rabbitmq.mdx` | Shipped |
-| L3-PARITY-03 | US-566 | minio service type | `docs/guides/services/minio.mdx` | Shipped |
+| L3-PARITY-03 | US-566 | MinIO BYO image/build, API and console listeners | `docs/guides/services/minio.mdx` | Shipped |
 | L3-PARITY-03 | US-566 | localstack service type | `docs/guides/services/localstack.mdx` | Shipped |
 | L3-PARITY-03 | US-567 | app-scoped mailpit and deprecated mailhog | `docs/guides/services/mailpit.mdx` | Shipped |
 | L3-PARITY-03 | US-568 | tomcat service type | `docs/guides/services/tomcat.mdx` | Shipped |
@@ -298,12 +309,16 @@ They document everyday CLI, config, service, tooling, install, and Landofile cap
 | - | - | per-step build users for artifact and app build steps | `docs/guides/services/build-steps.mdx` | Shipped |
 | - | - | home persistence and host reachability | `docs/guides/services/home-and-host.mdx` | Shipped |
 | - | - | service locale via build step and `LANG` | `docs/guides/services/locale.mdx` | Shipped |
-| - | - | router enablement and post-start URL scanner | `docs/guides/services/router-and-scanner.mdx` | Shipped |
+| - | - | router enablement, endpoint-aware URL scans and scanner overrides | `docs/guides/services/router-and-scanner.mdx` | Shipped |
 | - | - | unmatched proxy host diagnostic pages | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | - | - | host SSH agent forwarding for 1Password and YubiKey keys | `docs/guides/subsystems/ssh-host-agent.mdx` | Shipped |
 | - | - | secret stores: env and 1Password `${secret:...}` references | `docs/guides/config/secret-stores.mdx` | Shipped |
 | n/a | n/a | sign commits with the host gpg-agent | `docs/guides/subsystems/gpg-agent.mdx` | Shipped |
 | - | - | Typesense via Compose passthrough | `docs/guides/services/typesense.mdx` | Shipped |
 | - | - | FrankenPHP via Compose passthrough | `docs/guides/services/frankenphp.mdx` | Shipped |
+| - | - | Magento Open Source (Mage-OS) on PHP, MariaDB, and OpenSearch | `docs/guides/services/magento.mdx` | Shipped |
 | - | - | Solr 10 on the typed solr service | `docs/guides/services/solr10.mdx` | Shipped |
 | - | - | host project commands from `.lando/scripts/*.bun.sh` Bun Shell scripts | `docs/guides/tooling/bun-shell-scripts.mdx` | Shipped |
+| - | - | independent health/readiness authoring, host/user probes, disabling, and pre-action validation | `docs/guides/services/wait-for-your-app.mdx` | Shipped |
+| - | - | local LLM with Ollama via Compose passthrough | `docs/guides/services/ollama.mdx` | Shipped |
+| - | - | profile PHP requests with XHProf and XHGui | `docs/guides/tooling/xhprof-xhgui.mdx` | Shipped |

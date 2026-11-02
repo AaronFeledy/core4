@@ -1,270 +1,124 @@
-import { dirname, isAbsolute, resolve } from "node:path";
-
-import { Effect, Predicate } from "effect";
-
+import { join } from "node:path";
+import { LandofileIncludeError } from "@lando/sdk/errors";
+import { type ValueOrigins, valueOriginAt } from "@lando/sdk/landofile";
+import type { LandofileShape } from "@lando/sdk/schema";
+import { Effect } from "effect";
+import { copyLandofileProvenance } from "./copy-provenance.ts";
+import { materializeIncludeConditions } from "./include-conditions.ts";
+import { attributeIncludeError } from "./include-guard.ts";
+import { includeAcquisitionView } from "./include-layer-overlays.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
+import type { LandofileReferencedFile } from "./load-expression-provenance.ts";
+import type { LoadFailureRecorder } from "./load-failures.ts";
+import type { LandofileLoadScope } from "./pipeline/materialize.ts";
+import { getOrigins, rememberOrigins } from "./pipeline/origins.ts";
+import type { AuthoredOrigin } from "./pipeline/prepare.ts";
+import type { SourceDocument } from "./pipeline/source-table.ts";
+import type { ToolingIncludeDefaults } from "./tooling-include-defaults.ts";
 import {
-  type ComposeKeyRejectedError,
-  LandofileIncludeError,
-  type LandofileParseError,
-  type NotImplementedError,
-  ToolingIncludeCycleError,
-  causeMessage,
-} from "@lando/sdk/errors";
-import {
-  type LandofileDecodedOverlay,
-  decodeLandofileLayer,
-  isMergeDirective,
-  isPlainRecord,
-  mergeLandofiles,
-  override,
-} from "@lando/sdk/landofile";
-import type { LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
-
-import { rejectComposeKeys } from "./compose/rejections.ts";
-import { hasIncludeCycle } from "./include-graph.ts";
-import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
-import { parseLandofile } from "./parser.ts";
-import { assertToolingFragment } from "./tooling-fragment.ts";
-import {
-  type NormalizedToolingInclude,
   assertCompatibleIncludeFields,
-  assertNamespacing,
   hasToolingIncludes,
   normalizeToolingIncludes,
 } from "./tooling-include-entries.ts";
-import { rejectUnsupportedToolingFeatures } from "./tooling-unsupported.ts";
+import { resolveEntries } from "./tooling-include-tree.ts";
+import type { ToolingIncludeError, ToolingSourceContext } from "./tooling-source.ts";
+import { validationErrorFromCause } from "./validation.ts";
 
 export { hasToolingIncludes } from "./tooling-include-entries.ts";
+export type { ToolingIncludeError } from "./tooling-source.ts";
 
 export interface ResolveToolingIncludesOptions {
+  readonly recorder?: LoadFailureRecorder | undefined;
+  readonly origins?: ValueOrigins<AuthoredOrigin> | undefined;
   readonly landofile: Pick<LandofileShape, "includes" | "toolingIncludes">;
+  readonly loadScope: LandofileLoadScope;
   readonly appRoot: string;
   readonly sourceRoot: string;
   readonly maxDepth?: number;
+  readonly loadPolicy?: LandofileLoadPolicy;
+  readonly onRelaxedRead?: ToolingSourceContext["onRelaxedRead"];
 }
 
 export interface ToolingIncludeResolution {
+  readonly defaults: ReadonlyMap<string, ToolingIncludeDefaults>;
+  readonly sources: readonly SourceDocument[];
   readonly tooling: Readonly<Record<string, unknown>>;
   readonly internalTaskIds: ReadonlyArray<string>;
   readonly localFragmentPaths: ReadonlyArray<string>;
+  readonly referencedFiles: ReadonlyArray<LandofileReferencedFile>;
 }
 
-export type ToolingIncludeError =
-  | ComposeKeyRejectedError
-  | LandofileIncludeError
-  | LandofileParseError
-  | NotImplementedError
-  | ToolingIncludeCycleError;
-
-interface Contribution {
-  readonly tasks: ReadonlyMap<string, unknown>;
-  readonly internal: ReadonlySet<string>;
-  readonly paths: ReadonlyArray<string>;
-}
-
-interface Fragment {
-  readonly filePath: string;
-  readonly tooling: LandofileDecodedOverlay["tooling"];
-  readonly nested: Pick<LandofileShape, "includes" | "toolingIncludes">;
-}
-
-const MISSING_REMEDIATION = "Create the tooling fragment, fix its path, or mark the include optional: true.";
-const COLLISION_REMEDIATION =
-  "Give the colliding tooling includes distinct namespaces or aliases, or exclude the duplicated task.";
-const CYCLE_REMEDIATION = "Break the tooling include cycle so no fragment transitively includes itself.";
-
-const withIncludeVars = (task: unknown, vars: Readonly<Record<string, ToolingVarLiteral>>): unknown => {
-  if (Object.keys(vars).length === 0 || !Predicate.isObject(task)) return task;
-  const taskVars = Predicate.isObject(task.vars) ? task.vars : {};
-  return { ...task, vars: { ...vars, ...taskVars } };
-};
-
-const taskIds = (entry: NormalizedToolingInclude, name: string): ReadonlyArray<string> =>
-  entry.flatten ? [name] : [entry.namespace ?? "", ...entry.aliases].map((prefix) => `${prefix}:${name}`);
-
-const readFragmentText = (filePath: string, source: string): Effect.Effect<string, LandofileIncludeError> =>
-  Effect.tryPromise({
-    try: () => Bun.file(filePath).text(),
-    catch: (cause) =>
-      includeError({
-        message: `Could not read tooling include ${source} at ${filePath}: ${causeMessage(cause)}`,
-        source,
-        kind: "fetch-failed",
-      }),
-  });
-
-const locateFragment = (
-  entry: NormalizedToolingInclude,
-  appRoot: string,
-  sourceRoot: string,
-): Effect.Effect<string | undefined, LandofileIncludeError> =>
-  Effect.tryPromise({
-    try: async (): Promise<string | undefined> => {
-      const candidate = isAbsolute(entry.source) ? entry.source : resolve(sourceRoot, entry.source);
-      const contained = await assertUnderRoot(appRoot, candidate, entry.source);
-      if (!(await Bun.file(contained).exists())) {
-        if (entry.optional) return undefined;
-        throw includeError({
-          message: `Tooling include ${entry.source} was not found at ${candidate}.`,
-          source: entry.source,
-          kind: "fetch-failed",
-          remediation: MISSING_REMEDIATION,
-        });
-      }
-      return contained;
-    },
-    catch: (cause) =>
-      cause instanceof LandofileIncludeError
-        ? cause
-        : includeError({
-            message: causeMessage(cause),
-            source: entry.source,
-            kind: "fetch-failed",
-          }),
-  });
-
-const loadFragment = (
-  entry: NormalizedToolingInclude,
-  filePath: string,
-): Effect.Effect<Fragment, ToolingIncludeError> =>
-  readFragmentText(filePath, entry.source).pipe(
-    Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
-    Effect.tap((parsed) =>
-      assertToolingFragment(
-        isPlainRecord(parsed) ? mergeLandofiles([parsed]) : parsed,
-        entry.source,
-        filePath,
-      ),
-    ),
-    Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed).pipe(Effect.as(parsed))),
-    Effect.tap((parsed) => rejectUnsupportedToolingFeatures(filePath, parsed)),
-    Effect.flatMap((parsed) =>
-      decodeLandofileLayer(filePath, parsed).pipe(
-        Effect.mapError((cause) =>
-          includeError({
-            source: entry.source,
-            kind: "forbidden-field",
-            message: causeMessage(cause),
-            remediation: "Use valid native tooling values and place directives on stable mapping members.",
-          }),
-        ),
-      ),
-    ),
-    Effect.map((parsed) => ({
-      filePath,
-      tooling: parsed.tooling,
-      nested: mergeLandofiles([parsed]),
-    })),
-  );
-
-interface ResolveContext {
-  readonly appRoot: string;
-  readonly sourceRoot: string;
-  readonly maxDepth: number;
-}
-
-const resolveEntries = Effect.fnUntraced(function* (
-  entries: ReadonlyArray<NormalizedToolingInclude>,
-  ctx: ResolveContext,
-  depth: number,
-  stack: ReadonlyArray<string>,
-): Effect.fn.Return<Contribution, ToolingIncludeError> {
-  const tasks = new Map<string, unknown>();
-  const internal = new Set<string>();
-  const paths: string[] = [];
-  if (entries.length === 0) return { tasks, internal, paths };
-  if (depth > ctx.maxDepth) {
-    return yield* Effect.fail(
-      includeError({
-        message: `Tooling includes exceed the maximum depth of ${ctx.maxDepth}.`,
-        source: entries[0]?.source ?? "toolingIncludes",
-        kind: "max-depth",
-        remediation: "Flatten the tooling include chain so it nests no deeper than the supported limit.",
-      }),
-    );
-  }
-
-  for (const entry of entries) {
-    const namespaceFailure = assertNamespacing(entry);
-    if (namespaceFailure !== undefined) return yield* Effect.fail(namespaceFailure);
-
-    const filePath = yield* locateFragment(entry, ctx.appRoot, ctx.sourceRoot);
-    if (filePath === undefined) continue;
-    const identity = yield* Effect.promise(() => realpathOrSelf(filePath));
-    if (hasIncludeCycle(stack, identity)) {
-      return yield* Effect.fail(
-        new ToolingIncludeCycleError({
-          message: `Tooling include cycle detected at ${entry.source}.`,
-          source: entry.source,
-          remediation: CYCLE_REMEDIATION,
-        }),
-      );
-    }
-
-    const fragment = yield* loadFragment(entry, filePath);
-    const nested = yield* resolveEntries(
-      normalizeToolingIncludes(fragment.nested),
-      { ...ctx, sourceRoot: dirname(filePath) },
-      depth + 1,
-      [...stack, identity],
-    );
-    paths.push(filePath, ...nested.paths);
-
-    const excluded = new Set(entry.excludes);
-    const overlay = isMergeDirective(fragment.tooling)
-      ? fragment.tooling
-      : Object.fromEntries(
-          Object.entries(fragment.tooling ?? {}).map(([name, task]) => [
-            name,
-            isMergeDirective(task) ? task : override(task),
-          ]),
-        );
-    const local = mergeLandofiles([{ tooling: Object.fromEntries(nested.tasks) }, { tooling: overlay }]);
-    const localNames = mergeLandofiles([{ tooling: overlay }]).tooling ?? {};
-    const contributed = new Map<string, unknown>(Object.entries(local.tooling ?? {}));
-    for (const name of excluded) contributed.delete(name);
-
-    for (const [name, task] of contributed) {
-      for (const id of taskIds(entry, name)) {
-        if (tasks.has(id)) {
-          return yield* Effect.fail(
-            includeError({
-              message: `Tooling includes both contribute task "${id}".`,
-              source: entry.source,
-              kind: "forbidden-field",
-              remediation: COLLISION_REMEDIATION,
-            }),
-          );
-        }
-        tasks.set(id, withIncludeVars(task, entry.vars));
-        if (entry.internal || (!Object.hasOwn(localNames, name) && nested.internal.has(name))) {
-          internal.add(id);
-        }
-      }
-    }
-  }
-
-  return { tasks, internal, paths };
-});
-
-export const resolveToolingIncludes = (
+export const resolveToolingIncludes = Effect.fnUntraced(function* (
   options: ResolveToolingIncludesOptions,
-): Effect.Effect<ToolingIncludeResolution, ToolingIncludeError> => {
-  const forbidden = assertCompatibleIncludeFields(options.landofile);
-  if (forbidden !== undefined) return Effect.fail(forbidden);
-  if (!hasToolingIncludes(options.landofile)) {
-    return Effect.succeed({ tooling: {}, internalTaskIds: [], localFragmentPaths: [] });
+): Effect.fn.Return<ToolingIncludeResolution, ToolingIncludeError> {
+  const file = options.origins?.source.file ?? join(options.sourceRoot, ".lando.yml");
+  const document = copyLandofileProvenance(options.landofile, { ...options.landofile });
+  if (options.origins !== undefined) rememberOrigins(document, options.origins);
+  const conditioned = yield* materializeIncludeConditions(document, {
+    source: {
+      sourcePath: file,
+      sourceRoot: options.sourceRoot,
+      appRoot: options.appRoot,
+      layer: options.origins?.source.layer ?? "canonical",
+    },
+    policy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
+    scope: { ...options.loadScope, recorder: options.recorder ?? options.loadScope.recorder },
+    ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
+  });
+  const surface = yield* Effect.try({
+    try: () => includeAcquisitionView(conditioned),
+    catch: (cause) => validationErrorFromCause(file, conditioned, cause),
+  });
+  const origins = getOrigins(conditioned);
+  const forbidden = assertCompatibleIncludeFields(surface);
+  if (forbidden !== undefined) {
+    const origin = origins === undefined ? undefined : valueOriginAt(origins, forbidden.path ?? []).source;
+    return yield* Effect.fail(
+      attributeIncludeError(
+        // Copy fields explicitly: `message` is not an own enumerable property, so a spread drops it.
+        new LandofileIncludeError({
+          message: forbidden.message,
+          source: forbidden.source,
+          kind: forbidden.kind,
+          remediation: forbidden.remediation,
+          path: origin?.path ?? forbidden.path,
+        }),
+        origin,
+      ),
+    );
   }
-  return resolveEntries(
-    normalizeToolingIncludes(options.landofile),
-    { appRoot: options.appRoot, sourceRoot: options.sourceRoot, maxDepth: options.maxDepth ?? 8 },
-    0,
-    [],
-  ).pipe(
-    Effect.map((contribution) => ({
-      tooling: Object.fromEntries(contribution.tasks),
-      internalTaskIds: [...contribution.internal],
-      localFragmentPaths: contribution.paths,
-    })),
+  if (!hasToolingIncludes(surface))
+    return {
+      defaults: new Map(),
+      tooling: {},
+      internalTaskIds: [],
+      localFragmentPaths: [],
+      referencedFiles: [],
+      sources: [],
+    };
+  const contribution = yield* resolveEntries(
+    normalizeToolingIncludes(surface, origins),
+    {
+      appRoot: options.appRoot,
+      recorder: options.recorder,
+      sourceRoot: options.sourceRoot,
+      maxDepth: options.maxDepth ?? 8,
+      loadScope: { ...options.loadScope, recorder: options.recorder ?? options.loadScope.recorder },
+      loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
+      onRelaxedRead: options.onRelaxedRead,
+    },
+    { depth: 0, stack: [] },
   );
-};
+  return {
+    defaults: contribution.defaults,
+    tooling: rememberOrigins(Object.fromEntries(contribution.tasks), {
+      source: { file: options.sourceRoot, layer: "canonical", path: ["tooling"] },
+      deleted: false,
+      children: contribution.origins,
+    }),
+    sources: contribution.sources,
+    internalTaskIds: [...contribution.internal],
+    localFragmentPaths: contribution.paths,
+    referencedFiles: contribution.referencedFiles,
+  };
+});

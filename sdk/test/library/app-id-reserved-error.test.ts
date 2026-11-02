@@ -9,13 +9,16 @@ describe("AppIdReservedError schema", () => {
     const error = new AppIdReservedError({ reserved: "global" });
     const encoded = Schema.encodeSync(AppIdReservedError)(error);
 
-    expect(encoded).toEqual({ _tag: "AppIdReservedError", reserved: "global" });
+    expect(encoded._tag).toBe("AppIdReservedError");
+    expect(encoded.reserved).toBe("global");
+    expect(encoded.remediation.trim().length).toBeGreaterThan(0);
 
     const decoded = Schema.decodeUnknownSync(AppIdReservedError)(encoded);
 
     expect(decoded._tag).toBe("AppIdReservedError");
     expect(decoded.reserved).toBe("global");
     expect(decoded.suggested).toBeUndefined();
+    expect(decoded.remediation).toBe(encoded.remediation);
   });
 
   test("round-trips the optional suggestion", () => {

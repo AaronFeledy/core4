@@ -14,8 +14,6 @@ import { Duration, Effect, Layer, Stream } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 
 import { RequestPolicy, layer as httpClientLayer } from "@lando/http-client/live";
-import * as LandoConfigService from "./config.ts";
-import * as LandoEventService from "./event-service.ts";
 
 export interface HttpJsonResult {
   readonly status: number;
@@ -23,6 +21,7 @@ export interface HttpJsonResult {
 }
 
 export interface HttpJsonOptions {
+  readonly redactionTokens?: ReadonlyArray<string>;
   /** Extra request headers (e.g. `accept: application/json`). */
   readonly headers?: ReadonlyArray<{ readonly name: string; readonly value: string }>;
   /** Redirect mode; defaults to following redirects like the prior fetch calls. */
@@ -53,7 +52,11 @@ const headersRecord = (headers: HttpJsonOptions["headers"]): Record<string, stri
  * Throws when the request fails to connect (the rejected Effect cause). Non-2xx
  * responses still resolve so callers keep their own status handling.
  */
-export const httpJsonFetch = async (url: string, options: HttpJsonOptions = {}): Promise<HttpJsonResult> =>
+export const httpJsonFetch = async (
+  url: string,
+  options: HttpJsonOptions = {},
+  client?: HttpClient.HttpClient,
+): Promise<HttpJsonResult> =>
   Effect.runPromise(
     Effect.fn("HttpClient.jsonFetch")(
       function* () {
@@ -62,6 +65,7 @@ export const httpJsonFetch = async (url: string, options: HttpJsonOptions = {}):
         const get = client.get(url, headers === undefined ? undefined : { headers }).pipe(
           Effect.provideService(RequestPolicy, {
             redirect: options.redirect ?? "follow",
+            ...(options.redactionTokens === undefined ? {} : { redactionTokens: options.redactionTokens }),
           }),
         );
         const response = yield* get;
@@ -71,11 +75,6 @@ export const httpJsonFetch = async (url: string, options: HttpJsonOptions = {}):
       options.timeoutMs === undefined
         ? (effect) => effect
         : Effect.timeout(Duration.millis(options.timeoutMs)),
-      Effect.provide(
-        Layer.mergeAll(
-          httpClientLayer.pipe(Layer.provide(LandoEventService.layer)),
-          LandoConfigService.layer,
-        ),
-      ),
+      Effect.provide(client === undefined ? httpClientLayer : Layer.succeed(HttpClient.HttpClient, client)),
     )(),
   );

@@ -1,11 +1,5 @@
 import { isAbsolute, resolve } from "node:path";
-import {
-  type LandofileDecodedOverlay,
-  isLandofileOverride,
-  isLandofileReset,
-  isPlainRecord,
-  override,
-} from "@lando/sdk/landofile";
+import { isLandofileOverride, isLandofileReset, isPlainRecord, override } from "@lando/sdk/landofile";
 
 const mapValue = (value: unknown, transform: (plain: unknown) => unknown): unknown =>
   isLandofileReset(value)
@@ -15,10 +9,10 @@ const mapValue = (value: unknown, transform: (plain: unknown) => unknown): unkno
       : transform(value);
 
 export const resolveToolingIncludeSourceRoots = (
-  landofile: LandofileDecodedOverlay,
+  landofile: Record<string, unknown>,
   sourceRoot: string,
   appRoot: string,
-): LandofileDecodedOverlay => {
+): Record<string, unknown> => {
   const source = (value: unknown) =>
     mapValue(value, (plain) =>
       typeof plain !== "string" ||
@@ -51,5 +45,5 @@ export const resolveToolingIncludeSourceRoots = (
     ...landofile,
     ...(includes === undefined ? {} : { includes }),
     ...(toolingIncludes === undefined ? {} : { toolingIncludes }),
-  } as LandofileDecodedOverlay;
+  };
 };

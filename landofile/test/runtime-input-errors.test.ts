@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
-import { resolveLandofileIncludes } from "../src/includes.ts";
+import { resolveAuthoredIncludes as resolveLandofileIncludes } from "./include-pipeline.ts";
 
 describe("Landofile runtime input failures", () => {
   test("fails in the typed channel when include resolution has no cache root", async () => {

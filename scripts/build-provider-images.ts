@@ -1,12 +1,13 @@
 #!/usr/bin/env bun
 /**
- * Regenerate `data-mover/src/generated/provider-images.ts`: the pinned
+ * Regenerate `container-runtime/src/generated/provider-images.ts`: the pinned
  * `{ image, digest }` manifest for provider images Lando provisions at the
- * provider-image layer.
+ * provider-image layer (`@lando/container-runtime/provider-images`).
  *
- * The generic-fallback `tar` helper image (`dataHelper`) is resolved from this
- * manifest through `RuntimeProvider.pullArtifact`, digest-verified, cached, and
- * offline-reused like every other Lando-provisioned artifact.
+ * Helper images are run only by digest reference, acquired with the `missing`
+ * pull policy and verified against the pin before use: `dataHelper` (DataMover
+ * transfers and the data-plane snapshot commit) and `volumeWitness` (the
+ * volume-ownership witness and the Windows file-sync helper).
  *
  * Drift gate: re-run + `git diff --exit-code` on the output. The generated TS
  * is byte-stable for a given pinned image/digest table.
@@ -17,7 +18,7 @@ import { dirname, resolve } from "node:path";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const OUTPUT = resolve(REPO_ROOT, "data-mover/src/generated/provider-images.ts");
+const OUTPUT = resolve(REPO_ROOT, "container-runtime/src/generated/provider-images.ts");
 
 export interface ProviderImageEntry {
   readonly image: string;
@@ -37,6 +38,10 @@ export const PROVIDER_IMAGES: ProviderImageManifest = {
     dataHelper: {
       image: "docker.io/library/alpine:3.20.3",
       digest: "sha256:beefdbd8a1da6d2915566fde36db9db0b524eb737fc57cd1367effd16dc0d06d",
+    },
+    volumeWitness: {
+      image: "docker.io/oven/bun:1.4.0-alpine",
+      digest: "sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb",
     },
   },
 };

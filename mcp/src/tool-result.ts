@@ -1,28 +1,28 @@
-import { McpToolInputError, McpToolNotAllowedError } from "@lando/sdk/errors";
+import { taggedErrorJson } from "@lando/sdk/command-result";
 import { CommandResultEnvelope, getJsonSchemaWithDeprecations } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { Effect, Schema } from "effect";
 import * as McpSchema from "effect/ai/McpSchema";
 import { redactBoundedJsonValue, stringifyBoundedJson } from "./bounded-json";
 import type { McpDispatchError, McpDispatchResult } from "./dispatch";
+import { compactOutputSchema } from "./output-schema";
 
 export const toolOutputSchema = (resultSchema: Schema.Codec<unknown, unknown>) =>
   Schema.decodeUnknownSync(McpSchema.ToolOutputJson)(
-    getJsonSchemaWithDeprecations(
-      Schema.Struct({
-        ...CommandResultEnvelope.fields,
-        result: Schema.optionalKey(resultSchema),
-      }),
+    compactOutputSchema(
+      Schema.decodeUnknownSync(Schema.JsonObject)(
+        getJsonSchemaWithDeprecations(
+          Schema.Struct({
+            ...CommandResultEnvelope.fields,
+            result: Schema.optionalKey(resultSchema),
+          }),
+        ),
+      ),
     ),
   );
 
 export const rejectionResult = Effect.fnUntraced(function* (error: McpDispatchError, redactor: Redactor) {
-  const data =
-    error instanceof McpToolInputError
-      ? Schema.encodeSync(McpToolInputError)(error)
-      : error instanceof McpToolNotAllowedError
-        ? Schema.encodeSync(McpToolNotAllowedError)(error)
-        : { _tag: error._tag, message: error.message, remediation: error.remediation };
+  const data = taggedErrorJson(error);
   const fields = yield* Effect.forEach(
     Object.entries(data),
     Effect.fnUntraced(function* ([key, value]) {

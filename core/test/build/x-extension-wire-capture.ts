@@ -9,8 +9,11 @@ import { schemaAt } from "./x-extension-closed-record.ts";
 const base = process.argv[2];
 if (base === undefined) throw new Error("Pass the generated historical checkout root");
 const profile = process.argv[3] ?? "base";
-if (profile !== "base" && profile !== "directives") throw new Error("Unknown wire capture profile");
+if (profile !== "base" && profile !== "directives" && profile !== "typed-614")
+  throw new Error("Unknown wire capture profile");
 const provenanceCommit = process.argv[4] ?? "15133ee26729942dde7b9d4f0e033b4ced46406d";
+if (profile === "typed-614" && provenanceCommit !== "614e804a9369ec2e6e751de16031f4cea8ee989d")
+  throw new Error("The typed-614 checkpoint requires its pinned producer revision");
 const load = async (name: string) => {
   const value: unknown = await Bun.file(resolve(base, `dist/schemas/${name}.json`)).json();
   if (!isJsonObject(value)) throw new Error(`Invalid historical schema: ${name}`);

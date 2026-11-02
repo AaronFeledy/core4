@@ -1,0 +1,25 @@
+name: tanstack-start-demo
+services:
+  web:
+    type: "node:22"
+    primary: true
+    port: 3000
+    command: [npm, run, dev]
+    environment:
+      DATABASE_URL: "postgresql://{{ services.database.creds.user }}:{{ services.database.creds.password }}@database:5432/{{ services.database.creds.database }}"
+    dependsOn:
+      database:
+        condition: service_healthy
+  database:
+    type: "postgres:18"
+tooling:
+  npm:
+    cmd: [npm]
+    description: Run npm inside the web service.
+    service: web
+    dir: /app
+  npx:
+    cmd: [npx]
+    description: Run npx inside the web service.
+    service: web
+    dir: /app

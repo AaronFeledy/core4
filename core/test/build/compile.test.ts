@@ -5,10 +5,12 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { providerImages } from "@lando/data-mover/provider-images";
+import { providerImages } from "@lando/container-runtime/provider-images";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { resolveCompiledBinaryVersion } from "../../../scripts/compiled-binary-version.ts";
 import corePackage from "../../package.json";
+import { withFifoChild } from "../cli/stdio-file-status-support.ts";
+import { stubContainerHelperDir } from "./fixtures/container-helper-stubs.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const binaryPath = resolve(coreRoot, "dist/lando");
@@ -63,7 +65,10 @@ describe("compiled binary build command", () => {
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled Linux x64 binary", () => {
   test("builds an executable lando binary with version and help fast paths", async () => {
-    const build = await runCommand([process.execPath, "run", "build"]);
+    const buildEnv = { ...process.env, LANDO_CONTAINER_HELPER_DIR: await stubContainerHelperDir() };
+    const manifest = await runCommand([process.execPath, "run", "build:manifest"], { env: buildEnv });
+    expect(manifest.exitCode).toBe(0);
+    const build = await runCommand([process.execPath, "run", "build:compile"], { env: buildEnv });
     expect(build.exitCode).toBe(0);
 
     const binary = await stat(binaryPath);
@@ -135,6 +140,37 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
       command: "meta:version",
       ok: true,
       result: { core: expect.any(String) },
+    });
+
+    // A shell sibling sharing the binary's stdout/stderr pipe must not inherit O_NONBLOCK (#1466).
+    for (const argv of [["--version"], ["meta:version", "--format=json"]]) {
+      await withFifoChild([relocatedBinary, ...argv], { cwd: appRoot, env }, async (child) => {
+        expect(await child.exited).toBe(0);
+      });
+    }
+
+    const tsAppRoot = resolve(relocatedRoot, "ts-app");
+    await mkdir(tsAppRoot);
+    await Bun.write(
+      resolve(tsAppRoot, ".lando.yml"),
+      "name: compiled-author\nservices:\n  web:\n    type: nginx\n",
+    );
+    await Bun.write(
+      resolve(tsAppRoot, ".lando.local.ts"),
+      `
+      import { defineLandofile } from "@lando/sdk";
+      import { Effect } from "effect";
+      export default () => Effect.succeed(defineLandofile({ services: { web: { environment: { EXTRA: "host-modules" } } } }));
+    `,
+    );
+    const authorConfig = await runCommand([relocatedBinary, "app:config", "--format=json"], {
+      cwd: tsAppRoot,
+      env,
+    });
+    expect(authorConfig.exitCode, authorConfig.stderr + authorConfig.stdout).toBe(0);
+    expect(decodeEnvelope(authorConfig.stdout)).toMatchObject({
+      ok: true,
+      result: { landofile: { services: { web: { environment: { EXTRA: "host-modules" } } } } },
     });
 
     const jqOk = await runCommand([relocatedBinary, "version", "--jq", ".ok"], {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { Effect, Schema } from "effect";
 
 import { LandofileShape, ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -21,6 +22,7 @@ import {
 } from "../src/services/php-db-client.ts";
 import { PHP_FEATURE_ID, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
+import { phpResolution } from "./support/php-resolution.ts";
 
 const BuildSteps = Schema.Struct({
   buildSteps: Schema.optionalKey(
@@ -91,7 +93,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof ServiceTypeError
+          ? [error.message, ...(error.issues ?? []).map((issue) => issue.suggestion ?? "")].join(" ")
+          : error instanceof Error
+            ? error.message
+            : String(error);
       expect(message).toMatch(pattern);
     },
   );
@@ -103,12 +110,13 @@ const unusedMutators = {
   addMount: () => undefined,
   setAppMount: () => undefined,
   addStorage: () => undefined,
-  addEndpoint: () => undefined,
   addHostAlias: () => undefined,
   setHealthcheck: () => undefined,
+  setReadiness: () => undefined,
   setCerts: () => undefined,
   setEntrypoint: () => undefined,
   setCommand: () => undefined,
+  setInit: () => undefined,
   setArtifact: () => undefined,
   setUser: () => undefined,
   setWorkingDirectory: () => undefined,
@@ -121,18 +129,25 @@ const viewOf = (input: {
   readonly featureIds?: ReadonlyArray<string>;
   readonly image?: string;
   readonly db_client?: unknown;
-}): AppFeatureServiceView => ({
-  serviceName: input.serviceName,
-  serviceType: input.serviceType,
-  base: "lando",
-  primary: false,
-  featureIds: input.featureIds ?? [],
-  normalizedConfig: Schema.decodeUnknownSync(ServiceConfig)({
+}): AppFeatureServiceView => {
+  const normalizedConfig = Schema.decodeUnknownSync(ServiceConfig)({
     type: input.serviceType,
     ...(input.image === undefined ? {} : { image: input.image }),
     ...(input.db_client === undefined ? {} : { db_client: input.db_client }),
-  }),
-});
+  });
+  return {
+    serviceName: input.serviceName,
+    serviceType: input.serviceType,
+    base: "lando",
+    primary: false,
+    featureIds: input.featureIds ?? [],
+    normalizedConfig,
+    resolutionMetadata:
+      input.featureIds?.includes(PHP_FEATURE_ID) === true
+        ? phpResolution(normalizedConfig).metadata
+        : undefined,
+  };
+};
 
 const applyFeature = (views: ReadonlyArray<AppFeatureServiceView>) => {
   const steps = new Map<string, Array<ServiceBuildStepIntent>>();

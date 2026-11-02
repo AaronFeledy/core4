@@ -3,9 +3,9 @@ import { ProviderId } from "@lando/sdk/schema";
 import { BuildOrchestrator, EventService } from "@lando/sdk/services";
 import { Cause, Effect, Exit, Option } from "effect";
 import {
-  beginAcceleratedStart,
+  beginOrResumeAcceleratedStart,
   readJournal,
-  requireNoPendingAcceleratedStart,
+  readPendingAcceleratedStart,
 } from "../../src/operations/accelerated-start-journal.ts";
 import { destroyApp } from "../../src/operations/destroy.ts";
 import { rebuildApp } from "../../src/operations/rebuild.ts";
@@ -21,12 +21,14 @@ import {
 } from "./accelerated-start-recovery-support.ts";
 
 test("retained durable start reuses its two-way session and history", async () => {
-  const harness = await Effect.runPromise(recoveryHarness());
+  const harness = await Effect.runPromise(recoveryHarness({ replica: false }));
   const result = await Effect.runPromiseExit(startApp({}, target).pipe(Effect.provide(harness.layer)));
   if (Exit.isFailure(result)) throw Option.getOrThrow(Cause.findErrorOption(result.cause));
-  expect(harness.calls).toEqual(["invalidate", "prepare", "flush:old"]);
+  expect(harness.calls).toEqual(["prepare", "invalidate", "flush:old"]);
   expect(harness.sessions.map(({ ref }) => String(ref))).toEqual(["old"]);
-  await Effect.runPromise(requireNoPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer)));
+  expect(
+    await Effect.runPromise(readPendingAcceleratedStart(app).pipe(Effect.provide(harness.layer))),
+  ).toBeNull();
 });
 
 test("unknown retained sessions block init hooks and preserve all sessions", async () => {
@@ -49,7 +51,7 @@ test("unknown retained sessions block init hooks and preserve all sessions", asy
   expect(harness.calls).toEqual([]);
   expect(harness.sessions.map(({ ref }) => String(ref))).toEqual(["old", "unknown"]);
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending?.phase).toBe("retained");
+  expect(pending?.phase).toBe("apply-intent");
 });
 
 test("retained start rejects changed mounts before helper or session mutation", async () => {
@@ -66,17 +68,21 @@ test("retained start rejects changed mounts before helper or session mutation", 
   expect(harness.sessions.map(({ ref }) => String(ref))).toEqual(["old"]);
 });
 
-test.each(["stop", "restart", "rebuild"] as const)("%s blocks retained attempts", async (operation) => {
-  const harness = await Effect.runPromise(recoveryHarness());
-  const operations = {
-    stop: stopApp({}, target).pipe(Effect.asVoid),
-    restart: restartApp({}, target).pipe(Effect.asVoid),
-    rebuild: rebuildApp({}, target).pipe(Effect.asVoid),
-  };
-  const result = await Effect.runPromiseExit(operations[operation].pipe(Effect.provide(harness.layer)));
-  expect(Exit.isFailure(result)).toBe(true);
-  expect(harness.calls).toEqual([]);
-});
+test.each(["stop", "restart", "rebuild"] as const)(
+  "%s handles pending attempts without terminating history",
+  async (operation) => {
+    const harness = await Effect.runPromise(recoveryHarness());
+    const operations = {
+      stop: stopApp({}, target).pipe(Effect.asVoid),
+      restart: restartApp({}, target).pipe(Effect.asVoid),
+      rebuild: rebuildApp({}, target).pipe(Effect.asVoid),
+    };
+    const result = await Effect.runPromiseExit(operations[operation].pipe(Effect.provide(harness.layer)));
+    expect(Exit.isSuccess(result)).toBe(true);
+    expect(harness.calls).not.toContain("terminate:old");
+    expect(harness.calls).not.toContain("create:one-way-replica");
+  },
+);
 
 test.each([
   { plan: { ...acceleratedPlan, provider: ProviderId.make("other") } },
@@ -120,7 +126,7 @@ test("failed retained flush keeps the journal and session for safe retry", async
   expect(harness.calls).toContain("flush:old");
   expect(harness.calls).not.toContain("terminate:old");
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending?.phase).toBe("retained");
+  expect(pending?.phase).toBe("apply-intent");
   expect(harness.sessions.map(({ ref }) => String(ref))).toEqual(["old"]);
 });
 
@@ -130,21 +136,22 @@ test("changed prepared volume leaves durable session and journal untouched", asy
   expect(Exit.isFailure(result)).toBe(true);
   expect(harness.calls).not.toContain("terminate:old");
   expect(harness.calls).not.toContain("create:one-way-replica");
+  expect(harness.events).toEqual([]);
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending?.phase).toBe("retained");
+  expect(pending?.phase).toBe("apply-intent");
 });
 
-test("adoption saves a new preparing attempt without mutating the old session", async () => {
+test("resume keeps the same attempt and phase without mutating the old session", async () => {
   const harness = await Effect.runPromise(recoveryHarness());
   const before = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
   const adopted = await Effect.runPromise(
-    beginAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
+    beginOrResumeAcceleratedStart(acceleratedPlan, app).pipe(Effect.provide(harness.layer)),
   );
   const after = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(after.pending?.phase).toBe("preparing");
+  expect(after.pending?.phase).toBe("apply-intent");
   expect(after.pending?.attemptId).toBe(adopted.attemptId);
-  expect(adopted.attemptId).not.toBe(before.pending?.attemptId);
-  expect(adopted.retained ?? null).toEqual(before.pending);
+  expect(before.pending?.attemptId).toBe(adopted.attemptId);
+  expect(adopted.resumedFrom).toBe("apply-intent");
   expect(harness.calls).toEqual([]);
 });
 
@@ -171,7 +178,7 @@ test("retained destroy refuses an existing prepared volume without session histo
   expect(Exit.isFailure(result)).toBe(true);
   expect(harness.calls).toEqual(["quiesce-retained"]);
   const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
-  expect(pending?.phase).toBe("retained");
+  expect(pending?.phase).toBe("apply-intent");
 });
 
 test("retained destroy safely cleans partial preparation with no volume or session", async () => {
@@ -184,4 +191,19 @@ test("retained destroy safely cleans partial preparation with no volume or sessi
   harness.sessions.splice(0);
   await Effect.runPromise(destroyApp({}, target).pipe(Effect.provide(harness.layer)));
   expect(harness.calls).toEqual(["quiesce-retained", "dispose-targets", "destroy:false"]);
+  const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
+  expect(pending?.phase).toBe("completed");
+});
+
+test("stop before any session exists stops writers without draining", async () => {
+  // Given an unfinished first attempt interrupted before it created a session.
+  const harness = await Effect.runPromise(recoveryHarness({ phase: "preparing" }));
+  harness.sessions.splice(0);
+  // When stop is requested.
+  const result = await Effect.runPromiseExit(stopApp({}, target).pipe(Effect.provide(harness.layer)));
+  // Then stop succeeds without draining an empty app and keeps the attempt resumable.
+  expect(Exit.isSuccess(result)).toBe(true);
+  expect(harness.calls).not.toContain("drain");
+  const { pending } = await Effect.runPromise(readJournal(app).pipe(Effect.provide(harness.layer)));
+  expect(pending?.phase).toBe("preparing");
 });

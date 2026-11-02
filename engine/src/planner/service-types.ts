@@ -19,11 +19,14 @@ import type {
 } from "@lando/sdk/services";
 
 import { validationIssue } from "@lando/sdk/schema";
+import type { EndpointPlan } from "@lando/sdk/schema";
 import type { AppFeatureServiceDraft } from "../services/app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../services/base/lando.ts";
+import type { ApplicationConfig, PreparedServiceComposition } from "../services/feature-preparation.ts";
 import type { ServiceHomeIntent } from "./home.ts";
 import type { ServiceConfigSource } from "./service-config-files.ts";
+export { servicePlanError, serviceTypeCollision } from "./service-errors.ts";
 
 export type ContributionRef = string | { readonly id: string };
 
@@ -36,6 +39,8 @@ const imageIs = (image: string | undefined, name: string): boolean =>
 export const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   if (service.type !== undefined) return service.type;
   const image = service.image;
+  if (image?.startsWith("node:26")) return "node:26";
+  if (image?.startsWith("node:24")) return "node:24";
   if (image?.startsWith("node:22")) return "node:22";
   if (image?.startsWith("node:")) return "node:lts";
   if (imageIs(image, "postgres")) return "postgres";
@@ -94,6 +99,7 @@ export const resolvePinnedArtifactTag = (
     return Effect.fail(
       new LandofileValidationError({
         message: `Service ${serviceName} requests version ${version} of service type ${serviceType.id}, but that ServiceType does not publish any supported versions. Use the bare type ${serviceType.id} or choose a ServiceType with shipped version metadata.`,
+        remediation: `Use the bare type ${serviceType.id} or choose a ServiceType with shipped version metadata.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -108,6 +114,7 @@ export const resolvePinnedArtifactTag = (
     return Effect.fail(
       new LandofileValidationError({
         message: `Service ${serviceName} requests unsupported version ${version} of service type ${serviceType.id}. Supported versions: ${[...declaredVersions].sort().join(", ")}.`,
+        remediation: `Choose a supported version: ${[...declaredVersions].sort().join(", ")}.`,
         file: `${appRoot}/.lando.yml`,
         issues: [
           validationIssue(
@@ -123,6 +130,7 @@ export const resolvePinnedArtifactTag = (
   return Effect.fail(
     new LandofileValidationError({
       message: `Service type ${serviceType.id} declares supported version ${version} but does not publish an artifact for supported version ${version}. Fix the ServiceType metadata before using this version.`,
+      remediation: "Fix the ServiceType metadata before using this version.",
       file: `${appRoot}/.lando.yml`,
       issues: [
         validationIssue(
@@ -151,6 +159,8 @@ export const unsupportedServiceType = (
   }
   return new LandofileValidationError({
     message: `Unsupported service type ${serviceType} for service ${serviceName}.${remediation}`,
+    remediation:
+      remediation.trim() || "Install a plugin that provides this service type, or choose a registered type.",
     file: `${appRoot}/.lando.yml`,
     issues: [
       validationIssue(
@@ -160,46 +170,6 @@ export const unsupportedServiceType = (
     ],
   });
 };
-
-export const serviceTypeCollision = (
-  appRoot: string,
-  serviceName: string,
-  error: ServiceTypeCollisionError,
-): LandofileValidationError =>
-  new LandofileValidationError({
-    message: error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
-    file: `${appRoot}/.lando.yml`,
-    issues: [
-      validationIssue(
-        ["services", serviceName, "type"],
-        error.remediation === undefined ? error.message : `${error.message} ${error.remediation}`,
-      ),
-    ],
-  });
-
-export const servicePlanError = (appRoot: string, serviceName: string, cause: unknown) =>
-  new LandofileValidationError({
-    message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
-    file: `${appRoot}/.lando.yml`,
-    issues: [
-      validationIssue(
-        ["services", serviceName],
-        cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
-      ),
-    ],
-  });
-
-export const appFeatureError = (appRoot: string, cause: unknown) =>
-  new LandofileValidationError({
-    message: cause instanceof Error ? cause.message : "Invalid app-feature composition.",
-    file: `${appRoot}/.lando.yml`,
-    issues: [
-      validationIssue(
-        ["appFeatures"],
-        cause instanceof Error ? cause.message : "Invalid app-feature composition.",
-      ),
-    ],
-  });
 
 export interface ResolvedService {
   readonly routes: ReadonlyArray<NormalizedRoute> | undefined;
@@ -213,11 +183,9 @@ export interface ResolvedService {
   readonly serviceType: ServiceType;
   readonly resolution: ServiceTypeResolution;
   readonly logSources: ReadonlyArray<LogSource>;
-  readonly baseDefaultIds: ReadonlyArray<string>;
-  readonly featureRefs: ReadonlyArray<{
-    readonly id: string;
-    readonly config?: Readonly<Record<string, unknown>>;
-  }>;
+  readonly prepared: PreparedServiceComposition;
+  readonly endpointContributions: readonly EndpointPlan[];
+  readonly applicationConfigs: ReadonlyMap<number, ApplicationConfig>;
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
   readonly projectFiles: ReadonlyArray<ServiceTypeProjectFileInput>;
@@ -230,8 +198,17 @@ export const resolvedServiceCacheInput = (entry: ResolvedService) => ({
   base: entry.resolution.base,
   normalizedConfig: entry.resolution.normalizedConfig,
   tooling: entry.resolution.tooling ?? {},
+  connectionClientNames: entry.resolution.connectionClientNames ?? [],
+  ...(entry.resolution.connection === undefined ? {} : { connection: entry.resolution.connection }),
+  ...(entry.resolution.nonSqlCreds === undefined ? {} : { nonSqlCreds: entry.resolution.nonSqlCreds }),
   logSources: entry.logSources,
-  featureRefs: entry.featureRefs,
+  features: entry.prepared.features.map((feature) => ({
+    id: feature.id,
+    index: feature.index,
+    priority: feature.definition.priority,
+    originalConfig: feature.originalRawConfig,
+    applicationConfig: entry.applicationConfigs.get(feature.index) ?? { _tag: "Original" },
+  })),
   envFileInputs: entry.envFileInputs,
   projectFiles: entry.projectFiles.map((file) => ({
     path: file.path,
@@ -251,6 +228,7 @@ export type AuthoredStorageInfo = {
 
 export type PlannedServiceDraft = {
   readonly name: string;
+  readonly authoredStorage: ServiceConfig["storage"];
   readonly hostnames: ReadonlyArray<string>;
   readonly authoredArtifact: ServicePlan["artifact"];
   readonly authored: ResolvedService["authored"];

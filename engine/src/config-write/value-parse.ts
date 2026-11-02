@@ -6,6 +6,7 @@
  * collections (structured non-JSON input should use `--type json`).
  */
 
+import { MinimalYamlError, parseScalar } from "@lando/paths/yaml-min";
 import { causeMessage } from "@lando/sdk/errors";
 import { Result } from "effect";
 
@@ -21,32 +22,16 @@ const fail = (type: ValueType, raw: string, message: string): Result.Result<neve
   Result.fail({ type, raw, message });
 
 const parseYamlScalar = (raw: string): Result.Result<unknown, ValueParseFailure> => {
-  const trimmed = raw.trim();
-  if (trimmed === "null" || trimmed === "~") return Result.succeed(null);
-  if (trimmed === "true") return Result.succeed(true);
-  if (trimmed === "false") return Result.succeed(false);
-  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-    try {
-      return Result.succeed(JSON.parse(trimmed) as unknown);
-    } catch {
-      return fail(
-        "yaml",
-        raw,
-        `Could not parse YAML flow value \`${trimmed}\`. Use \`--type json\` for complex structures.`,
-      );
+  try {
+    const value = parseScalar(raw);
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      return fail("yaml", raw, "The value must be a finite number.");
     }
+    return Result.succeed(value);
+  } catch (error) {
+    if (!(error instanceof MinimalYamlError)) throw error;
+    return fail("yaml", raw, error.message);
   }
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return Result.succeed(trimmed.slice(1, -1));
-  }
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
-    const num = Number(trimmed);
-    if (Number.isFinite(num)) return Result.succeed(num);
-  }
-  return Result.succeed(trimmed);
 };
 
 export const parseTypedValue = (raw: string, type: ValueType): Result.Result<unknown, ValueParseFailure> => {

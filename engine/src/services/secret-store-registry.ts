@@ -84,14 +84,6 @@ const invalidReference = (reference: string) =>
     remediation: "Install the store owning this scheme or set defaultSecretStore to an installed store id.",
   });
 
-const configReadFailure = (reference: string) =>
-  new SecretReferenceInvalidError({
-    message: `Could not read defaultSecretStore from Lando config while resolving '${reference}'.`,
-    reference,
-    remediation:
-      "Repair the Lando config value for defaultSecretStore, then retry. Leave it unset to use the env store.",
-  });
-
 const bareIdNeedsStoreSupport = (reference: string, storeId: string) =>
   new SecretReferenceInvalidError({
     message: `The default secret store '${storeId}' does not accept bare ids; it needs bare-id support.`,
@@ -104,6 +96,8 @@ const bootstrapError = (message: string, cause?: unknown) =>
     message,
     stage: "minimal",
     cause,
+    remediation:
+      "Fix the minimal runtime bootstrap failure (paths, permissions, or install layout) and re-run the command.",
   });
 
 export const layer = Layer.effect(
@@ -130,8 +124,7 @@ export const layer = Layer.effect(
       const reference = yield* Effect.fromResult(parseSecretReference(raw));
       const id =
         reference.scheme === undefined
-          ? ((yield* config.get("defaultSecretStore").pipe(Effect.mapError(() => configReadFailure(raw)))) ??
-            "env")
+          ? ((yield* config.get("defaultSecretStore")) ?? "env")
           : owners.get(reference.scheme);
       if (reference.scheme === undefined && id !== undefined) {
         const registration = registrations.find((entry) => entry.id === id);

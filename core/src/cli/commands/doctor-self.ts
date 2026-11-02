@@ -19,6 +19,8 @@ import { Result } from "effect";
  */
 import { Cause, Duration, Effect, Exit, Fiber, Option } from "effect";
 
+import { ConfigError } from "@lando/sdk/errors";
+
 import {
   DOCTOR_SELF_CHECK_NAME,
   type DoctorSelfCheck,
@@ -168,6 +170,8 @@ export const doctorSelfCheck = (input: {
   readonly tag?: string | undefined;
   readonly solutions?: ReadonlyArray<DoctorSelfSolution> | undefined;
   readonly context?: Readonly<Record<string, string>> | undefined;
+  /** False when the failure is user-fixable, so "report a Lando bug" would mislead. */
+  readonly reportIssue?: boolean | undefined;
 }): DoctorSelfCheck => ({
   name: DOCTOR_SELF_CHECK_NAME,
   section: input.section,
@@ -181,7 +185,7 @@ export const doctorSelfCheck = (input: {
     ...(input.tag === undefined ? {} : { failure: input.tag }),
     message: input.message,
   },
-  solutions: [REPORT_ISSUE_SOLUTION, ...(input.solutions ?? [])],
+  solutions: [...(input.reportIssue === false ? [] : [REPORT_ISSUE_SOLUTION]), ...(input.solutions ?? [])],
 });
 
 /**
@@ -236,6 +240,18 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
   }
 
   const described = describeDoctorCause(outcome.cause);
+  // A ConfigError names the exact keys to repair; lead with that instead of the
+  // section's static advice or a bug report.
+  const failure = Cause.findErrorOption(outcome.cause);
+  const remediation =
+    Option.isSome(failure) && failure.value instanceof ConfigError ? failure.value.remediation : undefined;
+  const solutions =
+    remediation === undefined
+      ? options.solutions
+      : [
+          { kind: "manual" as const, description: redactDoctorMessage(remediation, redact) },
+          ...(options.solutions ?? []),
+        ];
   return {
     value: options.fallback,
     self: doctorSelfCheck({
@@ -244,7 +260,8 @@ export const isolateDoctorSection = Effect.fnUntraced(function* <A, E, R>(
       message: redactDoctorMessage(described.message, redact),
       ...(described.tag === undefined ? {} : { tag: described.tag }),
       ...(options.context === undefined ? {} : { context: options.context }),
-      ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
+      ...(solutions === undefined ? {} : { solutions }),
+      ...(remediation === undefined ? {} : { reportIssue: false }),
     }),
   };
 });

@@ -6,8 +6,8 @@ import type { AppRef } from "@lando/sdk/schema";
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths } from "@lando/paths";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
-import type { HostProxyRunLandoExecutor } from "./dispatch.ts";
-import { type HostProxyShimTarget, defaultHostProxyShimArtifactPath } from "./transport-shim.ts";
+import type { HostProxyOpenCallExecutor, HostProxyRunLandoExecutor } from "./dispatch.ts";
+import type { HostProxyShimTarget } from "./transport-shim.ts";
 
 export const DEFAULT_CONCURRENCY = 16;
 export const DEFAULT_MAX_DEPTH = 3;
@@ -21,6 +21,7 @@ export interface HostProxyRunLandoSessionOptions {
   readonly allowlist: ReadonlyArray<string>;
   readonly callerService: string;
   readonly executor: HostProxyRunLandoExecutor;
+  readonly openExecutor?: HostProxyOpenCallExecutor;
   readonly paths?: RootOverrides;
   readonly concurrency?: number;
   readonly maxDepth?: number;
@@ -29,6 +30,20 @@ export interface HostProxyRunLandoSessionOptions {
   readonly shimTarget?: HostProxyShimTarget;
   readonly hostGatewayName?: string;
   readonly controlToken?: string;
+  readonly configDigest?: string;
+  readonly providerId?: string;
+  readonly configure?: (body: unknown) => Promise<void>;
+  readonly diagnostic?: (entry: HostProxyCallDiagnostic) => void;
+  /** Current SSH reverse-forward liveness; identify reads this each call. */
+  readonly bridgeState?: () => "none" | "alive" | "dead";
+}
+
+export interface HostProxyCallDiagnostic {
+  readonly callId: string;
+  readonly operation: "runLando" | "openUrl" | "openPath" | "invalid";
+  readonly outcome: string;
+  readonly durationMs: number;
+  readonly exitCode?: number;
 }
 
 export interface HostProxyRunLandoSession {
@@ -66,7 +81,8 @@ export const hostProxyRunLandoStateDir = (
 export const sessionPaths = (options: HostProxyRunLandoSessionOptions): HostProxySessionPaths => {
   const paths = makeLandoPaths(options.paths ?? {});
   const stateDir = hostProxyRunLandoStateDir(options.app, options.paths);
-  const transport: HostProxyTransportKind = paths.platform === "win32" ? "tcp-host-gateway" : "unix-socket";
+  const transport: HostProxyTransportKind =
+    options.hostGatewayName === undefined ? "unix-socket" : "tcp-host-gateway";
   return {
     stateDir,
     ...(transport === "unix-socket" ? { socketPath: resolve(stateDir, "host-proxy.sock") } : {}),
@@ -77,7 +93,4 @@ export const sessionPaths = (options: HostProxyRunLandoSessionOptions): HostProx
 };
 
 export const resolveHostProxyShimArtifact = (options: HostProxyRunLandoSessionOptions): string | undefined =>
-  options.shimArtifactPath ??
-  (options.shimTarget === undefined
-    ? undefined
-    : defaultHostProxyShimArtifactPath({ target: options.shimTarget }));
+  options.shimArtifactPath;

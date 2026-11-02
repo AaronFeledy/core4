@@ -75,11 +75,11 @@ const isolationEnv = (extra: Record<string, string> = {}): Record<string, string
 
 describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
   test("NotImplementedError plain output includes commandId, code, logsDir, cacheDir", async () => {
-    const result = await runCommand([process.execPath, sourceCliPath, "meta:plugin:login"], isolationEnv());
+    const result = await runCommand([process.execPath, sourceCliPath, "meta:events:follow"], isolationEnv());
     expect(result.exitCode).not.toBe(0);
     const stderr = stripAnsi(result.stderr);
     expect(stderr).toContain("NotImplementedError");
-    expect(stderr).toContain("commandId: meta:plugin:login");
+    expect(stderr).toContain("commandId: meta:events:follow");
     expect(stderr).toContain("code: NotImplementedError");
     expect(stderr).toContain(`logsDir: ${cacheDir}/logs`);
     expect(stderr).toContain(`cacheDir: ${cacheDir}`);
@@ -87,7 +87,7 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
 
   test("JSON renderer emits one command-result envelope with machine-readable code and remediation", async () => {
     const result = await runCommand(
-      [process.execPath, sourceCliPath, "meta:plugin:login", "--renderer=json"],
+      [process.execPath, sourceCliPath, "meta:events:follow", "--renderer=json"],
       isolationEnv(),
     );
     expect(result.exitCode).not.toBe(0);
@@ -97,7 +97,7 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
       readonly error?: { readonly _tag?: string; readonly remediation?: string };
     };
     expect(parsed.ok).toBe(false);
-    expect(parsed.command).toBe("meta:plugin:login");
+    expect(parsed.command).toBe("meta:events:follow");
     expect(parsed.error?._tag).toBe("NotImplementedError");
     expect(typeof parsed.error?.remediation).toBe("string");
     expect((parsed.error?.remediation ?? "").length).toBeGreaterThan(0);
@@ -149,17 +149,17 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       compiledBinaryPath = await ensureCompiledCli();
     }, 120_000);
     test("compiled binary emits NotImplementedError plain diagnostics with logsDir", async () => {
-      const result = await runCommand([compiledBinaryPath, "meta:plugin:login"], isolationEnv());
+      const result = await runCommand([compiledBinaryPath, "meta:events:follow"], isolationEnv());
       expect(result.exitCode).not.toBe(0);
       const stderr = stripAnsi(result.stderr);
-      expect(stderr).toContain("commandId: meta:plugin:login");
+      expect(stderr).toContain("commandId: meta:events:follow");
       expect(stderr).toContain("code: NotImplementedError");
       expect(stderr).toContain(`logsDir: ${cacheDir}/logs`);
     }, 60_000);
 
     test("compiled JSON renderer emits a command-result envelope", async () => {
       const result = await runCommand(
-        [compiledBinaryPath, "meta:plugin:login", "--renderer=json"],
+        [compiledBinaryPath, "meta:events:follow", "--renderer=json"],
         isolationEnv(),
       );
       expect(result.exitCode).not.toBe(0);
@@ -169,7 +169,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
         readonly error?: { readonly _tag?: string };
       };
       expect(parsed.ok).toBe(false);
-      expect(parsed.command).toBe("meta:plugin:login");
+      expect(parsed.command).toBe("meta:events:follow");
       expect(parsed.error?._tag).toBe("NotImplementedError");
     }, 60_000);
   },

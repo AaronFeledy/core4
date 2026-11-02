@@ -5,7 +5,6 @@ import { type DbCommandResult, DbCommandResult as DbCommandResultSchema } from "
 
 export const spec = {
   id: "db:seed",
-  summary: "Seed a fresh database from a dump, snapshot, or running app.",
   namespace: "db",
   bootstrap: "app",
   flags: {

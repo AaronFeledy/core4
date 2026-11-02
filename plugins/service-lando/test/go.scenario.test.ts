@@ -9,7 +9,7 @@ import * as ProviderExecToolingEngine from "@lando/engine/services/tooling-engin
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
-  type AppPlan,
+  type CurrentExecutableAppPlan,
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
@@ -22,10 +22,14 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { services } from "../src/index.ts";
 import { emptyConfigServiceLayer } from "./support/agent-env-test-config.ts";
+import {
+  compileTestLandofile,
+  toolingExecutionLayer,
+  toolingValueResolverLayer,
+} from "./support/compiled-landofile.ts";
 import { execStreamFromResponse } from "./support/exec-stream-from-response.ts";
 
 const providerId = ProviderId.make("lando");
@@ -37,6 +41,7 @@ const capabilities: ProviderCapabilities = {
   buildSsh: false,
   multiServiceApply: true,
   serviceExec: true,
+  serviceInit: true,
   serviceLogs: true,
   serviceLogSources: true,
   serviceHealth: "lando",
@@ -85,9 +90,25 @@ const makeProvider = (
     getStatus: Effect.succeed({ running: true }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "buildArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "buildArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `buildArtifact`.",
+        }),
+      ),
     pullArtifact: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "pullArtifact", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "pullArtifact",
+          message: "n/a",
+          remediation:
+            "Install or start the selected runtime provider and confirm it can perform `pullArtifact`.",
+        }),
+      ),
     removeArtifact: () => Effect.void,
     apply: () => Effect.succeed({ changed: false }),
     start: () => Effect.void,
@@ -121,15 +142,22 @@ const makeProvider = (
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.empty,
     inspect: () =>
-      Effect.fail(new ProviderUnavailableError({ providerId, operation: "inspect", message: "n/a" })),
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId,
+          operation: "inspect",
+          message: "n/a",
+          remediation: "Install or start the selected runtime provider and confirm it can perform `inspect`.",
+        }),
+      ),
     list: () => Effect.succeed([]),
   };
   return { provider, calls };
 };
 
-const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
+const planLandofile = (landofile: LandofileShape): Promise<CurrentExecutableAppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(compileTestLandofile(landofile), capabilities)).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLayer.layer)),
       Effect.provide(PluginRegistryLayer.layer),
     ),
@@ -137,13 +165,17 @@ const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
 
 const makeToolingLayer = (options: {
   readonly landofile: LandofileShape;
-  readonly plan: AppPlan;
+  readonly plan: CurrentExecutableAppPlan;
   readonly provider: RuntimeProviderShape;
+  readonly onDiscover?: () => void;
 }) => {
   const landofileLayer = Layer.succeed(
     LandofileService,
     LandofileService.of({
-      discover: Effect.succeed(options.landofile),
+      discover: Effect.sync(() => {
+        options.onDiscover?.();
+        return compileTestLandofile(options.landofile);
+      }),
     }),
   );
   const plannerLayer = Layer.succeed(
@@ -155,18 +187,21 @@ const makeToolingLayer = (options: {
   const registryLayer = Layer.succeed(
     RuntimeProviderRegistry,
     RuntimeProviderRegistry.of({
+      resolveAppliedPlan: () => Effect.succeed(undefined),
+      resolveTeardownEvidence: () => Effect.succeed({ kind: "absent" as const }),
+      appliedPlansFor: () => Effect.succeed([]),
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(options.provider),
     }),
   );
   return Layer.mergeAll(
-    PrivateFileAccessService.layer,
+    toolingExecutionLayer,
     landofileLayer,
     plannerLayer,
     registryLayer,
     LandoEventService.layer,
-    ProviderExecToolingEngine.layer,
+    ProviderExecToolingEngine.layer.pipe(Layer.provide(toolingValueResolverLayer)),
     emptyConfigServiceLayer,
   );
 };
@@ -183,11 +218,24 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     if (web === undefined) throw new Error("web service missing from go plan");
 
     expect(web.type).toBe("go:1.22");
-    expect(web.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
+    expect(web.endpoints).toEqual([
+      {
+        _tag: "internal",
+        port: 8080,
+        protocol: "http",
+        name: "web",
+        primary: true,
+        scan: { path: "/", okCodes: [] },
+      },
+    ]);
     expect(web.healthcheck).toBeUndefined();
     expect(String(web.workingDirectory)).toBe("/app");
-    expect(String(web.appMount?.target)).toBe("/app");
-    expect(web.mounts).toEqual([]);
+    expect(String(serviceAppMount(web)?.target)).toBe("/app");
+    expect(
+      web.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("go:1.22");
     expect(web.environment.LANDO_APP_ROOT).toBe("/app");
     expect(web.environment.GOPATH).toBe("/go");
@@ -217,7 +265,7 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "go", args: ["version"] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "go", input: { _tag: "RawArgv", argv: ["version"] } }).pipe(Effect.provide(layer)),
     );
 
     expect(result.tool).toBe("go");
@@ -241,7 +289,9 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
 
     const result = await Effect.runPromise(
-      runTooling({ name: "go", args: ["build", "./..."] }).pipe(Effect.provide(layer)),
+      runTooling({ name: "go", input: { _tag: "RawArgv", argv: ["build", "./..."] } }).pipe(
+        Effect.provide(layer),
+      ),
     );
 
     expect(result.exitCode).toBe(0);
@@ -250,42 +300,54 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     expect(calls[0]?.command).toEqual(["go", "build", "./..."]);
   });
 
-  test("resolved app targets re-read agentEnv instead of using a cached Landofile snapshot", async () => {
+  test.each([false, true])("resolved tooling targets retain captured policy enabled=%s", async (enabled) => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      agentEnv: false,
+      agentEnv: !enabled,
       services: { web: { type: "go:1.22" } },
       tooling: { go: { service: "web", cmd: "go" } },
     });
-    const staleLandofile = Schema.decodeUnknownSync(LandofileShape)({
+    const capturedLandofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
+      ...(enabled ? {} : { agentEnv: false }),
       services: { web: { type: "go:1.22" } },
       tooling: { go: { service: "web", cmd: "go" } },
     });
     const appPlan = await planLandofile(landofile);
 
     const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "go version go1.22.0 linux/amd64\n" }]);
-    const layer = makeToolingLayer({ landofile, plan: appPlan, provider });
+    let discoveries = 0;
+    const layer = makeToolingLayer({
+      landofile,
+      plan: appPlan,
+      provider,
+      onDiscover: () => {
+        discoveries++;
+      },
+    });
     const saved = process.env.CLAUDECODE;
     process.env.CLAUDECODE = "1";
     try {
       const result = await Effect.runPromise(
         runTooling(
-          { name: "go", args: ["version"] },
+          { name: "go", input: { _tag: "RawArgv", argv: ["version"] } },
           {
             plan: appPlan,
             root: AbsolutePath.make(process.cwd()),
             app: { kind: "user", id: appPlan.id, root: appPlan.root },
-            landofile: staleLandofile,
+            landofile: compileTestLandofile(capturedLandofile),
           },
         ).pipe(Effect.provide(layer)),
       );
 
       expect(result.exitCode).toBe(0);
     } finally {
-      process.env.CLAUDECODE = saved;
+      if (saved === undefined) Reflect.deleteProperty(process.env, "CLAUDECODE");
+      else process.env.CLAUDECODE = saved;
     }
 
-    expect(calls[0]?.env).toBeUndefined();
+    expect(calls[0]?.env?.CLAUDECODE).toBe(enabled ? "1" : undefined);
+    expect(discoveries).toBe(0);
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

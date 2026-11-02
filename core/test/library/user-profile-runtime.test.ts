@@ -76,7 +76,7 @@ for (const bootstrap of ["commands", "app"] as const) {
       const { landofile, validation } = await Effect.runPromise(Effect.scoped(program));
 
       // Then: the conflicting process profile was never consumed.
-      expect(landofile.services?.[ServiceName.make("web")]?.environment?.ORIGIN).toBe("embedded");
+      expect(landofile.document.services?.[ServiceName.make("web")]?.environment?.ORIGIN).toBe("embedded");
       expect(validation.valid).toBe(true);
     } finally {
       installEngineComposition(composition);

@@ -1,0 +1,6 @@
+services:
+  worker:
+    type: node:22
+    command: node worker.js
+    environment:
+      QUEUE: default

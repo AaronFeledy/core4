@@ -77,12 +77,12 @@ test.each(["retained", "preparing", "sessions-ready", "apply-intent"] as const)(
     expect(checks).toHaveLength(1);
     expect(checks[0]).toMatchObject({
       name: "accelerated-start",
-      status: "fail",
+      status: "warn",
       recovery: "manual",
       context: {
         appId: "demo",
         appRoot: "/apps/demo",
-        phase,
+        phase: phase === "retained" ? "apply-intent" : phase,
         attemptId: "attempt-1",
         journalPath: bucket.path,
         sessions: "web/app-mount",
@@ -91,10 +91,7 @@ test.each(["retained", "preparing", "sessions-ready", "apply-intent"] as const)(
     });
     expect(checks[0]?.solutions[0]?.description).toContain("lando start");
     expect(checks[0]?.solutions[0]?.description).toContain("lando destroy");
-    if (phase !== "retained")
-      expect(checks[0]?.context).toMatchObject({
-        recoveredFrom: "original-attempt",
-        recoveryState: "interrupted recovery",
-      });
+    expect(checks[0]?.context).not.toHaveProperty("recoveredFrom");
+    expect(checks[0]?.context).not.toHaveProperty("recoveryState");
   },
 );

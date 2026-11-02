@@ -5,6 +5,7 @@ import { createBufferedRendererIO } from "@lando/renderer/io";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { Effect, ErrorReporter, Layer, Schema, Tracer } from "effect";
 import { formatCommandTrace, makeCommandTracer } from "../../src/cli/command-tracer";
+import { withCommandTracing } from "../../src/cli/command-tracing";
 import {
   runCompiledCommand,
   setActiveCommandId,
@@ -20,6 +21,23 @@ afterEach(() => {
 });
 
 const ResultSchema = Schema.Struct({ message: Schema.String });
+
+test("tracing classifies command flags as structural names rather than env names", async () => {
+  const selection = resolveTrace({ argv: ["--trace"], env: {} });
+  const flags = {
+    apiToken: "private-trace-token",
+    API_KEY: "private-api-key",
+    key: "public-storage-key",
+    defaultSecretStore: "env",
+  };
+  await withCommandTracing(
+    selection,
+    async (_capture, tokens) => {
+      expect(tokens).toEqual(["private-trace-token", "private-api-key"]);
+    },
+    flags,
+  );
+});
 
 test("includes a complete trace in success and failure envelopes with secrets redacted", async () => {
   for (const failure of [false, true]) {

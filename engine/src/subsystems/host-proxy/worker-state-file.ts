@@ -18,21 +18,22 @@ import { HostProxyWorkerRecord, LegacyHostProxyWorkerRecord } from "./worker-rec
 export const workerStatePath = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides): string =>
   resolve(hostProxyRunLandoStateDir(app, paths), "worker.json");
 
-const stateError = (message: string, path: string, cause?: unknown): HostProxyTransportUnavailableError =>
+const stateError = (message: string, path: string): HostProxyTransportUnavailableError =>
   new HostProxyTransportUnavailableError({
     message,
     socketPath: path,
     remediation: "Inspect or remove the host-proxy worker state directory, then retry.",
-    ...(cause === undefined ? {} : { cause }),
   });
 
 export type HostProxyWorkerRecordState =
   | { readonly _tag: "absent" }
   | { readonly _tag: "current"; readonly record: HostProxyWorkerRecord }
-  | { readonly _tag: "legacy"; readonly record: LegacyHostProxyWorkerRecord }
+  | {
+      readonly _tag: "legacy";
+      readonly record: LegacyHostProxyWorkerRecord;
+      readonly appRoot: string | null | undefined;
+    }
   | { readonly _tag: "malformed" };
-
-const CURRENT_WORKER_RECORD_KEYS = ["appRoot", "providerId", "containerUrl", "probeServices"] as const;
 
 export const readWorkerRecordStateAt = (path: string): Effect.Effect<HostProxyWorkerRecordState> =>
   Effect.promise(async () => {
@@ -42,25 +43,22 @@ export const readWorkerRecordStateAt = (path: string): Effect.Effect<HostProxyWo
       const value = await file.json();
       const current = Schema.decodeUnknownResult(HostProxyWorkerRecord)(value);
       if (Result.isSuccess(current)) return { _tag: "current", record: current.success };
-      if (
-        typeof value === "object" &&
-        value !== null &&
-        CURRENT_WORKER_RECORD_KEYS.some((key) => Object.hasOwn(value, key))
-      )
-        return { _tag: "malformed" };
       const legacy = Schema.decodeUnknownResult(LegacyHostProxyWorkerRecord)(value);
-      return Result.isSuccess(legacy) ? { _tag: "legacy", record: legacy.success } : { _tag: "malformed" };
+      if (Result.isFailure(legacy)) return { _tag: "malformed" };
+      const appRoot =
+        typeof value === "object" && value !== null && "appRoot" in value
+          ? typeof value.appRoot === "string"
+            ? value.appRoot
+            : null
+          : undefined;
+      return { _tag: "legacy", record: legacy.success, appRoot };
     } catch {
       return { _tag: "malformed" };
     }
   });
 
 export const readWorkerRecord = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides) =>
-  readDetachedWorkerRecord(workerStatePath(app, paths), HostProxyWorkerRecord).pipe(
-    Effect.mapError((cause) =>
-      stateError("Failed to read host-proxy worker state.", workerStatePath(app, paths), cause),
-    ),
-  );
+  readWorkerRecordAt(workerStatePath(app, paths));
 
 export const readWorkerRecordAt = (path: string): Effect.Effect<HostProxyWorkerRecord | undefined, never> =>
   readDetachedWorkerRecord(path, HostProxyWorkerRecord).pipe(Effect.catch(() => Effect.succeed(undefined)));
@@ -80,7 +78,7 @@ export const writeWorkerRecord = (
 ) => {
   const path = workerStatePath(app, paths);
   return writeDetachedWorkerRecord({ path, schema: HostProxyWorkerRecord, privateFileAccess }, record).pipe(
-    Effect.mapError((cause) => stateError("Failed to write host-proxy worker state.", path, cause)),
+    Effect.mapError(() => stateError("Failed to write host-proxy worker state.", path)),
   );
 };
 
@@ -91,6 +89,6 @@ export const withWorkerRecordLock = <A, E>(
   privateFileAccess: PrivateFileAccess,
 ) =>
   withDetachedWorkerLock(
-    { path: workerStatePath(app, paths), label: "host-proxy-worker", privateFileAccess },
+    { path: workerStatePath(app, paths), label: "host-proxy-worker", paths, privateFileAccess },
     body,
   );

@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 
-import type { ConfigError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
 import {
@@ -13,7 +12,7 @@ import {
 
 const readPolicy = Effect.fnUntraced(function* (
   landofileAgentEnv: boolean | undefined,
-): Effect.fn.Return<AgentEnvPolicy, ConfigError, ConfigService> {
+): Effect.fn.Return<AgentEnvPolicy, never, ConfigService> {
   const configService = yield* ConfigService;
   const agentEnv = yield* configService.get("agentEnv");
   return {
@@ -27,7 +26,7 @@ const readPolicy = Effect.fnUntraced(function* (
 export const resolveAgentEnvForwardAllowlist = (
   landofileAgentEnv: boolean | undefined,
   hostEnv: HostEnv,
-): Effect.Effect<ReadonlyArray<string>, ConfigError, ConfigService> =>
+): Effect.Effect<ReadonlyArray<string>, never, ConfigService> =>
   readPolicy(landofileAgentEnv).pipe(Effect.map((policy) => resolveAgentEnvAllowlist(policy, hostEnv)));
 
 export interface AgentEnvAudit {
@@ -38,7 +37,7 @@ export interface AgentEnvAudit {
 export const resolveAgentEnvAudit = (
   landofileAgentEnv: boolean | undefined,
   hostEnv: HostEnv,
-): Effect.Effect<AgentEnvAudit, ConfigError, ConfigService> =>
+): Effect.Effect<AgentEnvAudit, never, ConfigService> =>
   readPolicy(landofileAgentEnv).pipe(
     Effect.map((policy) => ({
       enabled: !isAgentEnvForwardingDisabled(policy, hostEnv),

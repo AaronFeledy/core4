@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import * as RendererOutput from "@lando/renderer/output";
 import * as RendererRuntime from "@lando/renderer/runtime";
@@ -14,13 +10,12 @@ import { Effect, Layer } from "effect";
 const secret = "s3cret-exec-pipe-value";
 const payload = new Uint8Array([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00, 0x80, 0xfe, 0x7f, 0x00]);
 
-const redaction = Layer.succeed(
+const redaction = Layer.effect(
   RedactionService,
-  RedactionService.of({
-    registerValues: registerRedactionValues,
-    payloadValues: () => Effect.succeed(() => [secret]),
-    forProfile: () =>
-      Effect.succeed(createStandaloneRedactor("secrets", { sourceEnv: { DB_PASSWORD: secret } })),
+  Effect.gen(function* () {
+    const service = makeRedactionService();
+    yield* service.registerValues([secret]);
+    return service;
   }),
 );
 
@@ -35,7 +30,7 @@ const emitRaw = async (
   await Effect.runPromise(
     Effect.gen(function* () {
       const sink = yield* StreamFrameSink;
-      yield* sink.emit({ _tag: tag, chunk, raw: true });
+      yield* sink.emit({ _tag: tag, chunk, kind: "bytes" });
     }).pipe(Effect.provide(layer)),
   );
 };
@@ -51,9 +46,8 @@ describe("stream frame redaction", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: secret.slice(0, 7), raw: true });
-        yield* sink.emit({ _tag: "stdout", chunk: secret.slice(7), raw: true });
-        if (sink.flush !== undefined) yield* sink.flush();
+        yield* sink.emit({ _tag: "stdout", chunk: secret.slice(0, 7), kind: "bytes" });
+        yield* sink.emit({ _tag: "stdout", chunk: secret.slice(7), kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
     // Then
@@ -128,8 +122,8 @@ describe("stream frame redaction", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: euro.subarray(0, 5), raw: true });
-        yield* sink.emit({ _tag: "stdout", chunk: euro.subarray(5), raw: true });
+        yield* sink.emit({ _tag: "stdout", chunk: euro.subarray(0, 5), kind: "bytes" });
+        yield* sink.emit({ _tag: "stdout", chunk: euro.subarray(5), kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 
@@ -149,8 +143,8 @@ describe("stream frame redaction", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: input.subarray(0, 4), raw: true });
-        yield* sink.emit({ _tag: "stdout", chunk: input.subarray(4), raw: true });
+        yield* sink.emit({ _tag: "stdout", chunk: input.subarray(0, 4), kind: "bytes" });
+        yield* sink.emit({ _tag: "stdout", chunk: input.subarray(4), kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 
@@ -170,8 +164,7 @@ describe("stream frame redaction", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: input, raw: true });
-        if (sink.flush !== undefined) yield* sink.flush();
+        yield* sink.emit({ _tag: "stdout", chunk: input, kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 
@@ -191,8 +184,7 @@ describe("stream frame redaction", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: input, raw: true });
-        if (sink.flush !== undefined) yield* sink.flush();
+        yield* sink.emit({ _tag: "stdout", chunk: input, kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 
@@ -213,8 +205,7 @@ describe("stream frame redaction", () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const sink = yield* StreamFrameSink;
-        yield* sink.emit({ _tag: "stdout", chunk: input, raw: true });
-        if (sink.flush !== undefined) yield* sink.flush();
+        yield* sink.emit({ _tag: "stdout", chunk: input, kind: "bytes" });
       }).pipe(Effect.provide(layer)),
     );
 

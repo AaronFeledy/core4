@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withResolvedCwd } from "@lando/landofile/app-resolution";
+import { findAppRoot } from "@lando/landofile/discovery";
+import { withAppDiscovery } from "@lando/landofile/operation-discovery";
 import { Deferred, Effect, Fiber, Result } from "effect";
 
 const withDirectories = async <A>(
@@ -22,6 +24,24 @@ const withDirectories = async <A>(
 const cwd = Effect.sync(() => process.cwd());
 
 describe("resolved cwd fiber-local ownership", () => {
+  test("nested cwd resolution retargets discovery and restores the outer operation", async () => {
+    await withDirectories(async ({ outer, inner }) => {
+      await writeFile(join(outer, ".lando.yml"), "name: outer\n");
+      await writeFile(join(inner, ".lando.yml"), "name: inner\n");
+      const result = await Effect.runPromise(
+        withAppDiscovery(
+          outer,
+          Effect.gen(function* () {
+            const before = yield* findAppRoot();
+            const nested = yield* withResolvedCwd(inner, findAppRoot());
+            return { before, nested, after: yield* findAppRoot() };
+          }),
+        ),
+      );
+      expect(result).toEqual({ before: outer, nested: inner, after: outer });
+    });
+  });
+
   test("same-fiber nested resolution reenters and restores each enclosing cwd", async () => {
     // Given
     const original = process.cwd();

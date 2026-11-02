@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ServiceTypeError } from "@lando/sdk/errors";
 import { Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } from "@lando/sdk/schema";
@@ -50,7 +51,12 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
     () => undefined,
     (error: unknown) => {
       rejected = true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message =
+        error instanceof ServiceTypeError
+          ? [error.message, ...(error.issues ?? []).map((issue) => issue.suggestion ?? "")].join(" ")
+          : error instanceof Error
+            ? error.message
+            : String(error);
       expect(message).toMatch(pattern);
     },
   );
@@ -76,13 +82,19 @@ describe("go:1.22 ServiceType", () => {
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
-    expect(String(plan.appMount?.source)).toBe(APP_ROOT);
-    expect(String(plan.appMount?.target)).toBe("/app");
-    expect(plan.appMount?.readOnly).toBe(false);
+    expect(String(serviceAppMount(plan)?.source)).toBe(APP_ROOT);
+    expect(String(serviceAppMount(plan)?.target)).toBe("/app");
+    expect(serviceAppMount(plan)?.readOnly).toBe(false);
 
-    expect(plan.mounts).toEqual([]);
+    expect(
+      plan.mounts.filter(
+        (mount) => mount.type !== "volume" && (mount.type !== "bind" || mount.role !== "app"),
+      ),
+    ).toEqual([]);
 
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 8080, protocol: "http", name: "web", primary: true },
+    ]);
 
     expect(plan.healthcheck).toBeUndefined();
 
@@ -118,6 +130,7 @@ describe("go:1.22 ServiceType", () => {
       featureOverrides,
     });
 
+    expect(plan.environment.PORT).toBe("8080");
     expect(plan.environment.LANDO_APP_NAME).toBe("anotherapp");
     expect(plan.environment.LANDO_PROJECT).toBe("anotherapp");
   });
@@ -143,7 +156,9 @@ describe("go:1.22 ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/golang:1.22-custom" });
-    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9090, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "internal", port: 9090, protocol: "http", name: "web", primary: true },
+    ]);
     expect(plan.healthcheck).toBeUndefined();
     expect(plan.extensions["lando-service-go"]).toMatchObject({ port: 9090 });
   });
@@ -163,7 +178,7 @@ describe("go:1.22 ServiceType", () => {
   test("default command keeps the container alive so `lando go ...` tooling can exec into it", async () => {
     const plan = await composeGoPlan(go122ServiceType, { type: "go:1.22" });
 
-    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.command).toEqual(["tail", "-f", "/dev/null"]);
   });
 
   test("rejects framework values outside the supported set with remediation", async () => {
@@ -217,3 +232,4 @@ describe("go:1.23 ServiceType", () => {
     );
   });
 });
+import { serviceAppMount } from "@lando/sdk/schema";

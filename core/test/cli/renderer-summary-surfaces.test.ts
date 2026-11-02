@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import type { InfoAppResult } from "@lando/engine/operations/info";
 import type { UninstallResult } from "@lando/engine/operations/uninstall";
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { formatSummary } from "@lando/renderer/summary";
+import type { InfoAppResult } from "@lando/sdk/app";
 import { AbsolutePath } from "@lando/sdk/schema";
 import type { ScratchSummary } from "@lando/sdk/services";
 import { caInjectionNote } from "../../src/cli/command-specs/meta/setup-summary.ts";
@@ -17,6 +17,7 @@ import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-sta
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
 import { buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
+import { connections } from "./connection-fixtures";
 
 const nonEmptyLines = (text: string): ReadonlyArray<string> =>
   text.split("\n").filter((line) => line.length > 0);
@@ -30,6 +31,7 @@ const expectFramed = (text: string, width: number): void => {
 };
 
 const decorated = (columns: number): RenderContext => ({
+  noColor: false,
   mode: "lando",
   format: "text",
   columns,
@@ -89,7 +91,10 @@ describe("app:info summary", () => {
         provider: "lando",
         primary: true,
         status: "running",
-        endpoints: ["postgresql://lando@localhost:5432/postgres"],
+        connections: [
+          ...connections(["postgresql://lando@localhost:5432/postgres"]),
+          ...connections(["tcp://你好世界-database-service:5432"], "app"),
+        ],
       },
       {
         app: "my-app",
@@ -99,7 +104,7 @@ describe("app:info summary", () => {
         provider: "lando",
         primary: false,
         status: "stopped",
-        endpoints: [],
+        connections: [],
       },
     ],
   };
@@ -112,6 +117,21 @@ describe("app:info summary", () => {
     expect(plain).toContain("데이터베이스");
     expect(plain).toContain("[OK]");
     expect(plain).toContain("[SKIP]");
+  });
+
+  test("lists the app-network address as its own field after the host endpoints", () => {
+    const fields = buildInfoSummary(result).sections[0]?.rows.map((row) =>
+      row.fields?.map((field) => `${field.label}=${field.value}`),
+    );
+    expect(fields).toEqual([
+      [
+        "type=postgres",
+        "provider=lando",
+        "Host=postgresql://lando@localhost:5432/postgres",
+        "App Network=tcp://你好世界-database-service:5432",
+      ],
+      ["type=valkey", "provider=lando", "Host=not published", "App Network=-"],
+    ]);
   });
 
   test("summarizes log-source availability without repeating provider details", () => {
@@ -204,9 +224,16 @@ describe("scratch list summary", () => {
 });
 
 describe("global status summary", () => {
+  const quality = {
+    policyState: "available",
+    runtimeState: "available",
+    pending: [],
+    diagnostics: [],
+  } as const;
   test("frames materialized global services", () => {
     const out = formatSummary(
       buildGlobalStatusSummary({
+        ...quality,
         app: "global",
         materialized: true,
         services: [
@@ -218,7 +245,9 @@ describe("global status summary", () => {
             provider: "lando",
             primary: true,
             status: "running",
-            endpoints: ["http://localhost:80"],
+            desired: "enabled",
+            pending: [],
+            connections: connections(["http://localhost:80"]),
           },
         ],
       }),
@@ -230,6 +259,7 @@ describe("global status summary", () => {
 
   test("rolls non-running global service states up to a warning header", () => {
     const summary = buildGlobalStatusSummary({
+      ...quality,
       app: "global",
       materialized: true,
       services: [
@@ -241,7 +271,9 @@ describe("global status summary", () => {
           provider: "lando",
           primary: true,
           status: "stopped",
-          endpoints: [],
+          desired: "disabled",
+          pending: [],
+          connections: [],
         },
       ],
     });
@@ -250,11 +282,12 @@ describe("global status summary", () => {
 
   test("frames a not-installed global app", () => {
     const out = formatSummary(
-      buildGlobalStatusSummary({ app: "global", materialized: false, services: [] }),
+      buildGlobalStatusSummary({ ...quality, app: "global", materialized: false, services: [] }),
       { columns: 48 },
     );
     expectFramed(out, 48);
-    expect(stripAnsi(out)).toContain("Global app is not installed.");
+    expect(stripAnsi(out)).toContain("Global configuration is not");
+    expect(stripAnsi(out)).toContain("materialized.");
   });
 });
 
@@ -534,6 +567,7 @@ describe("doctor summary", () => {
 
   test("counts app config lint in doctor footer when it contributes a failure", () => {
     const summary = buildDoctorReportSummary({
+      version: "4.0.0-dev",
       provider: { checks: [] },
       subsystems: { checks: [] },
       globalApp: { checks: [] },
@@ -542,16 +576,18 @@ describe("doctor summary", () => {
         app: "demo",
         file: "/tmp/demo/.lando.yml",
         valid: false,
-        violations: [{ path: "bogusKey", message: "unexpected key" }],
+        violations: [
+          { rule: "landofile.validation", severity: "error", path: ["bogusKey"], message: "unexpected key" },
+        ],
       },
-    } as unknown as DoctorReport);
+    });
     expect(summary.footer).toBe("1 checks · 1 failed");
     expect(summary.tone).toBe("error");
   });
 });
 
 describe("setup summary via spec render", () => {
-  const ctx: RenderContext = { mode: "lando", format: "text", columns: 72, isTTY: true };
+  const ctx: RenderContext = { mode: "lando", format: "text", columns: 72, isTTY: true, noColor: false };
 
   test("decorates setup completion in lando TTY mode", () => {
     const out = setupSpec.render?.(
@@ -613,7 +649,7 @@ describe("setup summary via spec render", () => {
         networkCaInjectionConfigured: false,
       },
       undefined,
-      { mode: "plain", format: "text", columns: 80, isTTY: false },
+      { mode: "plain", format: "text", columns: 80, isTTY: false, noColor: false },
     );
     expect(stripAnsi(out ?? "")).toContain("setup complete: Lando runtime (podman)");
     expect(out ?? "").not.toContain("╭─");

@@ -23,6 +23,10 @@ const validNames = [
   "post-rebuild",
   "pre-destroy",
   "post-destroy",
+  "post-pull",
+  "post-push",
+  "post-switch",
+  "post-code-sync",
 ] as const;
 
 describe("Landofile events", () => {
@@ -109,7 +113,7 @@ describe("Landofile events", () => {
     }
   });
 
-  test("an unknown event name fails closed listing lifecycle and tooling names", async () => {
+  test("lint reports an unknown event name with the lifecycle and tooling names", async () => {
     // Given
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-events-validation-")));
     try {
@@ -125,31 +129,28 @@ describe("Landofile events", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
-      const [exitCode, stdout, stderr] = await Promise.all([
-        proc.exited,
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-      ]);
-      const output = `${stdout}\n${stderr}`;
+      const [exitCode, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
 
       // Then
-      expect(exitCode).not.toBe(0);
-      expect(output).toContain("LandofileUnknownEventError");
-      for (const name of [...validNames, "pre-prepare", "post-prepare"]) expect(output).toContain(name);
-      expect(output.match(/Valid events: ([^.]+)\./)?.[1]?.split(", ")).toEqual([
-        ...validNames,
-        "post-prepare",
-        "pre-prepare",
-      ]);
-      expect(JSON.parse(stdout)).toMatchObject({
-        ok: false,
-        error: {
-          _tag: "LandofileUnknownEventError",
-          event: "pre-serve",
-          validEvents: [...validNames, "post-prepare", "pre-prepare"],
-          file: join(dir, ".lando.yml"),
+      expect(exitCode).toBe(1);
+      const envelope = JSON.parse(stdout);
+      expect(envelope).toMatchObject({
+        ok: true,
+        result: {
+          valid: false,
+          violations: [
+            {
+              rule: "landofile.event",
+              path: ["events", "pre-serve"],
+              message: "Unknown app event pre-serve.",
+              source: { file: join(dir, ".lando.yml"), layer: "canonical", path: ["events", "pre-serve"] },
+            },
+          ],
         },
       });
+      expect(
+        envelope.result.violations[0].suggestion.match(/Use one of: ([^.]+)\./)?.[1]?.split(", "),
+      ).toEqual([...validNames, "post-prepare", "pre-prepare"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

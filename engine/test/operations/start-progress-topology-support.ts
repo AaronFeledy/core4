@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect, Layer, Schema, Stream } from "effect";
 
+import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import type { EventError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type LandoEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import {
@@ -11,6 +12,8 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  AppPlan as AppPlanSchema,
+  LoadScopedLandofile,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -21,10 +24,8 @@ import {
   type ApplyOptions,
   BuildOrchestrator,
   EventService,
-  FileSyncEngine,
+  type FileSyncEngine,
   LandofileService,
-  PathsService,
-  PluginRegistry,
   RouterService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -35,27 +36,20 @@ import {
 } from "@lando/sdk/services";
 import { TestRouterService, TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { emptySnapshotsLayer } from "./data-mover-support.ts";
-
-import { makeLandoPaths } from "@lando/paths";
-import {
-  RedactionService,
-  createStandaloneRedactor,
-  registerRedactionValues,
-} from "@lando/redaction/service";
-import * as GlobalAppServiceLayer from "../../src/global-app/service.ts";
 import { applyTreeId } from "../../src/operations/start-progress.ts";
 import { startApp } from "../../src/operations/start.ts";
-import * as LandoConfigService from "../../src/services/config.ts";
-import * as BunFileSystem from "../../src/services/file-system.ts";
-import * as BunShellRunner from "../../src/services/shell-runner.ts";
+import * as EnvironmentValueResolverLayer from "../../src/services/environment-value-resolver.ts";
+import { makeEnvSecretStore } from "../../src/services/secret-store.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 import * as TestLandofileLayers from "../services/landofile-layer.ts";
+import * as BunShellRunner from "../shell-runner.ts";
+import { emptySnapshotsLayer } from "./data-mover-support.ts";
 
 const providerId = ProviderId.make("lando");
 
 const capabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
+  fileSyncTargets: "prepared-volume",
   multiServiceApply: true,
   hostReachability: "emulated",
   bindMounts: true,
@@ -78,7 +72,6 @@ export const web: ServicePlan = {
   command: ["node", "server.js"],
   environment: {},
   mounts: [],
-  storage: [],
   endpoints: [
     {
       _tag: "published",
@@ -95,10 +88,15 @@ export const web: ServicePlan = {
   extensions: {},
 };
 
+const harnessRoots: string[] = [];
+process.once("exit", () => {
+  for (const root of harnessRoots) rmSync(root, { recursive: true, force: true });
+});
 const testAppRoot = mkdtempSync(join(tmpdir(), "lando-test-start-"));
 process.once("exit", () => rmSync(testAppRoot, { recursive: true, force: true }));
 
 export const plan: AppPlan = {
+  valueModel: 1,
   id: AppId.make("test-start"),
   name: "test-start",
   slug: "test-start",
@@ -106,7 +104,6 @@ export const plan: AppPlan = {
   provider: providerId,
   services: { [web.name]: web },
   routes: [],
-  networks: [],
   stores: [],
   fileSync: [],
   metadata,
@@ -121,11 +118,23 @@ export const startOwnedParentIds = (events: ReadonlyArray<LandoEvent>): Readonly
     .map((event) => event.parentId)
     .filter((parentId) => parentId.startsWith("start-"));
 
+/** Round-trips a plan through JSON the way provider applied state does, dropping Landofile events. */
+export const appliedPlanRecord = ({ events: _events, ...plan }: AppPlan): AppPlan =>
+  Schema.decodeUnknownSync(AppPlanSchema)(JSON.parse(JSON.stringify(Schema.encodeSync(AppPlanSchema)(plan))));
+
 export const makeHarness = (
   options: {
     readonly plannedApp?: AppPlan;
+    readonly globalServiceIds?: ReadonlyArray<string>;
+    readonly appliedPlans?: ReadonlyArray<AppPlan>;
+    readonly providerOverrides?: Partial<RuntimeProviderShape>;
+    readonly selectProvider?: (target?: AppPlan | ProviderId) => Effect.Effect<RuntimeProviderShape>;
+    readonly resolveAppliedPlan?: typeof RuntimeProviderRegistry.Service.resolveAppliedPlan;
+    readonly resolveTeardownEvidence?: typeof RuntimeProviderRegistry.Service.resolveTeardownEvidence;
+    readonly resourceOwnership?: typeof RuntimeProviderRegistry.Service.resourceOwnership;
     readonly stateStore?: ReturnType<typeof makeTestStateStore>;
     readonly applyEffect?: Effect.Effect<{ readonly changed: boolean }, ProviderUnavailableError>;
+    readonly apply?: RuntimeProviderShape["apply"];
     readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly onRemoveRoutes?: () => void;
     readonly afterApplyRoutes?: Effect.Effect<void>;
@@ -133,18 +142,19 @@ export const makeHarness = (
     readonly preparedFileSyncTargets?: (
       plan: AppPlan,
     ) => ReadonlyArray<import("@lando/sdk/schema").PreparedFileSyncTarget>;
-    readonly fileSyncRollbackEffect?: Effect.Effect<void, ProviderUnavailableError>;
-    readonly providerHasFileSyncRollback?: boolean;
     readonly onBuildApp?: (plan: AppPlan) => void;
-    readonly onFileSyncRollback?: () => void;
     readonly onPublish?: (event: LandoEvent) => Effect.Effect<void, EventError>;
     readonly providerCanPrepareFileSync?: boolean;
     readonly providerCanInspectFileSync?: boolean;
     readonly appliedFileSyncState?: "missing" | "ordinary" | "accelerated" | "unknown";
+    readonly persistAppliedFileSync?: boolean;
     readonly appliedFileSyncSessions?: ReadonlyArray<import("@lando/sdk/schema").FileSyncSessionSpec>;
     readonly fileSync?: typeof FileSyncEngine.Service;
     readonly secretStore?: SecretStoreShape;
-    readonly onApply?: (plan: AppPlan, options?: ApplyOptions) => void;
+    readonly onApply?: (
+      plan: AppPlan,
+      options?: ApplyOptions,
+    ) => void | number | Effect.Effect<void, import("@lando/sdk/services").ProviderError>;
     readonly onStop?: (...args: Parameters<RuntimeProviderShape["stop"]>) => void;
     readonly inspect?: RuntimeProviderShape["inspect"];
     readonly exec?: RuntimeProviderShape["exec"];
@@ -157,20 +167,52 @@ export const makeHarness = (
     readonly disposeFileSyncTargets?: RuntimeProviderShape["disposeFileSyncTargets"];
   } = {},
 ) => {
+  const redaction = makeRedactionService();
   const plannedApp = options.plannedApp ?? plan;
   const stateStore = options.stateStore ?? makeTestStateStore();
+  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
+  harnessRoots.push(userDataRoot);
+  const fixtureStore = StateStore.of({
+    ...stateStore.service,
+    withLock: (key, body) =>
+      Effect.sync(() => options.onVolumeLock?.(key)).pipe(
+        Effect.andThen(stateStore.service.withLock(key, body)),
+      ),
+  });
+  const globalAdmission = makeGlobalAdmissionFixture({
+    directory: userDataRoot,
+    template: plannedApp,
+    stateStore: fixtureStore,
+    ids: options.globalServiceIds ?? [TestRouterService.id],
+  });
   const events: LandoEvent[] = [];
   let signalApplyTreeStart = (): void => undefined;
   const applyTreeStarted = new Promise<void>((resolve) => {
     signalApplyTreeStart = resolve;
   });
-  const appliedFileSyncState =
+  let appliedFileSyncState =
     options.providerCanInspectFileSync === false
       ? undefined
       : (options.appliedFileSyncState ??
         (options.providerCanPrepareFileSync === false ? undefined : "missing"));
-  const provider: RuntimeProviderShape = {
+  const apply =
+    options.apply ??
+    ((appliedPlan: AppPlan, applyOptions: ApplyOptions) =>
+      Effect.forEach(
+        Object.values(appliedPlan.services),
+        (service) => applyOptions.resolveServiceEnvironment?.(service) ?? Effect.succeed(service.environment),
+      ).pipe(
+        Effect.andThen(
+          Effect.suspend(() => {
+            const result = options.onApply?.(appliedPlan, applyOptions);
+            return Effect.isEffect(result) ? result : Effect.void;
+          }),
+        ),
+        Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
+      ));
+  const userProvider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
+    ...options.providerOverrides,
     id: "lando",
     capabilities,
     isAvailable: Effect.succeed(true),
@@ -186,7 +228,7 @@ export const makeHarness = (
                     sessions:
                       options.appliedFileSyncSessions ?? plannedApp.fileSync.map(({ session }) => session),
                   }
-                : { status: appliedFileSyncState },
+                : { status: appliedFileSyncState ?? "missing" },
             ),
         }),
     ...(options.providerCanPrepareFileSync === false
@@ -208,17 +250,10 @@ export const makeHarness = (
                         session.target._tag === "volume" ? session.target.name : "unsupported-target",
                     },
                   })),
-                ...(options.providerHasFileSyncRollback === false
-                  ? {}
-                  : {
-                      rollback: Effect.sync(() => {
-                        options.onFileSyncRollback?.();
-                      }).pipe(Effect.andThen(options.fileSyncRollbackEffect ?? Effect.void)),
-                    }),
               };
             }),
         }),
-    quiesceForFileSync: () => Effect.void,
+    quiesceForFileSync: () => Effect.succeed({}),
     ...(options.quiesceRetainedFileSync === undefined
       ? {}
       : { quiesceRetainedFileSync: options.quiesceRetainedFileSync }),
@@ -226,8 +261,13 @@ export const makeHarness = (
       ? {}
       : { disposeFileSyncTargets: options.disposeFileSyncTargets }),
     apply: (appliedPlan, applyOptions) =>
-      Effect.sync(() => options.onApply?.(appliedPlan, applyOptions)).pipe(
-        Effect.andThen(options.applyEffect ?? Effect.succeed({ changed: true })),
+      apply(appliedPlan, applyOptions).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            if (options.persistAppliedFileSync === true)
+              appliedFileSyncState = appliedPlan.fileSync.length > 0 ? "accelerated" : "ordinary";
+          }),
+        ),
       ),
     inspect:
       options.inspect ??
@@ -239,7 +279,10 @@ export const makeHarness = (
           status: "running",
           state: "running",
           lastStartedAt: DateTime.toDate(DateTime.makeUnsafe(-10_000)),
-          endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+          publications: {
+            status: "present",
+            bindings: [{ port: 3000, transport: "tcp", bindAddress: "127.0.0.1", hostPort: 3000 }],
+          },
         })),
     stop: (target) =>
       Effect.sync(() => {
@@ -265,37 +308,71 @@ export const makeHarness = (
             origin: "created",
           },
         })),
-    execStream: () => Stream.empty,
+    execStream: options.providerOverrides?.execStream ?? (() => Stream.empty),
     exec: options.exec ?? TestRuntimeProvider.exec,
     logs: options.logs ?? (() => Stream.empty),
   };
+  const provider = globalAdmission.wrapProvider(userProvider);
   const runtimeProviderRegistry = {
+    appliedPlansFor: (root: AbsolutePath) =>
+      Effect.sync(() => {
+        const persisted = (options.appliedPlans ?? []).filter((plan) => plan.identity?.appRoot === root);
+        if (persisted.length > 0) return persisted;
+        const global = globalAdmission.appliedPlan();
+        return root === globalAdmission.root && global !== undefined ? [global] : [];
+      }),
+    ...(options.resourceOwnership === undefined ? {} : { resourceOwnership: options.resourceOwnership }),
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
-    select: () => Effect.succeed(provider),
-    resolveAppliedPlan: () => Effect.succeed(plannedApp),
+    select: (target?: AppPlan | ProviderId) => {
+      const select = options.selectProvider;
+      return select === undefined
+        ? Effect.succeed(provider)
+        : select(target).pipe(Effect.map(globalAdmission.wrapProvider));
+    },
+    // What a provider really hands back: a decoded record, never the planner's object, with no events.
+    resolveAppliedPlan: (root: AbsolutePath) =>
+      root === globalAdmission.root
+        ? Effect.sync(() => globalAdmission.appliedPlan())
+        : (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root),
+    resolveTeardownEvidence:
+      options.resolveTeardownEvidence ??
+      ((root: AbsolutePath) =>
+        (options.resolveAppliedPlan ?? (() => Effect.succeed(appliedPlanRecord(plannedApp))))(root).pipe(
+          Effect.map((plan) =>
+            plan === undefined ? { kind: "absent" as const } : { kind: "applied" as const, plan },
+          ),
+        )),
   };
-  const userDataRoot = mkdtempSync(join(tmpdir(), "lando-start-harness-"));
   const layer = Layer.mergeAll(
     emptySnapshotsLayer,
     PrivateFileAccessService.layer,
-    Layer.succeed(
-      StateStore,
-      StateStore.of({
-        ...stateStore.service,
-        withLock: (key, body) =>
-          Effect.sync(() => options.onVolumeLock?.(key)).pipe(
-            Effect.andThen(stateStore.service.withLock(key, body)),
-          ),
-      }),
-    ),
+    Layer.succeed(StateStore, fixtureStore),
     TestLandofileLayers.layerTransactionGuard,
     Layer.succeed(
       LandofileService,
-      LandofileService.of({ discover: Effect.succeed({ name: plannedApp.name, services: {} }) }),
+      LandofileService.of({
+        discover: Effect.succeed(
+          LoadScopedLandofile.make({
+            stage: "load-scoped",
+            document: { name: plannedApp.name, services: {} },
+            pendingSites: [],
+            context: { appRoot: plannedApp.root, env: {} },
+          }),
+        ),
+      }),
     ),
-    Layer.succeed(PathsService, makeLandoPaths({ userDataRoot })),
-    Layer.succeed(AppPlanner, AppPlanner.of({ plan: () => Effect.succeed(plannedApp) })),
+    Layer.succeed(
+      AppPlanner,
+      AppPlanner.of({
+        plan: (landofile) =>
+          Effect.succeed(
+            landofile.document.name === "global"
+              ? globalAdmission.globalPlan
+              : { ...plannedApp, valueModel: 1 as const },
+          ),
+      }),
+    ),
     Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistry),
     Layer.succeed(
       EventService,
@@ -315,6 +392,7 @@ export const makeHarness = (
         subscribe: () => Stream.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
+        subscribeWithHistory: () => Effect.never,
         waitForAny: () => Effect.die("not used"),
         query: () => Effect.succeed([]),
       }),
@@ -322,26 +400,8 @@ export const makeHarness = (
     Layer.succeed(
       RedactionService,
       RedactionService.of({
-        registerValues: registerRedactionValues,
-        payloadValues: () => Effect.succeed(() => []),
-        forProfile: (profile, redactionOptions) =>
-          Effect.succeed(createStandaloneRedactor(profile, redactionOptions)),
+        ...redaction,
       }),
-    ),
-    Layer.succeed(
-      PluginRegistry,
-      PluginRegistry.of({
-        list: Effect.succeed([]),
-        load: () => Effect.die("not used"),
-        loadServiceType: () => Effect.die("not used"),
-        loadServiceFeature: () => Effect.die("not used"),
-        loadAppFeature: () => Effect.die("not used"),
-      }),
-    ),
-    LandoConfigService.layer,
-    BunFileSystem.layer,
-    GlobalAppServiceLayer.layer.pipe(
-      Layer.provide(Layer.mergeAll(LandoConfigService.layer, BunFileSystem.layer)),
     ),
     Layer.succeed(
       RouterService,
@@ -370,10 +430,27 @@ export const makeHarness = (
           }),
       }),
     ),
+    EnvironmentValueResolverLayer.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(SecretStore, options.secretStore ?? makeEnvSecretStore()),
+          Layer.succeed(RedactionService, redaction),
+        ),
+      ),
+    ),
     ...(options.secretStore === undefined ? [] : [Layer.succeed(SecretStore, options.secretStore)]),
-    ...(options.fileSync === undefined ? [] : [Layer.succeed(FileSyncEngine, options.fileSync)]),
+    ...(options.fileSync === undefined ? [] : [fileSyncEngineLayer(options.fileSync)]),
+    globalAdmission.layer,
   );
-  return { layer, events, applyTreeStarted, stateStore, runtimeProviderRegistry, userDataRoot };
+  return {
+    layer,
+    events,
+    applyTreeStarted,
+    stateStore,
+    runtimeProviderRegistry,
+    userDataRoot,
+    globalAdmission,
+  };
 };
 
 export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: AppPlan = plan) =>
@@ -387,3 +464,5 @@ export const runStart = (harness: ReturnType<typeof makeHarness>, plannedApp: Ap
       },
     ).pipe(Effect.provide(harness.layer)),
   );
+import { fileSyncEngineLayer } from "../file-sync-engine.ts";
+import { makeGlobalAdmissionFixture } from "./global-admission-support.ts";

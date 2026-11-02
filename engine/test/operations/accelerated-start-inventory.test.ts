@@ -15,6 +15,8 @@ test.each(["ENOTDIR", "EIO", "EPERM"])(
       message: "Directory lookup failed",
       path: "/state/accelerated-starts",
       cause: { code },
+      remediation:
+        "Ensure `/state/accelerated-starts` exists and is readable/writable by this user, then re-run the command.",
     });
     // When the inventory tries to discover journals.
     const result = await Effect.runPromiseExit(
