@@ -7,7 +7,9 @@ export const assertRedactedError = async (error: ProviderError, original: Provid
   expect(error._tag).toBe(original._tag);
   expect(error).toBeInstanceOf(original.constructor);
   expect(error.message).toBe(original.message.replaceAll(canary, "[redacted]"));
-  for (const exposed of [String(error), JSON.stringify(error), error.stack ?? ""]) {
+  // The stack header does not reliably carry the message, so only assert the canary is absent there.
+  expect(error.stack ?? "").not.toContain(canary);
+  for (const exposed of [String(error), JSON.stringify(error)]) {
     expect(exposed).not.toContain(canary);
     expect(exposed).toContain("[redacted]");
   }
