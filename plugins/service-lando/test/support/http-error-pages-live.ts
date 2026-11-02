@@ -104,7 +104,7 @@ const serviceSpecs = (server: ErrorPageServer, hostPort: number): ReadonlyArray<
           config: {
             type: "nginx",
             backend: "appserver",
-            noScripts: ["sites/*/files"],
+            noScripts: ["sites/*/files", "uploads*"],
             ports,
           },
         },

@@ -55,6 +55,8 @@ export const nginxNoScriptFixtureFiles: Readonly<Record<string, string>> = {
   ...phpFixtureFiles,
   "install.php": `<?php\necho ${JSON.stringify(INSTALL_OK)};\n`,
   "sites/default/files/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
+  "uploads/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
+  "uploads-old/x.php": `<?php\necho ${JSON.stringify(UPLOAD_EXECUTED)};\n`,
 };
 
 /** Response headers the app set itself and the server must pass through. */
@@ -170,6 +172,8 @@ export const nginxNoScriptCases: ReadonlyArray<ErrorPageCase> = [
     { exact: PHP_INDEX },
   ),
   request("denies PHP under sites/*/files", "/sites/default/files/x.php", 403, { page: 403 }),
+  request("denies PHP when uploads* matches zero extra characters", "/uploads/x.php", 403, { page: 403 }),
+  request("denies PHP when uploads* matches a suffix", "/uploads-old/x.php", 403, { page: 403 }),
   request("denies PATH_INFO under sites/*/files", "/sites/default/files/x.php/extra", 403, { page: 403 }),
   request("denies a %2e segment under sites/*/files", "/sites/default/files/%2e/x.php", 403, {
     page: 403,

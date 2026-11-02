@@ -8,9 +8,10 @@ import type {
   AppFeatureServiceView,
 } from "@lando/sdk/services";
 
+import { ServiceConfigIssue } from "../src/services/_feature-helpers.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { LANDO_ERROR_PAGES_BUILD_STEP_ID } from "../src/services/http-errors.ts";
-import { nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
+import { nginxNoScriptDenyLocations, nginxNoScriptRegex } from "../src/services/nginx-no-scripts.ts";
 import {
   NGINX_FEATURE_ID,
   nginxPhpFpmWireFeature,
@@ -512,10 +513,27 @@ describe("nginx PHP FPM app-feature wire", () => {
 });
 
 describe("nginx noScripts glob translation", () => {
-  test("escapes dots and turns each * into one path segment", () => {
-    expect(nginxNoScriptRegex("sites/*/files")).toBe("sites/[^/]+/files");
+  test("defensive interpolation validation identifies the invalid list entry", () => {
+    try {
+      nginxNoScriptDenyLocations(["uploads", "files; injected"]);
+      throw new Error("Expected unsafe interpolation rejection");
+    } catch (error) {
+      if (!(error instanceof ServiceConfigIssue)) throw error;
+      expect(error.path).toEqual(["noScripts", 1]);
+      expect(error.suggestion).toBeDefined();
+    }
+  });
+  test("escapes dots and limits each * to characters within one path segment", () => {
+    expect(nginxNoScriptRegex("sites/*/files")).toBe("sites/[^/]*/files");
     expect(nginxNoScriptRegex("uploads")).toBe("uploads");
     expect(nginxNoScriptRegex("sites/default.files")).toBe("sites/default\\.files");
+  });
+
+  test.each(["uploads", "uploads-old"])("uploads* protects %s itself", (directory) => {
+    const deny = new RegExp(`^/${nginxNoScriptRegex("uploads*")}/.*\\.php(/|$)`, "i");
+    expect(deny.test(`/${directory}/payload.PHP/extra`)).toBe(true);
+    expect(deny.test("/uploads/other/payload.php")).toBe(true);
+    expect(deny.test("/other/uploads/payload.php")).toBe(false);
   });
 
   test.each([
