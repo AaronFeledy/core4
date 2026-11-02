@@ -646,8 +646,8 @@ All Bun actions are destination-bounded, redacted, and shape-validated by the re
 | Recipe | Stack |
 |---|---|
 | `wordpress` | WordPress, PHP, MariaDB, optional Redis |
-| `drupal` | Drupal, PHP, MariaDB or PostgreSQL, Drush |
-| `drupal-cms` | Drupal CMS starter on `drupal` |
+| `drupal` | Drupal, PHP, MariaDB or PostgreSQL, Drush; nginx edge defaults to `noScripts: [sites/*/files]` |
+| `drupal-cms` | Drupal CMS starter on `drupal`; shares the nginx edge upload protection |
 | `laravel` | Laravel, PHP, SQL, Redis, optional worker |
 | `symfony` | Symfony, PHP, PostgreSQL or MariaDB, Redis |
 | `backdrop` | Backdrop on `lamp` |
