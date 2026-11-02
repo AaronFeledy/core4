@@ -1,5 +1,5 @@
 import { LOG_LINE_TRUNCATED_MARKER } from "../log-follow/marker.ts";
-import type { LiteralMatcher } from "./literal-matcher.ts";
+import { type LiteralMatcher, isRedactionTokenBoundaryUnit } from "./literal-matcher.ts";
 
 const CHUNK_CODE_UNITS = 1_024;
 const SEGMENT_CODE_UNITS = 64 * 1_024;
@@ -77,7 +77,15 @@ const appendReplacement = (
 export const replaceLiteralMatchesBounded = (
   text: string,
   matcher: LiteralMatcher,
-  { replacement, maxBytes }: { readonly replacement: string; readonly maxBytes: number },
+  {
+    replacement,
+    maxBytes,
+    onReplacement,
+  }: {
+    readonly replacement: string;
+    readonly maxBytes: number;
+    readonly onReplacement?: (start: number, end: number) => void;
+  },
 ): string | undefined => {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) return undefined;
   let builder: BoundedStringBuilder | undefined;
@@ -90,7 +98,15 @@ export const replaceLiteralMatchesBounded = (
     while (marker !== -1 && marker < index) {
       marker = text.indexOf(LOG_LINE_TRUNCATED_MARKER, marker + LOG_LINE_TRUNCATED_MARKER.length);
     }
-    let end = matcher.matchAt(text, index, marker).end;
+    let end = matcher.matchAt(text, index, {
+      marker,
+      leftBoundary:
+        isRedactionTokenBoundaryUnit(index === 0 ? undefined : text.charCodeAt(index - 1)) &&
+        !text.endsWith(replacement, index),
+      rightBoundary: (end) =>
+        isRedactionTokenBoundaryUnit(end === text.length ? undefined : text.charCodeAt(end)) &&
+        !text.startsWith(replacement, end),
+    }).end;
     if (end === index) continue;
     while (sentinel !== -1 && sentinel + replacement.length <= index) {
       sentinel = text.indexOf(replacement, sentinel + replacement.length);
@@ -110,6 +126,7 @@ export const replaceLiteralMatchesBounded = (
     }
     builder ??= new BoundedStringBuilder(maxBytes);
     if (unionStart !== -1) {
+      onReplacement?.(unionStart, unionEnd);
       if (!builder.append(text.slice(copiedUntil, unionStart)) || !builder.append(replacement)) {
         return undefined;
       }
@@ -121,6 +138,7 @@ export const replaceLiteralMatchesBounded = (
   if (builder === undefined) {
     return maxBytes === Number.MAX_SAFE_INTEGER ? text : retainWithinBytes(text, maxBytes);
   }
+  onReplacement?.(unionStart, unionEnd);
   return builder.append(text.slice(copiedUntil, unionStart)) &&
     builder.append(replacement) &&
     builder.append(text.slice(unionEnd))

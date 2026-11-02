@@ -227,7 +227,7 @@ describe("BunShellRunner.layer", () => {
     // When
     const result = await Effect.runPromise(
       withShellRedactionTokens(
-        [secret],
+        { substring: [secret] },
         Effect.flatMap(ShellRunner, (shellRunner) =>
           shellRunner.exec(`test -z "$EVENT_TASK_TOKEN" && printf '${secret}' && printf '${secret}' 1>&2`),
         ),

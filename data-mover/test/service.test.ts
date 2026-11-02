@@ -3537,12 +3537,18 @@ test.each([
   ["target", "CUSTOM_URL"],
   ["source", "MONGO_URI"],
   ["target", "MONGO_URI"],
-] as const)("direct non-SQL transfer masks supplied %s command env value for %s", async (side, key) => {
+] as const)("direct transfer masks explicit %s command secrets for %s", async (side, key) => {
   await withTempDir(async (dir) => {
     const url = key === "CUSTOM_URL" || key === "MONGO_URI";
     const secret = url ? "p:/?#'!\n☃" : "SYNTHETIC_GENERIC_COMMAND_CREDENTIAL";
     const encoded = encodeUriComponent(secret);
     const envValue = url ? `arbitrary://user:${encoded}@host/database` : secret;
+    // Explicit tiered credential secrets only — never every env value.
+    // URL userinfo is derived from substring secrets via collectUrlCredentialValues.
+    const secrets = {
+      substring: url ? [secret, encoded] : [secret],
+      wholeToken: [] as string[],
+    };
     const payload = new Uint8Array([0, 255, 195, 169, 13, 10]);
     const received: number[] = [];
     let destinationCalls = 0;
@@ -3575,8 +3581,22 @@ test.each([
         );
         return yield* mover
           .transfer({
-            from: { _tag: "serviceCmd", app, service, command: ["dump"], env: { [key]: envValue } },
-            to: { _tag: "serviceCmd", app, service, command: ["load"], env: { [key]: envValue } },
+            from: {
+              _tag: "serviceCmd",
+              app,
+              service,
+              command: ["dump"],
+              env: { [key]: envValue },
+              secrets,
+            },
+            to: {
+              _tag: "serviceCmd",
+              app,
+              service,
+              command: ["load"],
+              env: { [key]: envValue },
+              secrets,
+            },
             overwrite: true,
           })
           .pipe(Effect.result);
@@ -3590,5 +3610,104 @@ test.each([
     expect(result.failure.exitCode).toBe(7);
     expect(destinationCalls).toBe(side === "source" ? 0 : 1);
     expect(received).toEqual(side === "source" ? [] : [...payload]);
+  });
+});
+
+test("serviceCmd whole-token secrets mask whole tokens only on failure tails", async () => {
+  await withTempDir(async (dir) => {
+    const secret = "wordpress";
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stateStore = yield* StateStore;
+        const provider = RuntimeProvider.of({
+          ...TestRuntimeProvider,
+          execStream: () =>
+            Stream.make(
+              {
+                kind: "stderr" as const,
+                chunk: bytes(`denied ${secret} path=wp-content/plugins/wordpress-seo\n`),
+              },
+              { exitCode: 3 },
+            ),
+        });
+        const mover = makeDataMoverService(
+          Effect.succeed(provider),
+          { redactText: (text) => text, publish: () => Effect.void },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+        );
+        return yield* mover
+          .transfer({
+            from: {
+              _tag: "serviceCmd",
+              app,
+              service,
+              command: ["dump"],
+              env: { MYSQL_PWD: secret },
+              secrets: { substring: [], wholeToken: [secret] },
+            },
+            to: { _tag: "hostPath", path: AbsolutePath.make(join(dir, "out.bin")) },
+            overwrite: true,
+          })
+          .pipe(Effect.result);
+      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected command failure");
+    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
+    expect(result.failure.stderrTail).toBe("denied [redacted] path=wp-content/plugins/wordpress-seo\n");
+  });
+});
+
+test.each([
+  ["source", "APP_TOKEN", undefined, "[redacted]"],
+  ["target", "APP_TOKEN", undefined, "[redacted]"],
+  ["source", "APP_TOKEN", { substring: [], wholeToken: [] }, "private-canary"],
+  ["target", "APP_TOKEN", { substring: [], wholeToken: [] }, "private-canary"],
+  ["source", "PGPASSWORD", undefined, "private-canary"],
+  ["target", "PGPASSWORD", undefined, "private-canary"],
+  ["source", "DB_USER", undefined, "private-canary"],
+  ["target", "DB_USER", undefined, "private-canary"],
+])("serviceCmd %s failure tails classify unclassified %s env: %j", async (side, key, secrets, expected) => {
+  await withTempDir(async (dir) => {
+    const secret = "private-canary";
+    await writeFile(join(dir, "in.bin"), "payload");
+    const endpoint = {
+      _tag: "serviceCmd" as const,
+      app,
+      service,
+      command: ["transfer"],
+      env: { [key]: secret },
+      ...(secrets === undefined ? {} : { secrets }),
+    };
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const stateStore = yield* StateStore;
+        const provider = RuntimeProvider.of({
+          ...TestRuntimeProvider,
+          execStream: () =>
+            Stream.make({ kind: "stderr" as const, chunk: bytes(`denied ${secret}\n`) }, { exitCode: 3 }),
+        });
+        const mover = makeDataMoverService(
+          Effect.succeed(provider),
+          { redactText: (text) => text, publish: () => Effect.void },
+          { paths: { ...makeLandoPaths(), scratchDir: join(dir, "scratch") }, stateStore },
+        );
+        return yield* mover
+          .transfer({
+            from:
+              side === "source"
+                ? endpoint
+                : { _tag: "hostPath", path: AbsolutePath.make(join(dir, "in.bin")) },
+            to:
+              side === "source"
+                ? { _tag: "hostPath", path: AbsolutePath.make(join(dir, "out.bin")) }
+                : endpoint,
+            overwrite: true,
+          })
+          .pipe(Effect.result);
+      }).pipe(Effect.scoped, Effect.provide(stateStoreLayer)),
+    );
+    if (result._tag !== "Failure") throw new Error("Expected command failure");
+    if (!(result.failure instanceof DataTransferError)) throw new Error("Expected transfer command failure");
+    expect(result.failure.stderrTail).toBe(`denied ${expected}\n`);
   });
 });

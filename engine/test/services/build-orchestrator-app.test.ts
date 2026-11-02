@@ -112,7 +112,11 @@ const makeLayer = (provider: RuntimeProviderShape) => {
     RedactionService,
     RedactionService.of({
       ...makeRedactionService(),
-      payloadValues: (options) => Effect.succeed(() => ["topsecret", ...(options?.redactionTokens ?? [])]),
+      payloadValues: (options) =>
+        Effect.succeed(() => ({
+          substring: ["topsecret", ...(options?.redactionTokens ?? [])],
+          wholeToken: [],
+        })),
       forProfile: (profile, options) =>
         Effect.succeed(
           createRedactor(profile, {
