@@ -556,24 +556,13 @@ export type PhpComposerConfig = typeof PhpComposerConfig.Type;
 export const NGINX_NO_SCRIPT_PATH_PATTERN =
   /^(?!\/)(?!\*$)(?!.*\/\/)(?!.*\.\.)(?!.*\*\*)(?!.*\/$)(?!(?:^|.*\/)\.(?:\/|$))[A-Za-z0-9._/*-]+$/u;
 
-const NGINX_NO_SCRIPT_PATH_CHARS = /^[A-Za-z0-9._/*-]+$/u;
-
-export const isNginxNoScriptPath = (value: string): boolean => {
-  if (value === "*" || !NGINX_NO_SCRIPT_PATH_CHARS.test(value)) {
-    return false;
-  }
-  if (value.includes("**") || value.includes("..")) {
-    return false;
-  }
-  return value.split("/").every((segment) => segment !== "" && segment !== ".");
-};
+export const isNginxNoScriptPath = (value: string): boolean => NGINX_NO_SCRIPT_PATH_PATTERN.test(value);
 
 export const NginxNoScriptPath = Schema.String.pipe(
   Schema.check(
-    Schema.makeFilter(isNginxNoScriptPath, {
+    Schema.isPattern(NGINX_NO_SCRIPT_PATH_PATTERN, {
       message:
         "noScripts entries must be non-empty webroot-relative URI paths using letters, digits, '.', '_', '/', '-' and single-segment '*'. They cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include spaces or nginx metacharacters.",
-      toJsonSchema: () => ({ pattern: NGINX_NO_SCRIPT_PATH_PATTERN.source }),
     }),
   ),
 ).annotate({
