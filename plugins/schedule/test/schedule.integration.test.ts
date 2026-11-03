@@ -49,43 +49,70 @@ const waitForFile = async (path: string, timeoutMs: number): Promise<boolean> =>
   return false;
 };
 
+const landofileWithSchedule = [
+  "name: schedule-live",
+  "services:",
+  "  web:",
+  "    type: compose",
+  "    image: alpine:3.22",
+  '    command: ["sleep", "infinity"]',
+  '    user: "1001"',
+  "    environment:",
+  "      TZ: UTC",
+  "    appMount: /app",
+  "    dependsOn:",
+  "      - db",
+  "    schedule:",
+  "      - name: tick",
+  '        every: "@every 1s"',
+  '        run: "touch /app/scheduled.txt && echo scheduled-job-ran && getent hosts db > /app/db-hosts.txt"',
+  "      - name: other",
+  '        every: "@every 1s"',
+  '        user: "1002"',
+  '        run: "touch /app/other.txt && id -u > /app/other-uid.txt"',
+  "      - name: now",
+  '        every: "@yearly"',
+  '        run: "touch /app/manual.txt && echo ran-in-parent"',
+  "  db:",
+  "    type: compose",
+  "    image: alpine:3.22",
+  '    command: ["sleep", "infinity"]',
+  "    appMount: false",
+  "",
+].join("\n");
+
+const landofileWithoutSchedule = [
+  "name: schedule-live",
+  "services:",
+  "  web:",
+  "    type: compose",
+  "    image: alpine:3.22",
+  '    command: ["sleep", "infinity"]',
+  '    user: "1001"',
+  "    environment:",
+  "      TZ: UTC",
+  "    appMount: /app",
+  "    dependsOn:",
+  "      - db",
+  "  db:",
+  "    type: compose",
+  "    image: alpine:3.22",
+  '    command: ["sleep", "infinity"]',
+  "    appMount: false",
+  "",
+].join("\n");
+
 describe(`scheduled jobs live Docker${socket === undefined ? " (SKIP: explicit LANDO_TEST_DOCKER_SOCKET required)" : ""}`, () => {
   test.skipIf(socket === undefined)(
-    "runs a job on the app mount as uid 1001, reaches db by service key, and shows sidecar logs",
+    "runs jobs as parent and other users, schedule:run in parent, and removes the sidecar on rebuild",
     async () => {
       if (socket === undefined) throw new Error("LANDO_TEST_DOCKER_SOCKET required");
       const appRoot = await mkdtemp(join(tmpdir(), "lando-schedule-live-"));
       try {
-        await writeFile(
-          join(appRoot, ".lando.yml"),
-          [
-            "name: schedule-live",
-            "services:",
-            "  web:",
-            "    type: compose",
-            "    image: alpine:3.22",
-            '    command: ["sleep", "infinity"]',
-            '    user: "1001"',
-            "    environment:",
-            "      TZ: UTC",
-            "    appMount: /app",
-            "    dependsOn:",
-            "      - db",
-            "    schedule:",
-            "      - name: tick",
-            '        every: "@every 1s"',
-            '        run: "touch /app/scheduled.txt && echo scheduled-job-ran && getent hosts db > /app/db-hosts.txt"',
-            "  db:",
-            "    type: compose",
-            "    image: alpine:3.22",
-            '    command: ["sleep", "infinity"]',
-            "    appMount: false",
-            "",
-          ].join("\n"),
-        );
+        await writeFile(join(appRoot, ".lando.yml"), landofileWithSchedule);
         await chmod(appRoot, 0o777);
 
-        const start = await runLando(["start", "--yes"], appRoot, 600_000);
+        const start = await runLando(["start"], appRoot, 600_000);
         expect(start.exitCode, `${start.stdout}\n${start.stderr}`).toBe(0);
 
         const scheduled = join(appRoot, "scheduled.txt");
@@ -105,17 +132,39 @@ describe(`scheduled jobs live Docker${socket === undefined ? " (SKIP: explicit L
         );
         expect(writable.exitCode, `${writable.stdout}\n${writable.stderr}`).toBe(0);
 
+        const otherUid = join(appRoot, "other-uid.txt");
+        expect(await waitForFile(otherUid, 60_000), "job user 1002 did not write /app/other-uid.txt").toBe(
+          true,
+        );
+        expect((await Bun.file(otherUid).text()).trim()).toBe("1002");
+        const otherOwner = await runLando(
+          ["exec", "--user", "1001", "web", "--", "stat", "-c", "%u", "/app/other.txt"],
+          appRoot,
+        );
+        expect(otherOwner.exitCode, `${otherOwner.stdout}\n${otherOwner.stderr}`).toBe(0);
+        expect(otherOwner.stdout.trim()).toBe("1002");
+
         const dbHosts = await Bun.file(join(appRoot, "db-hosts.txt")).text();
         expect(dbHosts).toMatch(/\bdb\b/u);
 
         const logs = await runLando(["logs", "--service=web-schedule", "--format=json"], appRoot);
         expect(logs.exitCode, `${logs.stdout}\n${logs.stderr}`).toBe(0);
         expect(logs.stdout).toContain("scheduled-job-ran");
+
+        const manual = await runLando(["schedule:run", "now", "--format=json"], appRoot);
+        expect(manual.exitCode, `${manual.stdout}\n${manual.stderr}`).toBe(0);
+        expect(await waitForFile(join(appRoot, "manual.txt"), 10_000)).toBe(true);
+
+        await writeFile(join(appRoot, ".lando.yml"), landofileWithoutSchedule);
+        const rebuild = await runLando(["rebuild", "-y"], appRoot, 600_000);
+        expect(rebuild.exitCode, `${rebuild.stdout}\n${rebuild.stderr}`).toBe(0);
+        const leftover = await runLando(["exec", "web-schedule", "--", "true"], appRoot);
+        expect(leftover.exitCode, `${leftover.stdout}\n${leftover.stderr}`).not.toBe(0);
       } finally {
         await runLando(["destroy", "-y"], appRoot, 180_000);
         await rm(appRoot, { recursive: true, force: true });
       }
     },
-    700_000,
+    900_000,
   );
 });

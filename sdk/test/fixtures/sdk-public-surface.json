@@ -1880,6 +1880,7 @@
       "hostEventsConfigIssues",
       "hostEventsSemanticIssues",
       "hostPlatformFamily",
+      "imageLacksInstallShell",
       "isAbsoluteContainerPath",
       "isContainerUser",
       "isCoreServiceEnvKey",

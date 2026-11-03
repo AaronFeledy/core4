@@ -49,6 +49,7 @@ describe("schedule compile feature", () => {
     expect(clones[0]?.name).toBe("web-schedule");
     expect(clones[0]?.command).toEqual([SUPERCRONIC_BIN, "-overlapping", expect.any(String)]);
     expect(clones[0]?.omitConfigKeys).toEqual(["schedule"]);
+    expect(clones[0]?.user).toBe("root");
     expect(clones[0]?.extraBuildSteps?.[0]?.id).toBe(SUPERCRONIC_STEP_ID);
     expect(clones[0]?.extraBuildSteps?.[0]?.user).toBe("root");
     expect(JSON.stringify(clones[0]?.extraBuildSteps?.[0]?.buildKeyInputs)).toContain("0.2.51");

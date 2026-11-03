@@ -8,7 +8,7 @@ tags: [beta, docs, services, schedule]
 
 # Run scheduled jobs
 
-Add a `schedule:` list on a service. Lando compiles those jobs into one `<service>-schedule` sidecar that clones the parent image, mounts, environment, user, and networks, then runs them on a timer.
+Add a `schedule:` list on a service. Lando compiles those jobs into one `<service>-schedule` sidecar that clones the parent image, mounts, environment, and networks, then runs them on a timer. Jobs run as the job `user:` when set, otherwise as the parent service user, including numeric uids on a non-root parent.
 
 ```yaml
 name: schedule-demo
@@ -64,6 +64,6 @@ Jobs can overlap. The scheduler does not serialize them. If a run must not start
 
 ## Budget memory for the sidecar
 
-Each service with a `schedule:` list gets one extra container, `<service>-schedule`. Budget RAM for that sidecar the same way you would for another clone of the parent image. Removing `schedule:` removes the sidecar on the next rebuild.
+Each service with a `schedule:` list gets one extra container, `<service>-schedule`. Budget RAM for that sidecar the same way you would for another clone of the parent image. Removing `schedule:` removes the sidecar on the next start or rebuild.
 
 Rebuild recompiles the sidecar from the current Landofile. The sidecar follows the parent lifecycle: start, stop, and destroy keep them together.

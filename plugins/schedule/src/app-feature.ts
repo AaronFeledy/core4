@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import { AppFeatureCloneError } from "@lando/sdk/errors";
+import { imageLacksInstallShell } from "@lando/sdk/schema";
 import type { AppFeatureDefinition } from "@lando/sdk/services";
 
 import { crontabLine, supercronicInstallCommand } from "./crontab.ts";
@@ -8,14 +9,6 @@ import { scheduleSidecarName } from "./jobs.ts";
 import { SUPERCRONIC_PINS, SUPERCRONIC_STEP_ID, supercronicCommand } from "./supercronic.ts";
 
 export const SCHEDULE_FEATURE_ID = "schedule.compile" as const;
-
-const imageLacksInstallShell = (image: string | undefined): boolean => {
-  if (image === undefined || image.length === 0) return false;
-  const withoutDigest = image.toLowerCase().split("@")[0] ?? image.toLowerCase();
-  if (withoutDigest === "scratch" || withoutDigest.startsWith("scratch:")) return true;
-  if (withoutDigest.endsWith("/scratch") || withoutDigest.includes("/scratch:")) return true;
-  return withoutDigest.includes("distroless");
-};
 
 export const scheduleCompileFeature: AppFeatureDefinition = {
   id: SCHEDULE_FEATURE_ID,
@@ -44,6 +37,7 @@ export const scheduleCompileFeature: AppFeatureDefinition = {
       ctx.addClonedService({
         from: service.serviceName,
         name: sidecar,
+        user: "root",
         command: [...supercronicCommand()],
         extraBuildSteps: [
           {
