@@ -183,7 +183,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     globalConfig.defaultFileSyncEngine !== "passthrough"
   )
     yield* selectFileSyncEngine;
-  const cacheRoot = resolveUserCacheRoot();
+  const cacheRoot = pathsService?.roots.userCacheRoot ?? resolveUserCacheRoot();
   const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot, landofile).pipe(
     Effect.catch(() => Effect.succeed(undefined)),
   );

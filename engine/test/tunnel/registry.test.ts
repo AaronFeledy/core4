@@ -7,12 +7,19 @@ import { Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { AppId, ServiceName, type TunnelSession } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
 import * as StateStoreLayer from "@lando/state-store/service";
 
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { reconcileTunnelRegistry, recordTunnelSession } from "../../src/tunnel/registry.ts";
 
-const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
+const stateStoreLayer = Layer.merge(
+  StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer)),
+  Layer.effect(
+    PathsService,
+    Effect.sync(() => makeLandoPaths()),
+  ),
+);
 
 const withTempRoots = async <T>(
   run: (roots: { readonly dataRoot: string; readonly cacheRoot: string }) => Promise<T>,

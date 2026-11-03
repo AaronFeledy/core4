@@ -9,7 +9,8 @@ import { ScratchAppService } from "@lando/core/services";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { withCwd, withEnvVar } from "../_support/temp-cwd.ts";
-const scratchAppLayer = makeLandoRuntime({ bootstrap: "scratch" });
+/** Build after env roots are injected so PathsService honors the test data root. */
+const scratchAppLayer = () => makeLandoRuntime({ bootstrap: "scratch" });
 
 const withTempRoots = async <T>(
   run: (roots: { readonly dataRoot: string; readonly cacheRoot: string }) => Promise<T>,
@@ -47,7 +48,7 @@ describe("ScratchAppServiceLayer.layer", () => {
   test("resolves the scratch base under the user data root", async () => {
     await withTempRoots(async ({ dataRoot }) => {
       const resolved = await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) => service.root).pipe(Effect.provide(scratchAppLayer)),
+        Effect.flatMap(ScratchAppService, (service) => service.root).pipe(Effect.provide(scratchAppLayer())),
       );
       expect(resolved).toBe(AbsolutePath.make(join(dataRoot, "scratch")));
     });
@@ -56,8 +57,8 @@ describe("ScratchAppServiceLayer.layer", () => {
   test("ensureRoot materializes the scratch base idempotently", async () => {
     await withTempRoots(async ({ dataRoot }) => {
       const program = Effect.scoped(Effect.flatMap(ScratchAppService, (service) => service.ensureRoot));
-      const first = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
-      const second = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
+      const first = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer())));
+      const second = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer())));
       expect(first).toBe(AbsolutePath.make(join(dataRoot, "scratch")));
       expect(second).toBe(first);
       expect(await directoryExists(join(dataRoot, "scratch"))).toBe(true);
@@ -69,7 +70,7 @@ describe("ScratchAppServiceLayer.layer", () => {
       const program = Effect.flatMap(ScratchAppService, (service) =>
         Effect.all([service.synthesizeId("My App"), service.synthesizeId("My App")]),
       );
-      const [first, second] = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
+      const [first, second] = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer())));
       expect(first).toMatch(/^scratch-my-app-[0-9a-f]{6}$/u);
       expect(second).toMatch(/^scratch-my-app-[0-9a-f]{6}$/u);
       expect(first).not.toBe(second);
@@ -80,7 +81,7 @@ describe("ScratchAppServiceLayer.layer", () => {
     await withTempRoots(async ({ dataRoot }) => {
       const resolved = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.paths("scratch-lamp-abc123")).pipe(
-          Effect.provide(scratchAppLayer),
+          Effect.provide(scratchAppLayer()),
         ),
       );
       const base = AbsolutePath.make(join(dataRoot, "scratch"));
@@ -90,8 +91,6 @@ describe("ScratchAppServiceLayer.layer", () => {
         instanceRoot,
         root: AbsolutePath.make(join(instanceRoot, "root")),
         planCache: AbsolutePath.make(join(instanceRoot, "plan.bin")),
-        infoCache: AbsolutePath.make(join(instanceRoot, "info.json")),
-        buildResults: AbsolutePath.make(join(instanceRoot, "build-results.bin")),
       });
     });
   });
@@ -101,7 +100,7 @@ describe("ScratchAppServiceLayer.layer", () => {
       for (const unsafe of ["..", ".", "../../etc", "a/b", "a\\b", ""]) {
         const result = await Effect.runPromise(
           Effect.flatMap(ScratchAppService, (service) => service.paths(unsafe)).pipe(
-            Effect.provide(scratchAppLayer),
+            Effect.provide(scratchAppLayer()),
             Effect.result,
           ),
         );
@@ -130,7 +129,7 @@ describe("ScratchAppServiceLayer.layer", () => {
           return { acquired, listed, gc, resolved, started, stopped, destroyed };
         });
 
-        const result = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
+        const result = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer())));
         expect(result.acquired._tag).toBe("Failure");
         if (result.acquired._tag === "Failure")
           expect(result.acquired.failure._tag).toBe("ScratchSourceUnresolvedError");

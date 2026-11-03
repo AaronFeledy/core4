@@ -70,7 +70,7 @@ export const renderMinimal = (): string =>
     "    redactionLayer,",
     "    EnvironmentValueResolverLayer.layer.pipe(Layer.provide(Layer.mergeAll(secretStoreLayer, redactionLayer))),",
     "    Layer.suspend(() => ManagedFileLayer.layerServicesWithPrivateFileAccess).pipe(",
-    "      Layer.provide(Layer.mergeAll(eventServiceLayer, redactionLayer, privateFileAccessLayer)),",
+    "      Layer.provide(Layer.mergeAll(eventServiceLayer, redactionLayer, privateFileAccessLayer, configLayer)),",
     "    ),",
     "    Layer.suspend(() => InteractionServiceLayer.layer),",
     "    httpClientLayer,",

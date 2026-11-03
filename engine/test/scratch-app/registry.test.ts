@@ -7,10 +7,15 @@ import { Effect } from "effect";
 import { TestClock } from "effect/testing";
 
 import { makeLandoPaths } from "@lando/paths";
+import { StateStore } from "@lando/sdk/services";
+import { makeStateStore } from "@lando/state-store/service";
 
 import { type ScratchRegistryEntry, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { detachScratchApp } from "../../src/scratch-app/service.ts";
 import { ownerOnlyFileAccess } from "../private-file-access.ts";
+
+const testStore = () => makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
+const testRegistry = () => makeScratchRegistry(testStore());
 
 const withTempRoots = async <T>(
   run: (roots: { readonly dataRoot: string; readonly cacheRoot: string }) => Promise<T>,
@@ -58,7 +63,8 @@ describe("scratch registry", () => {
   test("detach stamps the advanced execution clock while preserving creation time", async () => {
     await withTempRoots(async () => {
       // Given an attached entry and an execution clock independent of host time.
-      const registry = makeScratchRegistry(ownerOnlyFileAccess);
+      const store = testStore();
+      const registry = makeScratchRegistry(store);
       const original = { ...entry("scratch-clock-000001"), detached: false, ownerPid: process.pid };
       await Effect.runPromise(registry.upsert(original));
       await Effect.runPromise(
@@ -67,7 +73,7 @@ describe("scratch registry", () => {
           yield* TestClock.adjust("1234 millis");
 
           // When lifecycle ownership is detached after virtual time advances.
-          yield* detachScratchApp(original.id, ownerOnlyFileAccess);
+          yield* detachScratchApp(original.id);
 
           // Then only the update timestamp follows the execution clock.
           const detached = yield* registry.get(original.id);
@@ -75,14 +81,14 @@ describe("scratch registry", () => {
           expect(detached?.createdAt).toBe(original.createdAt);
           expect(detached?.detached).toBe(true);
           expect(detached?.ownerPid).toBeUndefined();
-        }).pipe(Effect.provide(TestClock.layer())),
+        }).pipe(Effect.provide(TestClock.layer()), Effect.provideService(StateStore, store)),
       );
     });
   });
 
   test("upsert, list, and get roundtrip through registry.bin", async () => {
     await withTempRoots(async () => {
-      const registry = makeScratchRegistry(ownerOnlyFileAccess);
+      const registry = testRegistry();
       const first = entry("scratch-one-000001");
       const second = entry("scratch-two-000002");
 
@@ -102,7 +108,7 @@ describe("scratch registry", () => {
       await mkdir(base, { recursive: true });
       await writeFile(registryFile(), "not-json");
 
-      await expect(Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).list())).resolves.toEqual([]);
+      await expect(Effect.runPromise(testRegistry().list())).resolves.toEqual([]);
 
       const files = await readdir(base);
       expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(true);
@@ -112,7 +118,7 @@ describe("scratch registry", () => {
   test("registry entry and instance contents survive removal of a distinct user cache root", async () => {
     await withTempRoots(async ({ dataRoot, cacheRoot }) => {
       // Given a registered scratch with instance files under user data and noise under cache.
-      const registry = makeScratchRegistry(ownerOnlyFileAccess);
+      const registry = testRegistry();
       const id = "scratch-keep-000001";
       const registered = entry(id);
       const instanceRoot = registered.rootPath;

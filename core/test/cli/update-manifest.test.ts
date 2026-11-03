@@ -26,6 +26,7 @@ import {
 import { makeTestStateStore } from "@lando/engine/testing/state-store";
 import { type UpdateChannel, UpdateManifestSchema } from "@lando/sdk/schema";
 import { ProcessRunner, StateStore, Telemetry } from "@lando/sdk/services";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { buildBugReport } from "../../src/cli/bug-report.ts";
 import { updateOptionsFromInput, updateSpec } from "../../src/cli/command-specs/meta/update.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
@@ -218,6 +219,7 @@ const runUpdate = (options: Parameters<typeof update>[0]) =>
   update({ updateStatePath: join(updateStateRoot, "state.json"), ...options }).pipe(
     Effect.provideService(ProcessRunner, noopProcessRunner),
     Effect.provideService(Telemetry, noopTelemetry),
+    Effect.provide(StateStoreLayer.layer),
   );
 
 const failureTag = async (effect: Effect.Effect<unknown, unknown>): Promise<string | undefined> => {
@@ -592,6 +594,7 @@ describe("update signed manifest", () => {
       update(options).pipe(
         Effect.provideService(ProcessRunner, noopProcessRunner),
         Effect.provideService(Telemetry, noopTelemetry),
+        Effect.provide(StateStoreLayer.layer),
       );
     try {
       await Effect.runPromise(
@@ -656,7 +659,10 @@ describe("update signed manifest", () => {
     );
 
     expect(result.updatedCore).toBe(true);
-    expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({ stable: { latest: "4.4.0" } });
+    expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({
+      version: 1,
+      data: { stable: { latest: "4.4.0" } },
+    });
   });
 
   test("normal update verification preserves the previous failure while refreshing replay state", async () => {
@@ -665,12 +671,15 @@ describe("update signed manifest", () => {
       updateStatePath,
       `${JSON.stringify(
         {
-          stable: {
-            latest: "4.3.0",
-            lastFailure: {
-              category: "launch_probe_failure",
-              targetVersion: "4.3.0",
-              platform: "linux-x64",
+          version: 1,
+          data: {
+            stable: {
+              latest: "4.3.0",
+              lastFailure: {
+                category: "launch_probe_failure",
+                targetVersion: "4.3.0",
+                platform: "linux-x64",
+              },
             },
           },
         },
@@ -692,12 +701,15 @@ describe("update signed manifest", () => {
 
     expect(result.updatedCore).toBe(true);
     expect(JSON.parse(await readFile(updateStatePath, "utf8"))).toEqual({
-      stable: {
-        latest: "4.4.0",
-        lastFailure: {
-          category: "launch_probe_failure",
-          targetVersion: "4.3.0",
-          platform: "linux-x64",
+      version: 1,
+      data: {
+        stable: {
+          latest: "4.4.0",
+          lastFailure: {
+            category: "launch_probe_failure",
+            targetVersion: "4.3.0",
+            platform: "linux-x64",
+          },
         },
       },
     });
@@ -1303,12 +1315,15 @@ describe("update signed manifest", () => {
     expect(probes).toHaveLength(2);
     const updateState = JSON.parse(await readFile(updateStatePath, "utf8"));
     expect(updateState).toEqual({
-      stable: {
-        latest: "4.4.0",
-        lastFailure: {
-          category: "launch_probe_failure",
-          targetVersion: "4.4.0",
-          platform: `${process.platform}-${process.arch}`,
+      version: 1,
+      data: {
+        stable: {
+          latest: "4.4.0",
+          lastFailure: {
+            category: "launch_probe_failure",
+            targetVersion: "4.4.0",
+            platform: `${process.platform}-${process.arch}`,
+          },
         },
       },
     });

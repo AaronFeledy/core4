@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,6 +21,7 @@ import type { ScratchInfo, ScratchSummary } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
 import { type ScratchRegistryEntry, makeScratchRegistry } from "@lando/engine/scratch-app/registry";
+import { makeStateStore } from "@lando/state-store/service";
 import {
   ScratchInfoResultSchema,
   ScratchListResultSchema,
@@ -29,6 +30,26 @@ import {
 } from "../../src/cli/commands/scratch.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+
+const testRegistry = () => makeScratchRegistry(makeStateStore({ privateFileAccess: ownerOnlyFileAccess }));
+
+const seedScratchPlan = (instanceRoot: string, plan: AppPlan): Promise<void> =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const store = makeStateStore({ privateFileAccess: ownerOnlyFileAccess });
+      const bucket = yield* store.open({
+        root: { path: AbsolutePath.make(instanceRoot) },
+        key: "plan.bin",
+        schema: AppPlanSchema,
+        version: 1,
+        codec: "binary",
+        mode: 0o600,
+        onCorrupt: "quarantine",
+        onVersionMismatch: "discard",
+      });
+      yield* bucket.set(plan);
+    }),
+  );
 
 const fixtureDir = join(import.meta.dirname, "fixtures");
 
@@ -227,7 +248,7 @@ const planWithDetails = (dataRoot: string, id: string): AppPlan => {
 describe("ScratchAppService list/info backed by the registry", () => {
   test("list derives attached / detached / orphan lifetime status", async () => {
     await withTempRoots(async ({ dataRoot }) => {
-      const registry = makeScratchRegistry(ownerOnlyFileAccess);
+      const registry = testRegistry();
       await Effect.runPromise(
         registry.upsert(seedEntry(dataRoot, { id: "scratch-attached-000001", ownerPid: process.pid })),
       );
@@ -252,15 +273,12 @@ describe("ScratchAppService list/info backed by the registry", () => {
   test("info reads mounts, network membership, and endpoints from the cached plan", async () => {
     await withTempRoots(async ({ dataRoot }) => {
       const id = "scratch-detail-000004";
-      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(seedEntry(dataRoot, { id })));
+      await Effect.runPromise(testRegistry().upsert(seedEntry(dataRoot, { id })));
       const instanceRoot = join(dataRoot, "scratch", id);
       await rm(instanceRoot, { recursive: true, force: true }).catch(() => undefined);
       await Bun.write(join(instanceRoot, ".keep"), "");
       const plan = planWithDetails(dataRoot, id);
-      await writeFile(
-        join(instanceRoot, "plan.bin"),
-        `${JSON.stringify(Schema.encodeSync(AppPlanSchema)(plan))}\n`,
-      );
+      await seedScratchPlan(instanceRoot, plan);
 
       const info = await runScratch(Effect.flatMap(ScratchAppService, (service) => service.info(id)));
       expect(info.status).toBe("attached");
@@ -296,9 +314,7 @@ describe("ScratchAppService list/info backed by the registry", () => {
   test("info degrades gracefully to empty detail when no plan is cached", async () => {
     await withTempRoots(async ({ dataRoot }) => {
       const id = "scratch-noplan-000005";
-      await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert(seedEntry(dataRoot, { id, detached: true })),
-      );
+      await Effect.runPromise(testRegistry().upsert(seedEntry(dataRoot, { id, detached: true })));
       const info = await runScratch(Effect.flatMap(ScratchAppService, (service) => service.info(id)));
       expect(info.status).toBe("detached");
       expect(info.mounts).toEqual([]);

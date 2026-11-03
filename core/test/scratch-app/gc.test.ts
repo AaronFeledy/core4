@@ -36,10 +36,13 @@ import { makeLandoPaths } from "@lando/paths";
 import { RedactionService } from "@lando/redaction/service";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import * as StateStoreLayer from "@lando/state-store/service";
+import { makeStateStore } from "@lando/state-store/service";
 const stateStoreLayer = StateStoreLayer.layer.pipe(Layer.provide(BunProcessRunner.layer));
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import * as TestLandofileServiceLayer from "../_support/landofile-layer.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
+
+const testRegistry = () => makeScratchRegistry(makeStateStore({ privateFileAccess: ownerOnlyFileAccess }));
 
 const providerId = ProviderId.make("lando");
 
@@ -213,12 +216,14 @@ const makeLayer = (
   const scratchDeps = Layer.mergeAll(
     environmentResolverLayer(),
     BunFileSystem.layer,
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     landofileServiceLayer,
     plannerLive,
     registryLive,
     eventLive,
     redactionLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     scannerLive,
     scratchInitAppPortLive,
     BunDataMover.layer.pipe(
@@ -268,12 +273,8 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       const unsafeLabel = "../scratch-unsafe";
       await mkdir(join(scratchBase, directoryOrphan, "root"), { recursive: true });
       await mkdir(join(scratchBase, deadOwner, "root"), { recursive: true });
-      await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(dataRoot, deadOwner)),
-      );
-      await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(dataRoot, registryStaleWithLabel)),
-      );
+      await Effect.runPromise(testRegistry().upsert(registryEntry(dataRoot, deadOwner)));
+      await Effect.runPromise(testRegistry().upsert(registryEntry(dataRoot, registryStaleWithLabel)));
 
       const pruned: string[] = [];
       const layer = makeLayer([labelOrphan, registryStaleWithLabel, unsafeLabel], pruned);
@@ -298,9 +299,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
         errors: [`${unsafeLabel}: unsafe scratch id`],
       });
       expect(pruned).toEqual([deadOwner, directoryOrphan, labelOrphan, registryStaleWithLabel]);
-      await expect(
-        Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).get(deadOwner)),
-      ).resolves.toBeUndefined();
+      await expect(Effect.runPromise(testRegistry().get(deadOwner))).resolves.toBeUndefined();
       expect(await readdir(scratchBase)).toEqual(["registry.bin"]);
 
       const second = await Effect.runPromise(
@@ -317,7 +316,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
     await withTempRoots(async (dataRoot) => {
       const id = "scratch-prune-fail-000006";
       await mkdir(join(dataRoot, "scratch", id, "root"), { recursive: true });
-      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(dataRoot, id)));
+      await Effect.runPromise(testRegistry().upsert(registryEntry(dataRoot, id)));
       const pruned: string[] = [];
       const layer = makeLayer([], pruned, () =>
         Effect.fail(
@@ -336,9 +335,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       );
       expect(result.reaped).toEqual([]);
       expect(result.errors).toEqual([`${id}: provider prune failed`]);
-      await expect(
-        Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).get(id)),
-      ).resolves.toMatchObject({
+      await expect(Effect.runPromise(testRegistry().get(id))).resolves.toMatchObject({
         id,
       });
     });
@@ -349,9 +346,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       const id = "scratch-registered-000004";
       const root = join(dataRoot, "scratch", id, "root");
       await mkdir(root, { recursive: true });
-      await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert({ ...registryEntry(dataRoot, id), detached: true }),
-      );
+      await Effect.runPromise(testRegistry().upsert({ ...registryEntry(dataRoot, id), detached: true }));
       const pruned: string[] = [];
       const layer = makeLayer([], pruned);
 
@@ -389,14 +384,10 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       );
       expect(stopped).toEqual(handle);
       expect(pruned).toEqual([id]);
-      await expect(
-        Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).get(id)),
-      ).resolves.toBeUndefined();
+      await expect(Effect.runPromise(testRegistry().get(id))).resolves.toBeUndefined();
 
       await mkdir(root, { recursive: true });
-      await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert({ ...registryEntry(dataRoot, id), detached: true }),
-      );
+      await Effect.runPromise(testRegistry().upsert({ ...registryEntry(dataRoot, id), detached: true }));
       const destroyed = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.destroy(id)).pipe(
           Effect.provide(layer),

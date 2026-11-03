@@ -249,6 +249,8 @@ const makeRecordingLayer = (
   const scratchDeps = Layer.mergeAll(
     admissionLayer,
     environmentResolverLayer(),
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.effect(
       EventService,
       Effect.map(EventService, (events) =>
@@ -269,7 +271,7 @@ const makeRecordingLayer = (
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     scratchInitAppPortLive,
     BunDataMover.layer.pipe(

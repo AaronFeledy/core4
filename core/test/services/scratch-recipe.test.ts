@@ -217,10 +217,12 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[], runPostInitCalls?: bool
     LandoEventService.layer,
     BunFileSystem.layer,
     PrivateFileAccessService.layer,
+    stateStoreLayer,
+    Layer.succeed(PathsService, makeLandoPaths()),
     landofileServiceLayer,
     plannerLive,
     registryLive,
-    ScratchRegistryLayer.ScratchRegistry.layer,
+    ScratchRegistryLayer.ScratchRegistry.layer.pipe(Layer.provide(stateStoreLayer)),
     ScratchResourceScannerLayer.ScratchResourceScanner.layer,
     initPortLive,
     BunDataMover.layer.pipe(

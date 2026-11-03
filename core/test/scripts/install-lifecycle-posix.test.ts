@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { decodeInstallRecord } from "@lando/engine/install/record";
 import { update } from "@lando/engine/operations/update";
 import { ProcessRunner, Telemetry } from "@lando/sdk/services";
+import * as StateStoreLayer from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
 import {
   checksumVerifierFor,
@@ -212,6 +213,7 @@ describe("hostile Lando 3 lifecycle", () => {
         }).pipe(
           Effect.provideService(ProcessRunner, ProcessRunner.of(noopProcessRunner)),
           Effect.provideService(Telemetry, Telemetry.of(noopTelemetry)),
+          Effect.provide(StateStoreLayer.layer),
         ),
       );
       // Then the swap, backup, refreshed proof and re-exec all target Lando 4.

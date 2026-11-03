@@ -2,18 +2,15 @@ import { Context, Effect, Layer, Schema } from "effect";
 
 import { ScratchAppError } from "@lando/sdk/errors";
 import type { StateStoreError } from "@lando/sdk/errors";
-import type { StateBucket } from "@lando/sdk/services";
-
-import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
-import { makeStateStore } from "@lando/state-store/service";
+import { type StateBucket, StateStore } from "@lando/sdk/services";
 
 // The scratch registry — a thin, scratch-shaped view over a single durable
 // `StateBucket` under the user data root. All atomic write, advisory
 // cross-process locking, corruption quarantine, and version-envelope handling
 // are delegated to `StateStore`; this module only owns the scratch entry schema
 // and the `read`/`upsert`/`remove`/`list`/`get` surface its callers expect. The
-// live layer derives private-file access from the process runner before opening
-// the bucket so Windows ACL enforcement never relies on an ambient subprocess path.
+// live layer consumes the runtime's StateStore so configured roots and private-file
+// access are shared with the rest of the runtime.
 
 const REGISTRY_VERSION = 1 as const;
 
@@ -75,19 +72,16 @@ export interface ScratchRegistryService {
 export class ScratchRegistry extends Context.Service<ScratchRegistry, ScratchRegistryService>()(
   "@lando/engine/ScratchRegistry",
 ) {
-  static readonly layerWithPrivateFileAccess: Layer.Layer<ScratchRegistry, never, PrivateFileAccessService> =
-    Layer.effect(
-      this,
-      Effect.map(PrivateFileAccessService, (access) => ScratchRegistry.of(makeScratchRegistry(access))),
-    );
-
-  static readonly layer = this.layerWithPrivateFileAccess.pipe(Layer.provide(PrivateFileAccessService.layer));
+  static readonly layer = Layer.effect(
+    this,
+    Effect.map(StateStore, (store) => ScratchRegistry.of(makeScratchRegistry(store))),
+  );
 }
 
 const openRegistryBucket = (
-  privateFileAccess: PrivateFileAccess,
+  store: StateStore["Service"],
 ): Effect.Effect<StateBucket<RegistryEntries>, ScratchAppError> =>
-  makeStateStore({ privateFileAccess })
+  store
     .open<RegistryEntries, RegistryEntries>({
       root: "userData",
       namespace: "scratch",
@@ -106,13 +100,13 @@ const openRegistryBucket = (
       ),
     );
 
-export const makeScratchRegistry = (privateFileAccess: PrivateFileAccess): ScratchRegistryService => {
+export const makeScratchRegistry = (store: StateStore["Service"]): ScratchRegistryService => {
   const withBucket = <A>(
     operation: string,
     message: string,
     use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, StateStoreError>,
   ): Effect.Effect<A, ScratchAppError> =>
-    openRegistryBucket(privateFileAccess).pipe(
+    openRegistryBucket(store).pipe(
       Effect.flatMap((bucket) =>
         use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
       ),

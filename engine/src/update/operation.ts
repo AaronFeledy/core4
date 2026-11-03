@@ -34,14 +34,13 @@ import {
   isPlaceholderBinary,
   parseJson,
   platform,
-  readUpdateManifestState,
+  recordUpdateManifestSuccess,
   resolveUpdateManifestUrl,
   updateChannelForVersion,
   updateManifestPlatform,
   updateManifestStatePath,
   updatePlatformId,
   writeUpdateFailureState,
-  writeUpdateManifestState,
 } from "./manifest.ts";
 import type { PluginUpdatePlanRow, UpdateSelection } from "./plugin-plan.ts";
 import {
@@ -581,12 +580,7 @@ const defaultUpdate = Effect.fn("Update.defaultUpdate")(function* (
       );
     }
     if (!options.dryRun) {
-      const state = yield* readUpdateManifestState(options.updateStatePath);
-      const cached = state[manifest.channel];
-      yield* writeUpdateManifestState(options.updateStatePath, {
-        ...state,
-        [manifest.channel]: { ...cached, latest: manifest.latest },
-      });
+      yield* recordUpdateManifestSuccess(options.updateStatePath, manifest.channel, manifest.latest);
     }
     return {
       manifest,
