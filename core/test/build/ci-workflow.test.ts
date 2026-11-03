@@ -539,6 +539,7 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        if: matrix.platform == 'linux-x64'");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
+    expect(staticChecksPlatform.match(/^ {8}run: bun run check:test-ownership$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform.match(/^ {6}- name: Boundary gates$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform.match(/^ {8}run: bun run check:boundaries$/gm) ?? []).toHaveLength(1);
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");

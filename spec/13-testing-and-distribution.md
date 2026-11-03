@@ -102,6 +102,14 @@ The compiled MCP completion journey MUST cover real container stdout/stderr, spl
 
 **Listener matrix:** a second strict Linux nightly job MUST start one reviewed image per bundled service family, on its default and on a moved `port:`, through the compiled CLI, and read the container's TCP LISTEN table with the same parser as §6.7 diagnosis. Each case MUST prove the planned port listens on a non-loopback address, that every other observed listener is a declared secondary or an enumerated infrastructure allowance, and that nothing remains on the default after a move; language-runtime cases run a server that binds the projected port variable. An unreadable observation fails strict runs, and the job asserts complete execution through a completion token.
 
+#### Test execution ownership and selection
+
+Every authored test file MUST have a primary execution owner. Workspace test roots MUST follow the root workspace manifest, including new packages and plugins; tests beside repository scripts MUST also be discovered. Generated guide scenarios have a separate owner. Unknown test locations, unowned integration suites, and stale explicit ownership entries MUST fail the ownership gate. Dedicated docs, library, recipe, helper and nightly suites MUST remain distinguishable from PR unit shards. The Go helper’s `*_test.go` files MUST belong to the containerized helper builder, stay outside Bun test argv, and not imply native ARM64 Go-test execution.
+
+Local unit execution, PR unit shards, timings refresh and the default affected-test eligibility MUST consume one collected unit file set. Bun argv MUST use explicit file paths rather than substring filters, so dedicated-owner files cannot be selected accidentally. An integration filename alone MUST NOT exclude deterministic local fixtures or fake-client suites. Podman Desktop fake-client/remediation cases MUST run in PR units without requiring a live socket. Real desktop acceptance MUST remain a separate native macOS/Windows suite with an explicit desktop socket prerequisite.
+
+Ownership records file selection, not successful execution. A selected file that skips live, native, architecture-specific, compiled-binary or opt-in cases MUST NOT be reported as acceptance for those cases. A known manual-only suite MUST name its prerequisites and lack of CI invocation; inventory completeness MUST NOT be presented as complete CI or platform coverage. Focused local tests do not substitute for scheduled or native acceptance receipts.
+
 ### 13.2 Schema and documentation gates
 
 The schema snapshot is the complete generated set: public SDK JSON Schemas and index, command-result Schemas and index, and decoded bundled-plugin manifest fixtures. Generated schema and command trees are derived build outputs, not Git sources of truth; committed fixtures receive pure drift checks, while gitignored outputs receive deterministic regeneration and consumer validation.

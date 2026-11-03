@@ -7,12 +7,12 @@
  * Do not pass `--update-timings` with `--run`: a single shard would overwrite
  * the committed full timings file. Refresh with `update-test-timings.ts`.
  *
- * The collector excludes integration tests except the three fake-client provider contract suites, plus suites owned by dedicated jobs and the nightly tier.
+ * The ownership inventory supplies the same unit file set to local and CI runs.
  *
  * Balance comes from `bun test --shard --timings=.bun-test-timings.json`.
  */
 import { resolve } from "node:path";
-import { Glob } from "bun";
+import { collectTestInventory, testOwnership } from "./test-ownership.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
@@ -25,45 +25,7 @@ export const unitShardCommands = (): ReadonlyArray<string> =>
     (_, index) => `bun run test:unit:shard ${index + 1}/${UNIT_SHARD_COUNT}`,
   );
 
-const INCLUDE_GLOBS: ReadonlyArray<string> = [
-  "core/test/**/*.test.ts",
-  "data-mover/test/**/*.test.ts",
-  "telemetry/test/**/*.test.ts",
-  "renderer/test/**/*.test.ts",
-  "mcp/test/**/*.test.ts",
-  "engine/test/**/*.test.ts",
-  "container-runtime/test/**/*.test.ts",
-  "http-client/test/**/*.test.ts",
-  "landofile/test/**/*.test.ts",
-  "managed-file/test/**/*.test.ts",
-  "paths/test/**/*.test.ts",
-  "state-store/test/**/*.test.ts",
-  "redaction/test/**/*.test.ts",
-  "sdk/test/**/*.test.ts",
-  "plugins/*/test/**/*.test.ts",
-  "docs/test/**/*.test.ts",
-];
-
-const INTEGRATION_SUFFIX = ".integration.test.ts";
-
-// These suites use fake clients and need PR coverage without a live provider.
-export const FAKE_CLIENT_PROVIDER_TESTS: ReadonlyArray<string> = [
-  "plugins/provider-lando/test/contract.integration.test.ts",
-  "plugins/provider-docker/test/contract.integration.test.ts",
-  "plugins/provider-podman/test/contract.integration.test.ts",
-];
-
-const COVERED_BY_DEDICATED_CI_JOBS: ReadonlyArray<string> = [
-  "core/test/library/",
-  "sdk/test/library/",
-  "core/test/recipes/",
-  "core/test/cli/init.canonical-recipes.test.ts",
-];
-
-export const NIGHTLY_TIER_TESTS: ReadonlyArray<string> = [
-  "core/test/scripts/codegen-ci.test.ts",
-  "core/test/build/linux-acceptance-criteria-10-14.test.ts",
-];
+export { FAKE_CLIENT_PROVIDER_TESTS, NIGHTLY_TIER_TESTS } from "./test-ownership.ts";
 
 /**
  * `--parallel` implies `--isolate` unless `--no-isolate`. This suite shares
@@ -78,24 +40,59 @@ export const NIGHTLY_TIER_TESTS: ReadonlyArray<string> = [
 // CI matrix runners can spend more than Bun's default 5s in a subprocess-based test.
 export const SHARD_RUNTIME_FLAGS: ReadonlyArray<string> = ["--timeout=20000"];
 
-export const isShardedUnitTest = (path: string): boolean =>
-  (!path.endsWith(INTEGRATION_SUFFIX) || FAKE_CLIENT_PROVIDER_TESTS.includes(path)) &&
-  !NIGHTLY_TIER_TESTS.includes(path) &&
-  !COVERED_BY_DEDICATED_CI_JOBS.some((prefix) =>
-    prefix.endsWith("/") ? path.startsWith(prefix) : path === prefix,
-  );
+export const isShardedUnitTest = (path: string): boolean => testOwnership(path)?.owner === "unit";
 
-export const collectShardedTestFiles = async (): Promise<ReadonlyArray<string>> => {
-  const files: string[] = [];
-  for (const pattern of INCLUDE_GLOBS) {
-    for await (const match of new Glob(pattern).scan({ cwd: REPO_ROOT })) {
-      const path = match.replaceAll("\\", "/");
-      if (isShardedUnitTest(path)) {
-        files.push(path);
-      }
+export const collectShardedTestFiles = async (root: string = REPO_ROOT): Promise<ReadonlyArray<string>> =>
+  (await collectTestInventory(root)).filter((entry) => entry.owner === "unit").map((entry) => entry.path);
+
+export const testFileArguments = (files: readonly string[]): readonly string[] =>
+  files.map((path) => `./${path}`);
+
+export const localUnitTestCommand = (files: readonly string[]): readonly string[] => [
+  process.execPath,
+  "--no-orphans",
+  "test",
+  ...SHARD_RUNTIME_FLAGS,
+  ...testFileArguments(files),
+];
+
+// CreateProcessW accepts at most 32,767 UTF-16 code units. Reserve room
+// for quoting and the executable; the current unit file set already exceeds it.
+export const localUnitTestCommands = (
+  files: readonly string[],
+  platform: string = process.platform,
+): readonly (readonly string[])[] => {
+  if (files.length === 0) throw new Error("local unit selection resolved to zero test files");
+  if (platform !== "win32") return [localUnitTestCommand(files)];
+  const commands: (readonly string[])[] = [];
+  let batch: string[] = [];
+  const cost = (args: readonly string[]): number => args.reduce((size, arg) => size + arg.length * 2 + 3, 1);
+  const limit = 16_000;
+  for (const file of files) {
+    if (cost(localUnitTestCommand([...batch, file])) > limit) {
+      if (batch.length === 0) throw new Error(`test path exceeds Windows command budget: ${file}`);
+      commands.push(localUnitTestCommand(batch));
+      batch = [];
+      if (cost(localUnitTestCommand([file])) > limit)
+        throw new Error(`test path exceeds Windows command budget: ${file}`);
     }
+    batch.push(file);
   }
-  return files.sort();
+  if (batch.length > 0) commands.push(localUnitTestCommand(batch));
+  return commands;
+};
+
+export const runLocalUnitTests = async (
+  files: readonly string[],
+  run: (command: readonly string[]) => Promise<number>,
+  platform: string = process.platform,
+): Promise<number> => {
+  let result = 0;
+  for (const command of localUnitTestCommands(files, platform)) {
+    const code = await run(command);
+    if (result === 0) result = code;
+  }
+  return result;
 };
 
 const parseShardSpec = (spec: string): { readonly index: number; readonly count: number } => {
@@ -114,6 +111,7 @@ const parseShardSpec = (spec: string): { readonly index: number; readonly count:
 export const shardedUnitTestCommand = (
   spec: string,
   options: { readonly updateTimings?: boolean } = {},
+  files: readonly string[] = [],
 ): ReadonlyArray<string> => {
   const { index, count } = parseShardSpec(spec);
   return [
@@ -124,6 +122,7 @@ export const shardedUnitTestCommand = (
     `--shard=${index}/${count}`,
     `--timings=${TEST_TIMINGS_FILE}`,
     ...(options.updateTimings === true ? ["--update-timings"] : []),
+    ...testFileArguments(files),
   ];
 };
 
@@ -134,7 +133,7 @@ const runShard = async (spec: string, options: { readonly updateTimings: boolean
   }
   console.error(`[test-shards] shard ${spec}: ${files.length} collected files`);
   const proc = Bun.spawn({
-    cmd: [...shardedUnitTestCommand(spec, options), ...files],
+    cmd: [...shardedUnitTestCommand(spec, options, files)],
     cwd: REPO_ROOT,
     stdout: "inherit",
     stderr: "inherit",
@@ -144,6 +143,25 @@ const runShard = async (spec: string, options: { readonly updateTimings: boolean
 
 const main = async (): Promise<void> => {
   const args = process.argv.slice(2);
+  if (args[0] === "--local" || args[0] === "--list") {
+    if (args.length !== 1) throw new Error(`${args[0]} accepts no additional arguments`);
+    const files = await collectShardedTestFiles();
+    if (files.length === 0) throw new Error("unit selection resolved to zero test files");
+    if (args[0] === "--list") {
+      for (const file of files) console.log(file);
+      return;
+    }
+    process.exitCode = await runLocalUnitTests(
+      files,
+      (command) =>
+        Bun.spawn([...command], {
+          cwd: REPO_ROOT,
+          stdout: "inherit",
+          stderr: "inherit",
+        }).exited,
+    );
+    return;
+  }
   if (args[0] === "--run") {
     const rest = args.slice(1);
     const updateTimings = rest.includes("--update-timings");
