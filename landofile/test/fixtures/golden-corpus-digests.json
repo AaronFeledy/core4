@@ -44,6 +44,10 @@
       "digest": "46a9e4c5d4a02001f2e9e6b50f1413d231fe01941fc9b4d45dde7d5f49f666ad"
     },
     {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/host-shell-syntax",
+      "digest": "7bd1c8efb4b8ca58ea8f0988d9f0f15ed8802272c7f4276a308fad3bd998194c"
+    },
+    {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/host-task",
       "digest": "32fe922f5c0aacdbbbfa5bcb5c7486cf6158bb72120bafe7a3496a5f081d6064"
     },
@@ -299,6 +303,10 @@
     {
       "fixture": "docs/guides/events/fixtures/events-failure",
       "digest": "d968e715ac7ddda28b941702cc01ecbe7894bf2f1b875aaf096db2cf8bbda952"
+    },
+    {
+      "fixture": "docs/guides/events/fixtures/events-host-shell",
+      "digest": "3dd7a90c847e9329e9e58037d4fd2ad1afdc3d4890b468059fec2af558387b08"
     },
     {
       "fixture": "docs/guides/exec/fixtures/exec-demo",
