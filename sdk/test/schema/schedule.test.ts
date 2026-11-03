@@ -38,12 +38,31 @@ describe("schedule Landofile schema", () => {
   });
 
   test("Given @every 1s and named schedules, when decoding ScheduleConfig, then it succeeds", () => {
-    for (const every of ["@hourly", "@daily", "@every 1s", "@every 5m", "@every 1h", "0 0 * * *"]) {
+    for (const every of [
+      "@hourly",
+      "@daily",
+      "@every 1s",
+      "@every 10s",
+      "@every 5m",
+      "@every 15m",
+      "@every 1h",
+      "@every 2h",
+      "@every 12h",
+      "0 0 * * *",
+    ]) {
       expect(strictDecode(ScheduleConfig, [job({ name: "n", every })])._tag).toBe("Success");
     }
   });
 
   test("Given an @every duration supercronic cannot express, when decoding ScheduleConfig, then it fails", () => {
     expect(strictDecode(ScheduleConfig, [job({ every: "@every 1h30m" })])._tag).toBe("Failure");
+  });
+
+  test("Given @every steps that do not divide the clock field, when decoding ScheduleConfig, then it fails with a 5-field cron suggestion", () => {
+    for (const every of ["@every 7s", "@every 7m", "@every 7h", "@every 5h"]) {
+      const result = strictDecode(ScheduleConfig, [job({ every })]);
+      expect(result._tag).toBe("Failure");
+      expect(JSON.stringify(result)).toContain("5-field cron expression");
+    }
   });
 });

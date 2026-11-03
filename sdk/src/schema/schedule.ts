@@ -19,7 +19,10 @@ const GO_DURATION_PIECE = /^(?:(?:0|[1-9]\d*)(?:ns|us|µs|μs|ms|s|m|h))+$/u;
 const EVERY_PREFIX = /^@every\s+/u;
 
 const cronExpressionMessage =
-  'Expected a 5-field cron expression, a named schedule (@hourly, @daily, @weekly, @monthly, @yearly, @annually, @midnight), or @every with a whole number of seconds (1-59), minutes (1-59), or hours (1-23) such as "1s", "5m", or "1h".';
+  'Expected a 5-field cron expression, a named schedule (@hourly, @daily, @weekly, @monthly, @yearly, @annually, @midnight), or @every with seconds or minutes that divide 60, or hours that divide 24, such as "1s", "5m", or "1h".';
+
+const everyStepMessage =
+  "@every compiles to crontab */N, which only means every N when seconds and minutes divide 60 and hours divide 24. Use a 5-field cron expression instead.";
 
 /** Parse a Go duration used by `@every`, returning milliseconds when the spec is positive. */
 export const parseEveryDurationMs = (value: string): number | undefined => {
@@ -52,18 +55,18 @@ export const parseEveryDurationMs = (value: string): number | undefined => {
   return ms > 0n ? Number(ms) : 1;
 };
 
-/** True when `@every` is a whole number of seconds (1-59), minutes (1-59), or hours (1-23). */
+/** True when `@every` is a crontab step that does not reset at the field boundary. */
 export const isMappableEveryDurationMs = (ms: number): boolean => {
   if (!Number.isInteger(ms) || ms < 1000) return false;
   const seconds = ms / 1000;
   if (!Number.isInteger(seconds) || seconds < 1) return false;
-  if (seconds < 60) return true;
+  if (seconds < 60) return 60 % seconds === 0;
   if (seconds % 60 !== 0) return false;
   const minutes = seconds / 60;
-  if (minutes < 60) return true;
+  if (minutes < 60) return 60 % minutes === 0;
   if (minutes % 60 !== 0) return false;
   const hours = minutes / 60;
-  return Number.isInteger(hours) && hours >= 1 && hours < 24;
+  return Number.isInteger(hours) && hours >= 1 && hours < 24 && 24 % hours === 0;
 };
 
 export const isEveryCronExpression = (value: string): boolean => {
@@ -71,25 +74,31 @@ export const isEveryCronExpression = (value: string): boolean => {
   return ms !== undefined && isMappableEveryDurationMs(ms);
 };
 
+const cronExpressionCheck = (value: string): string | undefined => {
+  const trimmed = value.trim();
+  if (Object.hasOwn(CRON_MACROS, trimmed)) return undefined;
+  if (EVERY_PREFIX.test(trimmed)) {
+    const ms = parseEveryDurationMs(trimmed);
+    if (ms === undefined) return cronExpressionMessage;
+    return isMappableEveryDurationMs(ms) ? undefined : everyStepMessage;
+  }
+  return Result.isSuccess(Cron.parse(trimmed)) ? undefined : cronExpressionMessage;
+};
+
 export const expandCronMacro = (value: string): string => {
   const trimmed = value.trim();
   return Object.hasOwn(CRON_MACROS, trimmed) ? CRON_MACROS[trimmed as keyof typeof CRON_MACROS] : trimmed;
 };
 
-export const isCronExpression = (value: string): boolean => {
-  const trimmed = value.trim();
-  if (Object.hasOwn(CRON_MACROS, trimmed)) return true;
-  if (EVERY_PREFIX.test(trimmed)) return isEveryCronExpression(trimmed);
-  return Result.isSuccess(Cron.parse(trimmed));
-};
+export const isCronExpression = (value: string): boolean => cronExpressionCheck(value) === undefined;
 
 export const CronExpression = Schema.String.check(
-  Schema.makeFilter((value: string) => (isCronExpression(value) ? undefined : cronExpressionMessage)),
+  Schema.makeFilter((value: string) => cronExpressionCheck(value)),
 ).annotate({
   identifier: "CronExpression",
   title: "Cron Expression",
   description:
-    "Five-field cron expression, a named schedule such as @hourly, or @every with a whole number of seconds, minutes, or hours.",
+    "Five-field cron expression, a named schedule such as @hourly, or @every with seconds or minutes that divide 60, or hours that divide 24.",
   expected: "a cron expression",
   message: cronExpressionMessage,
 });
@@ -111,7 +120,7 @@ export const ScheduleJob = Schema.Struct({
   name: ScheduleJobName,
   every: CronExpression.annotate({
     description:
-      "When the job runs: a 5-field cron expression, a named schedule, or @every with a whole number of seconds, minutes, or hours.",
+      "When the job runs: a 5-field cron expression, a named schedule, or @every with seconds or minutes that divide 60, or hours that divide 24.",
   }),
   run: CommandSpec.annotate({
     description: "Command the job runs, as a shell string or argv array.",
