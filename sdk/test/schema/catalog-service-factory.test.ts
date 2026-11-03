@@ -17,6 +17,7 @@ test("preserves field order when building SQL Server configuration", () => {
     "database",
     "creds",
     "port",
+    "schedule",
     "environment",
     "envFile",
     "labels",
