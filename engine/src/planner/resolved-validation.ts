@@ -122,7 +122,53 @@ export const validateResolvedLandofile = (input: {
       );
     else physicalNames.set(name, key);
   }
+  const dnsNamespaces = new Map<string, Map<string, string>>();
+  const dnsCollisionSites = new Set<string>();
   for (const [name, service] of Object.entries(landofile.services ?? {})) {
+    const claim = (network: string, dnsName: string, path: ValidationIssuePath) => {
+      if (isBlocked(path)) return;
+      if (network !== "default" && !Object.hasOwn(landofile.networks ?? {}, network)) return;
+      const names = dnsNamespaces.get(network) ?? new Map<string, string>();
+      dnsNamespaces.set(network, names);
+      const other = names.get(dnsName.toLowerCase());
+      if (other !== undefined && other !== name) {
+        const site = JSON.stringify([network, path]);
+        if (dnsCollisionSites.has(site)) return;
+        dnsCollisionSites.add(site);
+        issues.push({
+          path,
+          rule: "landofile.dns-name",
+          message: `DNS name ${dnsName} is already claimed by service ${other} on network ${network}.`,
+          suggestion:
+            "Rename one of the services or its DNS aliases so each name identifies one service on this network.",
+        });
+      } else names.set(dnsName.toLowerCase(), name);
+    };
+    const authoredClaim = (network: string, dnsName: string, path: ValidationIssuePath) => {
+      if (isBlocked(path)) return;
+      if (!dnsName.includes(".") && /^lando-.*--/iu.test(dnsName)) {
+        issues.push({
+          path,
+          rule: "landofile.dns-name",
+          message: `DNS name ${dnsName} uses the lando-<app>--<service> shape reserved for Lando's container names.`,
+          suggestion:
+            "Rename this service or DNS alias to a name that does not start with lando- and contain --.",
+        });
+      }
+      claim(network, dnsName, path);
+    };
+    const servicePath = ["services", name];
+    authoredClaim("default", name, servicePath);
+    if (input.appSlug !== undefined) claim("default", `${name}.${input.appSlug}.internal`, servicePath);
+    for (const [index, hostname] of (service.hostnames ?? []).entries())
+      authoredClaim("default", hostname, [...servicePath, "hostnames", index]);
+    for (const [network, attachment] of Object.entries(service.networks ?? {})) {
+      const path = [...servicePath, "networks", network];
+      if (network !== "default" && input.appSlug !== undefined)
+        claim(network, `${name}.${input.appSlug}.internal`, path);
+      for (const [index, alias] of (attachment.aliases ?? []).entries())
+        authoredClaim(network, alias, [...path, "aliases", index]);
+    }
     for (const key of Object.keys(service.networks ?? {})) {
       if (key !== "default" && !Object.hasOwn(landofile.networks ?? {}, key))
         networkIssue(
