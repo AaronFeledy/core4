@@ -110,7 +110,11 @@ const rebuildSelectedServices = Effect.fnUntraced(function* (
 
   const stopSelected = Effect.forEach(
     [...services].reverse(),
-    (service) => provider.stop({ app: plan.id, service: service.name, plan }),
+    // A planned service whose container is already gone needs no stop before it is rebuilt.
+    (service) =>
+      provider
+        .stop({ app: plan.id, service: service.name, plan })
+        .pipe(Effect.catchTag("ServiceNotFoundError", () => Effect.void)),
     { discard: true },
   );
   yield* markStartMutation(target.plan);

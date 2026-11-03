@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, DateTime, Effect, Exit } from "effect";
+import { DateTime, Effect } from "effect";
 
 import {
   AbsolutePath,
@@ -311,59 +311,6 @@ describe("bringUp stale-name convergence", () => {
         .every((call) => call.method === "GET"),
     ).toBe(true);
     expect(fake.calls.filter((call) => call.path.startsWith("/containers/json?"))).toEqual([]);
-  });
-
-  test("missing planned container under forbidRecreate remediates lando start when an alternate exists", async () => {
-    // Given an old owned container but no container at the current planned name.
-    const plan = singleServicePlan();
-    const fake = makeApi({
-      list: [
-        {
-          Id: "stale-id",
-          Names: ["/lando-stale-app-web-old"],
-          Labels: ownedLabels(plan, "web"),
-        },
-      ],
-      inspect: () => ({ status: 404, body: "{}" }),
-    });
-    // When
-    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx, forbidRecreate: true }));
-    // Then the error directs the caller to the naming-convergence operation.
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const error = Cause.squash(exit.cause);
-      expect(error).toMatchObject({
-        _tag: "ServiceStartError",
-        service: "web",
-        remediation: "Run `lando start` to converge this service to its current name.",
-      });
-      expect(String(Reflect.get(error as object, "message"))).toContain("lando-stale-app-web-old");
-      expect(Reflect.get(error as object, "details")).toEqual({
-        alternateNames: ["lando-stale-app-web-old"],
-      });
-    }
-    expect(fake.calls.some((call) => call.method === "DELETE")).toBe(false);
-    expect(fake.calls.some((call) => call.path.startsWith("/containers/create"))).toBe(false);
-    expect(fake.calls.filter((call) => call.path.startsWith("/containers/json?"))).toHaveLength(1);
-  });
-
-  test("missing planned container under forbidRecreate keeps rebuild remediation without alternates", async () => {
-    const plan = singleServicePlan();
-    const fake = makeApi({
-      list: [],
-      inspect: () => ({ status: 404, body: "{}" }),
-    });
-    const exit = await Effect.runPromiseExit(bringUp(plan, { api: fake.api, ctx, forbidRecreate: true }));
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const error = Cause.squash(exit.cause);
-      expect(error).toMatchObject({
-        _tag: "ServiceStartError",
-        service: "web",
-        remediation: "Run `lando rebuild -s web` to create this service.",
-        message: "Cannot restart web in place because its container is missing.",
-      });
-    }
   });
 });
 

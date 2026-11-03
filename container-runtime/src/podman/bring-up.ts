@@ -92,7 +92,6 @@ import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec, execStream } from "./exec.ts";
 import { logs } from "./logs.ts";
 import {
-  type LabeledServiceContainer,
   listLabeledServiceContainers,
   removeStaleServiceContainers,
   selectStaleServiceContainers,
@@ -192,10 +191,6 @@ interface BringUpDeps {
   readonly creationEnvironments: Map<string, Readonly<Record<string, string>>>;
   /** Cached once per bringUp; never construct per failure/inspect line. */
   readonly redactor: ReturnType<typeof redactorFor>;
-  readonly labeledContainers: Effect.Effect<
-    ReadonlyArray<LabeledServiceContainer>,
-    ProviderInternalError | ProviderUnavailableError
-  >;
 }
 
 const creationEligibility = (plan: AppPlan) =>
@@ -759,28 +754,13 @@ const startService = Effect.fnUntraced(function* (
       )
     : undefined;
   if (!inspected.exists && deps.options.forbidRecreate === true) {
-    const alternates = selectStaleServiceContainers(
-      plan,
-      deps.options.ctx.providerId,
-      yield* deps.labeledContainers,
-    )
-      .filter((stale) => stale.service === service.name)
-      .map((stale) => stale.name);
-    const alternateList = alternates.length === 0 ? undefined : alternates.join(", ");
     return yield* Effect.fail(
       new ServiceStartError({
         providerId: deps.options.ctx.providerId,
         operation: "bringUp",
         service: service.name,
-        message:
-          alternateList === undefined
-            ? `Cannot restart ${service.name} in place because its container is missing.`
-            : `Cannot restart ${service.name} in place because its container is missing. Owned alternate name(s): ${alternateList}.`,
-        remediation:
-          alternateList === undefined
-            ? `Run \`lando rebuild -s ${service.name}\` to create this service.`
-            : "Run `lando start` to converge this service to its current name.",
-        ...(alternateList === undefined ? {} : { details: { alternateNames: alternates } }),
+        message: `Cannot restart ${service.name} in place because its container is missing.`,
+        remediation: `Run \`lando rebuild -s ${service.name}\` to create this service.`,
       }),
     );
   }
@@ -1075,14 +1055,12 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
     );
   }
   const plan = yield* prepareFileModeMounts(logicalPlan, options.ctx, options.userDataRoot);
-  const labeledContainers = yield* Effect.cached(listLabeledServiceContainers(api, options.ctx, plan.id));
   const deps: BringUpDeps = {
     api,
     options,
     remediation: applyRemediationFor(plan),
     creationEnvironments: new Map(),
     redactor: redactorFor(options.ctx),
-    labeledContainers,
   };
 
   const networkNames = new Set(
@@ -1098,7 +1076,8 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
 
   let staleNameChanged = false;
   if (options.forbidRecreate !== true) {
-    const stales = selectStaleServiceContainers(plan, options.ctx.providerId, yield* labeledContainers);
+    const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
+    const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
     staleNameChanged = yield* removeStaleServiceContainers(api, options.ctx, plan, stales);
   }
 
