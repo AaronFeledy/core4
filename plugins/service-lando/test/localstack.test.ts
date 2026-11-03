@@ -73,7 +73,7 @@ describe("localstack ServiceType", () => {
       {
         origin: "service",
         type: "volume",
-        store: "myapp-localstack-data",
+        store: "lando-myapp--cloud--localstack-data",
         target: PortablePath.make("/var/lib/localstack"),
         readOnly: false,
       },

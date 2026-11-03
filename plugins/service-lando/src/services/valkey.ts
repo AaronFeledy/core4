@@ -5,7 +5,6 @@ import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } fro
 import { rootIdentity, serviceFeatureApply } from "./_feature-helpers.ts";
 import { tcpProbe } from "./_tcp-probe.ts";
 
-import { appNameFor } from "../app-name.ts";
 import { launcherAuthority, plannedPort, servicePortEndpoints } from "./_port-helpers.ts";
 import { applyAuthoredProcessFields } from "./_process-helpers.ts";
 
@@ -22,7 +21,6 @@ export const VALKEY_FEATURE_ID = "service-lando.valkey";
 
 const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const port = plannedPort(service, VALKEY_LISTENER);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -33,7 +31,7 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
     ctx.setCommand(["valkey-server", "--appendonly", "yes", "--port", String(port)]);
   }
   ctx.addStorage({
-    store: `${appName}-valkey-data`,
+    store: ctx.serviceStoreName("valkey-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

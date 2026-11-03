@@ -42,7 +42,7 @@ describe("valkey ServiceType", () => {
     expect(plan.command).toEqual(["valkey-server", "--appendonly", "yes", "--port", "6379"]);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-valkey-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--cache--valkey-data");
     expect(String(volumes[0]?.target)).toBe("/data");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 6379, protocol: "tcp", name: "cache", primary: true },

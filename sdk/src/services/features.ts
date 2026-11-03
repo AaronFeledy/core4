@@ -139,6 +139,8 @@ export interface ServiceFeatureContext {
   /** This feature's decoded config (from its `FeatureRef.config`, via `schema`). */
   readonly config: Readonly<Record<string, unknown>>;
 
+  /** The name of a data store that belongs to this service alone. */
+  serviceStoreName(role: string): string;
   /** Add or overwrite an environment variable on the draft. */
   addEnv(name: string, value: EnvironmentValue): void;
   /** Add a mount (without a realization decision). */

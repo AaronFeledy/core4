@@ -79,6 +79,7 @@
   ],
   "rendererOutputIOMembers": ["stdoutColumns", "stdoutIsTTY", "writeStderr", "writeStdout"],
   "serviceFeatureContextMembers": [
+    "serviceStoreName(role: string): string",
     "readonly serviceName: string",
     "readonly serviceType: string",
     "readonly base: \"l337\" | \"lando\"",

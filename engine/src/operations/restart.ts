@@ -44,7 +44,6 @@ import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/ap
 import { completeStartup } from "../lifecycle/startup-completion.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
 import { volumeCreationRecorder } from "../lifecycle/volume-initialization.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { serviceWithArtifact } from "../services/build-artifact-runner.ts";
 import { readPendingAcceleratedStart } from "./accelerated-start-journal.ts";
@@ -279,14 +278,13 @@ export const restartApp = Effect.fn("AppOperation.restart")(
     const resolvedTarget = target ?? (yield* resolveDesiredAppTarget);
     const placement = yield* ensureAppPlacementState(resolvedTarget.app, resolvedTarget.plan.provider);
     const registry = yield* RuntimeProviderRegistry;
-    const mysqlResolvedTarget = yield* resolveMysqlVolumeTarget(resolvedTarget, registry);
-    const plan = mysqlResolvedTarget.plan;
+    const plan = resolvedTarget.plan;
     const scoped = options.services !== undefined && options.services.length > 0;
     const selectedPlan = scoped ? yield* selectInfoPlan(plan, options.services) : plan;
     const context = yield* Effect.context<RestartAppServices>();
     const stateStore = yield* StateStore;
     const provider = yield* registry.select(plan);
-    const acquiredOverlays = scoped ? undefined : yield* prepareStartOverlays(mysqlResolvedTarget, provider);
+    const acquiredOverlays = scoped ? undefined : yield* prepareStartOverlays(resolvedTarget, provider);
     const preparedOverlays = acquiredOverlays ?? (yield* prepareDebuggerOverlay(selectedPlan));
     return yield* withAppMutationLock(
       appLockTarget(plan),
@@ -295,22 +293,22 @@ export const restartApp = Effect.fn("AppOperation.restart")(
         provider,
         stateStore,
         body: Effect.fnUntraced(function* () {
-          const pending = yield* readPendingAcceleratedStart(mysqlResolvedTarget.app, plan);
+          const pending = yield* readPendingAcceleratedStart(resolvedTarget.app, plan);
           if (pending !== null)
             yield* startApp(
               options.signal === undefined ? {} : { signal: options.signal },
-              mysqlResolvedTarget,
+              resolvedTarget,
               managed?.resume ?? managed,
               { beforeStart: managed?.resume?.beforeStart ?? Effect.void },
             );
-          const stopPreflight = yield* preflightStopApp(mysqlResolvedTarget);
-          yield* preflightStartAppDrain(mysqlResolvedTarget, stopPreflight);
-          yield* ensureStartTransactionConsistent(mysqlResolvedTarget);
+          const stopPreflight = yield* preflightStopApp(resolvedTarget);
+          yield* preflightStartAppDrain(resolvedTarget, stopPreflight);
+          yield* ensureStartTransactionConsistent(resolvedTarget);
           if (pending === null) yield* runAppInitEvents(plan);
           if (scoped) {
             return {
               app: plan.name,
-              servicesStarted: yield* restartSelectedServices(selectedPlan, mysqlResolvedTarget, {
+              servicesStarted: yield* restartSelectedServices(selectedPlan, resolvedTarget, {
                 ...options,
                 preparedOverlays,
               }),
@@ -319,7 +317,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           const preRestart = PreRestartEvent.make({
             _tag: "pre-restart",
             scope: "app",
-            app: mysqlResolvedTarget.app,
+            app: resolvedTarget.app,
             plan,
             triggeredBy: "app:restart",
             timestamp: DateTime.nowUnsafe(),
@@ -327,14 +325,14 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           yield* publishAndRunAppEvent(plan, "pre-restart", preRestart);
           yield* publishHomeTransitionNotices(placement.plan, plan);
           yield* markStartMutation(plan);
-          yield* stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true });
+          yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
           yield* managed?.onStopped ?? Effect.void;
           const result = yield* startApp(
             {
               reconcile: options.reconcile ?? false,
               ...(options.signal === undefined ? {} : { signal: options.signal }),
             },
-            mysqlResolvedTarget,
+            resolvedTarget,
             managed,
             {
               skipInitEvents: true,
@@ -345,7 +343,7 @@ export const restartApp = Effect.fn("AppOperation.restart")(
           const postRestart = PostRestartEvent.make({
             _tag: "post-restart",
             scope: "app",
-            app: mysqlResolvedTarget.app,
+            app: resolvedTarget.app,
             plan,
             timestamp: DateTime.nowUnsafe(),
           });

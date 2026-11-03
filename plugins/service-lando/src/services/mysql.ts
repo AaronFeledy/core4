@@ -101,7 +101,6 @@ const mysqlCredsFor = (appName: string, serviceName: string, service: ServiceCon
 
 const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -109,7 +108,7 @@ const applyMysqlFeature = (ctx: ServiceFeatureContext): void => {
   addEnvRecord(ctx, landoDbEnvFor(creds, port));
   ctx.addEnv("MYSQL_TCP_PORT", String(port));
   ctx.addStorage({
-    store: `${appName}-${ctx.serviceName}-mysql-data`,
+    store: ctx.serviceStoreName("mysql-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

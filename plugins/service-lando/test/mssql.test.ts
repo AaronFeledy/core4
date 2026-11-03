@@ -155,7 +155,7 @@ describe("mssql ServiceType", () => {
         ]);
         const volumes = plan.mounts.filter((mount) => mount.type === "volume");
         expect(volumes).toHaveLength(1);
-        expect(volumes[0]?.store).toBe("myapp-mssql-data");
+        expect(volumes[0]?.store).toBe("lando-myapp--database--mssql-data");
         expect(String(volumes[0]?.target)).toBe("/var/opt/mssql");
         expect(volumes[0]?.readOnly).toBe(false);
         expect(plan.environment).toMatchObject({
