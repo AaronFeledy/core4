@@ -1,32 +1,100 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { collectAppPlanRedactionTokens } from "@lando/engine/services/app-plan-redaction";
+import { planRedactionValues } from "@lando/redaction/plan-values";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
 import { displayWidth, stripAnsi } from "@lando/renderer/console-layout";
 import { createBufferedRendererIO } from "@lando/renderer/io";
 import { formatSummary } from "@lando/renderer/summary";
+import { sha256Hex } from "@lando/sdk/digest";
+import { AppPlan } from "@lando/sdk/schema";
 import { SetupNetworkTrustError } from "../../src/cli/commands/setup-network-trust.ts";
 import { renderStartAppResult } from "../../src/cli/commands/start-result.ts";
 import { runWithRendererHandling, summaryPaintOptions } from "../../src/cli/renderer-boundary.ts";
+import { connections } from "./connection-fixtures";
+
+const planMeta = { resolvedAt: "2026-10-21T00:00:00Z", source: "test", runtime: 4 } as const;
+
+const planService = (
+  name: string,
+  extra: {
+    readonly environment?: Readonly<Record<string, unknown>>;
+    readonly extensions?: Readonly<Record<string, unknown>>;
+    readonly connection?: {
+      readonly family: "mysql" | "mariadb" | "postgres" | "mongodb" | "mssql";
+      readonly port: number;
+      readonly creds: {
+        readonly user: string;
+        readonly password: string;
+        readonly database: string;
+        readonly rootPassword?: string;
+      };
+    };
+    readonly primary?: boolean;
+  } = {},
+) => ({
+  name,
+  type: "test",
+  provider: "test",
+  primary: extra.primary ?? true,
+  environment: extra.environment ?? {},
+  mounts: [],
+  endpoints: [],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata: planMeta,
+  extensions: extra.extensions ?? {},
+  ...(extra.connection === undefined ? {} : { connection: extra.connection }),
+});
+
+const decodePlan = (
+  services: Readonly<Record<string, ReturnType<typeof planService>>>,
+  committedLiteralDigests?: AppPlan["committedLiteralDigests"],
+) =>
+  Schema.decodeUnknownSync(AppPlan)({
+    id: "proof",
+    name: "proof",
+    slug: "proof",
+    root: "/tmp/proof",
+    provider: "test",
+    services,
+    routes: [],
+    stores: [],
+    fileSync: [],
+    metadata: planMeta,
+    extensions: {},
+    ...(committedLiteralDigests === undefined ? {} : { committedLiteralDigests }),
+  });
+
+const registerPlanTiers = (plan: AppPlan) =>
+  Effect.gen(function* () {
+    const redaction = yield* RedactionService;
+    const values = planRedactionValues(plan);
+    yield* redaction.registerValues(values.substring);
+    yield* redaction.registerValues(values.wholeToken, { match: "whole-token" });
+    return values;
+  });
 
 test("collected plan credentials preserve package names while masking distinct passwords and camelCase env", async () => {
-  const plan = {
-    services: {
-      mariadb: {
+  const plan = decodePlan({
+    mariadb: planService("mariadb", {
+      connection: {
+        family: "mariadb",
+        port: 3306,
         creds: { user: "magento", password: "magento", database: "magento" },
-        environment: { MARIADB_USER: "magento", MARIADB_PASSWORD: "magento", MARIADB_DATABASE: "magento" },
       },
-      appserver: {
-        environment: { DB_PASSWORD: "distinct-private-password", stripeSecretKey: "sk_test_canary" },
-      },
-    },
-  };
+      environment: { MARIADB_USER: "magento", MARIADB_PASSWORD: "magento", MARIADB_DATABASE: "magento" },
+    }),
+    appserver: planService("appserver", {
+      primary: false,
+      environment: { DB_PASSWORD: "distinct-private-password", stripeSecretKey: "sk_test_canary" },
+    }),
+  });
   const io = createBufferedRendererIO();
   await runWithRendererHandling(
     Effect.gen(function* () {
-      const redaction = yield* RedactionService;
-      yield* redaction.registerValues(collectAppPlanRedactionTokens(plan));
+      yield* registerPlanTiers(plan);
       return "mage-os/magento-coding-standard --magento-init-params distinct-private-password sk_test_canary";
     }),
     {
@@ -40,6 +108,45 @@ test("collected plan credentials preserve package names while masking distinct p
   );
   expect(io.stdout().trim()).toBe(
     "mage-os/magento-coding-standard --magento-init-params [redacted] [redacted]",
+  );
+  expect(io.stderr()).toBe("");
+});
+
+test("registry whole-token password masks bare password while wordpress-seo stays intact without result tokens", async () => {
+  const plan = decodePlan(
+    {
+      db: planService("db", {
+        environment: { DB_PASSWORD: "wordpress", API_TOKEN: "substring-private" },
+      }),
+    },
+    [sha256Hex("wordpress")],
+  );
+  const values = planRedactionValues(plan);
+  expect(values.wholeToken).toEqual(["wordpress"]);
+  expect(values.substring).toEqual(["substring-private"]);
+
+  const io = createBufferedRendererIO();
+  await runWithRendererHandling(
+    Effect.gen(function* () {
+      yield* registerPlanTiers(plan);
+      // No result redactionTokens: registry tiers alone must protect both modes.
+      return [
+        "PASSWORD=wordpress",
+        "wp-content/plugins/wordpress-seo",
+        "prefix-substring-private-suffix",
+      ].join("\n");
+    }),
+    {
+      runtime: RedactionService.layer,
+      rendererMode: "plain",
+      io,
+      render: (result) => result,
+      formatError: ({ error }) => String(error),
+      setExitCode: (code) => expect(code).toBe(0),
+    },
+  );
+  expect(io.stdout().trim()).toBe(
+    ["PASSWORD=[redacted]", "wp-content/plugins/wordpress-seo", "prefix-[redacted]-suffix"].join("\n"),
   );
   expect(io.stderr()).toBe("");
 });
@@ -166,7 +273,7 @@ describe("runWithRendererHandling redaction", () => {
       RedactionService,
       RedactionService.of({
         ...makeRedactionService(),
-        payloadValues: () => Effect.succeed(() => []),
+        payloadValues: () => Effect.succeed(() => ({ substring: [], wholeToken: [] })),
         forProfile: () =>
           Effect.succeed({
             redactString: (text: string) => text.split("32").join("[redacted]"),
@@ -206,13 +313,14 @@ describe("runWithRendererHandling redaction", () => {
 
 test("start command hints remain usable when a secret explicitly matches the CLI name", async () => {
   const customSecret = "private-start-canary";
-  const tokens = collectAppPlanRedactionTokens({
-    services: {
-      database: { environment: { MARIADB_PASSWORD: "lando", API_TOKEN: customSecret } },
-    },
+  const plan = decodePlan({
+    database: planService("database", {
+      environment: { MARIADB_PASSWORD: "lando", API_TOKEN: customSecret },
+    }),
   });
-  expect(tokens).not.toContain("lando");
-  expect(tokens).toContain(customSecret);
+  const values = planRedactionValues(plan);
+  expect(values.substring).not.toContain("lando");
+  expect(values.substring).toContain(customSecret);
   const io = createBufferedRendererIO({
     isTTY: true,
     terminalColumns: 100,
@@ -221,7 +329,9 @@ test("start command hints remain usable when a secret explicitly matches the CLI
   });
   await runWithRendererHandling(
     Effect.gen(function* () {
-      yield* (yield* RedactionService).registerValues([...tokens, "lando"]);
+      yield* registerPlanTiers(plan);
+      // Explicit override of the CLI name stays substring so hints stay usable after redaction.
+      yield* (yield* RedactionService).registerValues(["lando"]);
       return {
         app: customSecret,
         servicesStarted: [
@@ -254,4 +364,3 @@ test("start command hints remain usable when a secret explicitly matches the CLI
   expect(io.stderr()).toBe("");
   for (const line of io.stdout().split("\n")) expect(displayWidth(line)).toBeLessThanOrEqual(100);
 });
-import { connections } from "./connection-fixtures";

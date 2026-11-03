@@ -98,10 +98,26 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
           .filter((feature) => !substituted.has(feature.id))
           .flatMap((feature) => feature.validation?.handledServiceFields ?? []),
       );
-      for (const field of ["webroot", "consolePort"] as const) {
+      for (const field of ["webroot", "consolePort", "uploadDirs"] as const) {
         if (seed.authoredService[field] === undefined || claims.has(field)) continue;
-        const message = `Service ${name} has an explicit ${field}, but no composed feature declares support for it.`;
-        const remediation = `Remove ${field} or select a supporting feature that validates and uses the effective ${field}.`;
+        if (field === "uploadDirs" && seed.authoredService.uploadDirs?.length === 0) continue;
+        const { message, remediation } = {
+          webroot: {
+            message: `Service ${name} sets webroot, but nothing in this service uses it.`,
+            remediation:
+              "Remove webroot from this service, or set it on the service that serves your app's files.",
+          },
+          consolePort: {
+            message: `Service ${name} sets consolePort, but nothing in this service uses it.`,
+            remediation:
+              "Remove consolePort. Only services with a separate console listener, such as MinIO, use it.",
+          },
+          uploadDirs: {
+            message: `Service ${name} lists uploadDirs, but Lando can't keep PHP out of them on this service.`,
+            remediation:
+              "Set uploadDirs on the service that serves PHP: an nginx service with a PHP-FPM backend, or a php service using via: apache, with Lando's generated server configuration. Otherwise remove it or set uploadDirs: [], and block PHP in those directories in your own server configuration.",
+          },
+        }[field];
         record(
           new LandofileValidationError({
             file: `${input.appRoot}/.lando.yml`,

@@ -204,7 +204,7 @@ lando stamp "$(git rev-parse --short HEAD)"
 
 Your own shell runs `git` before Lando sees the line, so the script receives the short SHA. Check `dist/version.txt` for that same value.
 
-Bun Shell does not expand `$@` or `$#`. They come through as literal text, so name each argument you need with `$1`, `$2`, and so on.
+Bun Shell does not expand `$@` or `$#`, so name each argument you need with `$1`, `$2`, and so on. A script that uses `$@`, `$#`, or another form Bun Shell can't run fails before it starts; see [Write host commands in Bun Shell syntax](#write-host-commands-in-bun-shell-syntax).
 
 Lando reads its own global flags, such as `--format` and `--verbose`, anywhere on the line. Put `--` in front when the script should get them instead:
 
@@ -289,6 +289,40 @@ Folders do not claim bare namespaced aliases. `.lando/scripts/db/seed.bun.sh` re
 
 Bun Shell supports pipes, redirection, `$(...)`, `&&`, `||`, environment variables, and `if ... then ... fi`. It is a separate shell language, not Bash, zsh, or a promise of full POSIX shell compatibility. Use the [Bun Shell syntax reference](https://bun.com/docs/runtime/shell) when writing scripts. Commands can use shell builtins or executables found on your host `PATH`. Host tools such as `git`, `curl`, and your package managers must be available in that environment.
 
+### Write host commands in Bun Shell syntax
+
+Every host command uses the same Bun Shell on Linux, macOS, and Windows: `.bun.sh` scripts, `service: ":host"` tooling and event steps, host readiness probes, and `lando shell` lines. A few everyday POSIX forms either fail in Bun Shell or silently mean something else. Write the Bun Shell form instead:
+
+| POSIX habit | Write in a host command |
+| --- | --- |
+| `${NAME}` | `$NAME`, or `"$NAME"` when a letter, digit, or `_` follows it |
+| `${NAME:-default}` | `$NAME`, with the default set in the task's `env:` |
+| `echo oops >&2` | `echo oops 1>&2` |
+| `cmd > out.log 2>&1` | `cmd &> out.log`, or `&>>` to append |
+| `cmd 2>&-` | `cmd 2>/dev/null` to discard the output |
+| `$?` | `cmd && echo ok \|\| echo failed` |
+| `$@`, `$#`, `$*` | `$1` through `$9` in a script. A `:host` task appends the arguments you pass to its command |
+| `$((1 + 2))` | `$(bun -e "console.log(1 + 2)")` |
+| `cat <<EOF` here-documents | `printf` or `echo` piped into the command, or a file |
+
+Lando also rejects `<<<` here-strings, a quote that's never closed, and descriptor duplication other than `1>&2` and `2>&1`, such as `3>&1`. Text you mean literally still works: `'${NAME}'` and `\${NAME}` aren't flagged.
+
+Lando looks for these forms before running anything, so a host command doesn't quietly pass `${NAME}` through as text or stop with Bun Shell's bare `Redirection with no file` error. Each diagnostic names the form, its column, and the fix:
+
+- `lando app:config:lint` reports a `landofile.host-shell` error for each one in a `:host` tooling or event step and in a host readiness command. In a Landofile, an unescaped `${NAME}` already fails to load (`landofile.load`), so the form lint reports there is the escaped `$${NAME}`, which would reach Bun Shell as `${NAME}`.
+- A `:host` step in a lifecycle event such as `pre-start`, or a host readiness command, also stops `lando start` before it changes anything. `lando stop` and `lando destroy` still tear the app down but skip the Landofile's events, as they do whenever the Landofile can't be planned.
+- A host tooling task fails with `ToolingCompileError` when you run it, before any of its steps start. A broken task you never run doesn't block the rest of the app, but `lando app:cache:refresh` warns about it (`LANDO_HOST_SHELL_SYNTAX` in `--format=json` output) so you hear about it before you need it.
+- A `.bun.sh` script fails with `ToolingCompileError` before it starts, with the line and column. Scripts may use `$1` through `$9`.
+- `lando shell` prints the problem for that line and, when the fix is mechanical, offers the corrected line at the next prompt for you to run or edit.
+
+Run lint after you edit a host command:
+
+```sh
+lando app:config:lint
+```
+
+Container commands are different. They run through the service's own `sh -c`, so `${NAME}` works there, and you write it as `$${NAME}` in a Landofile so Lando passes it through. See [Landofile expressions](../landofile/expressions.mdx#keep-var-and--as-text).
+
 Scripts always run from the app root, even when you call them from a subdirectory. Relative paths such as `src/` and `dist/` mean the same thing everywhere in the repo.
 
 Lando resolves the working directory before starting a command, so relative paths and `$PWD` refer to the same directory, including through symbolic links. An explicitly configured `PWD` overrides this default, even when it is empty. Host tooling commands use the same rule. If the working directory is missing, inaccessible, or not a directory, the command does not start; fix the reported directory and rerun it.
@@ -364,7 +398,7 @@ That curl runs inside `web` against nginx on port `80`. If a Landofile task and 
 
 ## Declare a host task in the Landofile
 
-A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Host output streams as the command writes it, value-only redacted and byte-exact, the same sink container tooling uses. Task progress stays on stderr, so `lando <task> > out.txt` captures only the command's output. A string `cmd` uses Bun Shell. A list is argv, and arguments you pass on the line are appended to it:
+A one-liner does not need its own file. Set `service: ":host"` on a Landofile task: no services required, no Bun install, and the task's exit code becomes `lando`'s exit code. Host output streams as the command writes it, value-only redacted and byte-exact, the same sink container tooling uses. Task progress stays on stderr, so `lando <task> > out.txt` captures only the command's output. A string `cmd` uses Bun Shell, written in [Bun Shell syntax](#write-host-commands-in-bun-shell-syntax). A list is argv, and arguments you pass on the line are appended to it:
 
 ```yaml
 name: host-task-demo
@@ -580,6 +614,27 @@ lando stamp abc1234
       <Verify command="lando stamp abc1234 --format=json" expect={{ stdout: { regex: "\"stdout\":\\s*\"stamped abc1234" } }} />
     </Step>
     <Step name="cleanup-host-task">
+      <Cleanup />
+    </Step>
+  </Scenario>
+
+  <Scenario id="host-shell-syntax" render={false} reason="Lint flags POSIX-only host forms, and a broken task neither runs nor blocks a valid one">
+    <Step name="lint-host-shell-syntax">
+      <UseFixture name="host-shell-syntax" />
+      <Run command="lando app:cache:refresh" />
+      <Verify command="lando app:cache:refresh --format=json" expect={{ stdout: { regex: "\"code\":\\s*\"LANDO_HOST_SHELL_SYNTAX\"[\\s\\S]*\"path\":\\s*\"tooling.notify-posix.cmd\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"landofile.host-shell\"" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"tooling\",\\s*\"notify-posix\",\\s*\"cmd\"\\s*\\]" } }} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { not: { regex: "\"tooling\",\\s*\"notify\",\\s*\"cmd\"" } } }} />
+    </Step>
+    <Step name="refuse-posix-task">
+      <Run command="lando notify-posix --format=json" expectExit={1} />
+      <Verify errorTag="ToolingCompileError" expect={{ regex: "Bun Shell" }} />
+    </Step>
+    <Step name="run-bun-shell-task">
+      <Verify command="lando notify --format=json" expect={{ stdout: { regex: "\"stderr\":\\s*\"posting to deploys" } }} />
+    </Step>
+    <Step name="cleanup-host-shell-syntax">
       <Cleanup />
     </Step>
   </Scenario>

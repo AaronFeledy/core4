@@ -76,6 +76,23 @@ const appPlanFixture: typeof AppPlan.Encoded = {
   extensions: {},
 };
 
+test.each(["A".repeat(64), "a".repeat(63), "g".repeat(64)])(
+  "AppPlan rejects a malformed committed digest %s",
+  (digest) => {
+    const result = Schema.decodeUnknownResult(AppPlan)({
+      ...appPlanFixture,
+      committedLiteralDigests: [digest],
+    });
+    expect(Result.isFailure(result)).toBe(true);
+  },
+);
+
+test("AppPlan preserves value-free committed digests through encoding", () => {
+  const wire = { ...appPlanFixture, committedLiteralDigests: ["a".repeat(64)] };
+  const decoded = Schema.decodeUnknownSync(AppPlan)(wire);
+  expect(Schema.encodeSync(AppPlan)(decoded).committedLiteralDigests).toEqual(wire.committedLiteralDigests);
+});
+
 describe("AppRef", () => {
   test("decodes the three identity-namespace kinds (user | global | scratch)", () => {
     for (const kind of ["user", "global", "scratch"] as const) {

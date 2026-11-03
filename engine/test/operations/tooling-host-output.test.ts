@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 import { RedactionService, makeRedactionService } from "@lando/redaction/service";
+import { sha256Hex } from "@lando/sdk/digest";
 import {
   AbsolutePath,
   AppId,
   type CurrentExecutableAppPlan,
+  type Environment,
   GlobalConfig,
   type LandofileEvents,
   ProviderId,
@@ -25,6 +27,7 @@ import { DateTime, Effect, Layer, Schema } from "effect";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../../src/operations/stream-frame-sink.ts";
 import { runTooling } from "../../src/operations/tooling.ts";
 import { withProjectEvents } from "../../src/planner/effective-events.ts";
+import { attachEffectiveTooling } from "../../src/planner/effective-tooling.ts";
 import * as EventRuntime from "../../src/services/event-service.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 import { makeShellRunnerService } from "../../src/services/shell-runner.ts";
@@ -50,7 +53,7 @@ const harness = (
     extensions: {},
     metadata: { resolvedAt: DateTime.makeUnsafe("2026-09-12T00:00:00Z"), source: "test", runtime: 4 },
   };
-  const plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
+  let plan = events === undefined ? basePlan : withProjectEvents(basePlan, events);
   const config = Schema.decodeUnknownSync(GlobalConfig)({});
   const layer = Layer.mergeAll(
     BunProcessRunner.layer,
@@ -116,8 +119,22 @@ const harness = (
   const redaction = Layer.succeed(RedactionService, redactionService);
   return {
     frames,
+    commitLiteral: (value: string) => {
+      plan = attachEffectiveTooling(
+        {
+          ...plan,
+          committedLiteralDigests: [sha256Hex(value)],
+        },
+        { probe: task },
+      );
+    },
     run: (
-      options: { readonly sink?: boolean; readonly redaction?: boolean; readonly payload?: boolean } = {},
+      options: {
+        readonly sink?: boolean;
+        readonly redaction?: boolean;
+        readonly payload?: boolean;
+        readonly env?: Environment;
+      } = {},
     ) =>
       Effect.runPromise(
         Effect.gen(function* () {
@@ -131,7 +148,10 @@ const harness = (
                 frames.push({ ...frame, kind: "bytes", chunk: payloads[frame._tag].write(bytes) });
               }),
           });
-          return yield* runTooling({ name: "probe" }).pipe(
+          return yield* runTooling({
+            name: "probe",
+            ...(options.env === undefined ? {} : { env: options.env }),
+          }).pipe(
             Effect.provide(
               Layer.mergeAll(
                 layer,
@@ -158,6 +178,22 @@ const joined = (frames: ReadonlyArray<StreamFrameSinkFrame>, tag: "stdout" | "st
     .filter((frame) => frame._tag === tag)
     .map((frame) => (typeof frame.chunk === "string" ? frame.chunk : new TextDecoder().decode(frame.chunk)))
     .join("");
+
+test.each([
+  [undefined, "[redacted] wordpress-seo override-tail\n"],
+  [{ OTHER_PASSWORD: "wordpress" }, "[redacted] wordpress-seo override-tail\n"],
+  [{ DB_PASSWORD: "override" }, "[redacted] wordpress-seo [redacted]-tail\n"],
+] as const)("host tooling preserves plan tiers and protects caller env %j", async (env, expected) => {
+  const h = harness({
+    service: ":host",
+    env: { DB_PASSWORD: "wordpress" },
+    cmd: "printf '%s\\n' 'wordpress wordpress-seo override-tail'",
+  });
+  h.commitLiteral("wordpress");
+  const result = await h.run({ payload: true, ...(env === undefined ? {} : { env }) });
+  expect(result).toMatchObject({ _tag: "Success", success: { exitCode: 0 } });
+  expect(joined(h.frames, "stdout")).toBe(expected);
+});
 
 test("keeps a registered secret masked across separately executed host commands", async () => {
   // Given

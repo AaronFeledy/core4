@@ -33,6 +33,8 @@ Pass a command instead of the default shell:
 lando ssh -- ls -la
 ```
 
+To leave shell and common client history off disk for one session, pass `--no-history`. See [Keep shell and client history across rebuilds](../tooling/lando-shell.mdx#keep-shell-and-client-history-across-rebuilds).
+
 Pipe a script in, and the shell runs it without a terminal, then exits at the end of the input:
 
 ```sh

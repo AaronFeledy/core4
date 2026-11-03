@@ -45,7 +45,7 @@ export const sourceCoordinates = (source: SourceDocument, path: readonly (string
 };
 
 export const attributeLintIssue = (
-  issue: ValidationIssue & Partial<Pick<ConfigLintViolation, "rule" | "severity">>,
+  issue: ValidationIssue & Partial<Pick<ConfigLintViolation, "rule" | "reason" | "severity">>,
   scope: "fragment" | "effective",
   documents: readonly SourceDocument[],
 ): ConfigLintViolation => {

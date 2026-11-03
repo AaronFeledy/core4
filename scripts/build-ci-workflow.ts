@@ -103,6 +103,9 @@ ${setupBunSteps}
         if: startsWith(matrix.platform, 'windows-')
         run: bun test state-store/test/state-store/private-file-access.test.ts
 
+      - name: Host Bun Shell dialect conformance
+        run: bun test engine/test/services/bun-shell-dialect.test.ts engine/test/services/bun-shell-dialect-conformance.test.ts
+
       - name: Lint
         run: bun run lint
 

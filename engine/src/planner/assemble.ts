@@ -1,4 +1,5 @@
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
+import { landofileValidationError } from "@lando/landofile/validation";
 import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
@@ -54,6 +55,7 @@ import {
 import { CORE_VERSION } from "../version.ts";
 import * as AppDefaults from "./app-defaults.ts";
 import { appFeatureError } from "./app-feature-error.ts";
+import { withCommittedLiteralDigests } from "./authored-literals.ts";
 import { planServiceDrafts } from "./authored.ts";
 import {
   appFeatureCapabilityError,
@@ -71,6 +73,7 @@ import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
+import { hostEventsShellIssues } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
@@ -301,6 +304,22 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     hostEvents,
     env: authoredLandofile.context.env,
   });
+  // Every hostEvents name is a lifecycle event, so a bad host step stops this app's plan like a
+  // project lifecycle step would; commands that only read config are unaffected.
+  if (hostEvents !== undefined && !hostEventCompileBase.skipHostEvents) {
+    const configFile = pathsService?.configFile ?? "config.yml";
+    const hostShellIssues = hostEventsShellIssues(hostEvents).map((issue) => ({
+      ...issue,
+      source: { layer: "config-file" as const, file: configFile, path: issue.path },
+    }));
+    if (hostShellIssues.length > 0)
+      return yield* Effect.fail(
+        landofileValidationError(configFile, hostShellIssues, {
+          headline: "Global config hostEvents has host commands Bun Shell cannot run",
+          remediation: "Fix each listed hostEvents step in config.yml, then rerun the command.",
+        }),
+      );
+  }
   const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
   const planServices = (services: Readonly<Record<string, unknown>>) =>
@@ -381,8 +400,9 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
       yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
+      const proven = withCommittedLiteralDigests(cached, authoredLandofile);
       return attachCompiledInvocationPlan(
-        attachEffectiveTooling(cached, effectiveTooling, connectionClients, disabledToolingSources),
+        attachEffectiveTooling(proven, effectiveTooling, connectionClients, disabledToolingSources),
         executableSites,
         effectiveEventsFor(planServices(cached.services)),
       );
@@ -511,6 +531,7 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
       }).pipe(
         Effect.tap((decoded) => validateConnectionValues(appRoot, decoded.services)),
         Effect.map((decoded) => attachScanPlans(decoded, globalConfig?.scanner, resolvedServices)),
+        Effect.map((decoded) => withCommittedLiteralDigests(decoded, authoredLandofile)),
       ),
       effectiveTooling,
       connectionClients,

@@ -108,6 +108,7 @@
     "./operations/global-status": "./src/operations/global-status.ts",
     "./operations/global-stop": "./src/operations/global-stop.ts",
     "./operations/global-teardown": "./src/operations/global-teardown.ts",
+    "./operations/host-shell-warnings": "./src/operations/host-shell-warnings.ts",
     "./operations/info": "./src/operations/info.ts",
     "./operations/logs": "./src/operations/logs.ts",
     "./operations/missing-app-roots": "./src/operations/missing-app-roots.ts",

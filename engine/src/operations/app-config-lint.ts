@@ -3,7 +3,8 @@ import { getLandofileValueSource } from "@lando/landofile/validation";
 import { normalizeHostPlatform } from "@lando/paths";
 import { ConfigService, FileSystem, PathsService, PluginRegistry } from "@lando/sdk/services";
 import { Effect, Option, Result } from "effect";
-import { resolveLandofileForPlanning } from "../planner/event-set.ts";
+import { invocationSitesOf, resolveLandofileForPlanning } from "../planner/event-set.ts";
+import { hostShellIssues } from "../planner/host-shell-issues.ts";
 import { configExpressionIssuePath } from "../planner/landofile-scopes.ts";
 import { lintCapabilityIssues } from "../planner/lint-capabilities.ts";
 import { toolingAndEventIssues } from "../planner/tooling-event-issues.ts";
@@ -99,10 +100,16 @@ export const appConfigLint = Effect.fn("AppOperation.configLint")(function* (
     }
     return yield* Effect.fail(resolved.failure);
   }
+  const resolution = resolved.success.resolution;
+  // If invocation sites fail to compile, treat every pending site as unresolved so its command is not scanned.
+  const invocationSites = yield* invocationSitesOf(resolution).pipe(
+    Effect.orElseSucceed(() => resolution.pendingSites),
+  );
   const issues = [
     ...(resolved.success._tag === "Invalid" ? resolved.success.issues : []),
-    ...toolingAndEventIssues(resolved.success.resolution),
-    ...(yield* lintCapabilityIssues(resolved.success.resolution)),
+    ...toolingAndEventIssues(resolution),
+    ...hostShellIssues(resolution, invocationSites),
+    ...(yield* lintCapabilityIssues(resolution)),
   ];
   const evaluated = issues
     .filter(

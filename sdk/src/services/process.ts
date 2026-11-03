@@ -94,7 +94,11 @@ export interface ShellReplIO {
   readonly input: AsyncIterable<ShellReplInput>;
   readonly writeStdout: (chunk: string) => void;
   readonly writeStderr: (chunk: string) => void;
-  readonly prompt?: () => void;
+  /**
+   * Show the prompt. `initial` pre-fills the line the user edits or submits with Enter; an IO that
+   * can't pre-fill, or already holds typed-ahead input, shows an empty prompt instead.
+   */
+  readonly prompt?: (initial?: string) => void;
   readonly close?: () => void;
 }
 

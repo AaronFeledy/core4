@@ -14,11 +14,17 @@ import {
 
 import { RedactionService, collectSecretEnvValues, createStandaloneRedactor } from "@lando/redaction/service";
 import type { PrivateFileAccess } from "@lando/state-store/private-file-access";
+import {
+  applyBunShellReplacements,
+  bunShellDialectIssues,
+  correctedBunShellText,
+  describeBunShellIssue,
+} from "./bun-shell-dialect.ts";
 import { captureHostExecutionContext } from "./host-execution-context.ts";
 import { DEFAULT_SHELL_HISTORY_LIMIT, appendShellHistory, readShellHistory } from "./host-shell-history.ts";
 import { hostShellError, redactHostShellError, runHostShellLine } from "./host-shell-line.ts";
 import { makeStatefulShellRedactor } from "./host-shell-redactor.ts";
-import { resolveHostShellSecrets } from "./host-shell-secrets.ts";
+import { maskHostShellSecretReferences, resolveHostShellSecrets } from "./host-shell-secrets.ts";
 
 const EXIT_LINE = /^exit(?:\s+([+-]?[0-9]+))?\s*$/;
 type HostShellReplSpec = Omit<ShellInteractiveSpec, "io"> & { readonly io: ShellReplIO };
@@ -133,6 +139,25 @@ export const runHostShellRepl = Effect.fn("ShellRunner.interactive")(function* (
           }
           const resolved = resolution.success;
           redactor = await Effect.runPromise(redactorFor(resolved.values, lineEnv));
+          // Secret values are data, not shell syntax: scan the typed line with each reference blanked.
+          const masked = maskHostShellSecretReferences(line);
+          const dialectIssues = bunShellDialectIssues(masked);
+          if (dialectIssues.length > 0) {
+            for (const issue of dialectIssues)
+              io.writeStderr(
+                `${redactor.redactString(`${describeBunShellIssue(issue)} ${issue.suggestion}`)}\n`,
+              );
+            // Offer the fixed line for the user to run or edit; nothing runs until they press Enter.
+            const corrected =
+              correctedBunShellText(masked) === undefined
+                ? undefined
+                : applyBunShellReplacements(line, dialectIssues);
+            if (corrected !== undefined)
+              io.writeStderr("Press Enter to run the corrected line, or edit it.\n");
+            lastStatus = 2;
+            io.prompt?.(corrected);
+            continue;
+          }
           const command = redactor.redactString(
             resolved.fragments.reduce(
               (text, fragment, index) => `${text}${index === 0 ? "" : REDACTED}${fragment}`,

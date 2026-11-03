@@ -13,6 +13,7 @@ import type { ConfigError } from "@lando/sdk/errors";
 import { Context, Effect, Layer, Option, type Scope } from "effect";
 
 import { recordConfigWarning } from "@lando/engine/config/config-warnings";
+import { hostEventsShellConfigError } from "@lando/engine/config/global-config";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
 import { RuntimeLayerFactory } from "@lando/engine/runtime/runtime-layer-factory";
 import * as LandoConfigService from "@lando/engine/services/config";
@@ -185,5 +186,11 @@ const collectResilientDoctorReport = Effect.fnUntraced(function* (
     ...(built.self === undefined ? {} : { initialSelfChecks: [built.self] }),
     ...(skipped === undefined ? {} : { skipped }),
   }).pipe(Effect.provide(reportContext), Effect.provide(config.value));
-  return { ...report, globalConfig: { status: "pass" } };
+  // A bad host step stops every app's start but not doctor's other checks, so it fails this row only.
+  const hostEventsError = hostEventsShellConfigError(snapshot.config.hostEvents, snapshot.paths.configFile);
+  return {
+    ...report,
+    globalConfig:
+      hostEventsError === undefined ? { status: "pass" } : { status: "fail", error: hostEventsError },
+  };
 }, Effect.scoped);

@@ -127,3 +127,28 @@ test("native health rejects an explicit user even when it matches the service id
   expect(Result.isFailure(result)).toBe(true);
   if (Result.isFailure(result)) expect(result.failure._tag).toBe("HealthcheckTargetUnsupportedError");
 });
+
+test("final-plan host readiness string command rejects Bun Shell dialect", async () => {
+  const config = Schema.decodeUnknownSync(ServiceConfig)({
+    readiness: { target: "host", command: "test -f ${READY}" },
+  });
+  // Plan-level command is already decoded text (no Landofile $$ escape).
+  const service = applyAuthoredHealthcheck(web, config);
+  // Force a braced form onto the plan probe command.
+  const readiness = service.readiness;
+  if (readiness === undefined) throw new TypeError("expected host readiness");
+  const poisoned = {
+    ...service,
+    readiness: { ...readiness, command: "test -f ${READY}" },
+  };
+  const validation = await Effect.runPromise(
+    Effect.result(validateServiceProbes({ ...plan, services: { [poisoned.name]: poisoned } })),
+  );
+  expect(Result.isFailure(validation)).toBe(true);
+  if (Result.isSuccess(validation)) return;
+  expect(validation.failure._tag).toBe("LandofileValidationError");
+  if (validation.failure._tag === "LandofileValidationError") {
+    expect(validation.failure.issues[0]?.rule).toBe("landofile.host-shell");
+    expect(validation.failure.issues[0]?.path).toEqual(["services", "web", "readiness", "command"]);
+  }
+});

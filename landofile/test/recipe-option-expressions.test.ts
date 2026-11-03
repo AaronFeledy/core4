@@ -782,7 +782,7 @@ describe("braced shell forms stay unsupported on the load path", () => {
 
       // Then
       expect(Exit.isFailure(exit)).toBe(true);
-      expect(failureMessage(exit)).toContain("Configuration expressions");
+      expect(failureMessage(exit)).toBe("Secret references are not supported at services.appserver.type.");
     });
   });
 

@@ -9,6 +9,8 @@ tags: [beta, docs, service, home, host]
 
 A service's home directory is where tools drop their caches and credentials: `~/.npm`, `~/.composer`, `~/.ssh`, shell history. Lando puts that directory on a persistent store so a rebuild does not throw it away. Home persistence is on by default whenever Lando knows where the planned user's home is. When it doesn't, for example because you supplied the image yourself, Lando plans no home store and moves on; set `home.path` if you want one anyway.
 
+For shell and client history, including how to leave history off disk for one `shell --service` or `ssh` session, see [Keep shell and client history across rebuilds](../tooling/lando-shell.mdx#keep-shell-and-client-history-across-rebuilds).
+
 ```yaml
 name: home-and-host-demo
 services:
@@ -97,6 +99,8 @@ services:
 ```
 
 To get rid of it instead, `lando destroy --volumes` removes the app's volumes, old homes included.
+
+A home can hold SSH keys, registry tokens, and shell history, so Lando keeps it out of data commands: database snapshots and exports cover only the database's own data, never a home volume.
 
 ## When Lando doesn't know where home is
 

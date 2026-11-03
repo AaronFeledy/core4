@@ -60,6 +60,7 @@ The entire scratch tree MUST be excluded from cwd discovery. Scope finalization 
 - The resolved app name is rewritten to the scratch id.
 - Local and user overrides are copied unless `--no-local-overrides` is set.
 - Materialization is atomic. Failure removes the partial root and raises `ScratchMaterializeError`; provider actions MUST NOT begin first.
+- Fork materialization MUST NOT implicitly copy source persisted-home stores (§6.5).
 
 #### 21.4.2 Scratch mode
 

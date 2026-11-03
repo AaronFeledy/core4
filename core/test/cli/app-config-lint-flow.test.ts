@@ -178,6 +178,7 @@ test("lint presents a multiline rewrite in text and preserves its raw JSON sugge
         expect(envelope.result.violations).toHaveLength(1);
         expect(envelope.result.violations[0]).toMatchObject({
           rule: "landofile.load",
+          reason: "LandofileParseError",
           line: 3,
           column: 3,
           message:

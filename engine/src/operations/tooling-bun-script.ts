@@ -7,7 +7,8 @@ import { EnvironmentValueResolver, EventService } from "@lando/sdk/services";
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
 import { readBunShellScript } from "@lando/landofile/bun-sh-script";
-import { runHostScript } from "../services/host-tooling-engine.ts";
+import { validateHostShellScript } from "../services/host-shell-validation.ts";
+import { resolveScriptPath, runHostScript } from "../services/host-tooling-engine.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 import {
   type PreparedBunShellScript,
@@ -36,6 +37,18 @@ interface BunShellScriptOptions {
   readonly hostIo?: "stdin" | "terminal";
   readonly signal?: AbortSignal;
 }
+
+/** Admits the script's inputs and rejects syntax Bun Shell cannot run, before any progress or side effect. */
+const prepareHostScript = Effect.fnUntraced(function* (
+  script: DiscoveredBunShellScript,
+  appRoot: string,
+  options: BunShellScriptOptions,
+) {
+  const prepared = yield* prepareBunShellScript(script, options);
+  const scriptPath = yield* resolveScriptPath(script.path, [appRoot]);
+  yield* validateHostShellScript(script.id, scriptPath, prepared.redactionTokens);
+  return prepared;
+});
 
 const executePreparedBunShellScript = Effect.fnUntraced(function* (
   prepared: PreparedBunShellScript,
@@ -86,7 +99,7 @@ export const runBunShellScript = Effect.fnUntraced(function* (
   appRoot: string,
   options: BunShellScriptOptions,
 ) {
-  const prepared = yield* prepareBunShellScript(script, options);
+  const prepared = yield* prepareHostScript(script, appRoot, options);
   return yield* withBunShellScriptInputs(prepared, executePreparedBunShellScript(prepared, appRoot, options));
 });
 
@@ -118,7 +131,7 @@ export const runBunShellTooling = Effect.fn("AppOperation.bunShellTooling")(func
     );
   }
 
-  const prepared = yield* prepareBunShellScript(script, options);
+  const prepared = yield* prepareHostScript(script, appRoot, options);
   return yield* withBunShellScriptInputs(
     prepared,
     Effect.gen(function* () {

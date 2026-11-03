@@ -88,7 +88,8 @@ const commandLeaf = (
   ...shared(step, authoredIndex, source),
 });
 
-const compileLeaf = (
+/** Compiles one authored event step into the leaf execution runs; lint reads host commands through it too. */
+export const compileEventStepLeaf = (
   step: EventStep,
   authoredIndex: number,
   source?: "host" | "project",
@@ -138,16 +139,16 @@ const compileNode = (
       Effect.map((selector) => {
         const body =
           "defer" in step && step.defer !== undefined
-            ? deferNode(compileLeaf(step, authoredIndex, source))
-            : leafNode(compileLeaf(step, authoredIndex, source));
+            ? deferNode(compileEventStepLeaf(step, authoredIndex, source))
+            : leafNode(compileEventStepLeaf(step, authoredIndex, source));
         return { kind: "for", authoredIndex, selector, body };
       }),
     );
   }
   if (typeof step !== "string" && "defer" in step && step.defer !== undefined) {
-    return Effect.succeed(deferNode(compileLeaf(step, authoredIndex, source)));
+    return Effect.succeed(deferNode(compileEventStepLeaf(step, authoredIndex, source)));
   }
-  return Effect.succeed(leafNode(compileLeaf(step, authoredIndex, source)));
+  return Effect.succeed(leafNode(compileEventStepLeaf(step, authoredIndex, source)));
 };
 
 export interface EventStepIdentity {
@@ -242,7 +243,7 @@ export const compileEventStepProgram = (
             message: cause.message,
             authoredIndex: identity.authoredIndex,
             ...(identity.source === undefined ? {} : { source: identity.source }),
-            kind: compileLeaf(step, identity.authoredIndex, identity.source).kind,
+            kind: compileEventStepLeaf(step, identity.authoredIndex, identity.source).kind,
             cause,
             remediation: cause.remediation,
           }),

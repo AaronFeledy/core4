@@ -61,6 +61,7 @@ describe("joomla decomposition", () => {
           type: "php:{{ recipe.php }}",
           primary: true,
           framework: "joomla",
+          uploadDirs: ["images"],
           webroot: "{{ recipe.webroot }}",
           composer: "{{ recipe.composer }}",
           allowOverride: true,

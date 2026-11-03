@@ -3,9 +3,15 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Result, Stream } from "effect";
 
 import { ProcessTimeoutError } from "@lando/sdk/errors";
-import { ProcessRunner, ShellRunner } from "@lando/sdk/services";
+import { ProcessRunner } from "@lando/sdk/services";
 
-import { canOpenHost, openHostTarget, openUrl, openerCommandFor } from "../../src/services/host-opener";
+import {
+  HostProxyOpenerError,
+  canOpenHost,
+  openHostTarget,
+  openUrl,
+  openerArgvFor,
+} from "../../src/services/host-opener";
 
 test("keeps the process failure as the host opener cause", async () => {
   const cause = new ProcessTimeoutError({
@@ -25,34 +31,39 @@ test("keeps the process failure as the host opener cause", async () => {
     ),
   );
   expect(Result.isFailure(result)).toBe(true);
-  if (Result.isFailure(result)) expect(result.failure.cause).toBe(cause);
+  if (Result.isFailure(result)) {
+    expect(result.failure).toBeInstanceOf(HostProxyOpenerError);
+    expect(result.failure.cause).toBe(cause);
+  }
 });
 
-const fakeShell = (record: { commands: string[] }) =>
+const fakeProcess = (record: { commands: (readonly string[])[] }) =>
   Layer.succeed(
-    ShellRunner,
-    ShellRunner.of({
-      exec: (command: string) => {
-        record.commands.push(command);
+    ProcessRunner,
+    ProcessRunner.of({
+      run: ({ cmd, args }) => {
+        record.commands.push([cmd, ...(args ?? [])]);
         return Effect.succeed({ exitCode: 0, stdout: "", stderr: "" });
       },
-      run: () => Effect.die("not used"),
-      runScript: () => Effect.die("not used"),
-      interactive: () => Effect.die("not used"),
+      stream: () => Stream.die("not used"),
+      streamWithExit: () => Stream.die("not used"),
     }),
   );
 
-describe("openerCommandFor", () => {
+describe("openerArgvFor", () => {
   test("selects the platform opener", () => {
-    expect(openerCommandFor("darwin", "https://a.lndo.site")).toBe("open 'https://a.lndo.site'");
-    expect(openerCommandFor("linux", "https://a.lndo.site")).toBe("xdg-open 'https://a.lndo.site'");
-    expect(openerCommandFor("win32", "https://a.lndo.site")).toBe('start "" "https://a.lndo.site"');
+    expect(openerArgvFor("darwin", "https://a.lndo.site")).toEqual(["open", "https://a.lndo.site"]);
+    expect(openerArgvFor("linux", "https://a.lndo.site")).toEqual(["xdg-open", "https://a.lndo.site"]);
+    expect(openerArgvFor("win32", "https://a.lndo.site")).toEqual([
+      "rundll32.exe",
+      "url.dll,FileProtocolHandler",
+      "https://a.lndo.site",
+    ]);
   });
 
-  test("quotes win32 URLs for cmd.exe", () => {
-    expect(openerCommandFor("win32", 'https://a.lndo.site/path?name="quoted value"')).toBe(
-      'start "" "https://a.lndo.site/path?name=""quoted value"""',
-    );
+  test("passes win32 URLs unchanged as one argv element", () => {
+    const url = 'https://a.lndo.site/path?name="quoted value"&price=$5';
+    expect(openerArgvFor("win32", url)).toEqual(["rundll32.exe", "url.dll,FileProtocolHandler", url]);
   });
 });
 
@@ -70,23 +81,23 @@ describe("canOpenHost", () => {
 });
 
 describe("openUrl", () => {
-  test("issues the platform opener command through ShellRunner", async () => {
-    const record = { commands: [] as string[] };
+  test("issues the platform opener argv through ProcessRunner", async () => {
+    const record: { commands: (readonly string[])[] } = { commands: [] };
     await Effect.runPromise(
-      openUrl("https://web.myapp.lndo.site", { platform: "linux" }).pipe(Effect.provide(fakeShell(record))),
+      openUrl("https://web.myapp.lndo.site", { platform: "linux" }).pipe(Effect.provide(fakeProcess(record))),
     );
-    expect(record.commands).toEqual(["xdg-open 'https://web.myapp.lndo.site'"]);
+    expect(record.commands).toEqual([["xdg-open", "https://web.myapp.lndo.site"]]);
   });
 
   test("rejects a non-http(s) scheme with HostProxyOpenUrlSchemeError", async () => {
-    const record = { commands: [] as string[] };
+    const record: { commands: (readonly string[])[] } = { commands: [] };
     const exit = await Effect.runPromiseExit(
-      openUrl("ftp://example.test", { platform: "linux" }).pipe(Effect.provide(fakeShell(record))),
+      openUrl("ftp://example.test", { platform: "linux" }).pipe(Effect.provide(fakeProcess(record))),
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const error = Option.getOrThrow(Cause.findErrorOption(exit.cause));
-      expect((error as { _tag?: string } | undefined)?._tag).toBe("HostProxyOpenUrlSchemeError");
+      expect(error._tag).toBe("HostProxyOpenUrlSchemeError");
     }
     expect(record.commands).toEqual([]);
   });

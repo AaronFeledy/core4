@@ -24,6 +24,35 @@ const drive = async (format: "text" | "json", chunks: readonly (string | Uint8Ar
 };
 
 describe("payload frames", () => {
+  test.each(["", " "])("JSON cap preserves true whole-token context with separator %j", async (separator) => {
+    const io = createBufferedRendererIO();
+    const service = makeRedactionService();
+    const layer = layerStreamFrameSink("json").pipe(
+      Layer.provide(Layer.merge(layerPlainService(io), Layer.succeed(RedactionService, service))),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* service.registerValues(["wordpress"], { match: "whole-token" });
+        yield* service.registerValues(["private-canary"]);
+        yield* sink.emit({
+          _tag: "stdout",
+          kind: "bytes",
+          service: "wordpress",
+          source: "wordpress",
+          chunk: `${"x".repeat(65536)}${separator}wordpress\nprivate-canary PASSWORD=unregistered\n`,
+        });
+      }).pipe(Effect.provide(layer)),
+    );
+    const frames = io.stdoutLines().map((line) => JSON.parse(line));
+    expect(frames.map((frame) => frame.chunk).join("")).toBe(
+      `${"x".repeat(65536)}${separator}${separator ? "[redacted]" : "wordpress"}\n[redacted] PASSWORD=[redacted]\n`,
+    );
+    expect(frames.map((frame) => [frame.service, frame.source])).toEqual(
+      Array.from({ length: 3 }, () => ["[redacted]", "[redacted]"]),
+    );
+  });
+
   test("keeps a final incomplete UTF-8 sequence in its partial-line frame", async () => {
     // Given
     const bytes = new Uint8Array([97, 98, 99, 226, 130]);

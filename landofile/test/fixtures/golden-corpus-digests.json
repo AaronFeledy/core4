@@ -44,6 +44,10 @@
       "digest": "46a9e4c5d4a02001f2e9e6b50f1413d231fe01941fc9b4d45dde7d5f49f666ad"
     },
     {
+      "fixture": "docs/guides/bun-shell-scripts/fixtures/host-shell-syntax",
+      "digest": "7bd1c8efb4b8ca58ea8f0988d9f0f15ed8802272c7f4276a308fad3bd998194c"
+    },
+    {
       "fixture": "docs/guides/bun-shell-scripts/fixtures/host-task",
       "digest": "32fe922f5c0aacdbbbfa5bcb5c7486cf6158bb72120bafe7a3496a5f081d6064"
     },
@@ -299,6 +303,10 @@
     {
       "fixture": "docs/guides/events/fixtures/events-failure",
       "digest": "d968e715ac7ddda28b941702cc01ecbe7894bf2f1b875aaf096db2cf8bbda952"
+    },
+    {
+      "fixture": "docs/guides/events/fixtures/events-host-shell",
+      "digest": "3dd7a90c847e9329e9e58037d4fd2ad1afdc3d4890b468059fec2af558387b08"
     },
     {
       "fixture": "docs/guides/exec/fixtures/exec-demo",
@@ -683,6 +691,21 @@
       "digest": "df96558b651021bf7df0d882b8a92e97daeb3d6d9dc411382d2fd34a8761b1cd"
     },
     {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs-inject",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs-unsupported",
+      "digest": "27b0264d66568001786084c5274616d74f65b488b7e0d01af221192ce45754e5"
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs",
+      "digest": "46477862f1396130731af50aa2a97ff9e1acfcd3743553d7c6553ee2f2a9f4df"
+    },
+    {
       "fixture": "docs/guides/node-playwright/fixtures/playwright-demo",
       "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
     },
@@ -898,6 +921,14 @@
       "digest": "f1d973b3bfa3802f2900de503422f333037b90d8b013199d4fca1970af132e77"
     },
     {
+      "fixture": "docs/guides/php/fixtures/php-upload-dirs-fpm",
+      "digest": "91956ff4f461f9016bae64fae4b1f1c1afbcda7822f4ade454a116d821d51762"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/php-upload-dirs",
+      "digest": "dda55b72a8d471840e3d7268fea53649d6e17bf091ef6b2cefbe0b995939bea5"
+    },
+    {
       "fixture": "docs/guides/php/fixtures/stock-nonroot",
       "digest": "9780ae284c8b9aef5fda92cec5a2d84da3b0afc4c34f3294f3b7f443e3ffe6b9"
     },
@@ -1028,8 +1059,30 @@
       "digest": "4ca83b9cfe7169e2ff669a2c9ba702f47b64f5566abcf688531369c6b86bb1af"
     },
     {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-build-args",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-command-misuse",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-commands",
+      "digest": "c9273ee4bc5f75c4b17c5297ec9294d46652e0085854700626e975c73c1ed55e"
+    },
+    {
       "fixture": "docs/guides/secret-stores/fixtures/secret-stores-demo",
       "digest": "129bb83ef1bf4571ca18662ff8789457241433a6931b4d0158f075eda41ccc25"
+    },
+    {
+      "fixture": "docs/guides/secret-stores/fixtures/secret-stores-whole-token",
+      "digest": "f2840557e6956e03b38a2e159a026ba7fc1434ee9b437e90a445d9fd6c670b91"
     },
     {
       "fixture": "docs/guides/service-dns/fixtures/service-dns-demo",

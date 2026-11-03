@@ -1,4 +1,4 @@
-import { createPayloadRedactor } from "@lando/sdk/secrets";
+import { type TieredRedactionValues, createPayloadRedactor } from "@lando/sdk/secrets";
 import { Effect, Option } from "effect";
 import { RedactionService, createPayloadValues, createStandaloneRedactor } from "./service.ts";
 
@@ -25,16 +25,21 @@ export const makeDiagnosticTailFactory = Effect.fnUntraced(function* (
       const encoded = encoder.encodeInto(token, tokenBuffer);
       return encoded.read === token.length && encoded.written <= LIMIT;
     };
-    let previousValues: Iterable<string> | undefined;
-    let filteredTokens: string[] = [];
+    let previousValues: TieredRedactionValues | undefined;
+    let filteredTokens: TieredRedactionValues = { substring: [], wholeToken: [] };
     const payload = createPayloadRedactor(() => {
       const currentValues = values();
       if (currentValues === previousValues) return filteredTokens;
       previousValues = currentValues;
-      const tokens = [...currentValues];
+      const substring = [...currentValues.substring];
+      const wholeToken = [...currentValues.wholeToken];
       // The exact matcher holds a partial token. Fail closed rather than hold an unbounded token.
-      if (tokens.some((token) => !tokenFits(token))) suppressed = true;
-      filteredTokens = tokens.filter((token) => tokenFits(token));
+      if (substring.some((token) => !tokenFits(token)) || wholeToken.some((token) => !tokenFits(token)))
+        suppressed = true;
+      filteredTokens = {
+        substring: substring.filter(tokenFits),
+        wholeToken: wholeToken.filter(tokenFits),
+      };
       return filteredTokens;
     });
     const decoder = new TextDecoder();

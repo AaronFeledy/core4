@@ -108,6 +108,66 @@ describe("php ServiceType — supported versions and frameworks", () => {
   });
 });
 
+describe("PHP Apache upload directories", () => {
+  test.each([undefined, 8080])("protects upload directories inside the site with port %j", async (port) => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      webroot: "public.v1",
+      allowOverride: true,
+      uploadDirs: ["sites/*/files", "uploads*"],
+      ...(port === undefined ? {} : { port }),
+    });
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    const start = directives.indexOf(
+      '<DirectoryMatch "(?i)^/app/public\\\\.v1/(?:sites/[^/]*/files|uploads[^/]*)(?:/|$)">',
+    );
+    expect(start).toBeGreaterThan(-1);
+    expect(directives.slice(start, start + 8)).toEqual([
+      '<DirectoryMatch "(?i)^/app/public\\\\.v1/(?:sites/[^/]*/files|uploads[^/]*)(?:/|$)">',
+      "<IfModule php_module>",
+      "php_admin_flag engine off",
+      "</IfModule>",
+      '<FilesMatch "(?i)\\.php$">',
+      "Require all denied",
+      "</FilesMatch>",
+      "</DirectoryMatch>",
+    ]);
+    if (port !== undefined) {
+      expect(start).toBeGreaterThan(directives.indexOf("<VirtualHost *:8080>"));
+      expect(start + 8).toBeLessThan(directives.indexOf("</VirtualHost>"));
+    }
+  });
+
+  test("joins a filesystem-root webroot with exactly one separator", async () => {
+    // Given
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      webroot: "/",
+      uploadDirs: ["app/uploads"],
+    });
+    // When
+    const directives = apacheLauncherDirectives(plan.command, "apache2-foreground");
+    // Then
+    expect(directives).toContain('<DirectoryMatch "(?i)^/(?:app/uploads)(?:/|$)">');
+  });
+
+  test.each([
+    { command: ["custom"] },
+    { entrypoint: ["custom"] },
+    { image: "custom/php:8.3" },
+    { build: { context: "." } },
+    { uploadDirs: [] },
+  ])("does not add upload directives for %j", async (config) => {
+    const plan = await composePhpPlan(php83ServiceType, {
+      type: "php:8.3",
+      uploadDirs: ["uploads"],
+      ...config,
+    });
+    const command = Array.isArray(plan.command) ? plan.command.join("\n") : (plan.command ?? "");
+    expect(command).not.toContain("DirectoryMatch");
+  });
+});
+
 describe("php:8.2 ServiceType", () => {
   test("plans a default PHP 8.2 web service with framework=none defaults", async () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2" });

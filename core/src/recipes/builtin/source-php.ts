@@ -65,7 +65,11 @@ export const drupalOptions = {
 export const drupalWebVariants = [
   {
     when: '{{ eq(options.webserver, "apache") }}',
-    config: { services: { appserver: { allowOverride: true, port: 80, routes: defaultRoutes } } },
+    config: {
+      services: {
+        appserver: { allowOverride: true, port: 80, routes: defaultRoutes, uploadDirs: ["sites/*/files"] },
+      },
+    },
   },
   {
     when: '{{ eq(options.webserver, "nginx") }}',
@@ -76,6 +80,7 @@ export const drupalWebVariants = [
           type: "nginx",
           backend: "appserver",
           webroot: "{{ recipe.webroot }}",
+          uploadDirs: ["sites/*/files"],
           routes: defaultRoutes,
         },
       },
