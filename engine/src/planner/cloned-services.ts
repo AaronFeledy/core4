@@ -1,21 +1,44 @@
 import { AppFeatureCloneError } from "@lando/sdk/errors";
-import type { ServiceConfig, ServicePlan } from "@lando/sdk/schema";
-import { ServiceName } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type ServiceConfig,
+  ServiceName,
+  type ServicePlan,
+  imageLacksInstallShell,
+} from "@lando/sdk/schema";
 import { Predicate } from "effect";
 
 import type { RecordedClonedService } from "../services/app-feature-types.ts";
 import type { PlannedServiceDraft } from "./service-types.ts";
 
+export { imageLacksInstallShell };
+
 const COMPOSE_PUBLISH_KEYS = ["ports", "expose", "healthcheck"] as const;
 
-/** True when the image reference is scratch or distroless and cannot run install steps. */
-export const imageLacksInstallShell = (image: string | undefined): boolean => {
-  if (image === undefined || image.length === 0) return false;
-  const withoutDigest = image.toLowerCase().split("@")[0] ?? image.toLowerCase();
-  if (withoutDigest === "scratch" || withoutDigest.startsWith("scratch:")) return true;
-  if (withoutDigest.endsWith("/scratch") || withoutDigest.includes("/scratch:")) return true;
-  return withoutDigest.includes("distroless");
+/** Provenance key stamped onto every service materialized by `addClonedService`. */
+export const CLONED_SERVICE_PROVENANCE_KEY = "clonedBy" as const;
+
+export interface ClonedServiceStamp {
+  readonly feature: string;
+  readonly from: string;
+}
+
+export const clonedServiceStamp = (
+  service: Pick<ServicePlan, "provenance">,
+): ClonedServiceStamp | undefined => {
+  const value = service.provenance?.[CLONED_SERVICE_PROVENANCE_KEY];
+  if (typeof value !== "object" || value === null) return undefined;
+  const feature = Reflect.get(value, "feature");
+  const from = Reflect.get(value, "from");
+  if (typeof feature !== "string" || typeof from !== "string") return undefined;
+  return { feature, from };
 };
+
+/** Feature-created clones present in applied state but absent from the desired plan. */
+export const staleClonedServices = (applied: AppPlan, desired: AppPlan): ReadonlyArray<ServicePlan> =>
+  Object.values(applied.services).filter(
+    (service) => clonedServiceStamp(service) !== undefined && desired.services[service.name] === undefined,
+  );
 
 const parentImage = (draft: PlannedServiceDraft["draft"]): string | undefined => {
   const image = draft.normalizedConfig.image;
@@ -71,6 +94,7 @@ const clonePlannedDraft = (
       serviceName: request.name,
       primary: false,
       command: request.command,
+      ...(request.user === undefined ? {} : { user: request.user }),
       environment: { ...parentDraft.environment, ...extraEnv },
       mounts: parentDraft.mounts.map((mount) => ({ ...mount })),
       buildSteps: [...parentDraft.buildSteps.map((step) => ({ ...step })), ...extraBuildSteps],
@@ -89,7 +113,14 @@ const clonePlannedDraft = (
         { service: ServiceName.make(parent.name), condition: "service_started", required: true },
       ],
       hostAliases: parentDraft.hostAliases.map((alias) => ({ ...alias })),
-      normalizedConfig: omitConfigKeys(parentDraft.normalizedConfig, request.omitConfigKeys),
+      normalizedConfig: {
+        ...omitConfigKeys(parentDraft.normalizedConfig, request.omitConfigKeys),
+        ...(request.user === undefined ? {} : { user: request.user }),
+      },
+      provenance: {
+        ...(parentDraft.provenance ?? {}),
+        [CLONED_SERVICE_PROVENANCE_KEY]: { feature: request.feature, from: request.from },
+      },
       ...(parentDraft.appMount === undefined ? {} : { appMount: { ...parentDraft.appMount } }),
     },
   };

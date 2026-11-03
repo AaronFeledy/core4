@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import { AppFeatureCloneError } from "@lando/sdk/errors";
-import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { type AppPlan, PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
-import { imageLacksInstallShell, materializeClonedServices } from "../../src/planner/cloned-services.ts";
+import {
+  CLONED_SERVICE_PROVENANCE_KEY,
+  imageLacksInstallShell,
+  materializeClonedServices,
+  staleClonedServices,
+} from "../../src/planner/cloned-services.ts";
 import type { PlannedServiceDraft } from "../../src/planner/service-types.ts";
 import type { RecordedClonedService } from "../../src/services/app-feature-types.ts";
 
@@ -73,7 +78,20 @@ describe("cloned services", () => {
       { service: ServiceName.make("web"), condition: "service_started", required: true },
     ]);
     expect(sidecar?.normalizedConfig.schedule).toBeUndefined();
+    expect(sidecar?.provenance).toEqual({
+      [CLONED_SERVICE_PROVENANCE_KEY]: { feature: "schedule.compile", from: "web" },
+    });
     expect(cloned.parentNetworks.get("web-schedule")).toEqual(networks);
+  });
+
+  test("overrides the cloned user when the request sets one", () => {
+    const cloned = materializeClonedServices({
+      plannedServiceDrafts: [parentDraft()],
+      clones: [request({ user: "root" })],
+      parentNetworksByName: new Map(),
+    });
+    expect(cloned.drafts[0]?.draft.user).toBe("root");
+    expect(cloned.drafts[0]?.draft.normalizedConfig.user).toBe("root");
   });
 
   test("fails when extra build steps target a distroless parent image", () => {
@@ -100,5 +118,18 @@ describe("cloned services", () => {
         parentNetworksByName: new Map(),
       }),
     ).toThrow(AppFeatureCloneError);
+  });
+
+  test("selects applied clones that are no longer in the desired plan", () => {
+    const sidecar = ServiceName.make("web-schedule");
+    const clone = {
+      name: sidecar,
+      provenance: { [CLONED_SERVICE_PROVENANCE_KEY]: { feature: "schedule.compile", from: "web" } },
+    } as unknown as ServicePlan;
+    const authored = { name: ServiceName.make("web") } as unknown as ServicePlan;
+    const applied = { services: { [sidecar]: clone, [authored.name]: authored } } as unknown as AppPlan;
+    const desired = { services: { [authored.name]: authored } } as unknown as AppPlan;
+    expect(staleClonedServices(applied, desired).map((service) => service.name)).toEqual([sidecar]);
+    expect(staleClonedServices(applied, applied)).toEqual([]);
   });
 });

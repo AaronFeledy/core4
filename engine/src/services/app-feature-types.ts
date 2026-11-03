@@ -59,6 +59,7 @@ export interface RecordedClonedService {
   readonly from: string;
   readonly name: string;
   readonly command: CommandSpec;
+  readonly user?: string;
   readonly extraBuildSteps?: ReadonlyArray<ServiceBuildStepIntent>;
   readonly extraEnv?: Readonly<Record<string, EnvironmentValue>>;
   readonly omitConfigKeys?: ReadonlyArray<string>;

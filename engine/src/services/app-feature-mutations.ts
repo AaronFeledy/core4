@@ -157,6 +157,7 @@ export const makeAppFeatureContext = (input: {
         ...(request.extraBuildSteps === undefined
           ? {}
           : { extraBuildSteps: request.extraBuildSteps.map((step) => ({ ...step })) }),
+        ...(request.user === undefined ? {} : { user: request.user }),
         ...(request.extraEnv === undefined ? {} : { extraEnv: { ...request.extraEnv } }),
         ...(request.omitConfigKeys === undefined ? {} : { omitConfigKeys: [...request.omitConfigKeys] }),
       });
