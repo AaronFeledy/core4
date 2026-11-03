@@ -15,16 +15,13 @@ export const serviceContainerName = (plan: Pick<AppPlan, "slug">, service: strin
  * hash of the full name followed by a sanitized form of it. Leading hex digits keep that fallback
  * out of the `lando-` container-name namespace, and the hash keeps distinct names apart.
  */
-export const containerHostname = (containerName: string): string => {
-  if (DNS_LABEL.test(containerName)) return containerName;
-  const hash = sha256Hex(containerName).slice(0, HASH_LENGTH);
-  const readable = containerName
+export const serviceContainerHostname = (plan: Pick<AppPlan, "slug">, serviceName: string): string => {
+  const name = serviceContainerName(plan, serviceName);
+  if (DNS_LABEL.test(name)) return name;
+  const readable = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, "-")
     .slice(0, HOSTNAME_MAX_LENGTH - HASH_LENGTH - 1)
-    .replace(/^-+|-+$/gu, "");
-  return readable === "" ? hash : `${hash}-${readable}`;
+    .replace(/-+$/u, "");
+  return `${sha256Hex(name).slice(0, HASH_LENGTH)}-${readable}`;
 };
-
-export const serviceContainerHostname = (plan: Pick<AppPlan, "slug">, serviceName: string): string =>
-  containerHostname(serviceContainerName(plan, serviceName));

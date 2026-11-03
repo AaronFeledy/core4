@@ -1,39 +1,32 @@
 import { describe, expect, test } from "bun:test";
 import { sha256Hex } from "@lando/sdk/digest";
-import { containerHostname, serviceContainerHostname } from "../src/hostname.ts";
+import { serviceContainerHostname } from "../src/hostname.ts";
 
-describe("containerHostname", () => {
-  test.each(["lando-foo-web", "lando-Foo-Web", "a", "a".repeat(63)])(
-    "preserves the valid DNS label %s verbatim",
-    (name) => {
-      expect(containerHostname(name)).toBe(name);
-    },
-  );
+const hostname = (service: string): string => serviceContainerHostname({ slug: "foo" }, service);
+const nameHash = (service: string): string => sha256Hex(`lando-foo-${service}`).slice(0, 8);
 
-  test.each(["lando-foo-web_1", "lando-foo-a.b", "a".repeat(64), `${"a".repeat(53)}-${"b".repeat(20)}`])(
-    "hashes the original name when %s needs a DNS fallback",
-    (name) => {
-      // Given an engine name that cannot be used as one DNS label.
-      const hash = sha256Hex(name).slice(0, 8);
+describe("serviceContainerHostname", () => {
+  test.each(["web", "Web", "foo-web"])("uses the container name for service %s", (service) => {
+    expect(hostname(service)).toBe(`lando-foo-${service}`);
+  });
+
+  test.each(["web_1", "a.b", "x".repeat(60), `${"a".repeat(43)}-${"b".repeat(20)}`])(
+    "hashes the container name when service %s does not fit one DNS label",
+    (service) => {
       // When
-      const hostname = containerHostname(name);
+      const actual = hostname(service);
       // Then
-      expect(hostname).toMatch(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u);
-      expect(hostname.length).toBeLessThanOrEqual(63);
-      expect(hostname.startsWith(hash)).toBe(true);
+      expect(actual).toMatch(/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u);
+      expect(actual.startsWith(`${nameHash(service)}-lando-foo-`)).toBe(true);
     },
   );
 
   test.each([
-    ["lando-foo-web_1", "lando-foo-web-1"],
-    ["lando-foo-a.b", "lando-foo-a-b"],
-    ["lando-foo-web_1", `lando-foo-web-1-${sha256Hex("lando-foo-web_1").slice(0, 8)}`],
-    [`${"a".repeat(63)}-alpha`, `${"a".repeat(63)}-beta`],
-  ])("keeps %s distinct from %s", (left, right) => {
-    expect(containerHostname(left)).not.toBe(containerHostname(right));
-  });
-
-  test("uses the planned service's container name", () => {
-    expect(serviceContainerHostname({ slug: "myapp" }, "web")).toBe("lando-myapp-web");
+    ["web_1", "web-1"],
+    ["a.b", "a-b"],
+    ["web_1", `web-1-${nameHash("web_1")}`],
+    [`${"x".repeat(60)}-alpha`, `${"x".repeat(60)}-beta`],
+  ])("keeps services %s and %s apart", (left, right) => {
+    expect(hostname(left)).not.toBe(hostname(right));
   });
 });
