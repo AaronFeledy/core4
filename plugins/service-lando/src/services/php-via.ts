@@ -6,6 +6,7 @@ import { ServiceConfigIssue } from "./_feature-helpers.ts";
 import type { ListenerContract } from "./_port-helpers.ts";
 import { apacheDirectivePath } from "./apache.ts";
 import { apacheErrorPageDirectives } from "./http-errors.ts";
+import { uploadDirRegex } from "./upload-dirs.ts";
 
 export const PHP_VIA_MODES = ["apache", "fpm", "cli"] as const;
 export type PhpVia = (typeof PHP_VIA_MODES)[number];
@@ -220,6 +221,7 @@ export const apacheStartCommand = (
   allowOverride: boolean,
   listenPort: number | undefined,
   mapWindowsWorker = true,
+  uploadDirs: ReadonlyArray<string> = [],
 ): ReadonlyArray<string> => {
   const path = apacheDirectivePath(webroot);
   const site = [
@@ -229,6 +231,20 @@ export const apacheStartCommand = (
     `AllowOverride ${allowOverride ? "All" : "None"}`,
     "Require all granted",
     "</Directory>",
+    // engine off cannot be overridden by an uploaded .htaccess AddHandler.
+    // FilesMatch also gives PHP requests the same 403 page as nginx.
+    ...(uploadDirs.length === 0
+      ? []
+      : [
+          `<DirectoryMatch "(?i)^${apacheDirectivePath(webroot.replace(/\/$/, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))}/(?:${apacheDirectivePath(uploadDirs.map(uploadDirRegex).join("|"))})(?:/|$)">`,
+          "<IfModule php_module>",
+          "php_admin_flag engine off",
+          "</IfModule>",
+          '<FilesMatch "(?i)\\.php$">',
+          "Require all denied",
+          "</FilesMatch>",
+          "</DirectoryMatch>",
+        ]),
     ...apacheErrorPageDirectives(),
   ];
   const directives = [

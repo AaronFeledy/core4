@@ -1,0 +1,8 @@
+name: php-upload-dirs
+services:
+  appserver:
+    type: php:8.3
+    via: apache
+    uploadDirs:
+      - sites/*/files
+      - uploads

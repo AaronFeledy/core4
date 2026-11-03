@@ -683,6 +683,21 @@
       "digest": "df96558b651021bf7df0d882b8a92e97daeb3d6d9dc411382d2fd34a8761b1cd"
     },
     {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs-inject",
+      "invalid": {
+        "status": "invalid",
+        "tag": "LandofileValidationError"
+      }
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs-unsupported",
+      "digest": "27b0264d66568001786084c5274616d74f65b488b7e0d01af221192ce45754e5"
+    },
+    {
+      "fixture": "docs/guides/nginx/fixtures/nginx-upload-dirs",
+      "digest": "46477862f1396130731af50aa2a97ff9e1acfcd3743553d7c6553ee2f2a9f4df"
+    },
+    {
       "fixture": "docs/guides/node-playwright/fixtures/playwright-demo",
       "digest": "7a07cec9f964825aca7f28fddfa28707839dfd570afa2e80c3f4dc807c453c60"
     },
@@ -896,6 +911,14 @@
     {
       "fixture": "docs/guides/php/fixtures/php-fpm-nginx",
       "digest": "f1d973b3bfa3802f2900de503422f333037b90d8b013199d4fca1970af132e77"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/php-upload-dirs-fpm",
+      "digest": "91956ff4f461f9016bae64fae4b1f1c1afbcda7822f4ade454a116d821d51762"
+    },
+    {
+      "fixture": "docs/guides/php/fixtures/php-upload-dirs",
+      "digest": "dda55b72a8d471840e3d7268fea53649d6e17bf091ef6b2cefbe0b995939bea5"
     },
     {
       "fixture": "docs/guides/php/fixtures/stock-nonroot",

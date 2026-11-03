@@ -645,13 +645,13 @@ All Bun actions are destination-bounded, redacted, and shape-validated by the re
 
 | Recipe | Stack |
 |---|---|
-| `wordpress` | WordPress, PHP, MariaDB, optional Redis |
-| `drupal` | Drupal, PHP, MariaDB or PostgreSQL, Drush |
-| `drupal-cms` | Drupal CMS starter on `drupal` |
-| `laravel` | Laravel, PHP, SQL, Redis, optional worker |
+| `wordpress` | WordPress, PHP, MariaDB, optional Redis; appserver `uploadDirs: [wp-content/uploads]` |
+| `drupal` | Drupal, PHP, MariaDB or PostgreSQL, Drush; Apache appserver or nginx edge defaults to `uploadDirs: [sites/*/files]` |
+| `drupal-cms` | Drupal CMS starter on `drupal`; shares both webserver upload protection defaults |
+| `laravel` | Laravel, PHP, SQL, Redis, optional worker; appserver `uploadDirs: [storage]` beneath webroot `public` |
 | `symfony` | Symfony, PHP, PostgreSQL or MariaDB, Redis |
-| `backdrop` | Backdrop on `lamp` |
-| `joomla` | Joomla on `lamp` |
+| `backdrop` | Backdrop on `lamp`; appserver `uploadDirs: [files]` |
+| `joomla` | Joomla on `lamp`; appserver `uploadDirs: [images]` |
 | `mean` | Node, MongoDB, optional Redis |
 | `lamp` | Apache, PHP, MariaDB |
 | `lemp` | nginx, PHP-FPM, MariaDB |

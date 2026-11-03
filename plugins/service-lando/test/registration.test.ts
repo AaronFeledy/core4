@@ -10,6 +10,7 @@ import { globalServices, services } from "../src/index.ts";
 import { tcpProbe } from "../src/services/_tcp-probe.ts";
 import { TOMCAT_CATALOG } from "../src/services/generated/tomcat-catalog.ts";
 import { rabbitmqProbes } from "../src/services/rabbitmq-probes.ts";
+import { uploadDirRegex } from "../src/services/upload-dirs.ts";
 import { compileTestLandofile } from "./support/compiled-landofile.ts";
 import { firstEndpointPort } from "./support/endpoint.ts";
 import { expectPhpFpmPathInfoWire } from "./support/php-fpm-path-info-wire.ts";
@@ -712,7 +713,38 @@ describe("@lando/service-lando registration", () => {
         : "";
     expect(command).toContain("fastcgi_pass appserver:9070");
     expectPhpFpmPathInfoWire(command);
+    expect(command).not.toContain("location ~* ^/");
     expect(appserver.command?.[2]).toContain("listen = 9070");
+  });
+
+  test("AppPlanner denies PHP under nginx uploadDirs inside FastCGI", async () => {
+    const landofile: LandofileShape = {
+      name: "php-fpm-nginx-upload-dirs",
+      runtime: 4,
+      services: {
+        [ServiceName.make("appserver")]: { type: "php:8.3", via: "fpm", port: 9070 },
+        [ServiceName.make("edge")]: {
+          type: "nginx",
+          backend: "appserver",
+          uploadDirs: ["sites/*/files"],
+        },
+      },
+    };
+
+    const appPlan = await plan(landofile);
+    const edge = appPlan.services[ServiceName.make("edge")];
+    if (edge === undefined) throw new Error("nginx uploadDirs planner service missing");
+
+    const command = Array.isArray(edge.command)
+      ? edge.command.join(" ")
+      : typeof edge.command === "string"
+        ? edge.command
+        : "";
+    const deny = `if ($fastcgi_script_name ~* "^/(?:${uploadDirRegex("sites/*/files")})/") { return 403; }`;
+    expect(command).toContain(deny);
+    expect(command.indexOf(deny)).toBeGreaterThan(command.indexOf("fastcgi_split_path_info"));
+    expect(command.indexOf(deny)).toBeLessThan(command.indexOf("if (!-f"));
+    expectPhpFpmPathInfoWire(command);
   });
 
   test("AppPlanner installs PHP db clients from sibling database types", async () => {
