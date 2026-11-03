@@ -1229,7 +1229,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
     "Global destroy completed successfully, including provider teardown and route cleanup.",
   FailureRole: "Relationship of an additional failure to the primary operation failure.",
   VolumeLocator: "Stable provider locator for one native volume before or after creation.",
-  CronExpression: "Five-field cron expression, named schedule, or @every duration.",
+  CronExpression: "Five-field cron expression, named schedule, or @every interval.",
   ScheduleJob: "One scheduled command on a service.",
   ScheduleJobName: "Job name unique within the service.",
   ScheduleConfig: "Scheduled jobs for a service.",

@@ -53,6 +53,8 @@ describe("schedule compile feature", () => {
     expect(clones[0]?.extraBuildSteps?.[0]?.id).toBe(SUPERCRONIC_STEP_ID);
     expect(clones[0]?.extraBuildSteps?.[0]?.user).toBe("root");
     expect(JSON.stringify(clones[0]?.extraBuildSteps?.[0]?.buildKeyInputs)).toContain("0.2.51");
+    expect(JSON.stringify(clones[0]?.extraBuildSteps)).toContain("* * * * * * *");
+    expect(JSON.stringify(clones[0]?.extraBuildSteps)).not.toContain("@every");
   });
 
   test("fails at plan time when the parent image has no shell", async () => {

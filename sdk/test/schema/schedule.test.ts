@@ -38,8 +38,12 @@ describe("schedule Landofile schema", () => {
   });
 
   test("Given @every 1s and named schedules, when decoding ScheduleConfig, then it succeeds", () => {
-    for (const every of ["@hourly", "@daily", "@every 1s", "@every 1h30m", "0 0 * * *"]) {
+    for (const every of ["@hourly", "@daily", "@every 1s", "@every 5m", "@every 1h", "0 0 * * *"]) {
       expect(strictDecode(ScheduleConfig, [job({ name: "n", every })])._tag).toBe("Success");
     }
+  });
+
+  test("Given an @every duration supercronic cannot express, when decoding ScheduleConfig, then it fails", () => {
+    expect(strictDecode(ScheduleConfig, [job({ every: "@every 1h30m" })])._tag).toBe("Failure");
   });
 });

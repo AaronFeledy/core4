@@ -24,7 +24,7 @@ services:
         run: "true"
 ```
 
-`name` is required and unique within the service. `every` is a 5-field cron expression, a named schedule such as `@hourly`, or `@every` with a duration such as `1s`. `run` is a shell string or argv list. `user` is optional and defaults to the parent service user.
+`name` is required and unique within the service. `every` is a 5-field cron expression, a named schedule such as `@hourly`, or `@every` with a whole number of seconds (1-59), minutes (1-59), or hours (1-23), such as `1s`. `run` is a shell string or argv list. `user` is optional and defaults to the parent service user.
 
 Save that Landofile and list the jobs. Listing reads the Landofile and does not need a running sidecar:
 
@@ -56,7 +56,7 @@ Pass `--service` when two services use the same job name.
 
 ## Expect missed runs not to catch up
 
-If the laptop sleeps or the sidecar is stopped, the scheduler does not replay the missed ticks. The next run is the next cron time after the sidecar is up again. `@every` is the same: it waits the duration from the current time, not from the last successful run.
+If the laptop sleeps or the sidecar is stopped, the scheduler does not replay the missed ticks. The next run is the next cron time after the sidecar is up again. `@every` compiles to a crontab interval the sidecar can run; it waits that interval from the current time, not from the last successful run.
 
 ## Handle overlap in the job
 

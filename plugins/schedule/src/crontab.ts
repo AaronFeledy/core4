@@ -1,4 +1,9 @@
-import type { CommandSpec, ScheduleJob } from "@lando/sdk/schema";
+import {
+  type CommandSpec,
+  type ScheduleJob,
+  isMappableEveryDurationMs,
+  parseEveryDurationMs,
+} from "@lando/sdk/schema";
 
 import { SUPERCRONIC_ARTIFACTS, SUPERCRONIC_BIN, SUPERCRONIC_CRONTAB } from "./supercronic.ts";
 
@@ -30,8 +35,28 @@ export const crontabCommand = (job: ScheduleJob, parentUser: string | undefined)
   return dropPrivilegesCommand(user, command);
 };
 
-export const crontabLine = (job: ScheduleJob, parentUser: string | undefined): string =>
-  `${job.every} ${crontabCommand(job, parentUser)}`;
+/**
+ * Map a Landofile `every:` value onto a crontab schedule the pinned supercronic
+ * binary accepts. `@every` is not valid supercronic syntax; whole seconds
+ * become a 7-field expression, whole minutes and hours stay 5-field.
+ */
+export const everyToSupercronicSchedule = (every: string): string | undefined => {
+  const trimmed = every.trim();
+  const ms = parseEveryDurationMs(trimmed);
+  if (ms === undefined) return trimmed;
+  if (!isMappableEveryDurationMs(ms)) return undefined;
+  const seconds = ms / 1000;
+  if (seconds < 60) return seconds === 1 ? "* * * * * * *" : `*/${seconds} * * * * * *`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return minutes === 1 ? "* * * * *" : `*/${minutes} * * * *`;
+  const hours = minutes / 60;
+  return hours === 1 ? "0 * * * *" : `0 */${hours} * * *`;
+};
+
+export const crontabLine = (job: ScheduleJob, parentUser: string | undefined): string => {
+  const schedule = everyToSupercronicSchedule(job.every);
+  return `${schedule ?? job.every} ${crontabCommand(job, parentUser)}`;
+};
 
 export const supercronicInstallCommand = (crontab: ReadonlyArray<string>): string => {
   const amd64 = SUPERCRONIC_ARTIFACTS.amd64;
@@ -46,14 +71,18 @@ case "$arch" in
   aarch64|arm64) url=${posixQuote(arm64.url)}; sha=${posixQuote(arm64.sha256)} ;;
   *) echo "Unsupported architecture $arch for scheduled jobs." >&2; exit 1 ;;
 esac
-if command -v setpriv >/dev/null 2>&1; then
+if command -v setpriv >/dev/null 2>&1 && setpriv --help 2>&1 | grep -q -- --reuid; then
   :
-elif command -v apt-get >/dev/null 2>&1; then
-  apt-get update && apt-get install -y --no-install-recommends util-linux
 elif command -v apk >/dev/null 2>&1; then
   apk add --no-cache setpriv
+elif command -v apt-get >/dev/null 2>&1; then
+  apt-get update && apt-get install -y --no-install-recommends util-linux
 else
   echo "Cannot install setpriv to run scheduled jobs as a numeric or named user." >&2
+  exit 1
+fi
+if ! setpriv --help 2>&1 | grep -q -- --reuid; then
+  echo "setpriv does not support --reuid; install util-linux setpriv, not the BusyBox applet." >&2
   exit 1
 fi
 tmp=/tmp/supercronic

@@ -1888,6 +1888,7 @@
       "isEveryCronExpression",
       "isHostEventContainerStep",
       "isLifecycleCommandId",
+      "isMappableEveryDurationMs",
       "isMergeDirectiveMemberAst",
       "isPlainAuthoringString",
       "isSortedUniquePluginTrustList",

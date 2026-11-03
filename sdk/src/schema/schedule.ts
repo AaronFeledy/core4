@@ -19,7 +19,7 @@ const GO_DURATION_PIECE = /^(?:(?:0|[1-9]\d*)(?:ns|us|µs|μs|ms|s|m|h))+$/u;
 const EVERY_PREFIX = /^@every\s+/u;
 
 const cronExpressionMessage =
-  'Expected a 5-field cron expression, a named schedule (@hourly, @daily, @weekly, @monthly, @yearly, @annually, @midnight), or @every with a positive duration such as "1s" or "1h30m".';
+  'Expected a 5-field cron expression, a named schedule (@hourly, @daily, @weekly, @monthly, @yearly, @annually, @midnight), or @every with a whole number of seconds (1-59), minutes (1-59), or hours (1-23) such as "1s", "5m", or "1h".';
 
 /** Parse a Go duration used by `@every`, returning milliseconds when the spec is positive. */
 export const parseEveryDurationMs = (value: string): number | undefined => {
@@ -52,7 +52,24 @@ export const parseEveryDurationMs = (value: string): number | undefined => {
   return ms > 0n ? Number(ms) : 1;
 };
 
-export const isEveryCronExpression = (value: string): boolean => parseEveryDurationMs(value) !== undefined;
+/** True when `@every` is a whole number of seconds (1-59), minutes (1-59), or hours (1-23). */
+export const isMappableEveryDurationMs = (ms: number): boolean => {
+  if (!Number.isInteger(ms) || ms < 1000) return false;
+  const seconds = ms / 1000;
+  if (!Number.isInteger(seconds) || seconds < 1) return false;
+  if (seconds < 60) return true;
+  if (seconds % 60 !== 0) return false;
+  const minutes = seconds / 60;
+  if (minutes < 60) return true;
+  if (minutes % 60 !== 0) return false;
+  const hours = minutes / 60;
+  return Number.isInteger(hours) && hours >= 1 && hours < 24;
+};
+
+export const isEveryCronExpression = (value: string): boolean => {
+  const ms = parseEveryDurationMs(value);
+  return ms !== undefined && isMappableEveryDurationMs(ms);
+};
 
 export const expandCronMacro = (value: string): string => {
   const trimmed = value.trim();
@@ -62,7 +79,7 @@ export const expandCronMacro = (value: string): string => {
 export const isCronExpression = (value: string): boolean => {
   const trimmed = value.trim();
   if (Object.hasOwn(CRON_MACROS, trimmed)) return true;
-  if (EVERY_PREFIX.test(trimmed)) return parseEveryDurationMs(trimmed) !== undefined;
+  if (EVERY_PREFIX.test(trimmed)) return isEveryCronExpression(trimmed);
   return Result.isSuccess(Cron.parse(trimmed));
 };
 
@@ -72,7 +89,7 @@ export const CronExpression = Schema.String.check(
   identifier: "CronExpression",
   title: "Cron Expression",
   description:
-    "Five-field cron expression, a named schedule such as @hourly, or @every with a positive duration.",
+    "Five-field cron expression, a named schedule such as @hourly, or @every with a whole number of seconds, minutes, or hours.",
   expected: "a cron expression",
   message: cronExpressionMessage,
 });
@@ -93,7 +110,8 @@ export type ScheduleJobName = typeof ScheduleJobName.Type;
 export const ScheduleJob = Schema.Struct({
   name: ScheduleJobName,
   every: CronExpression.annotate({
-    description: "When the job runs: a 5-field cron expression, a named schedule, or @every duration.",
+    description:
+      "When the job runs: a 5-field cron expression, a named schedule, or @every with a whole number of seconds, minutes, or hours.",
   }),
   run: CommandSpec.annotate({
     description: "Command the job runs, as a shell string or argv array.",
