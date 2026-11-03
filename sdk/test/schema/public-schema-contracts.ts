@@ -276,6 +276,10 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   RabbitMQServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   TomcatServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
   VarnishServiceConfig: "sdk/test/schema/catalog-service-configs.test.ts",
+  CronExpression: "sdk/test/schema/schedule.test.ts",
+  ScheduleConfig: "sdk/test/schema/schedule.test.ts",
+  ScheduleJob: "sdk/test/schema/schedule.test.ts",
+  ScheduleJobName: "sdk/test/schema/schedule.test.ts",
 } satisfies Partial<Record<JsonSchemaName, PublicSchemaContractFixture["testFile"]>>;
 
 export const publicSchemaContractTestFile = (
@@ -719,6 +723,10 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
       headers: { Authorization: "Bearer token" },
     },
   },
+  CronExpression: "@hourly",
+  ScheduleJobName: "tick",
+  ScheduleJob: { name: "tick", every: "@hourly", run: "true" },
+  ScheduleConfig: [{ name: "tick", every: "@hourly", run: "true" }],
 };
 
 export const publicSchemaHappyPathFixture = (schemaName: JsonSchemaName): unknown => {

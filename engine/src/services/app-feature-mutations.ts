@@ -5,6 +5,7 @@ import {
   type AppFeatureApplicationInput,
   type AppFeatureServiceDraft,
   type OrderedAppFeature,
+  type RecordedClonedService,
   viewOf,
 } from "./app-feature-types.ts";
 
@@ -117,6 +118,7 @@ export const makeAppFeatureContext = (input: {
   readonly config: Readonly<Record<string, unknown>>;
   readonly selectedNames: readonly string[];
   readonly ledger: WriteLedger;
+  readonly clones: RecordedClonedService[];
 }): AppFeatureContext => {
   const byName = new Map(input.composition.services.map((service) => [service.serviceName, service]));
   const selected = input.selectedNames.map((name) => {
@@ -145,6 +147,19 @@ export const makeAppFeatureContext = (input: {
       if (!selectedSet.has(name)) return undefined;
       const draft = byName.get(name);
       return draft === undefined ? undefined : makeMutators(draft, input.feature.definition.id, input.ledger);
+    },
+    addClonedService: (request) => {
+      input.clones.push({
+        feature: input.feature.definition.id,
+        from: request.from,
+        name: request.name,
+        command: Array.isArray(request.command) ? [...request.command] : request.command,
+        ...(request.extraBuildSteps === undefined
+          ? {}
+          : { extraBuildSteps: request.extraBuildSteps.map((step) => ({ ...step })) }),
+        ...(request.extraEnv === undefined ? {} : { extraEnv: { ...request.extraEnv } }),
+        ...(request.omitConfigKeys === undefined ? {} : { omitConfigKeys: [...request.omitConfigKeys] }),
+      });
     },
   };
 };

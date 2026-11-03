@@ -490,6 +490,7 @@ import {
   StyledSpanTone,
 } from "./renderer-panel.ts";
 import { RouteFilter, RouteFilterType } from "./route-filter.ts";
+import { CronExpression, ScheduleConfig, ScheduleJob, ScheduleJobName } from "./schedule.ts";
 import { ServiceConnection, ServiceState } from "./service-connection.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceFeatureValidationResult } from "./service-feature-validation.ts";
@@ -744,6 +745,10 @@ const basePublicSchemaRegistry = schemaRegistry({
   ServiceConfigInput,
   ServiceFileConfig,
   PhpComposerConfig,
+  CronExpression,
+  ScheduleConfig,
+  ScheduleJob,
+  ScheduleJobName,
   LogSource,
   LogSourceId,
   LogSourceInput,
@@ -1224,6 +1229,10 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
     "Global destroy completed successfully, including provider teardown and route cleanup.",
   FailureRole: "Relationship of an additional failure to the primary operation failure.",
   VolumeLocator: "Stable provider locator for one native volume before or after creation.",
+  CronExpression: "Five-field cron expression, named schedule, or @every duration.",
+  ScheduleJob: "One scheduled command on a service.",
+  ScheduleJobName: "Job name unique within the service.",
+  ScheduleConfig: "Scheduled jobs for a service.",
 } satisfies Partial<Record<keyof typeof rawPublicSchemaRegistry, string>>;
 const CATALOG_SERVICE_SCHEMA_DESCRIPTIONS = {
   DotnetServiceConfig: "Landofile configuration accepted by the .NET catalog service.",

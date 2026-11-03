@@ -31,6 +31,7 @@ const apply = (services: readonly PhpDraft[]) =>
     selected: services,
     config: {},
     select: () => undefined,
+    addClonedService: () => undefined,
     forEachSelected: (mutate) => {
       for (const service of services) {
         const { ctx } = recordFeatureContext({

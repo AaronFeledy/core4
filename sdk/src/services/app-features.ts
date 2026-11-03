@@ -10,6 +10,7 @@ import type { Effect, Schema } from "effect";
 
 import type { AppFeatureError } from "../errors/index.ts";
 import type {
+  CommandSpec,
   DatabaseConnection,
   EndpointPlan,
   EnvironmentValue,
@@ -97,6 +98,21 @@ export interface AppFeatureServiceMutators {
  * drafts. The context exposes no provider id, capabilities, or realization
  * decision — app-features emit provider-neutral intent only.
  */
+/**
+ * Request to materialize a new service draft by cloning a resolved parent
+ * after the app-feature pass. The clone copies the parent's image, build,
+ * mounts, environment, user, and networks; callers override command and may
+ * add build steps or environment.
+ */
+export interface ClonedServiceRequest {
+  readonly from: string;
+  readonly name: string;
+  readonly command: CommandSpec;
+  readonly extraBuildSteps?: ReadonlyArray<ServiceBuildStepIntent>;
+  readonly extraEnv?: Readonly<Record<string, EnvironmentValue>>;
+  readonly omitConfigKeys?: ReadonlyArray<string>;
+}
+
 export interface AppFeatureContext {
   readonly featureId: string;
   readonly appName?: string | undefined;
@@ -105,6 +121,7 @@ export interface AppFeatureContext {
   readonly selected: ReadonlyArray<AppFeatureServiceView>;
   forEachSelected(mutate: (service: AppFeatureServiceMutators) => void): void;
   select(name: string): AppFeatureServiceMutators | undefined;
+  addClonedService(request: ClonedServiceRequest): void;
 }
 
 /**
