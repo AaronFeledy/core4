@@ -116,7 +116,8 @@ for (const path of paths) {
       `${message}\nLando leaves lando-test-web-home-node-old untouched. To mount it at its previous location, set storage: [{ store: "lando-test-web-home-node-old", target: "/home/node" }] under services.web in your Landofile.`,
     ]);
     expect(timeline.indexOf("warn")).toBeLessThan(timeline.indexOf("apply"));
-    expect(appliedReads).toBe(path === "selected restart" ? 1 : 0);
+    // Leftover clone cleanup (and selected restart) reads the applied plan once.
+    expect(appliedReads).toBe(1);
   });
 
   test.each([
