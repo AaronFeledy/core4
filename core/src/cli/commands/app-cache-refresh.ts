@@ -6,6 +6,7 @@ import type {
   CacheError,
   CommandAliasConflictError,
   CommandAliasTargetError,
+  EventError,
   LandoCommandError,
   PluginManifestError,
   SubscriberLevelMismatchError,
@@ -25,6 +26,7 @@ import { commandAliasRegistrationError } from "../command-alias-policy";
 import { compileAppCommands } from "@lando/engine/cache/command-compiler";
 import { writeAppCommandCacheStrict } from "@lando/engine/cache/command-index-writer";
 import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
+import { publishHostShellWarnings } from "@lando/engine/operations/host-shell-warnings";
 import { effectiveToolingForPlan } from "@lando/engine/planner/effective-tooling";
 import {
   type BunShellScriptDiscoveryError,
@@ -60,6 +62,7 @@ type AppCacheRefreshError =
   | CommandAliasConflictError
   | CommandAliasTargetError
   | CacheError
+  | EventError
   | LandoCommandError;
 
 type AppCacheRefreshServices = AppPlanner | LandofileService | PluginRegistry | RuntimeProviderRegistry;
@@ -78,6 +81,7 @@ export const refreshAppCache = Effect.fn("AppCacheRefresh.refresh")(function* (
   const landofile = yield* loadUserLandofile(landofileService);
   const capabilities = yield* registry.capabilities;
   const plan = yield* planner.plan(landofile, capabilities);
+  yield* publishHostShellWarnings(plan);
 
   const cwd = options.cwd ?? (yield* discoveryCwd());
   const scripts = yield* discoverBunShellScripts({ appRoot: plan.root });

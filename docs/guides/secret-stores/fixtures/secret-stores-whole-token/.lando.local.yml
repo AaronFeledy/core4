@@ -1,0 +1,6 @@
+services:
+  web:
+    environment:
+      API_TOKEN: localtoken
+      COPIED_PASSWORD: wordpress
+      ROTATION_NOTE: localtoken-rotated

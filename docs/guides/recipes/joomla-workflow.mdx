@@ -87,6 +87,8 @@ Add `/administrator/` to the URL it prints and sign in as `admin` with the passw
 
 ## See what the recipe writes
 
+The appserver sets `uploadDirs: [images]` to keep PHP out of uploaded files.
+
 | Piece | What you get |
 | --- | --- |
 | `appserver` | `php:8.4`, `framework: joomla`, Apache on port `80`, depends on `database` |

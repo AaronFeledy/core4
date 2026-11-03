@@ -592,7 +592,10 @@ describe("runAppEvent tooling-step kernel", () => {
     // Then
     expect(error).toBeInstanceOf(LandofileEventStepFailedError);
     if (error._tag !== "LandofileEventStepFailedError") throw error;
-    expect(error.outputTail).toContain("positional references");
+    expect(error.outputTail).toContain("$1 is not bound to forwarded arguments");
+    expect(error.remediation).toContain("Fix pre-start step 1, then rerun the lifecycle command.");
+    expect(error.remediation).toContain("The step runs in Bun Shell.");
+    expect(error.remediation).toContain("forwarded arguments");
     expect(hostCommands).toEqual([]);
     expect(invocations).toEqual([]);
   });
@@ -799,6 +802,33 @@ describe("runAppEvent tooling-step kernel", () => {
     expect(error.outputTail).toContain("Did you mean app:config?");
   });
 
+  test("appends wrapped ToolingCompileError remediation and names Bun Shell for :host leaves", async () => {
+    // Given a :host event cmd that fails the Bun Shell dialect check at compile time
+    const invocations: ToolingInvocation[] = [];
+    const plan = withProjectEvents(eventPlan(), {
+      "pre-start": [{ cmd: "echo $?", service: ":host" }],
+    });
+
+    // When
+    const error = await Effect.runPromise(
+      Effect.flip(
+        runAppEvent(plan, "pre-start").pipe(
+          Effect.provide(Layer.mergeAll(eventRuntime(invocations), hostShellRunnerLayer)),
+        ),
+      ),
+    );
+
+    // Then
+    expect(error).toBeInstanceOf(LandofileEventStepFailedError);
+    if (error._tag !== "LandofileEventStepFailedError") throw error;
+    expect(error.remediation).toContain("Fix pre-start step 1, then rerun the lifecycle command.");
+    expect(error.remediation).toContain("The step runs in Bun Shell.");
+    expect(error.remediation).toMatch(/Branch on the exit status|&&|\|\|/u);
+    expect(error.service).toBe(":host");
+    expect(error.outputTail).toContain("Bun Shell");
+    expect(invocations).toHaveLength(0);
+  });
+
   test("reports the authored identity of a compile failure in the second event step", async () => {
     // Given
     const invocations: ToolingInvocation[] = [];
@@ -951,15 +981,21 @@ describe("hostEvents runtime", () => {
         ...eventPlan(),
         services: {
           web: {
-            name: "web",
+            name: ServiceName.make("web"),
+            type: "test",
+            provider: ProviderId.make("test"),
             primary: true,
             image: "alpine:3",
             mounts: [],
-            env: {},
-            labels: {},
-            networks: [],
+            environment: {},
+            endpoints: [],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata: eventPlan().metadata,
+            extensions: {},
           },
-        } as AppPlan["services"],
+        },
       },
       compileEffectiveEvents({
         landofile: { events: {} },

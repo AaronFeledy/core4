@@ -87,6 +87,62 @@ services:
     </Step>
   </Scenario>
 
+## Keep PHP out of upload directories
+
+Set `uploadDirs` on the service that serves PHP in your `.lando.yml`: a `php` service using `via: apache` (the default), or the [nginx service in front of FPM](./nginx.mdx#stop-php-in-upload-directories). For Apache, add the directories to your PHP service:
+
+```yaml
+services:
+  appserver:
+    type: php:8.3
+    via: apache
+    uploadDirs:
+      - sites/*/files
+      - uploads
+```
+
+A file uploaded through your app, such as a disguised PHP script, must never run as code. This setting matches hardened production servers and helps protect sites you expose with `lando share`. Lando blocks PHP requests in the listed directories with its 403 error page, while ordinary assets and front-controller fallbacks remain available. On Apache, the PHP engine stays off there even if an uploaded `.htaccess` maps another extension to PHP.
+
+List directories relative to the webroot, not host paths. Use letters, digits, `.`, `_`, `/`, `-`, and `*`. An entry cannot be empty, consist only of `*`, start or end with `/`, or contain `..`, `**`, an empty segment such as `a//b`, or a `.` segment such as `a/./b`. Spaces and server configuration characters are rejected. Matching is case-insensitive. A `*` matches zero or more characters within one path segment, never across `/`: `sites/*/files` covers `sites/default/files` and `sites/example.com/files`; `uploads*` covers both `uploads` and `uploads-old`.
+
+These recipes set upload directories automatically:
+
+| Recipe | `uploadDirs` |
+| --- | --- |
+| Drupal and Drupal CMS | `sites/*/files` on Apache appserver or nginx edge |
+| WordPress | `wp-content/uploads` |
+| Backdrop | `files` |
+| Joomla | `images` |
+| Laravel | `storage`, beneath webroot `public`, including its `public/storage` symlink |
+
+Set `uploadDirs: []` on the same service to clear a recipe default. This removes Lando's protection; block PHP in your own server configuration if you replace it.
+
+From your app directory on the host, check the setting before running `lando rebuild`:
+
+```sh
+lando app:config:lint --format=json
+```
+
+Lando rejects a non-empty list where it can't apply the protection and reports `services.<name>.uploadDirs`. Apache needs Lando's stock PHP image and generated launcher: a custom image, `build.context`, or an authored `command:` or `entrypoint:` takes ownership of the server configuration. For FPM, put the setting on its nginx service, which needs a non-empty `backend` and no replacement launcher. Standalone Apache without PHP, PHP CLI, static services, and other service types cannot use a non-empty list. Remove it or set `uploadDirs: []` and block PHP yourself instead.
+
+  <Scenario id="authored-apache-upload-dirs" render>
+    <Step name="inspect-upload-directories">
+      <UseFixture name="php-upload-dirs" />
+      <Run command="lando app:config --format=json" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"uploadDirs\":\\s*\\[\\s*\"sites/\\*/files\",\\s*\"uploads\"" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
+  <Scenario id="rejects-fpm-upload-dirs" render={false} reason="Reject upload protection on a non-serving FPM service">
+    <Step name="lint-unsupported-service">
+      <UseFixture name="php-upload-dirs-fpm" />
+      <Run command="lando app:config:lint --format=json" expectExit={1} />
+      <Verify command="lando app:config:lint --format=json" expectExit={1} expect={{ stdout: { regex: "\"path\":\\s*\\[\\s*\"services\",\\s*\"appserver\",\\s*\"uploadDirs\"" } }} />
+    </Step>
+    <Step name="cleanup"><Cleanup /></Step>
+  </Scenario>
+
 ## Run as a non-root user
 
 To run stock Apache PHP as the image's `www-data` account, save this as

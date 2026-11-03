@@ -546,6 +546,29 @@ export const PhpComposerConfig = Schema.Struct({
 export type PhpComposerConfig = typeof PhpComposerConfig.Type;
 
 /**
+ * One `uploadDirs` entry: a webroot-relative directory that must not execute as
+ * PHP. Only allowlisted characters enter server regexes; `*` stays within one
+ * segment. Reject configuration injection and paths a server would normalize
+ * away before making an execution decision.
+ */
+export const UPLOAD_DIR_PATTERN =
+  /^(?!\/)(?!\*$)(?!.*\/\/)(?!.*\.\.)(?!.*\*\*)(?!.*\/$)(?!(?:^|.*\/)\.(?:\/|$))[A-Za-z0-9._/*-]+$/u;
+
+export const isUploadDir = (value: string): boolean => UPLOAD_DIR_PATTERN.test(value);
+
+export const UploadDir = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(UPLOAD_DIR_PATTERN, {
+      message:
+        "uploadDirs entries must be non-empty webroot-relative directory paths using letters, digits, '.', '_', '/', '-' and single-segment '*'. They cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include spaces or server metacharacters.",
+    }),
+  ),
+).annotate({
+  description: "Webroot-relative directory that holds user uploads and must never execute PHP.",
+});
+export type UploadDir = typeof UploadDir.Type;
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -668,6 +691,10 @@ const ServiceConfigWithExtensions = Schema.StructWithRest(
     }),
     backend: Schema.optionalKey(Schema.String).annotate({
       description: "Name of the app service this cache or proxy fronts.",
+    }),
+    uploadDirs: Schema.optionalKey(Schema.Array(UploadDir)).annotate({
+      description:
+        "Webroot-relative directories that hold user uploads. Lando never runs PHP from them. Each path may use a single-segment '*' and cannot be a bare '*', start or end with '/', contain empty, '.' or '..' segments, contain '**', or include server metacharacters.",
     }),
     allowOverride: Schema.optionalKey(Schema.Boolean).annotate({
       description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",

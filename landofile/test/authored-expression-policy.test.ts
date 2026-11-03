@@ -28,7 +28,6 @@ test.each([
   [{ "x-${HOME}": "inert" }, ["x-${HOME}"]],
   [{ "{{ load('./missing') }}": "inert" }, ["{{ load('./missing') }}"]],
   [{ tooling: { test: { cmd: "echo ${HOME}" } } }, ["tooling", "test", "cmd"]],
-  [{ services: { web: { command: "prefix-${secret:TEST}" } } }, ["services", "web", "command"]],
 ] as const)("rejects active authored syntax at its member path: %j", async (value, path) => {
   // Given / When
   const result = await Effect.runPromise(Effect.result(resolve(value)));
@@ -41,6 +40,138 @@ test.each([
     { path, rule: "unsupported-expression", source: { file: source.sourcePath, layer: "base", path } },
   ]);
   expect(result.failure.issues[0]?.suggestion).toBeString();
+});
+
+test.each([
+  [{ services: { app: { build: { args: { TOKEN: "${secret:TOKEN}" } } } } }, "TOKEN"],
+  [{ services: { app: { build: { args: ["TOKEN=prefix-${secret:TOKEN}"] } } } }, 0],
+] as const)("rejects a build argument secret with image-history guidance: %j", async (value, key) => {
+  // Given
+  const path = ["services", "app", "build", "args", key];
+  const message = `Secret references are not supported at ${path.join(".")}. Build arguments can be recorded in image history.`;
+  const suggestion =
+    "For runtime use, set services.app.environment.TOKEN to the ${secret:...} reference. For setup that needs it, add an events.post-start step with service app, env.TOKEN set to the reference, and $TOKEN in its cmd; it runs in the started container.";
+  // When
+  const failure = await Effect.runPromise(resolve(value).pipe(Effect.flip));
+  // Then
+  expect(failure).toBeInstanceOf(LandofileValidationError);
+  expect(failure).toMatchObject({
+    file: source.sourcePath,
+    message,
+    remediation: suggestion,
+    issues: [
+      {
+        path,
+        rule: "unsupported-secret-reference",
+        message,
+        suggestion,
+        source: { file: source.sourcePath, layer: "base", path },
+      },
+    ],
+  });
+});
+
+test.each([
+  ["prefix-${secret:TEST}", "TEST"],
+  ["${HOME}-${secret:TOKEN}", "TOKEN"],
+])(
+  "rejects an unauthorized secret with secret-specific guidance, even beside a shell parameter: %s",
+  async (command, name) => {
+    // Given
+    const value = { services: { web: { command } } };
+    // When
+    const failure = await Effect.runPromise(resolve(value).pipe(Effect.flip));
+    // Then
+    expect(failure).toMatchObject({
+      _tag: "LandofileValidationError",
+      message: "Secret references are not supported at services.web.command.",
+      remediation: `Set services.web.environment.${name} to the \${secret:...} reference. Write $${name} in the command when the service type runs that string as a shell script. On type: compose, the string is split into arguments and is not a shell, so write sh -c with $${name} inside one quoted argument.`,
+      issues: [{ path: ["services", "web", "command"], rule: "unsupported-secret-reference" }],
+    });
+  },
+);
+
+test.each([
+  [
+    { services: { app: { build: { app: "fetch ${secret:TOKEN}" } } } },
+    ["services", "app", "build", "app"],
+    "Set services.app.environment.TOKEN",
+  ],
+  [
+    { services: { app: { build: { artifact: { run: "fetch ${secret:TOKEN}" } } } } },
+    ["services", "app", "build", "artifact", "run"],
+    "Move this step to services.app.build.app",
+  ],
+  [
+    { tooling: { deploy: "deploy ${secret:TOKEN}" } },
+    ["tooling", "deploy"],
+    "Use the object form: set tooling.deploy.cmd",
+  ],
+  [
+    { services: { app: { entrypoint: "/start ${secret:TOKEN}" } } },
+    ["services", "app", "entrypoint"],
+    "Set services.app.environment.TOKEN",
+  ],
+  [
+    { services: { app: { build: { dockerfile_inline: "FROM node\nRUN fetch ${secret:TOKEN}" } } } },
+    ["services", "app", "build", "dockerfile_inline"],
+    "For runtime use, set services.app.environment.TOKEN",
+  ],
+  [
+    { events: { "post-stop": [{ defer: "notify ${secret:TOKEN}" }] } },
+    ["events", "post-stop", 0, "defer"],
+    "Set events.post-stop.0.env.TOKEN",
+  ],
+] as const)(
+  "reports the authored shorthand path for site-aware guidance: %j",
+  async (value, path, suggestion) => {
+    // Given / When
+    const failure = await Effect.runPromise(resolve(value).pipe(Effect.flip));
+    // Then
+    expect(failure).toMatchObject({
+      _tag: "LandofileValidationError",
+      issues: [{ path, rule: "unsupported-secret-reference" }],
+    });
+    if (!(failure instanceof LandofileValidationError)) throw failure;
+    expect(failure.issues[0]?.suggestion).toStartWith(suggestion);
+  },
+);
+
+test("decodes an escaped build argument secret as literal text through the full loader", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-build-arg-escape-"));
+  try {
+    const file = join(root, ".lando.yml");
+    await writeFile(
+      file,
+      'name: literal\nservices:\n  app:\n    type: node\n    build:\n      context: .\n      args:\n        TOKEN: "$${secret:TOKEN}"\n',
+    );
+    // When
+    const loaded = await Effect.runPromise(loadLandofileLayers(root, file));
+    // Then
+    expect(loaded).toMatchObject({ services: { app: { build: { args: { TOKEN: "${secret:TOKEN}" } } } } });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps loaded secret-shaped text in a build argument as literal data", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-build-arg-loaded-"));
+  try {
+    const file = join(root, ".lando.yml");
+    await writeFile(join(root, "token.txt"), "${secret:TOKEN}");
+    await writeFile(
+      file,
+      "name: loaded\nservices:\n  app:\n    type: node\n    build:\n      context: .\n      args:\n        TOKEN: \"{{ load('./token.txt') }}\"\n",
+    );
+    // When
+    const loaded = await Effect.runPromise(loadLandofileLayers(root, file));
+    // Then
+    expect(loaded).toMatchObject({ services: { app: { build: { args: { TOKEN: "${secret:TOKEN}" } } } } });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test.each([
@@ -140,4 +271,20 @@ test("preserves escapes, bare shell parameters, genuine environment secrets and 
     services: { web: { ...value.services.web, command: "echo $HOME ${HOME}" } },
     "x-literal": "{{ not an expression",
   });
+});
+
+test("unsupported expression remediation is context-neutral for host and container shells", async () => {
+  // Given / When
+  const result = await Effect.runPromise(
+    Effect.result(resolve({ tooling: { test: { cmd: "echo ${HOME}" } } })),
+  );
+  // Then
+  expect(Result.isFailure(result)).toBe(true);
+  if (!Result.isFailure(result)) throw new Error("expected failure");
+  expect(result.failure).toBeInstanceOf(LandofileValidationError);
+  if (!(result.failure instanceof LandofileValidationError)) throw result.failure;
+  expect(result.failure.remediation).toBe(
+    "Use {{ env.NAME }} for a host value. In a container command write $${NAME} for the shell's value; in a :host command write $NAME.",
+  );
+  expect(result.failure.issues[0]?.suggestion).toBe(result.failure.remediation);
 });

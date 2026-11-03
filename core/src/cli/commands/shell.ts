@@ -36,7 +36,7 @@ import { availableServiceList, unknownPlanServiceError } from "@lando/engine/ope
 import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
-import { serviceLoginShellCommand } from "../service-login-shell";
+import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../service-login-shell";
 import { cancellableTerminalStdin } from "./terminal-stdin";
 
 export interface ShellAppOptions {
@@ -272,10 +272,12 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
     };
     const terminalSize = currentTerminalSize(io);
     const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, process.env);
-    const serviceEnv = withAgentContextEnv(options.env, process.env, {
+    const forwardedEnv = withAgentContextEnv(options.env, process.env, {
       allowlist,
       lowerThanEnv: service.environment,
     });
+    const serviceEnv =
+      options.noHistory === true ? withSessionNoHistoryEnv(forwardedEnv ?? {}) : forwardedEnv;
     const spec: CommandSpec = {
       command: serviceLoginShellCommand(options.args),
       stdin: "inherit",

@@ -185,6 +185,7 @@ describe("tooling include attribution", () => {
       expect(result.violations).toEqual([
         expect.objectContaining({
           rule: "landofile.load",
+          reason: "LandofileIncludeError",
           path: source.path,
           source,
           line: scenario.line,

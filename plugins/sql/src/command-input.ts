@@ -6,10 +6,12 @@ import { CommandInputValidationError } from "@lando/sdk/errors";
 import type { ExecutableCommandInput } from "@lando/sdk/plugins";
 
 import type { EnvironmentValue } from "@lando/sdk/schema";
+import { isUsableExactRedactionValue } from "@lando/sdk/secrets";
 import type { DbAction, DbCommandInput } from "./command-types.ts";
 import { compressionFromExportPath } from "./compression.ts";
+import { classifySqlPlan } from "./environment.ts";
 
-import type { SqlLandofileService, SqlPlan } from "./views.ts";
+import type { SqlPlan } from "./views.ts";
 
 export const hostFile = (
   plan: SqlPlan,
@@ -64,12 +66,26 @@ export const validateExportCompressionLevel = (
 };
 
 export const secretTokens = (
-  creds: { readonly password?: EnvironmentValue; readonly rootPassword?: EnvironmentValue },
-  _authored?: SqlLandofileService,
+  creds: {
+    readonly user?: EnvironmentValue;
+    readonly database?: EnvironmentValue;
+    readonly password?: EnvironmentValue;
+    readonly rootPassword?: EnvironmentValue;
+  },
+  plan: SqlPlan,
 ): string[] => {
-  return [creds.password, creds.rootPassword].filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
-  );
+  // Result tokens are substring-only; never promote whole-token or public values.
+  const classified = classifySqlPlan(plan);
+  const tokens: string[] = [];
+  for (const value of [creds.password, creds.rootPassword]) {
+    if (typeof value !== "string" || value.length === 0) continue;
+    if (!isUsableExactRedactionValue(value)) continue;
+    if (classified.publicValues.has(value)) continue;
+    if (value === creds.user || value === creds.database) continue;
+    if (classified.wholeToken.has(value) && !classified.substring.has(value)) continue;
+    tokens.push(value);
+  }
+  return tokens;
 };
 
 export const dbCommandRedactionTokens = (result: unknown): ReadonlyArray<string> => {

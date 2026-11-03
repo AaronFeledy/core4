@@ -35,7 +35,7 @@ The command gets a terminal only when your stdin and stdout are both terminals. 
 
 ## Back up and restore service files
 
-Redirected stdout is not a terminal, so `lando exec` allocates no PTY and streams raw bytes without keeping a second copy in its result. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. Human formats mask only registered secret values, even across chunk boundaries. Uncompressed tar files and text assignments such as `PASSWORD=public` keep their bytes unless a registered value appears in them. Terminal and redirected output follow the same rule.
+Redirected stdout is not a terminal, so `lando exec` allocates no PTY and streams raw bytes without keeping a second copy in its result. Use that to archive a directory inside a service and land the archive on the host. `-C <path> .` stores the contents of that path, not a top-level folder named after it. Human formats mask only known secret values, even across chunk boundaries. Uncompressed tar files and text assignments such as `PASSWORD=public` keep their bytes unless a known value appears in them. Terminal and redirected output follow the same rule.
 
 These one-liners are for a POSIX shell (bash or zsh). PowerShell and cmd.exe are unverified.
 
@@ -107,6 +107,8 @@ The fixture's `app` service is `node:22` and marked `primary: true`, so it is th
 ## Masked output
 
 Human modes for `lando exec`, tooling, and `lando run` mask only known secret values on the live byte stream. Pattern classes stay off that path so binary dumps keep their shape. `lando logs` and other structured surfaces still use the full secrets profile. The service itself still gets the real value.
+
+A secret-store value is masked wherever it appears, even inside a longer word. A password written as a plain literal in a committed YAML Landofile layer is masked only where it stands alone as a whole token: `PASSWORD=wordpress` and `user:wordpress@host` are masked, while `wp-content/plugins/wordpress-seo` and `/srv/wordpress/` print as written. Copies of that value in other plan inputs keep the whole-token rule. Other collected values, including passwords that come only from an env file or a generator, are masked everywhere. Because a whole-token value needs the next byte to decide, the stream may hold back at most the length of the longest known value before printing. See [What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where) for the token rules and which sources fall into each mode.
 
 Lando does not add its published defaults, `lando` and `landolando`, to the list of known secret values just because they appear under a sensitive configuration key. The same exception applies to a database password or root password that exactly matches its own user or database name. For example, with `creds: { user: magento, password: magento, database: magento }`, the word `magento` remains readable in package names and paths.
 

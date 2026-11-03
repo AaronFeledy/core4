@@ -122,7 +122,7 @@ describe("audited services compose canonical redaction", () => {
     try {
       const command = [
         `printf %s ${shellSingleQuote(VALUE_AND_PATTERN_SOUP)}`,
-        `printf %s ${shellSingleQuote(VALUE_AND_PATTERN_SOUP)} >&2`,
+        `printf %s ${shellSingleQuote(VALUE_AND_PATTERN_SOUP)} 1>&2`,
         "exit 7",
       ].join("; ");
 

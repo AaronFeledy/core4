@@ -71,6 +71,14 @@ report `SqlCommandFailedError`. When the command supplied them, `exitCode` and
 suppressed. A provider failure without an exit status does not invent one.
 Database payloads and stdout are never included in these command failures.
 
+`lando db:*` commands mask only the target database's credential password or
+root password in their output and errors, following the same rules as other
+commands: a secret-store or generated password is masked wherever it appears,
+and a password you wrote as a literal in a committed YAML layer is masked only
+where it stands alone as a whole token. The database user, database name, host,
+port, and file paths stay readable, including paths that contain `lando`. See
+[What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where).
+
 A failed export leaves an existing host destination unchanged. After a snapshot
 is captured, failures during database resume, readiness, import, reset, or restore
 report `recoverySnapshotId` with recovery guidance. Command failures keep their

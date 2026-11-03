@@ -5,11 +5,13 @@ import type { LandofileLoadPolicy, LandofileLoadSource } from "./load-expression
 import type { LoadFailureRecorder } from "./load-failures.ts";
 import { eligibleBindingPath } from "./secret-reference.ts";
 
+export const buildArgumentPath = (path: readonly (string | number)[]): boolean =>
+  path[0] === "services" && path[2] === "build" && path[3] === "args" && path.length === 5;
+
 export const keyValueEntryPath = (path: readonly (string | number)[]): boolean =>
   eligibleBindingPath(path) ||
-  (path[0] === "services" &&
-    ((path[2] === "labels" && path.length === 4) ||
-      (path[2] === "build" && path[3] === "args" && path.length === 5)));
+  (path[0] === "services" && path[2] === "labels" && path.length === 4) ||
+  buildArgumentPath(path);
 
 export const keyValueEntryHasExpression = (
   value: string,

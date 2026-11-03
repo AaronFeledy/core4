@@ -26,6 +26,7 @@ import {
   evolveHistoricalToolingShorthand,
 } from "./x-extension-tooling-shorthand-proof.ts";
 import { typedCaptured } from "./x-extension-typed-checkpoint.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import {
   WIRE_TARGETS,
   atWirePath,
@@ -111,7 +112,9 @@ const evolvedTyped = (source: keyof typeof typedCaptured) => {
       "authoring",
     ),
   );
-  const evolved = evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source));
+  const evolved = evolveHistoricalUploadDirs(
+    evolveHistoricalIncludeWhen(evolveHistoricalAuthoringProjection(historical, source)),
+  );
   evolvedTypedCache.set(source, evolved);
   return evolved;
 };
@@ -174,7 +177,7 @@ describe("embedded wire closed x-* artifact repair", () => {
         ),
       ),
     );
-    const repaired = evolveHistoricalAuthoringProjection(historical, "services");
+    const repaired = evolveHistoricalUploadDirs(evolveHistoricalAuthoringProjection(historical, "services"));
     const current = schemaAt(
       await loadNormalizedArtifact("schema:ConfigTranslateEncodeInput"),
       "$.context.services",

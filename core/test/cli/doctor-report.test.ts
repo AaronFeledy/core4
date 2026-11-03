@@ -161,6 +161,7 @@ describe("meta:doctor combined report", () => {
         violations: [
           {
             rule: "landofile.load",
+            reason: "LandofileParseError",
             severity: "error",
             path: [],
             message: "Use a block mapping.",

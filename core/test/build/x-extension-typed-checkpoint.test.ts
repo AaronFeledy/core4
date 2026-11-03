@@ -22,6 +22,7 @@ import { evolveHistoricalReadiness } from "./x-extension-readiness-proof.ts";
 import { evolveHistoricalShorthand, shorthandDelta } from "./x-extension-shorthand-proof.ts";
 import { evolveHistoricalTimestamps } from "./x-extension-timestamps-proof.ts";
 import { typedBytes, typedCapture, typedCaptured } from "./x-extension-typed-checkpoint.ts";
+import { evolveHistoricalUploadDirs } from "./x-extension-upload-dirs-proof.ts";
 import { TYPED_EXPRESSION_PATTERN, wireObject } from "./x-extension-wire-proof.ts";
 
 const historicalExpected = evolveHistoricalConsolePort(
@@ -45,7 +46,9 @@ const historicalExpected = evolveHistoricalConsolePort(
     ),
   ),
 );
-const expected = evolveHistoricalAuthoringProjection(historicalExpected, "services");
+const expected = evolveHistoricalUploadDirs(
+  evolveHistoricalAuthoringProjection(historicalExpected, "services"),
+);
 
 const mutateFirst = (value: JsonValue, change: (schema: JsonSchema) => JsonSchema | undefined): JsonValue => {
   if (isJsonObject(value)) {

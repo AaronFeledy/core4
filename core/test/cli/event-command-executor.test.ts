@@ -47,6 +47,7 @@ import { extractSpecParsedArgv } from "../../src/cli/spec/command-boundary.ts";
 import { Args, Flags } from "../../src/cli/spec/metadata.ts";
 import { ownerOnlyFileAccess } from "../_support/private-file-access.ts";
 import { processRunnerFor } from "../_support/process-runner.ts";
+import { withEnvVar } from "../_support/temp-cwd.ts";
 import { environmentResolverLayer } from "../_support/value-contracts.ts";
 
 class EventCommandTestError extends Schema.TaggedError<EventCommandTestError>()("EventCommandTestError", {
@@ -850,7 +851,7 @@ describe("EventCommandExecutorLayer.layer", () => {
     ]);
   });
 
-  test("executes an effective tooling canonical id through ToolingEngine", async () => {
+  test("executes an effective tooling canonical id and redacts host secrets in returned output", async () => {
     // Given
     const harness = makeHarness();
     const plan = attachEffectiveTooling(
@@ -858,6 +859,7 @@ describe("EventCommandExecutorLayer.layer", () => {
       { lint: { cmd: "bun run lint" } },
     );
     const invocations: string[] = [];
+    const hostSecret = "event-executor-host-canary";
     const context = harness.context.pipe(
       Context.add(RuntimeProviderRegistry, {
         resolveAppliedPlan: () => Effect.succeed(undefined),
@@ -876,8 +878,8 @@ describe("EventCommandExecutorLayer.layer", () => {
               tool: invocation.tool,
               service: ":lando",
               exitCode: 0,
-              stdout: "tooling stdout",
-              stderr: "tooling stderr",
+              stdout: `tooling stdout ${hostSecret}`,
+              stderr: `tooling stderr ${hostSecret}`,
             };
           }),
       }),
@@ -892,11 +894,17 @@ describe("EventCommandExecutorLayer.layer", () => {
     };
 
     // When
-    const result = await Effect.runPromise(makeEventCommandExecutor(context).run(input));
+    const result = await withEnvVar("LANDO_TEST_EXECUTOR_PASSWORD", hostSecret, () =>
+      Effect.runPromise(makeEventCommandExecutor(context).run(input)),
+    );
 
     // Then
     expect(invocations).toEqual(["lint"]);
-    expect(result).toEqual({ exitCode: 0, stdout: "tooling stdout", stderr: "tooling stderr" });
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: "tooling stdout [redacted]",
+      stderr: "tooling stderr [redacted]",
+    });
     expect(harness.presentation).toEqual([]);
   });
 

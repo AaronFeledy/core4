@@ -1,8 +1,25 @@
 import { describe, expect, test } from "bun:test";
 
-import { DEFAULT_SERVICE_LOGIN_SHELL, serviceLoginShellCommand } from "../../src/cli/service-login-shell.ts";
+import {
+  DEFAULT_SERVICE_LOGIN_SHELL,
+  SESSION_NO_HISTORY_ENV,
+  serviceLoginShellCommand,
+  withSessionNoHistoryEnv,
+} from "../../src/cli/service-login-shell.ts";
 
 describe("service login shell", () => {
+  test("disables session history without mutating or dropping caller environment", () => {
+    const env = { HISTFILE: "/home/node/history", PSQL_HISTORY: "/home/node/psql", KEEP: "value" };
+
+    const result = withSessionNoHistoryEnv(env);
+
+    expect(result).toEqual({
+      ...SESSION_NO_HISTORY_ENV,
+      KEEP: "value",
+    });
+    expect(env).toEqual({ HISTFILE: "/home/node/history", PSQL_HISTORY: "/home/node/psql", KEEP: "value" });
+  });
+
   test("prefers bash when present and falls back to sh", () => {
     expect(DEFAULT_SERVICE_LOGIN_SHELL).toEqual([
       "sh",

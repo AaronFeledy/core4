@@ -29,8 +29,10 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
+import { planRedactionValues } from "@lando/redaction/plan-values";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
+import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
 import { admitToolingInput } from "./tooling-input-admission.ts";
@@ -154,6 +156,11 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
         );
       }),
   );
+  for (const invocation of invocations) {
+    if (invocation.service === ":host") {
+      yield* validateHostShellSteps(input.name, invocation.hostSteps ?? [], admitted.redactionTokens);
+    }
+  }
   return { normalized, invocations, redactionTokens: admitted.redactionTokens };
 });
 
@@ -169,6 +176,7 @@ export interface ExecuteToolingInput {
   readonly invocations: ReadonlyArray<ToolingInvocation>;
   /** Whether any normalized step targets a container, so the provider is selected once. */
   readonly requiresProvider: boolean;
+  /** Explicit substring tokens (tooling inputs, caller overrides). Plan authorization is applied here. */
   readonly redactionTokens?: ReadonlyArray<string>;
 }
 
@@ -219,9 +227,15 @@ export const executeToolingInvocations = Effect.fnUntraced(function* (
               );
             }
             const hostRun = runHostToolingWith(shell.value, invocation, input.plan, provider);
-            return yield* input.redactionTokens === undefined
-              ? hostRun
-              : withShellRedactionTokens(input.redactionTokens, hostRun);
+            const planValues = planRedactionValues(input.plan);
+            return yield* withShellRedactionTokens(
+              {
+                substring: input.redactionTokens ?? [],
+                wholeToken: planValues.wholeTokenValues,
+                publicValues: planValues.publicValues,
+              },
+              hostRun,
+            );
           })
         : Effect.flatMap(ToolingEngine, (engine) => engine.run(invocation, input.plan, provider));
     const result = yield* withToolingOutput(run);

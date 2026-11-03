@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { type PayloadRedactor, createPayloadRedactor } from "@lando/sdk/secrets";
+import { type PayloadRedactor, type TieredRedactionValues, createPayloadRedactor } from "@lando/sdk/secrets";
 import { Effect } from "effect";
 import { LIVE_PROGRESS_PIECE_BYTES, type LiveProgressInput, liveBytePieces } from "./live-progress-input";
 import type { McpProgressData } from "./result-inspector";
@@ -15,21 +15,24 @@ interface Channel {
 
 export class LiveProgress {
   readonly #channels = new Map<string, Channel>();
-  readonly #values: () => Iterable<string>;
+  readonly #values: () => Iterable<string> | TieredRedactionValues;
   readonly #write: (frame: McpProgressData) => Effect.Effect<void>;
-  #previousValues: Iterable<string> | undefined;
+  #previousValues: Iterable<string> | TieredRedactionValues | undefined;
   #valueBytes = 0;
 
-  constructor(values: () => Iterable<string>, write: (frame: McpProgressData) => Effect.Effect<void>) {
+  constructor(
+    values: () => Iterable<string> | TieredRedactionValues,
+    write: (frame: McpProgressData) => Effect.Effect<void>,
+  ) {
     this.#values = values;
     this.#write = write;
   }
 
-  #boundedValues = (additionalMetadataBytes?: number): Iterable<string> => {
+  #boundedValues = (additionalMetadataBytes?: number): Iterable<string> | TieredRedactionValues => {
     const values = this.#values();
     if (values !== this.#previousValues) {
       let bytes = 0;
-      for (const value of values) {
+      for (const value of "substring" in values ? [...values.substring, ...values.wholeToken] : values) {
         bytes += Buffer.byteLength(value, "utf8");
         if (bytes > MAX_OUTBOUND_QUEUED_BYTES)
           throw stdioTransportError("MCP live secret values exceeded the retained byte limit.");

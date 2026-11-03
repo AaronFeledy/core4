@@ -39,7 +39,7 @@ A non-zero exit follows the same shape. Stderr still streams. The failing child 
 
 ## Secrets on the wire
 
-Human formats mask only registered secret values on the live byte stream, including values split across writes. Lando holds only a trailing prefix that could complete a registered value. It leaves assignments, URLs, arbitrary binary bytes, and line endings alone otherwise. stdout and stderr follow the same rule on a terminal or in a file.
+Human formats mask only known secret values on the live byte stream, including values split across writes. Lando holds only a trailing prefix that could complete a known value, at most the length of the longest one, because a password authored as a literal in a committed YAML layer is masked only as a whole token and needs the next byte to decide. It leaves assignments, URLs, arbitrary binary bytes, and line endings alone otherwise. stdout and stderr follow the same rule on a terminal or in a file. See [What gets masked, and where](../config/secret-stores.mdx#what-gets-masked-and-where) for which values are masked everywhere and which only as whole tokens.
 
 Live JSON commands such as `lando exec --format=json` first mask registered values across byte boundaries. They emit a frame for each complete line, flushing a partial line at end of stream or at 64 KiB. Invalid UTF-8 becomes the replacement character. The full secrets profile then masks the frame text, so pattern matching restarts at each capped fragment. Registered-value matching spans those fragments.
 

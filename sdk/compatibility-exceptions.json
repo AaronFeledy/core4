@@ -1,5 +1,11 @@
 [
   {
+    "surface": "schema:ServiceFeatureValidationResult",
+    "changeKind": "enum-widened",
+    "path": "$.handledServiceFields.items",
+    "justification": "Pre-release uploadDirs introduces a server-neutral service field claim for generated nginx FastCGI and PHP Apache configurations. Plugins returning the new claim require a matching core that enforces it; no compatibility alias for the unreleased nginx-only field is retained."
+  },
+  {
     "surface": "schema:ServiceConfig",
     "changeKind": "unsupported-construct",
     "path": "$.init.anyOf",

@@ -159,7 +159,9 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
         violations.push(
           ...error.issues.map((issue) =>
             attributeLintIssue(
-              recordedFailures.includes(error) ? { ...issue, rule: "landofile.load" } : issue,
+              recordedFailures.includes(error)
+                ? { ...issue, rule: "landofile.load", reason: issue.rule ?? error._tag }
+                : issue,
               "effective",
               documents,
             ),
@@ -207,6 +209,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
           "canonical";
         violations.push({
           rule: "landofile.load",
+          reason: error._tag,
           severity: "error",
           path,
           scopes: [scope],

@@ -254,6 +254,7 @@ The frozen, schema-validated plan is the sole source of truth across the core/pr
 | `stores` | Provider-neutral storage intent. |
 | `networking` | Explicit per-app bridge (or `null`), optional shared-network membership with service aliases, and the authored networks services join (§10.1). |
 | `events` | Compiled Landofile `events:` and `hostEvents` steps with provenance and plan-time status (§8.5.7). Omitted from provider applied-state records. |
+| `committedLiteralDigests` | Sorted SHA-256 digests of committed sensitive Landofile literals. Sensitive values with those bytes are redacted as whole tokens (§3.7). Value-free and recomputed on every planning pass, including cache hits. |
 | `metadata` | App planning metadata. |
 | `extensions` | Namespaced preserved provider intent. |
 

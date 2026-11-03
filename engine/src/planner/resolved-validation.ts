@@ -12,6 +12,7 @@ import {
   landoAuthoredNetworkName,
 } from "@lando/sdk/schema";
 import { Iterable, Result, Schema } from "effect";
+import { hostReadinessShellIssues } from "./host-shell-issues.ts";
 import { deferredSiteKey } from "./landofile-scopes.ts";
 import { appNetworkName } from "./naming.ts";
 
@@ -175,6 +176,9 @@ export const validateResolvedLandofile = (input: {
         case "none":
         case undefined:
           break;
+      }
+      if (role === "readiness" && healthcheck.target === "host" && typeof healthcheck.command === "string") {
+        issues.push(...hostReadinessShellIssues(landofile, name, healthcheck.command, isBlocked));
       }
     }
   }

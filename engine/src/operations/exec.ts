@@ -22,7 +22,7 @@ import { resolveAgentEnvForwardAllowlist } from "../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../config/agent-env.ts";
 import { withTerminalEnv } from "../config/terminal-env.ts";
 import { type ResolvedAppTarget, loadUserLandofileAt, planDesiredApp } from "../landofile/app-resolution.ts";
-import { collectAppPlanRedactionTokens } from "../services/app-plan-redaction.ts";
+import { registerPlanRedaction } from "../services/plan-redaction.ts";
 import { resolveContainerCwd } from "../subsystems/host-proxy/cwd-remap.ts";
 import { collectExecStream } from "./exec-stream.ts";
 import { StreamFrameSink, type StreamFrameSinkShape } from "./stream-frame-sink.ts";
@@ -188,6 +188,7 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
   }
 
   const service = yield* resolveService(split.service, plan);
+  yield* registerPlanRedaction(plan);
   const provider = yield* registry.select(plan);
   const target: ExecTarget = {
     app: plan.id,
@@ -216,7 +217,6 @@ export const execApp = Effect.fn("AppOperation.exec")(function* (
     service: String(service.name),
     command: split.command,
     ...result,
-    redactionTokens: collectAppPlanRedactionTokens(plan),
   };
   return withTokens;
 });

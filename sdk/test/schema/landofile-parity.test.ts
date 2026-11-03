@@ -205,6 +205,7 @@ const INVALID_INPUT_FIXTURES = new Map([
   ["expressions/fixtures/expressions-plan-time-typed-field", "Planner scopes cannot supply typed values."],
   ["scripting-with-json/fixtures/unknown-service-key", "Deliberate misspelled service property."],
   ["networks/fixtures/networks-pinned-address", "Deliberately pins a network address Lando rejects."],
+  ["nginx/fixtures/nginx-upload-dirs-inject", "Deliberate config-injection attempt in an upload directory."],
   ["config-translate/fixtures/lando3-compose-arguments", "Legacy Lando 3 source, not v4 input."],
   ["build-steps/fixtures/build-steps-invalid-user", "Deliberately malformed build user."],
   [

@@ -25,6 +25,7 @@ export const source = {
     services: {
       appserver: {
         ...phpAppserver("laravel"),
+        uploadDirs: ["storage"],
         allowOverride: true,
         port: 80,
         dependsOn: ["database", "cache"],

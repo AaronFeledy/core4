@@ -130,6 +130,10 @@ export const makeStreamFrameSink = Effect.fnUntraced(function* (format: CommandR
   const renderer = yield* Renderer;
   const redaction = yield* RedactionService;
   const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
+  const bodyRedactor = yield* redaction.forProfile("secrets", {
+    sourceEnv: process.env,
+    excludeWholeTokenValues: true,
+  });
   const values = yield* redaction.payloadValues({ sourceEnv: process.env });
   const encoder = new TextEncoder();
   const states = new Map<
@@ -153,9 +157,9 @@ export const makeStreamFrameSink = Effect.fnUntraced(function* (format: CommandR
       if (textChunk.length === 0) return;
       const streamFrameOptions = {
         chunk: textChunk,
-        ...(frame.service === undefined ? {} : { service: frame.service }),
-        ...(frame.source === undefined ? {} : { source: frame.source }),
-        redactor,
+        ...(frame.service === undefined ? {} : { service: redactor.redactString(frame.service) }),
+        ...(frame.source === undefined ? {} : { source: redactor.redactString(frame.source) }),
+        redactor: bodyRedactor,
       };
       const line =
         frame._tag === "stdout"

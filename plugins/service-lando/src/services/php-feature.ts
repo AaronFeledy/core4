@@ -35,14 +35,15 @@ const PhpFeatureConfig = Schema.Struct({
   version: Schema.Literals(SUPPORTED_PHP_VERSIONS),
   via: Schema.Literals(["apache", "fpm", "cli"]),
   webroot: Schema.String,
+  uploadDirs: Schema.optionalKey(Schema.Array(Schema.String)),
   policy: PhpRuntimePolicy,
 });
 
 const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const { allowOverride, version, via, webroot, policy } = Schema.decodeUnknownSync(PhpFeatureConfig)(
-    ctx.config,
-  );
+  const { allowOverride, version, via, webroot, policy, uploadDirs } = Schema.decodeUnknownSync(
+    PhpFeatureConfig,
+  )(ctx.config);
   const mode = phpServingMode(via, authoredListenPort(service.port));
   if (mode.listener !== undefined) {
     assertListenerConfig(service, mode.via === "fpm" ? PHP_LISTENERS.fpm : PHP_LISTENERS.apache);
@@ -79,7 +80,13 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
         if (mode.authoredApachePort !== undefined)
           ctx.addBuildStep(apacheListenBuildStep(DEBIAN_APACHE_PORTS_CONF_PATH));
         ctx.setCommand([
-          ...apacheStartCommand(webroot, allowOverride, mode.authoredApachePort, service.user === undefined),
+          ...apacheStartCommand(
+            webroot,
+            allowOverride,
+            mode.authoredApachePort,
+            service.user === undefined,
+            uploadDirs,
+          ),
           ...(service.environment?.BACKDROP_SETTINGS === undefined
             ? []
             : ["-c", "PassEnv BACKDROP_SETTINGS"]),
@@ -121,8 +128,13 @@ export const phpServiceFeature: ServiceFeatureDefinition = {
   schema: PhpFeatureConfig,
   priority: PHP_FEATURE_PRIORITY,
   validateEffective: serviceFeatureValidateEffective(PHP_FEATURE_ID, (ctx) => {
-    const { webroot } = Schema.decodeUnknownSync(PhpFeatureConfig)(ctx.config);
-    return { handledServiceFields: webroot.length > 0 ? ["webroot"] : [] };
+    const { webroot, via, policy } = Schema.decodeUnknownSync(PhpFeatureConfig)(ctx.config);
+    return {
+      handledServiceFields: [
+        ...(webroot.length > 0 ? ["webroot" as const] : []),
+        ...(via === "apache" && policy.processAuthority === "lando" ? ["uploadDirs" as const] : []),
+      ],
+    };
   }),
   declareEndpoints: (ctx) =>
     Effect.sync(() => {

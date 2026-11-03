@@ -1,0 +1,16 @@
+name: secret-commands
+services:
+  app:
+    type: "node:22"
+    primary: true
+    environment:
+      ASSETS_TOKEN: '${secret:ASSETS_TOKEN}'
+    build:
+      app:
+        - 'curl -fsSL -H "Authorization: Bearer $ASSETS_TOKEN" https://assets.example.com/fonts.tgz | tar -xz -C /app/public'
+tooling:
+  deploy:
+    service: app
+    cmd: 'curl -fsS -X POST -H "Authorization: Bearer $DEPLOY_TOKEN" https://deploy.example.com/hooks/secret-commands'
+    env:
+      DEPLOY_TOKEN: '${secret:DEPLOY_TOKEN}'

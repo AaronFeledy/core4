@@ -83,6 +83,10 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
         const resultRedactor = (tokens: ReadonlyArray<string>) =>
           redaction.forProfile("secrets", { sourceEnv, authoritativeTokens: tokens });
         const redactor = yield* resultRedactor([]);
+        const bodyRedactor = yield* redaction.forProfile("secrets", {
+          sourceEnv,
+          excludeWholeTokenValues: true,
+        });
         const payloadValues = yield* redaction.payloadValues({ sourceEnv });
         const allowlist = effective(options);
         const entries =
@@ -95,6 +99,7 @@ export class McpService extends Context.Service<McpService, McpServiceShape>()("
           catalog: yield* catalog(options),
           executor,
           redactor,
+          bodyRedactor,
           payloadValues,
           handleMemoryPressure: onMemoryPressure,
           deps: {

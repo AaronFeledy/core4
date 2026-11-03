@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { ConfigError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 import { Effect } from "effect";
-import { decodeGlobalConfigFile, decodeGlobalConfigSources } from "../../src/config/global-config.ts";
+import {
+  decodeGlobalConfigFile,
+  decodeGlobalConfigSources,
+  hostEventsShellConfigError,
+} from "../../src/config/global-config.ts";
 import { layer } from "../../src/services/config";
 
 let root = "";
@@ -161,4 +165,51 @@ test("accepts plugin-contributed notify command ids", () => {
   });
   // Then it is valid before subscriber bootstrap.
   expect(result._tag).toBe("Success");
+});
+
+test("strict validation flags hostEvents :host text Bun Shell can't run, after Lando's own expansion", () => {
+  // Given a step Bun Shell rejects, one whose ${NAME} Lando fills in, and one whose $${NAME} reaches Bun Shell
+  const hostEvents = {
+    "post-start": [
+      { cmd: "echo hi >&2", service: ":host" },
+      { cmd: "echo ${NAME}", service: ":host" },
+      { cmd: "echo $${NAME}", service: ":host" },
+    ],
+  };
+  // When
+  const result = decodeGlobalConfigFile({ hostEvents }, join(root, "config.yml"));
+  // Then
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") return;
+  expect(result.failure.issues?.map((issue) => issue.path.join("."))).toEqual([
+    "hostEvents.post-start.0.cmd",
+    "hostEvents.post-start.2.cmd",
+  ]);
+  expect(result.failure.message).toContain("Column 9: Bun Shell needs an explicit source descriptor in >&2.");
+});
+
+test("runtime config decoding ignores hostEvents host-shell findings so other commands keep working", () => {
+  // Given
+  const tree = { hostEvents: { "pre-start": [{ cmd: "echo hi >&2", service: ":host" }] } };
+  // When
+  const result = decodeGlobalConfigSources([{ layer: "config-file", file: join(root, "config.yml"), tree }], {
+    excessKeys: "warn",
+  });
+  // Then
+  expect(result._tag).toBe("Success");
+});
+
+test("hostEventsShellConfigError gives doctor the same finding config validate reports", () => {
+  // Given
+  const file = join(root, "config.yml");
+  // When
+  const error = hostEventsShellConfigError({ "pre-start": [{ cmd: "echo hi >&2", service: ":host" }] }, file);
+  const clean = hostEventsShellConfigError(
+    { "pre-start": [{ cmd: "echo hi 1>&2", service: ":host" }] },
+    file,
+  );
+  // Then
+  expect(error).toBeInstanceOf(ConfigError);
+  expect(error?.issues?.map((issue) => issue.path.join("."))).toEqual(["hostEvents.pre-start.0.cmd"]);
+  expect(clean).toBeUndefined();
 });
