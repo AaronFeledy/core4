@@ -3,6 +3,8 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { withEnvVar } from "../_support/temp-cwd.ts";
+
 import { DateTime, Effect, Schema } from "effect";
 
 import {
@@ -36,7 +38,7 @@ const listFixtureInput: ReadonlyArray<ScratchSummary> = [
     app: {
       kind: "scratch",
       id: "scratch-drupal-abc123",
-      root: AbsolutePath.make("/cache/scratch/scratch-drupal-abc123/root"),
+      root: AbsolutePath.make("/data/scratch/scratch-drupal-abc123/root"),
     },
     source: { kind: "fork" },
     mode: "full",
@@ -48,7 +50,7 @@ const listFixtureInput: ReadonlyArray<ScratchSummary> = [
     app: {
       kind: "scratch",
       id: "scratch-empty-def456",
-      root: AbsolutePath.make("/cache/scratch/scratch-empty-def456/root"),
+      root: AbsolutePath.make("/data/scratch/scratch-empty-def456/root"),
     },
     source: { kind: "recipe", ref: "empty" },
     mode: "full",
@@ -62,7 +64,7 @@ const infoFixtureInput: ScratchInfo = {
   app: {
     kind: "scratch",
     id: "scratch-drupal-abc123",
-    root: AbsolutePath.make("/cache/scratch/scratch-drupal-abc123/root"),
+    root: AbsolutePath.make("/data/scratch/scratch-drupal-abc123/root"),
   },
   source: { kind: "fork" },
   mode: "full",
@@ -108,19 +110,17 @@ describe("scratch list/info JSON renderer snapshots", () => {
   });
 });
 
-const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
-  const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-listinfo-")));
-  const previous = process.env.LANDO_USER_CACHE_ROOT;
+const withTempRoots = async <T>(
+  run: (roots: { readonly dataRoot: string; readonly cacheRoot: string }) => Promise<T>,
+): Promise<T> => {
+  const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-listinfo-data-")));
+  const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-listinfo-cache-")));
   try {
-    process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
-    return await run(cacheRoot);
+    return await withEnvVar("LANDO_USER_DATA_ROOT", dataRoot, () =>
+      withEnvVar("LANDO_USER_CACHE_ROOT", cacheRoot, () => run({ dataRoot, cacheRoot })),
+    );
   } finally {
-    if (previous === undefined) {
-      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
-      delete process.env.LANDO_USER_CACHE_ROOT;
-    } else {
-      process.env.LANDO_USER_CACHE_ROOT = previous;
-    }
+    await rm(dataRoot, { recursive: true, force: true });
     await rm(cacheRoot, { recursive: true, force: true });
   }
 };
@@ -130,14 +130,14 @@ const scratchRuntime = () => makeLandoRuntime({ bootstrap: "scratch" });
 const runScratch = <A, E>(effect: Effect.Effect<A, E, ScratchAppService>): Promise<A> =>
   Effect.runPromise(effect.pipe(Effect.provide(scratchRuntime())));
 
-const seedEntry = (cacheRoot: string, overrides: Partial<ScratchRegistryEntry>): ScratchRegistryEntry => {
+const seedEntry = (dataRoot: string, overrides: Partial<ScratchRegistryEntry>): ScratchRegistryEntry => {
   const id = overrides.id ?? "scratch-seed-000000";
   return {
     id,
     source: { kind: "fork" },
     isolate: "full",
     detached: false,
-    rootPath: join(cacheRoot, "scratch", id, "root"),
+    rootPath: join(dataRoot, "scratch", id, "root"),
     status: "running",
     createdAt: "2026-05-31T18:00:00.000Z",
     updatedAt: "2026-05-31T18:00:00.000Z",
@@ -151,7 +151,7 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
+const planWithDetails = (dataRoot: string, id: string): AppPlan => {
   const appserverName = ServiceName.make("appserver");
   const databaseName = ServiceName.make("database");
   const appserver: ServicePlan = {
@@ -163,7 +163,7 @@ const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
     mounts: [
       {
         type: "bind",
-        source: AbsolutePath.make(join(cacheRoot, "scratch", id, "root")),
+        source: AbsolutePath.make(join(dataRoot, "scratch", id, "root")),
         target: PortablePath.make("/app"),
         readOnly: false,
         excludes: [],
@@ -203,7 +203,7 @@ const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
     id: AppId.make(id),
     name: id,
     slug: id,
-    root: AbsolutePath.make(join(cacheRoot, "scratch", id, "root")),
+    root: AbsolutePath.make(join(dataRoot, "scratch", id, "root")),
     provider: ProviderId.make("lando"),
     services: { [appserverName]: appserver, [databaseName]: database },
     routes: [],
@@ -226,16 +226,16 @@ const planWithDetails = (cacheRoot: string, id: string): AppPlan => {
 
 describe("ScratchAppService list/info backed by the registry", () => {
   test("list derives attached / detached / orphan lifetime status", async () => {
-    await withTempCache(async (cacheRoot) => {
+    await withTempRoots(async ({ dataRoot }) => {
       const registry = makeScratchRegistry(ownerOnlyFileAccess);
       await Effect.runPromise(
-        registry.upsert(seedEntry(cacheRoot, { id: "scratch-attached-000001", ownerPid: process.pid })),
+        registry.upsert(seedEntry(dataRoot, { id: "scratch-attached-000001", ownerPid: process.pid })),
       );
       await Effect.runPromise(
-        registry.upsert(seedEntry(cacheRoot, { id: "scratch-detached-000002", detached: true })),
+        registry.upsert(seedEntry(dataRoot, { id: "scratch-detached-000002", detached: true })),
       );
       await Effect.runPromise(
-        registry.upsert(seedEntry(cacheRoot, { id: "scratch-orphan-000003", ownerPid: 999_999_999 })),
+        registry.upsert(seedEntry(dataRoot, { id: "scratch-orphan-000003", ownerPid: 999_999_999 })),
       );
 
       const listed = await runScratch(Effect.flatMap(ScratchAppService, (service) => service.list()));
@@ -250,13 +250,13 @@ describe("ScratchAppService list/info backed by the registry", () => {
   });
 
   test("info reads mounts, network membership, and endpoints from the cached plan", async () => {
-    await withTempCache(async (cacheRoot) => {
+    await withTempRoots(async ({ dataRoot }) => {
       const id = "scratch-detail-000004";
-      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(seedEntry(cacheRoot, { id })));
-      const instanceRoot = join(cacheRoot, "scratch", id);
+      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(seedEntry(dataRoot, { id })));
+      const instanceRoot = join(dataRoot, "scratch", id);
       await rm(instanceRoot, { recursive: true, force: true }).catch(() => undefined);
       await Bun.write(join(instanceRoot, ".keep"), "");
-      const plan = planWithDetails(cacheRoot, id);
+      const plan = planWithDetails(dataRoot, id);
       await writeFile(
         join(instanceRoot, "plan.bin"),
         `${JSON.stringify(Schema.encodeSync(AppPlanSchema)(plan))}\n`,
@@ -267,7 +267,7 @@ describe("ScratchAppService list/info backed by the registry", () => {
       expect(info.mounts).toContainEqual({
         service: "appserver",
         target: "/app",
-        source: join(cacheRoot, "scratch", id, "root"),
+        source: join(dataRoot, "scratch", id, "root"),
         kind: "app",
         readOnly: false,
       });
@@ -294,10 +294,10 @@ describe("ScratchAppService list/info backed by the registry", () => {
   });
 
   test("info degrades gracefully to empty detail when no plan is cached", async () => {
-    await withTempCache(async (cacheRoot) => {
+    await withTempRoots(async ({ dataRoot }) => {
       const id = "scratch-noplan-000005";
       await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert(seedEntry(cacheRoot, { id, detached: true })),
+        makeScratchRegistry(ownerOnlyFileAccess).upsert(seedEntry(dataRoot, { id, detached: true })),
       );
       const info = await runScratch(Effect.flatMap(ScratchAppService, (service) => service.info(id)));
       expect(info.status).toBe("detached");

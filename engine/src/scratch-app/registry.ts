@@ -1,26 +1,19 @@
-import { readFile } from "node:fs/promises";
-
-// The scratch registry — a thin, scratch-shaped view over a single durable
-// `StateBucket`. All atomic write, advisory cross-process locking, corruption
-// quarantine, and version-envelope handling are delegated to `StateStore`
-// (`core/src/state/`); this module only owns the scratch entry schema and the
-// `read`/`upsert`/`remove`/`list`/`get` surface its callers expect. The live
-// layer derives private-file access from the process runner before opening the
-// bucket so Windows ACL enforcement never relies on an ambient subprocess path.
-
 import { Context, Effect, Layer, Schema } from "effect";
 
-import { ScratchAppError, isErrnoCode } from "@lando/sdk/errors";
+import { ScratchAppError } from "@lando/sdk/errors";
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { StateBucket } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "@lando/paths";
-import { writeFileAtomicScoped } from "@lando/state-store/atomic";
-import { encodeFrame } from "@lando/state-store/codec";
-import { acquireAdvisoryLockAt, withAdvisoryLockUsing } from "@lando/state-store/lock";
-import { resolveStatePath } from "@lando/state-store/paths";
 import { type PrivateFileAccess, PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { makeStateStore } from "@lando/state-store/service";
+
+// The scratch registry — a thin, scratch-shaped view over a single durable
+// `StateBucket` under the user data root. All atomic write, advisory
+// cross-process locking, corruption quarantine, and version-envelope handling
+// are delegated to `StateStore`; this module only owns the scratch entry schema
+// and the `read`/`upsert`/`remove`/`list`/`get` surface its callers expect. The
+// live layer derives private-file access from the process runner before opening
+// the bucket so Windows ACL enforcement never relies on an ambient subprocess path.
 
 const REGISTRY_VERSION = 1 as const;
 
@@ -42,55 +35,17 @@ const RegistryEntrySchema = Schema.Struct({
   updatedAt: Schema.String,
 });
 
-const LegacyRegistryEntrySchema = Schema.Struct({
-  id: Schema.String,
-  source: ScratchSourceSchema,
-  isolate: Schema.Literals(["none", "full", "baked", "cwd"]),
-  detached: Schema.Boolean,
-  ownerPid: Schema.optionalKey(Schema.Number),
-  rootPath: Schema.String,
-  status: Schema.Literals(["acquiring", "running", "stopping", "destroyed-pending-cleanup"]),
-  createdAt: Schema.String,
-  updatedAt: Schema.String,
-});
-
 const RegistryEntriesSchema = Schema.Array(RegistryEntrySchema);
-const LegacyRegistryEntriesSchema = Schema.Array(LegacyRegistryEntrySchema);
 
 const RegistryEnvelopeSchema = Schema.Struct({
   version: Schema.Literal(REGISTRY_VERSION),
   entries: RegistryEntriesSchema,
 });
 
-const LegacyRegistryEnvelopeSchema = Schema.Struct({
-  version: Schema.Literal(REGISTRY_VERSION),
-  entries: LegacyRegistryEntriesSchema,
-});
-
-const LegacyStateFrameSchema = Schema.Struct({
-  version: Schema.Literal(REGISTRY_VERSION),
-  data: LegacyRegistryEntriesSchema,
-});
-
 export type ScratchRegistryEntry = typeof RegistryEntrySchema.Type;
 export type ScratchRegistryEnvelope = typeof RegistryEnvelopeSchema.Type;
 
 type RegistryEntries = ReadonlyArray<ScratchRegistryEntry>;
-
-export interface ScratchRegistryPaths {
-  readonly base: string;
-  readonly registry: string;
-  readonly lock: string;
-}
-
-export const scratchRegistryPaths = (): ScratchRegistryPaths => {
-  const paths = makeLandoPaths();
-  return {
-    base: paths.scratchDir,
-    registry: paths.scratchRegistryFile,
-    lock: paths.scratchRegistryLockFile,
-  };
-};
 
 const scratchRegistryError = (operation: string, message: string, cause: unknown): ScratchAppError =>
   new ScratchAppError({
@@ -108,93 +63,6 @@ const scratchRegistryError = (operation: string, message: string, cause: unknown
 
 const sortById = (entries: RegistryEntries): RegistryEntries =>
   [...entries].sort((left, right) => left.id.localeCompare(right.id));
-
-const decodeLegacyEnvelope = (content: string): RegistryEntries | null => {
-  try {
-    const parsed = JSON.parse(content) as unknown;
-    const entries = Schema.decodeUnknownSync(LegacyRegistryEnvelopeSchema)(parsed, {
-      onExcessProperty: "error",
-    }).entries;
-    return entries.map((entry) => ({
-      ...entry,
-      isolate: entry.isolate === "none" ? (entry.source.kind === "fork" ? "cwd" : "baked") : entry.isolate,
-    }));
-  } catch {
-    try {
-      const entries = Schema.decodeUnknownSync(LegacyStateFrameSchema)(JSON.parse(content), {
-        onExcessProperty: "error",
-      }).data;
-      if (!entries.some((entry) => entry.isolate === "none")) return null;
-      return entries.map((entry) => ({
-        ...entry,
-        isolate: entry.isolate === "none" ? (entry.source.kind === "fork" ? "cwd" : "baked") : entry.isolate,
-      }));
-    } catch {
-      return null;
-    }
-  }
-};
-
-const migrateLegacyEnvelope = (privateFileAccess: PrivateFileAccess): Effect.Effect<void, ScratchAppError> =>
-  resolveStatePath("userCache", "scratch", "registry.bin", "registry.migrate").pipe(
-    Effect.mapError((cause) =>
-      scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
-    ),
-    Effect.flatMap(({ file: registryFile }) => {
-      const inspectLegacyEnvelope = Effect.promise(async () => {
-        try {
-          return decodeLegacyEnvelope(await readFile(registryFile, "utf8"));
-        } catch (cause) {
-          if (isErrnoCode(cause, "ENOENT")) return null;
-          return null;
-        }
-      });
-
-      const rewriteLegacyEnvelope = (entries: RegistryEntries) =>
-        Schema.encodeEffect(RegistryEntriesSchema)(entries).pipe(
-          Effect.map((encoded) => encodeFrame("json", REGISTRY_VERSION, encoded, entries)),
-          Effect.flatMap((body) =>
-            writeFileAtomicScoped(registryFile, body, {
-              mode: 0o600,
-              privateFileAccess: privateFileAccess.enforce,
-            }),
-          ),
-          Effect.mapError((cause) =>
-            scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
-          ),
-        );
-
-      return withAdvisoryLockUsing(privateFileAccess)(
-        registryFile,
-        "registry.migrate",
-        inspectLegacyEnvelope.pipe(
-          Effect.flatMap((entries) => (entries === null ? Effect.void : rewriteLegacyEnvelope(entries))),
-        ),
-      );
-    }),
-    Effect.mapError((cause) =>
-      cause instanceof ScratchAppError
-        ? cause
-        : scratchRegistryError("registry.migrate", "Unable to migrate the scratch registry.", cause),
-    ),
-  );
-
-/**
- * Re-acquire the legacy `registry.lock` advisory lock via the generic state
- * lock primitive. The scratch registry's mutations are now serialized by the
- * bucket's own advisory lock (`registry.bin.lock`); this helper is retained as a
- * thin delegation to the shared lock so callers that held the explicit lock
- * handle keep working with the same token-checked release semantics.
- */
-export const acquireScratchRegistryLock = (
-  privateFileAccess: PrivateFileAccess,
-  paths: ScratchRegistryPaths = scratchRegistryPaths(),
-): Effect.Effect<{ readonly token: string; readonly release: Effect.Effect<void> }, ScratchAppError> =>
-  acquireAdvisoryLockAt(paths.lock, "registry.lock", { privateFileAccess }).pipe(
-    Effect.mapError((cause) =>
-      scratchRegistryError("registry.lock", "Unable to acquire the scratch registry lock.", cause),
-    ),
-  );
 
 export interface ScratchRegistryService {
   readonly read: () => Effect.Effect<ScratchRegistryEnvelope, ScratchAppError>;
@@ -221,7 +89,7 @@ const openRegistryBucket = (
 ): Effect.Effect<StateBucket<RegistryEntries>, ScratchAppError> =>
   makeStateStore({ privateFileAccess })
     .open<RegistryEntries, RegistryEntries>({
-      root: "userCache",
+      root: "userData",
       namespace: "scratch",
       key: "registry.bin",
       schema: RegistryEntriesSchema,
@@ -244,13 +112,9 @@ export const makeScratchRegistry = (privateFileAccess: PrivateFileAccess): Scrat
     message: string,
     use: (bucket: StateBucket<RegistryEntries>) => Effect.Effect<A, StateStoreError>,
   ): Effect.Effect<A, ScratchAppError> =>
-    migrateLegacyEnvelope(privateFileAccess).pipe(
-      Effect.andThen(
-        openRegistryBucket(privateFileAccess).pipe(
-          Effect.flatMap((bucket) =>
-            use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
-          ),
-        ),
+    openRegistryBucket(privateFileAccess).pipe(
+      Effect.flatMap((bucket) =>
+        use(bucket).pipe(Effect.mapError((cause) => scratchRegistryError(operation, message, cause))),
       ),
     );
 

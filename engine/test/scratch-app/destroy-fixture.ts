@@ -42,15 +42,23 @@ export const withDestroyFixture = async (
   options: DestroyFixtureOptions,
   use: (fixture: Awaited<ReturnType<typeof makeFixture>>) => Promise<void>,
 ) => {
-  const root = await mkdtemp(join(tmpdir(), "scratch-destroy-"));
-  const previous = process.env.LANDO_USER_CACHE_ROOT;
-  process.env.LANDO_USER_CACHE_ROOT = root;
+  const base = await mkdtemp(join(tmpdir(), "scratch-destroy-"));
+  const root = join(base, "data");
+  const cacheRoot = join(base, "cache");
+  await mkdir(root, { recursive: true });
+  await mkdir(cacheRoot, { recursive: true });
+  const previousData = process.env.LANDO_USER_DATA_ROOT;
+  const previousCache = process.env.LANDO_USER_CACHE_ROOT;
+  process.env.LANDO_USER_DATA_ROOT = root;
+  process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
   try {
     await use(await makeFixture(root, options));
   } finally {
-    if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
-    else process.env.LANDO_USER_CACHE_ROOT = previous;
-    await rm(root, { recursive: true, force: true });
+    if (previousData === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+    else process.env.LANDO_USER_DATA_ROOT = previousData;
+    if (previousCache === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+    else process.env.LANDO_USER_CACHE_ROOT = previousCache;
+    await rm(base, { recursive: true, force: true });
   }
 };
 

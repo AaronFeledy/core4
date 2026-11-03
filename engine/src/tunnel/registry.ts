@@ -21,7 +21,7 @@ type TunnelRegistryEntry = typeof TunnelRegistryEntry.Type;
 type TunnelRegistryEntries = typeof TunnelRegistryEntries.Type;
 
 const registrySpec = {
-  root: "userCache",
+  root: "userData",
   namespace: "tunnels",
   key: "registry.bin",
   schema: TunnelRegistryEntries,

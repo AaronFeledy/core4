@@ -11,6 +11,7 @@ import {
   networkTrustCaBundlesDir,
   normalizeHostPlatform,
   resolveLandoRoots,
+  updateHandoffDir,
 } from "../src/paths.ts";
 
 // Every test injects env/home/platform through RootOverrides so the suite is
@@ -506,18 +507,19 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.ownerSnapshotsDir("owner-one")).toBe(join(data, "snapshots", "owner-one"));
     expect(paths.managedFileLedger("app-one")).toBe(join(data, "managed-files", "app-one", "ledger.json"));
     expect(paths.tunnelRunDir).toBe(join(data, "run", "tunnels"));
+    expect(paths.scratchDir).toBe(join(data, "scratch"));
+    expect(paths.fileSyncSessionsDir).toBe(join(data, "file-sync", "sessions"));
+    expect(paths.shellHistoryFile("app", "/work/app")).toMatch(
+      /^\/home\/tester\/\.local\/share\/lando\/shell\/app-[0-9a-f]{12}\/history$/u,
+    );
   });
 
   test("userCache-scoped builders", () => {
     const paths = makeLandoPaths(linux());
     const cache = "/home/tester/.cache/lando";
     expect(paths.logsDir).toBe(join(cache, "logs"));
-    expect(paths.scratchDir).toBe(join(cache, "scratch"));
-    expect(paths.scratchRegistryFile).toBe(join(cache, "scratch", "registry.bin"));
-    expect(paths.scratchRegistryLockFile).toBe(join(cache, "scratch", "registry.lock"));
-    expect(paths.tunnelRegistryFile).toBe(join(cache, "tunnels", "registry.bin"));
+    expect(paths.transferStagingDir).toBe(join(cache, "transfer-staging"));
     expect(paths.toolDownloadsDir("mutagen")).toBe(join(cache, "tool-downloads", "mutagen"));
-    expect(paths.fileSyncSessionsDir).toBe(join(cache, "file-sync", "sessions"));
   });
 
   test("network-trust CA bundle paths sit under userCacheRoot", () => {
@@ -533,6 +535,11 @@ describe("makeLandoPaths derived builders", () => {
     expect(networkTrustCaBundlePath("C:\\Users\\t\\Cache", digest, "win32")).toBe(
       `C:\\Users\\t\\Cache\\network-trust\\ca-bundles\\${digest}.pem`,
     );
+  });
+
+  test("update handoff receipts sit under userDataRoot on Linux and Windows", () => {
+    expect(updateHandoffDir("/iso/data", "linux")).toBe("/iso/data/update-handoff");
+    expect(updateHandoffDir("C:\\lando\\data", "win32")).toBe("C:\\lando\\data\\update-handoff");
   });
 
   test("userConf-scoped builders", () => {
@@ -578,7 +585,8 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.ownerSnapshotsDir("owner-one")).toBe("/iso/data/snapshots/owner-one");
     expect(paths.managedFileLedger("app-one")).toBe("/iso/data/managed-files/app-one/ledger.json");
     expect(paths.toolDownloadsDir("mutagen")).toBe("/iso/cache/tool-downloads/mutagen");
-    expect(paths.scratchDir).toBe("/iso/cache/scratch");
+    expect(paths.scratchDir).toBe("/iso/data/scratch");
+    expect(paths.transferStagingDir).toBe("/iso/cache/transfer-staging");
     expect(networkTrustCaBundlePath("/iso/cache", "deadbeef", "linux")).toBe(
       "/iso/cache/network-trust/ca-bundles/deadbeef.pem",
     );
@@ -589,7 +597,6 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.providerSocketPath).toBe("/iso/data/runtime/run/podman.sock");
     expect(paths.providerPidPath).toBe("/iso/data/runtime/run/podman.pid");
     expect(paths.tunnelRunDir).toBe("/iso/data/run/tunnels");
-    expect(paths.tunnelRegistryFile).toBe("/iso/cache/tunnels/registry.bin");
     expect(paths.configFile).toBe("/iso/conf/config.yml");
   });
 
@@ -610,14 +617,18 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.managedFileLedger("app-one")).toBe(
       "C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\managed-files\\app-one\\ledger.json",
     );
-    expect(paths.scratchRegistryFile).toBe(
-      "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache\\scratch\\registry.bin",
+    expect(paths.scratchDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\scratch");
+    expect(paths.fileSyncSessionsDir).toBe(
+      "C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\file-sync\\sessions",
+    );
+    expect(paths.transferStagingDir).toBe(
+      "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache\\transfer-staging",
+    );
+    expect(paths.shellHistoryFile("app", "C:\\work\\app")).toMatch(
+      /^C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\shell\\app-[0-9a-f]{12}\\history$/u,
     );
     expect(paths.userIncludesDir).toBe("C:\\Users\\tester\\AppData\\Roaming\\Lando\\includes");
     expect(paths.tunnelRunDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\run\\tunnels");
-    expect(paths.tunnelRegistryFile).toBe(
-      "C:\\Users\\tester\\AppData\\Local\\Lando\\Cache\\tunnels\\registry.bin",
-    );
     expect(paths.runtimeBinDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\bin");
     expect(paths.runtimeRunDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\run");
     expect(paths.runtimeStorageDir).toBe("C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\runtime\\storage");

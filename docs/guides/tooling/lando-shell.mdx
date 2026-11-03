@@ -83,7 +83,7 @@ Lines run independently. A `cd` or variable assignment affects only that line; i
 
 A `${secret:<id>}` or `${secret:<scheme>://path}` reference (for example `${secret:DB_PASSWORD}` from `LANDO_SECRET_DB_PASSWORD`, or `${secret:op://Vault/Item/field}` from 1Password) resolves only when that line runs, through the same routed secret stores as `lando start`. The REPL never preloads secrets into the environment. Resolved secret values are redacted before they reach stdout, stderr, lifecycle events, or history.
 
-Host-mode history persists per accepted line to a per-app history file under the user cache root. `lando shell --no-history` skips saving shell history for that session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.
+Host-mode history persists per accepted line to a per-app history file under the user data root, so clearing Lando's cache doesn't erase it. `lando shell --no-history` skips saving shell history for that session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.
 
 Every accepted line publishes `pre-shell-exec` before it runs and `post-shell-exec` with its exit code after. Subscribers receive the redacted command text, cwd, and output, not the raw line.
 

@@ -576,6 +576,53 @@ describe("update signed manifest", () => {
     expect(tag).toBe("UpdateManifestReplayError");
   });
 
+  test("manifest replay floor lives under userData and survives user cache deletion", async () => {
+    const root = await makeTempRoot("lando-manifest-durable-");
+    const cache = join(root, "cache");
+    const data = join(root, "data");
+    await mkdir(cache, { recursive: true });
+    await mkdir(data, { recursive: true });
+    await writeFile(join(cache, "disposable"), "scratch");
+    const previousCache = process.env.LANDO_USER_CACHE_ROOT;
+    const previousData = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_CACHE_ROOT = cache;
+    process.env.LANDO_USER_DATA_ROOT = data;
+    const withDefaultStatePath = (options: Parameters<typeof update>[0]) =>
+      // Omit updateStatePath so the production default (userData) is exercised.
+      update(options).pipe(
+        Effect.provideService(ProcessRunner, noopProcessRunner),
+        Effect.provideService(Telemetry, noopTelemetry),
+      );
+    try {
+      await Effect.runPromise(
+        withDefaultStatePath({
+          channel: "stable",
+          currentVersion: "4.2.0",
+          dryRun: false,
+          fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.4.0" }),
+          verifyManifestSignature: verifierFor(),
+        }),
+      );
+      await rm(cache, { recursive: true, force: true });
+
+      const tag = await failureTag(
+        withDefaultStatePath({
+          channel: "stable",
+          currentVersion: "4.2.0",
+          dryRun: true,
+          fetchManifestBytes: fetcherForManifest({ ...manifestFor("stable"), latest: "4.3.0" }),
+          verifyManifestSignature: verifierFor(),
+        }),
+      );
+      expect(tag).toBe("UpdateManifestReplayError");
+    } finally {
+      if (previousCache === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+      else process.env.LANDO_USER_CACHE_ROOT = previousCache;
+      if (previousData === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previousData;
+    }
+  });
+
   test("dry-run verifies the signed manifest without persisting replay state", async () => {
     const updateStatePath = join(updateStateRoot, "dry-run-state.json");
 

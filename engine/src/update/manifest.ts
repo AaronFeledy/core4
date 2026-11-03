@@ -16,7 +16,7 @@ import {
 import { Downloader } from "@lando/sdk/services";
 import { updateOutcomeFromError } from "@lando/telemetry/events";
 import { writeFileAtomicViaRename } from "../cache/atomic";
-import { resolveUserCacheRoot } from "../cache/paths";
+import { resolveUserDataRoot } from "../config/roots";
 import * as LandoEventService from "../services/event-service";
 import {
   UpdateDowngradeError,
@@ -43,7 +43,7 @@ export const UpdateResultSchema = Schema.Struct({
 
 const UPDATE_BASE_URL = "https://update.lando.dev/v4";
 export const updateManifestStatePath = (): string =>
-  join(resolveUserCacheRoot(), "update-manifest-state.json");
+  join(resolveUserDataRoot(), "update-manifest-state.json");
 
 export const resolveUpdateManifestUrl = (channel: UpdateChannel): string =>
   `${UPDATE_BASE_URL}/${channel}.json`;

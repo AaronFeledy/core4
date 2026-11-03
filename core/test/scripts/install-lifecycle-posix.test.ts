@@ -197,7 +197,7 @@ describe("hostile Lando 3 lifecycle", () => {
           }),
           verifyManifestSignature: verifierFor(),
           verifyChecksumSignature: checksumVerifierFor(),
-          updateStatePath: join(cacheRoot, "update-manifest-state.json"),
+          updateStatePath: join(dataRoot, "update-manifest-state.json"),
           selfUpdate: {
             installRecordFile: join(dataRoot, "install", "record.json"),
             platform: "linux",

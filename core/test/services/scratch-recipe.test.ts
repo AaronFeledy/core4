@@ -103,7 +103,9 @@ const capabilities: ProviderCapabilities = {
   providerExtensions: [],
 };
 
-const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Promise<T>): Promise<T> => {
+const withTempEnv = async <T>(
+  run: (roots: { readonly dataRoot: string; readonly cacheRoot: string }) => Promise<T>,
+): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-cache-")));
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-data-")));
   const confRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-conf-")));
@@ -117,7 +119,7 @@ const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Pr
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
-    return await run({ cacheRoot });
+    return await run({ dataRoot, cacheRoot });
   } finally {
     process.chdir(previousCwd);
     // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
@@ -343,7 +345,7 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
   });
 
   test("surfaces recipe prompt failures with answer remediation", async () => {
-    await withTempEnv(async ({ cacheRoot }) => {
+    await withTempEnv(async ({ dataRoot }) => {
       const outcome = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
           Effect.scoped(
@@ -369,14 +371,14 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
           "Provide it with --answer php=<value> or --option php=<value>.",
         );
       }
-      expect((await readdir(join(cacheRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
+      expect((await readdir(join(dataRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
         [],
       );
     });
   });
 
   test("maps an unknown recipe reference to ScratchSourceUnresolvedError", async () => {
-    await withTempEnv(async ({ cacheRoot }) => {
+    await withTempEnv(async ({ dataRoot }) => {
       const outcome = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
           Effect.scoped(
@@ -396,7 +398,7 @@ describe("ScratchAppServiceLayer.layer recipe acquire", () => {
           "Verify the recipe reference and try again, e.g. `lando apps:scratch:start --from empty`.",
         );
       }
-      expect((await readdir(join(cacheRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
+      expect((await readdir(join(dataRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
         [],
       );
     });

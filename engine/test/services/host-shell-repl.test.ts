@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Deferred, Effect, Exit, Fiber, Layer, Queue, Stream } from "effect";
 
+import { makeLandoPaths } from "@lando/paths";
 import { SecretNotFoundError } from "@lando/sdk/errors";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService, type LandoEvent, type ShellReplInput } from "@lando/sdk/services";
@@ -690,7 +691,7 @@ test("history files retain private 0600 permissions", async () => {
 test("history persists when the per-app parent directory does not exist yet", async () => {
   // Given — mirrors real makeLandoPaths().shellHistoryFile layout for a new app.
   const root = await mkdtemp(join(tmpdir(), "lando-host-repl-nested-history-"));
-  const historyFile = join(root, "shell", "app-fingerprint", "history");
+  const historyFile = makeLandoPaths({ userDataRoot: join(root, "data") }).shellHistoryFile("app", root);
 
   try {
     // When

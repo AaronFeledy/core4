@@ -127,9 +127,9 @@ const scratchRemediationFor = (operation: string): string => {
       return "Run `lando doctor`, fix the reported provider or plan failure, then retry scratch start.";
     case "ensureRoot":
     case "paths":
-      return "Fix permissions on the Lando scratch directory under the user cache root, then retry.";
+      return "Fix permissions on the Lando scratch directory under the user data root, then retry.";
     case "gc":
-      return "Fix permissions under the scratch cache directory, then retry `lando apps:scratch:gc`.";
+      return "Fix permissions under the scratch directory, then retry `lando apps:scratch:gc`.";
     case "run":
       return "Pass a valid scratch id and tool command after `--`, e.g. `lando run -- composer install`.";
     case "destroy":
@@ -282,7 +282,7 @@ const sanitizeBase = (base: string): string => {
   return cleaned.length === 0 ? "scratch" : cleaned;
 };
 
-// Security: reject ids that `join` could use to escape `<userCacheRoot>/scratch/<id>/`
+// Security: reject ids that `join` could use to escape `<userDataRoot>/scratch/<id>/`
 // — path separators, NUL, or a pure-dot segment (`.`, `..`).
 export const isUnsafeScratchId = (id: string): boolean =>
   id.length === 0 || /[/\\\0]/u.test(id) || /^\.+$/u.test(id);

@@ -110,20 +110,30 @@ const capabilities: ProviderCapabilities = {
   providerExtensions: [],
 };
 
-const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
-  const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-gc-cache-")));
-  const previous = process.env.LANDO_USER_CACHE_ROOT;
+const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<T> => {
+  const base = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-gc-")));
+  const dataRoot = join(base, "data");
+  const cacheRoot = join(base, "cache");
+  await mkdir(dataRoot, { recursive: true });
+  await mkdir(cacheRoot, { recursive: true });
+  const previousData = process.env.LANDO_USER_DATA_ROOT;
+  const previousCache = process.env.LANDO_USER_CACHE_ROOT;
   try {
+    process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
-    return await run(cacheRoot);
+    return await run(dataRoot);
   } finally {
-    if (previous === undefined) {
-      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
-      delete process.env.LANDO_USER_CACHE_ROOT;
+    if (previousData === undefined) {
+      Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
     } else {
-      process.env.LANDO_USER_CACHE_ROOT = previous;
+      process.env.LANDO_USER_DATA_ROOT = previousData;
     }
-    await rm(cacheRoot, { recursive: true, force: true });
+    if (previousCache === undefined) {
+      Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+    } else {
+      process.env.LANDO_USER_CACHE_ROOT = previousCache;
+    }
+    await rm(base, { recursive: true, force: true });
   }
 };
 
@@ -235,13 +245,13 @@ const testSupportLayer = (): Layer.Layer<EventService | RedactionService> => {
   return Layer.mergeAll(redactionLive, LandoEventService.layer.pipe(Layer.provide(redactionLive)));
 };
 
-const registryEntry = (cacheRoot: string, id: string): ScratchRegistryEntry => ({
+const registryEntry = (dataRoot: string, id: string): ScratchRegistryEntry => ({
   id,
   source: { kind: "fork" },
   isolate: "full",
   detached: false,
   ownerPid: 999_999_999,
-  rootPath: join(cacheRoot, "scratch", id, "root"),
+  rootPath: join(dataRoot, "scratch", id, "root"),
   status: "running",
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -249,8 +259,8 @@ const registryEntry = (cacheRoot: string, id: string): ScratchRegistryEntry => (
 
 describe("ScratchAppServiceLayer.layer gc", () => {
   test("cross-references registry, directories, and provider labels and prunes orphans", async () => {
-    await withTempCache(async (cacheRoot) => {
-      const scratchBase = join(cacheRoot, "scratch");
+    await withTempRoots(async (dataRoot) => {
+      const scratchBase = join(dataRoot, "scratch");
       const directoryOrphan = "scratch-dir-000001";
       const deadOwner = "scratch-dead-000002";
       const labelOrphan = "scratch-label-000003";
@@ -259,10 +269,10 @@ describe("ScratchAppServiceLayer.layer gc", () => {
       await mkdir(join(scratchBase, directoryOrphan, "root"), { recursive: true });
       await mkdir(join(scratchBase, deadOwner, "root"), { recursive: true });
       await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(cacheRoot, deadOwner)),
+        makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(dataRoot, deadOwner)),
       );
       await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(cacheRoot, registryStaleWithLabel)),
+        makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(dataRoot, registryStaleWithLabel)),
       );
 
       const pruned: string[] = [];
@@ -304,10 +314,10 @@ describe("ScratchAppServiceLayer.layer gc", () => {
   });
 
   test("keeps registry state when provider prune fails", async () => {
-    await withTempCache(async (cacheRoot) => {
+    await withTempRoots(async (dataRoot) => {
       const id = "scratch-prune-fail-000006";
-      await mkdir(join(cacheRoot, "scratch", id, "root"), { recursive: true });
-      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(cacheRoot, id)));
+      await mkdir(join(dataRoot, "scratch", id, "root"), { recursive: true });
+      await Effect.runPromise(makeScratchRegistry(ownerOnlyFileAccess).upsert(registryEntry(dataRoot, id)));
       const pruned: string[] = [];
       const layer = makeLayer([], pruned, () =>
         Effect.fail(
@@ -335,12 +345,12 @@ describe("ScratchAppServiceLayer.layer gc", () => {
   });
 
   test("list, resolveById, stop, and destroy are backed by the registry", async () => {
-    await withTempCache(async (cacheRoot) => {
+    await withTempRoots(async (dataRoot) => {
       const id = "scratch-registered-000004";
-      const root = join(cacheRoot, "scratch", id, "root");
+      const root = join(dataRoot, "scratch", id, "root");
       await mkdir(root, { recursive: true });
       await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert({ ...registryEntry(cacheRoot, id), detached: true }),
+        makeScratchRegistry(ownerOnlyFileAccess).upsert({ ...registryEntry(dataRoot, id), detached: true }),
       );
       const pruned: string[] = [];
       const layer = makeLayer([], pruned);
@@ -385,7 +395,7 @@ describe("ScratchAppServiceLayer.layer gc", () => {
 
       await mkdir(root, { recursive: true });
       await Effect.runPromise(
-        makeScratchRegistry(ownerOnlyFileAccess).upsert({ ...registryEntry(cacheRoot, id), detached: true }),
+        makeScratchRegistry(ownerOnlyFileAccess).upsert({ ...registryEntry(dataRoot, id), detached: true }),
       );
       const destroyed = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.destroy(id)).pipe(
