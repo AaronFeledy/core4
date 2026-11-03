@@ -77,8 +77,8 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
     return {
       disposition: "rejected",
       rationale:
-        "Lando sets each container's hostname from its container name, which resolves only to that container.",
-      remediation: `Remove ${path}. Lando sets each container's hostname from its container name, lando-<app>-<service>. Reach the service by its service key or a hostnames: alias.`,
+        "Lando sets each container's hostname to its container name, which resolves only to that container.",
+      remediation: `Remove ${path}. Lando sets each container's hostname to its container name, lando-<app>--<service>. Reach the service by its service key or a hostnames: alias.`,
     };
   }
   if (path === "network_mode" || path === "links") {
