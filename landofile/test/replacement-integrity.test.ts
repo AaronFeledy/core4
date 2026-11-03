@@ -47,7 +47,7 @@ test.each([false, true])(
     const result = await Effect.runPromise(replace(content()).pipe(Effect.result));
     // Then
     expect(Result.isFailure(result)).toBe(rejected);
-    expect(await readdir(join(root, "app"))).toEqual(
+    expect((await readdir(join(root, "app"))).sort()).toEqual(
       rejected ? [".lando.local.yml", ".lando.yml"] : [".lando.yml"],
     );
     expect(await Bun.file(join(root, "app/.lando.yml")).text()).toBe(original);

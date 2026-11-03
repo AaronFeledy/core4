@@ -157,7 +157,7 @@ test("a rejected effective candidate does not publish pins", async () => {
   // Then
   expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "LandofileWriteValidationError" } });
   expect(clones).toBeGreaterThan(0);
-  expect(await readdir(app)).toEqual([".lando.local.yml", ".lando.yml"]);
+  expect((await readdir(app)).sort()).toEqual([".lando.local.yml", ".lando.yml"]);
   expect(await Bun.file(join(app, ".lando.yml")).text()).toBe(original);
 });
 
