@@ -44,7 +44,8 @@ const failInvariant = (message: string): never => {
 const assertNever = (value: never): never =>
   failInvariant(`Unexpected Compose disposition: ${String(value)}`);
 
-const escapeCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
+const escapeCell = (value: string): string =>
+  value.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
 
 const sortedEntries = (entries: DispositionMap): ReadonlyArray<DispositionRow> =>
   Object.entries(entries).sort(([left], [right]) => left.localeCompare(right));

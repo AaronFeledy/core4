@@ -144,7 +144,7 @@ const field = (value: unknown, key: string): unknown =>
 const hostConfig = (request: EngineHttpRequest | undefined): unknown => field(request?.body, "HostConfig");
 
 const BASELINE_CREATE_BODY_JSON =
-  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v3:757a3980dbf3238decc59e55a30c10294773d4e432d40a99d2c1334235c6f65a"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web","web.compose-knob-bringup.internal"]}}}}';
+  '{"name":"lando-compose-knob-bringup-web","Image":"nginx:1.27-alpine","Hostname":"lando-compose-knob-bringup-web","Env":["APP_ENV=test"],"ExposedPorts":{"8080/tcp":{}},"Labels":{"dev.lando.app":"compose-knob-bringup","dev.lando.app-root":"/tmp/lando-compose-knob-bringup","dev.lando.service":"web","dev.lando.create-config":"v4:89b24512d90017b36c11c60e57c26d18f5423cea8518dd6688bcf43b5a45ca13"},"HostConfig":{"PortBindings":{"8080/tcp":[{"HostIp":"127.0.0.1","HostPort":"18080"}]},"Binds":["/tmp/lando-compose-knob-bind:/workspace"],"Mounts":[{"Type":"bind","Source":"/tmp/lando-compose-knob-config","Target":"/etc/config","ReadOnly":true,"BindOptions":{"CreateMountpoint":false}}]},"NetworkingConfig":{"EndpointsConfig":{"compose-knob-network":{"Aliases":["web","web.compose-knob-bringup.internal"]}}}}';
 
 describe("Podman Compose knob bring-up realization", () => {
   test.each(["/workspace:v1", "/workspace", "/etc/config"])(
@@ -296,8 +296,8 @@ describe("Podman Compose knob bring-up realization", () => {
     if (typeof baselineLabels !== "object" || baselineLabels === null)
       throw new TypeError("Expected baseline labels");
     if (typeof knobLabels !== "object" || knobLabels === null) throw new TypeError("Expected knob labels");
-    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v3:[a-f0-9]{64}$/u);
-    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v3:[a-f0-9]{64}$/u);
+    expect(field(baselineLabels, CREATE_CONFIG_LABEL)).toMatch(/^v4:[a-f0-9]{64}$/u);
+    expect(field(knobLabels, CREATE_CONFIG_LABEL)).toMatch(/^v4:[a-f0-9]{64}$/u);
     expect(field(knobLabels, CREATE_CONFIG_LABEL)).not.toBe(field(baselineLabels, CREATE_CONFIG_LABEL));
     expect({
       Env: field(withKnobs, "Env"),
