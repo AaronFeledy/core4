@@ -22,6 +22,7 @@ import {
 } from "@lando/engine/operations/tooling";
 import { runBunShellTooling } from "@lando/engine/operations/tooling-bun-script";
 import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import * as BunShellRunner from "@lando/engine/services/shell-runner";
 import { makeLandoRuntime } from "../runtime/layer";
 import { finishCommandProgress } from "./command-progress";
 import { renderRunToolingResult } from "./commands/tooling";
@@ -37,6 +38,7 @@ import {
 import { escapeDiagnosticText } from "./diagnostic-text";
 import { attachToolingHostIo, toolingHostStdin } from "./exec-host-io";
 import { isEnvelopeResultFormat } from "./format-flags";
+import { makeProcessShellReplIO } from "./host-shell-terminal";
 import { rejectUnsupportedResultFormat } from "./result-format-guard";
 import { renderPreCommandFailure } from "./spec/command-boundary";
 import { type ToolingRoute, toolingRouteError } from "./tooling-router";
@@ -160,14 +162,15 @@ const runDynamicBunShellTooling = async (
           ),
         ),
       );
+      const runtime = makeLandoRuntime(
+        cliRuntimeOptions({
+          bootstrap: "minimal",
+          plugins: { policy: "discovery" },
+        }),
+      );
       return runCompiledCommand(
         effect,
-        makeLandoRuntime(
-          cliRuntimeOptions({
-            bootstrap: "minimal",
-            plugins: { policy: "discovery" },
-          }),
-        ),
+        BunShellRunner.layerWithPrivateFileAccess(makeProcessShellReplIO).pipe(Layer.provideMerge(runtime)),
         renderRunToolingResult,
         {
           ...dynamicToolingOptions,

@@ -52,7 +52,7 @@ const execError = (input: ProcessSpawnOptions, cause: unknown): ProcessExecError
   });
 };
 
-const redactorForInput = Effect.fnUntraced(function* (context: CapturedHostExecutionContext) {
+export const redactorForInput = Effect.fnUntraced(function* (context: CapturedHostExecutionContext) {
   const redaction = yield* Effect.serviceOption(RedactionService);
   if (redaction._tag === "None") return identityRedactor;
   const carrier = yield* ProcessRedactionTokens;
@@ -70,7 +70,7 @@ type ProcessEvent = ReturnType<typeof processEventShape> &
     readonly _tag: "pre-process-exec" | "post-process-exec";
   };
 
-const publishRedactedProcessEvent = Effect.fnUntraced(function* (
+export const publishRedactedProcessEvent = Effect.fnUntraced(function* (
   context: CapturedHostExecutionContext,
   event: ProcessEvent,
 ) {

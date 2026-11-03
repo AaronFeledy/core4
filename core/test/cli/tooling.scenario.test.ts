@@ -45,6 +45,7 @@ import { TestRuntimeProvider } from "@lando/sdk/test";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 
 import { loadAuthoredDocuments } from "@lando/landofile/root-compile";
+import * as BunShellRunner from "../_support/shell-runner.ts";
 import { currentTestPlan, environmentResolverLayer } from "../_support/value-contracts.ts";
 import { configServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -227,6 +228,9 @@ const makeLayer = (options: {
   );
   return Layer.mergeAll(
     BunProcessRunner.layer,
+    BunShellRunner.layer(() => {
+      throw new TypeError("Interactive host tooling is unavailable in tests.");
+    }),
     PrivateFileAccessService.layer,
     landofileLayer,
     plannerLayer,
