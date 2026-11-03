@@ -4,7 +4,12 @@ import type { HostProxyRunLandoExecutorInput } from "@lando/engine/subsystems/ho
 import { RedactionService } from "@lando/redaction/service";
 import type { AppPlan, CommandResultEnvelope } from "@lando/sdk/schema";
 import { CommandResultEnvelope as CommandResultEnvelopeSchema } from "@lando/sdk/schema";
-import type { EventService, RouterService, RuntimeProviderRegistry, ShellRunner } from "@lando/sdk/services";
+import type {
+  EventService,
+  ProcessRunner,
+  RouterService,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import {
   buildCommandResultEnvelope,
@@ -27,7 +32,7 @@ export const runOpenForHostProxy = Effect.fn("HostProxy.runOpen")(function* (
 ): Effect.fn.Return<
   { readonly envelope: CommandResultEnvelope; readonly exitCode: number },
   never,
-  ShellRunner | EventService | RedactionService | RouterService | RuntimeProviderRegistry
+  ProcessRunner | EventService | RedactionService | RouterService | RuntimeProviderRegistry
 > {
   const redaction = yield* RedactionService;
   const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });

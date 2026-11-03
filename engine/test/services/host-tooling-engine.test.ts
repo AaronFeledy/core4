@@ -394,7 +394,7 @@ describe("HostToolingEngine.layer", () => {
       if (failure._tag === "Some") {
         expect(failure.value._tag).toBe("ToolingCompileError");
         if (failure.value._tag === "ToolingCompileError") {
-          expect(failure.value.message).toContain("positional");
+          expect(failure.value.message).toContain("$1 is not bound to forwarded arguments");
         }
       }
     }

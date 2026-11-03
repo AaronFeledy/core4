@@ -7,7 +7,8 @@ import type { EffectiveTooling } from "./effective-tooling.ts";
 // an authored hook keeps working once one is.
 const REMOTE_HOOK_EVENT_NAMES = ["post-pull", "post-push", "post-switch", "post-code-sync"] as const;
 
-const RESERVED_EVENT_NAMES: ReadonlySet<string> = new Set([
+/** App lifecycle and remote-hook events, which run during lifecycle operations rather than on request. */
+export const RESERVED_EVENT_NAMES: ReadonlySet<string> = new Set([
   ...AppLifecycleEventName.literals,
   ...REMOTE_HOOK_EVENT_NAMES,
 ]);

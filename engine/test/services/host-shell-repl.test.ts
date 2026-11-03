@@ -760,3 +760,158 @@ test("the evaluator bootstrap marker is absent from the user command environment
   expect(result.exitCode).toBe(0);
   expect(stdout.join("")).toBe("");
 });
+
+test("dialect rejection leaves lastStatus 2 when the session ends on a bad line", async () => {
+  const stderr: string[] = [];
+  const result = await Effect.runPromise(
+    runHostShellRepl({
+      resolveSecret: () => Effect.die("secret not expected"),
+      io: {
+        input: input({ _tag: "line", line: "echo $?" }, { _tag: "eof" }),
+        writeStdout: () => {},
+        writeStderr: (chunk) => stderr.push(chunk),
+      },
+    }),
+  );
+  expect(result.exitCode).toBe(2);
+  expect(stderr.join("")).toContain("Bun Shell does not expand $?");
+});
+
+test("rejects Bun Shell dialect gaps, sets status 2, and re-prompts without eval or history", async () => {
+  // Given
+  const root = await mkdtemp(join(tmpdir(), "lando-host-repl-dialect-"));
+  const historyFile = join(root, "history");
+  const events: LandoEvent[] = [];
+  const stderr: string[] = [];
+  const stdout: string[] = [];
+  let prompts = 0;
+  try {
+    // When: a bad line is followed by a good line and eof
+    const result = await Effect.runPromise(
+      runHostShellRepl({
+        historyFile,
+        resolveSecret: () => Effect.die("secret not expected"),
+        io: {
+          input: input(
+            { _tag: "line", line: "echo $?" },
+            { _tag: "line", line: "printf ok" },
+            { _tag: "eof" },
+          ),
+          writeStdout: (chunk) => stdout.push(chunk),
+          writeStderr: (chunk) => stderr.push(chunk),
+          prompt: () => {
+            prompts += 1;
+          },
+        },
+      }).pipe(Effect.provide(eventLayer(events))),
+    );
+
+    // Then
+    expect(result.exitCode).toBe(0); // last good line succeeded; eof returns lastStatus from printf
+    expect(stderr.join("")).toContain("Bun Shell does not expand $?");
+    expect(stderr.join("")).toMatch(/Branch on the exit status|&&|\|\|/u);
+    expect(stdout.join("")).toContain("ok");
+    expect(prompts).toBeGreaterThanOrEqual(1);
+    expect(events.filter((event) => event._tag === "pre-shell-exec")).toHaveLength(1);
+    expect(events.some((event) => "command" in event && String(event.command).includes("$?"))).toBe(false);
+    const history = await readFile(historyFile, "utf8").catch(() => "");
+    expect(history).not.toContain("$?");
+    expect(history).toContain("printf ok");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("dialect rejection never evaluates secret values in the scan text", async () => {
+  // Given a secret that itself contains braced syntax; scan must not see the secret body
+  const stderr: string[] = [];
+  const stdout: string[] = [];
+  const secret = "${SHOULD_NOT_SCAN}";
+  // When
+  const result = await Effect.runPromise(
+    runHostShellRepl({
+      resolveSecret: () => Effect.succeed(secret),
+      io: {
+        input: input({ _tag: "line", line: "printf '%s' ${secret:TOKEN}" }, { _tag: "eof" }),
+        writeStdout: (chunk) => stdout.push(chunk),
+        writeStderr: (chunk) => stderr.push(chunk),
+      },
+    }),
+  );
+  // Then: secret-only line is dialect-clean after secret refs are stripped
+  expect(result.exitCode).toBe(0);
+  expect(stderr.join("")).not.toContain("SHOULD_NOT_SCAN");
+  expect(stdout.join("")).toContain("[redacted]");
+});
+
+test("dialect columns count a secret reference at its typed length", async () => {
+  // Given a line whose redirection follows a secret reference
+  const stderr: string[] = [];
+  // When
+  const result = await Effect.runPromise(
+    runHostShellRepl({
+      resolveSecret: () => Effect.succeed("value"),
+      io: {
+        input: input({ _tag: "line", line: "echo ${secret:FOO} >&2" }, { _tag: "eof" }),
+        writeStdout: () => undefined,
+        writeStderr: (chunk) => stderr.push(chunk),
+      },
+    }),
+  );
+  // Then the column points at >&2 in the line as typed
+  expect(result.exitCode).toBe(2);
+  expect(stderr.join("")).toContain("Column 20: Bun Shell needs an explicit source descriptor in >&2.");
+});
+
+test("pre-fills the corrected line, secret references intact, and runs it only when submitted", async () => {
+  // Given a rejected line with a mechanical fix, then the user pressing Enter on the pre-fill
+  const stderr: string[] = [];
+  const stdout: string[] = [];
+  const prompts: Array<string | undefined> = [];
+  const lines: ShellReplInput[] = [
+    { _tag: "line", line: "echo ${secret:FOO} ${HOME} >&2" },
+    { _tag: "line", line: "echo ${secret:FOO} $HOME 1>&2" },
+    { _tag: "eof" },
+  ];
+  // When
+  const result = await Effect.runPromise(
+    runHostShellRepl({
+      env: { HOME: "/home/someone" },
+      resolveSecret: () => Effect.succeed("value"),
+      io: {
+        input: input(...lines),
+        writeStdout: (chunk) => stdout.push(chunk),
+        writeStderr: (chunk) => stderr.push(chunk),
+        prompt: (initial) => prompts.push(initial),
+      },
+    }),
+  );
+  // Then the first prompt after the rejection carries the fix and the submitted fix runs
+  expect(prompts[0]).toBe("echo ${secret:FOO} $HOME 1>&2");
+  expect(stderr.join("")).toContain("Press Enter to run the corrected line, or edit it.");
+  expect(stderr.join("")).toContain("/home/someone");
+  expect(result.exitCode).toBe(0);
+});
+
+test("offers no pre-fill when a finding needs a decision", async () => {
+  // Given
+  const prompts: Array<string | undefined> = [];
+  const stderr: string[] = [];
+  // When
+  await Effect.runPromise(
+    runHostShellRepl({
+      resolveSecret: () => Effect.die("secret not expected"),
+      io: {
+        input: input({ _tag: "line", line: "false; echo $? >&2" }, { _tag: "eof" }),
+        writeStdout: () => undefined,
+        writeStderr: (chunk) => stderr.push(chunk),
+        prompt: (initial) => prompts.push(initial),
+      },
+    }),
+  );
+  // Then both findings print and the prompt comes back empty
+  expect(prompts).toEqual([undefined]);
+  expect(stderr.join("")).toContain("Bun Shell does not expand $?.");
+  expect(stderr.join("")).toContain("Bun Shell needs an explicit source descriptor in >&2.");
+  expect(stderr.join("")).not.toContain("Press Enter");
+});

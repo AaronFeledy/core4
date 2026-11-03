@@ -5,6 +5,10 @@ import { Effect } from "effect";
 
 const SECRET_REFERENCE = /\$\{secret:([^}\r\n]+)\}/g;
 
+/** Blanks each secret reference with same-length text, so a scan of the line keeps its columns. */
+export const maskHostShellSecretReferences = (line: string): string =>
+  line.replace(SECRET_REFERENCE, (reference) => "_".repeat(reference.length));
+
 const secretError = (message: string, cause?: unknown) =>
   new ShellExecError({
     message,

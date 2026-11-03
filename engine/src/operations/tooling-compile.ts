@@ -32,6 +32,7 @@ import {
 import { planRedactionValues } from "@lando/redaction/plan-values";
 import { EnvironmentValueResolver } from "@lando/sdk/services";
 import { runtimeProviderService } from "../runtime/bootstrap-layer-support.ts";
+import { validateHostShellSteps } from "../services/host-shell-validation.ts";
 import { runHostToolingWith } from "../services/host-tooling-engine.ts";
 import { withShellRedactionTokens } from "../services/shell-runner.ts";
 import { admitToolingInput } from "./tooling-input-admission.ts";
@@ -155,6 +156,11 @@ export const compileToolingInvocations = Effect.fnUntraced(function* (
         );
       }),
   );
+  for (const invocation of invocations) {
+    if (invocation.service === ":host") {
+      yield* validateHostShellSteps(input.name, invocation.hostSteps ?? [], admitted.redactionTokens);
+    }
+  }
   return { normalized, invocations, redactionTokens: admitted.redactionTokens };
 });
 
