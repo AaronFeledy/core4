@@ -399,6 +399,7 @@ SQL helpers are plugin-only. Core ships none; bundled `@lando/sql` is the refere
 - `RuntimeProvider.logs` streams service output. Declared service log sources (§6.14) use native console aliases, owned redirects, or provider file-follow capability, are labeled by `LogChunk.source`, and MUST NOT disappear silently. Aliases and redirects select a native pipe, not an isolated writer; default console collection occurs once.
 - Debug logs include provider operation names and redacted inputs; structured logger annotations preserve `traceId`.
 - Normal diagnosis MUST NOT require provider-native commands.
+- Diagnostic collection and support bundles MUST apply the persisted-home content exclusion in §6.5; safe home metadata MAY still be reported.
 
 `lando doctor` combines core checks with `provides.doctorChecks`. Every finding has severity, context, and automatic or manual remediation; `--fix` runs only declared automatic actions.
 
@@ -487,6 +488,8 @@ Other tagged errors are `HostProxyOpenUrlSchemeError`, `HostProxyCommandNotAllow
 
 `DataMover` exposes scoped `transfer`, `transferStream`, `snapshot`, `restore`, `listSnapshots`, `resolveSnapshot`, `removeSnapshot`, `pruneSnapshots`, `findOrphanedSnapshots`, and `removeOrphanedSnapshot` over `DataTransferSpec`, `DataTransferResult`, `DataTransferProgress`, `VolumeRef`, `SnapshotOptions`, `SnapshotRestoreOptions`, `SnapshotHandle`, `SnapshotId`, `SnapshotInfo`, `SnapshotFilter`, `PrunePolicy`, and `VolumeSnapshotArtifact`; failures use `DataMoverError`.
 
+Automatic store selection for transfer or snapshot MUST apply the persisted-home exclusion in §6.5.
+
 - Every snapshot MUST record `SnapshotInfo.owner`. Capture MUST derive its canonical app root and owner key from exactly one matching source volume's physical identity, whose native name matches the source. Missing or conflicting identity fails with `SnapshotOwnershipError` before mutation. Callers MUST NOT supply an owner; `SnapshotOptions.repoGroupKey` is only an optional listing hint. `SnapshotMetadata` contains database facts, not ownership.
 - Restore and removal accept only `SnapshotHandle` (`ownerKey`, `id`, `store`). A handle is an address, not proof: mutations MUST re-read the addressed sidecar and validate its owner key/root, store, and id against the handle and path.
 - Id and label resolution MUST stay within the supplied scope, including exact-id lookup. Exact ids take precedence over labels; multiple matches fail with `SnapshotAmbiguousError` carrying candidate ids newest first, and no match fails with `SnapshotNotFoundError`.
@@ -535,6 +538,7 @@ Core owns generic orchestration, `CodeSync`, setup, and tool execution. Vendor A
 - `RemoteEnvironment` carries `name`, `type`, optional `branch`, `ephemeral`, `protected`, `automated`, `default`, `branchScoped`, and `units`. `type` is `production`, `staging`, `development`, `preview`, or `unknown`, based on vendor evidence, never a name heuristic. `--branch` narrows branch-scoped locators; other sources MUST reject it.
 - `units` lists `{ name, label, kind }` for each database, file tree, config set, or object collection. `sync.<kind>[].from` selects a unit. Pull MAY infer the sole unit of a kind; multiple or missing matches MUST fail with `DatasetBindingError` reason `unit`. Push MUST NOT infer a target unit.
 - Each binding selects its `Dataset` by explicit `dataset`, service-type default, then sole implementation for that kind. Without `sync:`, pull MAY infer bindings only when each unit has one unambiguous compatible local target; otherwise it MUST request explicit bindings. `--only` selects kinds or `<kind>:<binding>` names and MUST reject unknown names.
+- Local-target inference MUST exclude persisted home stores under §6.5.
 
 **Resolve, approve, transfer**
 

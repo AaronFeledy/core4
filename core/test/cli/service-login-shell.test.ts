@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   DEFAULT_SERVICE_LOGIN_SHELL,
+  SESSION_NO_HISTORY_ENV,
   serviceLoginShellCommand,
   withSessionNoHistoryEnv,
 } from "../../src/cli/service-login-shell.ts";
@@ -13,13 +14,7 @@ describe("service login shell", () => {
     const result = withSessionNoHistoryEnv(env);
 
     expect(result).toEqual({
-      HISTFILE: "",
-      MYSQL_HISTFILE: "/dev/null",
-      MARIADB_HISTFILE: "/dev/null",
-      PSQL_HISTORY: "/dev/null",
-      REDISCLI_HISTFILE: "/dev/null",
-      NODE_REPL_HISTORY: "",
-      PYTHON_HISTORY: "/dev/null",
+      ...SESSION_NO_HISTORY_ENV,
       KEEP: "value",
     });
     expect(env).toEqual({ HISTFILE: "/home/node/history", PSQL_HISTORY: "/home/node/psql", KEEP: "value" });
