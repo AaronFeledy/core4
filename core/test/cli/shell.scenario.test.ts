@@ -36,7 +36,7 @@ import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/b
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
-import { DEFAULT_SERVICE_LOGIN_SHELL } from "../../src/cli/service-login-shell.ts";
+import { DEFAULT_SERVICE_LOGIN_SHELL, SESSION_NO_HISTORY_ENV } from "../../src/cli/service-login-shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
 import { withEnvVar } from "../_support/temp-cwd.ts";
@@ -435,11 +435,21 @@ describe("shellApp — shell modes", () => {
     { noHistory: undefined, serviceEnv: {}, env: {}, expected: undefined },
     { noHistory: false, serviceEnv: {}, env: {}, expected: undefined },
     { noHistory: true, serviceEnv: {}, env: {}, expected: "" },
-    { noHistory: true, serviceEnv: { HISTFILE: "/home/node/service-history" }, env: {}, expected: "" },
+    {
+      noHistory: true,
+      serviceEnv: Object.fromEntries(
+        Object.keys(SESSION_NO_HISTORY_ENV).map((key) => [key, "/service/history"]),
+      ),
+      env: {},
+      expected: "",
+    },
     {
       noHistory: true,
       serviceEnv: { HISTFILE: "/home/node/service-history" },
-      env: { HISTFILE: "/home/node/exec-history" },
+      env: {
+        ...Object.fromEntries(Object.keys(SESSION_NO_HISTORY_ENV).map((key) => [key, "/exec/history"])),
+        KEEP: "value",
+      },
       expected: "",
     },
   ])(
@@ -464,8 +474,12 @@ describe("shellApp — shell modes", () => {
       );
 
       expect(calls).toHaveLength(1);
-      expect(calls[0]?.HISTFILE).toBe(expected);
-      if (expected === undefined) expect(calls[0] ?? {}).not.toHaveProperty("HISTFILE");
+      if (expected === undefined) {
+        for (const key of Object.keys(SESSION_NO_HISTORY_ENV)) expect(calls[0] ?? {}).not.toHaveProperty(key);
+      } else {
+        expect(calls[0]).toMatchObject(SESSION_NO_HISTORY_ENV);
+        if ("KEEP" in env) expect(calls[0]?.KEEP).toBe("value");
+      }
     },
   );
 

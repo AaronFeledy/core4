@@ -36,7 +36,7 @@ import { availableServiceList, unknownPlanServiceError } from "@lando/engine/ope
 import { makeLandoPaths } from "@lando/paths";
 import { emitOptionalStderr, emitOptionalStdout } from "@lando/renderer/output";
 import { loadUserLandofile } from "../app-resolution";
-import { serviceLoginShellCommand } from "../service-login-shell";
+import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../service-login-shell";
 import { cancellableTerminalStdin } from "./terminal-stdin";
 
 export interface ShellAppOptions {
@@ -276,8 +276,8 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
       allowlist,
       lowerThanEnv: service.environment,
     });
-    // An empty HISTFILE makes bash and busybox ash neither load nor save history.
-    const serviceEnv = options.noHistory === true ? { ...forwardedEnv, HISTFILE: "" } : forwardedEnv;
+    const serviceEnv =
+      options.noHistory === true ? withSessionNoHistoryEnv(forwardedEnv ?? {}) : forwardedEnv;
     const spec: CommandSpec = {
       command: serviceLoginShellCommand(options.args),
       stdin: "inherit",

@@ -30,17 +30,18 @@ Use the `--service` flag, not a positional argument. `lando shell appserver` fai
 
 ## Keep shell and client history across rebuilds
 
-Bash and interactive clients such as `mysql`, `psql`, `redis-cli`, `node`, and `python` write their default history files in the service user's home directory. Lando keeps that home on a persistent volume by default when it knows where the home is, so `lando rebuild` keeps those history files.
+Bash and interactive clients such as `mysql`, `mariadb`, `psql`, `redis-cli`, `node`, and `python` write their default history files in the service user's home directory. Lando keeps that home on a persistent volume by default when it knows where the home is, so `lando rebuild` keeps those history files.
 
 Run `lando info` to check for the home mount labeled `(home)`. See [Keep a service home across rebuilds](../services/home-and-host.mdx) for the details, including `home: false` to turn off automatic home persistence and `home.path` to name the home directory in a custom image.
 
-To skip saving shell history for one session, add `--no-history`. Replace `appserver` with your service name:
+To leave that history off disk for one service session, add `--no-history` on `lando shell --service` or `lando ssh`. For that session only, Lando disables history for the login shell, mysql and mariadb clients, psql, redis-cli, the Node REPL, and Python 3.13+. It does not erase history already on disk. Other tools may still write their own history files. Replace `appserver` with your service name:
 
 ```sh
 lando shell --service appserver --no-history
+lando ssh --service appserver --no-history
 ```
 
-The flag controls shell history, not the separate history files written by client tools. Treat history as sensitive: passwords typed on command lines can land in it. `lando destroy --volumes` removes the app's home volumes and the history stored in them.
+`lando ssh` opens the same kind of interactive service shell; see [Open a shell in a service](../cli/ssh.mdx). Treat history as sensitive: passwords typed on command lines can land in it. `lando destroy --volumes` removes the app's home volumes and the history stored in them.
 
 ## Forward agent-context env
 
