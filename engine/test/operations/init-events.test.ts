@@ -210,14 +210,14 @@ describe("app initialization lifecycle events", () => {
 
     // When
     const initCalls = source.match(/runAppInitEvents\(plan\)/gu) ?? [];
-    const preflightIndex = source.indexOf("yield* preflightStopApp(mysqlResolvedTarget)");
+    const preflightIndex = source.indexOf("yield* preflightStopApp(resolvedTarget)");
     const initIndex = source.indexOf("yield* runAppInitEvents(plan)");
 
     // Then
     expect(initCalls).toHaveLength(1);
     expect(preflightIndex).toBeGreaterThan(-1);
     expect(preflightIndex).toBeLessThan(initIndex);
-    expect(source).toContain("stopAppWithPlan({}, mysqlResolvedTarget, { skipInitEvents: true })");
-    expect(source).toMatch(/mysqlResolvedTarget,\s+managed,/u);
+    expect(source).toContain("stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true })");
+    expect(source).toMatch(/resolvedTarget,\s+managed,/u);
   });
 });

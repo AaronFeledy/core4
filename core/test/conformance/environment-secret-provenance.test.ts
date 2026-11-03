@@ -116,6 +116,8 @@ test.each([
       request: (request) =>
         Effect.sync(() => {
           requests.push(request);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?"))
+            return { status: 200, body: "[]" };
           if (request.method === "GET" && request.path.endsWith("/json"))
             return created
               ? { status: 200, body: JSON.stringify({ Id: "db", State: { Running: true } }) }
