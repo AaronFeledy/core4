@@ -36,7 +36,7 @@ import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/b
 import * as DeprecationServiceLayer from "@lando/engine/deprecation/service";
 import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
 import { appShellSpec } from "../../src/cli/command-specs/app/shell.ts";
-import { DEFAULT_SERVICE_LOGIN_SHELL } from "../../src/cli/service-login-shell.ts";
+import { DEFAULT_SERVICE_LOGIN_SHELL, SESSION_NO_HISTORY_ENV } from "../../src/cli/service-login-shell.ts";
 import { resolveTopLevelAliases } from "../../src/cli/spec/command-spec.ts";
 
 import { withEnvVar } from "../_support/temp-cwd.ts";
@@ -430,6 +430,58 @@ describe("shellApp — shell modes", () => {
 
     expect(captured).toEqual({ CLAUDECODE: "1" });
   });
+
+  test.each([
+    { noHistory: undefined, serviceEnv: {}, env: {}, expected: undefined },
+    { noHistory: false, serviceEnv: {}, env: {}, expected: undefined },
+    { noHistory: true, serviceEnv: {}, env: {}, expected: "" },
+    {
+      noHistory: true,
+      serviceEnv: Object.fromEntries(
+        Object.keys(SESSION_NO_HISTORY_ENV).map((key) => [key, "/service/history"]),
+      ),
+      env: {},
+      expected: "",
+    },
+    {
+      noHistory: true,
+      serviceEnv: { HISTFILE: "/home/node/service-history" },
+      env: {
+        ...Object.fromEntries(Object.keys(SESSION_NO_HISTORY_ENV).map((key) => [key, "/exec/history"])),
+        KEEP: "value",
+      },
+      expected: "",
+    },
+  ])(
+    "service mode applies the session history policy %j",
+    async ({ noHistory, serviceEnv, env, expected }) => {
+      const appPlan = { ...plan, services: { [web.name]: { ...web, environment: serviceEnv } } };
+      const calls: Array<Readonly<Record<string, string>> | undefined> = [];
+      const provider = fakeProvider({
+        execStream: (_target, command) => {
+          calls.push(command.env);
+          return Stream.make({ exitCode: 0 });
+        },
+      });
+
+      await Effect.runPromise(
+        shellApp({
+          service: "web",
+          ...(noHistory === undefined ? {} : { noHistory }),
+          env,
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layerWithPlan(appPlan, provider))),
+      );
+
+      expect(calls).toHaveLength(1);
+      if (expected === undefined) {
+        for (const key of Object.keys(SESSION_NO_HISTORY_ENV)) expect(calls[0] ?? {}).not.toHaveProperty(key);
+      } else {
+        expect(calls[0]).toMatchObject(SESSION_NO_HISTORY_ENV);
+        if ("KEEP" in env) expect(calls[0]?.KEEP).toBe("value");
+      }
+    },
+  );
 
   test("service mode preserves UTF-8 characters split across exec chunks", async () => {
     let stdout = "";

@@ -520,7 +520,7 @@ Flags:
 | Flag | Description |
 | --- | --- |
 | `--host` | Deprecated: host is the default; --host is redundant. |
-| `--no-history` | Do not persist host shell history for this session. |
+| `--no-history` | Do not persist shell or client history for this session. |
 | `--no-interactive` | Reject interactive shell startup (use app:exec for automation). |
 | `--service, -s` | Open a shell inside this service instead of on the host. |
 
@@ -540,6 +540,7 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
+| `--no-history` | Do not persist shell or client history for this session. |
 | `--service, -s` | Service to open a shell in. |
 | `--sidecar` | Open the shell in a per-app SSH sidecar; not supported. |
 | `--subsystem` | SSH subsystem to invoke; not supported. |

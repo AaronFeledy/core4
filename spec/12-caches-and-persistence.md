@@ -67,6 +67,7 @@ Execution artifacts (§22.8) use `PathsService` paths and `StateStore` manifests
 | `<userCacheRoot>/logs/` | Core and file-sync logs under §10.9 retention. |
 | `<userCacheRoot>/logs/<label>-worker-<app-id>.log` | Detached host-proxy and agent-relay stderr. Owner-only `0600` on POSIX, verified private ACL on Windows; no symlink or non-regular target. Lando-created log directory `0700`; outer failures and error tails redacted (§10.4, §10.10.2). |
 | `<userCacheRoot>/apps/<app-id>/` | User-app caches and provider workdir. |
+| `<userCacheRoot>/shell/<app-id>/history` | Host `app:shell` history: bounded, resolved secrets redacted before writes, skipped by `--no-history` (§8.2.3). |
 | `<userCacheRoot>/templates/<engineId>/`, `includes/`, `tool-downloads/<toolId>/` | Cross-app derived and verified content. |
 | `<userCacheRoot>/logs/file-sync/` | Retained file-sync daemon and engine logs. |
 | `<userCacheRoot>/scratch/<scratch-id>/root/` | Materialized scratch app root, removed atomically at destroy. |

@@ -4,18 +4,18 @@ import { Args, Flags } from "../../spec/metadata";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import { execApp } from "@lando/engine/operations/exec";
+import { type ExecAppError, type ExecAppServices, execApp } from "@lando/engine/operations/exec";
 import { ExecAppResult, StreamFrame } from "@lando/sdk/schema";
 import { renderExecAppResult } from "../../commands/exec";
 import { attachExecHostIo, withInheritedStdinRawMode } from "../../exec-host-io";
 import { isEnvelopeResultFormat } from "../../format-flags";
-import { serviceLoginShellCommand } from "../../service-login-shell";
+import { serviceLoginShellCommand, withSessionNoHistoryEnv } from "../../service-login-shell";
 import type { LandoCommandSpec } from "../../spec/command-base";
 import { extractSpecParsedArgv } from "../../spec/command-boundary";
 import { booleanFlag, specFlagsOf, stringFlag } from "../../spec/input-coercion";
 import { execInputUsesCliHostIo } from "./exec";
 
-export const sshSpec: LandoCommandSpec<ExecAppResult> = {
+export const sshSpec: LandoCommandSpec<ExecAppResult, ExecAppError | NotImplementedError, ExecAppServices> = {
   resultSchema: ExecAppResult,
   id: "app:ssh",
   helpGroup: "common",
@@ -29,6 +29,9 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   flags: {
     service: Flags.string({ char: "s", description: "Service to open a shell in." }),
     user: Flags.string({ char: "u", description: "User to run the shell as inside the service." }),
+    "no-history": Flags.boolean({
+      description: "Do not persist shell or client history for this session.",
+    }),
     subsystem: Flags.string({
       description: "SSH subsystem to invoke; not supported.",
     }),
@@ -55,6 +58,7 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
     const envelope = (format !== undefined && isEnvelopeResultFormat(format)) || booleanFlag(flags, "json");
     const base = {
       command: serviceLoginShellCommand(parsedArgv),
+      ...(booleanFlag(flags, "no-history") ? { env: withSessionNoHistoryEnv({}) } : {}),
       ...(service === undefined ? {} : { service }),
       ...(user === undefined ? {} : { user }),
     };
