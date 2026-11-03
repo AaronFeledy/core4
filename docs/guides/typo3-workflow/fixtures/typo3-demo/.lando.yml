@@ -1,0 +1,37 @@
+name: typo3-demo
+runtime: 4
+services:
+  appserver:
+    type: php:8.4
+    framework: none
+    webroot: public
+    composer: "2"
+    allowOverride: true
+    uploadDirs:
+      - fileadmin
+    port: 80
+    primary: true
+    dependsOn:
+      - database
+    routes:
+      - hostname: "{{ app.name }}.{{ proxy.defaultDomain }}"
+        scheme: both
+  database:
+    type: mariadb:11.4
+tooling:
+  composer:
+    service: appserver
+    cmds:
+      - composer
+    description: Run Composer inside the appserver service.
+  php:
+    service: appserver
+    cmds:
+      - php
+    description: Run the PHP CLI inside the appserver service.
+  typo3:
+    service: appserver
+    user: www-data
+    cmds:
+      - php vendor/bin/typo3
+    description: Run the TYPO3 CLI inside the appserver service.
