@@ -63,7 +63,7 @@ export const resolveLandofileLoadExpressions = (
       const unsupported = (path: ReadonlyArray<string | number>, description: string): never => {
         const message = `${description} are not supported at ${path.join(".")}.`;
         const suggestion =
-          "Use {{ env.NAME }} for host values, $${NAME} for literal shell text, or a supported deferred scope.";
+          "Use {{ env.NAME }} for a host value. In a container command write $${NAME} for the shell's value; in a :host command write $NAME.";
         throw new LandofileValidationError({
           file: options.source.sourcePath,
           message,

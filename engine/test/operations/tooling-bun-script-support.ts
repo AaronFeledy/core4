@@ -4,9 +4,14 @@ import { join } from "node:path";
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 import { PrivateFileAccessService } from "@lando/state-store/private-file-access";
 import { Effect, Layer, Queue, Stream } from "effect";
+import * as BunFileSystem from "../../src/services/file-system.ts";
 import * as BunProcessRunner from "../../src/services/process-runner.ts";
 
-export const scriptHostLayer = Layer.merge(PrivateFileAccessService.layer, BunProcessRunner.layer);
+export const scriptHostLayer = Layer.mergeAll(
+  PrivateFileAccessService.layer,
+  BunProcessRunner.layer,
+  BunFileSystem.layer,
+);
 
 export const withBunScript = async <T>(content: string, run: (root: string) => Promise<T>): Promise<T> => {
   const root = await mkdtemp(join(tmpdir(), "lando-script-input-"));

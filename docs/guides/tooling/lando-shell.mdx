@@ -73,6 +73,8 @@ PTY allocation and host-terminal detection are separate. `lando exec`, `lando ss
 
 Host mode reads one line at a time and evaluates it as a Bun Shell template. Bun Shell supports pipes, redirection, globs, command substitution, and shell builtins across Linux, macOS, and Windows. It is not your Bash or zsh session and does not load your login-shell configuration. See the [Bun Shell syntax reference](https://bun.com/docs/runtime/shell) for its supported language. A blank line re-prompts without evaluating anything.
 
+A line that uses a POSIX form Bun Shell can't run, such as `${NAME}` or `>&2`, is not evaluated. Lando prints each problem and its fix and sets the last status to `2`. When the fix is mechanical, the next prompt already holds the corrected line: press Enter to run it, or edit it first. For `echo ${HOME} >&2`, the prompt comes back as `echo $HOME 1>&2`. Nothing runs until you press Enter, and the rejected line isn't saved to your shell history file. [Write host commands in Bun Shell syntax](./bun-shell-scripts.mdx#write-host-commands-in-bun-shell-syntax) lists each form and what to write instead.
+
 Each line starts in the app root with `$PWD` identifying that directory, not the directory you launched Lando from. Lando resolves symbolic links before execution. An explicitly configured `PWD` overrides this default, even when it is empty.
 
 Lines run independently. A `cd` or variable assignment affects only that line; it does not change the next prompt's directory or environment. Put dependent commands on one line or save them in a [project script](./bun-shell-scripts.mdx).

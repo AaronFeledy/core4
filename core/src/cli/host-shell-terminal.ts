@@ -4,9 +4,22 @@ import type { ShellReplIO, ShellReplInput } from "@lando/sdk/services";
 
 type Resume = (result: IteratorResult<ShellReplInput>) => void;
 
-export const makeProcessShellReplIO = (): ShellReplIO => {
-  const output = process.stdout;
-  const inputStream = process.stdin;
+/** The terminal streams the REPL reads and writes; process stdin and stdout by default. */
+export interface ShellReplStreams {
+  readonly input: NodeJS.ReadableStream & {
+    readonly isTTY?: boolean;
+    readonly isRaw?: boolean;
+    readonly setRawMode?: (mode: boolean) => unknown;
+    readonly unref?: () => void;
+  };
+  readonly output: NodeJS.WritableStream;
+}
+
+export const makeProcessShellReplIO = (
+  streams: ShellReplStreams = { input: process.stdin, output: process.stdout },
+): ShellReplIO => {
+  const output = streams.output;
+  const inputStream = streams.input;
   const pending: ShellReplInput[] = [];
   const waiters: Resume[] = [];
   let closed = false;
@@ -37,8 +50,12 @@ export const makeProcessShellReplIO = (): ShellReplIO => {
     input,
     writeStdout: (chunk) => output.write(chunk),
     writeStderr: (chunk) => output.write(chunk),
-    prompt: () => {
-      if (!closed) terminal.prompt();
+    prompt: (initial) => {
+      if (closed) return;
+      terminal.prompt();
+      // Pre-fill only an empty single-line buffer, so typed-ahead input is never merged or submitted.
+      if (initial !== undefined && pending.length === 0 && terminal.line === "" && !/[\r\n]/u.test(initial))
+        terminal.write(initial);
     },
     close: () => {
       if (closed) return;

@@ -1,4 +1,5 @@
 import { resolveNetworkTrustPlan } from "@lando/http-client/network-trust";
+import { landofileValidationError } from "@lando/landofile/validation";
 import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
@@ -72,6 +73,7 @@ import { attachEffectiveTooling } from "./effective-tooling.ts";
 import { finalizeServices } from "./endpoints.ts";
 import { environmentCacheInput } from "./environment-cache-input.ts";
 import { resolveKnownEventSet } from "./event-set.ts";
+import { hostEventsShellIssues } from "./host-shell-issues.ts";
 import { attachCompiledInvocationPlan, compilePlanInvocationSites } from "./invocation-authority.ts";
 import { normalizeNetworks } from "./networks.ts";
 import { decodeAppPlan } from "./plan-decode.ts";
@@ -302,6 +304,22 @@ export const planApp = Effect.fn("AppPlanner.assemble")(function* (
     hostEvents,
     env: authoredLandofile.context.env,
   });
+  // Every hostEvents name is a lifecycle event, so a bad host step stops this app's plan like a
+  // project lifecycle step would; commands that only read config are unaffected.
+  if (hostEvents !== undefined && !hostEventCompileBase.skipHostEvents) {
+    const configFile = pathsService?.configFile ?? "config.yml";
+    const hostShellIssues = hostEventsShellIssues(hostEvents).map((issue) => ({
+      ...issue,
+      source: { layer: "config-file" as const, file: configFile, path: issue.path },
+    }));
+    if (hostShellIssues.length > 0)
+      return yield* Effect.fail(
+        landofileValidationError(configFile, hostShellIssues, {
+          headline: "Global config hostEvents has host commands Bun Shell cannot run",
+          remediation: "Fix each listed hostEvents step in config.yml, then rerun the command.",
+        }),
+      );
+  }
   const effectiveEventsFor = (services: Readonly<Record<string, { readonly primary?: boolean }>>) =>
     compileEffectiveEvents({ ...hostEventCompileBase, services, invocationSites: executableSites });
   const planServices = (services: Readonly<Record<string, unknown>>) =>
