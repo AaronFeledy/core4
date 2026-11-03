@@ -168,7 +168,7 @@ describe("provider-lando logs", () => {
     expect(collectLines(chunks)).toContain("lando logs ready");
     expect(fake.calls).toHaveLength(1);
     expect(fake.calls[0]?.method).toBe("GET");
-    expect(fake.calls[0]?.path).toContain("/containers/lando-logsapp-node/logs?");
+    expect(fake.calls[0]?.path).toContain("/containers/lando-logsapp--node/logs?");
     expect(fake.calls[0]?.path).toContain("follow=false");
   });
 

@@ -77,6 +77,9 @@ const captureCreateRequest = async (
     ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync(() => {
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method === "GET" && request.path.startsWith("/networks/")) {
           const name = decodeURIComponent(request.path.slice("/networks/".length));
           return {

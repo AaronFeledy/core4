@@ -56,6 +56,7 @@ const composeSecurity = (
     },
     baseKind: "lando",
     appName: "security-test",
+    appSlug: "security-test",
     appRoot: "/srv/apps/security-test",
     normalizedConfig: { type: serviceType, environment },
     features: [{ id: "lando.security", config, definition: securityFeature() }],

@@ -25,6 +25,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
   readonly manifests: readonly PluginManifest[];
   readonly pluginRegistry: Context.Service.Shape<typeof PluginRegistry>;
   readonly appName: string;
+  readonly appSlug: string;
   readonly appRoot: string;
   readonly provider: ProviderId;
   readonly host: ServiceTypeHostFacts | undefined;
@@ -76,6 +77,7 @@ export const projectEndpoints = Effect.fnUntraced(function* (input: {
       },
       baseKind: resolution.base,
       appName: input.appName,
+      appSlug: input.appSlug,
       appRoot: input.appRoot,
       host: input.host,
       normalizedConfig: resolution.normalizedConfig,

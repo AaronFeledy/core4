@@ -14,7 +14,7 @@ const diedEvent = (overrides: Record<string, unknown> = {}): Record<string, unkn
   Actor: {
     ID: "abc123",
     Attributes: {
-      name: "lando-myapp-web",
+      name: "lando-myapp--web",
       image: "docker.io/library/php:8.3",
       containerExitCode: "137",
       "dev.lando.app": "myapp",
@@ -63,7 +63,7 @@ describe("doctor collection of oom died events", () => {
             OOMKilled: true,
             Actor: {
               Attributes: {
-                name: "lando-x-web",
+                name: "lando-x--web",
                 image: "oci://user:s3cr3t@r.example.com/a",
                 "dev.lando.app": "myapp",
                 "dev.lando.service": "web",

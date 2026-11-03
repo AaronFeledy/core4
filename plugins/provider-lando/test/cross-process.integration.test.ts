@@ -342,6 +342,9 @@ const makeFakePodmanState = (options: { readonly failVolumeRemove?: () => boolea
           volumeLabels.delete(volume);
           return { status: deleted ? 204 : 404, body: "" };
         }
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
   };
@@ -539,8 +542,8 @@ describe("provider-lando cross-process state", () => {
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(true);
-      expect(fake.existing.has("lando-crossprocessapp-database")).toBe(true);
-      expect(fake.existing.has("lando-crossprocessapp-web")).toBe(true);
+      expect(fake.existing.has("lando-crossprocessapp--database")).toBe(true);
+      expect(fake.existing.has("lando-crossprocessapp--web")).toBe(true);
 
       const providerB = await runOnce(
         RuntimeProvider.pipe(
@@ -643,7 +646,7 @@ describe("provider-lando cross-process state", () => {
               appId: plan.id,
               providerId,
               service: web.name,
-              containerId: "lando-crossprocessapp-web-id",
+              containerId: "lando-crossprocessapp--web-id",
               status: "unknown",
               reason: "not-exited",
             },
@@ -651,7 +654,7 @@ describe("provider-lando cross-process state", () => {
               appId: plan.id,
               providerId,
               service: database.name,
-              containerId: "lando-crossprocessapp-database-id",
+              containerId: "lando-crossprocessapp--database-id",
               status: "unknown",
               reason: "not-exited",
             },

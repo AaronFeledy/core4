@@ -311,4 +311,17 @@ describe("incomplete start notice", () => {
       expect(result.exit).toEqual(await Effect.runPromiseExit(failing));
     },
   );
+
+  test("reports a foreign-root inspect result as unverified, never running", async () => {
+    // Given: provider inspect already refused ownership (no containerId, unknown state).
+    const observations = {
+      web: { status: "unknown", state: "unknown", labels: { "dev.lando.app-root": "/other/app" } },
+    } as const;
+    // When: start fails after mutation and inventory observes that service.
+    const { notices } = await run(mutated.pipe(Effect.andThen(failing)), { observations });
+    // Then: the notice must not list it under Running/created/stopped.
+    expect(notices[0]).toContain("Running: none;");
+    expect(notices[0]).toContain("created/stopped: none;");
+    expect(notices[0]).toContain("unverified: web.");
+  });
 });

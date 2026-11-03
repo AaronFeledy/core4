@@ -70,6 +70,7 @@ test.each([true, false])("authored init %s wins over an opposing service feature
       base: { name, type: "node", provider: ProviderId.make("test"), primary: true, defaultFeatures: [] },
       baseKind: "lando",
       appRoot: "/tmp/init",
+      appSlug: "init",
       normalizedConfig: { init },
       features: [{ id: feature.id, definition: feature }],
     }),

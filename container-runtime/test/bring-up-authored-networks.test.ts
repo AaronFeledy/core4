@@ -77,6 +77,9 @@ test.each([libpodLifecycleDialect, dockerLifecycleDialect])(
       request: (request: EngineHttpRequest) =>
         Effect.sync(() => {
           removals.push(request);
+          if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+            return { status: 200, body: "[]" };
+          }
           if (request.method === "GET" && request.path.startsWith("/networks/")) {
             const name = decodeURIComponent(request.path.slice("/networks/".length));
             return privateNames.includes(name)
@@ -267,14 +270,14 @@ test.each([libpodLifecycleDialect, dockerLifecycleDialect])(
                 ([name, endpoint]): EngineHttpRequest => ({
                   method: "POST",
                   path: `/networks/${encodeURIComponent(name)}/connect`,
-                  body: { Container: "lando-networks-web", EndpointConfig: endpoint },
+                  body: { Container: "lando-networks--web", EndpointConfig: endpoint },
                 }),
               ),
             {
               method: "POST",
               path: "/networks/lando_bridge_network/connect",
               body: {
-                Container: "lando-networks-worker",
+                Container: "lando-networks--worker",
                 EndpointConfig: { Aliases: ["worker.networks.internal"] },
               },
             },

@@ -25,8 +25,9 @@ for (const operation of ["stop", "destroy", "inspect", "logs"] as const) {
             request: (request) =>
               Effect.succeed({
                 status: request.method === "GET" ? 200 : 204,
-                body:
-                  request.method === "GET"
+                body: request.path.startsWith("/containers/json?")
+                  ? "[]"
+                  : request.method === "GET"
                     ? JSON.stringify({
                         Id: "b-native",
                         State: { Status: "running", Running: true },

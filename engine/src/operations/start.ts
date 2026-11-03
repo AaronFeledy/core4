@@ -5,7 +5,6 @@ import { type BuildOptions, RuntimeProviderRegistry, StateStore } from "@lando/s
 
 import { type ResolvedAppTarget, resolveDesiredAppTarget } from "../landofile/app-resolution.ts";
 import { withPlanVolumeCoordination } from "../lifecycle/volume-coordination.ts";
-import { resolveMysqlVolumeTarget } from "../planner/mysql-volume.ts";
 import { ensureAppPlacementState } from "../providers/app-placement.ts";
 import { appLockTarget, withAppMutationLock } from "./app-mutation-lock.ts";
 import { runAppInitEvents } from "./events.ts";
@@ -51,26 +50,25 @@ export const startAppForTarget = Effect.fn("AppOperation.startForTarget")(functi
           yield* Effect.context<Effect.Services<ReturnType<typeof startAppForTargetUnlocked>>>();
         const registry = yield* RuntimeProviderRegistry;
         const stateStore = yield* StateStore;
-        const resolvedTarget = yield* resolveMysqlVolumeTarget(target, registry);
-        const plan = resolvedTarget.plan;
-        yield* rotateChangedFileSync(resolvedTarget);
+        const plan = target.plan;
+        yield* rotateChangedFileSync(target);
         const provider = yield* registry.select(plan);
         return yield* withPlanVolumeCoordination({
           plan,
           provider,
           stateStore,
           body: () =>
-            preflightStartAppDrain(resolvedTarget)
+            preflightStartAppDrain(target)
               .pipe(
                 Effect.flatMap((preparedTargets) =>
                   Effect.gen(function* () {
                     yield* execution.transactionPreflightDone === true
                       ? Effect.void
-                      : ensureStartTransactionConsistent(resolvedTarget);
+                      : ensureStartTransactionConsistent(target);
                     if (execution.skipInitEvents !== true) yield* runAppInitEvents(plan);
                     yield* (execution.beforeStart ?? Effect.void).pipe(Effect.uninterruptible);
                     yield* publishHomeTransitionNotices(placement.plan, plan);
-                    return yield* startAppForTargetUnlocked(options, resolvedTarget, managed, {
+                    return yield* startAppForTargetUnlocked(options, target, managed, {
                       ...execution,
                       preparedOverlays,
                       ...(preparedTargets === undefined ? {} : { preparedTargets }),

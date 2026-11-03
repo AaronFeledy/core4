@@ -21,6 +21,7 @@ test("gpg feature records opt-in without adding a build step or overriding the s
       },
       baseKind: "lando",
       appRoot: "/apps/gpg",
+      appSlug: "gpg",
       normalizedConfig: { user: "1000" },
       features: [{ id: definition.id, definition }],
     }),

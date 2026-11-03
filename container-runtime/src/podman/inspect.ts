@@ -17,6 +17,8 @@ import type {
   ProviderErrorContext,
 } from "../engine-api.ts";
 import { missingApi, missingService, parseEngineJson } from "../engine-errors.ts";
+import { APP_ROOT_LABEL } from "../labels.ts";
+import { containerOwnershipLabels } from "../native-ownership.ts";
 import { fingerprintInspectPublishPorts } from "../plan.ts";
 import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { inspectBindSources, inspectContainerLabels, inspectNetworkNames } from "./bring-up-recreate.ts";
@@ -184,6 +186,22 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
   }
 
   const decoded = (yield* parseEngineJson(response, ctx, "inspect")) as ContainerInspect;
+  const labels = inspectContainerLabels(decoded);
+  const expectedOwnership = containerOwnershipLabels(plan, service.name);
+  // Even incoherent labels cannot make an explicitly foreign root this plan's service.
+  if (labels[APP_ROOT_LABEL] !== undefined && labels[APP_ROOT_LABEL] !== expectedOwnership[APP_ROOT_LABEL]) {
+    return {
+      app: plan.id,
+      appRoot: plan.root,
+      service: service.name,
+      providerId: plan.provider,
+      status: "unknown",
+      state: "unknown",
+      publications: { status: "unknown" },
+      mounts: { status: "unknown" },
+      labels,
+    };
+  }
   const status = statusFromInspect(decoded);
   const health = healthFromInspect(decoded);
   const startedAt = lastStartedAt(decoded);
@@ -212,7 +230,7 @@ export const inspect = Effect.fn("RuntimeProvider.inspect")(function* (
     mounts: mountObservationFromInspect(decoded),
     ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
     publishFingerprint: fingerprintInspectPublishPorts(decoded),
-    labels: inspectContainerLabels(decoded),
+    labels,
     ...(bindSources === undefined ? {} : { bindSources }),
     ...(networkNames === undefined ? {} : { networkNames }),
   };

@@ -79,7 +79,6 @@ const connectMongo =
 
 const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const appName = appNameFor(ctx);
   const { creds, port } = connectionFor(ctx);
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? DEFAULT_IMAGE });
@@ -88,7 +87,7 @@ const applyMongodbFeature = (ctx: ServiceFeatureContext): void => {
     ...landoDbEnvFor(creds, port),
   });
   ctx.addStorage({
-    store: `${appName}-mongodb-data`,
+    store: ctx.serviceStoreName("mongodb-data"),
     target: DATA_TARGET,
     readOnly: false,
   });

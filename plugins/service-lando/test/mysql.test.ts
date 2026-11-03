@@ -74,7 +74,7 @@ describe("mysql ServiceType", () => {
     expect(plan.environment.MYSQL_ROOT_PASSWORD).toMatch(/^lando-[a-f0-9]{24}$/);
     const volumes = plan.mounts.filter((mount) => mount.type === "volume");
     expect(volumes).toHaveLength(1);
-    expect(volumes[0]?.store).toBe("myapp-db-mysql-data");
+    expect(volumes[0]?.store).toBe("lando-myapp--db--mysql-data");
     expect(String(volumes[0]?.target)).toBe("/var/lib/mysql");
     expect(plan.endpoints).toEqual([
       { _tag: "internal", port: 3306, protocol: "tcp", name: "db", primary: true },

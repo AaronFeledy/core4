@@ -11,21 +11,24 @@ const Containers = Schema.Array(
   Schema.Struct({
     Id: Schema.String,
     State: Schema.optionalKey(Schema.String),
+    Names: Schema.optionalKey(Schema.Array(Schema.String)),
     Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   }),
 );
 
-export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(function* (
+/** One engine container list call filtered by `label` entries, decoded. */
+export const listLabeledContainerRows = Effect.fn("RuntimeProvider.listLabeled")(function* (
   api: EngineHttpApi | undefined,
   ctx: ProviderErrorContext,
-): Effect.fn.Return<ReadonlyArray<ServiceRuntimeInfo>, ProviderError> {
+  label: ReadonlyArray<string>,
+): Effect.fn.Return<typeof Containers.Type, ProviderInternalError | ProviderUnavailableError> {
   const request = api?.request;
   if (request === undefined) {
     return yield* Effect.fail(
       missingApi(ctx, "list", `provider-${ctx.providerId} list requires an engine API client.`),
     );
   }
-  const query = new URLSearchParams({ all: "true", filters: JSON.stringify({ label: [APP_LABEL] }) });
+  const query = new URLSearchParams({ all: "true", filters: JSON.stringify({ label }) });
   const input = { method: "GET", path: `/containers/json?${query}` } as const;
 
   const response = yield* request(input).pipe(
@@ -47,7 +50,7 @@ export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(f
     );
   }
   const decoded = yield* parseEngineJson(response, ctx, "list");
-  const containers = yield* Schema.decodeUnknownEffect(Containers)(decoded).pipe(
+  return yield* Schema.decodeUnknownEffect(Containers)(decoded).pipe(
     Effect.mapError(
       (cause) =>
         new ProviderInternalError({
@@ -59,6 +62,13 @@ export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(f
         }),
     ),
   );
+});
+
+export const discoverLabeledContainers = Effect.fn("RuntimeProvider.discover")(function* (
+  api: EngineHttpApi | undefined,
+  ctx: ProviderErrorContext,
+): Effect.fn.Return<ReadonlyArray<ServiceRuntimeInfo>, ProviderError> {
+  const containers = yield* listLabeledContainerRows(api, ctx, [APP_LABEL]);
   return containers.flatMap((container): ReadonlyArray<ServiceRuntimeInfo> => {
     const labels = container.Labels ?? {};
     const app = labels[APP_LABEL];

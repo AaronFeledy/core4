@@ -1,6 +1,6 @@
 import { type Context, Effect, Layer, Option } from "effect";
 
-import { AppPlanner, type PluginRegistry, ProcessRunner, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { AppPlanner, type PluginRegistry, ProcessRunner } from "@lando/sdk/services";
 
 import { resolveAppIdentity } from "../planner/app-identity.ts";
 import { planApp } from "../planner/assemble.ts";
@@ -10,7 +10,6 @@ import {
   validateAuthoredAppMount,
 } from "../planner/authored.ts";
 import { DEFAULT_APP_MOUNT_EXCLUDES, mergeDefaultExcludes } from "../planner/file-sync.ts";
-import { adoptMysqlVolume } from "../planner/mysql-volume.ts";
 import { DEFAULT_PROXY_DOMAIN } from "../planner/naming.ts";
 import { FileSyncPolicy } from "../plugins/file-sync-policy.ts";
 
@@ -27,7 +26,6 @@ export {
 export const layer = Layer.effect(
   AppPlanner,
   Effect.gen(function* () {
-    const providerRegistry = yield* Effect.serviceOption(RuntimeProviderRegistry);
     const processRunner = yield* Effect.serviceOption(ProcessRunner);
     const policy = yield* FileSyncPolicy.make;
     const context = yield* Effect.context<PluginRegistry>();
@@ -41,8 +39,7 @@ export const layer = Layer.effect(
           Effect.provide(context),
           Effect.provideService(FileSyncPolicy, policy),
         );
-        const identified = { ...plan, root: identity.appRoot, identity };
-        return yield* adoptMysqlVolume(identified, Option.getOrUndefined(providerRegistry));
+        return { ...plan, root: identity.appRoot, identity };
       }),
     } satisfies Context.Service.Shape<typeof AppPlanner>);
   }),

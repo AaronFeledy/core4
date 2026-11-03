@@ -34,7 +34,7 @@ describe("managed Windows stdin exec", () => {
       "/app space",
       "--env",
       "FOO",
-      "lando-demo-app-db",
+      "lando-demo-app--db",
       "sh",
       "-c",
       "printf '%s' '$HOME'",

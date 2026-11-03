@@ -273,6 +273,7 @@ const makeApplyApi = (inspectStatus = 404) => {
     request: (request: EngineHttpRequest) => {
       requests.push(`${request.method} ${request.path}`);
       const response = ((): EngineHttpResponse => {
+        if (request.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
         if (request.method === "GET" && request.path.startsWith("/networks/"))
           return { status: 404, body: "" };
         if (request.path === "/networks/create" || request.path === "/libpod/networks/create")
