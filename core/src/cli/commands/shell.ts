@@ -272,10 +272,12 @@ export const shellApp = Effect.fn("ShellApp.shell")(function* (
     };
     const terminalSize = currentTerminalSize(io);
     const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.document.agentEnv, process.env);
-    const serviceEnv = withAgentContextEnv(options.env, process.env, {
+    const forwardedEnv = withAgentContextEnv(options.env, process.env, {
       allowlist,
       lowerThanEnv: service.environment,
     });
+    // An empty HISTFILE makes bash and busybox ash neither load nor save history.
+    const serviceEnv = options.noHistory === true ? { ...forwardedEnv, HISTFILE: "" } : forwardedEnv;
     const spec: CommandSpec = {
       command: serviceLoginShellCommand(options.args),
       stdin: "inherit",

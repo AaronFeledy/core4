@@ -23,7 +23,7 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
       description: "Deprecated: host is the default; --host is redundant.",
     }),
     "no-history": Flags.boolean({
-      description: "Do not persist host shell history for this session.",
+      description: "Do not persist shell history for this session.",
     }),
     "no-interactive": Flags.boolean({
       description: "Reject interactive shell startup (use app:exec for automation).",

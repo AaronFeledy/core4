@@ -28,6 +28,20 @@ Lando starts `bash -l` if bash is on the container's `PATH`; otherwise, it start
 
 Use the `--service` flag, not a positional argument. `lando shell appserver` fails with `Unexpected argument: appserver` instead of opening a host shell.
 
+## Keep shell and client history across rebuilds
+
+Bash and interactive clients such as `mysql`, `psql`, `redis-cli`, `node`, and `python` write their default history files in the service user's home directory. Lando keeps that home on a persistent volume by default when it knows where the home is, so `lando rebuild` keeps those history files.
+
+Run `lando info` to check for the home mount labeled `(home)`. See [Keep a service home across rebuilds](../services/home-and-host.mdx) for the details, including `home: false` to turn off automatic home persistence and `home.path` to name the home directory in a custom image.
+
+To skip saving shell history for one session, add `--no-history`. Replace `appserver` with your service name:
+
+```sh
+lando shell --service appserver --no-history
+```
+
+The flag controls shell history, not the separate history files written by client tools. Treat history as sensitive: passwords typed on command lines can land in it. `lando destroy --volumes` removes the app's home volumes and the history stored in them.
+
 ## Forward agent-context env
 
 `lando exec` and `lando shell --service` copy host agent-context markers into the target service. Only this allowlist is forwarded:
@@ -66,7 +80,7 @@ Lines run independently. A `cd` or variable assignment affects only that line; i
 
 A `${secret:<id>}` or `${secret:<scheme>://path}` reference (for example `${secret:DB_PASSWORD}` from `LANDO_SECRET_DB_PASSWORD`, or `${secret:op://Vault/Item/field}` from 1Password) resolves only when that line runs, through the same routed secret stores as `lando start`. The REPL never preloads secrets into the environment. Resolved secret values are redacted before they reach stdout, stderr, lifecycle events, or history.
 
-Host-mode history persists per accepted line to a per-app history file under the user cache root. `--no-history` disables history for the session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.
+Host-mode history persists per accepted line to a per-app history file under the user cache root. `lando shell --no-history` skips saving shell history for that session. History is bounded, and every line is redacted before it is appended, so a line that resolved a secret never lands on disk raw.
 
 Every accepted line publishes `pre-shell-exec` before it runs and `post-shell-exec` with its exit code after. Subscribers receive the redacted command text, cwd, and output, not the raw line.
 

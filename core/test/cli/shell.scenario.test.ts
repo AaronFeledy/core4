@@ -431,6 +431,44 @@ describe("shellApp — shell modes", () => {
     expect(captured).toEqual({ CLAUDECODE: "1" });
   });
 
+  test.each([
+    { noHistory: undefined, serviceEnv: {}, env: {}, expected: undefined },
+    { noHistory: false, serviceEnv: {}, env: {}, expected: undefined },
+    { noHistory: true, serviceEnv: {}, env: {}, expected: "" },
+    { noHistory: true, serviceEnv: { HISTFILE: "/home/node/service-history" }, env: {}, expected: "" },
+    {
+      noHistory: true,
+      serviceEnv: { HISTFILE: "/home/node/service-history" },
+      env: { HISTFILE: "/home/node/exec-history" },
+      expected: "",
+    },
+  ])(
+    "service mode applies the session history policy %j",
+    async ({ noHistory, serviceEnv, env, expected }) => {
+      const appPlan = { ...plan, services: { [web.name]: { ...web, environment: serviceEnv } } };
+      const calls: Array<Readonly<Record<string, string>> | undefined> = [];
+      const provider = fakeProvider({
+        execStream: (_target, command) => {
+          calls.push(command.env);
+          return Stream.make({ exitCode: 0 });
+        },
+      });
+
+      await Effect.runPromise(
+        shellApp({
+          service: "web",
+          ...(noHistory === undefined ? {} : { noHistory }),
+          env,
+          io: { writeStdout: () => {}, writeStderr: () => {} },
+        }).pipe(Effect.provide(layerWithPlan(appPlan, provider))),
+      );
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.HISTFILE).toBe(expected);
+      if (expected === undefined) expect(calls[0] ?? {}).not.toHaveProperty("HISTFILE");
+    },
+  );
+
   test("service mode preserves UTF-8 characters split across exec chunks", async () => {
     let stdout = "";
     const decoder = new TextDecoder();
