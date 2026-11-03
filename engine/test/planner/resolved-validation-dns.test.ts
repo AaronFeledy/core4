@@ -86,3 +86,30 @@ test("skips blocked aliases without suppressing independent DNS collisions", () 
     ),
   ).toMatchObject([{ path: ["services", "api", "hostnames", 1] }]);
 });
+
+test("still reports a key collision when a field inside the service is blocked", () => {
+  // Given Web's hostname depends on a value that could not be resolved.
+  const issues = validate(
+    { services: { Web: { hostnames: ["{{ services.bad.creds.host }}"] }, web: {} } },
+    new Set([deferredSiteKey(["services", "Web", "hostnames", 0])]),
+  );
+  // Then the concrete keys Web and web still collide.
+  expect(issues).toHaveLength(1);
+  expect(issues[0]).toMatchObject({ path: ["services", "web"], rule: "landofile.dns-name" });
+});
+
+test("rejects two services whose derived container names collide", () => {
+  // Given a long slug, so both keys take the hashed fallback form, and a pair whose hashes match.
+  const issues = validateResolvedLandofile({
+    landofile: Schema.decodeUnknownSync(LandofileShape)({
+      services: { "database-96467": {}, "database-157305": {} },
+    }),
+    landofilePath: "/app/.lando.yml",
+    appSlug: "a".repeat(57),
+    blocked: new Set(),
+  }).issues.filter(({ rule }) => rule === "landofile.dns-name");
+  // Then the second service is reported with the shared container name.
+  expect(issues).toHaveLength(1);
+  expect(issues[0]).toMatchObject({ path: ["services", "database-157305"] });
+  expect(issues[0]?.message).toContain("database-96467");
+});

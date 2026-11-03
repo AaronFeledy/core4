@@ -29,8 +29,8 @@ export const landoServiceContainerName = (slug: string, service: string): string
   if (CANONICAL.test(slug) && CANONICAL.test(service) && canonical.length <= DNS_LABEL_MAX_LENGTH)
     return canonical;
   const budget = DNS_LABEL_MAX_LENGTH - PREFIX.length - "----".length - HASH_LENGTH;
-  const servicePart = segment(service, Math.max(HASH_LENGTH, budget - slug.length)) || "x";
-  const slugPart = segment(slug, budget - servicePart.length) || "x";
+  const slugPart = segment(slug, budget - HASH_LENGTH) || "x";
+  const servicePart = segment(service, budget - slugPart.length) || "x";
   const hash = sha256Hex(`${slug}\0${service}`).slice(0, HASH_LENGTH);
   return `${PREFIX}${slugPart}--${servicePart}--${hash}`;
 };

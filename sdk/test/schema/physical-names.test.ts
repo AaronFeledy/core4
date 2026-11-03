@@ -49,6 +49,11 @@ describe("landoServiceContainerName", () => {
     expect(landoServiceContainerName(slug, service)).toBe(expected);
   });
 
+  test.each(["", "!!!", "My App"])("stays one DNS label for the non-canonical slug %j", (slug) => {
+    for (const service of ["web", "web_1", "s".repeat(70)])
+      expect(landoServiceContainerName(slug, service)).toMatch(DNS_LABEL);
+  });
+
   test("keeps apps whose slug and service join with the same hyphens apart", () => {
     expect(landoServiceContainerName("foo", "bar-web")).not.toBe(landoServiceContainerName("foo-bar", "web"));
   });

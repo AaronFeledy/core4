@@ -1078,7 +1078,7 @@ export const bringUp = Effect.fn("RuntimeProvider.bringUp")(function* (
   if (options.forbidRecreate !== true) {
     const containers = yield* listLabeledServiceContainers(api, options.ctx, plan.id);
     const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
-    staleNameChanged = yield* removeStaleServiceContainers(api, options.ctx, plan, stales);
+    staleNameChanged = (yield* removeStaleServiceContainers(api, options.ctx, plan, stales)).changed;
   }
 
   for (const service of Object.values(plan.services)) {

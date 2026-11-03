@@ -239,10 +239,12 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
     Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
   );
   const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
-  const staleRemoved = yield* removeStaleServiceContainers(api, stopCtx, plan, stales).pipe(
+  const stale = yield* removeStaleServiceContainers(api, stopCtx, plan, stales).pipe(
     Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
   );
-  changed = changed || staleRemoved;
+  changed = changed || stale.changed;
+  shutdownObservations.push(...stale.shutdownObservations);
+  const observedStale = new Set(stale.shutdownObservations.map((observation) => String(observation.service)));
   for (const service of Object.values(plan.services).reverse()) {
     const result = yield* stopService(plan, service, {
       ...options,
@@ -250,7 +252,13 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
       ctx: stopCtx,
     }).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
     changed = changed || result.changed;
-    shutdownObservations.push(...result.shutdownObservations);
+    // The removed old-named container already reported this service; its absent planned name adds nothing.
+    shutdownObservations.push(
+      ...result.shutdownObservations.filter(
+        (observation) =>
+          !(observedStale.has(String(observation.service)) && observation.reason === "container-absent"),
+      ),
+    );
   }
   let networkRemoved = false;
   for (const name of landoOwnedNetworkNames(plan)) {

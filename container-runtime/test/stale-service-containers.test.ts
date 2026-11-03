@@ -17,7 +17,6 @@ import { bringUp } from "../src/podman/bring-up.ts";
 import {
   type LabeledServiceContainer,
   listLabeledServiceContainers,
-  removeStaleServiceContainers,
   selectStaleServiceContainers,
 } from "../src/podman/stale-service-containers.ts";
 
@@ -155,6 +154,11 @@ describe("selectStaleServiceContainers", () => {
       labeled("incoherent", ["no-service-label"], {
         "dev.lando.app": plan.id,
         "dev.lando.app-root": plan.root,
+      }),
+      labeled("scratch-twin", ["lando-stale-app-web-scratch"], {
+        ...ownedLabels(plan, "web"),
+        "dev.lando.scratch": "TRUE",
+        "dev.lando.scratch-id": plan.id,
       }),
     ]);
     expect(selected).toEqual([]);
@@ -337,7 +341,7 @@ describe("bringDown stale-name sweep", () => {
           return {
             status: 200,
             body: JSON.stringify({
-              State: { Status: "exited", ExitCode: 0, OOMKilled: false },
+              State: { Status: "exited", ExitCode: 137, OOMKilled: true },
             }),
           };
         }
@@ -359,6 +363,10 @@ describe("bringDown stale-name sweep", () => {
     ]);
     const listCalls = fake.calls.filter((call) => call.path.startsWith("/containers/json?"));
     expect(listCalls).toHaveLength(1);
+    // And the receipt keeps the old container's shutdown facts instead of an absent placeholder.
+    expect(result.shutdownObservations.filter((observation) => observation.service === "web")).toEqual([
+      expect.objectContaining({ containerId: "stale-web-id", exitCode: 137, oomKilled: true }),
+    ]);
   });
 });
 
@@ -385,13 +393,5 @@ describe("list and alternate helpers", () => {
         labels: { "dev.lando.app": "stale-app", "dev.lando.service": "web" },
       },
     ]);
-  });
-
-  test("removeStaleServiceContainers is a no-op for an empty selection", async () => {
-    const plan = planOf();
-    const fake = makeApi({});
-    const changed = await Effect.runPromise(removeStaleServiceContainers(fake.api, ctx, plan, []));
-    expect(changed).toBe(false);
-    expect(fake.calls).toEqual([]);
   });
 });

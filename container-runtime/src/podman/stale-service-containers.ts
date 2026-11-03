@@ -1,13 +1,28 @@
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { AppId, type AppPlan, ProviderId, ServiceName, planAppIdentity } from "@lando/sdk/schema";
+import {
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  type ServiceShutdownObservation,
+  planAppIdentity,
+} from "@lando/sdk/schema";
 import { Effect, Schema } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
 import { engineApiFailure, missingApi, parseEngineJson } from "../engine-errors.ts";
-import { APP_LABEL, APP_ROOT_LABEL, ROLE_LABEL, SERVICE_LABEL } from "../labels.ts";
+import {
+  APP_LABEL,
+  APP_ROOT_LABEL,
+  ROLE_LABEL,
+  SCRATCH_ID_LABEL,
+  SCRATCH_LABEL,
+  SERVICE_LABEL,
+  scratchLabelsForPlan,
+} from "../labels.ts";
 import { coherentContainerOwnership } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
 import { redactResponseDetails, redactorFor, withApiReason } from "../redact.ts";
-import { stopAndRemoveContainer } from "../stop-container.ts";
+import { retainShutdownObservations, stopAndRemoveContainer } from "../stop-container.ts";
 
 /** One Lando-labeled container from the engine list endpoint, with native names. */
 export type LabeledServiceContainer = {
@@ -110,6 +125,7 @@ export const selectStaleServiceContainers = (
   containers: ReadonlyArray<LabeledServiceContainer>,
 ): ReadonlyArray<StaleServiceContainer> => {
   const root = String(planAppIdentity(plan).appRoot);
+  const scratch = scratchLabelsForPlan(plan);
   const planned = new Map(
     Object.values(plan.services).map((service) => [
       String(service.name),
@@ -123,6 +139,12 @@ export const selectStaleServiceContainers = (
     if (!coherentContainerOwnership(labels, providerId)) continue;
     if (labels[APP_LABEL] !== plan.id) continue;
     if (labels[APP_ROOT_LABEL] !== root) continue;
+    // A scratch app and a user app can share a root and a slug; never remove the other kind's container.
+    if (
+      labels[SCRATCH_LABEL] !== scratch[SCRATCH_LABEL] ||
+      labels[SCRATCH_ID_LABEL] !== scratch[SCRATCH_ID_LABEL]
+    )
+      continue;
     const service = labels[SERVICE_LABEL];
     if (service === undefined) continue;
     const expected = planned.get(service);
@@ -141,7 +163,8 @@ export const selectStaleServiceContainers = (
 
 /**
  * Stops and removes each stale container by id. Removal uses force=true&v=true so only
- * anonymous volumes attached to that container are deleted.
+ * anonymous volumes attached to that container are deleted. Returns the shutdown facts of the
+ * removed containers so a teardown receipt keeps them.
  */
 export const removeStaleServiceContainers = Effect.fn("RuntimeProvider.removeStaleServiceContainers")(
   function* (
@@ -149,9 +172,13 @@ export const removeStaleServiceContainers = Effect.fn("RuntimeProvider.removeSta
     ctx: ProviderErrorContext,
     plan: AppPlan,
     stales: ReadonlyArray<StaleServiceContainer>,
-  ): Effect.fn.Return<boolean, ProviderInternalError | ProviderUnavailableError> {
+  ): Effect.fn.Return<
+    { readonly changed: boolean; readonly shutdownObservations: ReadonlyArray<ServiceShutdownObservation> },
+    ProviderInternalError | ProviderUnavailableError
+  > {
     const providerId = ProviderId.make(ctx.providerId);
     let changed = false;
+    const shutdownObservations: ServiceShutdownObservation[] = [];
     for (const stale of stales) {
       const result = yield* stopAndRemoveContainer(
         {
@@ -161,9 +188,10 @@ export const removeStaleServiceContainers = Effect.fn("RuntimeProvider.removeSta
           containerId: stale.containerId,
         },
         { api, ctx },
-      );
+      ).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
       changed = changed || result.changed;
+      shutdownObservations.push(...result.shutdownObservations);
     }
-    return changed;
+    return { changed, shutdownObservations };
   },
 );
