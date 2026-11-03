@@ -1,0 +1,19 @@
+name: "@lando/schedule"
+version: "0.0.0"
+api: 4
+description: "Bundled per-service scheduled jobs for Lando."
+enabled: true
+entry: ./src/index.ts
+
+contributes:
+  appFeatures:
+    - schedule.compile
+  commands:
+    - id: schedule:list
+      summary: List scheduled jobs and their next run times.
+      mcpAllowed: true
+    - id: schedule:run
+      summary: Run a scheduled job once in its parent service.
+
+requires:
+  "@lando/core": "^4.0.0"

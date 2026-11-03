@@ -1,0 +1,57 @@
+{
+  "name": "@lando/schedule",
+  "description": "Bundled per-service scheduled jobs for Lando.",
+  "version": "0.0.0",
+  "author": "Lando Alliance",
+  "license": "MIT",
+  "homepage": "https://github.com/AaronFeledy/core4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AaronFeledy/core4.git",
+    "directory": "plugins/schedule"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.4.3"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
+  "keywords": ["lando", "lando-plugin", "schedule"],
+  "lando": {
+    "manifest": "./plugin.yaml"
+  },
+  "landoPlugin": {
+    "name": "@lando/schedule",
+    "version": "0.0.0",
+    "api": 4,
+    "requires": { "@lando/core": "^4.0.0" },
+    "description": "Bundled per-service scheduled jobs for Lando.",
+    "enabled": true,
+    "entry": "./src/index.ts",
+    "contributes": {
+      "appFeatures": ["schedule.compile"],
+      "commands": [
+        {
+          "id": "schedule:list",
+          "summary": "List scheduled jobs and their next run times.",
+          "mcpAllowed": true
+        },
+        { "id": "schedule:run", "summary": "Run a scheduled job once in its parent service." }
+      ]
+    }
+  },
+  "dependencies": {
+    "@lando/sdk": "workspace:*",
+    "effect": "catalog:"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist .tsbuildinfo",
+    "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -24,6 +24,7 @@ const fullBundledPluginNames = [
   "@lando/template-handlebars",
   "@lando/template-mustache",
   "@lando/sql",
+  "@lando/schedule",
   "@lando/lando4",
   "@lando/lando3",
 ] as const;

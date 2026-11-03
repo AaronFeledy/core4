@@ -1,0 +1,11 @@
+name: schedule-demo
+services:
+  appserver:
+    type: "node:22"
+    primary: true
+    environment:
+      TZ: "UTC"
+    schedule:
+      - name: tick
+        every: "@hourly"
+        run: "true"

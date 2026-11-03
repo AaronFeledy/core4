@@ -21,6 +21,7 @@ const EXPECTED_PLUGIN_NAMES = [
   "@lando/template-handlebars",
   "@lando/template-mustache",
   "@lando/sql",
+  "@lando/schedule",
   "@lando/lando4",
   "@lando/lando3",
 ];
@@ -35,7 +36,7 @@ describe("generated bundled plugin descriptor tables", () => {
     const manifestNames = BUNDLED_PLUGIN_MODULES.map((module) => String(module.manifest.name));
 
     // Then: both projections match the stable ship list.
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(16);
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(17);
     expect(names).toEqual(EXPECTED_PLUGIN_NAMES);
     expect(manifestNames).toEqual(EXPECTED_PLUGIN_NAMES);
   });

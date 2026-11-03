@@ -1,0 +1,69 @@
+---
+id: schedule
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, services, schedule]
+---
+
+# Run scheduled jobs
+
+Add a `schedule:` list on a service. Lando compiles those jobs into one `<service>-schedule` sidecar that clones the parent image, mounts, environment, user, and networks, then runs them on a timer.
+
+```yaml
+name: schedule-demo
+services:
+  appserver:
+    type: "node:22"
+    primary: true
+    environment:
+      TZ: "UTC"
+    schedule:
+      - name: tick
+        every: "@hourly"
+        run: "true"
+```
+
+`name` is required and unique within the service. `every` is a 5-field cron expression, a named schedule such as `@hourly`, or `@every` with a duration such as `1s`. `run` is a shell string or argv list. `user` is optional and defaults to the parent service user.
+
+Save that Landofile and list the jobs. Listing reads the Landofile and does not need a running sidecar:
+
+<Guide>
+  <Scenario id="list-jobs" render>
+    <Step name="scaffold">
+      <UseFixture name="schedule-demo" />
+    </Step>
+    <Step name="list">
+      <Run command="lando schedule:list --format=json" />
+      <Verify command="lando schedule:list --format=json" expect={{ stdout: { regex: "\"name\":\\s*\"tick\"" } }} />
+    </Step>
+  </Scenario>
+</Guide>
+
+## Set the timezone
+
+There is no app-level timezone key. The sidecar inherits the parent service `environment: TZ` value. If you omit `TZ`, job times use UTC. See [Set the timezone](./timezone.mdx).
+
+## Run a job now
+
+`lando schedule:run <name>` execs the job in the **parent** service as the job user, so it gets the same environment and file ownership. It works while the sidecar is down, as long as the parent is running:
+
+```sh
+lando schedule:run tick --format=json
+```
+
+Pass `--service` when two services use the same job name.
+
+## Expect missed runs not to catch up
+
+If the laptop sleeps or the sidecar is stopped, the scheduler does not replay the missed ticks. The next run is the next cron time after the sidecar is up again. `@every` is the same: it waits the duration from the current time, not from the last successful run.
+
+## Handle overlap in the job
+
+Jobs can overlap. The scheduler does not serialize them. If a run must not start while a previous run is still going, the command itself has to lock, skip, or queue.
+
+## Budget memory for the sidecar
+
+Each service with a `schedule:` list gets one extra container, `<service>-schedule`. Budget RAM for that sidecar the same way you would for another clone of the parent image. Removing `schedule:` removes the sidecar on the next rebuild.
+
+Rebuild recompiles the sidecar from the current Landofile. The sidecar follows the parent lifecycle: start, stop, and destroy keep them together.
