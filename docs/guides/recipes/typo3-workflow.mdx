@@ -48,6 +48,8 @@ lando start
 
 ## Install TYPO3
 
+Run the commands in this section from a POSIX shell on your host (WSL on Windows). The password step also needs `openssl`.
+
 `create-project` wants an empty directory, and the app root already holds `.lando.yml`. Install into `tmp-app`, then copy it into the root:
 
 ```sh
@@ -57,7 +59,7 @@ lando exec appserver -- sh -c "cp -a tmp-app/. . && rm -r tmp-app && chown -R $(
 
 Composer runs as root in the container. Your host shell expands `$(id -u):$(id -g)` before the command runs, so the final `chown` hands the code back to your host user. Your editor and host `lando` commands keep write access.
 
-The password commands below need a POSIX shell with `openssl` on your host. TYPO3's default password policy wants an uppercase letter, a lowercase letter, a digit, and a special character. Random base64 doesn't always include a special character, so the `Aa1-` prefix guarantees all four. Generate the admin password, then run setup:
+TYPO3's default password policy wants an uppercase letter, a lowercase letter, a digit, and a special character. Random base64 doesn't always include a special character, so the `Aa1-` prefix guarantees all four. Generate the admin password, then run setup:
 
 ```sh
 TYPO3_ADMIN_PASSWORD="Aa1-$(openssl rand -base64 24)"
@@ -95,7 +97,7 @@ lando exec appserver -- chown -R www-data:www-data \
 
 `config/system` is on the list because Admin Tools and `lando typo3 extension:setup` rewrite `settings.php`. Add `/app/config/sites` if you edit site configuration in the backend. Don't chown all of `/app` to `www-data`. Your code stays with your host user, so your editor and host `lando` commands keep write access.
 
-On a Linux host the bind mount shares owners, so these directories also belong to uid `33` on the host.
+On a Linux host the bind mount shares owners, so these directories also belong to uid `33` on the host. Edit files in `config/system` through `lando exec`, as the next section does for `additional.php`, or chown them back while you edit.
 
 ## Trust the Lando proxy
 
