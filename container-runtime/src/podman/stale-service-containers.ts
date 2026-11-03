@@ -1,4 +1,4 @@
-import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
+import type { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AppId,
   type AppPlan,
@@ -7,9 +7,8 @@ import {
   type ServiceShutdownObservation,
   planAppIdentity,
 } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { Effect } from "effect";
 import type { EngineHttpApi, ProviderErrorContext } from "../engine-api.ts";
-import { engineApiFailure, missingApi, parseEngineJson } from "../engine-errors.ts";
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
@@ -21,8 +20,8 @@ import {
 } from "../labels.ts";
 import { coherentContainerOwnership } from "../native-ownership.ts";
 import { serviceContainerName } from "../plan.ts";
-import { redactResponseDetails, redactorFor, withApiReason } from "../redact.ts";
 import { retainShutdownObservations, stopAndRemoveContainer } from "../stop-container.ts";
+import { listLabeledContainerRows } from "./discover.ts";
 
 /** One Lando-labeled container from the engine list endpoint, with native names. */
 export type LabeledServiceContainer = {
@@ -38,82 +37,30 @@ export type StaleServiceContainer = {
   readonly name: string;
 };
 
-const Containers = Schema.Array(
-  Schema.Struct({
-    Id: Schema.String,
-    Names: Schema.optionalKey(Schema.Array(Schema.String)),
-    Labels: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
-  }),
-);
-
 const stripName = (name: string): string => name.replace(/^\//u, "");
 
 /** Lists this app's labeled containers in one call, keeping `Names` for stale-name selection. */
-export const listLabeledServiceContainers = Effect.fn("RuntimeProvider.listLabeledServiceContainers")(
-  function* (
-    api: EngineHttpApi | undefined,
-    ctx: ProviderErrorContext,
-    appId: string,
-  ): Effect.fn.Return<
-    ReadonlyArray<LabeledServiceContainer>,
-    ProviderInternalError | ProviderUnavailableError
-  > {
-    const request = api?.request;
-    if (request === undefined) {
-      return yield* Effect.fail(
-        missingApi(ctx, "list", `provider-${ctx.providerId} list requires an engine API client.`),
-      );
-    }
-    const query = new URLSearchParams({
-      all: "true",
-      filters: JSON.stringify({ label: [`${APP_LABEL}=${appId}`] }),
-    });
-    const input = { method: "GET", path: `/containers/json?${query}` } as const;
-    const response = yield* request(input).pipe(
-      Effect.mapError((cause) => engineApiFailure(ctx, "list", input, cause)),
-    );
-    if (response.status < 200 || response.status >= 300) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId: ctx.providerId,
-          operation: "list",
-          message: withApiReason(
-            `provider-${ctx.providerId} list failed with HTTP ${response.status}.`,
-            response,
-            redactorFor(ctx),
-          ),
-          details: redactResponseDetails(response, redactorFor(ctx)),
-          remediation: ctx.remediation,
-        }),
-      );
-    }
-    const decoded = yield* parseEngineJson(response, ctx, "list");
-    const containers = yield* Schema.decodeUnknownEffect(Containers)(decoded).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProviderInternalError({
-            providerId: ctx.providerId,
-            operation: "list",
-            message: "Container engine returned an invalid container list.",
-            remediation: ctx.remediation,
-            cause,
-          }),
-      ),
-    );
-    return containers.flatMap((container): ReadonlyArray<LabeledServiceContainer> => {
-      if (container.Id.length === 0) return [];
-      const labels = container.Labels ?? {};
-      if (labels[APP_LABEL] === undefined) return [];
-      return [
-        {
-          id: container.Id,
-          names: (container.Names ?? []).map(stripName).filter((name) => name.length > 0),
-          labels,
-        },
-      ];
-    });
-  },
-);
+export const listLabeledServiceContainers = (
+  api: EngineHttpApi | undefined,
+  ctx: ProviderErrorContext,
+  appId: string,
+): Effect.Effect<ReadonlyArray<LabeledServiceContainer>, ProviderInternalError | ProviderUnavailableError> =>
+  listLabeledContainerRows(api, ctx, [`${APP_LABEL}=${appId}`]).pipe(
+    Effect.map((containers) =>
+      containers.flatMap((container): ReadonlyArray<LabeledServiceContainer> => {
+        if (container.Id.length === 0) return [];
+        const labels = container.Labels ?? {};
+        if (labels[APP_LABEL] === undefined) return [];
+        return [
+          {
+            id: container.Id,
+            names: (container.Names ?? []).map(stripName).filter((name) => name.length > 0),
+            labels,
+          },
+        ];
+      }),
+    ),
+  );
 
 /**
  * Selects containers owned by this plan's services whose native name is not the current
