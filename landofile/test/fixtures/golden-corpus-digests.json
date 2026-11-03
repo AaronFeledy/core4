@@ -1044,6 +1044,10 @@
       "digest": "03cac783553c63c735d82f0c694c227a9530ad616cea2762db78258687ae06b8"
     },
     {
+      "fixture": "docs/guides/schedule/fixtures/schedule-demo",
+      "digest": "b9865fd669c1c26b9d7a82806a0fedbcadeaac2a05eb5570404c85b5627ee5cb"
+    },
+    {
       "fixture": "docs/guides/scripting-with-json/fixtures/project-script",
       "digest": "9942ee3c3be445567566a7dd2c59733ed33fb9e1339411438ee165c383b74a47"
     },

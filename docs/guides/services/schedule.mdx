@@ -8,7 +8,7 @@ tags: [beta, docs, services, schedule]
 
 # Run scheduled jobs
 
-Add a `schedule:` list on a service. Lando compiles those jobs into one `<service>-schedule` sidecar that clones the parent image, mounts, environment, and networks, then runs them on a timer. Jobs run as the job `user:` when set, otherwise as the parent service user, including numeric uids on a non-root parent.
+Add a `schedule:` list on a service. Lando compiles those jobs into one `<service>-schedule` sidecar cloned from the parent image. That sidecar also copies mounts, environment, and networks, then runs the jobs on a timer. Jobs run as the job `user:` when set, otherwise as the parent service user, including numeric uids on a non-root parent.
 
 ```yaml
 name: schedule-demo
