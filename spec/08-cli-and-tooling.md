@@ -89,7 +89,7 @@ The registry is authoritative for ids, aliases, bootstrap levels, flags, and res
 | `app:share` | `share` | `app` | Start tunnel; `--target`, `--provider`, `--detach`, `--format json` |
 | `app:share:list` | none | `app` | List tunnel sessions |
 | `app:share:stop` | none | `app` | Stop a detached tunnel session |
-| `app:ssh` | `ssh` | `app` | Login shell (`sh -l`) or supplied command in a service; `--service`, `--user`, `--no-history`; stdin and PTY follow the command-wide host-stdin rule |
+| `app:ssh` | `ssh` | `app` | Login shell (`bash -l` when present, otherwise `sh -l`) or supplied command in a service; `--service`, `--user`, `--no-history`; stdin and PTY follow the command-wide host-stdin rule |
 | `app:start` | `start` | `app` | Start current app; finishes an unfinished accelerated attempt first (§10.6.3) |
 | `app:stop` | `stop` | `app` | Stop current app |
 | `apps:init` | `init` | `plugins` | Scaffold an app (§8.8) |

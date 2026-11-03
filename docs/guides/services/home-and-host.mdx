@@ -100,6 +100,8 @@ services:
 
 To get rid of it instead, `lando destroy --volumes` removes the app's volumes, old homes included.
 
+A home can hold SSH keys, registry tokens, and shell history, so Lando keeps it out of data commands: database snapshots and exports cover only the database's own data, never a home volume.
+
 ## When Lando doesn't know where home is
 
 The moment you supply the image yourself, whether through `type: compose`, an `image:` other than the one the service type ships, or a Compose `build:` with a `context`, the service type's metadata stops describing your container. Lando will not guess a path and mount a volume over it, so it plans no home store for that service. That alone never fails planning; caches and credentials inside that home just don't survive a rebuild unless you declare storage for them.
