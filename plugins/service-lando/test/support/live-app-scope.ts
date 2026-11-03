@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { serviceContainerName } from "@lando/container-runtime/plan";
-import { bringDown, bringUp, exec, logs, makePodmanApiClient } from "@lando/provider-lando";
+import { bringDown, bringUp, exec, logs, makePodmanApiClient, pullImage } from "@lando/provider-lando";
 import { type AppPlan, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult } from "@lando/sdk/services";
 import { Clock, Duration, Effect, Schema, type Scope, Stream } from "effect";
@@ -68,7 +68,21 @@ export const defaultLiveAppLifecycle: LiveAppLifecycle = {
       }
     }
   }),
-  bringUp: (plan, api) => Effect.asVoid(bringUp(plan, { api })),
+  bringUp: (plan, api) => {
+    const refs = [
+      ...new Set(
+        Object.values(plan.services)
+          .filter((service) => service.artifact?.kind === "ref")
+          .map((service) => service.artifact.ref),
+      ),
+    ];
+    return Effect.asVoid(
+      Effect.andThen(
+        Effect.forEach(refs, (ref) => pullImage(api, ref, { policy: "missing" }), { discard: true }),
+        bringUp(plan, { api }),
+      ),
+    );
+  },
   bringDown: (plan, api, options) =>
     Effect.asVoid(
       bringDown(plan, {
