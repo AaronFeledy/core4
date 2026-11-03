@@ -52,15 +52,17 @@ lando start
 
 ```sh
 lando composer create-project typo3/cms-base-distribution tmp-app "^14"
-lando exec appserver -- sh -c 'cp -a tmp-app/. . && rm -r tmp-app'
+lando exec appserver -- sh -c "cp -a tmp-app/. . && rm -r tmp-app && chown -R $(id -u):$(id -g) /app"
 ```
+
+Composer runs as root in the container. Your host shell expands `$(id -u):$(id -g)` before the command runs, so the final `chown` hands the code back to your host user. Your editor and host `lando` commands keep write access.
 
 The password commands below need a POSIX shell with `openssl` on your host. TYPO3's default password policy wants an uppercase letter, a lowercase letter, a digit, and a special character. Random base64 doesn't always include a special character, so the `Aa1-` prefix guarantees all four. Generate the admin password, then run setup:
 
 ```sh
 TYPO3_ADMIN_PASSWORD="Aa1-$(openssl rand -base64 24)"
 printf 'Save this TYPO3 admin password: %s\n' "$TYPO3_ADMIN_PASSWORD"
-lando exec appserver -- php vendor/bin/typo3 setup \
+lando exec --user "$(id -u):$(id -g)" appserver -- php vendor/bin/typo3 setup \
   --driver=mysqli \
   --host=database \
   --port=3306 \
@@ -78,7 +80,7 @@ lando exec appserver -- php vendor/bin/typo3 setup \
 unset TYPO3_ADMIN_PASSWORD
 ```
 
-Setup runs through `lando exec` as root because it writes `config/` and `public/.htaccess` into your code. The password stays out of shell history, but it's on the command line, so process lists can see it while setup runs.
+Setup runs as your host user because it writes `config/` and `public/.htaccess` into your code. The password stays out of shell history, but it's on the command line, so process lists can see it while setup runs.
 
 - `--dbname` matches the app name (here `typo3-demo`).
 - `--create-site` takes a full URL. Use the HTTPS URL `lando info` prints, port included if the proxy picked a fallback.
@@ -91,7 +93,7 @@ lando exec appserver -- chown -R www-data:www-data \
   /app/var /app/config/system /app/public/fileadmin /app/public/typo3temp
 ```
 
-`config/system` is on the list because Admin Tools and `lando typo3 extension:setup` rewrite `settings.php`. Add `/app/config/sites` if you edit site configuration in the backend. Don't chown all of `/app`. That reowns `.lando.yml` and your code, so your editor and host `lando` commands lose write access.
+`config/system` is on the list because Admin Tools and `lando typo3 extension:setup` rewrite `settings.php`. Add `/app/config/sites` if you edit site configuration in the backend. Don't chown all of `/app` to `www-data`. Your code stays with your host user, so your editor and host `lando` commands keep write access.
 
 On a Linux host the bind mount shares owners, so these directories also belong to uid `33` on the host.
 
