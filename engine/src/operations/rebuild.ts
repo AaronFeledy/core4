@@ -234,6 +234,7 @@ export const rebuildApp = Effect.fn("AppOperation.rebuild")(
               }
             : yield* Effect.gen(function* () {
                 yield* markStartMutation(plan);
+                yield* removeStaleClonedServices(plan);
                 yield* stopAppWithPlan({}, resolvedTarget, { skipInitEvents: true });
                 yield* managed?.onStopped ?? Effect.void;
                 return yield* startApp(
