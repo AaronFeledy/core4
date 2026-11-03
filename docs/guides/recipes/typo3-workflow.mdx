@@ -93,6 +93,8 @@ lando exec appserver -- chown -R www-data:www-data \
 
 `config/system` is on the list because Admin Tools and `lando typo3 extension:setup` rewrite `settings.php`. Add `/app/config/sites` if you edit site configuration in the backend. Don't chown all of `/app`. That reowns `.lando.yml` and your code, so your editor and host `lando` commands lose write access.
 
+On a Linux host the bind mount shares owners, so these directories also belong to uid `33` on the host.
+
 ## Trust the Lando proxy
 
 Lando's proxy serves HTTPS and forwards plain HTTP to Apache on port `80`. TYPO3 matches the request scheme against the site's `https://` base, and it ignores the proxy's `X-Forwarded-Proto` header until you trust the proxy. Until then, the front page answers "No site configuration found." Trust it from `config/system/additional.php`:
@@ -105,7 +107,7 @@ PHP
 lando typo3 cache:flush
 ```
 
-`*` trusts every client address. That's fine for a local app; list real proxy addresses in production. The HTTP URL still returns TYPO3's 404 because the site base is `https://`. Use the HTTPS one.
+`*` trusts every client address, which is fine for a local Lando app. In production, list your real proxy IPs. The HTTP URL still returns TYPO3's 404 because the site base is `https://`. Use the HTTPS one.
 
 Then confirm the day-to-day tools:
 
@@ -158,13 +160,20 @@ lando typo3 cache:flush
 
 Use the service key `database`, not `127.0.0.1` or `localhost`. Setup saved these in `config/system/settings.php`.
 
-## Export the database
+## Export and load the database
 
 ```sh
 lando db:export typo3.sql.gz
 ```
 
-`db:export` writes the dump into your current directory. To load a dump, or to snapshot the database before an extension install or a core update, see [Import and export app databases](../tooling/db-import-export.mdx). Run `lando typo3 cache:flush` after an import so TYPO3 stops serving pages built from the old data.
+`db:export` writes a gzipped dump into your current directory. To load a dump back, pipe it into the MariaDB client. It connects to the app's database, here `typo3-demo`:
+
+```sh
+gunzip -c typo3.sql.gz | lando mariadb
+lando typo3 cache:flush
+```
+
+For a plain `.sql` file, use `lando mariadb < typo3.sql`. Run `lando typo3 cache:flush` after a load so TYPO3 stops serving pages built from the old data.
 
 ## Check the config
 
@@ -227,4 +236,3 @@ That removes containers and networks. Volumes stay unless you pass `--volumes` o
 - [Change a LAMP stack after init](./lamp-stack-variants.mdx)
 - [Add PHP](../services/php.mdx) for `uploadDirs` and `allowOverride`
 - [Debug PHP with Xdebug in PhpStorm](../tooling/xdebug-phpstorm.mdx)
-- [Import and export app databases](../tooling/db-import-export.mdx)
