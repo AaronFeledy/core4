@@ -1,10 +1,10 @@
 import type { AppPlan, InternalEndpoint, PublishedEndpoint, ServicePlan } from "@lando/sdk/schema";
 import { containerMountIntent } from "./container-mounts.ts";
+import { serviceContainerName } from "./container-name.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { CREATE_CONFIG_LABEL, createConfigFingerprint } from "./create-fingerprint.ts";
 import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
 import { literalServiceEnvironment, requireCurrentCreationPlan } from "./environment-values.ts";
-import { serviceContainerHostname } from "./hostname.ts";
 import {
   APP_LABEL,
   APP_ROOT_LABEL,
@@ -16,7 +16,7 @@ import {
 import { physicalListenerPorts, physicalPublications } from "./physical-publications.ts";
 
 export { bindMountStrings, mountSuffix } from "./container-mounts.ts";
-export { serviceContainerName } from "./hostname.ts";
+export { serviceContainerName } from "./container-name.ts";
 export { ContainerPlanError, normalizeCommand, normalizeEntrypoint };
 
 /** Retain earlier service metadata when a provider applies only a subset without reconciliation. */
@@ -189,7 +189,7 @@ export const containerCreateBodyFragment = (
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
     Image: artifact.ref,
-    Hostname: serviceContainerHostname(plan, service.name),
+    Hostname: serviceContainerName(plan, service.name),
     Env: envArrayFromRecord(options.environment ?? literalServiceEnvironment(service)),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),

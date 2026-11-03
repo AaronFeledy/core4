@@ -12,7 +12,6 @@ import { acceleratedMountVolume } from "./container-mounts.ts";
 import { ContainerPlanError } from "./container-plan-error.ts";
 import { containerHealthcheck, normalizeCommand, normalizeEntrypoint } from "./create-values.ts";
 import { fileModeMountIdentity } from "./file-mode-mounts.ts";
-import { serviceContainerHostname } from "./hostname.ts";
 import {
   AGENT_SESSION_LABEL,
   GPG_AGENT_OVERLAY_LABEL,
@@ -108,7 +107,6 @@ export const createConfigFingerprint = (
   const projection = {
     artifactProvenance: createArtifactIdentity(service),
     artifact: service.artifact,
-    hostname: serviceContainerHostname(plan, service.name),
     command: normalizeCommand(service.command),
     entrypoint: normalizeEntrypoint(service.entrypoint),
     init: service.init,
@@ -190,5 +188,5 @@ export const createConfigFingerprint = (
     ),
     knobs,
   };
-  return `v4:${sha256Hex(canonicalJson(projection))}`;
+  return `v3:${sha256Hex(canonicalJson(projection))}`;
 };

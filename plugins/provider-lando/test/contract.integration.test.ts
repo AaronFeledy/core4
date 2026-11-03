@@ -410,6 +410,9 @@ const makeFakeApiWithHooks = () => {
     request: (request) =>
       Effect.sync((): EngineHttpResponse => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.path === "/info" && request.method === "GET") return engineInfoResponse();
         if (request.path.startsWith("/libpod/volumes/prune?")) return { status: 200, body: "{}" };
         if (request.path === "/volumes/create") {

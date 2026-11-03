@@ -57,6 +57,9 @@ const fixture = (plan: AppPlan) => {
     request: (request) =>
       Effect.sync(() => {
         requests.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.path.startsWith("/networks/"))
           return {
             status: 200,

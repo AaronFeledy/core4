@@ -186,7 +186,7 @@ const fileLogs = (
     { follow: options.follow ?? false, sources: [selected], source: selected.id, ...options },
   );
 
-const containerName = "lando-livefilelogsapp-node";
+const containerName = "lando-livefilelogsapp--node";
 
 const realContainerHelper = (target: { readonly os: "linux"; readonly arch: "x64" | "arm64" }) =>
   Effect.tryPromise({

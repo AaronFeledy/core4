@@ -18,7 +18,7 @@ import {
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("composeknobsapp");
 const appRoot = AbsolutePath.make("/tmp/lando-compose-knobs-app");
-const containerName = "lando-composeknobsapp-web";
+const containerName = "lando-composeknobsapp--web";
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const metadata = {
   resolvedAt: DateTime.makeUnsafe("2026-07-27T00:00:00Z"),

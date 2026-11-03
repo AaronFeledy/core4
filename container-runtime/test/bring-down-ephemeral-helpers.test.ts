@@ -70,7 +70,13 @@ describe("volume holder preservation during teardown", () => {
   ] as const)("empty selection never discovers or sweeps helpers: %j", async ({ stores, options }) => {
     const { api, effect } = down({ ...basePlan, stores }, options);
     expect(await Effect.runPromise(effect)).toMatchObject({ _tag: "Success", success: { changed: false } });
-    expect(api.calls.every((call) => call.method === "GET" && call.path.startsWith("/networks/"))).toBe(true);
+    expect(
+      api.calls.every(
+        (call) =>
+          call.method === "GET" &&
+          (call.path.startsWith("/networks/") || call.path.startsWith("/containers/json?")),
+      ),
+    ).toBe(true);
   });
 
   test("cache-only purge touches only its selected cache volume", async () => {

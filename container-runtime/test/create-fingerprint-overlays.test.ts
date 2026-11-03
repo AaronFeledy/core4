@@ -94,22 +94,22 @@ const overlays: Readonly<Record<string, ServicePlan>> = {
   },
 };
 
-test("pins v4 create identities across integration overlays", () => {
+test("preserves literal v3 create identities captured before overlay refactoring", () => {
   // Given representative plans with absent optional fields and exact integration evidence.
-  // When the provider emits its immutable-create label.
+  // When the provider emits its existing immutable-create label.
   const fingerprints = Object.fromEntries(
     Object.entries(overlays).map(([name, selected]) => [
       name,
       commonContainerLabels(plan, selected)[CREATE_CONFIG_LABEL],
     ]),
   );
-  // Then session overlays share one identity while the known-hosts bind changes it.
+  // Then existing persisted identities remain byte-identical.
   expect(fingerprints).toEqual({
-    plain: "v4:3bf8e0bb1892dcb3d7520d1d3168f152bb78d4b21eaf2996e48b3761796738dc",
-    ssh: "v4:3bf8e0bb1892dcb3d7520d1d3168f152bb78d4b21eaf2996e48b3761796738dc",
-    gpg: "v4:3bf8e0bb1892dcb3d7520d1d3168f152bb78d4b21eaf2996e48b3761796738dc",
-    hostProxy: "v4:3bf8e0bb1892dcb3d7520d1d3168f152bb78d4b21eaf2996e48b3761796738dc",
-    knownHosts: "v4:f288588ed03be182e4058d6223e3466f3db0ba54bd2b37e861f23fdead5f17b7",
+    plain: "v3:37e6333e3a440a2fc70897f5ce789bc06b827616038577abd43ded7242276ab5",
+    ssh: "v3:37e6333e3a440a2fc70897f5ce789bc06b827616038577abd43ded7242276ab5",
+    gpg: "v3:37e6333e3a440a2fc70897f5ce789bc06b827616038577abd43ded7242276ab5",
+    hostProxy: "v3:37e6333e3a440a2fc70897f5ce789bc06b827616038577abd43ded7242276ab5",
+    knownHosts: "v3:9e9b6b9f855df341f570cd09a8817283d6ffbf0116f0b3bfac06602b7ff28cbb",
   });
 });
 
@@ -130,6 +130,6 @@ test("fingerprints source identity only when a bind defines it", () => {
   const original = fingerprint("2049:9007199254740993");
   const replaced = fingerprint("2049:9007199254740994");
   // Then old plans keep their exact bytes while a new inode requires reconciliation.
-  expect(absent).toBe("v4:f288588ed03be182e4058d6223e3466f3db0ba54bd2b37e861f23fdead5f17b7");
+  expect(absent).toBe("v3:9e9b6b9f855df341f570cd09a8817283d6ffbf0116f0b3bfac06602b7ff28cbb");
   expect(new Set([absent, original, replaced]).size).toBe(3);
 });

@@ -88,7 +88,7 @@ const plan: AppPlan = {
 
 const inspectBody = (health?: string): string =>
   JSON.stringify({
-    Id: "lando-healthapp-web-id",
+    Id: "lando-healthapp--web-id",
     Image: "sha256:runtime-image",
     State: {
       Running: true,
@@ -101,7 +101,7 @@ const inspectBody = (health?: string): string =>
 
 const stoppedInspectBody = (health?: string): string =>
   JSON.stringify({
-    Id: "lando-healthapp-web-id",
+    Id: "lando-healthapp--web-id",
     State: {
       Running: false,
       Status: "exited",
@@ -199,7 +199,7 @@ describe("podman inspect health", () => {
     expect(observed).toMatchObject({
       status: "stopped",
       exitCode: 17,
-      containerId: "lando-healthapp-web-id",
+      containerId: "lando-healthapp--web-id",
     });
   });
   test("redacts runtime-registered values in a failed inspect response", async () => {

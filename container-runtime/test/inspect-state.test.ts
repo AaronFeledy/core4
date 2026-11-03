@@ -64,7 +64,7 @@ test("projects mounts and connections from one container inspect request", async
       },
     ),
   );
-  expect(requests).toEqual(["/containers/lando-inspect-state-web/json"]);
+  expect(requests).toEqual(["/containers/lando-inspect-state--web/json"]);
   expect(result.mounts).toEqual({
     status: "present",
     mounts: [{ type: "volume", source: "db", target: "/data", readOnly: false }],

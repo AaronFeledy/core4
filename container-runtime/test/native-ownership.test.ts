@@ -66,6 +66,9 @@ const fakeApi = (observations: ReadonlyMap<string, object>) => {
     request: (request) =>
       Effect.sync(() => {
         calls.push(request);
+        if (request.method === "GET" && request.path.startsWith("/containers/json?")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.method !== "GET") return { status: 204, body: "" };
         const observed = observations.get(request.path);
         return observed === undefined
@@ -85,9 +88,9 @@ for (const labels of [
   test(`bring-down refuses replacement container ownership ${JSON.stringify(labels)}`, async () => {
     // Given an owned slot replaced by a different native object at the same name.
     const observations = new Map<string, object>([
-      ["/containers/lando-owned-web/json", { Id: "original", Config: { Labels: ownedLabels } }],
+      ["/containers/lando-owned--web/json", { Id: "original", Config: { Labels: ownedLabels } }],
     ]);
-    observations.set("/containers/lando-owned-web/json", { Id: "replacement", Config: { Labels: labels } });
+    observations.set("/containers/lando-owned--web/json", { Id: "replacement", Config: { Labels: labels } });
     const fake = fakeApi(observations);
     // When
     const result = await Effect.runPromise(bringDown(plan, { api: fake.api, ctx }).pipe(Effect.result));
@@ -103,7 +106,7 @@ for (const labels of [
         ["/networks/private", { Id: "private-id", Labels: networkLabels }],
         ["/networks/shared", { Id: "shared-id" }],
         [
-          "/containers/lando-owned-web/json",
+          "/containers/lando-owned--web/json",
           { Id: "replacement", Config: { Labels: labels }, State: { Running: true } },
         ],
       ]),
@@ -161,7 +164,7 @@ test("bring-up failure retains a legacy unlabeled private network and never muta
     new Map([
       ["/networks/private", { Id: "legacy-network", Name: "private", Labels: {} }],
       ["/networks/shared", { Id: "shared-network", Labels: {} }],
-      ["/containers/lando-owned-web/json", { Id: "foreign", Config: { Labels: {} } }],
+      ["/containers/lando-owned--web/json", { Id: "foreign", Config: { Labels: {} } }],
     ]),
   );
   // When
@@ -184,7 +187,7 @@ for (const path of ["bring-up", "bring-down"] as const) {
         new Map([
           ["/networks/abcdef123456", { Id: "abcdef1234567890", Name: name, Labels: {} }],
           ["/networks/shared", { Id: "shared-network", Labels: {} }],
-          ["/containers/lando-owned-web/json", { Id: "foreign", Config: { Labels: {} } }],
+          ["/containers/lando-owned--web/json", { Id: "foreign", Config: { Labels: {} } }],
         ]),
       );
       // When bring-up fails closed or bring-down validates ownership.
@@ -205,7 +208,7 @@ test("bring-down mutates verified native IDs rather than reusable names", async 
   // Given
   const fake = fakeApi(
     new Map([
-      ["/containers/lando-owned-web/json", { Id: "observed-container", Config: { Labels: ownedLabels } }],
+      ["/containers/lando-owned--web/json", { Id: "observed-container", Config: { Labels: ownedLabels } }],
       ["/networks/private", { Id: "observed-network", Labels: networkLabels }],
     ]),
   );
@@ -264,8 +267,9 @@ for (const name of ["shared", "lando_bridge_network"]) {
       request: (request) =>
         Effect.sync(() => {
           calls.push(request);
+          if (request.path.startsWith("/containers/json?")) return { status: 200, body: "[]" };
           if (request.path === "/networks/create") return { status: 201, body: "{}" };
-          if (request.path === "/containers/lando-owned-web/json")
+          if (request.path === "/containers/lando-owned--web/json")
             return { status: 200, body: JSON.stringify({ Id: "foreign", Config: { Labels: {} } }) };
           return { status: 404, body: "" };
         }),
@@ -285,7 +289,7 @@ for (const name of ["shared", "lando_bridge_network"]) {
 
 test("bring-down refuses an owned container without observed native identity", async () => {
   // Given
-  const fake = fakeApi(new Map([["/containers/lando-owned-web/json", { Config: { Labels: ownedLabels } }]]));
+  const fake = fakeApi(new Map([["/containers/lando-owned--web/json", { Config: { Labels: ownedLabels } }]]));
   // When
   const result = await Effect.runPromise(bringDown(plan, { api: fake.api, ctx }).pipe(Effect.result));
   // Then

@@ -222,7 +222,7 @@ for (const foreign of [false, true]) {
     await withInventory(async ({ store, plan, root, observations, cleanup, calls }) => {
       // Given
       await Effect.runPromise(store.prepare(webFor(plan)));
-      observations.set("/containers/lando-owned-web/json", {
+      observations.set("/containers/lando-owned--web/json", {
         Id: "observed-container-id",
         Config: {
           Labels: {
@@ -252,7 +252,7 @@ test("a Git-grouped app identity still verifies, re-prepares, and cleans its rec
     });
     await Effect.runPromise(store.prepare(grouped));
     await Effect.runPromise(store.prepare(grouped));
-    observations.set("/containers/lando-owned-web/json", {
+    observations.set("/containers/lando-owned--web/json", {
       Id: "observed-container-id",
       Config: {
         Labels: { "dev.lando.app": plan.id, "dev.lando.app-root": root, "dev.lando.service": "web" },

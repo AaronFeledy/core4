@@ -24,6 +24,11 @@ import { redactDetails, redactorFor, withApiReason } from "../redact.ts";
 import { retainShutdownObservations } from "../stop-container.ts";
 import { teardownVolumeClasses, volumeClassForStore } from "../volume-classes.ts";
 import { planVolumeFilters } from "../volume-ownership.ts";
+import {
+  listLabeledServiceContainers,
+  removeStaleServiceContainers,
+  selectStaleServiceContainers,
+} from "./stale-service-containers.ts";
 import { stopService } from "./stop-service.ts";
 import { pruneVolumes, volumeMatchesFilters } from "./volume-prune.ts";
 
@@ -227,11 +232,22 @@ export const bringDown = Effect.fn("RuntimeProvider.bringDown")(function* (
 
   let changed = false;
   const shutdownObservations: ServiceShutdownObservation[] = [];
+  const stopCtx = { ...options.ctx, remediation: deps.remediation };
+  // Whole-app stop shares stale-name selection with bring-up: list once, remove owned
+  // plan-service containers whose native name is not the current planned name.
+  const containers = yield* listLabeledServiceContainers(api, stopCtx, plan.id).pipe(
+    Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+  );
+  const stales = selectStaleServiceContainers(plan, options.ctx.providerId, containers);
+  const staleRemoved = yield* removeStaleServiceContainers(api, stopCtx, plan, stales).pipe(
+    Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)),
+  );
+  changed = changed || staleRemoved;
   for (const service of Object.values(plan.services).reverse()) {
     const result = yield* stopService(plan, service, {
       ...options,
       api,
-      ctx: { ...options.ctx, remediation: deps.remediation },
+      ctx: stopCtx,
     }).pipe(Effect.mapError((error) => retainShutdownObservations(error, shutdownObservations)));
     changed = changed || result.changed;
     shutdownObservations.push(...result.shutdownObservations);

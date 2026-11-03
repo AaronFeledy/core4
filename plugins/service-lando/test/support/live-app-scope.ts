@@ -71,9 +71,9 @@ export const defaultLiveAppLifecycle: LiveAppLifecycle = {
   bringUp: (plan, api) => {
     const refs = [
       ...new Set(
-        Object.values(plan.services)
-          .filter((service) => service.artifact?.kind === "ref")
-          .map((service) => service.artifact.ref),
+        Object.values(plan.services).flatMap((service) =>
+          service.artifact?.kind === "ref" ? [service.artifact.ref] : [],
+        ),
       ),
     ];
     return Effect.asVoid(
