@@ -427,11 +427,13 @@ bun test core/test/live/mssql-transfer-roundtrip-live.integration.test.ts \
   core/test/live/dump-stdio-live.integration.test.ts
 ```
 
-Require six passing scenarios, not a skipped run. They cover SQL Server 2019
+Require seven passing scenarios, not a skipped run. They cover SQL Server 2019
 and 2022, projected consumer credentials, gzip roundtrips, immediate warm reads,
 creation records, failure receipts, PostgreSQL authentication/export
 atomicity, and dumps streamed through stdout and stdin: byte-exact output,
-host compression, truncated-stdin refusal, early close, and interruption. Each scenario purges only its unique app's volumes and snapshots.
+host gzip and zstd compression, the JSON result on stderr, seed refusal before
+stdin is read, truncated-stdin refusal for PostgreSQL, MySQL, and a MongoDB
+archive cut at a block boundary, early close, and interruption. Each scenario purges only its unique app's volumes and snapshots.
 Set `LANDO_TEST_ARTIFACT_ROOT` to an existing caller-owned directory to retain
 sanitized per-command evidence after app teardown; remove that directory after
 review.

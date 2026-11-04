@@ -33,7 +33,9 @@ lando db:import backups/app.sql.gz --service database --yes
 lando db:import backups/app.sql.zst --service database --yes
 ```
 
-Before an import or seed changes anything, Lando reads the whole dump. An empty dump fails with `SqlDumpIncompleteError`, and so does a dump that a dump tool stopped writing partway: a mysqldump or mariadb-dump dump without its final `-- Dump completed` line, a pg_dump dump without its `-- PostgreSQL database dump complete` comment, or a mongodump archive in which a collection never finished. The database and its seed eligibility stay as they were, and no recovery snapshot is taken. SQL you wrote yourself has no such marker, so it isn't checked for truncation.
+Before an import or seed changes anything, Lando reads the whole dump. An empty dump fails with `SqlDumpIncompleteError`, and so does a dump that a dump tool stopped writing partway: a mysqldump or mariadb-dump dump without its final `-- Dump completed` line, a pg_dump dump without its `-- PostgreSQL database dump complete` comment, or a mongodump archive in which a collection never finished. Lando checks for the marker of the target database's own dump tool, so a MySQL dump is checked when you import into MySQL or MariaDB, not when you import it into Postgres. The database and its seed eligibility stay as they were, and no recovery snapshot is taken. SQL you wrote yourself and SQL Server `.bak` files have no such marker, so they aren't checked for truncation.
+
+This check catches a dump tool that stopped early. It can't prove the dump is valid: a dump edited by hand, or one whose ending was faked, gets past it, and the database client still reports errors in the statements themselves.
 
 MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
 
@@ -69,9 +71,18 @@ lando db:export - --compression=zstd | ssh backup-host 'cat > app.sql.zst'
 
 `db:export -` writes the dump to stdout byte for byte, and progress stays on stderr. SQL Server writes its `.bak` backup the same way. The stream is uncompressed unless you pass `--compression=gzip` or `--compression=zstd`, which compresses on the host, so you don't need `gzip` or `zstd` installed; `--compression-level` tunes it. A file export takes its compression from the `.gz` or `.zst` suffix instead, so `--compression` with a file name is refused.
 
-Lando refuses to write a dump to a terminal, so redirect or pipe stdout. `--format=json` and `--format=yaml` need stdout for their result and are refused with `-`; export to a file when you need the structured result. To feed a named pipe, redirect into it, as in `lando db:export - > /tmp/dump.fifo`. A file export into an existing pipe or directory is refused before the dump starts, because the export would replace it.
+Lando refuses to write a dump to a terminal, so redirect or pipe stdout. To feed a named pipe, redirect into it, as in `lando db:export - > /tmp/dump.fifo`. A file export into an existing pipe or directory is refused before the dump starts, because the export would replace it.
 
 A dump that fails partway has already sent part of its bytes downstream, and Lando exits non-zero. In a pipeline, check the export's exit status before trusting the output, for example with `set -o pipefail` in bash. If the reader closes early, as `| head` does, Lando stops the dump and exits with status 141.
+
+Scripts and agents that need the structured result can still ask for it. With `-`, `--format=json`, `--format=yaml`, `--json=<keys>`, and `--jq` write the result to stderr, because stdout carries the dump:
+
+```sh
+set -o pipefail
+lando db:export - --format=json 2> result.json | gzip > dump.sql.gz
+```
+
+`result.json` ends with one result envelope: `"ok": true` on success, or `"ok": false` and the tagged error on failure, including failures before the dump starts. With the default renderer the envelope is usually all stderr holds, but a diagnostic or `--debug` output can come before it, so read the last line for JSON or the last document for YAML.
 
 To import from stdin, pass `-` and `--yes`. Lando can't ask for confirmation because stdin carries the dump:
 
@@ -81,7 +92,7 @@ lando db:import - --yes < dump.sql
 
 Lando saves stdin to a private file in its cache directory, decompressing gzip or zstd input as it goes, then imports it exactly like a dump file: the same checks run, a recovery snapshot is taken first, and failures report the same errors. That disk needs room for the uncompressed dump; the file is removed when the import finishes. A compressed dump file is staged the same way. [Find where Lando keeps files](../config/global-config.mdx#find-where-lando-keeps-files) lists the cache directory for your platform. If the program feeding stdin dies partway, the dump it sent ends early, and the import fails before it changes anything; see [Export or import a dump](#export-or-import-a-dump). `lando db:seed - < dump.sql` reads stdin the same way and needs no `--yes`, because seed only fills a fresh, empty database.
 
-`-` works only when you run the `lando` CLI yourself. MCP tools and event commands can't use Lando's stdin or stdout for a dump, so they fail with `CommandStdioError`; pass a file path there.
+`-` works only when you run the `lando` CLI yourself. An MCP tool call that passes `-` is rejected before the command runs, and event commands fail with `CommandStdioError`, because neither has a stdin or stdout to give the dump. Pass a file path there. Scripts and agents can find the dash form in `lando help db:export --format=json`, where the `file` argument carries `"stdio": "stdout"` (`"stdin"` for `db:import` and `db:seed`).
 
 ### Stream a dump on Windows
 
@@ -171,7 +182,7 @@ lando db:seed --from-app shop
 lando db:seed --from-path ../shop --from-service database
 ```
 
-A dump file works from anywhere on the host, including outside the app root. Seed once: a second `db:seed`, or a seed into a database that already has tables, fails with `SqlSeedStateError`. Use `db:import` to load data into a database that's already in use.
+A dump file works from anywhere on the host, including outside the app root. Seed once: a second `db:seed`, or a seed into a database that already has tables, fails with `SqlSeedStateError`, and its remediation says which case you hit. Lando checks this before it reads the dump file or stdin, so a refused seed of a large dump returns right away. Use `db:import` to load data into a database that's already in use.
 
 If another service fails after Lando creates the database volume, fix that error and run `lando start` again. You can still use `db:seed` while the database stays fresh and empty. A volume Lando didn't create, or whose creation it couldn't record, isn't eligible.
 
@@ -212,15 +223,19 @@ lando db:reset --yes
     <Step name="help">
       <Run command="lando db:export --help" />
       <Verify command="lando db:export --help" expect={{ stdout: { regex: "--service" } }} />
-      <Verify command="lando db:export --help" expect={{ stdout: { regex: "or - for stdout" } }} />
+      <Verify command="lando db:export --help" expect={{ stdout: { regex: "Use - to write to stdout[.]" } }} />
+    </Step>
+    <Step name="machine-help">
+      <Run command="lando help db:export --format=json" />
+      <Verify command="lando help db:export --format=json" expect={{ stdout: { regex: "\"name\":\"file\"[^}]*\"stdio\":\"stdout\"" } }} />
     </Step>
   </Scenario>
 
-  <Scenario id="export-stdout-refuses-machine-format" render={false} reason="Regression for a dump and an envelope both claiming stdout">
+  <Scenario id="export-stdout-json-on-stderr" render={false} reason="Regression for the result envelope leaving stdout to a dash dump">
     <Step name="export-json">
       <UseFixture name="one-db" />
-      <Run command="lando db:export - --format=json" expectExit={2} />
-      <Verify errorTag="CommandStdioError" expect={{ regex: "stdout" }} />
+      <Run command="lando db:export - --compression=brotli --format=json" expectExit={2} />
+      <Verify command="lando db:export - --compression=brotli --format=json" expectExit={2} expect={{ stdout: "", stderr: { regex: "\"ok\":false,\"error\":\\{\"_tag\":\"MalformedCliFlagValueError\"" } }} />
     </Step>
   </Scenario>
 
