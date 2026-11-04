@@ -61,6 +61,7 @@ export interface McpInputMemberView {
   readonly required?: boolean;
   readonly multiple?: boolean;
   readonly valueType?: "string" | "integer";
+  readonly min?: number;
   readonly options?: ReadonlyArray<string>;
 }
 
@@ -87,11 +88,12 @@ const optionEnum = (view: McpInputMemberView): JsonSchemaObject => {
 };
 
 const memberSchema = (view: McpInputMemberView): JsonSchemaObject => {
-  const enumerated = optionEnum(view);
-  const base: JsonSchemaObject =
-    view.multiple === true
-      ? { type: "array", items: { type: memberType(view), ...enumerated } }
-      : { type: memberType(view), ...enumerated };
+  const scalar: JsonSchemaObject = {
+    type: memberType(view),
+    ...optionEnum(view),
+    ...(memberType(view) === "integer" && view.min !== undefined ? { minimum: view.min } : {}),
+  };
+  const base: JsonSchemaObject = view.multiple === true ? { type: "array", items: scalar } : scalar;
   return view.description === undefined ? base : { ...base, description: view.description };
 };
 
@@ -139,7 +141,9 @@ const scalarTypeMatches = (view: McpInputMemberView, value: unknown): boolean =>
     case "number":
       return typeof value === "number" && Number.isFinite(value);
     case "integer":
-      return typeof value === "number" && Number.isInteger(value);
+      return (
+        typeof value === "number" && Number.isInteger(value) && (view.min === undefined || value >= view.min)
+      );
     default:
       return typeof value === "string";
   }

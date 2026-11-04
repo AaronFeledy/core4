@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { updateAuthoredIncludes, verifyAuthoredIncludes } from "./include-pipeline.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+import { makeTestLandofilePorts, makeTestLandofileStateStore, seedGitSourceEntry } from "./support.ts";
 
 let root = "";
 beforeEach(async () => {
@@ -14,12 +14,15 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 const request = { source: "github:acme/shared", path: "fragment.yml" };
-const options = () => ({
-  appRoot: root,
-  cacheRoot: join(root, "cache"),
-  ports: makeTestLandofilePorts(join(root, "cache")),
-  stateStore: makeTestLandofileStateStore(),
-});
+const options = () => {
+  const cacheRoot = join(root, "cache");
+  return {
+    appRoot: root,
+    cacheRoot,
+    ports: makeTestLandofilePorts(cacheRoot),
+    stateStore: makeTestLandofileStateStore(cacheRoot),
+  };
+};
 
 test.each([
   { when: false, disabled: true },
@@ -98,9 +101,7 @@ test("annotation does not suppress acquisition failures inside disabled entries"
 
 test("disabled entries still report content mismatches and leave pins untouched", async () => {
   const content = "services:\n  remote:\n    image: redis:7\n";
-  const cache = join(root, "cache", "includes", "git", "a".repeat(40));
-  await mkdir(cache, { recursive: true });
-  await writeFile(join(cache, "fragment.yml"), content);
+  await seedGitSourceEntry(join(root, "cache"), "a".repeat(40), { "fragment.yml": content });
   const lock = `includes:\n  - source: github:acme/shared/fragment.yml\n    resolved: ${"a".repeat(40)}\n    checksum: ${"b".repeat(64)}\n`;
   await writeFile(join(root, ".lando.lock.yml"), lock);
   const report = await Effect.runPromise(
@@ -124,12 +125,12 @@ test.each([false, true])(
         ...input,
         landofile: { includes: [{ ...request, when: false }] },
         deps: {
-          gitCloner: {
-            clone: async ({ stagingDir }) => {
-              await mkdir(stagingDir, { recursive: true });
-              await writeFile(join(stagingDir, "fragment.yml"), "includes:\n  - ./nested.yml\n");
-              await writeFile(join(stagingDir, "nested.yml"), "services:\n  nested:\n    image: redis:7\n");
-              return { commitSha: "a".repeat(40) };
+          git: {
+            fetch: async ({ dest }) => {
+              await mkdir(dest, { recursive: true });
+              await writeFile(join(dest, "fragment.yml"), "includes:\n  - ./nested.yml\n");
+              await writeFile(join(dest, "nested.yml"), "services:\n  nested:\n    image: redis:7\n");
+              return { commit: "a".repeat(40) };
             },
           },
         },
@@ -146,8 +147,8 @@ test.each([false, true])(
           ],
         },
         deps: {
-          gitCloner: {
-            clone: async () => {
+          git: {
+            fetch: async () => {
               throw new Error("Offline verification must use cached pins");
             },
           },

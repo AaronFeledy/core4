@@ -9,7 +9,7 @@ import {
   ServiceName,
   authoredProbeTargetError,
 } from "@lando/sdk/schema";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Result, Schema, type Scope } from "effect";
 import { createIncludeResolutionSession } from "./include-session.ts";
 import { LANDOFILE_LAYER_POSITIONS } from "./layers.ts";
 import { fragmentIssues } from "./lint-fragments.ts";
@@ -55,10 +55,17 @@ export interface LandofileLintSnapshot {
   readonly resolved?: LoadScopedLandofile;
 }
 
+// Effect.fn infers the call signature from its combinators, so the scope combinator restates the args.
+const scopedSnapshot = <A, E>(
+  effect: Effect.Effect<A, E, Scope.Scope>,
+  _options: LintLandofileOptions = {},
+  _inputs?: LandofileRuntimeInputs,
+) => Effect.scoped(effect);
+
 export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(function* (
   options: LintLandofileOptions = {},
   inputs?: LandofileRuntimeInputs,
-): Effect.fn.Return<LandofileLintSnapshot, LandofileNotFoundError | LandofileFormConflictError> {
+): Effect.fn.Return<LandofileLintSnapshot, LandofileNotFoundError | LandofileFormConflictError, Scope.Scope> {
   const templates = options.templates ?? inputs?.templates;
   const { filePath: file } = yield* findDiscoveredLandofilePath(options.cwd);
   let documents: readonly SourceDocument[] = [];
@@ -246,7 +253,7 @@ export const lintLandofileSnapshot = Effect.fn("Landofile.lintSnapshot")(functio
     },
     ...(Result.isSuccess(finalized) ? { resolved: finalized.success } : {}),
   };
-});
+}, scopedSnapshot);
 
 export const lintLandofile = (options: LintLandofileOptions = {}, inputs?: LandofileRuntimeInputs) =>
   lintLandofileSnapshot(options, inputs).pipe(Effect.map(({ result }) => result));

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { resolveAuthoredIncludes } from "./include-pipeline.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+import { isIncludeLockKey, makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
 
 test("load merges entries written after its initial lock read under the operation lock", async () => {
   // Given
@@ -12,15 +12,16 @@ test("load merges entries written after its initial lock read under the operatio
   const sha = "a".repeat(40);
   const content = "services: {}\n";
   const checksum = new Bun.CryptoHasher("sha256").update(content).digest("hex");
-  const store = makeTestLandofileStateStore();
+  const cacheRoot = join(root, "cache");
+  const store = makeTestLandofileStateStore(cacheRoot);
   const locks: string[] = [];
   try {
     // When
     await Effect.runPromise(
       resolveAuthoredIncludes({
         appRoot: root,
-        cacheRoot: join(root, "cache"),
-        ports: makeTestLandofilePorts(join(root, "cache")),
+        cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         stateStore: {
           ...store,
           withLock: (key, body) => {
@@ -30,14 +31,14 @@ test("load merges entries written after its initial lock read under the operatio
         },
         landofile: { includes: [{ source: "github:acme/shared", path: "web.yml" }] },
         deps: {
-          gitCloner: {
-            clone: async ({ dest }) => {
+          git: {
+            fetch: async ({ dest }) => {
               await Bun.write(
                 join(root, ".lando.lock.yml"),
                 `includes:\n  - source: github:acme/other/web.yml\n    resolved: ${sha}\n    checksum: ${checksum}\n`,
               );
               await Bun.write(join(dest, "web.yml"), content);
-              return { commitSha: sha };
+              return { commit: sha };
             },
           },
         },
@@ -50,7 +51,9 @@ test("load merges entries written after its initial lock read under the operatio
         { source: "github:acme/shared/web.yml", resolved: sha, checksum },
       ],
     });
-    expect(locks).toEqual([expect.stringMatching(/^landofile-include-lock:[a-f0-9]{64}$/u)]);
+    expect(locks.filter(isIncludeLockKey)).toEqual([
+      expect.stringMatching(/^landofile-include-lock:[a-f0-9]{64}$/u),
+    ]);
     expect(await readdir(root)).not.toContain(".lando.lock.yml.lock");
   } finally {
     await rm(root, { recursive: true, force: true });

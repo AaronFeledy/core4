@@ -160,4 +160,8 @@ export const compileLandofileReplacement = Effect.fn("Landofile.compileReplaceme
 export const validateLandofileReplacement = (
   replacement: LandofileReplacement,
   inputs: Parameters<typeof compileLandofileReplacement>[1],
-) => compileLandofileReplacement(replacement, inputs).pipe(Effect.map(({ landofile }) => landofile));
+) =>
+  compileLandofileReplacement(replacement, inputs).pipe(
+    Effect.map(({ landofile }) => landofile),
+    Effect.scoped,
+  );

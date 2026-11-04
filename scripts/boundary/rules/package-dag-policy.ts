@@ -66,6 +66,10 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store", "@lando/redaction"],
     devDependencies: [],
   },
+  "@lando/source-acquisition": {
+    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
+    devDependencies: [],
+  },
   "@lando/data-mover": {
     dependencies: [
       "@lando/container-runtime",
@@ -98,7 +102,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
     devDependencies: ["@lando/renderer"],
   },
   "@lando/landofile": {
-    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
+    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store", "@lando/source-acquisition"],
     devDependencies: [],
   },
   "@lando/engine": {
@@ -108,6 +112,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/state-store",
       "@lando/container-runtime",
       "@lando/landofile",
+      "@lando/source-acquisition",
       "@lando/redaction",
       "@lando/http-client",
       "@lando/telemetry",
@@ -126,6 +131,7 @@ export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>>
       "@lando/http-client",
       "@lando/telemetry",
       "@lando/managed-file",
+      "@lando/source-acquisition",
       "@lando/renderer",
       "@lando/service-lando",
       "@lando/provider-docker",

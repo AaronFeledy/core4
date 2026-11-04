@@ -14,6 +14,8 @@ export const COMMAND_TOPICS = {
   "meta:events": { description: "Lifecycle event diagnostics." },
   "meta:snapshots": { description: "Inspect and clean up provider snapshot data." },
   snapshots: { description: "Inspect and clean up provider snapshot data." },
+  "meta:sources": { description: "Inspect and clean up the remote source cache." },
+  sources: { description: "Inspect and clean up the remote source cache." },
   "meta:global": { description: "Manage the host-level global Lando app." },
   global: { description: "Manage the host-level global Lando app." },
   "meta:plugin": { description: "Plugin install, remove, and authoring commands." },

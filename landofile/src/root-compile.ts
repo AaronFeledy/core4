@@ -188,4 +188,4 @@ export const composeLandofileRootLayers = Effect.fn("Landofile.composeLayers")(f
     yield* Effect.forEach(evaluated.runtime.recorder.effectiveChecks, (check) => check);
   }
   return evaluated;
-});
+}, Effect.scoped);

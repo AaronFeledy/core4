@@ -17,23 +17,27 @@ afterEach(async () => {
 });
 const request = { source: "github:acme/shared", path: "fragment.yml", when: false };
 const fixture = () => {
-  const ports = makeTestLandofilePorts(join(root, "cache"));
+  const cacheRoot = join(root, "cache");
+  const basePorts = makeTestLandofilePorts(cacheRoot);
   return {
     appRoot: root,
-    cacheRoot: join(root, "cache"),
-    stateStore: makeTestLandofileStateStore(),
+    cacheRoot,
+    stateStore: makeTestLandofileStateStore(cacheRoot),
     templates: { modules: [] },
     ports: {
-      ...ports,
-      git: {
-        clone: async ({ dest }: { readonly dest: string }) => {
-          await mkdir(dest, { recursive: true });
-          await writeFile(
-            join(dest, "fragment.yml"),
-            'includes:\n  - source: ./nested.yml\n    when: "{{ env.IGNORED_CONDITION }}"\nservices:\n  remote:\n    image: alpine:3\n',
-          );
-          await writeFile(join(dest, "nested.yml"), "services:\n  nested:\n    image: redis:7\n");
-          return { commitSha: "a".repeat(40) };
+      ...basePorts,
+      sources: {
+        ...basePorts.sources,
+        git: {
+          fetch: async ({ dest }: { readonly dest: string }) => {
+            await mkdir(dest, { recursive: true });
+            await writeFile(
+              join(dest, "fragment.yml"),
+              'includes:\n  - source: ./nested.yml\n    when: "{{ env.IGNORED_CONDITION }}"\nservices:\n  remote:\n    image: alpine:3\n',
+            );
+            await writeFile(join(dest, "nested.yml"), "services:\n  nested:\n    image: redis:7\n");
+            return { commit: "a".repeat(40) };
+          },
         },
       },
     },

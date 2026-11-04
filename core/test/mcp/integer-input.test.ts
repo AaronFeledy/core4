@@ -3,8 +3,10 @@ import { deriveToolInputSchema, validateToolInput } from "@lando/mcp/registry";
 import { McpRuntimeConfig, McpService } from "@lando/mcp/service";
 import { startStdioClient } from "@lando/mcp/testing";
 import { RedactionService } from "@lando/redaction/service";
+import { McpToolInputError } from "@lando/sdk/errors";
 import { Effect, Layer, Result, Schema } from "effect";
 import { logsSpec as typedLogsSpec } from "../../src/cli/command-specs/app/logs";
+import { metaSourcesGcSpec } from "../../src/cli/command-specs/meta/sources/gc";
 import { parseFlagValue } from "../../src/cli/compiled-argv";
 import { validateEventCommandInput } from "../../src/cli/event-command-input";
 import { validateCliFlagValues } from "../../src/cli/flag-value-validation";
@@ -17,6 +19,7 @@ import { Flags } from "../../src/cli/spec/metadata";
 import { serviceLayer } from "../../src/mcp-command-executor";
 
 const logsSpec: LandoCommandSpec = typedLogsSpec;
+const sourcesGcSpec: LandoCommandSpec = metaSourcesGcSpec;
 
 test("projects logs tail as an integer", () => {
   expect(deriveToolInputSchema(logsSpec)).toMatchObject({
@@ -25,6 +28,13 @@ test("projects logs tail as an integer", () => {
 });
 test("accepts JSON integer tail through the shared validator", () => {
   expect(validateToolInput(logsSpec, { flags: { tail: 7 } }).flags.tail).toBe(7);
+});
+test("projects and enforces an integer flag minimum for MCP callers", () => {
+  expect(deriveToolInputSchema(sourcesGcSpec)).toMatchObject({
+    properties: { flags: { properties: { "older-than": { type: "integer", minimum: 0 } } } },
+  });
+  expect(validateToolInput(sourcesGcSpec, { flags: { "older-than": 0 } }).flags["older-than"]).toBe(0);
+  expect(() => validateToolInput(sourcesGcSpec, { flags: { "older-than": -1 } })).toThrow(McpToolInputError);
 });
 test("uses integer metadata rather than the flag name on native inputs", () => {
   const flags = { count: Flags.integer(), tail: Flags.string() };

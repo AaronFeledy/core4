@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { LandofileShape } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
-import { Effect } from "effect";
+import { Effect, type Scope } from "effect";
 import { copyLandofileProvenance } from "./copy-provenance.ts";
 import {
   type LandofileIncludeDeps,
@@ -19,6 +19,7 @@ import {
   authoredIncludeEntriesWithPaths,
   normalizeInclude,
 } from "./include-source.ts";
+import { withIncludeSourceSession } from "./include-sources.ts";
 import { resolveTree } from "./include-tree.ts";
 import type { PresentLandofileLayer } from "./layers.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY } from "./load-expression-file.ts";
@@ -66,7 +67,7 @@ export interface UpdateLandofileIncludesOptions {
 }
 export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(function* (
   options: UpdateLandofileIncludesOptions,
-): Effect.fn.Return<IncludeUpdateReport, ResolveIncludesError> {
+): Effect.fn.Return<IncludeUpdateReport, ResolveIncludesError, Scope.Scope> {
   const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
   const checkMode = options.check === true;
   const noNetwork = options.noNetwork === true;
@@ -104,81 +105,95 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
   const landofile: LandofileShape = scoped
     ? { ...landofileWithoutComposeIncludes, includes }
     : options.landofile;
-  const ctx: ResolveContext = {
-    recorder,
-    pendingSites: options.loadScope.pendingSites,
-    lockAvailable: pins.available,
-    appRoot: options.appRoot,
-    sourceRoot: options.appRoot,
-    userOwned: false,
-    cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
-    lockfilePath,
-    deps: options.deps ?? {},
-    maxDepth: options.maxDepth ?? 8,
-    mode: "refresh",
-    lockEntries: existing,
-    loadScope: { ...options.loadScope, includeMode: "all" },
-    stagedLocks: new Map(),
-    walk: { selectors: new Map(), issues: new Map(), complete: true },
-    noNetwork,
-    loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
-    ...(options.ports === undefined ? {} : { ports: options.ports }),
-  };
-  const resolved = [];
-  for (const item of options.layers ?? [
+  const cacheRoot = yield* resolveCacheRoot(options.cacheRoot, options.ports);
+  const ctx = yield* withIncludeSourceSession(
     {
-      landofile,
-      layer: {
-        filePath: join(options.appRoot, ".lando.yml"),
-        layer: "canonical" as const,
-        order: 3 as const,
-      },
+      cacheRoot,
+      stateStore: options.stateStore,
+      ports: options.ports,
+      deps: options.deps,
     },
-  ]) {
-    let selected = item.landofile;
-    if (scoped && options.layers !== undefined) {
-      const entries = authoredIncludeEntriesWithPaths(includeAcquisitionView(item.landofile)).filter(
-        ({ entry }) => requested.has(normalizeInclude(entry).source),
-      );
-      const { include: _include, includes: _includes, ...rest } = item.landofile;
-      selected = copyLandofileProvenance(item.landofile, {
-        ...rest,
-        includes: entries.map(({ entry }) => entry),
-      });
-      const origins = getOrigins(item.landofile);
-      const includesOrigin = origins?.children.get("includes") ?? origins?.children.get("include");
-      if (origins !== undefined && includesOrigin !== undefined) {
-        const children = new Map(origins.children);
-        children.set("includes", {
-          ...includesOrigin,
-          children: new Map(
-            entries.flatMap(({ path }, index) => {
-              const node = origins.children.get(path[0] ?? "")?.children.get(path[1] ?? "");
-              return node === undefined ? [] : [[index, node] as const];
+    (sourceSession) =>
+      Effect.gen(function* () {
+        const ctx: ResolveContext = {
+          recorder,
+          pendingSites: options.loadScope.pendingSites,
+          lockAvailable: pins.available,
+          appRoot: options.appRoot,
+          sourceRoot: options.appRoot,
+          userOwned: false,
+          cacheRoot,
+          lockfilePath,
+          deps: options.deps ?? {},
+          maxDepth: options.maxDepth ?? 8,
+          mode: "refresh",
+          lockEntries: existing,
+          loadScope: { ...options.loadScope, includeMode: "all" },
+          stagedLocks: new Map(),
+          walk: { selectors: new Map(), issues: new Map(), complete: true },
+          noNetwork,
+          loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
+          ...(options.ports === undefined ? {} : { ports: options.ports }),
+          ...(sourceSession === undefined ? {} : { sourceSession }),
+        };
+        const resolved = [];
+        for (const item of options.layers ?? [
+          {
+            landofile,
+            layer: {
+              filePath: join(options.appRoot, ".lando.yml"),
+              layer: "canonical" as const,
+              order: 3 as const,
+            },
+          },
+        ]) {
+          let selected = item.landofile;
+          if (scoped && options.layers !== undefined) {
+            const entries = authoredIncludeEntriesWithPaths(includeAcquisitionView(item.landofile)).filter(
+              ({ entry }) => requested.has(normalizeInclude(entry).source),
+            );
+            const { include: _include, includes: _includes, ...rest } = item.landofile;
+            selected = copyLandofileProvenance(item.landofile, {
+              ...rest,
+              includes: entries.map(({ entry }) => entry),
+            });
+            const origins = getOrigins(item.landofile);
+            const includesOrigin = origins?.children.get("includes") ?? origins?.children.get("include");
+            if (origins !== undefined && includesOrigin !== undefined) {
+              const children = new Map(origins.children);
+              children.set("includes", {
+                ...includesOrigin,
+                children: new Map(
+                  entries.flatMap(({ path }, index) => {
+                    const node = origins.children.get(path[0] ?? "")?.children.get(path[1] ?? "");
+                    return node === undefined ? [] : [[index, node] as const];
+                  }),
+                ),
+              });
+              rememberOrigins(selected, { ...origins, children });
+            }
+          }
+          resolved.push(
+            yield* resolveTree(selected, ctx, {
+              depth: 0,
+              stack: [options.appRoot],
+              source: item.layer.filePath,
+              layer: item.layer.layer,
+              order: item.layer.order,
             }),
-          ),
+          );
+        }
+        yield* inspectIncludeComposition(resolved, {
+          appRoot: options.appRoot,
+          scope: { ...options.loadScope, includeMode: "all" },
+          recorder,
         });
-        rememberOrigins(selected, { ...origins, children });
-      }
-    }
-    resolved.push(
-      yield* resolveTree(selected, ctx, {
-        depth: 0,
-        stack: [options.appRoot],
-        source: item.layer.filePath,
-        layer: item.layer.layer,
-        order: item.layer.order,
+        yield* finishLoadStage(join(options.appRoot, ".lando.yml"), recorder);
+        yield* Effect.forEach(recorder.effectiveChecks, (check) => check);
+        if (options.validate !== undefined) yield* options.validate;
+        return ctx;
       }),
-    );
-  }
-  yield* inspectIncludeComposition(resolved, {
-    appRoot: options.appRoot,
-    scope: { ...options.loadScope, includeMode: "all" },
-    recorder,
-  });
-  yield* finishLoadStage(join(options.appRoot, ".lando.yml"), recorder);
-  yield* Effect.forEach(recorder.effectiveChecks, (check) => check);
-  if (options.validate !== undefined) yield* options.validate;
+  );
   const entries: IncludeUpdateEntry[] = [...ctx.stagedLocks.values()]
     .sort((left, right) => byCodepointString(left.source, right.source))
     .map((entry) => {
@@ -208,4 +223,4 @@ export const updateLandofileIncludes = Effect.fn("Landofile.updateIncludes")(fun
     wrote = true;
   }
   return { lockfilePath, entries, removed, drift, wrote, checkMode, noNetwork, requestedSources };
-});
+}, Effect.scoped);
