@@ -1,12 +1,16 @@
 import { dirname, isAbsolute, resolve } from "node:path";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
-import { Effect, Schema } from "effect";
+import { StateStore } from "@lando/sdk/services";
+import type { SourceSession } from "@lando/source-acquisition";
+import { Effect, Option, Schema } from "effect";
 import { getRecipeCatalog } from "../../recipes/catalog";
 import { renderRecipeCatalog } from "../../recipes/catalog-render";
 import { compileResolvedRecipe } from "../../recipes/compiled-source";
 import { prepareRecipeInit } from "../../recipes/prepared-init";
 import { resolveRecipeSource } from "../../recipes/resolved-source";
+import { retainedRecipeSourceStore } from "../../recipes/runtime-sources";
 import { resolveRecipeRef } from "../../recipes/source";
+import { mapSourceAcquisitionError } from "../../recipes/source-session";
 import { defaultAppNameFromCwd } from "./init-app-name";
 import { initOptionPrompts } from "./init-option-answers";
 import { loadRecipeEncoder } from "./init-preparation";
@@ -61,13 +65,27 @@ const inspectionRef = (ref: string, cwd: string, pathOnly: boolean): string => {
   const path = resolve(cwd, ref);
   return /\.(?:ya?ml|ts)$/.test(path) ? dirname(path) : path;
 };
-const inspectRecipe = Effect.fn("Recipes.inspect")(function* (
+
+export interface InspectRecipeOptions {
+  readonly cwd: string;
+  readonly registryUrl?: string;
+}
+
+const inspectWithSources = Effect.fn("Recipes.inspectWithSources")(function* (
   ref: string,
-  options: { readonly cwd: string },
+  options: InspectRecipeOptions & { readonly sources?: SourceSession },
   pathOnly: boolean,
 ) {
   const resolved = yield* resolveRecipeRef(inspectionRef(ref, options.cwd, pathOnly), options);
-  const resolution = yield* resolveRecipeSource(resolved);
+  const resolution = yield* resolveRecipeSource(
+    resolved,
+    options.sources === undefined
+      ? {}
+      : {
+          sources: options.sources,
+          ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
+        },
+  );
   const compiled = yield* compileResolvedRecipe(resolution);
   const encoder = yield* Effect.promise(loadRecipeEncoder);
   const preparation = yield* prepareRecipeInit({
@@ -94,6 +112,24 @@ const inspectRecipe = Effect.fn("Recipes.inspect")(function* (
         };
   return { manifest: compiled.manifest, source: resolved.source, readiness };
 });
+
+const inspectRecipe = Effect.fn("Recipes.inspect")(function* (
+  ref: string,
+  options: InspectRecipeOptions,
+  pathOnly: boolean,
+) {
+  const state = yield* Effect.serviceOption(StateStore);
+  if (Option.isNone(state)) {
+    return yield* inspectWithSources(ref, options, pathOnly);
+  }
+  const store = (yield* retainedRecipeSourceStore(options.registryUrl)).store;
+  return yield* Effect.scoped(
+    Effect.gen(function* () {
+      const sources = yield* store.session.pipe(Effect.mapError((error) => mapSourceAcquisitionError(error)));
+      return yield* inspectWithSources(ref, { ...options, sources }, pathOnly);
+    }),
+  );
+});
 export type RecipesManifestError = Effect.Error<ReturnType<typeof inspectRecipe>>;
 const choiceValue = (choice: PromptChoice): string =>
   typeof choice === "object" && choice !== null ? String(choice.value) : String(choice);
@@ -107,7 +143,7 @@ const promptsFromManifest = (manifest: RecipeManifest) =>
   }));
 export const recipesDescribe = Effect.fn("Recipes.describe")(function* (
   ref: string,
-  options: { readonly cwd: string },
+  options: InspectRecipeOptions,
 ) {
   const { manifest, source, readiness } = yield* inspectRecipe(ref, options, false);
   return {
@@ -125,7 +161,7 @@ export const recipesDescribe = Effect.fn("Recipes.describe")(function* (
 });
 export const recipesValidate = Effect.fn("Recipes.validate")(function* (
   path: string,
-  options: { readonly cwd: string },
+  options: InspectRecipeOptions,
 ) {
   const { manifest, source, readiness } = yield* inspectRecipe(path, options, true);
   return {

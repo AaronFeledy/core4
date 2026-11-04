@@ -1394,6 +1394,20 @@ Flags:
 | `--prune` | Remove orphaned snapshot images after rechecking the snapshot index. |
 | `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
 
+## `lando meta:sources:gc`
+
+Inspect unused entries in the remote source cache.
+
+Aliases: `lando sources:gc`
+
+Flags:
+
+| Flag | Description |
+| --- | --- |
+| `--older-than` | Only consider entries unused for at least this many days (default 30). |
+| `--prune` | Remove eligible source-cache entries after rechecking reachability and leases. |
+| `--yes, -y` | Accepted so scripts can confirm every destructive command the same way. This command does not prompt. |
+
 ## `lando meta:uninstall`
 
 Remove Lando-owned installed files after confirmation.

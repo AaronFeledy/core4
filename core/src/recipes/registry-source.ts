@@ -2,9 +2,7 @@
  * `registry` recipe source resolver.
  *
  * Resolves a recipe id through the Lando recipe registry, then delegates the
- * resulting git or tarball resolution to the existing remote source resolvers.
- * The registry schema intentionally does not include `ref`; git-source does not
- * support refs, so this resolver does not thread one.
+ * resulting git or tarball resolution through SourceSession.
  */
 import { Schema } from "effect";
 
@@ -14,13 +12,10 @@ import type { RecipeRegistryResponse as RecipeRegistryResponseType } from "@land
 
 import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 
-import { type GitRecipeCloner, resolveGitRecipeSource } from "./git-source";
+import { type SourceSession, displaySource } from "@lando/source-acquisition";
+import { resolveGitRecipeSource } from "./git-source";
 import type { ResolvedRecipe } from "./source";
-import {
-  type TarballRecipeExtractor,
-  type TarballRecipeFetcher,
-  resolveTarballRecipeSource,
-} from "./tarball-source";
+import { resolveTarballRecipeSource } from "./tarball-source";
 
 export const DEFAULT_RECIPE_REGISTRY_URL = "https://registry.lando.dev/recipes/";
 
@@ -31,12 +26,12 @@ export interface RecipeRegistryClient {
 export interface ResolveRegistryRecipeSourceOptions {
   readonly id: string;
   readonly registryUrl?: string;
-  readonly userDataRoot?: string;
+  readonly sources: SourceSession;
+  /** Aborts in-flight acquisition when the caller is cancelled. */
+  readonly signal?: AbortSignal;
   readonly registryClient?: RecipeRegistryClient;
   readonly path?: string;
-  readonly gitRecipeCloner?: GitRecipeCloner;
-  readonly tarballRecipeFetcher?: TarballRecipeFetcher;
-  readonly tarballRecipeExtractor?: TarballRecipeExtractor;
+  readonly onWarn?: (message: string) => void | Promise<void>;
 }
 
 const sourceError = (input: {
@@ -44,7 +39,13 @@ const sourceError = (input: {
   readonly source: string;
   readonly kind: "missing-id" | "recipe-not-found" | "registry-invalid" | "registry-failed";
   readonly remediation: string;
-}): RecipeSourceError => new RecipeSourceError(input);
+}): RecipeSourceError =>
+  new RecipeSourceError({
+    ...input,
+    message: displaySource(input.message),
+    source: displaySource(input.source),
+    remediation: displaySource(input.remediation),
+  });
 
 class RegistryDecodeError extends Error {
   constructor(cause: unknown) {
@@ -142,19 +143,18 @@ export const resolveRegistryRecipeSource = async (
     resolution.kind === "git"
       ? await resolveGitRecipeSource({
           url: resolution.url,
+          sources: options.sources,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           ...(sourcePath === undefined ? {} : { path: sourcePath }),
-          ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
-          ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
+          ...(options.onWarn === undefined ? {} : { onWarn: options.onWarn }),
         })
       : await resolveTarballRecipeSource({
           url: resolution.url,
+          sources: options.sources,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
           ...(sourcePath === undefined ? {} : { path: sourcePath }),
           ...(resolution.checksum === undefined ? {} : { checksum: resolution.checksum }),
-          ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
-          ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
-          ...(options.tarballRecipeExtractor === undefined
-            ? {}
-            : { extractor: options.tarballRecipeExtractor }),
+          ...(options.onWarn === undefined ? {} : { onWarn: options.onWarn }),
         });
 
   return { ...resolved, id };

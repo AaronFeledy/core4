@@ -10,6 +10,7 @@ import type { CapturedHostExecutionContext } from "./host-execution-context.ts";
 import { collectPrivateText, privateCaptureBudget } from "./private-capture.ts";
 import { pipedOutput, pumpStdin, readText } from "./process-io.ts";
 import { buildSpawnOptions, prepareProcessSpawn } from "./process-spawn-context.ts";
+import { killProcessTree, registerDetachedProcess } from "./process-tree.ts";
 
 const timeoutError = (input: ProcessSpawnOptions, elapsedMs: number) =>
   new ProcessTimeoutError({
@@ -43,11 +44,26 @@ export const runProcess = async (
         })
       : { ...execution.prepared, [Symbol.asyncDispose]: async () => {} };
   signal.throwIfAborted();
-  const proc = Bun.spawn(
-    [input.cmd, ...input.args],
-    buildSpawnOptions({ ...input, cwd: context.cwd, env: context.env }, captured.platform),
-  );
-  const abort = () => proc.kill("SIGKILL");
+  // Captured runs are private helpers (git transports, probes) and may be killed as a group. Streaming runs keep
+  // the terminal session so tools like ssh and sudo can still prompt on /dev/tty.
+  const detached = input.capture === true && input.inheritStdin !== true && input.inheritOutput !== true;
+  const proc = Bun.spawn([input.cmd, ...input.args], {
+    ...buildSpawnOptions({ ...input, cwd: context.cwd, env: context.env }, captured.platform),
+    detached,
+  });
+  if (detached) registerDetachedProcess(proc);
+  const kill = (signal: "SIGTERM" | "SIGKILL") => {
+    if (detached) killProcessTree(proc.pid, signal);
+    else proc.kill(signal);
+  };
+  // A killed child's descendants can hold its pipes open; stop reading so abort and timeout settle promptly.
+  const stopReading = new AbortController();
+  const aborted = Promise.withResolvers<void>();
+  const abort = () => {
+    kill("SIGKILL");
+    stopReading.abort(signal.reason);
+    aborted.resolve();
+  };
   signal.addEventListener("abort", abort, { once: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   let timedOut = false;
@@ -57,18 +73,27 @@ export const runProcess = async (
       : new Promise<void>((resolve) => {
           timer = setTimeout(() => {
             timedOut = true;
-            proc.kill();
+            kill("SIGTERM");
+            stopReading.abort();
             resolve();
           }, input.timeoutMs);
         });
   const budget = privateCaptureBudget(input);
   const stdoutPromise =
     input.capture === true
-      ? collectPrivateText(pipedOutput(proc.stdout), (chunk) => budget({ kind: "stdout", chunk }))
+      ? collectPrivateText(
+          pipedOutput(proc.stdout),
+          (chunk) => budget({ kind: "stdout", chunk }),
+          stopReading.signal,
+        )
       : readText(proc.stdout);
   const stderrPromise =
     input.capture === true
-      ? collectPrivateText(pipedOutput(proc.stderr), (chunk) => budget({ kind: "stderr", chunk }))
+      ? collectPrivateText(
+          pipedOutput(proc.stderr),
+          (chunk) => budget({ kind: "stderr", chunk }),
+          stopReading.signal,
+        )
       : readText(proc.stderr);
   const stdinPump = pumpStdin(proc, { ...input, signal });
   const output =
@@ -77,7 +102,7 @@ export const runProcess = async (
     await Promise.race(
       output === undefined
         ? [proc.exited, timeoutGate, stdinPump.then(() => proc.exited)]
-        : [output, timeoutGate],
+        : [output, timeoutGate, aborted.promise],
     );
     if (timedOut) throw timeoutError(input, DateTime.toEpochMillis(DateTime.nowUnsafe()) - startedAt);
     signal.throwIfAborted();
@@ -86,12 +111,12 @@ export const runProcess = async (
       Promise.all([stdoutPromise, stderrPromise, proc.exited]));
     return { exitCode, stdout, stderr };
   } catch (cause) {
-    proc.kill("SIGKILL");
+    kill("SIGKILL");
     throw cause;
   } finally {
     if (timer !== undefined) clearTimeout(timer);
     signal.removeEventListener("abort", abort);
-    if (proc.exitCode === null) proc.kill("SIGKILL");
+    if (proc.exitCode === null) kill("SIGKILL");
     await proc.exited;
     const settled = Promise.allSettled([stdinPump, stdoutPromise, stderrPromise]);
     if (input.capture === true) await settled;

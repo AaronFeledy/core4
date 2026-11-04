@@ -7,7 +7,7 @@ interface FileStatusFlags {
 
 interface Libc {
   readonly flags: FileStatusFlags;
-  readonly ignoresInterrupt: () => boolean;
+  readonly ignoresSignal: (signal: number) => boolean;
 }
 
 const F_GETFL = 3;
@@ -45,11 +45,11 @@ const loadLibc = (): Libc | undefined => {
         set: (fd, flags) => fcntl(fd, F_SETFL, BigInt(flags)),
         nonblock: process.platform === "linux" ? 0o4000 : 0x4,
       },
-      ignoresInterrupt: () => {
+      ignoresSignal: (signal) => {
         // Query sigaction without changing disposition. Darwin's handler is the first pointer.
         const action = new BigUint64Array(2);
         const sigaction = library.symbols.sigaction;
-        return sigaction !== undefined && sigaction(2, null, ffi.ptr(action)) === 0 && action[0] === 1n;
+        return sigaction !== undefined && sigaction(signal, null, ffi.ptr(action)) === 0 && action[0] === 1n;
       },
     };
   } catch {
@@ -61,4 +61,7 @@ const loadLibc = (): Libc | undefined => {
 export const fileStatusFlags = (): FileStatusFlags | undefined => loadLibc()?.flags;
 
 export const darwinIgnoresInterrupt = (): boolean =>
-  process.platform === "darwin" && (loadLibc()?.ignoresInterrupt() ?? false);
+  process.platform === "darwin" && (loadLibc()?.ignoresSignal(2) ?? false);
+
+export const darwinIgnoresHangup = (): boolean =>
+  process.platform === "darwin" && (loadLibc()?.ignoresSignal(1) ?? false);

@@ -1,4 +1,5 @@
 import * as sdk from "@lando/sdk";
+import * as abortablePromise from "@lando/sdk/abortable-promise";
 import * as app from "@lando/sdk/app";
 import * as commandResult from "@lando/sdk/command-result";
 import * as databaseCreds from "@lando/sdk/database-creds";
@@ -55,6 +56,7 @@ const namespaceModules = (
 
 export const hostModules: Readonly<Record<string, object>> = {
   "@lando/sdk": sdk,
+  "@lando/sdk/abortable-promise": abortablePromise,
   "@lando/sdk/app": app,
   "@lando/sdk/command-result": commandResult,
   "@lando/sdk/database-creds": databaseCreds,

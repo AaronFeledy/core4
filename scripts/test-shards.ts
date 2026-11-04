@@ -36,6 +36,7 @@ const INCLUDE_GLOBS: ReadonlyArray<string> = [
   "http-client/test/**/*.test.ts",
   "landofile/test/**/*.test.ts",
   "managed-file/test/**/*.test.ts",
+  "source-acquisition/test/**/*.test.ts",
   "paths/test/**/*.test.ts",
   "state-store/test/**/*.test.ts",
   "redaction/test/**/*.test.ts",

@@ -521,6 +521,7 @@
       "override",
       "reset"
     ],
+    "./abortable-promise": ["tryPromiseSettled"],
     "./app": [],
     "./command-result": [
       "FailureRoleAnnotation",

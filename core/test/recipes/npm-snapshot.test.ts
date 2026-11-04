@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ScratchInitAppPort } from "@lando/engine/scratch-app/service";
 import { ProcessRunner } from "@lando/sdk/services";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Effect, Layer } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
@@ -61,6 +62,7 @@ test("retained scratch init observes npm config changes on every acquisition", a
               Layer.provide(
                 Layer.mergeAll(
                   privateFileAccessLayer,
+                  makeTestStateStore().layer,
                   Layer.succeed(HttpClient.HttpClient, client),
                   Layer.succeed(
                     ProcessRunner,

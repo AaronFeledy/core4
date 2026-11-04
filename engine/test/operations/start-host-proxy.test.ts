@@ -33,17 +33,11 @@ import type { HostProxyShimTarget } from "../../src/subsystems/host-proxy/transp
 
 const X64_TARGET = { os: "linux", arch: "x64" } as const satisfies HostProxyShimTarget;
 const ARM64_TARGET = { os: "linux", arch: "arm64" } as const satisfies HostProxyShimTarget;
-const unusedPort = async () => {
-  throw new Error("unused landofile port in start-host-proxy test");
-};
 const landofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot: () => "/tmp/lando-start-host-proxy-cache",
     resolveUserIncludesDir: () => "/tmp/lando-start-host-proxy-includes",
-    npmRecipeSource: { resolve: unusedPort, fetchTarball: unusedPort },
-    git: { clone: unusedPort },
-    tarball: { fetch: unusedPort, extract: unusedPort },
-    publication: { publish: unusedPort },
+    sources: {},
   },
   templates: { modules: [] },
 };

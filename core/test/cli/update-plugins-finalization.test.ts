@@ -2,12 +2,13 @@ import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { readInstalledPluginRegistry, recordInstalledPlugin } from "@lando/engine/plugins/installed-registry";
 import { withPluginMutationLock } from "@lando/engine/plugins/mutation-lock";
 import { makePluginTrustStore } from "@lando/engine/plugins/trust-store";
 import { ProcessExecError } from "@lando/sdk/errors";
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
+import { makeTestStateStore } from "@lando/state-store/testing";
 import { Cause, Effect, Layer } from "effect";
 import { ChildOutput, makeChildOutputPolicy } from "../../src/cli/child-output.ts";
 import { makePluginUpdateRunner } from "../../src/cli/commands/update-plugins";
@@ -19,6 +20,34 @@ afterEach(async () => {
 });
 
 const name = "finalization-plugin";
+
+const pluginTarball = async (version: string, pluginName: string = name): Promise<Uint8Array> => {
+  const stage = await mkdtemp(join(tmpdir(), "lando-update-fin-tar-"));
+  const pkg = join(stage, "package");
+  const archive = join(stage, "archive.tgz");
+  try {
+    await mkdir(pkg, { recursive: true });
+    await writeFile(
+      join(pkg, "package.json"),
+      JSON.stringify({
+        scripts: { postinstall: "fixture" },
+        landoPlugin: { ...manifest(version), name: pluginName },
+      }),
+    );
+    await writeFile(join(pkg, "index.js"), "export {};\n");
+    const proc = Bun.spawn({
+      cmd: ["tar", "-czf", archive, "-C", stage, "package"],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    if (code !== 0) throw new Error(`tar failed: ${stderr}`);
+    return new Uint8Array(await Bun.file(archive).arrayBuffer());
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+  }
+};
+
 const manifest = (version: string) => ({
   name,
   version,
@@ -43,8 +72,8 @@ async function fixture() {
   });
   const trust = makePluginTrustStore(join(root, "trust.yml"));
   await Effect.runPromise(trust.trustPlugin(name));
-  const bytes = new TextEncoder().encode("integrity-checked fixture archive");
-  const layer = Layer.merge(
+  const bytes = await pluginTarball("1.1.0");
+  const layer = Layer.mergeAll(
     Layer.succeed(PluginTrustStore, trust),
     Layer.succeed(
       ConfigService,
@@ -53,15 +82,18 @@ async function fixture() {
         get: (key) => Effect.succeed((key === "userDataRoot" ? root : undefined) as never),
       }),
     ),
+    makeTestStateStore().layer,
   );
   const run = async (lifecycle: (cwd: string) => Promise<void>) => {
     const runner = await Effect.runPromise(
       makePluginUpdateRunner({
+        stateStore: makeTestStateStore().service,
         userDataRoot: root,
         pluginsRoot,
         cacheRoot: join(root, "cache"),
         registryClient: {
-          fetchPackument: async () => ({
+          registryFor: () => "https://registry.example/",
+          packument: async () => ({
             "dist-tags": { latest: "1.1.0" },
             versions: {
               "1.1.0": {
@@ -75,21 +107,7 @@ async function fixture() {
               },
             },
           }),
-        },
-        fetcher: { fetch: async () => bytes },
-        extractor: {
-          extract: async (_bytes, destination) => {
-            const pkg = join(destination, "package");
-            await mkdir(pkg, { recursive: true });
-            await writeFile(
-              join(pkg, "package.json"),
-              JSON.stringify({
-                scripts: { postinstall: "fixture" },
-                landoPlugin: manifest("1.1.0"),
-              }),
-            );
-            await writeFile(join(pkg, "index.js"), "export {};\n");
-          },
+          tarball: async () => bytes,
         },
       }).pipe(
         withProcess(async (request) => {
@@ -193,47 +211,43 @@ test("output overflow stops a plugin update batch before later activation", asyn
     });
     await Effect.runPromise(f.trust.trustPlugin(candidate));
   }
-  const bytes = new TextEncoder().encode("verified package fixture");
+  const tarballs = new Map<string, Uint8Array>();
+  for (const candidate of names) {
+    tarballs.set(candidate, await pluginTarball("1.1.0", candidate));
+  }
   const policy = makeChildOutputPolicy({ native: false, stdin: false, stream: undefined });
   let children = 0;
-  const extracted: string[] = [];
   const exit = await Effect.runPromiseExit(
     Effect.gen(function* () {
       const update = yield* makePluginUpdateRunner({
+        stateStore: makeTestStateStore().service,
         userDataRoot: f.root,
         pluginsRoot: f.pluginsRoot,
         cacheRoot: join(f.root, "cache"),
         registryClient: {
-          fetchPackument: async (candidate) => ({
-            "dist-tags": { latest: "1.1.0" },
-            versions: {
-              "1.1.0": {
-                name: candidate,
-                version: "1.1.0",
-                landoPlugin: { ...manifest("1.1.0"), name: candidate },
-                dist: {
-                  tarball: "https://fixture.invalid/package.tgz",
-                  integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
+          registryFor: () => "https://registry.example/",
+          packument: async (candidate) => {
+            const bytes = tarballs.get(candidate);
+            if (bytes === undefined) throw new Error(`missing tarball for ${candidate}`);
+            return {
+              "dist-tags": { latest: "1.1.0" },
+              versions: {
+                "1.1.0": {
+                  name: candidate,
+                  version: "1.1.0",
+                  landoPlugin: { ...manifest("1.1.0"), name: candidate },
+                  dist: {
+                    tarball: `https://fixture.invalid/${candidate}.tgz`,
+                    integrity: `sha512-${createHash("sha512").update(bytes).digest("base64")}`,
+                  },
                 },
               },
-            },
-          }),
-        },
-        fetcher: { fetch: async () => bytes },
-        extractor: {
-          extract: async (_bytes, destination) => {
-            const candidate = basename(dirname(destination));
-            extracted.push(candidate);
-            const path = join(destination, "package");
-            await mkdir(path, { recursive: true });
-            await writeFile(
-              join(path, "package.json"),
-              JSON.stringify({
-                scripts: { postinstall: "fixture" },
-                landoPlugin: { ...manifest("1.1.0"), name: candidate },
-              }),
-            );
-            await writeFile(join(path, "index.js"), "export {};\n");
+            };
+          },
+          tarball: async ({ packageName }) => {
+            const bytes = tarballs.get(packageName);
+            if (bytes === undefined) throw new Error(`missing tarball for ${packageName}`);
+            return bytes;
           },
         },
       });
@@ -257,7 +271,6 @@ test("output overflow stops a plugin update batch before later activation", asyn
   const failure = Cause.findErrorOption(exit.cause);
   expect(failure._tag === "Some" && failure.value).toBeInstanceOf(ProcessExecError);
   expect(children).toBe(2);
-  expect(extracted).toEqual(names.slice(0, 2));
   const registry = await readInstalledPluginRegistry(f.pluginsRoot);
   expect(registry[name]?.version).toBe("1.1.0");
   expect(registry["next-plugin"]?.version).toBe("1.0.0");

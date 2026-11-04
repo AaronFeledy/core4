@@ -232,7 +232,7 @@ The first prints `3`. Commands inside the script share that input, so a `seed` s
 
 Run it from a terminal with nothing piped in and the script inherits your keyboard. Lando retires its task-tree consumer before starting it. stdout and stderr still stream through the byte sink, with registered values masked even when a write splits a secret. The script does not write around that redaction boundary.
 
-Ctrl+C (`SIGINT`) cancels the active command with exit status `130`; `SIGTERM` uses `143`. An interruption-only failure is `CommandInterruptedError`, with the signal when known, rather than internal Effect interruption text. Lando releases scoped resources; if execution or cleanup also failed, those failures remain visible rather than being replaced by a cancellation message. Cancellation does not undo files or other effects the script already produced. Inspect those effects before running the command again.
+Ctrl+C (`SIGINT`) cancels the active command with exit status `130`; `SIGTERM` uses `143`, and closing the terminal (`SIGHUP`) uses `129`. A Lando started with that signal ignored, such as under `nohup`, keeps ignoring it. An interruption-only failure is `CommandInterruptedError`, with the signal when known, rather than internal Effect interruption text. Lando releases scoped resources; if execution or cleanup also failed, those failures remain visible rather than being replaced by a cancellation message. Cancellation does not undo files or other effects the script already produced. Inspect those effects before running the command again.
 
 With `--format=json`, `--format=yaml`, or `--renderer=json`, piped input still arrives but the keyboard does not. A script that waits for typed input reads end of input instead of hanging an automated caller.
 

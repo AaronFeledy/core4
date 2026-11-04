@@ -6,7 +6,12 @@ import { ServiceName } from "@lando/sdk/schema";
 import { Effect } from "effect";
 import type { LandofileIncludeDeps } from "../src/include-context.ts";
 import { resolveAuthoredIncludes } from "./include-pipeline.ts";
-import { makeTestLandofilePorts, makeTestLandofileStateStore } from "./support.ts";
+import {
+  makeNpmPackageTarball,
+  makeTestLandofilePorts,
+  makeTestLandofileStateStore,
+  makeTestNpmRegistry,
+} from "./support.ts";
 
 let root: string;
 beforeEach(async () => {
@@ -29,39 +34,31 @@ test.each(["git", "npm"] as const)(
         "services:\n  child:\n    image: alpine\n    volumes: ['./data:/data']\nconfigs:\n  config:\n    file: ./config\nsecrets:\n  secret:\n    file: ./secret\n",
       );
     };
-    const bytes = new Uint8Array();
+    const cacheRoot = join(root, "cache");
+    const tarball = makeNpmPackageTarball({
+      "compose.yaml":
+        "include: [nested/compose.yaml]\nservices:\n  parent:\n    image: alpine\n    env_file: [.env.parent]\n    build:\n      dockerfile: Dockerfile\n",
+      "nested/compose.yaml":
+        "services:\n  child:\n    image: alpine\n    volumes: ['./data:/data']\nconfigs:\n  config:\n    file: ./config\nsecrets:\n  secret:\n    file: ./secret\n",
+    });
     const deps: LandofileIncludeDeps =
       kind === "git"
         ? {
-            gitCloner: {
-              clone: async ({ dest }) => {
+            git: {
+              fetch: async ({ dest }) => {
                 await populate(dest);
-                return { commitSha: "a".repeat(40) };
+                return { commit: "a".repeat(40) };
               },
             },
           }
-        : {
-            npmRecipeSource: {
-              fetchTarball: async () => bytes,
-              resolve: async () => ({
-                packageName: "@acme/shared",
-                version: "1.2.3",
-                dist: {
-                  tarball: "https://example.test/pkg.tgz",
-                  shasum: new Bun.CryptoHasher("sha1").update(bytes).digest("hex"),
-                },
-              }),
-            },
-            npmFetcher: { fetch: async () => bytes },
-            npmExtractor: { extract: async (_bytes, dest) => populate(join(dest, "package")) },
-          };
+        : { npmRegistry: makeTestNpmRegistry({ name: "@acme/shared", version: "1.2.3", tarball }) };
     // When
     const document = await Effect.runPromise(
       resolveAuthoredIncludes({
         appRoot: root,
-        cacheRoot: join(root, "cache"),
-        ports: makeTestLandofilePorts(root),
-        stateStore: makeTestLandofileStateStore(),
+        cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot, cacheRoot, deps),
+        stateStore: makeTestLandofileStateStore(cacheRoot),
         deps,
         landofile: {
           includes: [

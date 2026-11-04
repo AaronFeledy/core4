@@ -1,6 +1,6 @@
 import { isAbsolute, posix } from "node:path";
 import type { IncludeEntry, LandofileShape } from "@lando/sdk/schema";
-import { gitCloneUrl, isGitSource, isLiteralGitRef, splitSourceRef } from "./git-ref.ts";
+import { gitCloneUrl, isGitSource, isLiteralGitRef, splitSourceRef } from "@lando/source-acquisition/locator";
 import type { NormalizedInclude } from "./include-context.ts";
 import { includeError } from "./include-guard.ts";
 import { getOrigins } from "./pipeline/origins.ts";

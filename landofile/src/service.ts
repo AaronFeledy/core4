@@ -82,7 +82,7 @@ const makeDiscoverLandofile = Effect.fn("LandofileService.discover")(function* (
   const session = yield* createIncludeResolutionSession({ appRoot: discovered.appRoot, ...inputs });
   const evaluated = yield* evaluateLandofileRootLayers(discovered.appRoot, { session, inputs });
   return yield* finalizeLandofileRootLayers(evaluated, discovered.filePath, inputs);
-});
+}, Effect.scoped);
 
 export const layer = (inputs: LandofileRuntimeInputs) =>
   Layer.effect(

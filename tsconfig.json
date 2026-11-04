@@ -27,6 +27,9 @@
       "path": "./managed-file"
     },
     {
+      "path": "./source-acquisition"
+    },
+    {
       "path": "./data-mover"
     },
     {
