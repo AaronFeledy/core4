@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { withTestSources } from "../src/testing.ts";
@@ -104,7 +104,7 @@ describe("source-acquisition archive", () => {
     );
   });
 
-  test("repair re-fetches archive bytes even when cached", async () => {
+  test("repair re-fetches archive bytes only when the cached tree changed", async () => {
     const archive = makeFakeArchiveTransport();
     const bytes = makeTarGz([{ name: "r.txt", bytes: new TextEncoder().encode("r1") }]);
     const sha256 = sha256Of(bytes);
@@ -113,10 +113,14 @@ describe("source-acquisition archive", () => {
 
     await withTestSources({ archive: archive.transport }, ({ session }) =>
       Effect.gen(function* () {
-        yield* session.acquireArchive({ url, sha256 });
+        const first = yield* session.acquireArchive({ url, sha256 });
         expect(archive.calls).toHaveLength(1);
         yield* session.acquireArchive({ url, sha256 }, { repair: true });
+        expect(archive.calls).toHaveLength(1);
+        yield* Effect.promise(() => writeFile(join(first.root, "r.txt"), "tampered"));
+        const repaired = yield* session.acquireArchive({ url, sha256 }, { repair: true });
         expect(archive.calls).toHaveLength(2);
+        expect(yield* Effect.promise(() => readFile(join(repaired.root, "r.txt"), "utf8"))).toBe("r1");
       }),
     );
   });

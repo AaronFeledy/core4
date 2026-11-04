@@ -173,7 +173,6 @@ export const npmAcquisition = (
       Effect.mapError((error) => acquisitionError("cache", source, error)),
     );
     if (
-      !acquisition.repair &&
       previous !== null &&
       previous.registry === displaySource(pin.registry) &&
       previous.name === pin.name &&
@@ -181,7 +180,9 @@ export const npmAcquisition = (
       previous.integrity === pin.dist.integrity &&
       previous.shasum === pin.dist.shasum
     ) {
-      const snapshot = yield* storage.open({ kind: "archive", sha256: previous.sha256 }, pin);
+      const snapshot = yield* storage.open({ kind: "archive", sha256: previous.sha256 }, pin, {
+        verify: acquisition.repair === true,
+      });
       if (snapshot !== undefined) return snapshot;
     }
     if (acquisition.network === false)
@@ -228,7 +229,9 @@ export const npmAcquisition = (
       }
     }
     const sha256 = sha256Hex(bytes);
-    const cached = acquisition.repair ? undefined : yield* storage.open({ kind: "archive", sha256 }, pin);
+    const cached = yield* storage.open({ kind: "archive", sha256 }, pin, {
+      verify: acquisition.repair === true,
+    });
     const snapshot = cached ?? {
       ...(yield* archives.publishBytes({
         bytes,

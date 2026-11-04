@@ -6,38 +6,43 @@ import { gitAcquisition } from "./acquire-git.ts";
 import { npmAcquisition } from "./acquire-npm.ts";
 import { SourceAcquisitionError, displaySource } from "./errors.ts";
 import { gc as runGc } from "./gc.ts";
-import { sourceRecords } from "./records.ts";
+import { resolveSourcesStoreRoot, sourceRecords } from "./records.ts";
 import { io, makeStorage } from "./storage.ts";
 import type { SourceSession, SourceStore, SourceStoreOptions } from "./types.ts";
 export { SourceAcquisitionError, displaySource } from "./errors.ts";
 export type * from "./types.ts";
 export const makeSourceStore = (input: SourceStoreOptions): SourceStore => {
-  const options = { ...input, root: resolve(input.root) };
+  let resolvedRoot: string | undefined;
+  const storeRoot = Effect.fn("SourceStore.root")(function* () {
+    if (resolvedRoot === undefined) resolvedRoot = yield* resolveSourcesStoreRoot(input.stateStore);
+    return resolvedRoot;
+  });
   return {
-    root: options.root,
-    gc: (policy) => runGc(options, policy),
+    gc: Effect.fn("SourceStore.gc")(function* (policy) {
+      const root = yield* storeRoot();
+      return yield* runGc(input, root, policy);
+    }),
     session: Effect.gen(function* () {
       const createdAt = yield* Clock.currentTimeMillis;
+      const lexicalRoot = yield* storeRoot();
       const canonicalRoot = yield* io("source store root", async () => {
-        await mkdir(options.root, { recursive: true });
-        return realpath(options.root);
+        await mkdir(lexicalRoot, { recursive: true });
+        return realpath(lexicalRoot);
       });
-      const storage = makeStorage(
-        { ...options, root: canonicalRoot },
-        { token: crypto.randomUUID(), createdAt },
-      );
+      resolvedRoot = canonicalRoot;
+      const storage = makeStorage(input, canonicalRoot, { token: crypto.randomUUID(), createdAt });
       yield* Effect.acquireRelease(storage.initialize, () => storage.release.pipe(Effect.orDie));
-      const archives = archiveAcquisition(options, storage);
+      const archives = archiveAcquisition(input, storage);
       const registeredRoots = new Set<string>();
       return {
-        ...gitAcquisition(options, storage),
+        ...gitAcquisition(input, storage),
         openArchive: archives.openArchive,
         acquireArchive: archives.acquireArchive,
         materializeArchive: Effect.fn("SourceSession.materializeArchive")(function* (pin, acquisition) {
-          if (!acquisition?.repair) {
-            const cached = yield* storage.open({ kind: "archive", sha256: pin.sha256 }, pin);
-            if (cached !== undefined) return cached;
-          }
+          const cached = yield* storage.open({ kind: "archive", sha256: pin.sha256 }, pin, {
+            verify: acquisition?.repair === true,
+          });
+          if (cached !== undefined) return cached;
           if (acquisition?.network === false)
             return yield* Effect.fail(
               new SourceAcquisitionError({
@@ -49,11 +54,11 @@ export const makeSourceStore = (input: SourceStoreOptions): SourceStore => {
             );
           return yield* archives.acquireArchive(pin, acquisition);
         }),
-        ...npmAcquisition(options, storage, archives),
+        ...npmAcquisition(input, storage, archives),
         registerRoot: Effect.fn("SourceSession.registerRoot")(function* (lockfile: string) {
           const path = resolve(lockfile);
           if (registeredRoots.has(path)) return;
-          const bucket = yield* sourceRecords(options.stateStore).root(path);
+          const bucket = yield* sourceRecords(input.stateStore).root(path);
           const updatedAt = yield* Clock.currentTimeMillis;
           yield* storage.locked(
             Effect.gen(function* () {

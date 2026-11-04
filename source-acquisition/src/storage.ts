@@ -50,9 +50,9 @@ export const processIsAlive = (pid: number): boolean => {
 
 export const makeStorage = (
   options: SourceStoreOptions,
+  root: string,
   lease: { readonly token: string; readonly createdAt: number },
 ) => {
-  const root = options.root;
   const lockKey = `source-cache-${sha256Hex(root)}`;
   const keys = new Map<string, SourceKey>();
   const leasePath = containedPath(root, ".leases", `${lease.token}.json`);
@@ -132,15 +132,19 @@ export const makeStorage = (
       }
     });
   });
+  /** `verify` recomputes the tree digest so repair-mode callers refetch only entries that changed on disk. */
   const open = <P extends SourcePin>(
     key: SourceKey,
     pin: P,
+    options: { readonly verify?: boolean } = {},
   ): Effect.Effect<SourceSnapshot<P> | undefined, SourceAcquisitionError> => {
     const body = Effect.gen(function* () {
       const record = yield* readEntry(key);
       if (record === undefined) return undefined;
       yield* register(key);
       const tree = yield* io(keyId(key), () => realpath(containedPath(entryPath(key), "tree")));
+      if (options.verify === true && (yield* io(keyId(key), () => treeDigest(tree))) !== record.treeDigest)
+        return undefined;
       return { key, pin, root: tree };
     });
     return keys.has(`${key.kind}/${keyId(key)}`) ? body : locked(body);

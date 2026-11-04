@@ -310,7 +310,6 @@
       "runtimeDir:string",
       "runtimeRunDir:string",
       "runtimeStorageDir:string",
-      "sourceCacheDir:string",
       "scratchDir:string",
       "shellHistoryFile:(appName:string,appRoot:string) => string",
       "snapshotsDir:string",

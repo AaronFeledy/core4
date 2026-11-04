@@ -7,12 +7,12 @@
 import { hostConfigReadPolicy } from "@lando/engine/services/config";
 import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import { service as processRunnerService } from "@lando/engine/services/process-runner";
-import { makeLandoPaths } from "@lando/paths";
+import { NetworkTrust, defaultSystemCaPems, resolveTrust } from "@lando/http-client/network-trust";
 import { RedactionService } from "@lando/redaction/service";
-import { ConfigService, Downloader, PathsService, ProcessRunner, StateStore } from "@lando/sdk/services";
+import { Downloader, ProcessRunner, StateStore } from "@lando/sdk/services";
 import { type SourceStore, type SourceTransports, makeSourceStore } from "@lando/source-acquisition";
 import { makeGitTransport } from "@lando/source-acquisition/git";
-import { Effect, Option } from "effect";
+import { Context, Effect, Option } from "effect";
 import * as HttpClient from "effect/http/HttpClient";
 import { makeArchiveTransport } from "./archive-transport";
 import { defaultNpmRegistryClient } from "./npm-registry-client";
@@ -29,24 +29,17 @@ export interface RetainedRecipeSourceBundle {
 export const retainedSourceTransports = Effect.fnUntraced(function* (registryUrl?: string) {
   const client = yield* Effect.serviceOption(HttpClient.HttpClient);
   const downloader = yield* Effect.serviceOption(Downloader);
-  const config = yield* Effect.serviceOption(ConfigService);
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
   const redaction = yield* Effect.serviceOption(RedactionService);
   const readPolicy = yield* hostConfigReadPolicy;
+  const requestContext = yield* Effect.context<never>();
+  const injectedTrust = Context.get(requestContext, NetworkTrust);
+  const trustEnv = readPolicy?.env ?? { ...process.env };
   const npmConfig = npmRegistryConfigSnapshot(
     Option.isSome(redaction)
       ? (tokens) => Effect.runPromise(redaction.value.registerValues(tokens))
       : undefined,
     readPolicy,
-  );
-  const userCacheRoot = Option.isSome(config) ? yield* config.value.get("userCacheRoot") : undefined;
-  const userDataRoot = Option.isSome(config) ? yield* config.value.get("userDataRoot") : undefined;
-  const injectedPaths = yield* Effect.serviceOption(PathsService);
-  const paths = Option.getOrElse(injectedPaths, () =>
-    makeLandoPaths({
-      ...(userCacheRoot === undefined ? {} : { userCacheRoot }),
-      ...(userDataRoot === undefined ? {} : { userDataRoot }),
-    }),
   );
   const fetchJson: typeof httpJsonFetch = (url, options) =>
     httpJsonFetch(url, options, Option.getOrUndefined(client));
@@ -58,12 +51,17 @@ export const retainedSourceTransports = Effect.fnUntraced(function* (registryUrl
     archive,
   });
   const transports: SourceTransports = {
-    git: makeGitTransport(Option.getOrElse(processRunner, () => processRunnerService)),
+    git: makeGitTransport(
+      Option.getOrElse(processRunner, () => processRunnerService),
+      {
+        trust: () => Effect.runPromise(resolveTrust(requestContext, injectedTrust, trustEnv)),
+        systemCaPems: defaultSystemCaPems,
+      },
+    ),
     archive,
     npmRegistry: npmClient,
   };
   return {
-    sourceRoot: paths.sourceCacheDir,
     transports,
     npmRegistryClient: npmClient,
     registryClient: defaultRecipeRegistryClient(registryUrl ?? DEFAULT_RECIPE_REGISTRY_URL, fetchJson),
@@ -74,9 +72,7 @@ export const retainedRecipeSourceStore = Effect.fnUntraced(function* (registryUr
   const stateStore = yield* StateStore;
   const bundle = yield* retainedSourceTransports(registryUrl);
   return {
-    store: makeSourceStore({ root: bundle.sourceRoot, stateStore, transports: bundle.transports }),
-    transports: bundle.transports,
-    registryClient: bundle.registryClient,
-    npmRegistryClient: bundle.npmRegistryClient,
+    ...bundle,
+    store: makeSourceStore({ stateStore, transports: bundle.transports }),
   } satisfies RetainedRecipeSourceBundle;
 });

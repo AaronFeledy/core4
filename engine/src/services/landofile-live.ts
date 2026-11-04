@@ -1,3 +1,4 @@
+import { NetworkTrust, resolveTrust } from "@lando/http-client/network-trust";
 import {
   Downloader,
   type LandofileService,
@@ -57,6 +58,10 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
   const processRunner = yield* Effect.serviceOption(ProcessRunner);
   const redaction = yield* Effect.serviceOption(RedactionService);
   const readPolicy = yield* hostConfigReadPolicy;
+  const requestContext = yield* Effect.context<never>();
+  const injectedTrust = Context.get(requestContext, NetworkTrust);
+  const trustEnv = readPolicy?.env ?? { ...process.env };
+  const resolveNetworkTrust = () => Effect.runPromise(resolveTrust(requestContext, injectedTrust, trustEnv));
   const runtime = {
     ...(Option.isSome(processRunner) ? { processRunner: processRunner.value } : {}),
     ...(Option.isSome(redaction)
@@ -66,6 +71,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
         }
       : {}),
     ...(readPolicy === undefined ? {} : { readPolicy }),
+    resolveNetworkTrust,
   };
   return {
     ...inputs,
@@ -73,9 +79,7 @@ export const scopedLandofileRuntimeInputs: Effect.Effect<LandofileRuntimeInputs>
     ...(Option.isNone(stateStore) ? {} : { stateStore: stateStore.value }),
     ports: {
       ...inputs.ports,
-      ...(Option.isSome(client) && Option.isSome(downloader)
-        ? landofileSourcePorts(client.value, downloader.value, runtime)
-        : {}),
+      ...landofileSourcePorts(Option.getOrUndefined(client), Option.getOrUndefined(downloader), runtime),
       ...(Option.isNone(paths)
         ? {}
         : {

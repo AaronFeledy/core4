@@ -45,10 +45,11 @@ export const archiveAcquisition = (options: SourceStoreOptions, storage: Storage
           remediation: "Pass --checksum=<sha256> as 64 lowercase hex characters.",
         }),
       );
-    if (expected !== undefined && !acquisition.repair) {
+    if (expected !== undefined) {
       const snapshot = yield* storage.open(
         { kind: "archive", sha256: expected },
         { kind: "archive", sha256: expected, url: locator.url },
+        { verify: acquisition.repair === true },
       );
       if (snapshot !== undefined) return snapshot;
     }

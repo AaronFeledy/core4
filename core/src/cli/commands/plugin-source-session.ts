@@ -1,6 +1,5 @@
-import { makeLandoPaths } from "@lando/paths";
 import { PluginPackageOperationError } from "@lando/sdk/errors";
-import { ConfigService, PathsService, StateStore } from "@lando/sdk/services";
+import { StateStore } from "@lando/sdk/services";
 import { type SourceSession, makeSourceStore } from "@lando/source-acquisition";
 import { Effect, Option } from "effect";
 import { retainedRecipeSourceStore } from "../../recipes/runtime-sources";
@@ -32,14 +31,7 @@ export const withPluginSourceSession = <A, E, R>(
                 "Provide a scoped source store or the StateStore service before installing plugins.",
             }),
           );
-        const paths = yield* Effect.serviceOption(PathsService);
-        const config = yield* Effect.serviceOption(ConfigService);
-        const userCacheRoot = Option.isSome(config) ? yield* config.value.get("userCacheRoot") : undefined;
-        const root = Option.isSome(paths)
-          ? paths.value.sourceCacheDir
-          : (options.sourceCacheRoot ??
-            makeLandoPaths(userCacheRoot === undefined ? {} : { userCacheRoot }).sourceCacheDir);
-        return makeSourceStore({ root, stateStore, transports: { npmRegistry: options.npmRegistry } });
+        return makeSourceStore({ stateStore, transports: { npmRegistry: options.npmRegistry } });
       });
       const session = yield* store.session.pipe(
         Effect.mapError(

@@ -1,4 +1,3 @@
-import { makeLandoPaths } from "@lando/paths";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { type SourceAcquisitionError, type SourceSession, makeSourceStore } from "@lando/source-acquisition";
 import { Effect, type Scope } from "effect";
@@ -58,7 +57,6 @@ export const withIncludeSourceSession = Effect.fn("Landofile.withSourceSession")
     return yield* body(input.includeSession.sourceSession.value);
   const deps = input.deps ?? {};
   const store = makeSourceStore({
-    root: makeLandoPaths({ userCacheRoot: input.cacheRoot }).sourceCacheDir,
     stateStore: input.stateStore,
     transports: {
       ...input.ports?.sources,

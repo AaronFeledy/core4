@@ -35,7 +35,6 @@ const stateStore = makeStateStore({
 });
 
 const store = makeSourceStore({
-  root: storeRoot,
   stateStore,
   transports: {},
 });

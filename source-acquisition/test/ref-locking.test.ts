@@ -37,7 +37,6 @@ test("floating ref publication holds the source store lock", async () => {
       ),
   };
   const store = makeSourceStore({
-    root: fixture.root,
     stateStore,
     transports: { git: fixture.git.transport },
   });
@@ -49,6 +48,8 @@ test("floating ref publication holds the source store lock", async () => {
       ),
     );
     expect(snapshot.pin.commit).toBe("a".repeat(40));
+    const ref = await Effect.runPromise(sourceRecords(stateStore).ref("https://git.test/source", "main"));
+    expect(await Effect.runPromise(ref.get)).toEqual({ commit: "a".repeat(40) });
   } finally {
     await disposeGcFixture(fixture);
   }

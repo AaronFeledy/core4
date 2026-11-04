@@ -75,8 +75,6 @@ export class PathsService extends Context.Service<
     readonly logsDir: string;
     readonly toolDownloadsDir: (toolId: string) => string;
     readonly transferStagingDir: string;
-    /** Content-addressed remote source cache under userCacheRoot/sources. */
-    readonly sourceCacheDir: string;
     readonly appCacheDir: (appName: string, appRoot: string) => string;
     readonly appPlanCacheFile: (appName: string, appRoot: string) => string;
     // systemPluginRoot-scoped

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { resolveLandofileIncludes } from "@lando/landofile/includes";
 import { buildLandofileLoadScope } from "@lando/landofile/pipeline/materialize";
 import type { LandofileRuntimePorts } from "@lando/landofile/ports";
+import { makeLandoPaths } from "@lando/paths";
 import { type LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
 import { Effect, Schema } from "effect";
@@ -72,7 +73,7 @@ const withRepository = async (
       resolveUserIncludesDir: () => join(root, "user-includes"),
       sources: {
         git: {
-          fetch: async (input) => {
+          fetch: (input) => {
             acquisitions.push(input);
             return transport.fetch(input);
           },
@@ -80,14 +81,15 @@ const withRepository = async (
         archive: { fetch: unused },
       },
     };
-    const stateStore = makeStateStore({
-      privateFileAccess: {
-        enforce: async () => undefined,
-        verify: async () => undefined,
-      },
-    });
     const load = (includes: readonly Include[], cacheRoot = join(root, "cache")) => {
       const landofile = { includes: [...includes] };
+      const stateStore = makeStateStore({
+        roots: makeLandoPaths({ userCacheRoot: cacheRoot }).roots,
+        privateFileAccess: {
+          enforce: async () => undefined,
+          verify: async () => undefined,
+        },
+      });
       return Effect.runPromise(
         buildLandofileLoadScope([{ file: join(appRoot, ".lando.yml"), value: landofile }]).pipe(
           Effect.flatMap((loadScope) =>

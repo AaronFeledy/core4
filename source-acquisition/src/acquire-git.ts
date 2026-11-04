@@ -30,10 +30,12 @@ export const gitAcquisition = (options: SourceStoreOptions, storage: Storage) =>
         }),
       );
     const pinned = /^[a-f\d]{40}$/iu.test(locator.ref ?? "") ? locator.ref?.toLowerCase() : undefined;
-    if (pinned !== undefined && !acquisition.repair) {
+    const verify = acquisition.repair === true;
+    if (pinned !== undefined) {
       const snapshot = yield* storage.open(
         { kind: "git", commit: pinned },
         { kind: "git", url: locator.url, commit: pinned },
+        { verify },
       );
       if (snapshot !== undefined) return snapshot;
     }
@@ -48,6 +50,36 @@ export const gitAcquisition = (options: SourceStoreOptions, storage: Storage) =>
         }),
       );
     const refs = yield* sourceRecords(options.stateStore).ref(locator.url, locator.ref ?? "HEAD");
+    const resolve = transport.resolve;
+    if (pinned === undefined && resolve !== undefined) {
+      const cachedHit = yield* Effect.result(
+        Effect.gen(function* () {
+          const raw = yield* acquireTransport(locator.url, (signal) =>
+            resolve({
+              url: locator.url,
+              ...(locator.ref === undefined ? {} : { ref: locator.ref }),
+              signal,
+            }),
+          );
+          if (raw === undefined) return undefined;
+          const commit = raw.toLowerCase();
+          if (!/^[a-f\d]{40}$/u.test(commit)) return undefined;
+          const snapshot = yield* storage.open(
+            { kind: "git", commit },
+            { kind: "git", url: locator.url, commit },
+            { verify },
+          );
+          if (snapshot === undefined) return undefined;
+          yield* storage.locked(refs.set({ commit }));
+          return snapshot;
+        }),
+      );
+      if (cachedHit._tag === "Failure") {
+        if (cachedHit.failure.kind !== "fetch-failed") return yield* Effect.fail(cachedHit.failure);
+      } else if (cachedHit.success !== undefined) {
+        return cachedHit.success;
+      }
+    }
     const fetched = storage.stage((stage) =>
       Effect.gen(function* () {
         const tree = containedPath(stage, "tree");
@@ -70,7 +102,7 @@ export const gitAcquisition = (options: SourceStoreOptions, storage: Storage) =>
           key: { kind: "git", commit },
           pin: { kind: "git", url: locator.url, commit },
           stage,
-          repair: acquisition.repair === true,
+          repair: verify,
           source: locator.url,
         });
         yield* storage.locked(refs.set({ commit }));
@@ -104,10 +136,12 @@ export const gitAcquisition = (options: SourceStoreOptions, storage: Storage) =>
     pin: { readonly url: string; readonly commit: string },
     acquisition: MaterializeOptions = {},
   ) {
-    if (!acquisition.repair) {
-      const cached = yield* storage.open({ kind: "git", commit: pin.commit }, { kind: "git", ...pin });
-      if (cached !== undefined) return cached;
-    }
+    const cached = yield* storage.open(
+      { kind: "git", commit: pin.commit },
+      { kind: "git", ...pin },
+      { verify: acquisition.repair === true },
+    );
+    if (cached !== undefined) return cached;
     if (acquisition.network === false)
       return yield* Effect.fail(
         new SourceAcquisitionError({

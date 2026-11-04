@@ -1,4 +1,5 @@
 import { lstat } from "node:fs/promises";
+import { dirname } from "node:path";
 import { sha256Hex } from "@lando/sdk/digest";
 import { isErrnoCode } from "@lando/sdk/errors";
 import type { StateBucket, StateStoreShape } from "@lando/sdk/services";
@@ -24,6 +25,27 @@ export const NpmIndexRecord = Schema.Struct({
 });
 export const RefRecord = Schema.Struct({ commit: Schema.String.check(Schema.isPattern(/^[a-f\d]{40}$/u)) });
 export const RootRecord = Schema.Struct({ lockfile: Schema.String, updatedAt: Schema.Number });
+
+/**
+ * Physical source-store root: dirname of any StateStore bucket under the
+ * userCache `sources` namespace. One owner — callers never pass a separate root.
+ */
+export const resolveSourcesStoreRoot = (state: StateStoreShape) =>
+  state
+    .open({
+      root: "userCache",
+      namespace: "sources",
+      // Probe only; never written. dirname(path) is the store root for entries/leases/GC.
+      key: "root-probe",
+      schema: Schema.NullOr(RootRecord),
+      default: null,
+      version: 1,
+      onCorrupt: "discard",
+    })
+    .pipe(
+      Effect.map((bucket) => dirname(bucket.path)),
+      Effect.mapError((error) => acquisitionError("cache", "source store", error)),
+    );
 
 const regularRecord = <A>(bucket: StateBucket<A>) => {
   const regular = Effect.tryPromise({

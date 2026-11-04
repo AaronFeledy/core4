@@ -28,6 +28,11 @@ export interface SourceSnapshot<P extends SourcePin = SourcePin> {
 }
 
 export interface GitTransport {
+  readonly resolve?: (input: {
+    readonly url: string;
+    readonly ref?: string;
+    readonly signal?: AbortSignal;
+  }) => Promise<string | undefined>;
   readonly fetch: (input: {
     readonly url: string;
     readonly ref?: string;
@@ -60,7 +65,6 @@ export interface SourceTransports {
 }
 
 export interface SourceStoreOptions {
-  readonly root: string;
   readonly stateStore: StateStoreShape;
   readonly transports: SourceTransports;
 }
@@ -123,7 +127,6 @@ export interface SourceSession {
 }
 
 export interface SourceStore {
-  readonly root: string;
   readonly session: Effect.Effect<SourceSession, SourceAcquisitionError, Scope.Scope>;
   readonly gc: (options: GcOptions) => Effect.Effect<SourceGcReport, SourceAcquisitionError>;
 }

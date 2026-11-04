@@ -1,5 +1,4 @@
-import { lstat, readFile, readdir, realpath } from "node:fs/promises";
-import { dirname } from "node:path";
+import { lstat, readFile, readdir } from "node:fs/promises";
 import { isErrnoCode } from "@lando/sdk/errors";
 import type { StateStoreShape } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
@@ -87,7 +86,7 @@ export type StoredRecord = RecordFile &
     | { readonly kind: "failed"; readonly keyKind: RecordKind; readonly reason: string }
   );
 const recordBucket = <A, I>(
-  input: { readonly root: string; readonly state: StateStoreShape; readonly key: string },
+  input: { readonly state: StateStoreShape; readonly key: string },
   schema: Schema.Codec<A, I>,
 ) =>
   input.state
@@ -101,24 +100,7 @@ const recordBucket = <A, I>(
       version: 1,
       onCorrupt: "discard",
     })
-    .pipe(
-      Effect.mapError((cause) => acquisitionError("cache", input.key, cause)),
-      Effect.flatMap((bucket) =>
-        io(input.key, () => realpath(dirname(bucket.path))).pipe(
-          Effect.flatMap((parent) =>
-            parent === input.root
-              ? Effect.succeed(bucket)
-              : Effect.fail(
-                  acquisitionError(
-                    "cache",
-                    input.key,
-                    "StateStore sources directory does not match the source store root.",
-                  ),
-                ),
-          ),
-        ),
-      ),
-    );
+    .pipe(Effect.mapError((cause) => acquisitionError("cache", input.key, cause)));
 export const metadata = Effect.fn("SourceGc.metadata")(function* (root: string, state: StateStoreShape) {
   const files = yield* io(root, () => names(root));
   const records: StoredRecord[] = [];
@@ -144,7 +126,7 @@ export const metadata = Effect.fn("SourceGc.metadata")(function* (root: string, 
     const stats = checked.success;
     const base = { name, path, bytes: stats.size, mtime: stats.mtimeMs };
     const read = <A, I>(schema: Schema.Codec<A, I>) =>
-      recordBucket({ root, state, key: name }, schema).pipe(
+      recordBucket({ state, key: name }, schema).pipe(
         Effect.flatMap((bucket) => bucket.get),
         Effect.mapError((cause) => acquisitionError("cache", name, cause)),
         Effect.flatMap((value) =>

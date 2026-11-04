@@ -72,7 +72,7 @@ describe("entry validation and repair", () => {
     );
   });
 
-  test("repair preserves the published tree when the recomputed digest matches", async () => {
+  test("repair keeps an intact entry without refetching", async () => {
     const archive = makeFakeArchiveTransport();
     const bytes = makeTarGz([{ name: "file", bytes: new TextEncoder().encode("same") }]);
     const url = "https://example.test/same.tgz";
@@ -85,7 +85,7 @@ describe("entry validation and repair", () => {
         const repaired = yield* session.acquireArchive({ url, sha256 }, { repair: true });
         const after = yield* Effect.promise(() => stat(join(repaired.root, "file")));
         expect(after.ino).toBe(before.ino);
-        expect(archive.calls).toHaveLength(2);
+        expect(archive.calls).toHaveLength(1);
       }),
     );
   });

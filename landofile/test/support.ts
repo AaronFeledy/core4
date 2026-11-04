@@ -112,7 +112,6 @@ export const makeNpmPackageTarball = (files: Record<string, string>): Uint8Array
   return out;
 };
 
-/** Canonical GitTransport deps helper (no legacy clone adapter). */
 export const gitDeps = (git: GitTransport): LandofileIncludeDeps => ({ git });
 
 export const makeTestNpmRegistry = (input: {
@@ -194,7 +193,6 @@ export const seedNpmSourceEntry = async (input: {
     ...(input.tags === undefined ? {} : { tags: input.tags }),
   });
   const store = makeSourceStore({
-    root: join(input.cacheRoot, "sources"),
     stateStore: input.stateStore,
     transports: { npmRegistry },
   });

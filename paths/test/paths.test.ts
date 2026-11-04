@@ -519,7 +519,6 @@ describe("makeLandoPaths derived builders", () => {
     const cache = "/home/tester/.cache/lando";
     expect(paths.logsDir).toBe(join(cache, "logs"));
     expect(paths.transferStagingDir).toBe(join(cache, "transfer-staging"));
-    expect(paths.sourceCacheDir).toBe(join(cache, "sources"));
     expect(paths.toolDownloadsDir("mutagen")).toBe(join(cache, "tool-downloads", "mutagen"));
   });
 
@@ -588,7 +587,6 @@ describe("makeLandoPaths derived builders", () => {
     expect(paths.toolDownloadsDir("mutagen")).toBe("/iso/cache/tool-downloads/mutagen");
     expect(paths.scratchDir).toBe("/iso/data/scratch");
     expect(paths.transferStagingDir).toBe("/iso/cache/transfer-staging");
-    expect(paths.sourceCacheDir).toBe("/iso/cache/sources");
     expect(networkTrustCaBundlePath("/iso/cache", "deadbeef", "linux")).toBe(
       "/iso/cache/network-trust/ca-bundles/deadbeef.pem",
     );

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { makeSourceStore } from "../src/index.ts";
@@ -22,7 +22,6 @@ test("a session locks each warm entry once and registers roots only when absent"
   const fixture = await makeTestSourceStore({ archive: archive.transport });
   let locks = 0;
   const store = makeSourceStore({
-    root: fixture.root,
     transports: { archive: archive.transport },
     stateStore: {
       open: fixture.stateStore.open,
@@ -99,14 +98,13 @@ test("a failed lease write never marks a key registered in memory", async () => 
   );
 });
 
-test("symlink aliases share the same physical store lock", async () => {
+test("stores sharing one StateStore use the same physical lock", async () => {
   const archive = makeFakeArchiveTransport();
   const bytes = makeTarGz([{ name: "file", bytes: new TextEncoder().encode("warm") }]);
   const sha256 = sha256Of(bytes);
   const url = "https://example.test/warm.tgz";
   archive.set(url, bytes);
   const fixture = await makeTestSourceStore({ archive: archive.transport });
-  const alias = `${fixture.root}-alias`;
   const locks: string[] = [];
   const stateStore = {
     open: fixture.stateStore.open,
@@ -119,19 +117,19 @@ test("symlink aliases share the same physical store lock", async () => {
     await Effect.runPromise(
       withTestSession(fixture.store, (session) => session.acquireArchive({ url, sha256 })),
     );
-    await symlink(fixture.root, alias, "dir");
-    const physical = makeSourceStore({ root: fixture.root, stateStore, transports: {} });
-    const linked = makeSourceStore({ root: alias, stateStore, transports: {} });
+    const firstStore = makeSourceStore({ stateStore, transports: {} });
+    const secondStore = makeSourceStore({ stateStore, transports: {} });
     const first = await Effect.runPromise(
-      withTestSession(physical, (session) => session.openArchive(sha256)),
+      withTestSession(firstStore, (session) => session.openArchive(sha256)),
     );
-    const second = await Effect.runPromise(withTestSession(linked, (session) => session.openArchive(sha256)));
+    const second = await Effect.runPromise(
+      withTestSession(secondStore, (session) => session.openArchive(sha256)),
+    );
     expect(first?.key).toEqual({ kind: "archive", sha256 });
     expect(second?.key).toEqual(first?.key);
     expect(locks).toHaveLength(2);
     expect(new Set(locks).size).toBe(1);
   } finally {
-    await rm(alias, { force: true });
     await disposeTestSourceStore(fixture);
   }
 });

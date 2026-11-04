@@ -17,8 +17,6 @@ export interface PluginAddOptions {
   readonly pluginsRoot?: string;
   readonly userDataRoot?: string;
   readonly cacheRoot?: string;
-  /** Content-addressed source cache root; defaults to paths.sourceCacheDir. */
-  readonly sourceCacheRoot?: string;
   readonly registryUrl?: string;
   /** Use an existing store or session instead of constructing a source store. */
   readonly sources?: SourceStore | SourceSession;

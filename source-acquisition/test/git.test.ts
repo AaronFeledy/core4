@@ -62,13 +62,13 @@ describe("makeGitTransport (Bun ProcessRunner)", () => {
     const destRoot = await mkdtemp(join(tmpdir(), "lando-git-auth-"));
     try {
       const transport = makeGitTransport(makeTestProcessRunner());
-      await expect(
-        transport.fetch({
-          url: "https://127.0.0.1:1/does-not-exist.git",
-          ref: "main",
-          dest: join(destRoot, "tree"),
-        }),
-      ).rejects.toBeInstanceOf(SourceAcquisitionError);
+      const result = transport.fetch({
+        url: "https://127.0.0.1:1/does-not-exist.git",
+        ref: "main",
+        dest: join(destRoot, "tree"),
+      });
+      await expect(result).rejects.toBeInstanceOf(SourceAcquisitionError);
+      await expect(result).rejects.toHaveProperty("kind", expect.stringMatching(/^(?:fetch-failed|auth)$/u));
     } finally {
       await rm(destRoot, { recursive: true, force: true });
     }
@@ -127,7 +127,6 @@ describe("SourceSession git acquisition", () => {
         expect(git.calls).toHaveLength(1);
         const opened = yield* session.openGit(FULL_SHA);
         expect(opened?.root).toBe(snap.root);
-        // Second acquire of full SHA is cache hit (no transport call)
         const again = yield* session.acquireGit({
           url: "https://example.test/repo.git",
           ref: FULL_SHA,

@@ -15,24 +15,28 @@ import type { SourceKey, SourceStoreOptions } from "./types.ts";
 export type { SourceGcReport, GcOptions } from "./gc-schema.ts";
 export { SourceGcReportSchema, LockKeysResult, LockKey } from "./gc-schema.ts";
 
-export const gc = Effect.fn("SourceStore.gc")(function* (options: SourceStoreOptions, input: GcOptions) {
+export const gc = Effect.fn("SourceStore.gc")(function* (
+  options: SourceStoreOptions,
+  storeRoot: string,
+  input: GcOptions,
+) {
   if (!Number.isFinite(input.olderThanMs) || input.olderThanMs < 0)
     return yield* Effect.fail(acquisitionError("cache", "gc", "Age must be a finite non-negative duration."));
   const now = yield* Clock.currentTimeMillis;
   const cutoffMs = now - input.olderThanMs;
   const root = yield* io("source store root", async () => {
     try {
-      return await realpath(options.root);
+      return await realpath(storeRoot);
     } catch (cause) {
-      if (isErrnoCode(cause, "ENOENT")) return resolve(options.root);
+      if (isErrnoCode(cause, "ENOENT")) return resolve(storeRoot);
       throw cause;
     }
   });
-  const storage = makeStorage({ ...options, root }, { token: "gc", createdAt: now });
+  const storage = makeStorage(options, root, { token: "gc", createdAt: now });
   const records = yield* metadata(root, options.stateStore);
   const refs = yield* reachability(records, input.readLockKeys);
   const live = yield* leases(root);
-  const prune = pruner({ ...options, root }, storage, { ...input, cutoffMs });
+  const prune = pruner(options, storage, { ...input, cutoffMs });
   const entries: GcEntry[] = [];
   const leftovers: GcLeftover[] = [];
   const failure = (id: string, reason: string): GcLeftover => ({
@@ -121,9 +125,7 @@ export const gc = Effect.fn("SourceStore.gc")(function* (options: SourceStoreOpt
         : { ...row, outcome: "failed", reason: detail(result.failure) },
     );
   }
-  leftovers.push(
-    ...(yield* cleanup({ options: { ...options, root }, storage, policy: input, records, live, refs })),
-  );
+  leftovers.push(...(yield* cleanup({ options, storage, policy: input, records, live, refs })));
   const eligible = entries.filter((row) => row.eligible);
   const removed = entries.filter((row) => row.outcome === "removed");
   const observations = [refs, ...prune.observations];

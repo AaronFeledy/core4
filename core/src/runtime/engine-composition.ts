@@ -1,8 +1,8 @@
 import { resolveUserCacheRoot, resolveUserIncludesDir } from "@lando/engine/cache/paths";
 import { type EngineCompositionInputs, installEngineCompositionIfAbsent } from "@lando/engine/composition";
-
 import { httpJsonFetch } from "@lando/engine/services/json-fetch";
 import { service as processRunner } from "@lando/engine/services/process-runner";
+import { defaultSystemCaPems } from "@lando/http-client/network-trust";
 import { makeGitTransport } from "@lando/source-acquisition/git";
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids";
 import { resolveContainerHelper } from "../container-helper/assets";
@@ -20,9 +20,13 @@ export const baseEngineCompositionInputs: EngineCompositionInputs = {
       snapshot: npmRegistryConfigSnapshot(runtime?.registerSecrets, runtime?.readPolicy),
       archive,
     });
+    const gitOptions = {
+      systemCaPems: defaultSystemCaPems,
+      ...(runtime?.resolveNetworkTrust === undefined ? {} : { trust: runtime.resolveNetworkTrust }),
+    };
     return {
       sources: {
-        git: makeGitTransport(runtime?.processRunner ?? processRunner),
+        git: makeGitTransport(runtime?.processRunner ?? processRunner, gitOptions),
         npmRegistry: npmClient,
         archive,
       },

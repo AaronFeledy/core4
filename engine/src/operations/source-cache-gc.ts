@@ -1,6 +1,6 @@
 import { parseLockEntriesFromText } from "@lando/landofile/include-lockfile";
 import { classify, parseNpmInclude } from "@lando/landofile/include-source";
-import { FileSystem, PathsService, StateStore } from "@lando/sdk/services";
+import { FileSystem, StateStore } from "@lando/sdk/services";
 import { displaySource, makeSourceStore } from "@lando/source-acquisition";
 import {
   LockKey,
@@ -56,13 +56,11 @@ export interface SourceCacheGcOptions {
 export const sourceCacheGc = Effect.fn("Operations.sourceCacheGc")(function* (
   options: SourceCacheGcOptions = {},
 ) {
-  const paths = yield* PathsService;
   const stateStore = yield* StateStore;
   const fs = yield* FileSystem;
   const prune = options.prune === true;
   const olderThanDays = options.olderThanDays ?? 30;
   const store = makeSourceStore({
-    root: paths.sourceCacheDir,
     stateStore,
     transports: {},
   });

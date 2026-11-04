@@ -21,7 +21,7 @@ test("first registration recreates a root retired after GC checked for live leas
       return fixture.stateStore.withLock(key, body);
     },
   };
-  const store = makeSourceStore({ root: fixture.root, stateStore, transports: {} });
+  const store = makeSourceStore({ stateStore, transports: {} });
   try {
     await Effect.runPromise(withTestSession(store, (session) => session.registerRoot(lockfile)));
     let reads = 0;

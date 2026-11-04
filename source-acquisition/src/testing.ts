@@ -112,7 +112,8 @@ export const makeTestSourceStore = async (options: TestSourceStoreOptions = {}):
     ...(options.npmRegistry === undefined ? {} : { npmRegistry: options.npmRegistry }),
     ...(options.archive === undefined ? {} : { archive: options.archive }),
   };
-  return { root, stateStore, ownsRoot, store: makeSourceStore({ root, stateStore, transports }) };
+  const store = makeSourceStore({ stateStore, transports });
+  return { root, stateStore, ownsRoot, store };
 };
 export const disposeTestSourceStore = async (fixture: TestSourceStore): Promise<void> => {
   if (fixture.ownsRoot) await rm(dirname(fixture.root), { recursive: true, force: true });

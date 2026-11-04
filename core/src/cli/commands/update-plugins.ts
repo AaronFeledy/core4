@@ -38,7 +38,6 @@ export interface PluginUpdateAdapterOptions {
   readonly pluginsRoot?: string;
   readonly userDataRoot?: string;
   readonly cacheRoot?: string;
-  readonly sourceCacheRoot?: string;
   readonly registryUrl?: string;
   /** Packument reads for planning; also used as acquisition transport fallback. */
   readonly registryClient?: NpmRegistryTransport;
@@ -171,7 +170,6 @@ export const makePluginUpdateRunner = Effect.fnUntraced(function* (
           spec: `${row.name}@${row.targetVersion}`,
           pluginsRoot,
           ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
-          ...(options.sourceCacheRoot === undefined ? {} : { sourceCacheRoot: options.sourceCacheRoot }),
           ...(options.sources === undefined ? {} : { sources: options.sources }),
           ...(stateStore === undefined ? {} : { stateStore }),
           ...(registryUrl === undefined ? {} : { registryUrl }),
