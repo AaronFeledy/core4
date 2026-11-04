@@ -253,6 +253,7 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       ? yield* prepareImportDump({
           file,
           appRoot: deps.plan.root,
+          stagingDir: deps.stagingDir,
           ...(dumpStdio?._tag === "stdin" ? { stdin: dumpStdio.stream } : {}),
         })
       : undefined;

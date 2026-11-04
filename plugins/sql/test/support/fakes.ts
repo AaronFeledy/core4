@@ -255,6 +255,7 @@ export const makeSqlTestDeps = (options: SqlTestOptions): SqlTestHarness => {
             ];
       }),
     pruneSnapshots: () => Effect.succeed([]),
+    stagingDir: join(root, "transfer-staging"),
     canonicalizeSourcePath: (path) =>
       Effect.try({
         try: () => AbsolutePath.make(realpathSync(path)),

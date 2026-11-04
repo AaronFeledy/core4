@@ -33,7 +33,7 @@ lando db:import backups/app.sql.gz --service database --yes
 lando db:import backups/app.sql.zst --service database --yes
 ```
 
-Before an import or seed changes anything, Lando reads the whole dump. An empty dump fails with `SqlDumpIncompleteError`, and so does a dump that a dump tool stopped writing partway: a mysqldump or mariadb-dump dump without its final `-- Dump completed` line, a pg_dump dump without its `-- PostgreSQL database dump complete` comment, or a mongodump archive without its closing marker. The database and its seed eligibility stay as they were, and no recovery snapshot is taken. SQL you wrote yourself has no such marker, so it isn't checked for truncation.
+Before an import or seed changes anything, Lando reads the whole dump. An empty dump fails with `SqlDumpIncompleteError`, and so does a dump that a dump tool stopped writing partway: a mysqldump or mariadb-dump dump without its final `-- Dump completed` line, a pg_dump dump without its `-- PostgreSQL database dump complete` comment, or a mongodump archive in which a collection never finished. The database and its seed eligibility stay as they were, and no recovery snapshot is taken. SQL you wrote yourself has no such marker, so it isn't checked for truncation.
 
 MySQL, MariaDB, and Postgres execute the dump through the client without automatically resetting the database first; what changes depends on the dump statements. MongoDB restores its archive without automatically dropping collections. SQL Server uses `sqlcmd` backup and restore files, and its restore replaces the target database.
 
@@ -79,7 +79,7 @@ To import from stdin, pass `-` and `--yes`. Lando can't ask for confirmation bec
 lando db:import - --yes < dump.sql
 ```
 
-Lando saves stdin to a private temporary file, decompressing gzip or zstd input as it goes, then imports it exactly like a dump file: the same checks run, a recovery snapshot is taken first, and failures report the same errors. Make sure the host temp directory has room for the uncompressed dump. If the program feeding stdin dies partway, the dump it sent ends early, and the import fails before it changes anything; see [Export or import a dump](#export-or-import-a-dump). `lando db:seed - < dump.sql` reads stdin the same way and needs no `--yes`, because seed only fills a fresh, empty database.
+Lando saves stdin to a private file in its cache directory, decompressing gzip or zstd input as it goes, then imports it exactly like a dump file: the same checks run, a recovery snapshot is taken first, and failures report the same errors. That disk needs room for the uncompressed dump; the file is removed when the import finishes. A compressed dump file is staged the same way. [Find where Lando keeps files](../config/global-config.mdx#find-where-lando-keeps-files) lists the cache directory for your platform. If the program feeding stdin dies partway, the dump it sent ends early, and the import fails before it changes anything; see [Export or import a dump](#export-or-import-a-dump). `lando db:seed - < dump.sql` reads stdin the same way and needs no `--yes`, because seed only fills a fresh, empty database.
 
 `-` works only when you run the `lando` CLI yourself. MCP tools and event commands can't use Lando's stdin or stdout for a dump, so they fail with `CommandStdioError`; pass a file path there.
 

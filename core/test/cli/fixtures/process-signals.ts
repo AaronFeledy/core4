@@ -78,7 +78,11 @@ try {
             const dump = join(directory, "fixture.sql.gz");
             writeFileSync(dump, Bun.gzipSync("select 1;"));
             return yield* Effect.scoped(
-              prepareImportDump({ file: dump, appRoot: directory }).pipe(
+              prepareImportDump({
+                file: dump,
+                appRoot: directory,
+                stagingDir: join(directory, "staging"),
+              }).pipe(
                 Effect.flatMap((prepared) =>
                   Effect.sync(() =>
                     record("ready", {

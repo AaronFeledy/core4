@@ -1,6 +1,5 @@
 import { constants } from "node:fs";
-import { access, lstat, mkdtemp, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, lstat, mkdir, mkdtemp, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Effect, Stream } from "effect";
@@ -22,6 +21,7 @@ import {
   detectDumpCompression,
   releaseStagedDump,
 } from "./compression.ts";
+import { makeMongoArchiveTracker } from "./mongo-archive.ts";
 
 type DumpMiss = "missing" | "unreadable" | "directory";
 
@@ -60,6 +60,8 @@ export const ensureDumpFile = (path: string, appRoot: string): Effect.Effect<voi
   });
 
 const EDGE_BYTES = 512;
+// The tail keeps one byte before its window, so a window that starts mid-line can be detected.
+const TAIL_BYTES = EDGE_BYTES + 1;
 
 const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   const output = new Uint8Array(left.byteLength + right.byteLength);
@@ -68,8 +70,15 @@ const concatBytes = (left: Uint8Array, right: Uint8Array): Uint8Array => {
   return output;
 };
 
-const lastBytes = (bytes: Uint8Array): Uint8Array =>
-  bytes.byteLength > EDGE_BYTES ? bytes.slice(-EDGE_BYTES) : bytes;
+const lastBytes = (bytes: Uint8Array, limit = EDGE_BYTES): Uint8Array =>
+  bytes.byteLength > limit ? bytes.slice(-limit) : bytes;
+
+/** Drops a partial first line, unless the tail reaches back to the start of the dump. */
+const wholeLineTail = (tail: Uint8Array): Uint8Array => {
+  if (tail.byteLength <= EDGE_BYTES) return tail;
+  const lineBreak = tail.indexOf(0x0a);
+  return lineBreak === -1 ? new Uint8Array() : tail.subarray(lineBreak + 1);
+};
 
 const isAsciiWhitespace = (byte: number): boolean =>
   byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
@@ -82,17 +91,20 @@ const lastContentIndex = (chunk: Uint8Array): number => {
 };
 
 /**
- * Keeps the first bytes of a dump and the last bytes before any trailing whitespace, so
- * completeness can be checked during the single read without buffering the dump.
+ * Keeps the first bytes of a dump and the last bytes before any trailing whitespace, and follows
+ * mongodump archive framing, so completeness is checked during the single read without buffering.
  */
 const trackDumpEdges = () => {
   let head: Uint8Array = new Uint8Array();
   let tail: Uint8Array = new Uint8Array();
   let trailingWhitespace: Uint8Array = new Uint8Array();
   let size = 0;
+  // A non-archive fails the magic check on its first bytes and then ignores the rest.
+  const archive = makeMongoArchiveTracker();
   return {
     push: (chunk: Uint8Array) => {
       size += chunk.byteLength;
+      archive.push(chunk);
       if (head.byteLength < EDGE_BYTES)
         head = concatBytes(head, chunk.subarray(0, EDGE_BYTES - head.byteLength));
       const last = lastContentIndex(chunk);
@@ -102,60 +114,53 @@ const trackDumpEdges = () => {
       }
       const content = chunk.subarray(0, last + 1);
       tail =
-        content.byteLength >= EDGE_BYTES
-          ? content.slice(-EDGE_BYTES)
-          : lastBytes(concatBytes(concatBytes(tail, trailingWhitespace), content));
+        content.byteLength >= TAIL_BYTES
+          ? content.slice(-TAIL_BYTES)
+          : lastBytes(concatBytes(concatBytes(tail, trailingWhitespace), content), TAIL_BYTES);
       trailingWhitespace = lastBytes(chunk.subarray(last + 1));
     },
-    edges: () => ({ head, tail, size }),
+    edges: () => ({ head, tail, size, archiveComplete: archive.complete() }),
   };
 };
 
 const MONGO_ARCHIVE_MAGIC = [0x6d, 0xe2, 0x99, 0x81] as const;
-const MONGO_ARCHIVE_TERMINATOR = [0xff, 0xff, 0xff, 0xff] as const;
 
 const startsWithBytes = (bytes: Uint8Array, prefix: ReadonlyArray<number>): boolean =>
   bytes.byteLength >= prefix.length && prefix.every((byte, index) => bytes[index] === byte);
 
-const endsWithBytes = (bytes: Uint8Array, suffix: ReadonlyArray<number>): boolean =>
-  startsWithBytes(bytes.subarray(bytes.byteLength - suffix.length), suffix);
-
-type DumpEdgeText = { readonly bytes: Uint8Array; readonly text: string };
-
 // Dump tools stamp a header near the start and a completion trailer at the end; a header without
 // its trailer means the tool stopped early. Trailers must be whole lines, so a SQL string that
 // happens to contain one doesn't count. Hand-written SQL has no header and is never rejected here.
-const DUMP_FORMATS: ReadonlyArray<{
-  readonly header: (head: DumpEdgeText) => boolean;
-  readonly complete: (tail: DumpEdgeText) => boolean;
+const SQL_DUMP_FORMATS: ReadonlyArray<{
+  readonly header: (head: string) => boolean;
+  readonly complete: (tail: string) => boolean;
 }> = [
   {
     // mysqldump and mariadb-dump end with "-- Dump completed" (plus " on <date>" unless skipped).
-    header: (head) => /^-- (?:MySQL|MariaDB) dump /mu.test(head.text),
-    complete: (tail) => /(?:^|\n)-- Dump completed(?: on [^\n]*)?\r?$/u.test(tail.text),
+    header: (head) => /^-- (?:MySQL|MariaDB) dump /mu.test(head),
+    complete: (tail) => /(?:^|\n)-- Dump completed(?: on [^\n]*)?\r?$/u.test(tail),
   },
   {
     // pg_dump's trailer may be followed by \unrestrict and comment lines.
-    header: (head) => /^-- PostgreSQL database dump\r?$/mu.test(head.text),
+    header: (head) => /^-- PostgreSQL database dump\r?$/mu.test(head),
     // The footer is a three-line comment block, so a single COPY data row can't impersonate it.
-    complete: (tail) =>
-      /(?:^|\n)--\r?\n-- PostgreSQL database dump complete\r?\n--\r?(?:\n|$)/u.test(tail.text),
-  },
-  {
-    header: (head) => startsWithBytes(head.bytes, MONGO_ARCHIVE_MAGIC),
-    complete: (tail) => endsWithBytes(tail.bytes, MONGO_ARCHIVE_TERMINATOR),
+    complete: (tail) => /(?:^|\n)--\r?\n-- PostgreSQL database dump complete\r?\n--\r?(?:\n|$)/u.test(tail),
   },
 ];
 
-export type DumpEdges = { readonly head: Uint8Array; readonly tail: Uint8Array; readonly size: number };
+type DumpEdges = ReturnType<ReturnType<typeof trackDumpEdges>["edges"]>;
 
-export const dumpIncompleteReason = (edges: DumpEdges): "empty" | "truncated" | undefined => {
+const dumpIncompleteReason = (edges: DumpEdges): "empty" | "truncated" | undefined => {
   if (edges.size === 0) return "empty";
+  // A mongodump archive ends in a terminator after every block, so its framing, not its last
+  // bytes, shows whether every collection finished.
+  if (startsWithBytes(edges.head, MONGO_ARCHIVE_MAGIC))
+    return edges.archiveComplete ? undefined : "truncated";
   const decoder = new TextDecoder();
-  const head = { bytes: edges.head, text: decoder.decode(edges.head) };
-  const format = DUMP_FORMATS.find((candidate) => candidate.header(head));
+  const head = decoder.decode(edges.head);
+  const format = SQL_DUMP_FORMATS.find((candidate) => candidate.header(head));
   if (format === undefined) return undefined;
-  return format.complete({ bytes: edges.tail, text: decoder.decode(edges.tail) }) ? undefined : "truncated";
+  return format.complete(decoder.decode(wholeLineTail(edges.tail))) ? undefined : "truncated";
 };
 
 const requireCompleteDump = (label: string, fromStdin: boolean, edges: DumpEdges) => {
@@ -179,15 +184,16 @@ const requireCompleteDump = (label: string, fromStdin: boolean, edges: DumpEdges
   );
 };
 
-const stageError = (cause: unknown): DataTransferError =>
-  new DataTransferError({
-    message: "Failed to stage the dump in the host temp directory.",
-    toEndpoint: "hostPath",
-    operation: "stage",
-    remediation:
-      "Check that the host temp directory is writable and has room for the uncompressed dump, then retry.",
-    cause,
-  });
+const stageError =
+  (stagingDir: string) =>
+  (cause: unknown): DataTransferError =>
+    new DataTransferError({
+      message: `Failed to stage the dump in ${stagingDir}.`,
+      toEndpoint: "hostPath",
+      operation: "stage",
+      remediation: `Check that ${stagingDir} is writable and has room for the uncompressed dump, then retry.`,
+      cause,
+    });
 
 const decompressError = (label: string, compression: Exclude<DumpCompression, "none">) =>
   new SqlDumpCompressionError({
@@ -253,20 +259,23 @@ export type PreparedDump = {
 
 /**
  * Reads an import or seed dump once: detects gzip or zstd from its bytes, decompresses and stages
- * stdin or compressed input in an owner-only temp file that lives until the surrounding scope
- * closes, hashes the plaintext, and rejects an empty or truncated dump. An uncompressed file is
+ * stdin or compressed input in an owner-only file under `stagingDir` that lives until the
+ * surrounding scope closes, hashes the plaintext, and rejects an empty or truncated dump. An uncompressed file is
  * hashed in place, never copied.
  */
 export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (input: {
   readonly file: string;
   readonly appRoot: string;
+  /** Lando's transfer staging directory; dumps can be large, so not the OS temp directory. */
+  readonly stagingDir: string;
   readonly stdin?: Stream.Stream<Uint8Array, CommandStdioError>;
 }) {
+  const stageFailure = stageError(input.stagingDir);
   const fromStdin = input.stdin !== undefined;
   const label = fromStdin ? "stdin" : input.file;
   const readFailure = (cause: unknown) => {
     if (cause instanceof CommandStdioError) return cause;
-    if (fromStdin) return stageError(cause);
+    if (fromStdin) return stageFailure(cause);
     return dumpNotFound(input.file, input.appRoot, dumpMissKind(cause));
   };
   // The scope owns the source reader: interruption at any point, even mid-peek, waits for the
@@ -295,7 +304,13 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
   }
 
   const directory = yield* Effect.acquireRelease(
-    Effect.tryPromise({ try: () => mkdtemp(join(tmpdir(), "lando-dump-")), catch: stageError }),
+    Effect.tryPromise({
+      try: async () => {
+        await mkdir(input.stagingDir, { recursive: true, mode: 0o700 });
+        return await mkdtemp(join(input.stagingDir, "sql-dump-"));
+      },
+      catch: stageFailure,
+    }),
     releaseStagedDump,
   );
   const path = join(directory, "dump");
@@ -317,12 +332,12 @@ export const prepareImportDump = Effect.fn("Sql.prepareImportDump")(function* (i
         const source = opened.sourceFailure();
         if (source !== undefined) return readFailure(source.cause);
         if (cause instanceof CommandStdioError) return cause;
-        return compression === "none" ? stageError(cause) : decompressError(label, compression);
+        return compression === "none" ? stageFailure(cause) : decompressError(label, compression);
       },
     }),
     destinationPath: path,
     mode: 0o600,
-  }).pipe(Effect.mapError((error) => (error instanceof VerifiedStreamError ? stageError(error) : error)));
+  }).pipe(Effect.mapError((error) => (error instanceof VerifiedStreamError ? stageFailure(error) : error)));
   yield* requireCompleteDump(label, fromStdin, tracker.edges());
   return { path, digest: staged.sha256 } satisfies PreparedDump;
 });

@@ -24,7 +24,7 @@ lando db:import dump.sql.gz --yes
 lando db:import - --yes < dump.sql
 ```
 
-Either way, Lando takes a recovery snapshot before it runs the dump. The stdin form saves the input to a private temporary file first; see [Stream a dump through stdout or stdin](./db-import-export.mdx#stream-a-dump-through-stdout-or-stdin). Use the client commands below when you want to pass the client's own flags.
+Either way, Lando takes a recovery snapshot before it runs the dump. The stdin form saves the input to a private file in Lando's cache directory first; see [Stream a dump through stdout or stdin](./db-import-export.mdx#stream-a-dump-through-stdout-or-stdin). Use the client commands below when you want to pass the client's own flags.
 
 ## Import into MySQL or MariaDB
 

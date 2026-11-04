@@ -10,6 +10,7 @@ import {
   EventService,
   InteractionService,
   LandofileService,
+  PathsService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   StateStore,
@@ -31,6 +32,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
   const interaction = yield* InteractionService;
   const events = yield* EventService;
   const stateStore = yield* StateStore;
+  const paths = yield* PathsService;
   const landofile = yield* landofiles.discover;
   const authored = toSqlLandofile(landofile.document);
   const planned = yield* registry.resolveAppliedPlan(landofile.context.appRoot);
@@ -74,6 +76,7 @@ export const runDbCommand = Effect.fn("Sql.runDbCommand")(function* (input: DbCo
               remediation: "Pass an existing app root with --from-path.",
             }),
         }).pipe(Effect.map(AbsolutePath.make)),
+      stagingDir: paths.transferStagingDir,
       exec: providerSqlExec(provider, planned),
       resume: (service, identity) => {
         const resume = provider.resume;

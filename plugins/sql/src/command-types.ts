@@ -56,4 +56,6 @@ export type SqlCommandDeps = SqlMover &
     ) => Effect.Effect<AbsolutePath, SqlRecoveryUnavailableError>;
     readonly confirm: (message: string) => Effect.Effect<boolean, unknown>;
     readonly publish: SqlPublisher;
+    /** Host directory for staging stdin and compressed dumps before import or seed. */
+    readonly stagingDir: string;
   };

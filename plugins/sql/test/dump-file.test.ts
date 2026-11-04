@@ -36,10 +36,10 @@ describe("dump files", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  const prepare = (input: Parameters<typeof prepareImportDump>[0]) =>
+  const prepare = (input: Omit<Parameters<typeof prepareImportDump>[0], "stagingDir">) =>
     Effect.runPromiseExit(
       Effect.scoped(
-        prepareImportDump(input).pipe(
+        prepareImportDump({ ...input, stagingDir: join(root, "staging") }).pipe(
           Effect.flatMap((prepared) =>
             Effect.promise(async () => ({
               ...prepared,
@@ -102,6 +102,7 @@ describe("dump files", () => {
         expect(exit.value.bytes).toBe(PG_DUMP);
         expect(exit.value.digest).toBe(sha256(PG_DUMP));
         if (process.platform !== "win32") expect(exit.value.mode).toBe(0o600);
+        expect(exit.value.path.startsWith(join(root, "staging"))).toBe(true);
         expect(existsSync(exit.value.path)).toBe(false);
       },
     );
@@ -197,6 +198,16 @@ describe("dump files", () => {
       expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
     });
 
+    test("does not count a trailer that starts mid-line at the edge of the tail window", async () => {
+      // The last 512 bytes begin with the trailer text, but it sits inside an unfinished INSERT line.
+      const marker = `-- Dump completed on ${"y".repeat(512 - "-- Dump completed on ".length)}`;
+      const cut = `${MYSQL_DUMP.split("CREATE")[0]}INSERT INTO t VALUES ('abc${marker}`;
+      const error = failureOf(
+        await prepare({ file: "-", appRoot: root, stdin: Stream.make(new TextEncoder().encode(cut)) }),
+      );
+      expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
+    });
+
     test("does not count a pg_dump footer line inside unfinished COPY data", async () => {
       const head = PG_DUMP.split("CREATE")[0];
       const cut = `${head}COPY public.t (v) FROM stdin;\n-- PostgreSQL database dump complete\n`;
@@ -206,17 +217,31 @@ describe("dump files", () => {
       expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
     });
 
-    test("checks a mongodump archive for its terminator", async () => {
-      const archive = Uint8Array.from([
-        0x6d, 0xe2, 0x99, 0x81, 0x01, 0x02, 0x03, 0x04, 0xff, 0xff, 0xff, 0xff,
-      ]);
+    test("rejects a mongodump archive cut at a block boundary, even gzip-compressed", async () => {
+      // Given a real two-collection archive (see mongo-archive.test.ts) and a cut right after the
+      // first block's terminator, which a mongodump killed between writes leaves behind.
+      const archive = await Bun.file(
+        new URL("./fixtures/mongo-archive/concurrent.archive", import.meta.url),
+      ).bytes();
+      const view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+      let offset = 4;
+      let terminators = 0;
+      while (terminators < 2) {
+        const length = view.getInt32(offset, true);
+        offset += length === -1 ? 4 : length;
+        if (length === -1) terminators += 1;
+      }
+      const cut = archive.subarray(0, offset);
+      expect(cut.subarray(-4)).toEqual(Uint8Array.of(0xff, 0xff, 0xff, 0xff));
+
+      // Then the whole archive imports, and the cut one is refused plain or gzip-compressed.
       expect(Exit.isSuccess(await prepare({ file: "-", appRoot: root, stdin: Stream.make(archive) }))).toBe(
         true,
       );
-      const error = failureOf(
-        await prepare({ file: "-", appRoot: root, stdin: Stream.make(archive.subarray(0, 8)) }),
-      );
-      expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
+      for (const bytes of [cut, Bun.gzipSync(cut)]) {
+        const error = failureOf(await prepare({ file: "-", appRoot: root, stdin: Stream.make(bytes) }));
+        expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated" });
+      }
     });
 
     test("accepts hand-written SQL that carries no dump-tool header", async () => {
@@ -264,7 +289,11 @@ describe("dump files", () => {
         ),
       );
       // When
-      const fiber = Effect.runFork(Effect.scoped(prepareImportDump({ file: "-", appRoot: root, stdin })));
+      const fiber = Effect.runFork(
+        Effect.scoped(
+          prepareImportDump({ file: "-", appRoot: root, stagingDir: join(root, "staging"), stdin }),
+        ),
+      );
       await started.promise;
       await Effect.runPromise(Fiber.interrupt(fiber));
       // Then
