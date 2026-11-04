@@ -86,3 +86,17 @@ test("bare --json keeps key-list mode without requesting dump stdout", async () 
   expect(stdout).not.toContain("CommandStdioError");
   expect(stderr).not.toContain("CommandStdioError");
 });
+
+test("invalid plugin input still fails inside the command lifecycle", async () => {
+  // Only stdio refusals skip the lifecycle; a missing required arg keeps its init and error events.
+  const child = Bun.spawn([process.execPath, cli, "db:import", "--renderer=verbose"], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+
+  expect(exitCode).toBe(2);
+  expect(stderr).toContain("cli-db:import-init");
+  expect(stderr).toContain("CommandInputValidationError");
+});

@@ -1,7 +1,7 @@
 import { resolveCommandCompletion } from "@lando/sdk/command-result";
 import type { DeprecationNotice } from "@lando/sdk/schema";
 import { DeprecationService } from "@lando/sdk/services";
-import { Cause, DateTime, Effect, Exit, Layer } from "effect";
+import { DateTime, Effect, Exit, Layer } from "effect";
 import { commandDescriptorNotice } from "./command-catalog";
 
 import type { RendererIO } from "@lando/renderer/io";
@@ -171,27 +171,27 @@ const runPluginOwnedCommand = (
       const stdoutIsTTY =
         options.io?.stdoutIsTTY === true || (options.io === undefined && process.stdout.isTTY === true);
       const stdinIsTTY = stdinSource.isTTY === true;
-      const validated = await Effect.runPromiseExit(
-        validateEventCommandInput(spec, parsed).pipe(
-          Effect.flatMap((input) => {
-            const error = commandStdioRequestError({
-              command: spec.id,
-              request: spec.stdio?.(input),
-              stdoutIsTTY,
-              stdinIsTTY,
-              resultFormat: activeResultFormat,
-              rendererMode: activeRendererMode,
-            });
-            return error === undefined ? Effect.succeed(input) : Effect.fail(error);
-          }),
-        ),
-      );
-      if (Exit.isFailure(validated)) {
-        await renderPluginOwnedPreCommandFailure(Cause.squash(validated.cause), options.io);
+      const stdio = {
+        ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
+        stdoutIsTTY,
+        stdinIsTTY,
+        resultFormat: activeResultFormat,
+        rendererMode: activeRendererMode,
+      };
+      const validated = await Effect.runPromiseExit(validateEventCommandInput(spec, parsed));
+      // A refused stdio request depends only on the invocation's streams and output format, so it
+      // fails before the app runtime boots. Invalid input still fails inside the command lifecycle.
+      const refusal = Exit.isSuccess(validated)
+        ? commandStdioRequestError({ command: spec.id, request: spec.stdio?.(validated.value), ...stdio })
+        : undefined;
+      if (refusal !== undefined) {
+        await renderPluginOwnedPreCommandFailure(refusal, options.io);
         return;
       }
-      const normalizedInput = validated.value;
+      let normalizedInput: ExecutableCommandInput;
       const operation = Effect.gen(function* () {
+        if (Exit.isFailure(validated)) return yield* Effect.failCause(validated.cause);
+        normalizedInput = validated.value;
         if (options.deprecation !== undefined) {
           const service = yield* Effect.serviceOption(DeprecationService);
           if (service._tag === "Some")
@@ -202,13 +202,7 @@ const runPluginOwnedCommand = (
               timestamp: DateTime.nowUnsafe(),
             });
         }
-        return yield* withGrantedStdio(spec, normalizedInput, {
-          ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
-          stdoutIsTTY,
-          stdinIsTTY,
-          resultFormat: activeResultFormat,
-          rendererMode: activeRendererMode,
-        });
+        return yield* withGrantedStdio(spec, normalizedInput, stdio);
       });
       const cwd = await Effect.runPromise(discoveryCwd());
       await runCompiledCommand(operation, defaultPluginRuntime(spec.bootstrap, cwd), () => undefined, {

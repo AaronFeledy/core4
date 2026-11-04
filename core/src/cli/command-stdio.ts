@@ -119,9 +119,13 @@ export const grantCommandStdio = (
     const command = options.command;
     let claimed = false;
     // Suspend so cancellableTerminalStdin attaches only when the stream is pulled. Stdin is one
-    // shared byte source, so a second consumer would silently split the payload; refuse it instead.
+    // shared byte source, so a second consumer would silently split the payload: that is a bug in
+    // the command, not a user error.
     granted.stdin = Stream.suspend(() => {
-      if (claimed) return Stream.fail(stdinReadError(command, new Error("stdin was already consumed")));
+      if (claimed)
+        return Stream.die(
+          new Error(`${command} consumed its granted stdin twice; it is a single-consumer stream.`),
+        );
       claimed = true;
       return Stream.fromAsyncIterable(cancellableTerminalStdin(source), (cause) =>
         stdinReadError(command, cause),

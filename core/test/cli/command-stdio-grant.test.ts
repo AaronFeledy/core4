@@ -230,7 +230,7 @@ describe("pluginOwnedCommandEffect stdio grants", () => {
     expect(received).toBe("dump-bytes");
   });
 
-  test("granted stdin refuses a second consumer instead of splitting the payload", async () => {
+  test("a second consumer of granted stdin is a defect, and the first still gets every byte", async () => {
     // Given
     const stdin = new PassThrough();
     const granted = await Effect.runPromise(
@@ -253,12 +253,7 @@ describe("pluginOwnedCommandEffect stdio grants", () => {
     stdin.end("payload");
     // Then
     expect([...(await first)].map(decode).join("")).toBe("payload");
-    expect(Exit.isFailure(second)).toBe(true);
-    if (Exit.isFailure(second)) {
-      const error = Cause.squash(second.cause);
-      expect(error).toBeInstanceOf(CommandStdioError);
-      if (error instanceof CommandStdioError) expect(error.reason).toBe("read");
-    }
+    expect(Exit.isFailure(second) && Cause.hasDies(second.cause)).toBe(true);
   });
 
   test("stdin read errors surface as CommandStdioError reason read", async () => {
