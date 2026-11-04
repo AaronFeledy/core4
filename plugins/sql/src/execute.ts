@@ -16,16 +16,16 @@ import { requireVolume, runExport, runImport, runReset } from "./actions.ts";
 import type { SqlExec } from "./actions.ts";
 import { checkedSqlExecution } from "./checked-execution.ts";
 import {
+  exportCompression,
   hostFile,
   parseCount,
-  requireDashStdioGrant,
+  resolveDumpStdio,
   secretTokens,
-  validateExportCompressionLevel,
+  validateExportCompression,
 } from "./command-input.ts";
 import type { DbCommandInput, SqlCommandDeps } from "./command-types.ts";
-import { compressionFromExportPath } from "./compression.ts";
 import { credsEnv, currentAppliedDatabaseConnection, resolveSqlCreds } from "./creds.ts";
-import { ensureReadableDump, stageStdinDump } from "./dump-file.ts";
+import { ensureDumpFile, ensureExportDestination, prepareImportDump } from "./dump-file.ts";
 import {
   SqlEnvironmentSession,
   classifySqlPlan,
@@ -54,8 +54,8 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
   rawDeps: SqlCommandDeps,
   input: DbCommandInput,
 ) {
-  yield* validateExportCompressionLevel(input);
-  yield* requireDashStdioGrant(input);
+  yield* validateExportCompression(input);
+  const dumpStdio = yield* resolveDumpStdio(input);
   const rawSession = yield* rawDeps.environmentResolver.openSession();
   const redaction = yield* RedactionService;
   const resolved = resolveSqlTarget(rawDeps.plan, input.service);
@@ -153,17 +153,12 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
         }),
       );
     }
-    // A stdin dump is staged first so digest, magic detection, and recovery treat it like a file.
-    const stdin = file === "-" && action !== "export" ? input.stdio?.stdin : undefined;
-    const dumpPath = stdin === undefined ? file : yield* stageStdinDump(stdin);
+    if (action === "export" && dumpStdio === undefined) yield* ensureExportDestination(file);
 
     const store = action === "export" ? undefined : yield* requireVolume(deps.plan, service, target.name);
-    const dump =
-      action === "import" || (action === "seed" && input.file !== undefined)
-        ? yield* ensureReadableDump(dumpPath, deps.plan.root)
-        : undefined;
-    const expectedDigest = dump?.digest;
-    const compression = dump?.compression ?? compressionFromExportPath(file);
+    const readsDump = action === "import" || (action === "seed" && input.file !== undefined);
+    // Missing or unreadable files fail before the count probe and confirmation prompt.
+    if (readsDump && dumpStdio === undefined) yield* ensureDumpFile(file, deps.plan.root);
 
     if (action === "import") {
       const command = countCommand(target.family, creds);
@@ -252,6 +247,15 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
 
     const progress = yield* publishTree(deps.publish, `db:${action}`, steps);
 
+    // The whole dump is read (stdin, decompression, completeness, digest) after confirmation and
+    // before the recovery snapshot, so a bad dump fails without touching the database.
+    const prepared = readsDump
+      ? yield* prepareImportDump({
+          file,
+          appRoot: deps.plan.root,
+          ...(dumpStdio?._tag === "stdin" ? { stdin: dumpStdio.stream } : {}),
+        })
+      : undefined;
     const io = {
       plan: deps.plan,
       service: target.name,
@@ -259,11 +263,11 @@ export const executeDbCommand = Effect.fn("Sql.executeDbCommand")(function* (
       creds,
       env,
       secrets: protectedEnvironment.secrets,
-      file: dumpPath,
-      compression,
+      file: prepared?.path ?? file,
+      destination: dumpStdio?._tag === "stdout" ? dumpStdio : ({ _tag: "file", path: file } as const),
+      compression: exportCompression(input),
       ...(input.compressionLevel === undefined ? {} : { compressionLevel: input.compressionLevel }),
-      ...(expectedDigest === undefined ? {} : { expectedDigest }),
-      ...(action === "export" && input.stdio?.stdout !== undefined ? { stdout: input.stdio.stdout } : {}),
+      ...(prepared === undefined ? {} : { expectedDigest: prepared.digest }),
     };
     let snapshotId: string | undefined;
     let listedSnapshots: ReadonlyArray<SnapshotInfo> | undefined;

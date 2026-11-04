@@ -764,7 +764,8 @@ Flags:
 
 | Flag | Description |
 | --- | --- |
-| `--compression-level` | Host dump compression level: gzip 0-9 or zstd 1-22, selected by the file suffix. |
+| `--compression` | Compress a dump written to stdout (-). File exports use the .gz or .zst suffix instead. (one of `gzip`, `zstd`) |
+| `--compression-level` | Host compression level: gzip 0-9 or zstd 1-22, chosen by the .gz or .zst suffix, or by --compression with -. |
 | `--service` | Source database service. |
 | `--yes, -y` | Skip confirmation prompts. |
 

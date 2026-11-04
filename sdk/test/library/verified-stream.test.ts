@@ -185,3 +185,35 @@ describe("verified stream size ceilings", () => {
     });
   }
 });
+
+describe("verified stream destinations", () => {
+  test.skipIf(process.platform === "win32")(
+    "refuses to replace a named pipe and never reads the body",
+    async () => {
+      // Given
+      const dir = await fs.mkdtemp(join(tmpdir(), "lando-fifo-destination-"));
+      const fifo = join(dir, "dump.sql");
+      expect(Bun.spawnSync(["mkfifo", fifo]).exitCode).toBe(0);
+      let pulled = false;
+      const body = Stream.fromEffect(
+        Effect.sync(() => {
+          pulled = true;
+          return bytes("select 1;");
+        }),
+      );
+      try {
+        // When
+        const exit = await Effect.runPromiseExit(
+          Effect.scoped(persistVerifiedStream({ body, destinationPath: fifo })),
+        );
+        // Then
+        expect(exit._tag === "Failure" && Cause.squash(exit.cause)).toBeInstanceOf(VerifiedStreamError);
+        expect(pulled).toBe(false);
+        expect((await fs.stat(fifo)).isFIFO()).toBe(true);
+        expect(await fs.readdir(dir)).toEqual(["dump.sql"]);
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});

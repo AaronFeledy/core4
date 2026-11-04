@@ -12,7 +12,8 @@ export const spec = {
     "compression-level": {
       type: "number",
       valueType: "integer",
-      description: "Host dump compression level: gzip 0-9 or zstd 1-22, selected by the file suffix.",
+      description:
+        "Host compression level: gzip 0-9 or zstd 1-22, chosen by the .gz or .zst suffix, or by --compression with -.",
       parse: (input) => {
         const value = Number(input);
         if (!Number.isSafeInteger(value)) {
@@ -20,6 +21,11 @@ export const spec = {
         }
         return value;
       },
+    },
+    compression: {
+      type: "string",
+      options: ["gzip", "zstd"],
+      description: "Compress a dump written to stdout (-). File exports use the .gz or .zst suffix instead.",
     },
     yes: { type: "boolean", default: false, description: "Skip confirmation prompts." },
   },

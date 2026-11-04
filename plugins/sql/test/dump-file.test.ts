@@ -1,108 +1,228 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Option } from "effect";
+import { Cause, Effect, Exit, Option, Stream } from "effect";
 
-import { SqlDumpNotFoundError } from "@lando/sdk/errors";
+import {
+  CommandInputValidationError,
+  CommandStdioError,
+  SqlDumpCompressionError,
+  SqlDumpIncompleteError,
+  SqlDumpNotFoundError,
+} from "@lando/sdk/errors";
 
-import { ensureReadableDump } from "../src/dump-file.ts";
+import { ensureDumpFile, ensureExportDestination, prepareImportDump } from "../src/dump-file.ts";
 
-describe("ensureReadableDump", () => {
-  let appRoot = "";
+const sha256 = (bytes: Uint8Array | string) => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
+const failureOf = (exit: Exit.Exit<unknown, unknown>) =>
+  Exit.isFailure(exit) ? Option.getOrUndefined(Cause.findErrorOption(exit.cause)) : undefined;
 
+const MYSQL_DUMP =
+  "-- MySQL dump 10.13  Distrib 8.4.3\n--\nCREATE TABLE t (id int);\n-- Dump completed on 2026-11-04 10:00:00\n";
+const MARIADB_DUMP =
+  "/*M!999999\\- enable the sandbox mode */ \n-- MariaDB dump 10.19-11.4.5-MariaDB\nCREATE TABLE t (id int);\n-- Dump completed on 2026-11-04 10:00:00\n";
+const PG_DUMP =
+  "--\n-- PostgreSQL database dump\n--\n\n\\restrict abc\nCREATE TABLE t (id int);\n--\n-- PostgreSQL database dump complete\n--\n\n\\unrestrict abc\n\n";
+
+describe("dump files", () => {
+  let root = "";
   beforeEach(async () => {
-    appRoot = await mkdtemp(join(tmpdir(), "lando-sql-dump-"));
+    root = await mkdtemp(join(tmpdir(), "lando-sql-dump-"));
   });
-
   afterEach(async () => {
-    await rm(appRoot, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
   });
 
-  test("fails with SqlDumpNotFoundError when the dump file is missing", async () => {
-    const path = join(appRoot, "missing.sql.gz");
-    const exit = await Effect.runPromiseExit(ensureReadableDump(path, appRoot));
+  const prepare = (input: Parameters<typeof prepareImportDump>[0]) =>
+    Effect.runPromiseExit(
+      Effect.scoped(
+        prepareImportDump(input).pipe(
+          Effect.flatMap((prepared) =>
+            Effect.promise(async () => ({
+              ...prepared,
+              bytes: await readFile(prepared.path, "utf8"),
+              mode: (await stat(prepared.path)).mode & 0o777,
+            })),
+          ),
+        ),
+      ),
+    );
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
-    expect(error).toBeInstanceOf(SqlDumpNotFoundError);
-    if (!(error instanceof SqlDumpNotFoundError)) return;
-    expect(error.path).toBe(path);
-    expect(error.appRoot).toBe(appRoot);
-    expect(error.message).toContain("Dump file not found");
+  describe("ensureDumpFile", () => {
+    test("reports a missing file", async () => {
+      const path = join(root, "missing.sql.gz");
+      const error = failureOf(await Effect.runPromiseExit(ensureDumpFile(path, root)));
+      expect(error).toBeInstanceOf(SqlDumpNotFoundError);
+      expect(error).toMatchObject({ path, appRoot: root });
+    });
+
+    test("reports a directory", async () => {
+      const path = join(root, "dump-dir");
+      await mkdir(path);
+      const error = failureOf(await Effect.runPromiseExit(ensureDumpFile(path, root)));
+      expect(error).toBeInstanceOf(SqlDumpNotFoundError);
+      expect(error).toMatchObject({ path });
+    });
+
+    test.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
+      "reports a file the user cannot read",
+      async () => {
+        const path = join(root, "locked.sql");
+        await writeFile(path, "x");
+        await chmod(path, 0o000);
+        const error = failureOf(await Effect.runPromiseExit(ensureDumpFile(path, root)));
+        expect(error).toBeInstanceOf(SqlDumpNotFoundError);
+        expect(error).toMatchObject({ path });
+      },
+    );
   });
 
-  test("passes for a readable dump file", async () => {
-    const path = join(appRoot, "ok.sql.gz");
-    await writeFile(path, "x");
-    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
+  describe("prepareImportDump", () => {
+    test("hashes an uncompressed file in place instead of copying it", async () => {
+      const path = join(root, "plain.sql.gz");
+      await writeFile(path, "select 1;\n");
+      const exit = await prepare({ file: path, appRoot: root });
+      expect(Exit.isSuccess(exit) && exit.value).toMatchObject({ path, digest: sha256("select 1;\n") });
+    });
 
-    expect(dump.compression).toBe("none");
-    expect(dump.digest).toHaveLength(64);
+    test.each([
+      ["gzip", (text: string) => Bun.gzipSync(text)],
+      ["zstd", (text: string) => Bun.zstdCompressSync(text)],
+    ] as const)(
+      "decompresses %s detected from its bytes into an owner-only staged copy",
+      async (_label, compress) => {
+        const path = join(root, "dump.sql");
+        await writeFile(path, compress(PG_DUMP));
+        const exit = await prepare({ file: path, appRoot: root });
+        if (!Exit.isSuccess(exit)) throw new Error(`prepare failed: ${Cause.pretty(exit.cause)}`);
+        expect(exit.value.path).not.toBe(path);
+        expect(exit.value.bytes).toBe(PG_DUMP);
+        expect(exit.value.digest).toBe(sha256(PG_DUMP));
+        if (process.platform !== "win32") expect(exit.value.mode).toBe(0o600);
+        expect(existsSync(exit.value.path)).toBe(false);
+      },
+    );
+
+    test("stages stdin, including compressed stdin, and removes the copy when the scope closes", async () => {
+      const exit = await prepare({ file: "-", appRoot: root, stdin: Stream.make(Bun.gzipSync(MYSQL_DUMP)) });
+      if (!Exit.isSuccess(exit)) throw new Error(`prepare failed: ${Cause.pretty(exit.cause)}`);
+      expect(exit.value.bytes).toBe(MYSQL_DUMP);
+      expect(existsSync(exit.value.path)).toBe(false);
+    });
+
+    test.each([
+      ["a file", (path: string) => ({ file: path })],
+      ["stdin", () => ({ file: "-", stdin: Stream.empty })],
+    ] as const)("rejects an empty dump from %s", async (_label, source) => {
+      const path = join(root, "empty.sql");
+      await writeFile(path, "");
+      const error = failureOf(await prepare({ appRoot: root, ...source(path) }));
+      expect(error).toBeInstanceOf(SqlDumpIncompleteError);
+      expect(error).toMatchObject({ reason: "empty" });
+    });
+
+    test("rejects a gzip stream whose content is empty", async () => {
+      const path = join(root, "empty.sql.gz");
+      await writeFile(path, Bun.gzipSync(""));
+      expect(failureOf(await prepare({ file: path, appRoot: root }))).toMatchObject({ reason: "empty" });
+    });
+
+    test.each([
+      ["mysqldump", MYSQL_DUMP],
+      ["mariadb-dump", MARIADB_DUMP],
+      ["pg_dump", PG_DUMP],
+    ] as const)(
+      "accepts a complete %s dump and rejects one cut off before its trailer",
+      async (_tool, dump) => {
+        const complete = join(root, "complete.sql");
+        const cut = join(root, "cut.sql");
+        await writeFile(complete, dump);
+        await writeFile(cut, dump.slice(0, dump.indexOf("CREATE TABLE") + 20));
+        expect(Exit.isSuccess(await prepare({ file: complete, appRoot: root }))).toBe(true);
+        const error = failureOf(await prepare({ file: cut, appRoot: root }));
+        expect(error).toBeInstanceOf(SqlDumpIncompleteError);
+        expect(error).toMatchObject({ reason: "truncated", path: cut });
+      },
+    );
+
+    test("finds a trailer that ends far from the header in a large dump", async () => {
+      const body = "INSERT INTO t VALUES (1);\n".repeat(100_000);
+      const exit = await prepare({
+        file: "-",
+        appRoot: root,
+        stdin: Stream.make(
+          new TextEncoder().encode(`${MYSQL_DUMP.split("CREATE")[0]}${body}-- Dump completed\n`),
+        ),
+      });
+      expect(Exit.isSuccess(exit)).toBe(true);
+    });
+
+    test("rejects a truncated dump that arrives gzip-compressed on stdin", async () => {
+      // `mysqldump | gzip` writes a valid gzip stream even when mysqldump dies partway.
+      const cut = MYSQL_DUMP.slice(0, MYSQL_DUMP.indexOf("-- Dump completed"));
+      const error = failureOf(
+        await prepare({ file: "-", appRoot: root, stdin: Stream.make(Bun.gzipSync(cut)) }),
+      );
+      expect(error).toMatchObject({ _tag: "SqlDumpIncompleteError", reason: "truncated", path: "stdin" });
+    });
+
+    test("accepts hand-written SQL that carries no dump-tool header", async () => {
+      const exit = await prepare({
+        file: "-",
+        appRoot: root,
+        stdin: Stream.make(new TextEncoder().encode("INSERT INTO t VALUES (1);")),
+      });
+      expect(Exit.isSuccess(exit)).toBe(true);
+    });
+
+    test("reports corrupt gzip as a decompression failure", async () => {
+      const path = join(root, "broken.gz");
+      await writeFile(path, Bun.gzipSync(MYSQL_DUMP).subarray(0, 20));
+      const error = failureOf(await prepare({ file: path, appRoot: root }));
+      expect(error).toBeInstanceOf(SqlDumpCompressionError);
+      expect(error).toMatchObject({ operation: "decompress", compression: "gzip" });
+    });
+
+    test("keeps a stdin read failure's own error", async () => {
+      const failure = new CommandStdioError({
+        message: "read failed",
+        command: "db:import",
+        stream: "stdin",
+        reason: "read",
+        remediation: "Retry.",
+      });
+      const stdin = Stream.concat(Stream.make(new TextEncoder().encode("select 1;")), Stream.fail(failure));
+      expect(failureOf(await prepare({ file: "-", appRoot: root, stdin }))).toBe(failure);
+    });
   });
 
-  test("detects gzip from magic bytes even without a .gz suffix", async () => {
-    const path = join(appRoot, "dump.sql");
-    await writeFile(path, Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x00]));
-    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
+  describe("ensureExportDestination", () => {
+    test("allows a missing or regular-file destination", async () => {
+      const existing = join(root, "dump.sql");
+      await writeFile(existing, "old");
+      expect(Exit.isSuccess(await Effect.runPromiseExit(ensureExportDestination(existing)))).toBe(true);
+      expect(
+        Exit.isSuccess(await Effect.runPromiseExit(ensureExportDestination(join(root, "new.sql")))),
+      ).toBe(true);
+    });
 
-    expect(dump.compression).toBe("gzip");
-  });
+    test("refuses a directory", async () => {
+      const error = failureOf(await Effect.runPromiseExit(ensureExportDestination(root)));
+      expect(error).toBeInstanceOf(CommandInputValidationError);
+      expect(error).toMatchObject({ field: "file", kind: "arg", reason: "constraint" });
+    });
 
-  test("does not treat a .gz suffix as gzip without the magic bytes", async () => {
-    const path = join(appRoot, "plain.sql.gz");
-    await writeFile(path, "not-gzip");
-    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
-
-    expect(dump.compression).toBe("none");
-  });
-
-  test("detects zstd from magic bytes even without a .zst suffix", async () => {
-    const path = join(appRoot, "dump.sql");
-    await writeFile(path, Buffer.from([0x28, 0xb5, 0x2f, 0xfd, 0x00]));
-    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
-
-    expect(dump.compression).toBe("zstd");
-  });
-
-  test("does not treat a .zst suffix as zstd without the magic bytes", async () => {
-    const path = join(appRoot, "plain.sql.zst");
-    await writeFile(path, "not-zstd");
-    const dump = await Effect.runPromise(ensureReadableDump(path, appRoot));
-
-    expect(dump.compression).toBe("none");
-  });
-
-  test("fails with SqlDumpNotFoundError when the dump file exists but is not readable", async () => {
-    // root bypasses mode bits, so the permission miss cannot be provoked there.
-    if (process.getuid?.() === 0 || process.platform === "win32") return;
-    const path = join(appRoot, "locked.sql.gz");
-    await writeFile(path, "x");
-    await chmod(path, 0o000);
-    const exit = await Effect.runPromiseExit(ensureReadableDump(path, appRoot));
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
-    expect(error).toBeInstanceOf(SqlDumpNotFoundError);
-    if (!(error instanceof SqlDumpNotFoundError)) return;
-    expect(error.path).toBe(path);
-    expect(error.message).toContain("not readable");
-  });
-
-  test("fails with SqlDumpNotFoundError when the dump path is a directory", async () => {
-    const path = join(appRoot, "dump-dir");
-    await mkdir(path);
-    const exit = await Effect.runPromiseExit(ensureReadableDump(path, appRoot));
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (!Exit.isFailure(exit)) throw new Error("expected failure");
-    const error = Option.getOrUndefined(Cause.findErrorOption(exit.cause));
-    expect(error).toBeInstanceOf(SqlDumpNotFoundError);
-    if (!(error instanceof SqlDumpNotFoundError)) return;
-    expect(error.path).toBe(path);
-    expect(error.message).toContain("directory");
+    test.skipIf(process.platform === "win32")("refuses a named pipe and leaves it in place", async () => {
+      const fifo = join(root, "dump.fifo");
+      expect(Bun.spawnSync(["mkfifo", fifo]).exitCode).toBe(0);
+      const error = failureOf(await Effect.runPromiseExit(ensureExportDestination(fifo)));
+      expect(error).toBeInstanceOf(CommandInputValidationError);
+      if (error instanceof CommandInputValidationError)
+        expect(error.remediation).toContain("lando db:export -");
+      expect((await stat(fifo)).isFIFO()).toBe(true);
+    });
   });
 });

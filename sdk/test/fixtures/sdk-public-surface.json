@@ -831,6 +831,7 @@
       "SqlCommandFailedError",
       "SqlConfirmRequiredError",
       "SqlDumpCompressionError",
+      "SqlDumpIncompleteError",
       "SqlDumpNotFoundError",
       "SqlRecoveryOperationError",
       "SqlRecoveryUnavailableError",

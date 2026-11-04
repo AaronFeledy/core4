@@ -10,7 +10,7 @@
  * a bad fetch.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, open, rename, unlink } from "node:fs/promises";
+import { chmod, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect, Ref, Schema, type Scope, Stream } from "effect";
@@ -93,13 +93,24 @@ const verify = (
 /**
  * Stream `body` into `destinationPath` atomically with checksum/size
  * verification. Requires an ambient `Scope`: a finalizer removes the temp file
- * unless the verified rename committed.
+ * unless the verified rename committed. An existing destination must be a
+ * regular file: renaming over a named pipe, socket, device, or directory would
+ * replace it rather than write into it, so that fails before any bytes are read.
  */
 export const persistVerifiedStream = Effect.fn("VerifiedStream.persist")(function* <E, R>(
   params: PersistVerifiedStreamParams<E, R>,
 ): Effect.fn.Return<VerifiedStreamResult, E | VerifiedStreamError, Scope.Scope | R> {
   const invalidSize = invalidExpectedSize(params.expectedSizeBytes);
   if (invalidSize !== undefined) return yield* Effect.fail(invalidSize);
+  const existing = yield* Effect.promise(() => stat(params.destinationPath).catch(() => undefined));
+  if (existing !== undefined && !existing.isFile()) {
+    return yield* Effect.fail(
+      new VerifiedStreamError({
+        reason: "persist",
+        message: "The destination exists and is not a regular file.",
+      }),
+    );
+  }
   const tempPath = `${params.destinationPath}.tmp-${params.randomId?.() ?? randomUUID()}`;
   const committed = yield* Ref.make(false);
 

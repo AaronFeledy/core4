@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createBufferedRendererIO, createStdioRendererIO } from "@lando/renderer/io";
-import { withHostDumpCompression } from "@lando/sql/compression";
+import { prepareImportDump } from "@lando/sql/dump-file";
 import { Effect, Layer, Schema } from "effect";
 import { CommandWarnings } from "../../../src/cli/command-warnings";
 import { runWithProcessAbortSignal } from "../../../src/cli/compiled-runtime";
@@ -77,19 +77,20 @@ try {
             );
             const dump = join(directory, "fixture.sql.gz");
             writeFileSync(dump, Bun.gzipSync("select 1;"));
-            return yield* withHostDumpCompression({
-              path: dump,
-              direction: "import",
-              compression: "gzip",
-              transfer: (workingPath) =>
-                Effect.sync(() =>
-                  record("ready", {
-                    pid: process.pid,
-                    workingPath,
-                    raw: process.stdin.isRaw,
-                  }),
-                ).pipe(Effect.andThen(Effect.never)),
-            });
+            return yield* Effect.scoped(
+              prepareImportDump({ file: dump, appRoot: directory }).pipe(
+                Effect.flatMap((prepared) =>
+                  Effect.sync(() =>
+                    record("ready", {
+                      pid: process.pid,
+                      workingPath: prepared.path,
+                      raw: process.stdin.isRaw,
+                    }),
+                  ),
+                ),
+                Effect.andThen(Effect.never),
+              ),
+            );
           }
           record("ready", { pid: process.pid });
           if (mode === "complete" || mode === "ignored") {

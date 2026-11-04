@@ -57,6 +57,21 @@ export class SqlDumpNotFoundError extends Schema.TaggedError<SqlDumpNotFoundErro
   remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
 }) {}
 
+/**
+ * An import or seed dump is empty, or a dump-tool dump (mysqldump, mariadb-dump,
+ * pg_dump) ends before its completion marker because the tool stopped early.
+ * Raised before the recovery snapshot, so the database is untouched.
+ */
+export class SqlDumpIncompleteError extends Schema.TaggedError<SqlDumpIncompleteError>()(
+  "SqlDumpIncompleteError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    reason: Schema.Literals(["empty", "truncated"]),
+    remediation: Schema.NonEmptyString.check(Schema.isPattern(/\S/u)),
+  },
+) {}
+
 export class SqlDumpCompressionError extends Schema.TaggedError<SqlDumpCompressionError>()(
   "SqlDumpCompressionError",
   {

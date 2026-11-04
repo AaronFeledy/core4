@@ -85,6 +85,65 @@ describe("db dump stdio", () => {
     }
   });
 
+  test.each(["gzip", "zstd"] as const)(
+    "export - --compression=%s compresses the stream on the host",
+    async (compression) => {
+      // Given
+      const payload = new TextEncoder().encode("-- MySQL dump\nCREATE TABLE t (id int);\n".repeat(2000));
+      const chunks: Uint8Array[] = [];
+      const harness = makeSqlTestDeps({ password: SECRET, readPayload: payload });
+      // When
+      const exit = await run(harness.deps, {
+        action: "export",
+        yes: false,
+        file: "-",
+        compression,
+        stdio: {
+          stdout: (chunk) =>
+            Effect.sync(() => {
+              chunks.push(chunk);
+            }),
+        },
+      });
+      // Then
+      if (!Exit.isSuccess(exit)) throw new Error(`export failed: ${Cause.pretty(exit.cause)}`);
+      const written = Uint8Array.from(chunks.flatMap((chunk) => [...chunk]));
+      const decoded = compression === "gzip" ? Bun.gunzipSync(written) : Bun.zstdDecompressSync(written);
+      expect(new Uint8Array(decoded)).toEqual(payload);
+      expect(exit.value.sizeBytes).toBe(written.byteLength);
+    },
+  );
+
+  test("a failing stdout write stops the compressed dump and releases its source", async () => {
+    // Given: the reader went away after the first chunk.
+    let released = false;
+    const harness = makeSqlTestDeps({ password: SECRET });
+    const deps = {
+      ...harness.deps,
+      read: () =>
+        // A large first chunk makes the compressor emit output before the source stalls.
+        Stream.make(Uint8Array.from({ length: 1 << 20 }, (_, index) => (index * 2_654_435_761) >>> 24)).pipe(
+          Stream.concat(Stream.never),
+          Stream.ensuring(
+            Effect.sync(() => {
+              released = true;
+            }),
+          ),
+        ),
+    };
+    // When
+    const exit = await run(deps, {
+      action: "export",
+      yes: false,
+      file: "-",
+      compression: "gzip",
+      stdio: { stdout: () => Effect.interrupt },
+    });
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(released).toBe(true);
+  });
+
   test("mssql export - backs up then reads the service .bak path", async () => {
     // Given
     const payload = new TextEncoder().encode("MSSQLBAK");
